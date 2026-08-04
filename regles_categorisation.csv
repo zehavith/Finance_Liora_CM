@@ -1,0 +1,775 @@
+Sens;Catégorie;Type de règle;Mot-clé / Pattern;Priorité
+Encaissement;Interco;Mot-clé;TRESO;1
+Encaissement;Interco;Mot-clé;TRESORERIE;1
+Encaissement;Interco;Mot-clé;AFORSSIC;1
+Encaissement;Interco;Mot-clé;FORSSIC;1
+Encaissement;Interco;Mot-clé;VIREMENT COMPENSE;1
+Encaissement;Interco;Mot-clé;DST GERMANY;1
+Encaissement;Interco;Mot-clé;APPROVISIONNEMENT;1
+Encaissement;Interco;Mot-clé;DEBIT MENSUEL CARTE BLEUE;1
+Encaissement;Interco;Mot-clé;COMPTE PRO;1
+Encaissement;Interco;Mot-clé;APPRO;1
+Encaissement;Interco;Mot-clé;PRELEVEMENT AUTOMATIQUE;1
+Encaissement;Interco;Mot-clé;AMERICAN EXPRESS CARTE;1
+Encaissement;Interco;Mot-clé;AMERICAN EXPRESS CARTE-FRANCE;1
+Encaissement;Alternance (OPCO);Mot-clé;AFDAS;2
+Encaissement;Alternance (OPCO);Mot-clé;ATLAS;2
+Encaissement;Alternance (OPCO);Mot-clé;OCAPIAT;2
+Encaissement;Alternance (OPCO);Mot-clé;UNIFORMATION;2
+Encaissement;Alternance (OPCO);Mot-clé;CONSTRUCTYS;2
+Encaissement;Alternance (OPCO);Mot-clé;L'OPCOMMERCE;2
+Encaissement;Alternance (OPCO);Mot-clé;OPCOMMERCE;2
+Encaissement;Alternance (OPCO);Mot-clé;AKTO;2
+Encaissement;Alternance (OPCO);Mot-clé;OPCO2I;2
+Encaissement;Alternance (OPCO);Mot-clé;OPCO MOBILITES;2
+Encaissement;Alternance (OPCO);Mot-clé;OPCO EP;2
+Encaissement;Alternance (OPCO);Mot-clé;OPCO SANTE;2
+Encaissement;CPF;Mot-clé;CPF;3
+Encaissement;CPF;Mot-clé;CAISSE DES DEPOTS;3
+Encaissement;Reconversion;Mot-clé;TRANSITIONS PRO;4
+Encaissement;Reconversion;Mot-clé;REGION;4
+Encaissement;Reconversion;Mot-clé;FRANCE TRAVAIL;4
+Encaissement;Reconversion;Mot-clé;POLE EMPLOI;4
+Encaissement;Reconversion;Mot-clé;NOUVELLE-AQUITAINE;4
+Encaissement;Reconversion;Mot-clé;METROPOLE;4
+Encaissement;Reconversion;Mot-clé;VILLE;4
+Encaissement;Reconversion;Mot-clé;COMMUNE;4
+Encaissement;Reconversion;Mot-clé;MEURTHE-ET-MOSELLE;4
+Encaissement;Reconversion;Mot-clé;SOMME;4
+Encaissement;Reconversion;Mot-clé;CENTRE ET LOIRET;4
+Encaissement;Reconversion;Mot-clé;VAL DE SEINE;4
+Encaissement;Reconversion;Mot-clé;YVELINES;4
+Encaissement;Reconversion;Mot-clé;DORDOGNE;4
+Encaissement;Reconversion;Mot-clé;NORMANDIE;4
+Encaissement;Reconversion;Mot-clé;OCCITANIE;4
+Encaissement;Reconversion;Mot-clé;VAL DE SAONE;4
+Encaissement;Reconversion;Mot-clé;LOIRET;4
+Encaissement;B2B;Mot-clé;AEROPORTS;5
+Encaissement;B2B;Mot-clé;AEROPORT;5
+Encaissement;B2B;Mot-clé;ELUSDIF;5
+Encaissement;B2B;Mot-clé;DELANE SI;5
+Encaissement;B2B;Mot-clé;MANUFACTURE;5
+Encaissement;B2B;Mot-clé;ACTEMIK;5
+Encaissement;B2B;Mot-clé;WADAM-IT;5
+Encaissement;B2B;Mot-clé;24 SEVRES;5
+Encaissement;B2B;Mot-clé;ADME;5
+Encaissement;B2B;Mot-clé;ADWAY;5
+Encaissement;B2B;Mot-clé;GIRONDIN;5
+Encaissement;B2B;Mot-clé;AIR AUSTRAL;5
+Encaissement;B2B;Mot-clé;ALBA UP;5
+Encaissement;B2B;Mot-clé;ALBINGIA;5
+Encaissement;B2B;Mot-clé;AUBAY;5
+Encaissement;B2B;Mot-clé;AVELOOK;5
+Encaissement;B2B;Mot-clé;CHRU;5
+Encaissement;B2B;Mot-clé;CHRS;5
+Encaissement;B2B;Mot-clé;RHODIA;5
+Encaissement;B2B;Mot-clé;COTE FLUX;5
+Encaissement;B2B;Mot-clé;CREDIT AGRICOLE;5
+Encaissement;B2B;Mot-clé;DEPIXUS;5
+Encaissement;B2B;Mot-clé;EASYDIS;5
+Encaissement;B2B;Mot-clé;ECHOSENS;5
+Encaissement;B2B;Mot-clé;ECO CO2;5
+Encaissement;B2B;Mot-clé;FACILITY PARK;5
+Encaissement;B2B;Mot-clé;FIOULMARKET;5
+Encaissement;B2B;Mot-clé;MAINTENANCE;5
+Encaissement;B2B;Mot-clé;FLOCA;5
+Encaissement;B2B;Mot-clé;GUILDE DES LUNETIERS;5
+Encaissement;B2B;Mot-clé;HIGH CO BOX;5
+Encaissement;B2B;Mot-clé;HUTCHINSON;5
+Encaissement;B2B;Mot-clé;LIAISONS;5
+Encaissement;B2B;Mot-clé;LONG PLAY;5
+Encaissement;B2B;Mot-clé;GAMBLING;5
+Encaissement;B2B;Mot-clé;SIEGE;5
+Encaissement;B2B;Mot-clé;NEOLITHE;5
+Encaissement;B2B;Mot-clé;NERABIS;5
+Encaissement;B2B;Mot-clé;FILTRATION;5
+Encaissement;B2B;Mot-clé;OLINDA;5
+Encaissement;B2B;Mot-clé;ONASOFT;5
+Encaissement;B2B;Mot-clé;OODRIVE;5
+Encaissement;B2B;Mot-clé;OPEN BEE;5
+Encaissement;B2B;Mot-clé;ORTHO-CARAIBES;5
+Encaissement;B2B;Mot-clé;PLACE DE LA;5
+Encaissement;B2B;Mot-clé;PONTOON;5
+Encaissement;B2B;Mot-clé;POSOS;5
+Encaissement;B2B;Mot-clé;PRAEMIA;5
+Encaissement;B2B;Mot-clé;PRELIGENS;5
+Encaissement;B2B;Mot-clé;PRODISER;5
+Encaissement;B2B;Mot-clé;PROXISERVE;5
+Encaissement;B2B;Mot-clé;QUANTUM;5
+Encaissement;B2B;Mot-clé;RANDSTAD;5
+Encaissement;B2B;Mot-clé;REALITES;5
+Encaissement;B2B;Mot-clé;RENTR;5
+Encaissement;B2B;Mot-clé;RESEAU CANOPE;5
+Encaissement;B2B;Mot-clé;INDUSTRIE;5
+Encaissement;B2B;Mot-clé;SCALIAN;5
+Encaissement;B2B;Mot-clé;SELARL FIDES;5
+Encaissement;B2B;Mot-clé;SIACI SAINT HONORE;5
+Encaissement;B2B;Mot-clé;COMPOSITE;5
+Encaissement;B2B;Mot-clé;TISSIUM;5
+Encaissement;B2B;Mot-clé;TYRES;5
+Encaissement;B2B;Mot-clé;VALRHONA;5
+Encaissement;B2B;Mot-clé;VEDICOM;5
+Encaissement;B2B;Mot-clé;LEARNQUEST;5
+Encaissement;B2B;Mot-clé;WINKO;5
+Encaissement;B2B;Mot-clé;ORANGE;5
+Encaissement;B2B;Mot-clé;LHH;5
+Encaissement;B2B;Mot-clé;NOOUS;5
+Encaissement;B2B;Mot-clé;SODEXO;5
+Encaissement;B2B;Mot-clé;LE PUY DU FOU;5
+Encaissement;B2B;Mot-clé;LIGUE NATIONALE;5
+Encaissement;B2B;Mot-clé;DOMIS;5
+Encaissement;B2B;Mot-clé;MUTUELLES;5
+Encaissement;B2B;Mot-clé;MY MONEY BANK;5
+Encaissement;B2B;Mot-clé;METRO;5
+Encaissement;B2B;Mot-clé;SAPMER;5
+Encaissement;B2B;Mot-clé;CONSUMER FINANCE;5
+Encaissement;B2B;Mot-clé;GOLDEN BEES;5
+Encaissement;B2B;Mot-clé;ALIXIO;5
+Encaissement;B2B;Mot-clé;SIMPLON;5
+Encaissement;B2B;Mot-clé;MANPOWER;5
+Encaissement;B2B;Mot-clé;DACODE;5
+Encaissement;B2B;Mot-clé;CEREMA;5
+Encaissement;B2B;Mot-clé;INVEST;5
+Encaissement;B2B;Mot-clé;SALSIFY;5
+Encaissement;B2B;Mot-clé;IZNES;5
+Encaissement;B2B;Mot-clé;SOCIETE DE GESTION;5
+Encaissement;B2B;Mot-clé;MANCHE NUMERIQUE;5
+Encaissement;B2B;Mot-clé;TILD;5
+Encaissement;B2B;Mot-clé;SOCFIM;5
+Encaissement;B2B;Mot-clé;BUSINESS SOLUTIONS;5
+Encaissement;B2B;Mot-clé;PHARMA;5
+Encaissement;B2B;Mot-clé;FUTUROSOFT;5
+Encaissement;B2B;Mot-clé;HUSQVARNA;5
+Encaissement;B2B;Mot-clé;ASNR;5
+Encaissement;B2B;Mot-clé;NEXITY;5
+Encaissement;B2B;Mot-clé;COMMISSARIAT;5
+Encaissement;B2B;Mot-clé;HEALTHCARE;5
+Encaissement;B2B;Mot-clé;TEKSIALCSTA;5
+Encaissement;B2B;Mot-clé;FRANPRIX;5
+Encaissement;B2B;Mot-clé;WEBCHECK;5
+Encaissement;B2B;Mot-clé;VERTUO;5
+Encaissement;B2B;Mot-clé;SANDVIK;5
+Encaissement;B2B;Mot-clé;CONSTRUCTION;5
+Encaissement;B2B;Mot-clé;POS CONNECT;5
+Encaissement;B2B;Mot-clé;SYNERINTERNATIONALGIE;5
+Encaissement;B2B;Mot-clé;APICIL;5
+Encaissement;B2B;Mot-clé;GROUPE;5
+Encaissement;B2B;Mot-clé;IT SERVICES;5
+Encaissement;B2B;Mot-clé;SYSTEMES ET TELECOMMUNICATIONS;5
+Encaissement;B2B;Mot-clé;DISNEY;5
+Encaissement;B2B;Mot-clé;ANTARGAZ;5
+Encaissement;B2B;Mot-clé;INTERNATIONAL;5
+Encaissement;B2B;Mot-clé;WIRING SYSTEMS;5
+Encaissement;B2B;Mot-clé;SOCIETE GENERALE;5
+Encaissement;B2B;Mot-clé;LP GROUPE;5
+Encaissement;B2B;Mot-clé;LDLC FINANCE;5
+Encaissement;B2B;Mot-clé;PROFESSION SANTE;5
+Encaissement;B2B;Mot-clé;NIIT IRELAND;5
+Encaissement;B2B;Mot-clé;ALLIANZ;5
+Encaissement;B2B;Mot-clé;ALSO FRANCE;5
+Encaissement;B2B;Mot-clé;ENGIE;5
+Encaissement;B2B;Mot-clé;VINCI;5
+Encaissement;B2B;Mot-clé;CASTORAMA;5
+Encaissement;B2B;Mot-clé;VENATHEC;5
+Encaissement;B2B;Mot-clé;MOODY;5
+Encaissement;B2B;Mot-clé;DISTRIBUTION;5
+Encaissement;B2B;Mot-clé;AIA INGENIERIE;5
+Encaissement;B2B;Mot-clé;SOLIDARITES ET SANTE;5
+Encaissement;B2B;Mot-clé;ELOGEN;5
+Encaissement;B2B;Mot-clé;CAMCA MUTUELLE;5
+Encaissement;B2B;Mot-clé;LISEA;5
+Encaissement;B2B;Mot-clé;STE CCAS;5
+Encaissement;B2B;Mot-clé;ORSYS;5
+Encaissement;B2B;Mot-clé;ARCELORMITTAL;5
+Encaissement;B2B;Mot-clé;SAINT-GOBAIN;5
+Encaissement;B2B;Mot-clé;SELARL;5
+Encaissement;B2B;Mot-clé;ASSURANCES;5
+Encaissement;B2B;Mot-clé;BUROK TECH;5
+Encaissement;B2B;Mot-clé;WORLDLINE FRANCE;5
+Encaissement;B2B;Mot-clé;ARS HAUTS DE FRANCE;5
+Encaissement;B2B;Mot-clé;GIVENCHY;5
+Encaissement;B2B;Mot-clé;USSEL;5
+Encaissement;B2B;Mot-clé;SMART;5
+Encaissement;B2B;Mot-clé;CONSULTING;5
+Encaissement;B2B;Mot-clé;CORETAB;5
+Encaissement;B2B;Mot-clé;MISTERTEMP;5
+Encaissement;B2B;Mot-clé;SMILE;5
+Encaissement;B2B;Mot-clé;AXYLIS;5
+Encaissement;B2B;Mot-clé;ARAQIM;5
+Encaissement;B2B;Mot-clé;CONECS;5
+Encaissement;B2B;Mot-clé;G3 SERVICE;5
+Encaissement;B2B;Mot-clé;INRAE;5
+Encaissement;B2B;Mot-clé;SIDEV;5
+Encaissement;B2B;Mot-clé;MALTA;5
+Encaissement;B2B;Mot-clé;LUMINESS;5
+Encaissement;B2B;Mot-clé;ASSISTANCE;5
+Encaissement;B2B;Mot-clé;LIVESTORM;5
+Encaissement;B2B;Mot-clé;OLYMPIQUE LYONNAIS;5
+Encaissement;B2B;Mot-clé;YZICO;5
+Encaissement;B2B;Mot-clé;ICON FRANCE;5
+Encaissement;B2B;Mot-clé;CANDEX;5
+Encaissement;B2B;Mot-clé;XELIANS;5
+Encaissement;B2B;Mot-clé;AVITUM;5
+Encaissement;B2B;Mot-clé;MACIF;5
+Encaissement;B2B;Mot-clé;PERNOD RICARD;5
+Encaissement;B2B;Mot-clé;CNMSS;5
+Encaissement;B2B;Mot-clé;LEAKMITED;5
+Encaissement;B2B;Mot-clé;ACCENTURE;5
+Encaissement;B2B;Mot-clé;AVANADE;5
+Encaissement;B2B;Mot-clé;DCM 075;5
+Encaissement;B2B;Mot-clé;ICAPE;5
+Encaissement;B2B;Mot-clé;PASS CULTURE;5
+Encaissement;B2B;Mot-clé;SYSTEMGIE;5
+Encaissement;B2B;Mot-clé;MNH1;5
+Encaissement;B2B;Mot-clé;FORMIRIS;5
+Encaissement;B2B;Mot-clé;SPARKS;5
+Encaissement;B2B;Post-fix;Formes juridiques : SAS / SARL / EURL / SA;Post-fix
+Encaissement;B2B;Détection;FILIZ dans tiers (hors OPCO);5
+Encaissement;B2C;Mot-clé;ALMA;6
+Encaissement;B2C;Mot-clé;GOCARDLESS;6
+Encaissement;B2C;Mot-clé;STRIPE;6
+Encaissement;B2C;Détection;Noms de personnes (prénoms + civilités);6
+Encaissement;B2C;Post-fix;CA CONSUMER FINANCE;Post-fix
+Encaissement;Autres revenus;Mot-clé;CPAM;7
+Encaissement;Autres revenus;Mot-clé;AIDE;7
+Encaissement;Autres revenus;Mot-clé;SUBVENTION;7
+Encaissement;Autres revenus;Fallback;Tout encaissement non classé;7
+Décaissement;Formateurs / Freelances;Regex (priorité);VIR SEPA EMIS ... /PID PENNYLANE;1
+Décaissement;Interco;Mot-clé;TRESO;2
+Décaissement;Interco;Mot-clé;TRESORERIE;2
+Décaissement;Interco;Mot-clé;AFORSSIC;2
+Décaissement;Interco;Mot-clé;FORSSIC;2
+Décaissement;Interco;Mot-clé;VIREMENT COMPENSE;2
+Décaissement;Interco;Mot-clé;DST GERMANY;2
+Décaissement;Interco;Mot-clé;ALIMENTATION SPENDESK;2
+Décaissement;Interco;Mot-clé;DEBIT MENSUEL CARTE BLEUE;2
+Décaissement;Interco;Mot-clé;APPRO SPDSK;2
+Décaissement;Interco;Mot-clé;APPRO PENNY;2
+Décaissement;Interco;Mot-clé;REGUL;2
+Décaissement;Interco;Mot-clé;REGULARISATION;2
+Décaissement;Interco;Mot-clé;AMERICAN EXPRESS CARTE;2
+Décaissement;Interco;Mot-clé;AMERICAN EXPRESS CARTE-FRANCE;2
+Décaissement;Interco;Post-fix;TRESO dans libellé;Post-fix
+Décaissement;Note de frais;Mot-clé;SNCF-VOYAGEURS;3
+Décaissement;Note de frais;Mot-clé;HOTEL;3
+Décaissement;Note de frais;Mot-clé;AIRBNB;3
+Décaissement;Note de frais;Mot-clé;UBER;3
+Décaissement;Note de frais;Mot-clé;NOTES DE FRAIS;3
+Décaissement;Note de frais;Mot-clé;RESTAURANT;3
+Décaissement;Note de frais;Mot-clé;RESTAURANTS;3
+Décaissement;Note de frais;Mot-clé;TRANSPORT;3
+Décaissement;Note de frais;Mot-clé;DELIVEROO;3
+Décaissement;Note de frais;Mot-clé;DAILY DEFENSE;3
+Décaissement;Note de frais;Mot-clé;IBIS;3
+Décaissement;Note de frais;Mot-clé;TOUR I;3
+Décaissement;Note de frais;Mot-clé;SERVICE NAVIGO;3
+Décaissement;Note de frais;Mot-clé;YBRY KASH;3
+Décaissement;Note de frais;Mot-clé;LIORIM;3
+Décaissement;Note de frais;Mot-clé;MAIRIE DE PARIS;3
+Décaissement;Note de frais;Mot-clé;LE BAZAR;3
+Décaissement;Note de frais;Mot-clé;W.A.X;3
+Décaissement;Note de frais;Mot-clé;SUPERMARCHE;3
+Décaissement;Note de frais;Mot-clé;TAXI;3
+Décaissement;Note de frais;Mot-clé;POLLY MAGGO;3
+Décaissement;Note de frais;Mot-clé;FONDUE ZHANGGE;3
+Décaissement;Note de frais;Mot-clé;1ERE CLASSE;3
+Décaissement;Note de frais;Mot-clé;API RESTAURATION;3
+Décaissement;Note de frais;Mot-clé;AFILAL LARBI;3
+Décaissement;Note de frais;Mot-clé;API 01161;3
+Décaissement;Note de frais;Mot-clé;ASTERIX;3
+Décaissement;Note de frais;Mot-clé;ASIATI K;3
+Décaissement;Note de frais;Mot-clé;ATELIERNIEL;3
+Décaissement;Note de frais;Mot-clé;AU DELICE;3
+Décaissement;Note de frais;Mot-clé;AYEL;3
+Décaissement;Note de frais;Mot-clé;BABAIT;3
+Décaissement;Note de frais;Mot-clé;BASSAR;3
+Décaissement;Note de frais;Mot-clé;BBV-MEATPACKING;3
+Décaissement;Note de frais;Mot-clé;BEKEF;3
+Décaissement;Note de frais;Mot-clé;BELIB;3
+Décaissement;Note de frais;Mot-clé;BENSON KFE;3
+Décaissement;Note de frais;Mot-clé;BILLY;3
+Décaissement;Note de frais;Mot-clé;BIOBURGER;3
+Décaissement;Note de frais;Mot-clé;BOMB SQUAD;3
+Décaissement;Note de frais;Mot-clé;BOOKING.COM;3
+Décaissement;Note de frais;Mot-clé;BOUCHERIE;3
+Décaissement;Note de frais;Mot-clé;BOULANGERIE;3
+Décaissement;Note de frais;Mot-clé;BP DAC;3
+Décaissement;Note de frais;Mot-clé;BP PUTEAUX;3
+Décaissement;Note de frais;Mot-clé;BURGER KING;3
+Décaissement;Note de frais;Mot-clé;CAFE HOCHE;3
+Décaissement;Note de frais;Mot-clé;BUDDIE;3
+Décaissement;Note de frais;Mot-clé;CANOE;3
+Décaissement;Note de frais;Mot-clé;RESTO;3
+Décaissement;Note de frais;Mot-clé;CHARLES PATISSI;3
+Décaissement;Note de frais;Mot-clé;CERTAS;3
+Décaissement;Note de frais;Mot-clé;CHEZ INOUN;3
+Décaissement;Note de frais;Mot-clé;CHEZ FRANCK;3
+Décaissement;Note de frais;Mot-clé;CHOCOLAT;3
+Décaissement;Note de frais;Mot-clé;INTERFLORA;3
+Décaissement;Note de frais;Mot-clé;COMMANDE;3
+Décaissement;Note de frais;Mot-clé;SUSHI;3
+Décaissement;Note de frais;Mot-clé;CTOIR PRINCIPAL;3
+Décaissement;Note de frais;Mot-clé;CT PAY;3
+Décaissement;Note de frais;Mot-clé;COUT ESPLANADE;3
+Décaissement;Note de frais;Mot-clé;DAMYEL;3
+Décaissement;Note de frais;Mot-clé;DAV AND JO;3
+Décaissement;Note de frais;Mot-clé;DECATHLON;3
+Décaissement;Note de frais;Mot-clé;DELICES D'ASNIE;3
+Décaissement;Note de frais;Mot-clé;DELMAMA;3
+Décaissement;Note de frais;Mot-clé;DIFFORT;3
+Décaissement;Note de frais;Mot-clé;DIVAN DU MONDE;3
+Décaissement;Note de frais;Mot-clé;DORON NIEL;3
+Décaissement;Note de frais;Mot-clé;DORON SPONTINI;3
+Décaissement;Note de frais;Mot-clé;DS CAFE DEFENSE;3
+Décaissement;Note de frais;Mot-clé;EL AL;3
+Décaissement;Note de frais;Mot-clé;ENVATO;3
+Décaissement;Note de frais;Mot-clé;EUROPCAR;3
+Décaissement;Note de frais;Mot-clé;VEVOR;3
+Décaissement;Note de frais;Mot-clé;FRAISE D AMOUR;3
+Décaissement;Note de frais;Mot-clé;FUNBOOKER;3
+Décaissement;Note de frais;Mot-clé;GETAROUND;3
+Décaissement;Note de frais;Mot-clé;GRAMI;3
+Décaissement;Note de frais;Mot-clé;GRILL BAR;3
+Décaissement;Note de frais;Mot-clé;HC MONTEVIDEO;3
+Décaissement;Note de frais;Mot-clé;RESTAURATIO;3
+Décaissement;Note de frais;Mot-clé;HYPER BOULOGNE;3
+Décaissement;Note de frais;Mot-clé;IL CONTE;3
+Décaissement;Note de frais;Mot-clé;IOSSA;3
+Décaissement;Note de frais;Mot-clé;JACOB MEATPACKE;3
+Décaissement;Note de frais;Mot-clé;JEFF DE BRUGES;3
+Décaissement;Note de frais;Mot-clé;JEYM;3
+Décaissement;Note de frais;Mot-clé;JETBRAINS;3
+Décaissement;Note de frais;Mot-clé;KAHN FAMOUS DEL;3
+Décaissement;Note de frais;Mot-clé;KANTEEN;3
+Décaissement;Note de frais;Mot-clé;KAVOD;3
+Décaissement;Note de frais;Mot-clé;KEOLIS LYON;3
+Décaissement;Note de frais;Mot-clé;KING DAVID;3
+Décaissement;Note de frais;Mot-clé;KOOKIE PARIS;3
+Décaissement;Note de frais;Mot-clé;L ABREUVOIR;3
+Décaissement;Note de frais;Mot-clé;L ATELIER DELI;3
+Décaissement;Note de frais;Mot-clé;L&L GEORGES;3
+Décaissement;Note de frais;Mot-clé;LA BELLE EPOQUE;3
+Décaissement;Note de frais;Mot-clé;LA CABANE;3
+Décaissement;Note de frais;Mot-clé;LA CREME DES;3
+Décaissement;Note de frais;Mot-clé;LA GARGAMELLE;3
+Décaissement;Note de frais;Mot-clé;LA RECREE;3
+Décaissement;Note de frais;Mot-clé;LA VILLA K;3
+Décaissement;Note de frais;Mot-clé;L'AS DU FALLAFE;3
+Décaissement;Note de frais;Mot-clé;LE DUPLEX;3
+Décaissement;Note de frais;Mot-clé;LE GAY LUSSAC;3
+Décaissement;Note de frais;Mot-clé;LE JULYANN;3
+Décaissement;Note de frais;Mot-clé;LE SAFRANE;3
+Décaissement;Note de frais;Mot-clé;LE STUDIO;3
+Décaissement;Note de frais;Mot-clé;LE XXV;3
+Décaissement;Note de frais;Mot-clé;LE YAD;3
+Décaissement;Note de frais;Mot-clé;LES DELICES;3
+Décaissement;Note de frais;Mot-clé;LES GARCONS;3
+Décaissement;Note de frais;Mot-clé;LES ZOUZOUS;3
+Décaissement;Note de frais;Mot-clé;LEVAPARC;3
+Décaissement;Note de frais;Mot-clé;CAFFE;3
+Décaissement;Note de frais;Mot-clé;LIOR;3
+Décaissement;Note de frais;Mot-clé;LIVIO;3
+Décaissement;Note de frais;Mot-clé;LS MOMENTO;3
+Décaissement;Note de frais;Mot-clé;LW-BILLETWEB;3
+Décaissement;Note de frais;Mot-clé;MAISON;3
+Décaissement;Note de frais;Mot-clé;MARCEAU RIVE;3
+Décaissement;Note de frais;Mot-clé;SANDWICH;3
+Décaissement;Note de frais;Mot-clé;MONDIAL RELAY;3
+Décaissement;Note de frais;Mot-clé;MOSES DELI;3
+Décaissement;Note de frais;Mot-clé;MSFT *;3
+Décaissement;Note de frais;Mot-clé;NYX*CASCADE;3
+Décaissement;Note de frais;Mot-clé;NACHOS;3
+Décaissement;Note de frais;Mot-clé;OCTOPUSMIND;3
+Décaissement;Note de frais;Mot-clé;PIZZA;3
+Décaissement;Note de frais;Mot-clé;PAIN;3
+Décaissement;Note de frais;Mot-clé;OTTER*;3
+Décaissement;Note de frais;Mot-clé;P COMME PAPILLE;3
+Décaissement;Note de frais;Mot-clé;PAPA;3
+Décaissement;Note de frais;Mot-clé;VOYAGES;3
+Décaissement;Note de frais;Mot-clé;PARIS DEFENSE;3
+Décaissement;Note de frais;Mot-clé;PAVILLON DU LAC;3
+Décaissement;Note de frais;Mot-clé;PHCIE;3
+Décaissement;Note de frais;Mot-clé;PHOTOMATON;3
+Décaissement;Note de frais;Mot-clé;POINCARE DISTRI;3
+Décaissement;Note de frais;Mot-clé;PICTO;3
+Décaissement;Note de frais;Mot-clé;PUB SAINT JOHN'S;3
+Décaissement;Note de frais;Mot-clé;RATP;3
+Décaissement;Note de frais;Mot-clé;QPLD;3
+Décaissement;Note de frais;Mot-clé;RIMONE;3
+Décaissement;Note de frais;Mot-clé;RODCHENKO;3
+Décaissement;Note de frais;Mot-clé;RNG26;3
+Décaissement;Note de frais;Mot-clé;ROSETTA;3
+Décaissement;Note de frais;Mot-clé;SABA;3
+Décaissement;Note de frais;Mot-clé;SARL DAV;3
+Décaissement;Note de frais;Mot-clé;SARL MAISON;3
+Décaissement;Note de frais;Mot-clé;MISTER GARDE;3
+Décaissement;Note de frais;Mot-clé;SENDINBLUE;3
+Décaissement;Note de frais;Mot-clé;SNCF;3
+Décaissement;Note de frais;Mot-clé;STAT AVIA;3
+Décaissement;Note de frais;Mot-clé;STATPBPHONEVILL;3
+Décaissement;Note de frais;Mot-clé;SUMUP;3
+Décaissement;Note de frais;Mot-clé;TAMIN;3
+Décaissement;Note de frais;Mot-clé;TOTAL;3
+Décaissement;Note de frais;Mot-clé;UBR*;3
+Décaissement;Note de frais;Mot-clé;ZETTLE;3
+Décaissement;Banques/Dettes;Mot-clé;FRAIS VIREMENT;4
+Décaissement;Banques/Dettes;Mot-clé;FRAIS AVIS D'OPERE;4
+Décaissement;Banques/Dettes;Mot-clé;DOMICILIATION INCOMPLETE;4
+Décaissement;Banques/Dettes;Mot-clé;DONT HORS TAXE;4
+Décaissement;Banques/Dettes;Mot-clé;COMMISSION;4
+Décaissement;Banques/Dettes;Mot-clé;COMMISSIONS;4
+Décaissement;Banques/Dettes;Mot-clé;PRET;4
+Décaissement;Banques/Dettes;Mot-clé;INTERETS;4
+Décaissement;Banques/Dettes;Mot-clé;INTERET;4
+Décaissement;Banques/Dettes;Mot-clé;BPIFRANCE FINANCEMENT;4
+Décaissement;Banques/Dettes;Mot-clé;TRANSACTION CARTE;4
+Décaissement;Banques/Dettes;Mot-clé;FRAIS DE CHANGE;4
+Décaissement;Banques/Dettes;Mot-clé;CARD TRANSACTION IN FOREIGN CURRENCY;4
+Décaissement;Banques/Dettes;Mot-clé;COTISATION MULTIPRO;4
+Décaissement;Banques/Dettes;Mot-clé;ECART RAPPRO;4
+Décaissement;Banques/Dettes;Mot-clé;BPIFRANCE;4
+Décaissement;Banques/Dettes;Mot-clé;CHEQUE IMPAYE;4
+Décaissement;Banques/Dettes;Mot-clé;COTISATION;4
+Décaissement;Banques/Dettes;Mot-clé;FRAIS BANCAIRE;4
+Décaissement;Banques/Dettes;Mot-clé;FRAIS DE TENUE;4
+Décaissement;Banques/Dettes;Mot-clé;FRAIS DE GESTION;4
+Décaissement;Banques/Dettes;Mot-clé;SWAN - TRANSACTION;4
+Décaissement;Taxe sur les salaires;Combinaison;DGFIP + (TS- ou TS1-);5
+Décaissement;Prélèvement à la source (PAS);Combinaison;DGFIP + PASDSN;6
+Décaissement;Frais généraux & services;Mot-clé;ORANGE;7
+Décaissement;Frais généraux & services;Mot-clé;FREE;7
+Décaissement;Frais généraux & services;Mot-clé;AMAZON PAYMENTS;7
+Décaissement;Frais généraux & services;Mot-clé;LA POSTE;7
+Décaissement;Frais généraux & services;Mot-clé;ENDESA ENERGIA;7
+Décaissement;Frais généraux & services;Mot-clé;EDF;7
+Décaissement;Frais généraux & services;Mot-clé;ENGIE;7
+Décaissement;Frais généraux & services;Mot-clé;GRDF;7
+Décaissement;Frais généraux & services;Mot-clé;AMAZON EU SARL;7
+Décaissement;Frais généraux & services;Mot-clé;AMZN;7
+Décaissement;Frais généraux & services;Mot-clé;NESPRESSO;7
+Décaissement;Frais généraux & services;Mot-clé;CULLIGAN;7
+Décaissement;Frais généraux & services;Mot-clé;KAWA;7
+Décaissement;Frais généraux & services;Mot-clé;ARVAL SERVICE LEASE;7
+Décaissement;Frais généraux & services;Mot-clé;CREDIPAR;7
+Décaissement;Frais généraux & services;Mot-clé;MAILEVA;7
+Décaissement;Frais généraux & services;Mot-clé;GSF.PROPRETE;7
+Décaissement;Frais généraux & services;Mot-clé;GSF GRANDE ARCHE;7
+Décaissement;Frais généraux & services;Mot-clé;CIAMT;7
+Décaissement;Frais généraux & services;Mot-clé;CAR WASH;7
+Décaissement;Frais généraux & services;Mot-clé;VINCI;7
+Décaissement;Frais généraux & services;Mot-clé;ELF;7
+Décaissement;Frais généraux & services;Mot-clé;ALIEXPRESS;7
+Décaissement;Frais généraux & services;Mot-clé;ALIMENTATION;7
+Décaissement;Frais généraux & services;Mot-clé;ALLENBY;7
+Décaissement;Frais généraux & services;Mot-clé;ALLISON PNEUS;7
+Décaissement;Frais généraux & services;Mot-clé;AMAZON PRIME;7
+Décaissement;Frais généraux & services;Mot-clé;AMAZON.FR*;7
+Décaissement;Frais généraux & services;Mot-clé;AUTOROUTE;7
+Décaissement;Frais généraux & services;Mot-clé;AUCHAN;7
+Décaissement;Frais généraux & services;Mot-clé;BNP PARIBAS LEASE;7
+Décaissement;Frais généraux & services;Mot-clé;CARREFOUR;7
+Décaissement;Frais généraux & services;Mot-clé;CHRONOPOST;7
+Décaissement;Frais généraux & services;Mot-clé;COFIROUTE;7
+Décaissement;Frais généraux & services;Mot-clé;COPY TOP;7
+Décaissement;Frais généraux & services;Mot-clé;E.LECLERC;7
+Décaissement;Frais généraux & services;Mot-clé;EASY CHARGE;7
+Décaissement;Frais généraux & services;Mot-clé;ESSO;7
+Décaissement;Frais généraux & services;Mot-clé;FNAC;7
+Décaissement;Frais généraux & services;Mot-clé;FORF P.STAT;7
+Décaissement;Frais généraux & services;Mot-clé;FRANPRIX;7
+Décaissement;Frais généraux & services;Mot-clé;GARAGE;7
+Décaissement;Frais généraux & services;Mot-clé;MAXSOCIETE;7
+Décaissement;Frais généraux & services;Mot-clé;IKEA;7
+Décaissement;Frais généraux & services;Mot-clé;INDIGO;7
+Décaissement;Frais généraux & services;Mot-clé;LEBONCOIN;7
+Décaissement;Frais généraux & services;Mot-clé;LETTRE24;7
+Décaissement;Frais généraux & services;Mot-clé;EVCHARGE;7
+Décaissement;Frais généraux & services;Mot-clé;OBJETRAMA;7
+Décaissement;Frais généraux & services;Mot-clé;RAKUTEN;7
+Décaissement;Frais généraux & services;Mot-clé;ROXY COPY;7
+Décaissement;Frais généraux & services;Mot-clé;ROX COPY;7
+Décaissement;Frais généraux & services;Mot-clé;SAPN;7
+Décaissement;Frais généraux & services;Mot-clé;AMENDE;7
+Décaissement;Frais généraux & services;Mot-clé;SACEF;7
+Décaissement;Frais généraux & services;Mot-clé;CRECHE;7
+Décaissement;Frais généraux & services;Mot-clé;LE VERGER DE GALLY;7
+Décaissement;Frais généraux & services;Mot-clé;SNP*MLG EVENTS;7
+Décaissement;Frais généraux & services;Mot-clé;CARROSSERIE;7
+Décaissement;Frais généraux & services;Mot-clé;AUTOMOBILES;7
+Décaissement;Frais généraux & services;Mot-clé;VISTAPRINT;7
+Décaissement;Frais généraux & services;Mot-clé;IMPRIMERIE;7
+Décaissement;Prévoyance / Mutuelle;Mot-clé;ABEILLE VIE;8
+Décaissement;Prévoyance / Mutuelle;Mot-clé;MALAKOFF HUMANIS;8
+Décaissement;Prévoyance / Mutuelle;Mot-clé;HENNER;8
+Décaissement;Prévoyance / Mutuelle;Mot-clé;AXA;8
+Décaissement;Prévoyance / Mutuelle;Mot-clé;ALLIANZ;8
+Décaissement;Prévoyance / Mutuelle;Mot-clé;GSA ASSURANCES;8
+Décaissement;Prévoyance / Mutuelle;Mot-clé;HUMANIS PREVOYANCE;8
+Décaissement;Ticket restaurant;Mot-clé;PLUXEE;9
+Décaissement;SaaS/IT;Mot-clé;GOOGLE SERVICES;10
+Décaissement;SaaS/IT;Mot-clé;GSUITE;10
+Décaissement;SaaS/IT;Mot-clé;MICROSOFT;10
+Décaissement;SaaS/IT;Mot-clé;IONOS;10
+Décaissement;SaaS/IT;Mot-clé;AMAZON WEB SERVICES;10
+Décaissement;SaaS/IT;Mot-clé;NOTION LABS;10
+Décaissement;SaaS/IT;Mot-clé;ADOBE;10
+Décaissement;SaaS/IT;Mot-clé;OPENAI;10
+Décaissement;SaaS/IT;Mot-clé;SNOWFLAKE;10
+Décaissement;SaaS/IT;Mot-clé;STAPE;10
+Décaissement;SaaS/IT;Mot-clé;STREAMYARD;10
+Décaissement;SaaS/IT;Mot-clé;FACTORIALHR;10
+Décaissement;SaaS/IT;Mot-clé;SUPERPROF;10
+Décaissement;SaaS/IT;Mot-clé;YOAST;10
+Décaissement;SaaS/IT;Mot-clé;WELCOME TO THE JUNGLE;10
+Décaissement;SaaS/IT;Mot-clé;CAPCUT;10
+Décaissement;SaaS/IT;Mot-clé;SMSFACTOR;10
+Décaissement;SaaS/IT;Mot-clé;SEMRUSH;10
+Décaissement;SaaS/IT;Mot-clé;TRYHACKME;10
+Décaissement;SaaS/IT;Mot-clé;BALSAMIQ;10
+Décaissement;SaaS/IT;Mot-clé;CALENDLY;10
+Décaissement;SaaS/IT;Mot-clé;SERPAPI;10
+Décaissement;SaaS/IT;Mot-clé;CLAUDE.AI;10
+Décaissement;SaaS/IT;Mot-clé;PADDLE.NET;10
+Décaissement;SaaS/IT;Mot-clé;ARTIFEX;10
+Décaissement;SaaS/IT;Mot-clé;TYPEFORM;10
+Décaissement;SaaS/IT;Mot-clé;MAKE.COM;10
+Décaissement;SaaS/IT;Mot-clé;RINGOVER;10
+Décaissement;SaaS/IT;Mot-clé;IMAGIFY;10
+Décaissement;SaaS/IT;Mot-clé;CRAZY EGG.COM;10
+Décaissement;SaaS/IT;Mot-clé;WIFIRST;10
+Décaissement;SaaS/IT;Mot-clé;APPLE.COM;10
+Décaissement;SaaS/IT;Mot-clé;UDEMY;10
+Décaissement;SaaS/IT;Mot-clé;INOREADER;10
+Décaissement;SaaS/IT;Mot-clé;SCALEWAY;10
+Décaissement;SaaS/IT;Mot-clé;ZOOM;10
+Décaissement;SaaS/IT;Mot-clé;ABONNEMENT KASP;10
+Décaissement;SaaS/IT;Mot-clé;ADA4MONTH;10
+Décaissement;SaaS/IT;Mot-clé;AGICAP;10
+Décaissement;SaaS/IT;Mot-clé;ZAPIER;10
+Décaissement;SaaS/IT;Mot-clé;ASANA;10
+Décaissement;SaaS/IT;Mot-clé;ARTICULATE GLOBAL;10
+Décaissement;SaaS/IT;Mot-clé;ATLASSIAN;10
+Décaissement;SaaS/IT;Mot-clé;AWS EMEA;10
+Décaissement;SaaS/IT;Mot-clé;BACK MARKET;10
+Décaissement;SaaS/IT;Mot-clé;MONDAY.COM;10
+Décaissement;SaaS/IT;Mot-clé;BOTPRESS.COM;10
+Décaissement;SaaS/IT;Mot-clé;BOONDMANAGER;10
+Décaissement;SaaS/IT;Mot-clé;BOTSPACE;10
+Décaissement;SaaS/IT;Mot-clé;CANVA;10
+Décaissement;SaaS/IT;Mot-clé;CLASSMARKER;10
+Décaissement;SaaS/IT;Mot-clé;DARTY;10
+Décaissement;SaaS/IT;Mot-clé;DELL;10
+Décaissement;SaaS/IT;Mot-clé;DIGIREACH SOLUTIONS;10
+Décaissement;SaaS/IT;Mot-clé;GODADDY;10
+Décaissement;SaaS/IT;Mot-clé;DOCUSIGN;10
+Décaissement;SaaS/IT;Mot-clé;FISIO;10
+Décaissement;SaaS/IT;Mot-clé;FIVERR;10
+Décaissement;SaaS/IT;Mot-clé;FORMCRAFTS;10
+Décaissement;SaaS/IT;Mot-clé;GITHUB;10
+Décaissement;SaaS/IT;Mot-clé;GOCARDLESS;10
+Décaissement;SaaS/IT;Mot-clé;GOOGLE CLOUD;10
+Décaissement;SaaS/IT;Mot-clé;ZOHO-INVOICE;10
+Décaissement;SaaS/IT;Mot-clé;HEYGEN TECHNOLOGY INC.;10
+Décaissement;SaaS/IT;Mot-clé;HUAWEI;10
+Décaissement;SaaS/IT;Mot-clé;HUBSPOT;10
+Décaissement;SaaS/IT;Mot-clé;KAHOOT!;10
+Décaissement;SaaS/IT;Mot-clé;LEMLIST;10
+Décaissement;SaaS/IT;Mot-clé;LIVESTORM;10
+Décaissement;SaaS/IT;Mot-clé;MEETUP;10
+Décaissement;SaaS/IT;Mot-clé;METRICOOL.COM;10
+Décaissement;SaaS/IT;Mot-clé;MIDJOURNEY;10
+Décaissement;SaaS/IT;Mot-clé;OVH;10
+Décaissement;SaaS/IT;Mot-clé;PANDADOC;10
+Décaissement;SaaS/IT;Mot-clé;STRIPE;10
+Décaissement;SaaS/IT;Mot-clé;SAMSUNG;10
+Décaissement;SaaS/IT;Mot-clé;SALESFORCE;10
+Décaissement;SaaS/IT;Mot-clé;SKILLABLE;10
+Décaissement;SaaS/IT;Mot-clé;SLACK;10
+Décaissement;SaaS/IT;Mot-clé;SURVICATE;10
+Décaissement;SaaS/IT;Mot-clé;SURVEYMONKEY;10
+Décaissement;SaaS/IT;Mot-clé;GOOGLE*CLOUD;10
+Décaissement;SaaS/IT;Mot-clé;LINKTREE;10
+Décaissement;SaaS/IT;Mot-clé;EDUSIGN;10
+Décaissement;SaaS/IT;Mot-clé;DATADOG;10
+Décaissement;SaaS/IT;Mot-clé;YAMM;10
+Décaissement;SaaS/IT;Mot-clé;ONLINEFORMAPRO;10
+Décaissement;SaaS/IT;Post-fix;ONLINEFORMAPRO;Post-fix
+Décaissement;Marketing & Acquisition;Mot-clé;GOOGLE IRELAND;11
+Décaissement;Marketing & Acquisition;Mot-clé;TIKTOK;11
+Décaissement;Marketing & Acquisition;Mot-clé;CRITEO;11
+Décaissement;Marketing & Acquisition;Mot-clé;LINKEDIN;11
+Décaissement;Marketing & Acquisition;Mot-clé;META;11
+Décaissement;Marketing & Acquisition;Mot-clé;FACEBOOK;11
+Décaissement;Marketing & Acquisition;Mot-clé;INDEED;11
+Décaissement;Marketing & Acquisition;Mot-clé;REDDIT;11
+Décaissement;Marketing & Acquisition;Mot-clé;FACEBK;11
+Décaissement;Marketing & Acquisition;Mot-clé;LINKODY;11
+Décaissement;Marketing & Acquisition;Mot-clé;GOOGLE *ADS;11
+Décaissement;Marketing & Acquisition;Mot-clé;ADWORDS;11
+Décaissement;Marketing & Acquisition;Post-fix;GOOGLE IRELAND / ADWORDS / GOOGLE *ADS;Post-fix
+Décaissement;URSSAF;Mot-clé;URSSAF;12
+Décaissement;Partenariat académique;Mot-clé;SORBONNE;13
+Décaissement;Partenariat académique;Mot-clé;DES MINES;13
+Décaissement;Partenariat académique;Mot-clé;MINES PARIS;13
+Décaissement;Partenariat académique;Mot-clé;MINES SAINT;13
+Décaissement;Partenariat académique;Mot-clé;PEARSON;13
+Décaissement;Partenariat académique;Mot-clé;GILMORE;13
+Décaissement;Partenariat académique;Mot-clé;EDITIONS ENI;13
+Décaissement;Partenariat académique;Mot-clé;BUREAU.VERITAS;13
+Décaissement;Partenariat académique;Mot-clé;UNIVERSITE;13
+Décaissement;Partenariat académique;Mot-clé;XVOUCHER;13
+Décaissement;Formateurs / Freelances;Mot-clé;CONSEIL;14
+Décaissement;Formateurs / Freelances;Mot-clé;CONSULTING;14
+Décaissement;Formateurs / Freelances;Mot-clé;CABINET;14
+Décaissement;Formateurs / Freelances;Mot-clé;COURTAGE;14
+Décaissement;Formateurs / Freelances;Mot-clé;REEL ECH;14
+Décaissement;Formateurs / Freelances;Mot-clé;SECHE ARTHUR;14
+Décaissement;Formateurs / Freelances;Mot-clé;SLOAN;14
+Décaissement;Formateurs / Freelances;Mot-clé;IT TRAININGS;14
+Décaissement;Formateurs / Freelances;Mot-clé;AFRICAN DEVELOPMENT ENGINEERING;14
+Décaissement;Formateurs / Freelances;Mot-clé;FCIT NEW GENERATION;14
+Décaissement;Formateurs / Freelances;Mot-clé;SECOPS GUARD SOLUTIONS;14
+Décaissement;Formateurs / Freelances;Mot-clé;IT TRAININGS ETS;14
+Décaissement;Formateurs / Freelances;Mot-clé;ICPF ECH;14
+Décaissement;Formateurs / Freelances;Mot-clé;AGENCE KEACREA;14
+Décaissement;Formateurs / Freelances;Mot-clé;NATHANIEL COHN;14
+Décaissement;Formateurs / Freelances;Mot-clé;ATHLAN STEPHANIE;14
+Décaissement;Formateurs / Freelances;Mot-clé;RAMISARIJAONA;14
+Décaissement;Formateurs / Freelances;Mot-clé;BE API;14
+Décaissement;Formateurs / Freelances;Mot-clé;MEDIATION SOLUTION;14
+Décaissement;Formateurs / Freelances;Mot-clé;PALOOMA;14
+Décaissement;Formateurs / Freelances;Mot-clé;NGUETI MANFO;14
+Décaissement;Formateurs / Freelances;Mot-clé;GHISLAINE BEN CHEMOUL;14
+Décaissement;Formateurs / Freelances;Mot-clé;ELBAZ RAPHAEL;14
+Décaissement;Formateurs / Freelances;Mot-clé;MEVENGUE BERNARD;14
+Décaissement;Formateurs / Freelances;Regex;PENNYLANE-[A-Z0-9]+;14
+Décaissement;Formateurs / Freelances;Post-fix (inconditionnel);PID PENNYLANE;Post-fix
+Décaissement;Remboursement;Mot-clé;RMBT;15
+Décaissement;Remboursement;Mot-clé;REMB;15
+Décaissement;Remboursement;Mot-clé;REMBOURSEMENT;15
+Décaissement;Remboursement;Mot-clé;RMB;15
+Décaissement;Salaires;Mot-clé;INDEMN. KM.;16
+Décaissement;Salaires;Mot-clé;INDEMNIT;16
+Décaissement;Salaires;Mot-clé;SALAIRE;16
+Décaissement;Salaires;Regex;VIR SEPA EMIS ... /PID [5 chiffres];16
+Décaissement;Loyers & charges;Mot-clé;SVENSKASAGAX;17
+Décaissement;Loyers & charges;Mot-clé;ESSET;17
+Décaissement;Loyers & charges;Mot-clé;KEY SENSE;17
+Décaissement;Autres impôts;Mot-clé;CVAE;18
+Décaissement;Autres impôts;Mot-clé;TAXE FONCIERE;18
+Décaissement;Autres impôts;Mot-clé;CFE;18
+Décaissement;DIVERS;Fallback;Tout décaissement non classé;19
+Règle apprise;A F D A S;Apprentissage;Alternance (OPCO) - Encaissement;0
+Règle apprise;ADEL BEGGAH;Apprentissage;B2C - Encaissement;0
+Règle apprise;AISMT13;Apprentissage;B2B - Encaissement;0
+Règle apprise;ANTHROPIC;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;ASP AGENCE COMPTABLE;Apprentissage;Autres revenus - Encaissement;0
+Règle apprise;ASS FORMATION PERMANENTE PERSONNEL HOSP;Apprentissage;B2B - Encaissement;0
+Règle apprise;AUTOMOTIVE;Apprentissage;B2B - Encaissement;0
+Règle apprise;AXA FRANCE IARD FACT;Apprentissage;B2B - Encaissement;0
+Règle apprise;B&B HOME ST OUEN;Apprentissage;Note de frais - Décaissement;0
+Règle apprise;BANKIN;Apprentissage;B2B - Encaissement;0
+Règle apprise;BAPTISTE BERNAUD;Apprentissage;Formateurs / Freelances - Décaissement;0
+Règle apprise;BERGER LEVRAULT;Apprentissage;B2B - Encaissement;0
+Règle apprise;BITLY.COM;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;BKG*HOTEL;Apprentissage;Autres revenus - Encaissement;0
+Règle apprise;BNP PARIBAS PERSONAL FINANCE;Apprentissage;B2B - Encaissement;0
+Règle apprise;BRGM;Apprentissage;B2B - Encaissement;0
+Règle apprise;BUDGET GENERAL - CHU DE REIMS;Apprentissage;B2B - Encaissement;0
+Règle apprise;BV CERTIFICATION;Apprentissage;Partenariat académique - Décaissement;0
+Règle apprise;BWI FRANCE;Apprentissage;B2B - Encaissement;0
+Règle apprise;CA PERSONAL FINANCE . MOBILITY ECH/ ID EMETTEUR MDT REF LIB FINANCE;Apprentissage;Frais généraux & services - Décaissement;0
+Règle apprise;CABINET LACOMBLEZ;Apprentissage;B2B - Encaissement;0
+Règle apprise;CACEIS BANK;Apprentissage;B2B - Encaissement;0
+Règle apprise;CENTRAPEL;Apprentissage;B2B - Encaissement;0
+Règle apprise;CENTRE GEORGES FRANCOIS LECLERC;Apprentissage;B2B - Encaissement;0
+Règle apprise;CESAME ANTILLES;Apprentissage;B2B - Encaissement;0
+Règle apprise;CLOUDFLARE;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;COJEAN LA DEFENSE;Apprentissage;Note de frais - Décaissement;0
+Règle apprise;COMPAGNIE PAUL PREDAULT;Apprentissage;B2B - Encaissement;0
+Règle apprise;COTE COUR;Apprentissage;B2B - Encaissement;0
+Règle apprise;CPAM 93;Apprentissage;Autres revenus - Encaissement;0
+Règle apprise;CSP GUYANE;Apprentissage;B2B - Encaissement;0
+Règle apprise;CU GPSO;Apprentissage;B2B - Encaissement;0
+Règle apprise;CURSOR;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;DECENCIERE FERRANDIERE STEPHANE;Apprentissage;B2C - Encaissement;0
+Règle apprise;DEPARTEMENT DU GARD;Apprentissage;B2B - Encaissement;0
+Règle apprise;EASYVOYAGE;Apprentissage;B2B - Encaissement;0
+Règle apprise;EAT ON LINE;Apprentissage;B2B - Encaissement;0
+Règle apprise;EI - M'HOUMADI OUSSOUFI NASSUR;Apprentissage;Formateurs / Freelances - Décaissement;0
+Règle apprise;ELEVENLABS.IO;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;ELIE LAYANI;Apprentissage;Formateurs / Freelances - Décaissement;0
+Règle apprise;EPF VENDEE;Apprentissage;B2B - Encaissement;0
+Règle apprise;ETRANGER EMIS ATHLAN ISRAEL DISCOUNT BANK LTD. ,00;Apprentissage;Formateurs / Freelances - Décaissement;0
+Règle apprise;ETRANGER EMIS ATTIJARIBANK (FORM. BANQUE DU SUD) 014 ,41;Apprentissage;Formateurs / Freelances - Décaissement;0
+Règle apprise;EVEN GESTION;Apprentissage;B2B - Encaissement;0
+Règle apprise;FAC LOGISTIQUE;Apprentissage;B2B - Encaissement;0
+Règle apprise;FIGMA;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;FREELANCE.COM;Apprentissage;Autres revenus - Encaissement;0
+Règle apprise;FS *LINKVECTOR;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;FTE FORMATION;Apprentissage;Formateurs / Freelances - Décaissement;0
+Règle apprise;GENSPARK.AI;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;GEOSEL MANOSQUE;Apprentissage;B2B - Encaissement;0
+Règle apprise;GFIP IMPOT-PAS-DSN;Apprentissage;Prélèvement à la source (PAS) - Décaissement;0
+Règle apprise;GIE LES CINEMAS PATHE;Apprentissage;Frais généraux & services - Décaissement;0
+Règle apprise;GIP SESAN;Apprentissage;B2B - Encaissement;0
+Règle apprise;GOOGLE ONE;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;HOLDING BB;Apprentissage;B2B - Encaissement;0
+Règle apprise;IDRIC;Apprentissage;Formateurs / Freelances - Décaissement;0
+Règle apprise;IDS GMBH - ANALYSIS AND REPORTING SERVICES;Apprentissage;B2B - Encaissement;0
+Règle apprise;ISTOCK.COM;Apprentissage;Marketing & Acquisition - Décaissement;0
+Règle apprise;IT TRATTORIA;Apprentissage;Note de frais - Décaissement;0
+Règle apprise;KAHOOT] ASA;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;LA FAMILLE PARV;Apprentissage;Note de frais - Décaissement;0
+Règle apprise;LAPOSTE;Apprentissage;Frais généraux & services - Décaissement;0
+Règle apprise;LOUIS VUITTON;Apprentissage;B2B - Encaissement;0
+Règle apprise;MANUTAN;Apprentissage;B2B - Encaissement;0
+Règle apprise;MEVENGUE;Apprentissage;Formateurs / Freelances - Décaissement;0
+Règle apprise;MINDLAPSE;Apprentissage;B2B - Encaissement;0
+Règle apprise;MOB HOUSE PARIS;Apprentissage;Frais généraux & services - Décaissement;0
+Règle apprise;MOBILIS BANQUE;Apprentissage;B2B - Encaissement;0
+Règle apprise;MONOPRIX;Apprentissage;Frais généraux & services - Décaissement;0
+Règle apprise;MULTIPRO PROF LIB BRED CONNECT OFFERT;Apprentissage;Autres revenus - Encaissement;0
+Règle apprise;NATIONAL LOGISTIQUE ROUTE;Apprentissage;B2B - Encaissement;0
+Règle apprise;NEATRO;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;NOVIUS;Apprentissage;B2B - Encaissement;0
+Règle apprise;O2SWITCH.FR;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;OCTAEDGE;Apprentissage;B2B - Encaissement;0
+Règle apprise;ONOFF;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;PAIE RH SOLUTIONS;Apprentissage;B2B - Encaissement;0
+Règle apprise;PENNYLANE - DATASCIENTEST;Apprentissage;Interco - Encaissement;0
+Règle apprise;POST AFFILIATE PRO;Apprentissage;Frais généraux & services - Décaissement;0
+Règle apprise;REEL;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;REEZOCORP;Apprentissage;B2B - Encaissement;0
+Règle apprise;RHENFORSE;Apprentissage;B2B - Encaissement;0
+Règle apprise;RUNNINGHUB.AI;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;SAFRAN;Apprentissage;B2B - Encaissement;0
+Règle apprise;SEMRUSH;Apprentissage;Autres revenus - Encaissement;0
+Règle apprise;SENTRY;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;SEOUDAPP;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;SEREZO;Apprentissage;Formateurs / Freelances - Décaissement;0
+Règle apprise;SERVIER MONDE;Apprentissage;B2B - Encaissement;0
+Règle apprise;SERVMASK INC.;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;SMARTBOX LTD FR0367206;Apprentissage;Frais généraux & services - Décaissement;0
+Règle apprise;SMI SDEA EAU;Apprentissage;B2B - Encaissement;0
+Règle apprise;SNCF VOYAGEURS TER PPU FACT--;Apprentissage;B2B - Encaissement;0
+Règle apprise;STEPHANE DECENCIERE FERRANDIERE;Apprentissage;B2C - Encaissement;0
+Règle apprise;SWAN - INCOMING NON-EURO CREDIT TRANSFER;Apprentissage;Banques/Dettes - Décaissement;0
+Règle apprise;TALENDI;Apprentissage;B2B - Encaissement;0
+Règle apprise;TELLA;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;THALES;Apprentissage;B2B - Encaissement;0
+Règle apprise;THOM FOR YOU;Apprentissage;B2B - Encaissement;0
+Règle apprise;TOMORRO DATASCIENTEST;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;TRAINING SQUARE;Apprentissage;B2B - Encaissement;0
+Règle apprise;UCAR;Apprentissage;B2B - Encaissement;0
+Règle apprise;VC TECHNOLOGY;Apprentissage;B2B - Encaissement;0
+Règle apprise;VECTORSOFT;Apprentissage;B2B - Encaissement;0
+Règle apprise;VELSIA;Apprentissage;B2B - Encaissement;0
+Règle apprise;VOODOO;Apprentissage;B2B - Encaissement;0
+Règle apprise;WE MADE YA;Apprentissage;Marketing & Acquisition - Décaissement;0
+Règle apprise;WEBFLOW.COM;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;WWW.PERPLEXITY.AI;Apprentissage;SaaS/IT - Décaissement;0
+Règle apprise;WWW.TRUSTINDEX.IO;Apprentissage;Marketing & Acquisition - Décaissement;0
+Règle apprise;YUKI;Apprentissage;Note de frais - Décaissement;0
+Règle apprise;ZE WILLIAMS EMANE BOMO DATASCIENTEST;Apprentissage;Formateurs / Freelances - Décaissement;0
+Règle apprise;ZENDAKIA;Apprentissage;B2B - Encaissement;0

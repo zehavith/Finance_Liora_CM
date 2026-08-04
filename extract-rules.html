@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Extraction des règles Liora</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; padding: 1rem; }
+        textarea { width: 100%; height: 400px; font-family: monospace; font-size: 12px; }
+        button { padding: 0.5rem 1rem; margin: 0.5rem 0; cursor: pointer; font-size: 1rem; }
+        .status { margin: 1rem 0; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Extraction des règles Liora</h1>
+    <p>Cette page lit les données stockées dans IndexedDB par l'application Liora Cash Flow.</p>
+    <button onclick="extract()">Extraire les règles</button>
+    <div class="status" id="status"></div>
+    <textarea id="output" readonly placeholder="Les règles apparaîtront ici..."></textarea>
+    <br>
+    <button onclick="copyAll()">Copier tout</button>
+
+    <script>
+        function extract() {
+            const status = document.getElementById('status');
+            const output = document.getElementById('output');
+            status.textContent = 'Lecture en cours...';
+
+            const req = indexedDB.open('liora_cashflow', 1);
+            req.onerror = () => {
+                status.textContent = 'Erreur: impossible d\'ouvrir IndexedDB';
+            };
+            req.onsuccess = () => {
+                const db = req.result;
+                const tx = db.transaction('kv', 'readonly');
+                const store = tx.objectStore('kv');
+
+                const results = {};
+                const r1 = store.get('liora_learned_categories');
+                r1.onsuccess = () => { results.learned = r1.result; };
+
+                const r2 = store.get('liora_cf_files');
+                r2.onsuccess = () => { results.files = r2.result; };
+
+                const r3 = store.get('liora_cf_data');
+                r3.onsuccess = () => { results.dataCount = r3.result ? r3.result.length : 0; };
+
+                tx.oncomplete = () => {
+                    db.close();
+                    const text = JSON.stringify(results.learned || {}, null, 2);
+                    output.value = text;
+                    const ruleCount = Object.keys(results.learned || {}).length;
+                    status.textContent = ruleCount + ' règle(s) trouvée(s), ' + results.dataCount + ' transactions en mémoire.';
+                };
+            };
+        }
+
+        function copyAll() {
+            const output = document.getElementById('output');
+            output.select();
+            document.execCommand('copy');
+            document.getElementById('status').textContent = 'Copié dans le presse-papier !';
+        }
+    </script>
+</body>
+</html>

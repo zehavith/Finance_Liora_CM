@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cash Flow Analyzer — Liora</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-treemap@2.3.0/dist/chartjs-chart-treemap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Upload Screen -->
+    <div id="upload-screen" class="screen active">
+        <nav class="navbar">
+            <div class="nav-brand">
+                <div class="logo-icon">
+                    <img src="Liora_Logo_Orange_alpha.png" alt="Liora" style="height: 32px;">
+                </div>
+                <span class="brand-name"><span class="brand-sub">Cash Flow</span></span>
+            </div>
+        </nav>
+        <div class="upload-hero">
+            <div class="hero-content">
+                <h1 class="hero-title">Analysez vos flux de <span class="gradient-text">trésorerie</span></h1>
+                <p class="hero-subtitle">Importez votre extraction bancaire ou comptable et obtenez une analyse professionnelle complète en quelques secondes.</p>
+                <div class="upload-zone" id="upload-zone">
+                    <div class="upload-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                    </div>
+                    <p class="upload-text">Glissez-déposez votre fichier ici</p>
+                    <p class="upload-hint">ou cliquez pour parcourir</p>
+                    <p class="upload-formats">Formats acceptés : .csv, .xlsx, .xls</p>
+                    <p class="upload-hint-persist">Les données des mois précédents sont conservées automatiquement.</p>
+                    <input type="file" id="file-input" accept=".csv,.xlsx,.xls" hidden>
+                </div>
+                <div id="file-info" class="file-info hidden">
+                    <div class="file-badge">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        <span id="file-name"></span>
+                        <span id="file-size"></span>
+                    </div>
+                    <button class="btn btn-primary" id="analyze-btn">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        Lancer l'analyse
+                    </button>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="floating-card card-1">
+                    <div class="mini-chart"></div>
+                    <span>+12.4%</span>
+                </div>
+                <div class="floating-card card-2">
+                    <div class="mini-bar"></div>
+                    <span>Flux entrants</span>
+                </div>
+                <div class="floating-card card-3">
+                    <div class="mini-pie"></div>
+                    <span>Répartition</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="screen">
+        <div class="loader-container">
+            <div class="loader-ring"></div>
+            <p class="loader-text">Analyse en cours...</p>
+            <p class="loader-sub" id="loader-status">Lecture du fichier</p>
+        </div>
+    </div>
+
+    <!-- Dashboard Screen -->
+    <div id="dashboard-screen" class="screen">
+        <nav class="navbar navbar-dash">
+            <div class="nav-brand nav-brand-link" id="nav-logo-home" title="Retour au tableau de bord">
+                <div class="logo-icon">
+                    <img src="Liora_Logo_Orange_alpha.png" alt="Liora" style="height: 32px;">
+                </div>
+                <span class="brand-name"><span class="brand-sub">Cash Flow</span></span>
+            </div>
+            <div class="nav-tabs">
+                <button class="nav-tab active" data-tab="dashboard">Tableau de bord</button>
+                <button class="nav-tab" data-tab="dataquality">Data Quality</button>
+                <button class="nav-tab" data-tab="projection">Projection</button>
+                <button class="nav-tab" data-tab="simulation">Simulation</button>
+                <button class="nav-tab" data-tab="fichiers">Fichiers</button>
+            </div>
+            <div class="nav-actions">
+                <button class="btn btn-ghost" id="btn-export">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Exporter PDF
+                </button>
+            </div>
+        </nav>
+
+        <!-- TAB: Dashboard -->
+        <div class="tab-content active" id="tab-dashboard">
+        <div class="dashboard-content">
+            <!-- Active cross-filter chips -->
+            <div id="active-filters" class="active-filters hidden"></div>
+
+            <!-- Date filter -->
+            <div class="date-filter-bar">
+                <div class="date-filter-label">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    <span>Période :</span>
+                </div>
+                <div class="date-filter-months" id="date-filter-months"></div>
+                <button class="btn btn-ghost btn-sm" id="date-select-all">Tout</button>
+                <button class="btn btn-ghost btn-sm" id="date-select-none">Aucun</button>
+                <span class="date-filter-separator"></span>
+                <button class="btn btn-ghost btn-sm" id="btn-exclude-interco" title="Masquer les transactions Interco">Hors Interco</button>
+            </div>
+
+            <div class="section-header">
+                <h2>Vue d'ensemble</h2>
+                <div class="period-badge" id="period-badge"></div>
+            </div>
+            <div class="kpi-grid kpi-grid-grouped">
+                <!-- Left: Encaissements -->
+                <div class="kpi-group kpi-group-enc">
+                    <div class="kpi-group-label">Encaissements</div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-green">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Total</span>
+                            <span class="kpi-value" id="kpi-inflows">—</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-green">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Moyen / mois</span>
+                            <span class="kpi-value" id="kpi-avg-inflows">—</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-volatility">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Volatilité</span>
+                            <span class="kpi-value" id="kpi-vol-inflows">—</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Center: Génériques -->
+                <div class="kpi-group kpi-group-general">
+                    <div class="kpi-group-label">Global</div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-blue">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Solde Net</span>
+                            <span class="kpi-value" id="kpi-net">—</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-purple">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Transactions</span>
+                            <span class="kpi-value" id="kpi-count">—</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Right: Décaissements -->
+                <div class="kpi-group kpi-group-dec">
+                    <div class="kpi-group-label">Décaissements</div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-red">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Total</span>
+                            <span class="kpi-value" id="kpi-outflows">—</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-red">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Moyen / mois</span>
+                            <span class="kpi-value" id="kpi-avg-outflows">—</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-volatility">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Volatilité</span>
+                            <span class="kpi-value" id="kpi-vol-outflows">—</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row 1 -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Évolution des flux de trésorerie</h3>
+                        <div class="chart-legend" id="flow-legend"></div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-flow"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row 2: Cumulative -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Solde cumulé</h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-cumulative"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row 3: Categories by Enc / Dec -->
+            <div class="charts-grid charts-2col">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>Encaissements par catégorie</h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-enc-categories"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>Décaissements par catégorie</h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-dec-categories"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row 3b: Type Financeur (enc only) -->
+            <div class="charts-grid charts-2col">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>Encaissements par type de financeur</h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-financeur"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card chart-financeur-detail">
+                    <div class="chart-header">
+                        <h3>Répartition financeur par mois</h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-financeur-monthly"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row 3c: Mode de paiement (enc only) -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Encaissements par mode de paiement</h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-paiement"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row 4: Top categories + Teams -->
+            <div class="charts-grid charts-2col">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>Volume par catégorie (Enc vs Déc)</h3>
+                    </div>
+                    <div class="chart-container" style="height: 400px;">
+                        <canvas id="chart-top-vendors"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>Répartition par équipe</h3>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-teams"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Table -->
+            <div class="section-header" style="margin-top: 2rem;">
+                <h2>Détail des transactions</h2>
+                <div class="table-controls">
+                    <div class="search-box">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="search-input" placeholder="Rechercher...">
+                    </div>
+                    <select id="filter-categorie" class="select-filter">
+                        <option value="">Toutes les catégories</option>
+                    </select>
+                    <select id="filter-type" class="select-filter">
+                        <option value="">Tous les types</option>
+                    </select>
+                    <select id="filter-team" class="select-filter">
+                        <option value="">Toutes les équipes</option>
+                    </select>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table class="data-table" id="data-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Libellé</th>
+                            <th>Tiers</th>
+                            <th class="text-right">Montant</th>
+                            <th>Catégorie</th>
+                            <th>Sens</th>
+                            <th>Équipe</th>
+                            <th>Titulaire</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body"></tbody>
+                </table>
+            </div>
+            <div class="table-pagination" id="pagination"></div>
+
+            <!-- Summary Section -->
+            <div class="section-header" style="margin-top: 2rem;">
+                <h2>Synthèse analytique</h2>
+            </div>
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <h4>Principaux postes de dépenses</h4>
+                    <div id="summary-expenses"></div>
+                </div>
+                <div class="summary-card">
+                    <h4>Principaux postes de recettes</h4>
+                    <div id="summary-income"></div>
+                </div>
+                <div class="summary-card">
+                    <h4>Alertes & Observations</h4>
+                    <div id="summary-alerts"></div>
+                </div>
+            </div>
+        </div>
+        </div><!-- /tab-dashboard -->
+
+        <!-- TAB: Data Quality -->
+        <div class="tab-content" id="tab-dataquality">
+        <div class="dashboard-content">
+            <div class="dq-header">
+                <h2>Data Quality — Transactions à reclasser</h2>
+                <p class="dq-subtitle">Reclassez les décaissements « DIVERS » et les encaissements « Autres revenus » pour améliorer la qualité de votre analyse.</p>
+                <div class="dq-filter-bar">
+                    <label>Filtrer par mois :</label>
+                    <div class="date-filter-months" id="dq-filter-months"></div>
+                    <button class="btn btn-ghost btn-sm" id="dq-select-all">Tout</button>
+                    <button class="btn btn-ghost btn-sm" id="dq-select-none">Aucun</button>
+                </div>
+            </div>
+
+            <!-- Décaissements DIVERS -->
+            <div class="dq-section dq-collapsible" data-dq-group="dec">
+                <div class="dq-section-header dq-section-toggle">
+                    <div class="dq-section-title-row">
+                        <span class="dq-chevron"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></span>
+                        <h3>Décaissements — DIVERS <span class="dq-count" id="dq-count-divers">0</span></h3>
+                    </div>
+                    <div class="dq-section-actions">
+                        <button class="dq-btn-suggest-all" id="dq-suggest-divers" disabled>Suggérer tout (IA)</button>
+                        <button class="dq-btn-bulk" id="dq-bulk-divers" disabled>Appliquer tout</button>
+                    </div>
+                </div>
+                <div class="dq-section-body">
+                    <div class="table-wrapper">
+                        <table class="data-table dq-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th class="dq-th-libelle">Libellé</th>
+                                    <th class="text-right">Montant</th>
+                                    <th>Suggestion IA</th>
+                                    <th>Catégorie</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dq-body-divers"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Encaissements Autres revenus -->
+            <div class="dq-section dq-collapsible" data-dq-group="enc">
+                <div class="dq-section-header dq-section-toggle">
+                    <div class="dq-section-title-row">
+                        <span class="dq-chevron"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg></span>
+                        <h3>Encaissements — Autres revenus <span class="dq-count" id="dq-count-autres">0</span></h3>
+                    </div>
+                    <div class="dq-section-actions">
+                        <button class="dq-btn-suggest-all" id="dq-suggest-autres" disabled>Suggérer tout (IA)</button>
+                        <button class="dq-btn-bulk" id="dq-bulk-autres" disabled>Appliquer tout</button>
+                    </div>
+                </div>
+                <div class="dq-section-body">
+                    <div class="table-wrapper">
+                        <table class="data-table dq-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th class="dq-th-libelle">Libellé</th>
+                                    <th class="text-right">Montant</th>
+                                    <th>Suggestion IA</th>
+                                    <th>Catégorie</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dq-body-autres"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <!-- Learned rules section -->
+            <div class="dq-section">
+                <div class="dq-section-header">
+                    <h3>Règles apprises <span class="dq-count" id="dq-count-rules">0</span></h3>
+                    <div class="dq-section-actions">
+                        <button class="btn btn-ghost btn-sm" id="ft-validate-all" style="display:none">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                            Tout valider
+                        </button>
+                        <button class="btn btn-ghost btn-danger btn-sm" id="ft-clear-learned" style="display:none">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            Tout supprimer
+                        </button>
+                    </div>
+                </div>
+                <p class="ft-subtitle">Catégories mémorisées à partir de vos reclassements manuels. Modifiez le mot-clé pour affiner la reconnaissance.</p>
+                <div id="ft-learned-rules" class="ft-learned-list">
+                    <p class="ft-empty">Aucune règle apprise.</p>
+                </div>
+            </div>
+        </div>
+        </div><!-- /tab-dataquality -->
+
+        <!-- TAB: Projection -->
+        <div class="tab-content" id="tab-projection">
+        <div class="dashboard-content">
+            <div class="sim-panel">
+                <div class="sim-panel-header">
+                    <h2>Projection de trésorerie (3 mois)</h2>
+                    <p class="sim-subtitle">Projections basées sur vos données historiques importées.</p>
+                </div>
+
+                <div class="sim-toggle-bar">
+                    <button class="sim-model-btn active" data-model="seasonal">Modèle saisonnier</button>
+                    <button class="sim-model-btn" data-model="wma">Moyennes mobiles pondérées</button>
+                </div>
+
+                <!-- Model explanation -->
+                <div class="sim-model-explain" id="sim-model-explain"></div>
+
+                <!-- KPI résumé projection -->
+                <div class="sim-kpi-row" id="sim-proj-kpis">
+                    <div class="sim-kpi">
+                        <span class="sim-kpi-label">Encaissements projetés</span>
+                        <span class="sim-kpi-value" id="sim-proj-enc">—</span>
+                    </div>
+                    <div class="sim-kpi">
+                        <span class="sim-kpi-label">Décaissements projetés</span>
+                        <span class="sim-kpi-value" id="sim-proj-dec">—</span>
+                    </div>
+                    <div class="sim-kpi">
+                        <span class="sim-kpi-label">Solde net projeté</span>
+                        <span class="sim-kpi-value" id="sim-proj-net">—</span>
+                    </div>
+                </div>
+
+                <!-- Chart projection -->
+                <div class="chart-card sim-chart-card">
+                    <canvas id="chart-sim-projection" height="280"></canvas>
+                </div>
+
+                <!-- Table détail projection -->
+                <div class="table-wrapper sim-table-wrapper">
+                    <table class="data-table sim-detail-table" id="sim-proj-table">
+                        <thead id="sim-proj-thead"></thead>
+                        <tbody id="sim-proj-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        </div><!-- /tab-projection -->
+
+        <!-- TAB: Simulation -->
+        <div class="tab-content" id="tab-simulation">
+        <div class="dashboard-content">
+            <div class="sim-panel">
+                <div class="sim-panel-header">
+                    <h2>Simulation de trésorerie</h2>
+                    <p class="sim-subtitle">Ajustez les paramètres pour simuler différents scénarios sur 3 mois. Les valeurs sont pré-remplies à partir de vos moyennes historiques.</p>
+                </div>
+
+                <!-- Solde initial -->
+                <div class="sim-form-section">
+                    <h3>Solde initial de trésorerie</h3>
+                    <div class="sim-form-row">
+                        <label for="sim-solde-initial">Solde actuel (€) :</label>
+                        <input type="number" id="sim-solde-initial" class="sim-input" value="0" step="100" />
+                    </div>
+                </div>
+
+                <!-- Encaissements par catégorie -->
+                <div class="sim-form-section">
+                    <h3>Encaissements mensuels par catégorie</h3>
+                    <div class="sim-cat-grid" id="sim-enc-inputs">
+                        <!-- Generated by JS -->
+                    </div>
+                </div>
+
+                <!-- Décaissements fixes mensuels -->
+                <div class="sim-form-section">
+                    <h3>Décaissements fixes mensuels</h3>
+                    <div class="sim-cat-grid" id="sim-dec-inputs">
+                        <!-- Generated by JS -->
+                    </div>
+                </div>
+
+                <!-- Bouton simulation -->
+                <div class="sim-form-actions">
+                    <button class="sim-btn-run" id="sim-btn-run">Lancer la simulation</button>
+                    <button class="sim-btn-reset" id="sim-btn-reset">Réinitialiser</button>
+                </div>
+
+                <!-- KPI résumé simulation -->
+                <div class="sim-kpi-row" id="sim-manual-kpis" style="display:none">
+                    <div class="sim-kpi">
+                        <span class="sim-kpi-label">Total encaissements (3 mois)</span>
+                        <span class="sim-kpi-value" id="sim-man-enc">—</span>
+                    </div>
+                    <div class="sim-kpi">
+                        <span class="sim-kpi-label">Total décaissements (3 mois)</span>
+                        <span class="sim-kpi-value" id="sim-man-dec">—</span>
+                    </div>
+                    <div class="sim-kpi">
+                        <span class="sim-kpi-label">Solde final projeté</span>
+                        <span class="sim-kpi-value" id="sim-man-solde">—</span>
+                    </div>
+                </div>
+
+                <!-- Chart simulation -->
+                <div class="chart-card sim-chart-card" id="sim-manual-chart-wrap" style="display:none">
+                    <canvas id="chart-sim-manual" height="280"></canvas>
+                </div>
+
+                <!-- Table détail simulation -->
+                <div class="table-wrapper sim-table-wrapper" id="sim-manual-table-wrap" style="display:none">
+                    <table class="data-table sim-detail-table" id="sim-manual-table">
+                        <thead id="sim-manual-thead"></thead>
+                        <tbody id="sim-manual-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        </div><!-- /tab-simulation -->
+
+        <!-- TAB: Fichiers -->
+        <div class="tab-content" id="tab-fichiers">
+        <div class="dashboard-content">
+            <div class="ft-header">
+                <h2>Gestion des fichiers & paramètres</h2>
+                <p class="ft-subtitle">Importez vos données, gérez l'historique des fichiers et configurez votre clé API.</p>
+            </div>
+
+            <!-- Import section -->
+            <div class="ft-section">
+                <h3>Importer un fichier</h3>
+                <div class="ft-upload-zone" id="ft-upload-zone">
+                    <div class="ft-upload-icon">
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    </div>
+                    <p class="ft-upload-text">Glissez-déposez ou cliquez pour importer</p>
+                    <p class="ft-upload-formats">Formats : .csv, .xlsx, .xls</p>
+                    <input type="file" id="ft-file-input" accept=".csv,.xlsx,.xls" hidden>
+                </div>
+                <div id="ft-file-info" class="file-info hidden" style="margin-top:1rem">
+                    <div class="file-badge">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        <span id="ft-file-name"></span>
+                        <span id="ft-file-size"></span>
+                    </div>
+                    <button class="btn btn-primary" id="ft-analyze-btn">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        Lancer l'analyse
+                    </button>
+                </div>
+            </div>
+
+            <!-- File history section -->
+            <div class="ft-section">
+                <div class="ft-section-header">
+                    <h3>Fichiers importés</h3>
+                    <button class="btn btn-ghost btn-danger btn-sm" id="ft-clear-all">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        Tout effacer
+                    </button>
+                </div>
+                <div id="ft-file-history" class="ft-file-list">
+                    <p class="ft-empty">Aucun fichier importé.</p>
+                </div>
+            </div>
+
+            <!-- Storage status section -->
+            <div class="ft-section">
+                <div class="ft-section-header">
+                    <h3>Stockage des données</h3>
+                    <button class="ft-manual-save-btn" id="ft-manual-save">Sauvegarder maintenant</button>
+                </div>
+                <div class="storage-status" id="storage-status">
+                    <span class="storage-status-dot" id="storage-status-dot"></span>
+                    <span id="storage-status-text">Vérification...</span>
+                </div>
+            </div>
+
+            <!-- Assignment rules recap section -->
+            <div class="ft-section">
+                <div class="ft-section-header">
+                    <h3>Règles d'affectation</h3>
+                </div>
+                <p class="ft-subtitle">Récapitulatif de toutes les règles de catégorisation : règles intégrées (mots-clés) et règles apprises via Data Quality.</p>
+                <div class="ft-rules-tabs">
+                    <button class="ft-rules-tab active" data-rules-tab="learned">Règles apprises <span class="ft-rules-tab-count" id="ft-recap-learned-count">0</span></button>
+                    <button class="ft-rules-tab" data-rules-tab="builtin">Règles intégrées</button>
+                </div>
+                <div id="ft-rules-recap-learned" class="ft-rules-recap-panel active">
+                    <div id="ft-recap-learned-list" class="ft-learned-list"></div>
+                </div>
+                <div id="ft-rules-recap-builtin" class="ft-rules-recap-panel" style="display:none">
+                    <div id="ft-recap-builtin-list"></div>
+                </div>
+            </div>
+
+            <!-- API Key section -->
+            <div class="ft-section">
+                <h3>Clé API Claude (IA)</h3>
+                <p class="ft-subtitle">Utilisée pour les suggestions de catégorisation automatique dans l'onglet Data Quality.</p>
+                <div class="ft-api-row">
+                    <input type="password" id="dq-api-key" class="ft-api-input" placeholder="sk-ant-..." autocomplete="off" />
+                    <span class="dq-api-status" id="dq-api-status"></span>
+                </div>
+            </div>
+
+        </div>
+        </div><!-- /tab-fichiers -->
+
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

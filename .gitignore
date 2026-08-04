@@ -1,0 +1,14 @@
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Dépendances / build éventuels (l'app n'en utilise pas aujourd'hui)
+node_modules/
+dist/
+
+# Logs
+*.log
