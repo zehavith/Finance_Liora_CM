@@ -93,5 +93,28 @@ let
     // --- 4) Clé de réconciliation (n° normalisé) ----------------------
     Resultat = Table.AddColumn(T5, "cle", each
                     Text.Upper(Text.Trim(Text.From([numero]))), type text)
+
+    // =================================================================
+    //  §5 (OPTIONNEL) — TYPE DE CLIENT depuis un champ personnalisé Sellsy
+    // =================================================================
+    //  Si le "type de facture / type de client" existe dans Sellsy comme
+    //  CHAMP PERSONNALISÉ (sur la facture ou le client), on peut le lire
+    //  par l'API → plus AUCUNE saisie manuelle nulle part.
+    //
+    //  Étapes :
+    //   1. Trouver l'id du champ : appel GET https://api.sellsy.com/v2/custom-fields
+    //      (même en-tête Authorization) → notez l'id du champ voulu (ex. 12345).
+    //   2. Dans GetPage ci-dessus, ajouter l'embed du champ à la Query :
+    //        Query = [ limit = ..., offset = ..., #"embed[]" = "cf.12345" ]
+    //   3. Les valeurs arrivent alors dans un objet "_embed" de chaque
+    //      facture : ajouter après T5 une colonne
+    //        type_client_sellsy = try [_embed][custom_fields]{0}[value] otherwise null
+    //      (structure exacte à vérifier sur une réponse réelle de VOTRE compte).
+    //   4. La table consolidée (factures_consolidees.pq §3ter) utilise
+    //      automatiquement "type_client_sellsy" si la colonne existe.
+    //
+    //  ⚠️ La syntaxe d'embed des champs personnalisés varie selon les
+    //     versions de l'API Sellsy — validez sur https://api.sellsy.com/doc/v2/
+    //     ou testez l'appel dans leur console API avant de coder.
 in
     Resultat

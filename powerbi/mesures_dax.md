@@ -104,13 +104,20 @@ RETURN DIVIDE ( NonEchu * NbJours, CA )
 
 ## 4. Retard & balance âgée
 
+> Vocabulaire aligné sur votre balance actuelle : **Restant dû** = `[Encours
+> total]` · **Total échu** = ci-dessous · tranches **en mois** (0-3 … > 48).
+
 ```DAX
-Créances échues =
+Restant dû = [Encours total]
+```
+
+```DAX
+Total échu =
 CALCULATE ( [Encours total], Factures[jours_retard] > 0 )
 ```
 
 ```DAX
-% échu = DIVIDE ( [Créances échues], [Encours total] )
+% échu = DIVIDE ( [Total échu], [Restant dû] )
 ```
 
 ```DAX
@@ -118,14 +125,39 @@ Retard moyen pondéré (jours) =
 DIVIDE (
     SUMX ( FILTER ( Factures, Factures[jours_retard] > 0 ),
            Factures[reste_du_net] * Factures[jours_retard] ),
-    [Créances échues]
+    [Total échu]
 )
 ```
 
-La **balance âgée** s'obtient en mettant `tranche_age` en axe d'un histogramme
-avec `[Encours total]` en valeur. Pour l'ordre des tranches : sélectionnez la
+Séparation **Positif / Négatif (avoirs) / Net**, comme sur votre feuille :
+
+```DAX
+Encours positif =
+SUMX ( FILTER ( Factures, Factures[reste_du_net] > 0 ), Factures[reste_du_net] )
+```
+
+```DAX
+Encours négatif (avoirs) =
+SUMX ( FILTER ( Factures, Factures[reste_du_net] < 0 ), Factures[reste_du_net] )
+```
+
+```DAX
+Encours net = [Encours positif] + [Encours négatif (avoirs)]
+```
+
+Contrôle de cohérence (équivalent de votre colonne **Écart**, doit rester 0) :
+
+```DAX
+Écart contrôle =
+[Restant dû]
+    - CALCULATE ( [Encours total], Factures[tranche_age] <> "Sans échéance" )
+    - CALCULATE ( [Encours total], Factures[tranche_age] = "Sans échéance" )
+```
+
+La **balance âgée** s'obtient en mettant `tranche_age` en colonnes d'une matrice
+avec `[Restant dû]` en valeur. Pour l'ordre des tranches : sélectionnez la
 colonne `tranche_age` (vue Données) → *Outils de colonne > Trier par colonne >
-`tranche_ordre`*. Le tri Non échu → 90 j + devient automatique partout.
+`tranche_ordre`*. Le tri Non échu → > 48 mois devient automatique partout.
 
 ---
 

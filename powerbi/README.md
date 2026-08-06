@@ -94,32 +94,40 @@ Corps de page :
 - **Répartition À jour / En recouvrement / Payée** (anneau) : `statut_recouvrement`.
 - **Top 10 clients débiteurs** (barres) : `client_nom` × `[Encours total]`, top N.
 
-### Page 2 — Balance âgée (aged balance)
+### Page 2 — Balance âgée (calquée sur votre feuille actuelle)
 
-Cartes KPI par tranche (haut) :
+Une **matrice unique avec drill-down** remplace vos 3 onglets (type / sous-
+catégorie / compte client) :
 
 ```
-┌───────────┬───────────┬───────────┬───────────┬───────────┐
-│ Non échu  │  0-30 j   │  31-60 j  │  61-90 j  │  90 j +   │
-│[Encours   │[Encours   │[Encours   │[Encours   │[Encours   │
-│ non échu] │ 0-30 j]   │ 31-60 j]  │ 61-90 j]  │ 90 j +] 🔴│
-└───────────┴───────────┴───────────┴───────────┴───────────┘
+                     Restant dû   Total échu   0-3   3-4   4-8   8-12  12-18  18-24  24-36  36-48  >48   Non échu
+ ▸ B2C                6 985 611    3 858 262    …     …     …     …      …      …      …      …     …       …
+ ▸ B2C - Entreprise   2 153 476      998 444    …
+ ▸ B2B                1 451 037      801 627    …
+ ▸ Alternance           851 163      599 718    …
+ ▸ POEI               3 706 370    2 636 575    …
+ ▸ Interco               18 618       18 618    …
+ TOTAL               15 166 277    8 913 246    …
 ```
 
-Corps de page :
-- **Matrice « âge de la créance »** (visuel *Matrice*) :
-  - **Lignes** : `client_nom` (double-clic pour explorer jusqu'à `numero`)
-  - **Colonnes** : `tranche_age` (trié via `tranche_ordre` : Non échu → 90 j +)
-  - **Valeurs** : `[Encours total]`
-  - Activez les **totaux** ligne + colonne → vous lisez l'encours de chaque
-    client et de chaque tranche d'un coup d'œil.
-  - Mise en forme conditionnelle : dégradé de rouge sur la colonne `90 j +`.
-- **Histogramme empilé** : axe `tranche_age`, valeur `[Encours total]`,
-  légende `statut_recouvrement` — la photo globale du retard.
-- **Segments** : `responsable_reco`, période (`Calendrier`), `client_nom`.
+Construction :
+- **Visuel Matrice** —
+  - **Lignes** (3 niveaux, drill-down avec ▸) : `type_client` →
+    `sous_categorie` (CPF, OPCO, Région…) → `client_nom`
+  - **Colonnes** : `tranche_age` (**en mois**, triée via `tranche_ordre` :
+    Non échu → 0-3 → … → > 48 mois)
+  - **Valeurs** : `[Restant dû]` ; ajoutez `[Total échu]` en 1re valeur pour
+    reproduire vos deux colonnes de tête
+  - Totaux ligne + colonne activés · dégradé de rouge sur les tranches hautes
+- **Cartes** au-dessus : `[Restant dû]` · `[Total échu]` · `[Encours positif]`
+  · `[Encours négatif (avoirs)]` · `[Encours net]` · `[Écart contrôle]` (=0)
+- **Segments** : `statut_recouvrement` (pour isoler « Payée (à lettrer) » —
+  votre distinction *A Lettrer / Excluding A Lettrer*), `type_client`, période.
 
-> La matrice client × tranche EST la balance âgée classique du recouvrement :
-> exportable en Excel (clic droit > Exporter) pour vos réunions de relance.
+> Chaque nombre de la matrice est **cliquable** : clic droit > *Extraire* pour
+> voir les factures qui le composent ; export Excel d'un clic droit également.
+> L'échéance qui alimente ces tranches est calculée par **vos règles métier**
+> (fin de formation +30/45/60 j selon le type — voir `factures_consolidees.pq`).
 
 ### Page 3 — Détail & relances (opérationnel)
 
