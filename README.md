@@ -7,6 +7,10 @@ simulations.
 
 > Version applicative : **6.2.1h** — voir l'en-tête de `app.js`.
 
+> 📊 **Tableau de bord Recouvrement (Power BI)** — kit de connexion
+> Pennylane · Sellsy · Monday avec rafraîchissement quotidien automatique :
+> voir [`powerbi/`](powerbi/README.md).
+
 ## Aperçu des fonctionnalités
 
 | Onglet | Rôle |
