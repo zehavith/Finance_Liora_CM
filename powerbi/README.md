@@ -94,7 +94,34 @@ Corps de page :
 - **Répartition À jour / En recouvrement / Payée** (anneau) : `statut_recouvrement`.
 - **Top 10 clients débiteurs** (barres) : `client_nom` × `[Encours total]`, top N.
 
-### Page 2 — Détail & relances (opérationnel)
+### Page 2 — Balance âgée (aged balance)
+
+Cartes KPI par tranche (haut) :
+
+```
+┌───────────┬───────────┬───────────┬───────────┬───────────┐
+│ Non échu  │  0-30 j   │  31-60 j  │  61-90 j  │  90 j +   │
+│[Encours   │[Encours   │[Encours   │[Encours   │[Encours   │
+│ non échu] │ 0-30 j]   │ 31-60 j]  │ 61-90 j]  │ 90 j +] 🔴│
+└───────────┴───────────┴───────────┴───────────┴───────────┘
+```
+
+Corps de page :
+- **Matrice « âge de la créance »** (visuel *Matrice*) :
+  - **Lignes** : `client_nom` (double-clic pour explorer jusqu'à `numero`)
+  - **Colonnes** : `tranche_age` (trié via `tranche_ordre` : Non échu → 90 j +)
+  - **Valeurs** : `[Encours total]`
+  - Activez les **totaux** ligne + colonne → vous lisez l'encours de chaque
+    client et de chaque tranche d'un coup d'œil.
+  - Mise en forme conditionnelle : dégradé de rouge sur la colonne `90 j +`.
+- **Histogramme empilé** : axe `tranche_age`, valeur `[Encours total]`,
+  légende `statut_recouvrement` — la photo globale du retard.
+- **Segments** : `responsable_reco`, période (`Calendrier`), `client_nom`.
+
+> La matrice client × tranche EST la balance âgée classique du recouvrement :
+> exportable en Excel (clic droit > Exporter) pour vos réunions de relance.
+
+### Page 3 — Détail & relances (opérationnel)
 
 - **Table détaillée filtrable** : `numero`, `client_nom`, `montant_ttc`,
   `date_echeance`, `jours_retard`, `reste_du_net`, `statut_recouvrement`,
@@ -103,7 +130,7 @@ Corps de page :
 - **Segments** : `statut_recouvrement`, `responsable_reco`, `tranche_age`, période.
 - **Carte** `[Retard moyen pondéré (jours)]` + `[Nb factures en recouvrement]`.
 
-### Page 3 — Contrôle de cohérence (Sellsy ↔ Monday)
+### Page 4 — Contrôle de cohérence (Sellsy ↔ Monday)
 
 - **Carte d'alerte** `[Nb factures manquantes sur Monday]` (🔴 si > 0)
   et `[Encours manquant sur Monday]`.

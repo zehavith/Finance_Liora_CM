@@ -122,9 +122,10 @@ DIVIDE (
 )
 ```
 
-La **balance âgée** s'obtient directement en mettant `tranche_age` en axe d'un
-histogramme avec `[Encours total]` en valeur (triez `tranche_age` via une petite
-table d'ordre : Non échu=0, 0-30=1, 31-60=2, 61-90=3, 90 j +=4).
+La **balance âgée** s'obtient en mettant `tranche_age` en axe d'un histogramme
+avec `[Encours total]` en valeur. Pour l'ordre des tranches : sélectionnez la
+colonne `tranche_age` (vue Données) → *Outils de colonne > Trier par colonne >
+`tranche_ordre`*. Le tri Non échu → 90 j + devient automatique partout.
 
 ---
 

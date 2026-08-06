@@ -4,6 +4,25 @@ Objectif : après publication du rapport, le **service Power BI** rafraîchit se
 les données Pennylane / Sellsy / Monday selon une planification (ex. tous les
 matins à 7 h).
 
+## 0. En résumé : la config « zéro intervention »
+
+Une fois ces 4 réglages faits **une seule fois**, vous ne touchez plus à rien :
+
+1. **Clés dans des paramètres** (jamais en dur) → §1.
+2. **Identifiants des sources renseignés** dans le service (Pennylane/Monday =
+   Anonyme, Sellsy = Anonyme, Google Sheets si option = OAuth Google) → §3.
+3. **Niveaux de confidentialité alignés** (tous `Organizational`) pour éviter
+   l'erreur *Formula.Firewall* → §3.
+4. **Actualisation planifiée activée** (ex. quotidienne 7 h) + **e-mail en cas
+   d'échec** → §5.
+
+Ensuite le tableau se met à jour **tout seul, chaque jour**. Le SEUL cas où vous
+devrez y revenir : si une **clé/token est régénéré** côté Pennylane, Sellsy ou
+Monday (rotation, expiration) → il faudra remettre la nouvelle valeur dans le
+paramètre (§6). Pour Monday, générez un token **sans expiration** ; pour Sellsy,
+les identifiants OAuth n'expirent pas (seul le jeton temporaire tourne, et il est
+regénéré automatiquement à chaque refresh par le connecteur).
+
 ## 1. Principe : des paramètres, pas de clés en dur
 
 Aucune clé n'est écrite dans les requêtes. Toutes passent par des **paramètres**

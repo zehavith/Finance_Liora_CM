@@ -94,11 +94,22 @@ let
             else if r <= 90 then "61-90 j"
             else "90 j +", type text),
 
+    // Ordre de tri de la tranche (pour trier "tranche_age" par ce champ)
+    A9 = Table.AddColumn(A8, "tranche_ordre", each
+            let t = [tranche_age] in
+            if t = "Non échu"      then 0
+            else if t = "0-30 j"   then 1
+            else if t = "31-60 j"  then 2
+            else if t = "61-90 j"  then 3
+            else if t = "90 j +"   then 4
+            else if t = "Soldé"    then 5
+            else 6, Int64.Type),
+
     // --- 5) Nettoyage final ------------------------------------------
-    Final = Table.SelectColumns(A8, {
+    Final = Table.SelectColumns(A9, {
         "cle","numero","client_nom","montant_ttc",
         "date_emission","date_echeance",
-        "reste_du_net","est_payee","statut_recouvrement","tranche_age","jours_retard",
+        "reste_du_net","est_payee","statut_recouvrement","tranche_age","tranche_ordre","jours_retard",
         "present_monday","present_pennylane",
         "m_statut_relance","m_derniere_relance","m_prochaine_relance","m_responsable",
         "p_statut"
