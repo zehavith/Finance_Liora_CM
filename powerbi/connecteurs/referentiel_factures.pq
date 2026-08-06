@@ -13,6 +13,11 @@
 //    1. la balance âgée par Type → Sous-catégorie (vos onglets actuels)
 //    2. le calcul de l'ÉCHÉANCE par règle métier (fin de formation +30/45/60 j)
 //
+//  SOURCE DES DONNÉES (validé) : l'ANCIEN GRAND LIVRE CLASSÉ fournit le
+//  mapping historique client → type / sous-catégorie (chargement UNIQUE,
+//  pas d'entretien manuel) ; les nouvelles factures sont classées par la
+//  cascade automatique (champ Sellsy / règles) de factures_consolidees.pq.
+//
 //  PRÉREQUIS côté Google Sheets :
 //    Créez un onglet propre (ex. "PowerBI_Referentiel") — alimenté par vos
 //    formules existantes — avec ces 5 colonnes, en-têtes en ligne 1 :

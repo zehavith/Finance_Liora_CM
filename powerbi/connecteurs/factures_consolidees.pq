@@ -31,7 +31,7 @@ let
     //  base : "facture" = date de facture | "debut" = début de formation
     //         | "fin" = fin de formation
     //  jours : délai ajouté à la date de base
-    //  ⚠️ À VALIDER : Région (30 ou 60 j ?) et B2C-Perso (début ou fin ?)
+    //  ✅ Règles validées (Région = +60 j ; B2C-Perso = début de formation)
     ReglesEcheance = #table(
         {"type_client","base","jours"},
         {
@@ -41,7 +41,7 @@ let
             {"B2B",                     "fin",     30},
             {"Alternance",              "fin",     30},
             {"Transition Pro",          "fin",     30},
-            {"Region",                  "fin",     30},
+            {"Region",                  "fin",     60},
             {"Interco",                 "fin",     30},
             {"Interne - DST Allemagne", "fin",     30},
             {"AIF",                     "fin",     45},
@@ -58,7 +58,7 @@ let
 
     // --- Tranches de la balance âgée (EN MOIS de retard) --------------
     //  {borne_min_incluse ; borne_max_exclue ; libellé}
-    //  ⚠️ À VALIDER : la tranche "3-4 mois" (lecture d'écran incertaine)
+    //  ✅ Tranches validées (dont la tranche 3-4 mois)
     TranchesMois = {
         { 0,    3,    "0-3 mois"   },
         { 3,    4,    "3-4 mois"   },
@@ -72,9 +72,12 @@ let
     },
 
     // =================================================================
-    //  1) Colonne vertébrale : factures émises (Sellsy)
+    //  1) Colonne vertébrale : factures émises + AVOIRS (Sellsy)
     // =================================================================
-    Spine = Sellsy_Factures,
+    //  Les avoirs (montants négatifs) viennent de sellsy_avoirs.pq.
+    //  Si vous n'avez pas encore créé Sellsy_Avoirs, remplacez par :
+    //     Spine = Sellsy_Factures,
+    Spine = Table.Combine({Sellsy_Factures, Sellsy_Avoirs}),
 
     // --- 2) Fusion avec Pennylane (paiement) --------------------------
     JoinPenny = Table.NestedJoin(
