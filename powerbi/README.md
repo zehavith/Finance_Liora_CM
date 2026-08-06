@@ -28,7 +28,9 @@ powerbi/
 ├── modele/
 │   └── modele_donnees.md              Schéma, relations, clés de liaison
 ├── mesures_dax.md                     Toutes les mesures (recouvrement, DSO, KPI…)
-└── rafraichissement_service.md        Rafraîchissement auto quotidien (service Power BI)
+├── rafraichissement_service.md        Rafraîchissement auto quotidien (service Power BI)
+├── option_rapprochement_bancaire.md   ⭐ Phase 2 : filet de sécurité banque ↔ Pennylane
+└── connecteurs/banque_rapprochement.pq    (module optionnel associé)
 ```
 
 ## Pas-à-pas (≈ 45 min)
