@@ -1,0 +1,66 @@
+{
+  "name": "Exemple — Webhook vers HTTP avec routeur",
+  "flow": [
+    {
+      "id": 1,
+      "module": "gateway:CustomWebHook",
+      "version": 1,
+      "parameters": { "hook": "reception-transaction" },
+      "metadata": { "designer": { "name": "Webhook Transaction" } }
+    },
+    {
+      "id": 2,
+      "module": "util:SetVariable2",
+      "version": 1,
+      "mapper": { "name": "montant", "value": "{{ 1.amount }}" },
+      "metadata": { "designer": { "name": "Extraire montant" } }
+    },
+    {
+      "id": 3,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "metadata": { "designer": { "name": "Routeur" } },
+      "routes": [
+        {
+          "filter": {
+            "name": "Gros montant",
+            "conditions": [[{ "a": "{{ 2.montant }}", "o": "number:greater", "b": "1000" }]]
+          },
+          "flow": [
+            {
+              "id": 4,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "mapper": {
+                "url": "https://api.example.com/alerte",
+                "method": "post",
+                "data": "{ \"msg\": \"gros montant {{ upper(2.montant) }}\" }"
+              },
+              "metadata": { "designer": { "name": "Alerte gros montant" } }
+            }
+          ]
+        },
+        {
+          "filter": {
+            "name": "Petit montant",
+            "conditions": [[{ "a": "{{ 2.montant }}", "o": "number:less", "b": "1000" }]]
+          },
+          "flow": [
+            {
+              "id": 5,
+              "module": "http:ActionSendData",
+              "version": 3,
+              "mapper": {
+                "url": "https://api.example.com/log",
+                "method": "post",
+                "qs": [{ "name": "montant", "value": "{{ 2.montant }}" }]
+              },
+              "metadata": { "designer": { "name": "Log petit montant" } }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": { "version": 1, "scenario": { "roundtrips": 1 } }
+}

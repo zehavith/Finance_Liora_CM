@@ -1,0 +1,6 @@
+# Les vrais blueprints Make / workflows générés peuvent contenir des données
+# sensibles (URLs internes, ids, tokens en dur). On ne versionne que l'exemple.
+blueprints/*
+output/*
+!blueprints/exemple-webhook-http.json
+!output/exemple-webhook-http.n8n.json

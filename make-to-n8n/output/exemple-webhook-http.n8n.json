@@ -1,0 +1,237 @@
+{
+  "name": "Exemple — Webhook vers HTTP avec routeur",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reception-transaction",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "00000001-0007-400d-9011-000000000017",
+      "name": "Webhook Transaction",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "montant",
+              "name": "montant",
+              "type": "string",
+              "value": "={{ $node[\"Webhook Transaction\"].json.amount }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "00000002-000e-401a-a022-00000000002e",
+      "name": "Extraire montant",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        510,
+        200
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "00000003-0015-4027-b033-000000000045",
+      "name": "Routeur",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        770,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.example.com/alerte",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "contentType": "raw",
+        "body": "={ \"msg\": \"gros montant {{ ($node[\"Extraire montant\"].json.montant).toUpperCase() }}\" }"
+      },
+      "id": "00000004-001c-4034-8044-00000000005c",
+      "name": "Alerte gros montant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1030,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.example.com/log",
+        "method": "POST",
+        "options": {},
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "montant",
+              "value": "={{ $node[\"Extraire montant\"].json.montant }}"
+            }
+          ]
+        }
+      },
+      "id": "00000005-0023-4041-9055-000000000073",
+      "name": "Log petit montant",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1290,
+        200
+      ]
+    },
+    {
+      "id": "00000007-0031-405b-b077-0000000000a1",
+      "name": "Gros montant",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        250,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "00000006-002a-404e-a066-00000000008a",
+              "leftValue": "={{ $node[\"Extraire montant\"].json.montant }}",
+              "rightValue": "1000",
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "00000009-003f-4075-9099-0000000000cf",
+      "name": "Petit montant",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        510,
+        120
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "00000008-0038-4068-8088-0000000000b8",
+              "leftValue": "={{ $node[\"Extraire montant\"].json.montant }}",
+              "rightValue": "1000",
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Transaction": {
+      "main": [
+        [
+          {
+            "node": "Extraire montant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraire montant": {
+      "main": [
+        [
+          {
+            "node": "Routeur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routeur": {
+      "main": [
+        [
+          {
+            "node": "Gros montant",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Petit montant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gros montant": {
+      "main": [
+        [
+          {
+            "node": "Alerte gros montant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Petit montant": {
+      "main": [
+        [
+          {
+            "node": "Log petit montant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "migré-depuis-make"
+    }
+  ],
+  "meta": {
+    "migratedFrom": "make",
+    "sourceScenario": "Exemple — Webhook vers HTTP avec routeur"
+  }
+}
