@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import email
 import email.utils
+import hashlib
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -51,6 +52,17 @@ def _vers_fuseau_affichage(date: datetime) -> datetime:
     return date.astimezone()
 
 
+def maintenant() -> datetime:
+    """Instant présent dans le fuseau d'affichage.
+
+    Toujours « aware » : les dates des messages le sont, et les soustraire à
+    un `datetime.now()` naïf lèverait une exception en plein export.
+    """
+    if _fuseau_affichage is not None:
+        return datetime.now(tz=_fuseau_affichage)
+    return datetime.now().astimezone()
+
+
 definir_fuseau(FUSEAU_PAR_DEFAUT)
 
 
@@ -84,6 +96,17 @@ class MessageMail:
     images_inline: dict[str, PieceJointe] = field(default_factory=dict)
     brut: bytes = b""
     libelles: list[str] = field(default_factory=list)
+    # Boîtes où ce message a été trouvé : un même échange figure souvent dans
+    # billing@ et recouvrement@ à la fois (l'une en copie de l'autre).
+    boites: list[str] = field(default_factory=list)
+
+    @property
+    def cle_dedoublonnage(self) -> str:
+        """Le Message-ID est stable d'une boîte à l'autre, contrairement à
+        l'identifiant Gmail qui est propre à chaque boîte."""
+        if self.message_id:
+            return self.message_id.lower()
+        return hashlib.sha256(self.brut).hexdigest()
 
     @property
     def texte_recherchable(self) -> str:

@@ -31,14 +31,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from dossiers import Dossier, ErreurDossiers, lire_dossiers  # noqa: E402
-from gmail_api import ClientGmail, ErreurGmail  # noqa: E402
+import synthese as module_synthese  # noqa: E402
+from gmail_api import ErreurGmail, SourcesGmail, ouvrir_sources  # noqa: E402
 from indexation import (  # noqa: E402
     LigneIndex,
     ResumeDossier,
     ecrire_index_dossier,
     ecrire_recapitulatif,
 )
-from message import FUSEAU_PAR_DEFAUT, MessageMail, definir_fuseau  # noqa: E402
+from message import (  # noqa: E402
+    FUSEAU_PAR_DEFAUT,
+    MessageMail,
+    definir_fuseau,
+    maintenant,
+)
 from rendu import (  # noqa: E402
     chemin_relatif,
     construire_html_message,
@@ -110,9 +116,19 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         help="Clé JSON d'un compte de service (pour lire une boîte partagée).",
     )
     analyseur.add_argument(
-        "--boite",
+        "--boites",
         default=None,
-        help="Adresse de la boîte à lire ; obligatoire avec --compte-service.",
+        help=(
+            "Adresses des boîtes à lire, séparées par des virgules "
+            "(ex. billing@liora.io,recouvrement@liora.io). Les échanges présents "
+            "dans plusieurs boîtes ne sont retenus qu'une fois. Sans cette "
+            "option, la boîte du compte autorisé est utilisée."
+        ),
+    )
+    analyseur.add_argument(
+        "--sans-synthese",
+        action="store_true",
+        help="N'écrit pas la note de synthèse PDF de chaque dossier.",
     )
     analyseur.add_argument(
         "--simulation",
@@ -160,17 +176,20 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     return analyseur.parse_args(argv)
 
 
-def _sens_du_message(message: MessageMail, adresse_boite: str) -> str:
-    if adresse_boite and adresse_boite.lower() in (message.expediteur or "").lower():
+def _sens_du_message(message: MessageMail, domaines: set[str]) -> str:
+    """« envoyé » dès lors que l'expéditeur appartient au domaine des boîtes
+    interrogées : un courrier parti de billing@ ou du compte d'un collègue
+    reste un courrier émis par Liora, pas une réponse de l'apprenante."""
+    expediteur = (message.expediteur or "").lower()
+    if any(f"@{domaine}" in expediteur for domaine in domaines):
         return "envoyé"
     return "reçu"
 
 
 def traiter_dossier(
     dossier: Dossier,
-    client: ClientGmail,
+    sources: SourcesGmail,
     racine_sortie: Path,
-    adresse_boite: str,
     options: argparse.Namespace,
     journal: Journal,
 ) -> ResumeDossier:
@@ -192,7 +211,7 @@ def traiter_dossier(
         resume.statut = "ignoré (déjà exporté)"
         return resume
 
-    identifiants = client.rechercher_identifiants(
+    identifiants = sources.identifiants_dossier(
         requete,
         inclure_spam_corbeille=not options.sans_spam,
         plafond=options.max_mails,
@@ -221,12 +240,14 @@ def traiter_dossier(
 
     dossier_mails = repertoire / "mails"
     dossier_pj = repertoire / "pieces-jointes"
-    date_export = datetime.now()
+    date_export = maintenant()
+    adresses_sources = ", ".join(sources.adresses)
 
-    messages = sorted(
-        client.recuperer_messages(identifiants), key=lambda message: message.date
-    )
+    messages, doublons = sources.messages(identifiants)
+    resume.nb_mails = len(messages)
+    resume.doublons_ecartes = doublons
 
+    textes_par_piece: dict[int, str] = {}
     lignes: list[LigneIndex] = []
     for numero, message in enumerate(messages, start=1):
         base = nom_de_base(message, numero)
@@ -234,7 +255,11 @@ def traiter_dossier(
         chemin_eml = ecrire_eml(message, dossier_mails, base)
 
         contenu_html = construire_html_message(
-            message, numero, dossier.reference or dossier.nom, adresse_boite, date_export
+            message,
+            numero,
+            dossier.reference or dossier.nom,
+            " / ".join(message.boites) or adresses_sources,
+            date_export,
         )
         chemin_pdf = dossier_mails / f"{base}.pdf"
         pdf_ok, _moteur = ecrire_pdf(contenu_html, chemin_pdf)
@@ -244,12 +269,13 @@ def traiter_dossier(
         pieces_ecrites = ecrire_pieces_jointes(message, dossier_pj, base)
         resume.nb_pieces_jointes += len(pieces_ecrites)
 
-        sens = _sens_du_message(message, adresse_boite)
+        sens = _sens_du_message(message, sources.domaines)
         if sens == "envoyé":
             resume.nb_envoyes += 1
         else:
             resume.nb_recus += 1
         resume.dates.append(message.date)
+        textes_par_piece[numero] = message.corps_texte or message.corps_html or ""
 
         lignes.append(
             LigneIndex(
@@ -263,6 +289,7 @@ def traiter_dossier(
                 nb_pieces_jointes=len(message.pieces_jointes),
                 pieces_jointes=" | ".join(pj.nom for pj in message.pieces_jointes),
                 critere=dossier.criteres_trouves(message.texte_recherchable),
+                boites=" | ".join(message.boites),
                 fichier_pdf=chemin_relatif(
                     chemin_pdf if pdf_ok else chemin_pdf.with_suffix(".html"), repertoire
                 ),
@@ -277,15 +304,57 @@ def traiter_dossier(
 
     ecrire_index_dossier(chemin_index, lignes)
 
+    analyse = module_synthese.analyser(lignes, textes_par_piece, doublons)
+    _reporter_synthese(resume, analyse, date_export)
+
+    if not options.sans_synthese:
+        contenu = module_synthese.construire_html(
+            reference=dossier.reference,
+            nom=dossier.nom,
+            emails=" | ".join(dossier.emails),
+            factures=" | ".join(dossier.factures),
+            boites=sources.adresses,
+            lignes=lignes,
+            synthese=analyse,
+            date_export=date_export,
+        )
+        if not ecrire_pdf(contenu, repertoire / "synthese.pdf")[0]:
+            resume.pdf_en_echec += 1
+
     detail = (
         f"    {resume.nb_mails} message(s) — {resume.nb_recus} reçu(s), "
         f"{resume.nb_envoyes} envoyé(s), {resume.nb_pieces_jointes} pièce(s) jointe(s)"
     )
+    if doublons:
+        detail += f", {doublons} doublon(s) inter-boîtes écarté(s)"
     if resume.pdf_en_echec:
         detail += f" — ⚠ {resume.pdf_en_echec} PDF non généré(s), HTML conservé"
     journal(detail)
 
     return resume
+
+
+def _reporter_synthese(
+    resume: ResumeDossier, analyse: module_synthese.Synthese, reference_temps: datetime
+) -> None:
+    """Recopie dans le récapitulatif global les faits qui permettent d'arbitrer
+    entre 40 dossiers sans ouvrir chaque note."""
+    demeure = analyse.dernier_evenement("Mise en demeure")
+    resume.mise_en_demeure = f"{demeure.date:%d/%m/%Y}" if demeure else "non"
+
+    contestation = analyse.premier_evenement("Contestation")
+    resume.contestation = f"{contestation.date:%d/%m/%Y}" if contestation else "non"
+
+    echeancier = analyse.premier_evenement("Échéancier évoqué")
+    resume.echeancier = f"{echeancier.date:%d/%m/%Y}" if echeancier else "non"
+
+    if analyse.derniere_reponse is not None:
+        resume.derniere_reponse = f"{analyse.derniere_reponse:%d/%m/%Y}"
+    else:
+        resume.derniere_reponse = "aucune"
+
+    silence = analyse.jours_depuis(analyse.dernier, reference_temps)
+    resume.jours_sans_echange = "" if silence is None else str(silence)
 
 
 def ecrire_note_methode(
@@ -301,15 +370,20 @@ def ecrire_note_methode(
 ============================================
 
 Date de l'export : {datetime.now().strftime('%d/%m/%Y à %H:%M')}
-Boîte source     : {adresse_boite}
+Boîte(s) source  : {adresse_boite}
 Dossiers traités : {nb_dossiers}
 Périmètre        : {perimetre}
 Heures indiquées : {fuseau}
 
 CONTENU D'UN RÉPERTOIRE DE DOSSIER
 ----------------------------------
+synthese.pdf      Note de synthèse : chiffres clés, constats, événements
+                  repérés et chronologie. Établie automatiquement à partir
+                  des seuls messages extraits ; chaque constat renvoie à un
+                  numéro de pièce. À relire avant transmission.
 index.csv         Chronologie des échanges : une ligne par message, numérotée
-                  (pièce n° 1, 2, 3...) dans l'ordre chronologique.
+                  (pièce n° 1, 2, 3...) dans l'ordre chronologique. La colonne
+                  « boites » indique de quelle boîte provient chaque message.
 mails/            Pour chaque message, deux fichiers de même nom :
                     .eml  message d'origine complet, en-têtes techniques
                           inclus (horodatage serveur, chemin de remise).
@@ -368,14 +442,20 @@ def executer(options: argparse.Namespace) -> int:
 
         journal(f"{len(liste)} dossier(s) à traiter depuis {options.dossiers}")
 
-        client = ClientGmail(
+        boites = [
+            adresse.strip()
+            for adresse in (options.boites or "").split(",")
+            if adresse.strip()
+        ]
+        sources = ouvrir_sources(
+            boites=boites,
             fichier_credentials=options.credentials,
             fichier_token=options.token,
             fichier_compte_service=options.compte_service,
-            boite=options.boite,
+            signaler=journal,
         )
-        adresse_boite = client.adresse_boite
-        journal(f"Boîte interrogée : {adresse_boite}")
+        adresse_boite = ", ".join(sources.adresses)
+        journal(f"Boîte(s) interrogée(s) : {adresse_boite}")
 
         if not options.simulation:
             journal(f"Moteur PDF : {moteur_pdf_disponible()}")
@@ -390,9 +470,7 @@ def executer(options: argparse.Namespace) -> int:
             journal(f"[{position}/{len(liste)}] {dossier.reference} — {etiquette}")
             try:
                 resumes.append(
-                    traiter_dossier(
-                        dossier, client, racine_sortie, adresse_boite, options, journal
-                    )
+                    traiter_dossier(dossier, sources, racine_sortie, options, journal)
                 )
             except (ErreurGmail, OSError) as exc:
                 echecs += 1

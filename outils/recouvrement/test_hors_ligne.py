@@ -12,13 +12,15 @@ from __future__ import annotations
 
 import sys
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from dossiers import ErreurDossiers, lire_dossiers  # noqa: E402
+from indexation import LigneIndex  # noqa: E402
+from synthese import analyser, rediger_constats  # noqa: E402
 from message import lire_message  # noqa: E402
 from rendu import (  # noqa: E402
     construire_html_message,
@@ -271,34 +273,62 @@ def test_pdf_image_cassee() -> None:
             verifier(chemin_pdf.read_bytes()[:5] == b"%PDF-", "fichier PDF valide")
 
 
-class ClientFictif:
-    """Remplace l'accès Gmail : renvoie deux messages pour le dossier dont la
-    requête cite marie.dupont, aucun pour les autres."""
+def _reponse_apprenante() -> EmailMessage:
+    """Réponse de l'apprenante, antérieure à la mise en demeure, sollicitant
+    un échéancier."""
+    msg = EmailMessage()
+    msg["From"] = "Marie Dupont <marie.dupont@exemple.fr>"
+    msg["To"] = "recouvrement@liora.io"
+    msg["Subject"] = "Re: facture FA-2024-0153"
+    msg["Date"] = "Mon, 04 Mar 2024 08:00:00 +0100"
+    msg["Message-ID"] = "<reponse-apprenante@exemple.fr>"
+    msg.set_content(
+        "Bonjour, puis-je échelonner le paiement en trois mensualités ? "
+        "Je traverse des difficultés financières."
+    )
+    return msg
 
-    def __init__(self, **_):
-        pass
+
+def _message_variante(identifiant: str) -> EmailMessage:
+    """m1 : mise en demeure émise par Liora, avec pièce jointe.
+    m2 : réponse de l'apprenante, plus ancienne.
+    m1 est servi par les deux boîtes — c'est le doublon à écarter."""
+    return _reponse_apprenante() if identifiant == "m2" else message_de_test()
+
+
+class ClientFictif:
+    """Remplace une boîte Gmail. `boite` détermine ce qu'elle contient."""
+
+    def __init__(self, boite="recouvrement@liora.io", messages=("m1", "m2"), **_):
+        self._boite = boite
+        self._messages = list(messages)
 
     @property
     def adresse_boite(self) -> str:
-        return "recouvrement@liora.io"
+        return self._boite
 
     def rechercher_identifiants(self, requete, inclure_spam_corbeille=True, plafond=None):
-        return ["m1", "m2"] if "marie.dupont" in requete else []
+        return list(self._messages) if "marie.dupont" in requete else []
 
     def recuperer_messages(self, identifiants):
         for identifiant in identifiants:
-            msg = message_de_test()
-            if identifiant == "m2":
-                # Deuxième message, plus ancien : vérifie le tri chronologique.
-                del msg["Date"], msg["Subject"], msg["From"], msg["To"]
-                msg["Date"] = "Mon, 04 Mar 2024 08:00:00 +0100"
-                msg["Subject"] = "Premier envoi facture FA-2024-0153"
-                msg["From"] = "Marie Dupont <marie.dupont@exemple.fr>"
-                msg["To"] = "recouvrement@liora.io"
-            yield lire_message(
+            message = lire_message(
                 {"id": identifiant, "threadId": "t1", "internalDate": "1710231243000"},
-                msg.as_bytes(),
+                _message_variante(identifiant).as_bytes(),
             )
+            message.boites = [self._boite]
+            yield message
+
+
+def _sources_fictives(**_):
+    """billing@ ne détient que la mise en demeure, déjà présente dans
+    recouvrement@ : elle doit être reconnue comme un doublon."""
+    from gmail_api import SourcesGmail  # noqa: PLC0415
+
+    return SourcesGmail([
+        ClientFictif("recouvrement@liora.io", ["m1", "m2"]),
+        ClientFictif("billing@liora.io", ["m1"]),
+    ])
 
 
 def test_export_complet() -> None:
@@ -308,8 +338,8 @@ def test_export_complet() -> None:
 
     import export_mails  # noqa: PLC0415
 
-    vrai_client = export_mails.ClientGmail
-    export_mails.ClientGmail = ClientFictif
+    vraies_sources = export_mails.ouvrir_sources
+    export_mails.ouvrir_sources = _sources_fictives
     try:
         with tempfile.TemporaryDirectory() as repertoire:
             racine = Path(repertoire)
@@ -336,8 +366,8 @@ def test_export_complet() -> None:
                 "2 fichiers .eml écrits",
             )
             verifier(
-                len(list((dossier1 / "pieces-jointes").rglob("*.pdf"))) == 2,
-                "pièces jointes extraites pour les 2 messages",
+                len(list((dossier1 / "pieces-jointes").rglob("*.pdf"))) == 1,
+                "pièce jointe extraite (seule la mise en demeure en porte une)",
             )
 
             rangees = list(
@@ -357,6 +387,16 @@ def test_export_complet() -> None:
             verifier(
                 rangees[0]["critere"] == "adresse+facture", "critère de rattachement renseigné"
             )
+            verifier(
+                set(rangees[1]["boites"].split(" | "))
+                == {"recouvrement@liora.io", "billing@liora.io"},
+                "message présent dans les deux boîtes : les deux sont citées",
+            )
+            verifier(
+                (dossier1 / "synthese.pdf").exists()
+                or (dossier1 / "synthese.html").exists(),
+                "note de synthèse générée",
+            )
 
             dossier2 = sortie / "2024-119_introuvable-personne"
             verifier(
@@ -371,7 +411,27 @@ def test_export_complet() -> None:
                 )
             )
             verifier(len(recap) == 2, "_recapitulatif.csv : une ligne par dossier")
-            verifier(recap[0]["nb_mails"] == "2", "récapitulatif : nombre de messages")
+            verifier(recap[0]["nb_mails"] == "2", "récapitulatif : messages dédoublonnés")
+            verifier(
+                recap[0]["doublons_ecartes"] == "1",
+                "récapitulatif : doublon inter-boîtes décompté",
+            )
+            verifier(
+                recap[0]["mise_en_demeure"] == "non",
+                "récapitulatif : absence de mise en demeure signalée",
+            )
+            verifier(
+                recap[0]["echeancier"] == "04/03/2024",
+                "récapitulatif : demande d'échéancier repérée",
+            )
+            verifier(
+                recap[0]["contestation"] == "non",
+                "récapitulatif : absence de contestation signalée",
+            )
+            verifier(
+                recap[0]["derniere_reponse"] == "04/03/2024",
+                "récapitulatif : dernière réponse de l'apprenante",
+            )
             verifier(
                 recap[0]["premier_mail"] == "04/03/2024"
                 and recap[0]["dernier_mail"] == "12/03/2024",
@@ -407,7 +467,90 @@ def test_export_complet() -> None:
                 "--reprendre : dossier déjà exporté ignoré",
             )
     finally:
-        export_mails.ClientGmail = vrai_client
+        export_mails.ouvrir_sources = vraies_sources
+
+
+def _ligne(piece: int, jour: int, sens: str, objet: str) -> LigneIndex:
+    return LigneIndex(
+        piece_n=piece,
+        date=datetime(2025, 3, jour, 10, 0, tzinfo=timezone(timedelta(hours=1))),
+        sens=sens,
+        expediteur="x@y.fr",
+        destinataires="z@w.fr",
+        copie="",
+        objet=objet,
+        nb_pieces_jointes=0,
+        pieces_jointes="",
+        critere="adresse",
+        boites="recouvrement@liora.io",
+        fichier_pdf="",
+        fichier_eml="",
+        dossier_pieces_jointes="",
+        thread_id="t",
+        message_id=f"<m{piece}>",
+    )
+
+
+def test_synthese() -> None:
+    """Détection des événements et rédaction des constats."""
+    print("\nNote de synthèse")
+    reference = datetime(2025, 4, 20, tzinfo=timezone(timedelta(hours=1)))
+
+    lignes = [
+        _ligne(1, 3, "envoyé", "Votre facture FA-2024-0153"),
+        _ligne(2, 5, "reçu", "Re: votre facture"),
+        _ligne(3, 8, "envoyé", "Relance — facture reste impayée"),
+        _ligne(4, 12, "reçu", "Absence du bureau"),
+        _ligne(5, 15, "envoyé", "Mise en demeure de régler"),
+    ]
+    textes = {
+        1: "Veuillez trouver la facture correspondant à votre formation.",
+        2: "Puis-je étaler le paiement en plusieurs fois ? Je suis au chômage.",
+        3: "La somme reste impayée à ce jour.",
+        4: "Je suis absente jusqu'au 20 mars. Réponse automatique.",
+        5: "Nous vous mettons en demeure de régler sous quinze jours.",
+    }
+
+    analyse = analyser(lignes, textes, doublons=2)
+    libelles = {ev.libelle for ev in analyse.evenements}
+
+    verifier("Envoi de facture" in libelles, "envoi de facture repéré")
+    verifier("Échéancier évoqué" in libelles, "demande d'échéancier repérée")
+    verifier("Difficultés financières invoquées" in libelles, "difficultés financières repérées")
+    verifier("Relance" in libelles, "relance repérée")
+    verifier("Mise en demeure" in libelles, "mise en demeure repérée")
+    verifier("Contestation" not in libelles, "aucune contestation inventée")
+
+    verifier(
+        analyse.derniere_reponse is not None and analyse.derniere_reponse.day == 5,
+        "réponse automatique non comptée comme réponse de l'apprenante",
+    )
+    verifier(analyse.nb_envoyes == 3 and analyse.nb_recus == 2, "décompte par sens")
+    verifier(analyse.doublons_ecartes == 2, "doublons inter-boîtes reportés")
+
+    constats = " ".join(rediger_constats(analyse, reference))
+    verifier("pièce n° 5" in constats, "constat de mise en demeure rattaché à sa pièce")
+    verifier(
+        "Aucune contestation" in constats,
+        "absence de contestation formulée explicitement",
+    )
+    # Du 15/03 à 10h00 au 20/04 à 00h00 : 35 jours pleins.
+    verifier("35 jours" in constats, "silence calculé depuis le dernier échange")
+
+    print("\nNote de synthèse — dossier sans aucune réponse")
+    muet = analyser(
+        [_ligne(1, 3, "envoyé", "Relance"), _ligne(2, 9, "envoyé", "Relance")],
+        {1: "reste impayé", 2: "reste impayé"},
+    )
+    constats_muet = " ".join(rediger_constats(muet, reference))
+    verifier(
+        "Aucune réponse de l'apprenante" in constats_muet,
+        "silence total de l'apprenante signalé",
+    )
+    verifier(
+        "Aucune mise en demeure" in constats_muet,
+        "absence de mise en demeure signalée comme point à vérifier",
+    )
 
 
 def test_slug() -> None:
@@ -425,6 +568,7 @@ def main() -> int:
     test_dossiers()
     test_export_monday()
     test_nettoyage_html()
+    test_synthese()
     test_slug()
     test_rendu_message()
     test_pdf_image_cassee()

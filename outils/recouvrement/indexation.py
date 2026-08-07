@@ -24,6 +24,7 @@ COLONNES_INDEX = [
     "nb_pieces_jointes",
     "pieces_jointes",
     "critere",
+    "boites",
     "fichier_pdf",
     "fichier_eml",
     "dossier_pieces_jointes",
@@ -42,6 +43,13 @@ COLONNES_RECAP = [
     "premier_mail",
     "dernier_mail",
     "nb_pieces_jointes",
+    # Colonnes de tri pour arbitrer sur l'ensemble des dossiers d'un coup d'œil.
+    "mise_en_demeure",
+    "contestation",
+    "echeancier",
+    "derniere_reponse",
+    "jours_sans_echange",
+    "doublons_ecartes",
     "pdf_en_echec",
     "statut",
     "repertoire",
@@ -61,6 +69,7 @@ class LigneIndex:
     nb_pieces_jointes: int
     pieces_jointes: str
     critere: str
+    boites: str
     fichier_pdf: str
     fichier_eml: str
     dossier_pieces_jointes: str
@@ -80,6 +89,7 @@ class LigneIndex:
             "nb_pieces_jointes": str(self.nb_pieces_jointes),
             "pieces_jointes": self.pieces_jointes,
             "critere": self.critere,
+            "boites": self.boites,
             "fichier_pdf": self.fichier_pdf,
             "fichier_eml": self.fichier_eml,
             "dossier_pieces_jointes": self.dossier_pieces_jointes,
@@ -103,6 +113,12 @@ class ResumeDossier:
     nb_pieces_jointes: int = 0
     pdf_en_echec: int = 0
     dates: list[datetime] = field(default_factory=list)
+    mise_en_demeure: str = ""
+    contestation: str = ""
+    echeancier: str = ""
+    derniere_reponse: str = ""
+    jours_sans_echange: str = ""
+    doublons_ecartes: int = 0
 
     def en_rangee(self) -> dict[str, str]:
         return {
@@ -116,6 +132,12 @@ class ResumeDossier:
             "premier_mail": min(self.dates).strftime("%d/%m/%Y") if self.dates else "",
             "dernier_mail": max(self.dates).strftime("%d/%m/%Y") if self.dates else "",
             "nb_pieces_jointes": str(self.nb_pieces_jointes),
+            "mise_en_demeure": self.mise_en_demeure,
+            "contestation": self.contestation,
+            "echeancier": self.echeancier,
+            "derniere_reponse": self.derniere_reponse,
+            "jours_sans_echange": self.jours_sans_echange,
+            "doublons_ecartes": str(self.doublons_ecartes),
             "pdf_en_echec": str(self.pdf_en_echec),
             "statut": self.statut,
             "repertoire": self.repertoire,

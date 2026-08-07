@@ -13,6 +13,7 @@ supprimer, ni modifier quoi que ce soit.
 ```
 export/
 ├── 2024-118_marie-dupont/
+│   ├── synthese.pdf                 note de synthèse du dossier
 │   ├── index.csv                    chronologie numérotée des échanges
 │   ├── mails/
 │   │   ├── 001_2024-10-15_1022_recouvrement_facture-fa-2024-0153.eml
@@ -38,6 +39,40 @@ Pour chaque message, deux fichiers portant le même nom :
 Les fichiers sont numérotés dans l'ordre chronologique : `001`, `002`, `003`…
 Ce numéro est le **numéro de pièce** repris dans `index.csv` et dans le
 bandeau du PDF, ce qui permet de citer directement « pièce n° 3 ».
+
+### La note de synthèse
+
+`synthese.pdf` récapitule le dossier en une à deux pages : identification,
+chiffres clés, **constats**, événements repérés et chronologie complète.
+
+Son contenu est **entièrement déduit des messages extraits**, jamais rédigé
+librement. Chaque constat renvoie à un numéro de pièce vérifiable :
+
+> *2 relance(s) ont été adressées à l'apprenante (pièces n° 4, n° 5), la
+> dernière le 05/02/2025.*
+> *Aucune contestation du montant ou de la prestation n'apparaît dans les
+> échanges extraits.*
+
+Les événements — envoi de facture, relance, mise en demeure, échéancier
+évoqué, contestation, annonce de paiement, difficultés financières invoquées,
+transmission au contentieux — sont repérés par correspondance de formulations
+dans l'objet et le corps des messages. Les réponses automatiques (absence du
+bureau, échec de remise) sont exclues du décompte des réponses de l'apprenante.
+
+**Deux limites, énoncées aussi dans le PDF lui-même :**
+
+- la détection repose sur des formulations courantes ; un message rédigé
+  autrement peut ne pas être reconnu, et la liste des événements peut donc
+  être incomplète ;
+- ce n'est pas une analyse juridique. La note doit être relue avant
+  transmission, en vérifiant les pièces citées.
+
+Aucune donnée n'est envoyée à un service tiers pour produire cette note :
+tout est calculé sur le poste. C'est un choix assumé — le contenu d'un dossier
+contentieux n'a pas à transiter par un service externe, et un texte rédigé
+automatiquement ne serait pas vérifiable pièce par pièce.
+
+`--sans-synthese` désactive cette génération.
 
 ## Mise en place (une seule fois)
 
@@ -190,19 +225,54 @@ et de pièces jointes.
 | `--sans-spam` | Exclut spam et corbeille, inclus par défaut. |
 | `--ignorer-lignes-incompletes` | Passe les lignes sans adresse ni facture (lignes de groupe Monday) au lieu de s'arrêter. Les lignes écartées sont listées. |
 | `--fuseau ZONE` | Fuseau d'affichage des dates (défaut : `Europe/Paris`). |
-| `--boite ADRESSE` + `--compte-service CLE.json` | Lire une boîte partagée (voir ci-dessous). |
+| `--boites A,B` | Boîtes à lire, séparées par des virgules. Les doublons entre boîtes sont écartés. |
+| `--sans-synthese` | N'écrit pas la note de synthèse PDF de chaque dossier. |
+| `--compte-service CLE.json` | Lire des boîtes partagées via un compte de service (voir ci-dessous). |
 
-### Lire une boîte partagée
-
-Pour extraire depuis une boîte commune (`recouvrement@liora.io`) plutôt que
-depuis votre compte personnel, il faut un **compte de service avec délégation
-à l'échelle du domaine**, créé par l'administrateur Google Workspace, autorisé
-sur la portée `https://www.googleapis.com/auth/gmail.readonly` :
+### Lire plusieurs boîtes (billing@ et recouvrement@)
 
 ```bash
 python export_mails.py --dossiers dossiers.csv \
-    --compte-service cle-service.json --boite recouvrement@liora.io
+    --boites billing@liora.io,recouvrement@liora.io
 ```
+
+Chaque dossier réunit alors les échanges des deux boîtes. Un même message
+présent des deux côtés — le cas courant quand l'une est en copie de l'autre —
+n'est **écrit qu'une fois**, en mémorisant les deux provenances. Le
+dédoublonnage s'appuie sur l'en-tête `Message-ID`, stable d'une boîte à
+l'autre, et non sur l'identifiant Gmail qui diffère. La colonne `boites` de
+`index.csv` indique l'origine de chaque pièce, et `_recapitulatif.csv`
+comptabilise les doublons écartés.
+
+Deux façons d'y accéder, selon ce dont vous disposez :
+
+**1. Vous pouvez vous connecter à chaque boîte** (vous en avez les
+identifiants). Aucune intervention d'un administrateur n'est nécessaire : le
+navigateur s'ouvre une fois par boîte, et vous vous connectez à chaque fois
+avec le compte correspondant. Un jeton distinct est mémorisé par boîte
+(`token-billing-liora-io.json`, `token-recouvrement-liora-io.json`).
+
+> Le script vérifie que le compte réellement autorisé est bien celui demandé.
+> Si vous vous connectez par erreur avec un autre compte, il s'arrête et vous
+> indique quel fichier de jeton supprimer — plutôt que d'exporter en silence
+> le contenu de la mauvaise boîte.
+
+**2. Les boîtes vous sont déléguées dans Gmail** (elles apparaissent dans
+votre interface, mais vous n'avez pas leurs mots de passe). La délégation
+Gmail **ne fonctionne pas** avec l'API : un jeton personnel ne permet pas de
+lire une boîte déléguée. Il faut alors un **compte de service avec délégation
+à l'échelle du domaine**, créé par l'administrateur Google Workspace et
+autorisé sur la portée `https://www.googleapis.com/auth/gmail.readonly` :
+
+```bash
+python export_mails.py --dossiers dossiers.csv \
+    --compte-service cle-service.json \
+    --boites billing@liora.io,recouvrement@liora.io
+```
+
+C'est le seul cas qui impose de passer par un administrateur — mais c'est
+aussi le plus confortable ensuite : une clé unique, aucune connexion
+navigateur, et l'ajout d'une boîte supplémentaire ne coûte rien.
 
 ## Comment les messages sont retrouvés
 

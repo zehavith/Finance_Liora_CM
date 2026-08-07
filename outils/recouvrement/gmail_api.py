@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import os
+import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Iterator
 
@@ -34,7 +36,18 @@ def _importer_dependances():
     return build, HttpError
 
 
-def _identifiants_utilisateur(fichier_credentials: Path, fichier_token: Path):
+def fichier_token_de_boite(fichier_token: Path, boite: str | None) -> Path:
+    """Un jeton par boîte : billing@ et recouvrement@ sont deux comptes
+    distincts, chacun avec sa propre autorisation."""
+    if not boite:
+        return fichier_token
+    prefixe = re.sub(r"[^a-z0-9]+", "-", boite.lower()).strip("-")
+    return fichier_token.with_name(f"{fichier_token.stem}-{prefixe}{fichier_token.suffix}")
+
+
+def _identifiants_utilisateur(
+    fichier_credentials: Path, fichier_token: Path, boite: str | None = None
+):
     """Flux OAuth « application de bureau » : ouvre le navigateur au premier
     lancement, puis réutilise le jeton stocké."""
     from google.auth.transport.requests import Request  # noqa: PLC0415
@@ -60,11 +73,12 @@ def _identifiants_utilisateur(fichier_credentials: Path, fichier_token: Path):
                 "Voir la section « Mise en place » du README."
             )
         flux = InstalledAppFlow.from_client_secrets_file(str(fichier_credentials), PORTEES)
+        precision = f" en tant que {boite}" if boite else ""
         identifiants = flux.run_local_server(
             port=0,
             authorization_prompt_message=(
-                "Ouvrez cette adresse dans votre navigateur pour autoriser "
-                "l'accès en lecture à la boîte :\n{url}"
+                f"Ouvrez cette adresse dans votre navigateur et connectez-vous"
+                f"{precision} pour autoriser l'accès en lecture :\n{{url}}"
             ),
             success_message=(
                 "Autorisation accordée. Vous pouvez fermer cet onglet et "
@@ -106,26 +120,47 @@ class ClientGmail:
         if fichier_compte_service is not None:
             if not boite:
                 raise ErreurGmail(
-                    "L'option --boite est obligatoire avec un compte de service "
-                    "(adresse de la boîte à lire)."
+                    "L'option --boites est obligatoire avec un compte de service "
+                    "(adresse des boîtes à lire)."
                 )
             identifiants = _identifiants_compte_service(fichier_compte_service, boite)
         else:
-            identifiants = _identifiants_utilisateur(fichier_credentials, fichier_token)
+            identifiants = _identifiants_utilisateur(
+                fichier_credentials, fichier_token_de_boite(fichier_token, boite), boite
+            )
 
         self._service = build("gmail", "v1", credentials=identifiants, cache_discovery=False)
+        self._adresse: str | None = None
         self.boite = boite or "me"
+
+        # Garde-fou : au moment de l'autorisation dans le navigateur, rien
+        # n'empêche de se connecter avec le mauvais compte. Sans cette
+        # vérification, l'export porterait silencieusement sur une autre boîte.
+        if boite:
+            reelle = self.adresse_boite
+            if reelle.lower() != boite.lower():
+                jeton = fichier_token_de_boite(fichier_token, boite)
+                raise ErreurGmail(
+                    f"Boîte demandée : {boite}\n"
+                    f"Boîte réellement autorisée : {reelle}\n"
+                    f"Supprimez le fichier {jeton.name} puis relancez, en vous "
+                    f"connectant cette fois avec le compte {boite}."
+                )
+        self.boite = boite or self.adresse_boite
 
     @property
     def adresse_boite(self) -> str:
         """Adresse réellement interrogée, pour tracer l'origine de l'export."""
+        if self._adresse is not None:
+            return self._adresse
         try:
             profil = self._service.users().getProfile(userId="me").execute(
                 num_retries=NB_RETENTATIVES
             )
-            return profil.get("emailAddress", self.boite)
+            self._adresse = profil.get("emailAddress", self.boite)
         except Exception:  # noqa: BLE001 - purement informatif
-            return self.boite
+            self._adresse = self.boite
+        return self._adresse
 
     def rechercher_identifiants(
         self,
@@ -179,4 +214,90 @@ class ClientGmail:
                 ) from exc
 
             brut = base64.urlsafe_b64decode(reponse["raw"].encode("ascii"))
-            yield lire_message(reponse, brut)
+            message = lire_message(reponse, brut)
+            message.boites = [self.boite]
+            yield message
+
+
+class SourcesGmail:
+    """Plusieurs boîtes interrogées comme une seule source.
+
+    Un même échange se retrouve fréquemment dans billing@ et recouvrement@
+    (l'une en copie de l'autre) : il n'est écrit qu'une fois au dossier, en
+    mémorisant les deux boîtes d'origine.
+    """
+
+    def __init__(self, clients: list[ClientGmail]):
+        if not clients:
+            raise ErreurGmail("Aucune boîte à interroger.")
+        self.clients = clients
+
+    @property
+    def adresses(self) -> list[str]:
+        return [client.adresse_boite for client in self.clients]
+
+    @property
+    def domaines(self) -> set[str]:
+        return {
+            adresse.split("@")[-1].lower() for adresse in self.adresses if "@" in adresse
+        }
+
+    def identifiants_dossier(
+        self, requete: str, inclure_spam_corbeille: bool = True, plafond: int | None = None
+    ) -> list[tuple[ClientGmail, str]]:
+        trouves: list[tuple[ClientGmail, str]] = []
+        for client in self.clients:
+            restant = None if plafond is None else max(0, plafond - len(trouves))
+            if restant == 0:
+                break
+            for identifiant in client.rechercher_identifiants(
+                requete, inclure_spam_corbeille, restant
+            ):
+                trouves.append((client, identifiant))
+        return trouves
+
+    def messages(
+        self, paires: list[tuple[ClientGmail, str]]
+    ) -> tuple[list[MessageMail], int]:
+        """Retourne les messages dédoublonnés et le nombre de doublons écartés."""
+        par_cle: dict[str, MessageMail] = {}
+        doublons = 0
+
+        for client in self.clients:
+            identifiants = [
+                identifiant for source, identifiant in paires if source is client
+            ]
+            for message in client.recuperer_messages(identifiants):
+                cle = message.cle_dedoublonnage
+                existant = par_cle.get(cle)
+                if existant is None:
+                    par_cle[cle] = message
+                    continue
+                doublons += 1
+                for boite in message.boites:
+                    if boite not in existant.boites:
+                        existant.boites.append(boite)
+
+        return sorted(par_cle.values(), key=lambda message: message.date), doublons
+
+
+def ouvrir_sources(
+    boites: list[str],
+    fichier_credentials: Path,
+    fichier_token: Path,
+    fichier_compte_service: Path | None,
+    signaler: Callable[[str], None] | None = None,
+) -> SourcesGmail:
+    clients = []
+    for boite in boites or [None]:
+        if signaler and boite:
+            signaler(f"Ouverture de la boîte {boite}…")
+        clients.append(
+            ClientGmail(
+                fichier_credentials=fichier_credentials,
+                fichier_token=fichier_token,
+                fichier_compte_service=fichier_compte_service,
+                boite=boite,
+            )
+        )
+    return SourcesGmail(clients)
