@@ -19,6 +19,9 @@ outils/recouvrement/credentials.json
 outils/recouvrement/token.json
 outils/recouvrement/*service*.json
 outils/recouvrement/dossiers.csv
+outils/recouvrement/dossiers.xlsx
+outils/recouvrement/*.xlsx
+outils/recouvrement/*.xlsm
 export/
 outils/recouvrement/export/
 __pycache__/

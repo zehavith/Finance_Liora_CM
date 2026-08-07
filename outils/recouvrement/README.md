@@ -134,7 +134,8 @@ détecté sur le poste.
 
 ## Préparer la liste des dossiers
 
-Créer un fichier `dossiers.csv` sur le modèle de `dossiers.exemple.csv` :
+Le fichier peut être un **`.xlsx`** (export Monday ou Excel) ou un **`.csv`**.
+Format minimal, sur le modèle de `dossiers.exemple.csv` :
 
 ```csv
 reference;nom;email;facture;date_debut;date_fin
@@ -163,15 +164,44 @@ intitulés de colonnes courants (`mail`, `adresse mail`, `numero facture`,
 
 ### Depuis un tableau Monday
 
-L'export Monday s'utilise **tel quel**, sans retouche : depuis le tableau,
-menu `⋯` → *Export board to Excel*, puis enregistrer en CSV.
+L'export Monday s'utilise **tel quel**, sans aucune retouche ni conversion :
+depuis le tableau, menu `⋯` → *Export board to Excel*, puis
 
-Deux particularités de ces exports sont gérées automatiquement :
+```bash
+python export_mails.py --dossiers "2.1. Financement Personnel.xlsx" --simulation
+```
 
-- le fichier commence par le nom du tableau et une ligne vide avant les
-  véritables intitulés de colonnes — la ligne d'en-tête est retrouvée seule ;
-- la première colonne s'appelle `Name` et contient le nom de l'apprenante —
-  elle est reconnue comme tel.
+Le `.xlsx` est lu directement ; le CSV reste accepté. Les particularités de
+ces exports sont gérées automatiquement :
+
+- le fichier commence par le nom du tableau puis celui du groupe : les
+  intitulés de colonnes n'arrivent qu'en troisième ligne, elle est retrouvée
+  seule ;
+- la colonne `Name` porte selon les tableaux le nom de l'apprenante ou le
+  numéro de facture. Quand une colonne plus explicite existe — `Nom & Prénom
+  de l'apprenant` — c'est elle qui l'emporte ;
+- **plusieurs colonnes d'adresses sont réunies** : `E-mail` et `E-mail GCard`
+  alimentent toutes deux la recherche, les doublons étant retirés. Idem pour
+  les colonnes de numéros de facture ;
+- à défaut de colonne de référence de dossier, le **numéro de facture** sert
+  d'identifiant, ce qui donne des répertoires parlants
+  (`fact-2405-00030_aissata-conte`) ;
+- les **lignes de total de groupe** ajoutées par Monday, qui ne contiennent
+  que des plages de dates, sont écartées et signalées à l'écran — jamais
+  escamotées en silence.
+
+> Attention aux intitulés génériques : dans un tableau de facturation, la
+> colonne `Adresse` désigne l'adresse **postale**. Elle n'est volontairement
+> pas rattachée aux adresses mail — sans quoi le script chercherait
+> « 9 rue du Grenier-Saint-Lazare » dans Gmail.
+
+Au lancement, les colonnes retenues sont affichées. Vérifiez cette ligne
+avant de lancer l'export réel :
+
+```
+Colonnes reconnues : « Nom & Prénom de l'apprenant » → nom,
+« N° Facture » → facture, « E-mail » → email, « E-mail GCard » → email
+```
 
 En revanche, les **lignes de séparation de groupe** (« Contentieux »,
 « Échéancier accepté »…) n'ont ni adresse ni facture. Par défaut le script

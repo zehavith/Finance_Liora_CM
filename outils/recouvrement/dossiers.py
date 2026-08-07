@@ -17,23 +17,47 @@ SEPARATEURS_MULTIVALEUR = re.compile(r"[|,]")
 
 FORMATS_DATE = ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%y")
 
-# Noms de colonnes acceptés (après normalisation : minuscules, sans accent).
-# « name » et « item » couvrent la première colonne des exports Monday.
+# Intitulés de colonnes acceptés, après normalisation (minuscules, sans accent,
+# ponctuation réduite à des espaces).
+#
+# L'ordre vaut priorité : le plus spécifique d'abord. Un export Monday réel
+# comporte à la fois « Name » (qui contient le numéro de facture) et
+# « Nom & Prénom de l'apprenant » ; c'est le second qui doit l'emporter.
+#
+# Prudence sur les intitulés génériques : « adresse » seul désigne l'adresse
+# postale dans les exports de facturation, jamais l'adresse mail. Le rattacher
+# à `email` ferait chercher « 9 rue du Grenier-Saint-Lazare » dans Gmail.
 ALIAS_COLONNES = {
-    "reference": {"reference", "ref", "dossier", "n dossier", "numero dossier", "id",
-                  "numero de dossier", "ref dossier"},
-    "nom": {"nom", "apprenante", "apprenant", "nom apprenante", "nom apprenant",
-            "nom prenom", "prenom nom", "stagiaire", "name", "item", "element",
-            "nom de l apprenante", "titre"},
-    "email": {"email", "mail", "adresse", "adresse mail", "adresse email",
-              "email apprenante", "mail apprenante", "e mail", "courriel",
-              "email de l apprenante", "adresse e mail"},
-    "facture": {"facture", "factures", "num facture", "numero facture",
-                "n facture", "no facture", "reference facture", "numero de facture",
-                "n de facture", "invoice", "facture n"},
-    "date_debut": {"date debut", "debut", "depuis", "date de debut"},
-    "date_fin": {"date fin", "fin", "jusqu a", "jusqua", "date de fin"},
+    "reference": [
+        "reference dossier", "ref dossier", "numero de dossier", "numero dossier",
+        "n dossier", "reference", "dossier", "ref",
+    ],
+    "nom": [
+        "nom prenom de l apprenant", "nom prenom de l apprenante",
+        "nom et prenom de l apprenant", "nom de l apprenante", "nom de l apprenant",
+        "nom apprenante", "nom apprenant", "apprenante", "apprenant", "stagiaire",
+        "nom prenom", "prenom nom", "nom", "raison sociale", "raison social",
+        "name", "item", "element", "titre",
+    ],
+    "email": [
+        "email de l apprenante", "email apprenante", "mail apprenante",
+        "adresse mail", "adresse email", "adresse e mail",
+        "e mail gcard", "email gcard", "mail gcard",
+        "e mail", "email", "mail", "courriel",
+        "email 2", "e mail 2", "autre email", "email perso",
+    ],
+    "facture": [
+        "reference facture", "numero de facture", "numero facture", "n de facture",
+        "n facture", "no facture", "num facture", "facture n",
+        "facture", "factures", "invoice",
+    ],
+    "date_debut": ["date de debut", "date debut", "debut", "depuis"],
+    "date_fin": ["date de fin", "date fin", "fin", "jusqu a", "jusqua"],
 }
+
+# Champs alimentés par plusieurs colonnes à la fois : un dossier peut porter
+# une adresse de contact et une adresse de prélèvement distinctes.
+CHAMPS_MULTICOLONNES = {"email", "facture"}
 
 # Séparateurs testés lors de la détection de la ligne d'en-tête.
 DELIMITEURS = (";", ",", "\t")
@@ -68,10 +92,22 @@ def _normaliser_date(valeur: str) -> str:
     )
 
 
-def _decouper(valeur: str) -> list[str]:
-    if not valeur:
-        return []
-    return [morceau.strip() for morceau in SEPARATEURS_MULTIVALEUR.split(valeur) if morceau.strip()]
+def _decouper(valeurs: list[str]) -> list[str]:
+    """Aplatit plusieurs colonnes et leurs valeurs multiples en une liste.
+
+    Les doublons sont retirés : la même adresse figure souvent à la fois en
+    contact et en adresse de prélèvement, et la répéter allongerait la requête
+    Gmail sans rien apporter.
+    """
+    resultat: list[str] = []
+    vues: set[str] = set()
+    for valeur in valeurs:
+        for morceau in SEPARATEURS_MULTIVALEUR.split(valeur or ""):
+            morceau = morceau.strip()
+            if morceau and morceau.lower() not in vues:
+                vues.add(morceau.lower())
+                resultat.append(morceau)
+    return resultat
 
 
 @dataclass
@@ -135,49 +171,160 @@ class Dossier:
         return "+".join(trouves) if trouves else "indirect"
 
 
-def _champ_reconnu(entete: str) -> str | None:
+def _candidats(entete: str) -> list[tuple[str, int]]:
+    """Champs auxquels un intitulé peut correspondre, avec leur spécificité
+    (rang le plus bas = alias le plus précis)."""
     normalise = _normaliser_entete(entete)
+    trouves = []
     for champ, alias in ALIAS_COLONNES.items():
         if normalise in alias:
-            return champ
-    return None
+            trouves.append((champ, alias.index(normalise)))
+    return trouves
 
 
-def _trouver_entete(lignes: list[str]) -> tuple[int, str, dict[str, str]]:
-    """Localise la ligne d'en-tête et le séparateur.
+def _associer_colonnes(entetes: list[str]) -> dict[int, str]:
+    """Associe chaque colonne à un champ, index de colonne -> champ.
 
-    Un export Monday ou Excel ne commence pas forcément par les intitulés de
-    colonnes : on sonde les premières lignes et on retient celle qui expose le
-    plus de colonnes exploitables.
+    Résolution par spécificité : une colonne n'est jamais rattachée à deux
+    champs, et un champ à colonne unique retient le meilleur candidat. Les
+    champs multicolonnes absorbent toutes les colonnes qui leur restent.
     """
-    meilleur: tuple[int, int, str, dict[str, str]] | None = None
+    propositions = [
+        (rang, position, position, champ)
+        for position, entete in enumerate(entetes)
+        for champ, rang in _candidats(entete)
+    ]
+    propositions.sort()
 
-    for index, ligne in enumerate(lignes[:LIGNES_SONDEES]):
-        if not ligne.strip():
+    par_colonne: dict[int, str] = {}
+    champs_pris: set[str] = set()
+
+    for _rang, _ordre, position, champ in propositions:
+        if position in par_colonne:
             continue
-        for delimiteur in DELIMITEURS:
-            try:
-                entetes = next(csv.reader([ligne], delimiter=delimiteur))
-            except (csv.Error, StopIteration):
-                continue
+        if champ not in CHAMPS_MULTICOLONNES and champ in champs_pris:
+            continue
+        par_colonne[position] = champ
+        champs_pris.add(champ)
 
-            correspondance = {}
-            for entete in entetes:
-                champ = _champ_reconnu(entete)
-                # Première colonne reconnue gagnante en cas de doublon.
-                if champ and champ not in correspondance.values():
-                    correspondance[entete] = champ
+    return par_colonne
 
-            score = len(correspondance)
-            if {"email", "facture"} & set(correspondance.values()):
-                score += 10  # Une ligne sans critère de recherche n'est pas l'en-tête.
 
-            if score > 0 and (meilleur is None or score > meilleur[1]):
-                meilleur = (index, score, delimiteur, correspondance)
+def _score_entete(association: dict[int, str]) -> int:
+    if not association:
+        return 0
+    champs = set(association.values())
+    score = len(champs)
+    # Une ligne dépourvue de critère de recherche n'est pas la ligne d'en-tête.
+    if {"email", "facture"} & champs:
+        score += 10
+    return score
+
+
+def _trouver_entete(grille: list[tuple[int, list[str]]]) -> tuple[int, dict[int, str]]:
+    """Localise la ligne d'en-tête dans les premières lignes du tableau.
+
+    Un export Monday commence par le nom du tableau puis celui du groupe : les
+    intitulés de colonnes n'arrivent qu'en troisième ligne.
+    """
+    meilleur: tuple[int, int, dict[int, str]] | None = None
+
+    for position, (_numero, cellules) in enumerate(grille[:LIGNES_SONDEES]):
+        if not any(cellule.strip() for cellule in cellules):
+            continue
+        association = _associer_colonnes(cellules)
+        score = _score_entete(association)
+        if score > 0 and (meilleur is None or score > meilleur[1]):
+            meilleur = (position, score, association)
 
     if meilleur is None:
-        return -1, ";", {}
-    return meilleur[0], meilleur[2], meilleur[3]
+        return -1, {}
+    return meilleur[0], meilleur[2]
+
+
+def _liste(numeros: list[int]) -> str:
+    return ", ".join(str(numero) for numero in numeros)
+
+
+def _texte_cellule(valeur) -> str:
+    """Rend une cellule Excel sous forme de texte exploitable."""
+    if valeur is None:
+        return ""
+    if isinstance(valeur, datetime):
+        return valeur.strftime("%d/%m/%Y")
+    if isinstance(valeur, float) and valeur.is_integer():
+        return str(int(valeur))
+    return str(valeur).strip()
+
+
+def _grille_xlsx(chemin: Path) -> list[tuple[int, list[str]]]:
+    try:
+        import openpyxl  # noqa: PLC0415
+    except ImportError as exc:
+        raise ErreurDossiers(
+            "La lecture des fichiers Excel demande openpyxl. Lancez :\n"
+            "    pip install -r requirements.txt\n"
+            "Vous pouvez sinon enregistrer le tableau au format CSV."
+        ) from exc
+
+    try:
+        classeur = openpyxl.load_workbook(chemin, data_only=True, read_only=True)
+    except Exception as exc:  # noqa: BLE001 - openpyxl lève des types variés
+        raise ErreurDossiers(f"Fichier Excel illisible ({chemin}) : {exc}") from exc
+
+    # Un classeur peut comporter plusieurs onglets : on retient celui dont
+    # l'en-tête expose le plus de colonnes exploitables.
+    meilleure: list[tuple[int, list[str]]] = []
+    meilleur_score = -1
+    for feuille in classeur.worksheets:
+        grille = [
+            (numero, [_texte_cellule(cellule) for cellule in rangee])
+            for numero, rangee in enumerate(feuille.iter_rows(values_only=True), start=1)
+        ]
+        _index, association = _trouver_entete(grille)
+        score = _score_entete(association)
+        if score > meilleur_score:
+            meilleur_score, meilleure = score, grille
+
+    classeur.close()
+    return meilleure
+
+
+def _grille_csv(chemin: Path) -> list[tuple[int, list[str]]]:
+    texte = chemin.read_text(encoding="utf-8-sig")
+    if not texte.strip():
+        raise ErreurDossiers(f"Fichier des dossiers vide : {chemin}")
+
+    meilleure: list[tuple[int, list[str]]] = []
+    meilleur_score = -1
+
+    for delimiteur in DELIMITEURS:
+        try:
+            lecteur = csv.reader(texte.splitlines(), delimiter=delimiteur)
+            # `line_num` suit les lignes physiques, y compris celles que le
+            # lecteur saute : c'est le seul numéro qui renvoie l'utilisateur
+            # sur la bonne ligne de son tableur.
+            grille = [
+                (lecteur.line_num, [cellule.strip() for cellule in rangee])
+                for rangee in lecteur
+            ]
+        except csv.Error:
+            continue
+
+        _index, association = _trouver_entete(grille)
+        score = _score_entete(association)
+        if score > meilleur_score:
+            meilleur_score, meilleure = score, grille
+
+    return meilleure
+
+
+def charger_grille(chemin: Path) -> list[tuple[int, list[str]]]:
+    if not chemin.exists():
+        raise ErreurDossiers(f"Fichier des dossiers introuvable : {chemin}")
+    if chemin.suffix.lower() in {".xlsx", ".xlsm", ".xltx"}:
+        return _grille_xlsx(chemin)
+    return _grille_csv(chemin)
 
 
 def lire_dossiers(
@@ -185,51 +332,59 @@ def lire_dossiers(
     ignorer_lignes_incompletes: bool = False,
     signaler: Callable[[str], None] | None = None,
 ) -> list[Dossier]:
-    if not chemin.exists():
-        raise ErreurDossiers(f"Fichier des dossiers introuvable : {chemin}")
-
-    texte = chemin.read_text(encoding="utf-8-sig")
-    if not texte.strip():
+    grille = charger_grille(chemin)
+    if not grille:
         raise ErreurDossiers(f"Fichier des dossiers vide : {chemin}")
 
-    lignes = texte.splitlines()
-    index_entete, delimiteur, correspondance = _trouver_entete(lignes)
+    index_entete, association = _trouver_entete(grille)
 
-    if not ({"email", "facture"} & set(correspondance.values())):
-        apercu = lignes[index_entete] if index_entete >= 0 else lignes[0]
+    if not ({"email", "facture"} & set(association.values())):
+        apercu = ", ".join(grille[max(index_entete, 0)][1][:12])
         raise ErreurDossiers(
             f"{chemin} : il faut au minimum une colonne « email » ou « facture ».\n"
             f"Ligne d'en-tête lue : {apercu[:200]}\n"
             "Renommez la colonne concernée en « email » ou « facture »."
         )
 
-    lecteur = csv.DictReader(lignes[index_entete:], delimiter=delimiteur)
+    if signaler:
+        colonnes = grille[index_entete][1]
+        detail = ", ".join(
+            f"« {colonnes[position]} » → {champ}"
+            for position, champ in sorted(association.items())
+        )
+        signaler(f"Colonnes reconnues : {detail}")
 
     dossiers: list[Dossier] = []
     ignorees: list[int] = []
+    hors_sujet: list[int] = []
     references_vues: set[str] = set()
 
-    for rangee in lecteur:
-        # `line_num` compte les lignes physiques réellement lues, y compris
-        # celles que le lecteur CSV saute : c'est le seul numéro qui renvoie
-        # l'utilisateur sur la bonne ligne de son tableur.
-        numero = index_entete + lecteur.line_num
-        valeurs = {champ: "" for champ in ALIAS_COLONNES}
-        for entete, valeur in rangee.items():
-            champ = correspondance.get(entete)
-            if champ:
-                valeurs[champ] = (valeur or "").strip()
+    for numero, cellules in grille[index_entete + 1:]:
+        valeurs: dict[str, list[str]] = {champ: [] for champ in ALIAS_COLONNES}
+        # Parcours par position : les valeurs suivent l'ordre des colonnes du
+        # tableau, et non l'ordre de résolution des intitulés.
+        for position, champ in sorted(association.items()):
+            if position < len(cellules) and cellules[position].strip():
+                valeurs[champ].append(cellules[position].strip())
 
         if not any(valeurs.values()):
+            # Aucune colonne exploitable. Si d'autres cellules sont remplies,
+            # c'est une ligne de total ou de séparation de groupe ajoutée par
+            # Monday : on la signale au lieu de l'escamoter.
+            if any(cellule.strip() for cellule in cellules):
+                hors_sujet.append(numero)
             continue
 
+        def _premier(champ: str) -> str:
+            return valeurs[champ][0] if valeurs[champ] else ""
+
         dossier = Dossier(
-            reference=valeurs["reference"],
-            nom=valeurs["nom"],
+            reference=_premier("reference"),
+            nom=_premier("nom"),
             emails=_decouper(valeurs["email"]),
             factures=_decouper(valeurs["facture"]),
-            date_debut=_normaliser_date(valeurs["date_debut"]),
-            date_fin=_normaliser_date(valeurs["date_fin"]),
+            date_debut=_normaliser_date(_premier("date_debut")),
+            date_fin=_normaliser_date(_premier("date_fin")),
             ligne=numero,
         )
 
@@ -242,13 +397,18 @@ def lire_dossiers(
                 continue
             raise ErreurDossiers(
                 f"{chemin}, ligne {numero} : ni adresse mail ni numéro de facture "
-                f"(contenu : « {(valeurs['reference'] or valeurs['nom'])[:60]} »).\n"
+                f"(contenu : « {(dossier.reference or dossier.nom)[:60]} »).\n"
                 "Corrigez la ligne, ou relancez avec --ignorer-lignes-incompletes "
                 "pour passer ce type de ligne."
             )
 
         if not dossier.reference:
-            dossier.reference = f"D{len(dossiers) + 1:03d}"
+            # À défaut de colonne dédiée, le numéro de facture est l'identifiant
+            # naturel d'un dossier de recouvrement, et donne des répertoires
+            # bien plus parlants qu'un D001.
+            dossier.reference = (
+                dossier.factures[0] if dossier.factures else f"D{len(dossiers) + 1:03d}"
+            )
 
         # Deux dossiers de même référence écriraient dans le même répertoire.
         if dossier.nom_repertoire in references_vues:
@@ -265,11 +425,16 @@ def lire_dossiers(
 
         dossiers.append(dossier)
 
+    # Jamais silencieux : les lignes écartées sont nommées une par une.
+    if hors_sujet and signaler:
+        signaler(
+            f"{len(hors_sujet)} ligne(s) sans aucune colonne exploitable écartée(s) "
+            f"— lignes de total ou de groupe : {_liste(hors_sujet)}"
+        )
     if ignorees and signaler:
-        # Jamais silencieux : les lignes écartées sont nommées une par une.
         signaler(
             f"⚠ {len(ignorees)} ligne(s) sans adresse ni facture ignorée(s) : "
-            f"ligne(s) {', '.join(str(numero) for numero in ignorees)}"
+            f"ligne(s) {_liste(ignorees)}"
         )
 
     if not dossiers:

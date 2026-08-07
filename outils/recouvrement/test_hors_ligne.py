@@ -173,8 +173,112 @@ def test_export_monday() -> None:
             "dossier situé après une ligne de groupe correctement lu",
         )
         verifier(
-            len(avertissements) == 1 and "ligne(s) 8" in avertissements[0],
+            any("ligne(s) 8" in message for message in avertissements),
             "ligne écartée signalée, jamais silencieusement",
+        )
+
+
+def test_export_monday_reel() -> None:
+    """Reproduit la structure d'un export Monday de facturation : en-tête en
+    ligne 3, « Name » portant le n° de facture, deux colonnes d'adresses, une
+    colonne « Adresse » postale, et des lignes de total de groupe."""
+    print("\nExport Monday de facturation (structure réelle)")
+    entetes = [
+        "Name", "Type de paiement", "Nom & Prénom de l'apprenant", "Raison social",
+        "N° Facture", "E-mail", "E-mail GCard", "Adresse", "Code postal",
+        "Total Facture", "Statut Créance",
+    ]
+    rangees = [
+        ["2.1. Financement Personnel"] + [""] * 10,
+        ["2.1.4. Factures en recouvrement"] + [""] * 10,
+        entetes,
+        ["FACT-2405-00030", "GoCardLess", "Aïssata Conte", "Aïssata Conte",
+         "FACT-2405-00030", "aichaconte@yahoo.fr", "", "9 Rue du Grenier", "75003",
+         "1280", "Créance douteuse"],
+        ["FACT-2405-00142", "GoCardLess", "Julien Roux", "Julien Roux",
+         "FACT-2405-00142", "persee67@gmail.com", "jr.pro@societe.fr",
+         "11 rue Staedel", "67100", "3721", "Créance douteuse"],
+        # Ligne de total de groupe ajoutée par Monday.
+        ["", "", "", "", "", "", "", "", "", "2022-03-15 to 2024-03-05", ""],
+        ["", "", "", "", "", "", "", "", "", "", ""],
+    ]
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        fichier = Path(repertoire) / "monday-facturation.csv"
+        with fichier.open("w", encoding="utf-8", newline="") as sortie:
+            import csv as module_csv  # noqa: PLC0415
+
+            module_csv.writer(sortie, delimiter=";").writerows(rangees)
+
+        messages: list[str] = []
+        liste = lire_dossiers(fichier, signaler=messages.append)
+
+        verifier(len(liste) == 2, f"2 dossiers lus (obtenu : {len(liste)})")
+
+        colonnes = " ".join(messages)
+        verifier(
+            "« Adresse » → email" not in colonnes,
+            "l'adresse postale n'est pas prise pour une adresse mail",
+        )
+        verifier(
+            "« Nom & Prénom de l'apprenant » → nom" in colonnes,
+            "la colonne de nom précise l'emporte sur « Name »",
+        )
+        verifier(
+            liste[0].nom == "Aïssata Conte",
+            f"nom de l'apprenante retenu (obtenu : {liste[0].nom!r})",
+        )
+        verifier(
+            liste[0].factures == ["FACT-2405-00030"], "numéro de facture retenu"
+        )
+        verifier(
+            liste[0].reference == "FACT-2405-00030",
+            "à défaut de colonne dédiée, la facture sert de référence de dossier",
+        )
+        verifier(
+            liste[1].emails == ["persee67@gmail.com", "jr.pro@societe.fr"],
+            f"les deux colonnes d'adresses sont réunies (obtenu : {liste[1].emails})",
+        )
+        verifier(
+            "9 Rue du Grenier" not in liste[0].requete_gmail(),
+            "l'adresse postale n'entre pas dans la requête Gmail",
+        )
+        verifier(
+            any("total ou de groupe" in message for message in messages),
+            "ligne de total de groupe signalée, non escamotée",
+        )
+
+
+def test_lecture_xlsx() -> None:
+    """Le même tableau au format Excel, lu sans conversion préalable."""
+    print("\nLecture directe d'un fichier Excel")
+    try:
+        import openpyxl  # noqa: PLC0415
+    except ImportError:
+        print("  info  openpyxl absent : vérification sans objet")
+        return
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        fichier = Path(repertoire) / "dossiers.xlsx"
+        classeur = openpyxl.Workbook()
+        feuille = classeur.active
+        feuille.append(["2.1. Financement Personnel"])
+        feuille.append([])
+        feuille.append(["Name", "Nom & Prénom de l'apprenant", "N° Facture",
+                        "E-mail", "Adresse", "Date facture"])
+        feuille.append(["FACT-1", "Marie Dupont", "FACT-2024-0153",
+                        "marie.dupont@exemple.fr", "3 rue de la Paix",
+                        datetime(2024, 10, 15)])
+        classeur.save(fichier)
+
+        liste = lire_dossiers(fichier)
+        verifier(len(liste) == 1, "dossier lu depuis le .xlsx")
+        verifier(liste[0].nom == "Marie Dupont", "nom lu depuis le .xlsx")
+        verifier(
+            liste[0].emails == ["marie.dupont@exemple.fr"], "adresse lue depuis le .xlsx"
+        )
+        verifier(
+            liste[0].factures == ["FACT-2024-0153"], "facture lue depuis le .xlsx"
         )
 
 
@@ -567,6 +671,8 @@ def main() -> int:
 
     test_dossiers()
     test_export_monday()
+    test_export_monday_reel()
+    test_lecture_xlsx()
     test_nettoyage_html()
     test_synthese()
     test_slug()
