@@ -114,7 +114,7 @@ let
                                "date depot de la facture", "date envoi facture initial"}},
         {"date_echeance",     {"date d'echeance facture", "date d'echeance", "date echeance"}},
         // ⚠️ 2 graphies réelles : avec ET sans espaces autour du « / »
-        {"date_echeance_calc",{"date echeance calculee / negociee",
+        {"date_echeance_calc",{"date echeance negociee", "date echeance calculee / negociee",
                                "date d'echeance calculee/negociee",
                                "date d'echeance calculee / negociee",
                                "date echeance calculee/negociee",
@@ -124,32 +124,38 @@ let
         {"date_paiement",     {"date paiement", "date de paiement"}},
 
         // --- Montants (contrôle ; Pennylane reste la vérité paiement) --
-        {"total_ttc",         {"total ttc", "total facture", "montant", "montant ttc"}},
+        {"total_ttc",         {"total ttc", "total facture", "montant ttc", "montant"}},
         {"reste_du",          {"reste a devoir ttc",
                                "reste a payer ( d'apres le grand livre )",
                                "reste a payer", "restant a payer",
                                "montant restant penny", "montant restant sellsy",
-                               "montant en recouvrement"}},
-        {"montant_partiel",   {"montant partiel recu", "total paid"}},
+                               "montant en recouvrement", "montant du ttc", "montant du"}},
+        {"montant_partiel",   {"montant partiel recu", "montant recu", "total paid"}},
+        {"montant_perdu",     {"montant perdu"}},
+        // ⭐ Délai réel facture → paiement : la source du DSO
+        {"delai_paiement",    {"delai de paiement ( date 1° fact <-> paiement)",
+                               "delai de paiement (date 1° fact <-> paiement)",
+                               "delai de paiement"}},
 
         // --- Identité --------------------------------------------------
         //  « apprenant » en dernier : en B2C, l'apprenant EST le client.
         {"client",            {"client", "entreprise", "apprenant",
                                "nom & prenom de l'apprenant",
                                "nom et prenom apprenant", "nom prenom apprenant"}},
-        {"type_client",       {"type de client"}},
+        {"type_client",       {"type de client", "type client"}},
         {"num_zoho",          {"n° zoho", "no zoho"}},
-        {"id_client_sellsy",  {"id client sellsy"}},
+        {"id_client_sellsy",  {"id client sellsy", "id client"}},
 
         // --- Statuts / qualification -----------------------------------
         {"qualif_recouvrement",{"qualifaction recouvrement", "qualification recouvrement"}},
         {"qualif_adv",        {"qualification adv", "qualifaction adv"}},
         {"statut",            {"statut", "statut 1", "statut initiale",
                                "statut paiement", "statut creance"}},
+        {"numero_col",        {"numero de facture", "n° de facture"}},
         {"etape_process",     {"etape process recouvrement"}},
         {"categorie_dette",   {"categorie de dette"}},
         {"categorie_retard",  {"categorie de retard"}},
-        {"jours_retard_m",    {"j de retard"}},
+        {"jours_retard_m",    {"j de retard", "nombre de jour de retard"}},
 
         // --- Relances ---------------------------------------------------
         {"derniere_relance",  {"date derniere relance manuelle", "date derniere relance"}},
@@ -188,10 +194,19 @@ let
             (s, p) => Text.Replace(s, p{0}, p{1})
         ),
 
+    //  ⚠️ Certains titres Monday contiennent un SAUT DE LIGNE
+    //     (ex. « Montant dû⏎TTC »). On remplace donc sauts de ligne et
+    //     tabulations par des espaces AVANT de compacter.
     Norm = (t as any) as text =>
         if t = null then ""
-        else Text.Trim(Text.Combine(
-                List.Select(Text.Split(SansAccents(Text.From(t)), " "), each _ <> ""), " ")),
+        else
+            let
+                brut = SansAccents(Text.From(t)),
+                plat = Text.Replace(Text.Replace(Text.Replace(brut,
+                            "#(cr)", " "), "#(lf)", " "), "#(tab)", " ")
+            in
+                Text.Trim(Text.Combine(
+                    List.Select(Text.Split(plat, " "), each _ <> ""), " ")),
 
     // =================================================================
     //  4) Appel GraphQL
@@ -390,11 +405,14 @@ let
                         else if cfg[perimetre] <> "" then cfg[perimetre]
                         else "Non qualifié", type text),
 
-            // Clé = n° de facture = nom de l'item (FACT-xxxx-xxxxx)
+            // Clé = n° de facture. Il est porté par le NOM DE L'ITEM dans
+            // tous vos tableaux ; certains ont en plus une colonne dédiée
+            // (« Numero de facture »), qui prime si elle est renseignée.
             T8 = Table.AddColumn(T7b, "cle", each
-                    Text.Upper(Text.Trim(
-                        if [item_nom] = null then "" else Text.From([item_nom])
-                    )), type text),
+                    let brut = if [numero_col] <> null and [numero_col] <> ""
+                               then [numero_col] else [item_nom]
+                    in Text.Upper(Text.Trim(if brut = null then "" else Text.From(brut))),
+                    type text),
 
             // Ligne renseignée ou coquille vide ? (cf. déduplication)
             T9 = Table.AddColumn(T8, "a_des_donnees", each
@@ -444,7 +462,9 @@ let
             {"total_ttc", type number},
             {"reste_du", type number},
             {"montant_partiel", type number},
-            {"jours_retard_m", Int64.Type}
+            {"jours_retard_m", Int64.Type},
+            {"montant_perdu", type number},
+            {"delai_paiement", Int64.Type}
         },
         "fr-FR"
     ),

@@ -4,15 +4,21 @@ Kit clé en main pour connecter **Pennylane**, **Sellsy** et **Monday** à
 **Power BI** et obtenir un suivi de recouvrement clair, **rafraîchi
 automatiquement chaque jour**.
 
-## Rôle de chaque source
+## Les trois sources de référence
+
+Le modèle ne s'appuie que sur **ces trois API** — aucun fichier Excel ni
+Google Sheets n'entre dans le rapport.
 
 | Source | Rôle | Apport au dashboard |
 |--------|------|---------------------|
-| **Sellsy** | Référentiel des factures **émises** | Détecte les **factures manquantes sur Monday** |
-| **Monday** | Suivi des factures / relances | Statut de relance, responsable, prochaine relance |
-| **Pennylane** | **Vérité paiement** | Reste dû, payé/impayé, échéance → encours & retard |
+| **Monday** | Suivi des factures / relances | Statut, relances, dates, type de client, règles d'échéance |
+| **Sellsy** | Référentiel des factures **émises** (+ avoirs) | Détecte les **factures manquantes sur Monday** |
+| **Pennylane** | **Vérité paiement** | Reste dû, payé/impayé → encours & retard |
 
 Réconciliation **par n° de facture**, table consolidée unique `Factures`.
+
+> 📊 **Maquette visuelle** du rendu final, construite sur vos données réelles :
+> voir le lien d'aperçu partagé en conversation.
 
 ## 🚦 Par où commencer
 
@@ -21,7 +27,7 @@ Le déploiement se fait en **2 phases** :
 | Phase | Contenu | Durée | Guide |
 |---|---|---|---|
 | **Phase 1** ⬅️ *commencez ici* | Suivi recouvrement (KPI, DSO, à jour / en recouvrement, factures manquantes sur Monday) + refresh auto | 2 h 30 – 3 h | **[`PHASE1_demarrage.md`](PHASE1_demarrage.md)** |
-| **Phase 2** | Balance âgée complète : règles d'échéance métier, type de client / financeur, avoirs | 1 h 30 – 2 h | fin de `PHASE1_demarrage.md` |
+| **Phase 2** | Balance âgée complète : avoirs Sellsy + page matrice détaillée | ~45 min | fin de `PHASE1_demarrage.md` |
 
 ## Contenu du kit
 
@@ -37,14 +43,11 @@ powerbi/
 │   ├── calendrier.pq                  Table de dates                        → Calendrier (chargée)
 │   ├── factures_consolidees_phase1.pq Fusion simplifiée — PHASE 1           → Factures (chargée)
 │   ├── factures_consolidees.pq        Fusion complète — PHASE 2             → Factures (chargée)
-│   ├── sellsy_avoirs.pq               Avoirs (phase 2)                      → Sellsy_Avoirs
-│   └── referentiel_factures.pq        Type client / dates formation (ph. 2) → Referentiel_Factures
+│   └── sellsy_avoirs.pq               Avoirs (phase 2)                      → Sellsy_Avoirs
 ├── modele/
 │   └── modele_donnees.md              Schéma, relations, clés de liaison
 ├── mesures_dax.md                     Toutes les mesures (recouvrement, DSO, KPI…)
-├── rafraichissement_service.md        Rafraîchissement auto quotidien (service Power BI)
-├── option_rapprochement_bancaire.md   ⭐ Phase 2 : filet de sécurité banque ↔ Pennylane
-└── connecteurs/banque_rapprochement.pq    (module optionnel associé)
+└── rafraichissement_service.md        Rafraîchissement auto quotidien (service Power BI)
 ```
 
 ## Pas-à-pas (≈ 45 min)

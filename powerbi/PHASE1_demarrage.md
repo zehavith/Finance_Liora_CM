@@ -191,22 +191,28 @@ Voir [`rafraichissement_service.md`](rafraichissement_service.md) §0 à §5.
 
 ---
 
-## PHASE 2 — Balance âgée complète (plus tard) ⏱️ ~1 h
+## PHASE 2 — Balance âgée complète (plus tard) ⏱️ ~45 min
 
-À faire quand la phase 1 tourne. Trois ajouts, dans cet ordre :
+À faire quand la phase 1 tourne. Deux ajouts seulement :
 
-1. **Référentiel** (~45 min) — onglet Sheets `PowerBI_Referentiel` avec
-   `numero_facture | type_client | sous_categorie | date_debut_formation |
-   date_fin_formation`, alimenté par vos formules / l'ancien grand livre.
-   Puis requête `Referentiel_Factures` (voir `connecteurs/referentiel_factures.pq`).
-2. **Avoirs** (~15 min) — requête `Sellsy_Avoirs`
-   (`connecteurs/sellsy_avoirs.pq`).
-3. **Bascule** (~10 min) — remplacer le code de la requête `Factures` par
-   `connecteurs/factures_consolidees.pq` (version complète). Elle active
-   automatiquement **vos règles d'échéance métier** et la ventilation par
-   type / sous-catégorie.
-4. **Page Balance âgée** (~20 min) — matrice `type_client → sous_categorie →
-   client_nom` × `tranche_age`, décrite dans `README.md`.
+1. **Avoirs Sellsy** (~15 min) — créer la requête `Sellsy_Avoirs`
+   (`connecteurs/sellsy_avoirs.pq`), puis remplacer le code de la requête
+   `Factures` par `connecteurs/factures_consolidees.pq` (version complète).
+2. **Page Balance âgée** (~20 min) — matrice ouverte sur les tranches
+   d'ancienneté, explorable par type et financeur (voir `README.md`).
 
-> Rien n'est à refaire : les pages et mesures de la phase 1 continuent de
-> fonctionner, et les chiffres de retard deviennent **exacts** à ce moment-là.
+> Les règles d'échéance, le type de client et la sous-catégorie sont déjà
+> alimentés par Monday dès la phase 1 : rien à refaire.
+
+## Sources de référence
+
+Le tableau de bord ne s'appuie que sur **trois sources**, interrogées par API :
+
+| Source | Rôle |
+|---|---|
+| **Monday** | Suivi opérationnel : statut, relances, dates, type de client |
+| **Sellsy** | Référentiel des factures émises (+ avoirs) |
+| **Pennylane** | Vérité paiement : reste dû, statut de règlement |
+
+Aucun fichier Excel ni Google Sheets n'entre dans le modèle : tout est
+rafraîchi automatiquement depuis ces trois API.
