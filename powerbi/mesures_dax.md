@@ -128,6 +128,14 @@ CALCULATE ( [Encours total], Factures[coherence_monday] = "À déplacer" )
 > Carte d'alerte 🟠 : ces factures ont basculé en retard et devraient passer
 > du tableau ADV au tableau Recouvrement dans Monday.
 
+> ⚠️ **Portée du contrôle.** Il est fiable pour les tableaux mono-périmètre
+> (`1.1. ADV` et `1.2. Recouvrement`). Les tableaux B2C (`2.x`) et OPCO
+> (`1.3`) contiennent **les deux périmètres** : le rangement y est lu sur le
+> **groupe** de l'item. Si le groupe ne le dit pas, la facture ressort en
+> « Non évaluable » plutôt que de générer une fausse alerte.
+> Le périmètre **calculé** (`perimetre`), lui, est toujours fiable partout —
+> c'est lui qui pilote tous les KPI ADV / Recouvrement.
+
 ---
 
 ## 3. DSO — Days Sales Outstanding

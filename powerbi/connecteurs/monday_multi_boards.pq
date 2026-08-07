@@ -41,9 +41,11 @@ let
     //    Laisser "" quand le tableau ne tranche pas : le périmètre est
     //    alors déduit du statut / de la catégorie de dette / du groupe
     //    (voir DeduirePerimetre §5).
-    //  ⚠️ À VALIDER : seuls 1.1 (ADV) et 1.2 (Recouvrement) sont certains.
-    //     Pour les tableaux B2C (2.x) et OPCO, dites-moi s'ils relèvent
-    //     de l'ADV ou du recouvrement et je fige la valeur.
+    //  ✅ VALIDÉ : seuls 1.1 (ADV) et 1.2 (Recouvrement) sont mono-périmètre.
+    //     Les tableaux B2C (2.x) et OPCO (1.3) contiennent LES DEUX : on
+    //     laisse "" pour eux, et le périmètre est lu sur le GROUPE de
+    //     l'item (« … Factures en recouvrement », « … Factures à
+    //     échéance »…) ou sur le statut. Sinon « Non qualifié ».
     BoardsConfig = #table(
         {"prefixe","type_client","sous_categorie","perimetre","base","jours"},
         {
@@ -90,8 +92,15 @@ let
     // =================================================================
     //  Cherchés (en minuscules, sans accents) dans le statut, la
     //  catégorie de dette puis le nom du groupe. Le premier trouvé gagne.
-    MotsRecouvrement = {"payee - recouvrement", "recouvrement"},
-    MotsADV          = {"payee - adv", "adv pas en retard", "adv"},
+    //
+    //  Essentiel pour les tableaux MIXTES (B2C 2.x et OPCO 1.3) où le
+    //  périmètre se lit sur le groupe, ex. « 2.3.3 Factures en
+    //  recouvrement » vs « 2.3.1 Factures à échéance ».
+    //  💡 Ajoutez ici tout libellé de groupe propre à vos tableaux.
+    MotsRecouvrement = {"payee - recouvrement", "recouvrement", "contentieux",
+                        "impaye", "relance"},
+    MotsADV          = {"payee - adv", "adv pas en retard", "adv",
+                        "a echeance", "deposee", "a qualifier"},
 
     // =================================================================
     //  ⚙️ 2) CONCEPTS → titres possibles (par ORDRE DE PRIORITÉ)
