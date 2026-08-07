@@ -266,3 +266,17 @@ Construction :
   chiffrés dans le jeu de données publié.
 - **Balance âgée & retard** utilisent la date du dernier refresh → le
   rafraîchissement quotidien garde les chiffres justes.
+
+---
+
+## 🎨 Thème graphique
+
+`theme_liora.json` applique en une fois les couleurs, polices et styles de
+tous les visuels (fond navy/corail de votre app, palette de séries validée
+pour le daltonisme, grilles discrètes, cartes sans ombre).
+
+**Import** : Power BI Desktop → onglet *Affichage* → *Thèmes* → *Rechercher
+des thèmes* → sélectionner `theme_liora.json`.
+
+> C'est le principal accélérateur de la mise en forme : sans thème, il faut
+> régler les couleurs visuel par visuel (≈ 1 h 30 de travail répétitif).

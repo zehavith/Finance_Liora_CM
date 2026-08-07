@@ -287,3 +287,75 @@ DIVIDE (
 | `DSO (jours)` | < délai contractuel | +0 à +15 j | > +15 j |
 | `Nb factures manquantes sur Monday` | 0 | 1–3 | > 3 |
 | `Retard moyen pondéré` | < 15 j | 15–45 j | > 45 j |
+
+---
+
+## 8. Filtres : période et catégorie ⭐
+
+Les deux axes de vérification demandés. Tout se fait avec des **segments**
+(*slicers*) — aucun calcul supplémentaire.
+
+### Segment de période
+
+1. Visuel **Segment** → champ `Calendrier[Date]` → format **« Entre »**
+   (deux bornes glissantes) ou **« Liste déroulante relative »**
+   (12 derniers mois, année en cours…).
+2. **Choisir la date pilote.** La relation active est
+   `Calendrier[Date] → Factures[date_echeance]`. Pour analyser par **date de
+   facture** à la place, créez cette mesure et utilisez-la dans le visuel :
+
+```DAX
+Encours (par date de facture) =
+CALCULATE (
+    [Encours total],
+    USERELATIONSHIP ( Calendrier[Date], Factures[date_emission] )
+)
+```
+
+> 💡 Reproduit votre réglage actuel « Analyser sur : date de facture ».
+> Dupliquez le principe pour toute mesure que vous voulez basculer.
+
+### Segments de catégorie
+
+Un segment par dimension, tous sur la table `Factures` :
+
+| Champ | Ce qu'il filtre |
+|---|---|
+| `perimetre` | ADV / Recouvrement |
+| `type_client` | B2C, B2B, CPF, OPCO, Région… |
+| `sous_categorie` | Financeur détaillé |
+| `tranche_age` | Une ou plusieurs tranches d'ancienneté |
+| `statut_relance` | Étape de traitement |
+| `responsable_reco` | Personne en charge |
+
+### Synchroniser les filtres entre les pages
+
+*Affichage → *Synchroniser les segments*, puis cocher les pages concernées.
+Réglez `perimetre`, `type_client` et la période en **synchronisés** : vous
+filtrez une fois, toutes les pages suivent.
+
+### Vérifier une valeur
+
+- **Clic droit sur un point → *Extraire*** : ouvre la liste des factures qui
+  composent le chiffre.
+- **Onglet *Voir les données*** (icône ⋯ du visuel) : le tableau brut derrière
+  le graphique, exportable en Excel.
+- La mesure `[Écart contrôle]` doit rester à **0** quel que soit le filtre :
+  c'est votre garde-fou de cohérence.
+
+### Exclure les zones techniques
+
+Les lignes des groupes Monday **Technique / Archive / Tampon / test** ne sont
+pas des factures à recouvrer. Le connecteur les remonte quand même (pour
+traçabilité) : ajoutez un **filtre au niveau du rapport** sur
+`groupe_monday` excluant ces libellés, ou une mesure de contrôle :
+
+```DAX
+Nb lignes techniques =
+CALCULATE (
+    COUNTROWS ( Factures ),
+    FILTER ( Factures,
+        SEARCH ( "Technique", Factures[groupe_monday], 1, 0 ) > 0
+     || SEARCH ( "Archive",   Factures[groupe_monday], 1, 0 ) > 0 )
+)
+```
