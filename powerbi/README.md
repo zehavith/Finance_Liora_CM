@@ -14,17 +14,30 @@ automatiquement chaque jour**.
 
 Réconciliation **par n° de facture**, table consolidée unique `Factures`.
 
+## 🚦 Par où commencer
+
+Le déploiement se fait en **2 phases** :
+
+| Phase | Contenu | Durée | Guide |
+|---|---|---|---|
+| **Phase 1** ⬅️ *commencez ici* | Suivi recouvrement (KPI, DSO, à jour / en recouvrement, factures manquantes sur Monday) + refresh auto | 2 h 30 – 3 h | **[`PHASE1_demarrage.md`](PHASE1_demarrage.md)** |
+| **Phase 2** | Balance âgée complète : règles d'échéance métier, type de client / financeur, avoirs | 1 h 30 – 2 h | fin de `PHASE1_demarrage.md` |
+
 ## Contenu du kit
 
 ```
 powerbi/
-├── README.md                          ← vous êtes ici (pas-à-pas + maquette)
+├── README.md                          ← vous êtes ici (vue d'ensemble + maquette)
+├── PHASE1_demarrage.md                ⬅️ CHECKLIST DE DÉMARRAGE (commencez ici)
 ├── connecteurs/
 │   ├── sellsy_factures.pq             Factures émises (référentiel)         → Sellsy_Factures
 │   ├── pennylane_factures.pq          Paiement (reste dû, échéance)         → Pennylane_Paiements
 │   ├── monday_relances.pq             Suivi / relances                      → Monday_Suivi
-│   ├── factures_consolidees.pq        Fusion des 3 par n° de facture        → Factures (chargée)
-│   └── calendrier.pq                  Table de dates                        → Calendrier (chargée)
+│   ├── calendrier.pq                  Table de dates                        → Calendrier (chargée)
+│   ├── factures_consolidees_phase1.pq Fusion simplifiée — PHASE 1           → Factures (chargée)
+│   ├── factures_consolidees.pq        Fusion complète — PHASE 2             → Factures (chargée)
+│   ├── sellsy_avoirs.pq               Avoirs (phase 2)                      → Sellsy_Avoirs
+│   └── referentiel_factures.pq        Type client / dates formation (ph. 2) → Referentiel_Factures
 ├── modele/
 │   └── modele_donnees.md              Schéma, relations, clés de liaison
 ├── mesures_dax.md                     Toutes les mesures (recouvrement, DSO, KPI…)
