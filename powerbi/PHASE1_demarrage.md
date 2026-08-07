@@ -30,6 +30,30 @@ en **phase 2** (voir la fin de ce document).
 > Pennylane/Sellsy avant toute relance formelle** : le retard affiché peut
 > différer de votre vraie échéance contractuelle.
 
+### ⭐ Comment supprimer cette limite dès la phase 1
+
+Si vos **tableaux Monday sont déjà séparés par type de client** (B2C,
+Corporate, Alternance…), utilisez **`connecteurs/monday_multi_boards.pq`** au
+lieu de `monday_relances.pq` (étape 4). Vous y déclarez, pour chaque tableau,
+son type et sa règle d'échéance :
+
+```
+{"1111111111", "B2C - Entreprise",       "facture", 30},
+{"2222222222", "Corporate - Alternance", "facture", 30},
+```
+
+Bénéfices immédiats, **sans référentiel ni saisie manuelle** :
+- le **type de client** est déduit du tableau d'origine ;
+- l'**échéance** suit votre règle « date de facture + N jours » → les chiffres
+  de retard deviennent **justes** dès la phase 1 ;
+- vous pouvez aussi ajouter une colonne **« Date d'échéance »** dans Monday :
+  si elle est remplie, elle est prioritaire sur la règle.
+
+> ⚠️ Reste en phase 2 : les règles basées sur les **dates de formation**
+> (fin/début de formation +30/45/60 j), qui exigent le référentiel — les
+> tableaux Monday ne portent pas ces dates. Les types concernés (CPF, POEI,
+> OPCO, AIF…) gardent donc une échéance approchée jusque-là.
+
 ---
 
 ## Étape 1 — Réunir les 5 clés ⏱️ 15-30 min
@@ -70,6 +94,8 @@ contenu du fichier, **renommer la requête** exactement comme indiqué.
 - [ ] `connecteurs/sellsy_factures.pq` → nommer **`Sellsy_Factures`**
 - [ ] `connecteurs/pennylane_factures.pq` → **`Pennylane_Paiements`**
 - [ ] `connecteurs/monday_relances.pq` → **`Monday_Suivi`**
+      *(ou `connecteurs/monday_multi_boards.pq` si plusieurs tableaux — voir
+      l'encadré ⭐ ci-dessus ; les deux sont interchangeables)*
 - [ ] `connecteurs/calendrier.pq` → **`Calendrier`**
 - [ ] `connecteurs/factures_consolidees_phase1.pq` → **`Factures`** ⬅️ *version
       phase 1, à créer en DERNIER*

@@ -67,8 +67,10 @@ let
     ),
     ExpMonday = Table.ExpandTableColumn(
         JoinMonday, "monday",
-        {"item_id","statut_relance","date_derniere_relance","date_prochaine_relance","responsable_reco"},
-        {"m_item_id","m_statut_relance","m_derniere_relance","m_prochaine_relance","m_responsable"}
+        {"item_id","statut_relance","date_derniere_relance","date_prochaine_relance","responsable_reco",
+         "type_client_monday","regle_base","regle_jours","date_echeance_monday"},
+        {"m_item_id","m_statut_relance","m_derniere_relance","m_prochaine_relance","m_responsable",
+         "type_client","m_regle_base","m_regle_jours","m_date_echeance"}
     ),
 
     // --- 4) Champs consolidés -----------------------------------------
@@ -80,11 +82,23 @@ let
             else if [p_paye] = true then 0
             else [montant_ttc], type number),
 
-    // Échéance : Pennylane prioritaire, sinon Sellsy
-    // (⚠️ phase 2 : remplacée par vos règles métier)
+    // --- Échéance : cascade de priorité -------------------------------
+    //  1. Colonne « Date d'échéance » saisie dans Monday
+    //  2. Règle du TABLEAU Monday (ex. Corporate = date facture +30 j)
+    //     → n'utilise que "facture" ici : les dates de formation
+    //       arrivent en phase 2 avec le référentiel
+    //  3. Échéance Pennylane, sinon Sellsy
     A2 = Table.AddColumn(A1, "date_echeance", each
-            if [p_date_echeance] <> null then [p_date_echeance]
-            else [date_echeance_sellsy], type date),
+            let
+                echeanceRegle =
+                    if [m_regle_base] = "facture" and [date_emission] <> null
+                    then Date.AddDays([date_emission], [m_regle_jours] ?? 0)
+                    else null
+            in
+                if [m_date_echeance] <> null then [m_date_echeance]
+                else if echeanceRegle <> null then echeanceRegle
+                else if [p_date_echeance] <> null then [p_date_echeance]
+                else [date_echeance_sellsy], type date),
 
     // Présences (analyse des trous de suivi)
     A3 = Table.AddColumn(A2, "present_monday",    each [m_item_id] <> null, type logical),
@@ -132,7 +146,7 @@ let
 
     // --- 5) Nettoyage final -------------------------------------------
     Final = Table.SelectColumns(A9, {
-        "cle","numero","client_nom","montant_ttc",
+        "cle","numero","client_nom","montant_ttc","type_client",
         "date_emission","date_echeance",
         "reste_du_net","est_payee","statut_recouvrement",
         "tranche_age","tranche_ordre","jours_retard","mois_retard",

@@ -32,7 +32,8 @@ powerbi/
 ├── connecteurs/
 │   ├── sellsy_factures.pq             Factures émises (référentiel)         → Sellsy_Factures
 │   ├── pennylane_factures.pq          Paiement (reste dû, échéance)         → Pennylane_Paiements
-│   ├── monday_relances.pq             Suivi / relances                      → Monday_Suivi
+│   ├── monday_relances.pq             Suivi / relances (1 tableau)          → Monday_Suivi
+│   ├── monday_multi_boards.pq         ⭐ Plusieurs tableaux + règle d'échéance → Monday_Suivi
 │   ├── calendrier.pq                  Table de dates                        → Calendrier (chargée)
 │   ├── factures_consolidees_phase1.pq Fusion simplifiée — PHASE 1           → Factures (chargée)
 │   ├── factures_consolidees.pq        Fusion complète — PHASE 2             → Factures (chargée)

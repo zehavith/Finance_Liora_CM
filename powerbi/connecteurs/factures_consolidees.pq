@@ -99,8 +99,10 @@ let
     ),
     ExpMonday = Table.ExpandTableColumn(
         JoinMonday, "monday",
-        {"item_id","statut_relance","date_derniere_relance","date_prochaine_relance","responsable_reco"},
-        {"m_item_id","m_statut_relance","m_derniere_relance","m_prochaine_relance","m_responsable"}
+        {"item_id","statut_relance","date_derniere_relance","date_prochaine_relance","responsable_reco",
+         "type_client_monday","regle_base","regle_jours","date_echeance_monday"},
+        {"m_item_id","m_statut_relance","m_derniere_relance","m_prochaine_relance","m_responsable",
+         "m_type_client","m_regle_base","m_regle_jours","m_date_echeance"}
     ),
 
     // --- 3bis) Fusion avec le Référentiel (fallback + dates formation)
@@ -125,10 +127,13 @@ let
     //  Priorité :
     //   1. Champ Sellsy (si le connecteur Sellsy expose "type_client_sellsy"
     //      — champ personnalisé lu par l'API, voir sellsy_factures.pq §5)
-    //   2. Règles automatiques ci-dessous (déduction depuis le n° de
+    //   2. TABLEAU Monday d'origine (monday_multi_boards.pq : un tableau
+    //      = un type de client) ⭐ le plus simple si vos tableaux sont
+    //      déjà séparés par type
+    //   3. Règles automatiques ci-dessous (déduction depuis le n° de
     //      facture ou le nom du client — reproduisez ici la logique de
     //      vos formules Drive, une bonne fois pour toutes)
-    //   3. Référentiel Sheets (fallback temporaire, à terme inutile)
+    //   4. Référentiel Sheets (fallback temporaire, à terme inutile)
     //
     //  ⚙️ RÈGLES AUTO — {champ à tester ; texte contenu ; type ; sous-catégorie}
     //     champ : "numero" ou "client". Complétez avec VOS règles !
@@ -155,6 +160,7 @@ let
     TC2 = Table.AddColumn(TC1, "type_client", each
             let sellsyType = Record.FieldOrDefault(_, "type_client_sellsy", null)
             in  if sellsyType <> null and sellsyType <> "" then sellsyType
+                else if [m_type_client] <> null and [m_type_client] <> "" then [m_type_client]
                 else if [auto][type] <> null then [auto][type]
                 else [ref_type_client], type text),
     TC3 = Table.AddColumn(TC2, "sous_categorie", each
@@ -176,25 +182,38 @@ let
             else if [p_paye] = true then 0
             else [montant_ttc], type number),
 
-    // --- Échéance par RÈGLE MÉTIER ------------------------------------
-    // 1. règle du type de client (fin/début de formation, date de facture)
-    // 2. sinon échéance Pennylane, sinon échéance Sellsy
+    // --- Échéance : cascade de priorité -------------------------------
+    //  1. Colonne « Date d'échéance » saisie dans Monday (le plus explicite)
+    //  2. Règle du TABLEAU Monday d'origine
+    //  3. Règle du type de client (table ReglesEcheance ci-dessus)
+    //  4. Échéance Pennylane, sinon Sellsy
+    DateDeBase = (ligne as record, base as nullable text) as nullable date =>
+        if base = "facture" then ligne[date_emission]
+        else if base = "debut" then ligne[date_debut_formation]
+        else if base = "fin" then ligne[date_fin_formation]
+        else null,
+
     A2 = Table.AddColumn(A1, "date_echeance", each
             let
+                // 2. règle portée par le tableau Monday
+                baseMonday = DateDeBase(_, [m_regle_base]),
+                echeanceMonday =
+                    if baseMonday = null then null
+                    else Date.AddDays(baseMonday, [m_regle_jours] ?? 0),
+
+                // 3. règle portée par le type de client
                 regle = try Table.SelectRows(ReglesEcheance,
                             (r) => Comparer.Equals(Comparer.OrdinalIgnoreCase,
                                                    r[type_client], [type_client])){0}
                         otherwise null,
-                baseDate =
-                    if regle = null then null
-                    else if regle[base] = "facture" then [date_emission]
-                    else if regle[base] = "debut"   then [date_debut_formation]
-                    else [date_fin_formation],
-                echeanceRegle =
-                    if baseDate = null then null
-                    else Date.AddDays(baseDate, regle[jours])
+                baseType = if regle = null then null else DateDeBase(_, regle[base]),
+                echeanceType =
+                    if baseType = null then null
+                    else Date.AddDays(baseType, regle[jours])
             in
-                if echeanceRegle <> null then echeanceRegle
+                if [m_date_echeance] <> null then [m_date_echeance]
+                else if echeanceMonday <> null then echeanceMonday
+                else if echeanceType <> null then echeanceType
                 else if [p_date_echeance] <> null then [p_date_echeance]
                 else [date_echeance_sellsy], type date),
 

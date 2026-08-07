@@ -103,6 +103,17 @@ let
     T3 = Table.AddColumn(T2, "cle", each
              Text.Upper(Text.Trim(Text.From(
                  if Record.HasFields(_, "numero") and [numero] <> null then [numero] else [item_nom]
-             ))), type text)
+             ))), type text),
+
+    // --- Compatibilité de schéma --------------------------------------
+    // Colonnes fournies par la version MULTI-TABLEAUX (monday_multi_boards.pq).
+    // On les crée à vide ici pour que les deux connecteurs soient
+    // interchangeables sans rien changer dans la table consolidée.
+    Compat = {"type_client_monday","regle_base","regle_jours","date_echeance_monday"},
+    T4 = List.Accumulate(
+            List.Difference(Compat, Table.ColumnNames(T3)),
+            T3,
+            (etat, nom) => Table.AddColumn(etat, nom, each null)
+         )
 in
-    T3
+    T4
