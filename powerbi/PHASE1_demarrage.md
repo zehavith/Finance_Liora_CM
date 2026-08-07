@@ -22,11 +22,15 @@ en **phase 2** (voir la fin de ce document).
 
 | Reporté | Conséquence en phase 1 |
 |---|---|
+| **Page « Balance âgée »** (matrice type → sous-catégorie → client) | Vue globale possible via un simple histogramme par tranche ; la matrice détaillée arrive en phase 2 |
 | **Avoirs Sellsy** (montants négatifs) | Les avoirs n'apparaissent pas encore dans l'encours |
 | Classification des factures **absentes de Monday** | Elles restent sans type / sous-catégorie — la page « factures manquantes sur Monday » sert justement à les identifier |
 
-> Les **règles d'échéance métier** et le **type de client** ne sont plus
-> reportés : ils sont couverts dès la phase 1 (voir l'encadré ci-dessous).
+> ⚠️ Distinction importante : les **règles d'échéance métier**, le **type de
+> client** et la **sous-catégorie** arrivent **automatiquement** avec le
+> connecteur Monday, sans travail supplémentaire — les données seront donc
+> déjà là et justes en phase 1. Seule la **construction de la page**
+> balance âgée est reportée (~20 min de mise en page).
 
 ### ⭐ Utilisez le connecteur multi-tableaux (recommandé)
 
@@ -142,7 +146,9 @@ Créer une table `_Mesures`, puis coller depuis [`mesures_dax.md`](mesures_dax.m
 - [ ] DSO (jours) · Total échu · % échu · Retard moyen pondéré
 - [ ] Nb factures manquantes sur Monday · Encours manquant sur Monday
 
-> Sautez pour l'instant les mesures qui parlent de `type_client` — phase 2.
+> `type_client` et `sous_categorie` sont déjà alimentés par Monday : vous
+> pouvez donc filtrer/segmenter par type dès la phase 1. Seule la **page**
+> balance âgée détaillée est reportée.
 
 ## Étape 7 — Les 3 pages ⏱️ 45 min
 
@@ -173,7 +179,7 @@ Voir [`rafraichissement_service.md`](rafraichissement_service.md) §0 à §5.
 
 ---
 
-## PHASE 2 — Balance âgée complète (plus tard) ⏱️ 1 h 30 – 2 h
+## PHASE 2 — Balance âgée complète (plus tard) ⏱️ ~1 h
 
 À faire quand la phase 1 tourne. Trois ajouts, dans cet ordre :
 
