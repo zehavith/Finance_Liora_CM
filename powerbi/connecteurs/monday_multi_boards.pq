@@ -49,16 +49,16 @@ let
     BoardsConfig = #table(
         {"prefixe","type_client","sous_categorie","perimetre","base","jours"},
         {
-            {"1.0.", "B2C - Entreprise", "Entreprise - Tampon",       "ADV",          "facture", 30},
-            {"1.1.", "B2C - Entreprise", "Entreprise - ADV",          "ADV",          "facture", 30},
-            {"1.2.", "B2C - Entreprise", "Entreprise - Recouvrement", "Recouvrement", "facture", 30},
-            {"1.3.", "OPCO",             "Entreprise - OPCO",         "",             "fin",     60},
+            {"1.0.", "B2C - Entreprise", "Corporate / Entreprise",       "ADV",          "facture", 30},
+            {"1.1.", "B2C - Entreprise", "Corporate / Entreprise",          "ADV",          "facture", 30},
+            {"1.2.", "B2C - Entreprise", "Corporate / Entreprise", "Recouvrement", "facture", 30},
+            {"1.3.", "OPCO",             "OPCO",         "",             "fin",     60},
             {"2.1.", "BTC-Perso",        "Financement Personnel",     "",             "debut",    0},
             {"2.2.", "CPF",              "Financement CPF",           "",             "fin",     45},
             // 2.3 mélange AIF et POEI — même règle (+60 j), distingués
             // pour l'analyse via GroupesConfig ↓
-            {"2.3.", "AIF",              "Financement pôle emploi",   "",             "fin",     60},
-            {"2.4.", "Region",           "Financement complexe",      "",             "fin",     60},
+            {"2.3.", "AIF",              "AIF / POEI",   "",             "fin",     60},
+            {"2.4.", "Region",           "Région",      "",             "fin",     60},
             // EN DERNIER : complément uniquement
             {"0.1.", "",                 "ALL - Factures payées",     "",             "facture", 30}
         }
@@ -82,8 +82,12 @@ let
     GroupesConfig = #table(
         {"prefixe","contient","type_client","sous_categorie","base","jours"},
         {
-            {"2.3.", "poei", "POEI", "Financement POEI", "fin", 60},
-            {"2.3.", "aif",  "AIF",  "Financement AIF",  "fin", 60}
+            // 2.3 mélange AIF et POEI (même règle, distingués pour l'analyse)
+            {"2.3.", "poei",       "POEI",           "POEI",           "fin", 60},
+            {"2.3.", "aif",        "AIF",            "AIF",            "fin", 60},
+            // 2.4 mélange RÉGION / TRANSITION PRO / AGEFIPH — règles différentes
+            {"2.4.", "transition", "Transition Pro", "Transition Pro", "fin", 30},
+            {"2.4.", "agefiph",    "Agefiph",        "Agefiph",        "fin", 60}
         }
     ),
 
