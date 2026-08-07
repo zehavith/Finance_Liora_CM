@@ -139,6 +139,11 @@ contenu du fichier, **renommer la requête** exactement comme indiqué.
 - [ ] Clic droit sur `Calendrier` → **Marquer comme table de dates**
 - [ ] Colonne `tranche_age` → *Outils de colonne → Trier par colonne →
       `tranche_ordre`*
+- [ ] ⭐ **Hiérarchie d'exploration** : clic droit sur `tranche_age` →
+      *Créer une hiérarchie* (« Ancienneté → Détail »), puis y glisser
+      `perimetre`, `type_client`, `sous_categorie`, `client_nom`.
+      → lecture **par les dates d'abord**, catégories en drill-down
+      (voir « Principe de lecture » dans [`README.md`](README.md))
 
 ## Étape 6 — Mesures ⏱️ 15 min
 
@@ -159,10 +164,11 @@ Créer une table `_Mesures`, puis coller depuis [`mesures_dax.md`](mesures_dax.m
 
 Voir la maquette dans [`README.md`](README.md).
 
-- [ ] **Page 1 — ADV vs Recouvrement** ⭐ : cartes KPI, comparatif
-      ADV / Recouvrement, évolution des deux dans le temps, top 10 débiteurs
-- [ ] **Page 2 — Détail & relances** : table filtrable + segments
-      (dont segment `perimetre`)
+- [ ] **Page 1 — ADV vs Recouvrement** ⭐ : cartes KPI, **encours par
+      ancienneté** (histogramme sur la hiérarchie → explorable par
+      catégorie), évolution ADV/Recouvrement, top 10 débiteurs
+- [ ] **Page 2 — Détail & relances** : table filtrable, **triée par
+      `jours_retard` décroissant**, + segments (dont `perimetre`)
 - [ ] **Page 3 — Contrôle Sellsy ↔ Monday** : factures manquantes sur Monday
       **+** factures mal rangées (en retard mais côté ADV)
 

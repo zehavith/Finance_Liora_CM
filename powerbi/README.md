@@ -104,55 +104,124 @@ Bandeau de **cartes KPI** (haut) :
 └───────────────┴───────────────┴───────────────┴───────────────┴───────────────┘
 ```
 
-Corps de page :
-- **Comparatif ADV / Recouvrement** (barres empilées horizontales) :
-  axe `perimetre`, valeur `[Encours total]` — la photo instantanée.
+Corps de page — **lecture par les DATES d'abord** :
+- **Encours par ancienneté** (histogramme, visuel principal) :
+  axe `tranche_age` (Non échu → 0-3 → … → > 48 mois), valeur
+  `[Encours total]`, légende `perimetre` (ADV / Recouvrement).
+  👉 C'est ici qu'on **explore en profondeur** : voir la hiérarchie ci-dessous.
 - **Évolution ADV vs Recouvrement** (courbes, 2 séries) :
   `Calendrier[Année-Mois]` × `[Encours ADV]` et `[Encours Recouvrement]`
-  → montre si le recouvrement se dégrade ou s'assainit dans le temps.
-- **Balance âgée** (histogramme) : axe `tranche_age` (tranches en mois),
-  valeur `[Encours total]` — vue globale en attendant la page dédiée.
+  → montre si la situation se dégrade ou s'assainit dans le temps.
 - **Top 10 clients débiteurs** (barres) : `client_nom` × `[Encours total]`,
   filtré sur `perimetre = "Recouvrement"`.
-- **Segments** : `type_client`, `sous_categorie`, période.
+- **Segments** : `perimetre`, `type_client`, `sous_categorie`, période.
 
 > 💡 Mettez `perimetre` en **segment global** (synchronisé entre les pages) :
 > vous basculez toute la lecture du dashboard entre ADV et Recouvrement d'un clic.
 
-### Page 2 — Balance âgée (calquée sur votre feuille actuelle)
+---
 
-Une **matrice unique avec drill-down** remplace vos 3 onglets (type / sous-
-catégorie / compte client) :
+## 🔑 Principe de lecture : la DATE d'abord, la catégorie ensuite
+
+Le tableau de bord se lit **par les dates en premier**. Les catégories
+(type de client, financeur, client) ne sont pas l'entrée principale : elles
+servent à **creuser** une tranche qui pose problème.
+
+### Créer la hiérarchie d'exploration (à faire une fois)
+
+Dans le volet *Données*, sur la table `Factures` :
+1. Clic droit sur `tranche_age` → **Créer une hiérarchie**
+   (nommez-la « Ancienneté → Détail »).
+2. Faites glisser dessus, **dans cet ordre** : `perimetre`, puis
+   `type_client`, puis `sous_categorie`, puis `client_nom`.
+
+Vous obtenez :
 
 ```
-                     Restant dû   Total échu   0-3   3-4   4-8   8-12  12-18  18-24  24-36  36-48  >48   Non échu
- ▸ B2C                6 985 611    3 858 262    …     …     …     …      …      …      …      …     …       …
- ▸ B2C - Entreprise   2 153 476      998 444    …
- ▸ B2B                1 451 037      801 627    …
- ▸ Alternance           851 163      599 718    …
- ▸ POEI               3 706 370    2 636 575    …
- ▸ Interco               18 618       18 618    …
- TOTAL               15 166 277    8 913 246    …
+  Ancienneté → Détail
+    ├── tranche_age        ← niveau 1 : LA DATE (vue par défaut)
+    ├── perimetre          ← niveau 2 : ADV / Recouvrement
+    ├── type_client        ← niveau 3 : B2C, B2B, OPCO, CPF…
+    ├── sous_categorie     ← niveau 4 : financeur
+    └── client_nom         ← niveau 5 : le client
+```
+
+Placez cette hiérarchie en **axe** de l'histogramme (et en **lignes** de la
+matrice de la page Balance âgée). Le visuel s'ouvre sur les **tranches
+d'ancienneté** ; les 4 flèches en haut à droite du visuel permettent alors :
+
+| Bouton | Effet |
+|---|---|
+| ⤓ *Explorer vers le bas* | descendre d'un niveau (tranche → périmètre → type…) |
+| ⇅ *Développer* | garder la date **et** ajouter la catégorie en sous-niveau |
+| ↑ | remonter |
+
+> Vous pouvez aussi **cliquer directement sur une barre** (ex. « > 48 mois »)
+> pour descendre uniquement dans cette tranche. C'est exactement le
+> « d'abord les dates, puis creuser » demandé.
+
+### Tris par défaut
+
+- `tranche_age` : trié par `tranche_ordre` (*Outils de colonne → Trier par
+  colonne*) → Non échu → 0-3 → … → > 48 mois, partout et automatiquement.
+- **Tables détaillées** : trier par `jours_retard` **décroissant** (les plus
+  anciennes créances en haut) ou par `date_echeance` croissante.
+- **Courbes d'évolution** : axe `Calendrier[Année-Mois]`, ordre chronologique.
+
+### Page 2 — Balance âgée (calquée sur votre feuille actuelle)
+
+Une **matrice unique explorable**, ouverte **sur les tranches d'ancienneté**,
+qu'on creuse ensuite par catégorie :
+
+```
+  ANCIENNETÉ            Restant dû     Total échu    Nb factures
+  ▸ Non échu             4 250 000              0          312
+  ▸ 0-3 mois             2 890 000      2 890 000          198
+  ▸ 3-4 mois               640 000        640 000           47
+  ▸ 4-8 mois             1 730 000      1 730 000          122
+  ▸ 8-12 mois            1 150 000      1 150 000           88
+  ▸ 12-18 mois             920 000        920 000           64
+  ▸ 18-24 mois             745 000        745 000           51
+  ▸ 24-36 mois             637 431        637 431           43
+  ▸ 36-48 mois             851 930        851 930           39
+  ▸ > 48 mois            1 352 916      1 352 916           95   🔴
+  TOTAL                 15 166 277      8 913 246        1 059
+```
+
+En cliquant sur ▸ d'une tranche, on descend dans `perimetre` →
+`type_client` → `sous_categorie` → `client_nom` :
+
+```
+  ▾ > 48 mois            1 352 916
+      ▾ Recouvrement     1 352 916
+          ▾ B2C            499 679
+              CPF          312 400
+              AIF          187 279
+          ▸ B2B            171 912
 ```
 
 Construction :
 - **Visuel Matrice** —
-  - **Lignes** (3 niveaux, drill-down avec ▸) : `type_client` →
-    `sous_categorie` (CPF, OPCO, Région…) → `client_nom`
-  - **Colonnes** : `tranche_age` (**en mois**, triée via `tranche_ordre` :
-    Non échu → 0-3 → … → > 48 mois)
-  - **Valeurs** : `[Restant dû]` ; ajoutez `[Total échu]` en 1re valeur pour
-    reproduire vos deux colonnes de tête
-  - Totaux ligne + colonne activés · dégradé de rouge sur les tranches hautes
+  - **Lignes** : la hiérarchie **« Ancienneté → Détail »** créée plus haut
+    (`tranche_age` en niveau 1)
+  - **Valeurs** : `[Restant dû]`, `[Total échu]`, `[Nb factures]`
+  - Totaux activés · dégradé de rouge sur les tranches les plus anciennes
 - **Cartes** au-dessus : `[Restant dû]` · `[Total échu]` · `[Encours positif]`
   · `[Encours négatif (avoirs)]` · `[Encours net]` · `[Écart contrôle]` (=0)
-- **Segments** : `statut_recouvrement` (pour isoler « Payée (à lettrer) » —
-  votre distinction *A Lettrer / Excluding A Lettrer*), `type_client`, période.
+- **Segments** : `perimetre`, `statut_recouvrement` (pour isoler « Payée
+  (à lettrer) » — votre distinction *A Lettrer / Excluding A Lettrer*),
+  `type_client`, période.
 
-> Chaque nombre de la matrice est **cliquable** : clic droit > *Extraire* pour
-> voir les factures qui le composent ; export Excel d'un clic droit également.
+> 💡 **Vue croisée en option.** Si vous voulez retrouver ponctuellement votre
+> présentation actuelle (catégories en lignes, tranches en colonnes), il
+> suffit de mettre `type_client` en **Lignes** et `tranche_age` en
+> **Colonnes** sur une seconde matrice. Les deux lectures coexistent sans
+> rien changer aux données.
+
+> Chaque nombre est **cliquable** : clic droit → *Extraire* pour voir les
+> factures qui le composent ; export Excel d'un clic droit également.
 > L'échéance qui alimente ces tranches est calculée par **vos règles métier**
-> (fin de formation +30/45/60 j selon le type — voir `factures_consolidees.pq`).
+> (fin de service +30/45/60 j selon le type — voir `factures_consolidees.pq`).
 
 ### Page 3 — Détail & relances (opérationnel)
 
