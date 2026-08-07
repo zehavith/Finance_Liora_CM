@@ -1,67 +1,85 @@
 // =====================================================================
-//  MONDAY.COM — PLUSIEURS TABLEAUX + règle d'échéance PAR TABLEAU
+//  MONDAY.COM — TOUS VOS TABLEAUX + règle d'échéance PAR TABLEAU
 //  Requête Power Query (M) — API GraphQL v2
 //  Nom de requête conseillé :  Monday_Suivi   (remplace monday_relances.pq)
 // ---------------------------------------------------------------------
-//  ⭐ POURQUOI CETTE VERSION
-//  Si vos tableaux Monday sont déjà séparés par type de client
-//  (B2C, Corporate, Alternance…), alors LE TABLEAU DIT LE TYPE.
-//  On en déduit automatiquement :
-//     • le type_client        → plus de saisie manuelle
-//     • la règle d'échéance   → date de facture / début / fin de formation + N j
+//  ⭐ PRINCIPE
+//  Vos tableaux Monday sont déjà organisés par type de financement
+//  (1. Corporate / 2. B2C, puis CPF, AIF, Région, OPCO…). Le tableau
+//  d'origine d'une facture suffit donc à déterminer :
+//     • son type de client      → plus aucune saisie manuelle
+//     • sa sous-catégorie       → ventilation de la balance âgée
+//     • sa règle d'échéance     → date de facture / début / fin de
+//                                 formation + N jours
 //
-//  Résultat : les chiffres de retard deviennent JUSTES sans avoir à
-//  préparer le référentiel Google Sheets. 🎯
+//  Et comme TOUS vos tableaux portent les 3 dates (facture, début et fin
+//  de formation), l'échéance métier est calculée intégralement ici :
+//  aucun référentiel externe n'est nécessaire. 🎯
 //
-//  Prérequis : paramètre  pMondayToken  (le board id n'est plus utilisé,
-//  les tableaux sont listés dans BoardsConfig ci-dessous).
+//  Les tableaux sont retrouvés PAR LEUR NOM (préfixe « 1.1. », « 2.2. »…),
+//  donc vous n'avez AUCUN board id à aller chercher.
 //
-//  ⚠️ Ne couvre que les factures PRÉSENTES dans Monday. Celles qui n'y
-//     sont pas restent sans type (→ page « factures manquantes sur
-//     Monday » : plus votre suivi est complet, meilleure est la donnée).
+//  Prérequis : paramètre  pMondayToken  uniquement.
+//
+//  ⚠️ Ne couvre que les factures présentes dans Monday. Celles qui n'y
+//     sont pas ressortent dans la page « factures manquantes sur Monday ».
 // =====================================================================
 let
     Token = pMondayToken,
 
     // =================================================================
-    //  ⚙️ 1) VOS TABLEAUX — à compléter (une ligne par tableau Monday)
+    //  ⚙️ 1) VOS TABLEAUX — pré-rempli d'après votre arborescence
     // =================================================================
-    //  board_id    : le nombre dans l'URL  …/boards/1234567890
-    //  type_client : le type porté par ce tableau (libre)
-    //  base        : "facture" = date de facture | "debut" = début de
-    //                formation | "fin" = fin de formation | "" = aucune règle
-    //  jours       : délai ajouté à la date de base
+    //  prefixe        : début du nom du tableau dans Monday (unique)
+    //  type_client    : type porté par ce tableau
+    //  sous_categorie : financeur / détail (colonnes de votre balance)
+    //  base           : "facture" | "debut" | "fin" | "" (aucune règle)
+    //  jours          : délai ajouté à la date de base
     //
-    //  💡 Si un tableau mélange plusieurs types, laissez type_client = ""
-    //     et base = "" : la catégorisation retombera sur les autres
-    //     sources (champ Sellsy / règles auto / référentiel).
+    //  ⚠️ À VALIDER : les règles ci-dessous sont déduites de votre table
+    //     « Règle date d'échéance ». Vérifiez surtout les lignes 1.0 à 1.3.
+    //  💡 Tableaux « Technique », « Zone Kairos », « RIB Reçus »,
+    //     « Transactions » : volontairement ABSENTS (pas du suivi de
+    //     facture). Ajoutez-les seulement s'ils contiennent des factures.
     BoardsConfig = #table(
-        {"board_id","type_client","base","jours"},
+        {"prefixe","type_client","sous_categorie","base","jours"},
         {
-            {"1111111111", "B2C - Entreprise",       "facture", 30},
-            {"2222222222", "Corporate - Alternance", "facture", 30},
-            {"3333333333", "B2C",                    "debut",    0}
-            // {"4444444444", "CPF",  "fin", 45},
-            // {"5555555555", "POEI", "fin", 60},
-            // … ajoutez vos tableaux ici
+            // --- 1. Corporate ---------------------------------------
+            {"1.0.", "B2C - Entreprise", "Entreprise - Tampon",       "facture", 30},
+            {"1.1.", "B2C - Entreprise", "Entreprise - ADV",          "facture", 30},
+            {"1.2.", "B2C - Entreprise", "Entreprise - Recouvrement", "facture", 30},
+            {"1.3.", "OPCO",             "Entreprise - OPCO",         "fin",     60},
+
+            // --- 2. B2C ---------------------------------------------
+            {"2.1.", "BTC-Perso",        "Financement Personnel",     "debut",    0},
+            {"2.2.", "CPF",              "Financement CPF",           "fin",     45},
+            {"2.3.", "AIF",              "Financement pôle emploi",   "fin",     45},
+            {"2.4.", "Region",           "Financement complexe",      "fin",     60}
+
+            // --- Optionnel : factures déjà payées (contrôle) ---------
+            // ,{"0.1.", "", "ALL - Factures payées", "", 0}
         }
     ),
 
     // =================================================================
-    //  ⚙️ 2) VOS COLONNES — titres EXACTS de vos tableaux Monday
+    //  ⚙️ 2) VOS COLONNES — titres EXACTS dans Monday
     // =================================================================
-    //  Les titres absents d'un tableau sont simplement ignorés.
-    //  "Date d'échéance" est FACULTATIF : s'il existe, il est prioritaire
-    //  sur la règle du tableau (option A : saisie explicite).
+    //  Les titres absents d'un tableau sont ignorés sans erreur.
+    //  ⚠️ Adaptez ces libellés à ceux affichés dans vos tableaux.
     ColonnesVoulues = {
-        {"N° facture",        "numero"},
-        {"Client",            "client_nom_monday"},
-        {"Statut relance",    "statut_relance"},
-        {"Dernière relance",  "date_derniere_relance"},
-        {"Prochaine relance", "date_prochaine_relance"},
-        {"Responsable",       "responsable_reco"},
-        {"Commentaire",       "commentaire"},
-        {"Date d'échéance",   "date_echeance_monday"}
+        {"N° facture",         "numero"},
+        {"Client",             "client_nom_monday"},
+        // ⭐ Les 3 dates présentes dans tous vos tableaux
+        {"Date de facture",    "date_facture_monday"},
+        {"Début de formation", "date_debut_formation_monday"},
+        {"Fin de formation",   "date_fin_formation_monday"},
+        {"Statut relance",     "statut_relance"},
+        {"Dernière relance",   "date_derniere_relance"},
+        {"Prochaine relance",  "date_prochaine_relance"},
+        {"Responsable",        "responsable_reco"},
+        {"Commentaire",        "commentaire"},
+        // Facultatif : si rempli, prioritaire sur la règle du tableau
+        {"Date d'échéance",    "date_echeance_monday"}
     },
 
     // =================================================================
@@ -82,6 +100,35 @@ let
                 ]
             )
         ),
+
+    // --- Liste de TOUS vos tableaux (id + nom) ------------------------
+    GetBoardsPage = (page as number) as list =>
+        let
+            r = AppelGraphQL("query { boards(limit: 100, page: " & Text.From(page) & ") { id name } }")
+        in
+            try r[data][boards] otherwise {},
+
+    ListeBoards = List.Combine(
+        List.Generate(
+            () => [p = 1, items = GetBoardsPage(1)],
+            each List.Count([items]) > 0,
+            each [p = [p] + 1, items = GetBoardsPage([p] + 1)],
+            each [items]
+        )
+    ),
+
+    // --- Résolution nom → board id ------------------------------------
+    Configs = Table.ToRecords(BoardsConfig),
+    Resolus = List.Transform(Configs, (cfg) =>
+        let
+            trouves = List.Select(ListeBoards,
+                        (b) => Text.StartsWith(Text.Trim(Text.From(b[name])), cfg[prefixe]))
+        in
+            if List.Count(trouves) = 0 then null
+            else cfg & [ board_id  = Text.From(trouves{0}[id]),
+                         board_nom = Text.From(trouves{0}[name]) ]
+    ),
+    ConfigsOk = List.RemoveNulls(Resolus),
 
     // --- Tous les items d'un tableau (pagination par curseur) ---------
     ItemsDuBoard = (boardId as text) as list =>
@@ -129,7 +176,6 @@ let
             Enregs = List.Transform(Items, each LigneDepuisItem(_)),
             T0     = Table.FromRecords(Enregs, missingField.UseNull),
 
-            // Sélection / renommage des colonnes présentes dans CE tableau
             Presentes = List.Select(ColonnesVoulues,
                             each List.Contains(Table.ColumnNames(T0), _{0})),
             T1 = Table.SelectColumns(
@@ -138,40 +184,46 @@ let
                     MissingField.Ignore),
             T2 = Table.RenameColumns(T1, Presentes, MissingField.Ignore),
 
-            // On garantit la présence des colonnes attendues en aval
-            Attendues = List.Transform(ColonnesVoulues, each _{1}),
+            // Garantir la présence des colonnes attendues en aval
+            Attendues  = List.Transform(ColonnesVoulues, each _{1}),
             Manquantes = List.Difference(Attendues, Table.ColumnNames(T2)),
             T3 = List.Accumulate(Manquantes, T2,
                     (etat, nom) => Table.AddColumn(etat, nom, each null)),
 
-            // Métadonnées du tableau : type + règle d'échéance
-            T4 = Table.AddColumn(T3, "board_id",         each cfg[board_id], type text),
-            T5 = Table.AddColumn(T4, "type_client_monday", each
+            // Métadonnées du tableau : type, sous-catégorie, règle
+            T4 = Table.AddColumn(T3, "board_id",  each cfg[board_id], type text),
+            T5 = Table.AddColumn(T4, "board_nom", each cfg[board_nom], type text),
+            T6 = Table.AddColumn(T5, "type_client_monday", each
                     if cfg[type_client] = "" then null else cfg[type_client], type text),
-            T6 = Table.AddColumn(T5, "regle_base",  each
+            T7 = Table.AddColumn(T6, "sous_categorie_monday", each
+                    if cfg[sous_categorie] = "" then null else cfg[sous_categorie], type text),
+            T8 = Table.AddColumn(T7, "regle_base", each
                     if cfg[base] = "" then null else cfg[base], type text),
-            T7 = Table.AddColumn(T6, "regle_jours", each cfg[jours], Int64.Type),
+            T9 = Table.AddColumn(T8, "regle_jours", each cfg[jours], Int64.Type),
 
             // Clé de réconciliation (n° de facture normalisé)
-            T8 = Table.AddColumn(T7, "cle", each
+            T10 = Table.AddColumn(T9, "cle", each
                     Text.Upper(Text.Trim(Text.From(
                         if [numero] <> null and [numero] <> "" then [numero] else [item_nom]
                     ))), type text)
         in
-            T8,
+            T10,
 
     // =================================================================
     //  5) Tous les tableaux, empilés
     // =================================================================
-    Configs = Table.ToRecords(BoardsConfig),
-    Tables  = List.Transform(Configs, each try TableDuBoard(_) otherwise null),
+    Tables  = List.Transform(ConfigsOk, each try TableDuBoard(_) otherwise null),
     Valides = List.RemoveNulls(Tables),
     Empile  = Table.Combine(Valides),
 
-    // Typage des dates éventuelles
+    // Typage des dates (Monday renvoie du texte)
+    // 💡 Si une date ne se convertit pas, adaptez la culture ("fr-FR" ↔ "en-US").
     Resultat = Table.TransformColumnTypes(
         Empile,
         {
+            {"date_facture_monday", type date},
+            {"date_debut_formation_monday", type date},
+            {"date_fin_formation_monday", type date},
             {"date_echeance_monday", type date},
             {"date_derniere_relance", type date},
             {"date_prochaine_relance", type date}

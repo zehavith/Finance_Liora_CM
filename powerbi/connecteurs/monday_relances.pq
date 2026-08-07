@@ -109,7 +109,9 @@ let
     // Colonnes fournies par la version MULTI-TABLEAUX (monday_multi_boards.pq).
     // On les crée à vide ici pour que les deux connecteurs soient
     // interchangeables sans rien changer dans la table consolidée.
-    Compat = {"type_client_monday","regle_base","regle_jours","date_echeance_monday"},
+    Compat = {"type_client_monday","sous_categorie_monday","regle_base","regle_jours",
+              "date_echeance_monday","date_facture_monday",
+              "date_debut_formation_monday","date_fin_formation_monday"},
     T4 = List.Accumulate(
             List.Difference(Compat, Table.ColumnNames(T3)),
             T3,

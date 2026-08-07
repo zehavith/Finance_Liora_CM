@@ -100,9 +100,11 @@ let
     ExpMonday = Table.ExpandTableColumn(
         JoinMonday, "monday",
         {"item_id","statut_relance","date_derniere_relance","date_prochaine_relance","responsable_reco",
-         "type_client_monday","regle_base","regle_jours","date_echeance_monday"},
+         "type_client_monday","sous_categorie_monday","regle_base","regle_jours","date_echeance_monday",
+         "date_facture_monday","date_debut_formation_monday","date_fin_formation_monday"},
         {"m_item_id","m_statut_relance","m_derniere_relance","m_prochaine_relance","m_responsable",
-         "m_type_client","m_regle_base","m_regle_jours","m_date_echeance"}
+         "m_type_client","m_sous_categorie","m_regle_base","m_regle_jours","m_date_echeance",
+         "m_date_facture","m_date_debut_formation","m_date_fin_formation"}
     ),
 
     // --- 3bis) Fusion avec le Référentiel (fallback + dates formation)
@@ -118,8 +120,16 @@ let
     ExpRef = Table.ExpandTableColumn(
         JoinRef, "ref",
         {"type_client","sous_categorie","date_debut_formation","date_fin_formation"},
-        {"ref_type_client","ref_sous_categorie","date_debut_formation","date_fin_formation"}
+        {"ref_type_client","ref_sous_categorie","ref_date_debut","ref_date_fin"}
     ),
+
+    // --- Dates de formation : Monday prioritaire, référentiel en secours
+    DF1 = Table.AddColumn(ExpRef, "date_debut_formation", each
+            if [m_date_debut_formation] <> null then [m_date_debut_formation]
+            else [ref_date_debut], type date),
+    DF2 = Table.AddColumn(DF1, "date_fin_formation", each
+            if [m_date_fin_formation] <> null then [m_date_fin_formation]
+            else [ref_date_fin], type date),
 
     // =================================================================
     //  3ter) TYPE DE CLIENT — cascade AUTOMATIQUE (zéro saisie manuelle)
@@ -147,16 +157,15 @@ let
     DeduireType = (ligne as record) as record =>
         let
             hits = List.Select(ReglesTypeClient, (r) =>
-                let valeur = if r{0} = "numero"
-                             then Text.From(ligne[numero] ?? "")
-                             else Text.From(ligne[client_nom] ?? "")
+                let brut   = if r{0} = "numero" then ligne[numero] else ligne[client_nom],
+                    valeur = if brut = null then "" else Text.From(brut)
                 in Text.Contains(Text.Upper(valeur), Text.Upper(r{1}))),
             regle = if List.Count(hits) > 0 then hits{0} else null
         in
             [ type = if regle <> null then regle{2} else null,
               sc   = if regle <> null then regle{3} else null ],
 
-    TC1 = Table.AddColumn(ExpRef, "auto", each DeduireType(_)),
+    TC1 = Table.AddColumn(DF2, "auto", each DeduireType(_)),
     TC2 = Table.AddColumn(TC1, "type_client", each
             let sellsyType = Record.FieldOrDefault(_, "type_client_sellsy", null)
             in  if sellsyType <> null and sellsyType <> "" then sellsyType
@@ -166,6 +175,7 @@ let
     TC3 = Table.AddColumn(TC2, "sous_categorie", each
             let sellsySC = Record.FieldOrDefault(_, "sous_categorie_sellsy", null)
             in  if sellsySC <> null and sellsySC <> "" then sellsySC
+                else if [m_sous_categorie] <> null and [m_sous_categorie] <> "" then [m_sous_categorie]
                 else if [auto][sc] <> null then [auto][sc]
                 else [ref_sous_categorie], type text),
     TC4 = Table.RemoveColumns(TC3, {"auto"}),
@@ -188,7 +198,8 @@ let
     //  3. Règle du type de client (table ReglesEcheance ci-dessus)
     //  4. Échéance Pennylane, sinon Sellsy
     DateDeBase = (ligne as record, base as nullable text) as nullable date =>
-        if base = "facture" then ligne[date_emission]
+        if base = "facture" then
+            (if ligne[m_date_facture] <> null then ligne[m_date_facture] else ligne[date_emission])
         else if base = "debut" then ligne[date_debut_formation]
         else if base = "fin" then ligne[date_fin_formation]
         else null,
@@ -199,7 +210,8 @@ let
                 baseMonday = DateDeBase(_, [m_regle_base]),
                 echeanceMonday =
                     if baseMonday = null then null
-                    else Date.AddDays(baseMonday, [m_regle_jours] ?? 0),
+                    else Date.AddDays(baseMonday,
+                            if [m_regle_jours] = null then 0 else [m_regle_jours]),
 
                 // 3. règle portée par le type de client
                 regle = try Table.SelectRows(ReglesEcheance,

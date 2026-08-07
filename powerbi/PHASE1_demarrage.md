@@ -30,29 +30,32 @@ en **phase 2** (voir la fin de ce document).
 > Pennylane/Sellsy avant toute relance formelle** : le retard affiché peut
 > différer de votre vraie échéance contractuelle.
 
-### ⭐ Comment supprimer cette limite dès la phase 1
+### ⭐ Comment SUPPRIMER ces limites dès la phase 1 (recommandé)
 
-Si vos **tableaux Monday sont déjà séparés par type de client** (B2C,
-Corporate, Alternance…), utilisez **`connecteurs/monday_multi_boards.pq`** au
-lieu de `monday_relances.pq` (étape 4). Vous y déclarez, pour chaque tableau,
-son type et sa règle d'échéance :
+Vos tableaux Monday sont déjà organisés par financement (`1. Corporate`,
+`2. B2C`, puis CPF, AIF, Région, OPCO…) **et portent les 3 dates**
+(facture, début et fin de formation). Cela suffit à tout calculer.
 
-```
-{"1111111111", "B2C - Entreprise",       "facture", 30},
-{"2222222222", "Corporate - Alternance", "facture", 30},
-```
+👉 À l'étape 4, utilisez **`connecteurs/monday_multi_boards.pq`** au lieu de
+`monday_relances.pq`. Il est **déjà pré-rempli** avec vos tableaux et
+retrouve leurs identifiants **par leur nom** (préfixes `1.0.`, `2.2.`…) :
+vous n'avez aucun board id à chercher.
 
-Bénéfices immédiats, **sans référentiel ni saisie manuelle** :
-- le **type de client** est déduit du tableau d'origine ;
-- l'**échéance** suit votre règle « date de facture + N jours » → les chiffres
-  de retard deviennent **justes** dès la phase 1 ;
-- vous pouvez aussi ajouter une colonne **« Date d'échéance »** dans Monday :
-  si elle est remplie, elle est prioritaire sur la règle.
+Ce que vous gagnez immédiatement, **sans référentiel ni saisie manuelle** :
 
-> ⚠️ Reste en phase 2 : les règles basées sur les **dates de formation**
-> (fin/début de formation +30/45/60 j), qui exigent le référentiel — les
-> tableaux Monday ne portent pas ces dates. Les types concernés (CPF, POEI,
-> OPCO, AIF…) gardent donc une échéance approchée jusque-là.
+| Gain | Détail |
+|---|---|
+| **Type de client** | Déduit du tableau d'origine (Corporate → B2C-Entreprise, `2.2.` → CPF…) |
+| **Sous-catégorie** | Idem → la **balance âgée ventilée** devient possible dès la phase 1 |
+| **Échéance exacte** | Règle métier complète : date de facture / **début** / **fin de formation** + 30/45/60 j |
+
+> Il ne reste alors comme limite que les **avoirs Sellsy** (montants négatifs),
+> et la classification des factures **absentes de Monday** — que la page
+> « factures manquantes sur Monday » vous aide justement à combler.
+
+**À vérifier au premier chargement :** les titres de colonnes dans
+`ColonnesVoulues` (« Date de facture », « Début de formation », « Fin de
+formation »…) doivent correspondre **exactement** à ceux de vos tableaux.
 
 ---
 
