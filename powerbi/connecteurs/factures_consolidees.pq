@@ -44,8 +44,8 @@ let
             {"Region",                  "fin",     60},
             {"Interco",                 "fin",     30},
             {"Interne - DST Allemagne", "fin",     30},
-            {"AIF",                     "fin",     45},
             {"CPF",                     "fin",     45},
+            {"AIF",                     "fin",     60},
             {"POEI",                    "fin",     60},
             {"Agefiph",                 "fin",     60},
             {"ETAT",                    "fin",     60},
@@ -100,10 +100,12 @@ let
     ExpMonday = Table.ExpandTableColumn(
         JoinMonday, "monday",
         {"item_id","statut_relance","date_derniere_relance","date_prochaine_relance","responsable_reco",
-         "type_client_monday","sous_categorie_monday","regle_base","regle_jours","date_echeance_monday",
+         "type_client_monday","sous_categorie_monday","regle_base","regle_jours",
+         "date_echeance_monday","date_echeance_calc_monday",
          "date_facture_monday","date_debut_formation_monday","date_fin_formation_monday"},
         {"m_item_id","m_statut_relance","m_derniere_relance","m_prochaine_relance","m_responsable",
-         "m_type_client","m_sous_categorie","m_regle_base","m_regle_jours","m_date_echeance",
+         "m_type_client","m_sous_categorie","m_regle_base","m_regle_jours",
+         "m_date_echeance","m_date_echeance_calc",
          "m_date_facture","m_date_debut_formation","m_date_fin_formation"}
     ),
 
@@ -193,10 +195,12 @@ let
             else [montant_ttc], type number),
 
     // --- Échéance : cascade de priorité -------------------------------
-    //  1. Colonne « Date d'échéance » saisie dans Monday (le plus explicite)
-    //  2. Règle du TABLEAU Monday d'origine
-    //  3. Règle du type de client (table ReglesEcheance ci-dessus)
-    //  4. Échéance Pennylane, sinon Sellsy
+    //  1. « Date échéance calculée / négociée » de Monday (échéance
+    //     renégociée : fait foi en recouvrement)
+    //  2. « Date d'échéance » saisie dans Monday
+    //  3. Règle du TABLEAU / GROUPE Monday d'origine
+    //  4. Règle du type de client (table ReglesEcheance ci-dessus)
+    //  5. Échéance Pennylane, sinon Sellsy
     DateDeBase = (ligne as record, base as nullable text) as nullable date =>
         if base = "facture" then
             (if ligne[m_date_facture] <> null then ligne[m_date_facture] else ligne[date_emission])
@@ -223,7 +227,8 @@ let
                     if baseType = null then null
                     else Date.AddDays(baseType, regle[jours])
             in
-                if [m_date_echeance] <> null then [m_date_echeance]
+                if [m_date_echeance_calc] <> null then [m_date_echeance_calc]
+                else if [m_date_echeance] <> null then [m_date_echeance]
                 else if echeanceMonday <> null then echeanceMonday
                 else if echeanceType <> null then echeanceType
                 else if [p_date_echeance] <> null then [p_date_echeance]

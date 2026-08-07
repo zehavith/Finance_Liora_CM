@@ -1,89 +1,164 @@
 // =====================================================================
-//  MONDAY.COM — TOUS VOS TABLEAUX + règle d'échéance PAR TABLEAU
+//  MONDAY.COM — TOUS VOS TABLEAUX DE SUIVI FACTURES
 //  Requête Power Query (M) — API GraphQL v2
 //  Nom de requête conseillé :  Monday_Suivi   (remplace monday_relances.pq)
 // ---------------------------------------------------------------------
-//  ⭐ PRINCIPE
-//  Vos tableaux Monday sont déjà organisés par type de financement
-//  (1. Corporate / 2. B2C, puis CPF, AIF, Région, OPCO…). Le tableau
-//  d'origine d'une facture suffit donc à déterminer :
-//     • son type de client      → plus aucune saisie manuelle
-//     • sa sous-catégorie       → ventilation de la balance âgée
-//     • sa règle d'échéance     → date de facture / début / fin de
-//                                 formation + N jours
+//  ⭐ CONÇU D'APRÈS L'EXPORT RÉEL DE VOS 6 TABLEAUX
 //
-//  Et comme TOUS vos tableaux portent les 3 dates (facture, début et fin
-//  de formation), l'échéance métier est calculée intégralement ici :
-//  aucun référentiel externe n'est nécessaire. 🎯
+//  Constat : les titres de colonnes DIFFÈRENT fortement d'un tableau à
+//  l'autre (28 à 102 colonnes ; seule « Name » est commune) —
+//     « Début de service » / « Début de formation » / « Début Formation »
+//     « Date d’échéance facture » (apostrophe typographique) vs
+//     « Date d'échéance » (apostrophe droite) vs « Date échéance »
 //
-//  Les tableaux sont retrouvés PAR LEUR NOM (préfixe « 1.1. », « 2.2. »…),
-//  donc vous n'avez AUCUN board id à aller chercher.
+//  ➜ On ne mappe donc PAS par titre exact : chaque CONCEPT (date de
+//    facture, échéance, montant…) possède une liste de titres possibles,
+//    comparés de façon insensible à la casse, aux accents, aux
+//    apostrophes et aux espaces multiples. Ajouter un tableau ou
+//    renommer une colonne ne casse rien : il suffit d'ajouter une
+//    variante dans la liste du concept concerné.
 //
 //  Prérequis : paramètre  pMondayToken  uniquement.
-//
-//  ⚠️ Ne couvre que les factures présentes dans Monday. Celles qui n'y
-//     sont pas ressortent dans la page « factures manquantes sur Monday ».
+//  ⏱️ Volumétrie : ~3 000 items par tableau → le 1er chargement peut
+//     prendre plusieurs minutes. C'est normal.
 // =====================================================================
 let
     Token = pMondayToken,
 
     // =================================================================
-    //  ⚙️ 1) VOS TABLEAUX — pré-rempli d'après votre arborescence
+    //  ⚙️ 1) VOS TABLEAUX
     // =================================================================
-    //  prefixe        : début du nom du tableau dans Monday (unique)
-    //  type_client    : type porté par ce tableau
-    //  sous_categorie : financeur / détail (colonnes de votre balance)
-    //  base           : "facture" | "debut" | "fin" | "" (aucune règle)
-    //  jours          : délai ajouté à la date de base
+    //  type_client / sous_categorie : utilisés en SECOURS quand la
+    //    colonne « Type de client » du tableau est vide ou absente
+    //    (cas des tableaux 2.2 CPF et 2.4 REGION, qui n'ont pas la colonne).
+    //  base / jours : règle d'échéance de secours, appliquée uniquement
+    //    si aucune date d'échéance n'est renseignée dans Monday.
+    //      "facture" = date de facture | "debut" = début de service
+    //      "fin" = fin de service      | "" = pas de règle
     //
-    //  ⚠️ À VALIDER : les règles ci-dessous sont déduites de votre table
-    //     « Règle date d'échéance ». Vérifiez surtout les lignes 1.0 à 1.3.
-    //  💡 Tableaux « Technique », « Zone Kairos », « RIB Reçus »,
-    //     « Transactions » : volontairement ABSENTS (pas du suivi de
-    //     facture). Ajoutez-les seulement s'ils contiennent des factures.
+    //  ⚠️ ORDRE = PRIORITÉ pour la déduplication (§6).
     BoardsConfig = #table(
         {"prefixe","type_client","sous_categorie","base","jours"},
         {
-            // --- 1. Corporate ---------------------------------------
             {"1.0.", "B2C - Entreprise", "Entreprise - Tampon",       "facture", 30},
             {"1.1.", "B2C - Entreprise", "Entreprise - ADV",          "facture", 30},
             {"1.2.", "B2C - Entreprise", "Entreprise - Recouvrement", "facture", 30},
             {"1.3.", "OPCO",             "Entreprise - OPCO",         "fin",     60},
-
-            // --- 2. B2C ---------------------------------------------
             {"2.1.", "BTC-Perso",        "Financement Personnel",     "debut",    0},
             {"2.2.", "CPF",              "Financement CPF",           "fin",     45},
-            {"2.3.", "AIF",              "Financement pôle emploi",   "fin",     45},
-            {"2.4.", "Region",           "Financement complexe",      "fin",     60}
-
-            // --- Optionnel : factures déjà payées (contrôle) ---------
-            // ,{"0.1.", "", "ALL - Factures payées", "", 0}
+            // 2.3 mélange AIF et POEI — même règle (+60 j), distingués
+            // pour l'analyse via GroupesConfig ↓
+            {"2.3.", "AIF",              "Financement pôle emploi",   "fin",     60},
+            {"2.4.", "Region",           "Financement complexe",      "fin",     60},
+            // EN DERNIER : complément uniquement
+            {"0.1.", "",                 "ALL - Factures payées",     "facture", 30}
         }
     ),
 
     // =================================================================
-    //  ⚙️ 2) VOS COLONNES — titres EXACTS dans Monday
+    //  ⚙️ 1bis) AFFINAGE PAR GROUPE (quand un tableau mélange 2 types)
     // =================================================================
-    //  Les titres absents d'un tableau sont ignorés sans erreur.
-    //  ⚠️ Adaptez ces libellés à ceux affichés dans vos tableaux.
-    ColonnesVoulues = {
-        {"N° facture",         "numero"},
-        {"Client",             "client_nom_monday"},
-        // ⭐ Les 3 dates présentes dans tous vos tableaux
-        {"Date de facture",    "date_facture_monday"},
-        {"Début de formation", "date_debut_formation_monday"},
-        {"Fin de formation",   "date_fin_formation_monday"},
-        {"Statut relance",     "statut_relance"},
-        {"Dernière relance",   "date_derniere_relance"},
-        {"Prochaine relance",  "date_prochaine_relance"},
-        {"Responsable",        "responsable_reco"},
-        {"Commentaire",        "commentaire"},
-        // Facultatif : si rempli, prioritaire sur la règle du tableau
-        {"Date d'échéance",    "date_echeance_monday"}
+    //  Cas réel : « 2.3. Financement pôle emploi : AIF / POEI » contient
+    //  les deux financements, avec des règles différentes (+45 j / +60 j).
+    //  Le GROUPE de l'item permet de trancher.
+    //
+    //  prefixe  : tableau concerné · contient : texte cherché dans le nom
+    //  du groupe (insensible casse/accents). Première ligne qui matche
+    //  l'emporte sur la configuration du tableau.
+    //
+    //  ✅ AIF et POEI ont la MÊME règle (fin de formation +60 j) : cet
+    //     affinage ne sert donc qu'à les DISTINGUER dans les analyses.
+    //     Les groupes neutres gardent le défaut du tableau, sans impact
+    //     sur l'échéance.
+    GroupesConfig = #table(
+        {"prefixe","contient","type_client","sous_categorie","base","jours"},
+        {
+            {"2.3.", "poei", "POEI", "Financement POEI", "fin", 60},
+            {"2.3.", "aif",  "AIF",  "Financement AIF",  "fin", 60}
+        }
+    ),
+
+    // =================================================================
+    //  ⚙️ 2) CONCEPTS → titres possibles (par ORDRE DE PRIORITÉ)
+    // =================================================================
+    //  Écrivez les variantes en minuscules sans accent : la comparaison
+    //  est faite après normalisation. Pour ajouter une colonne, ajoutez
+    //  simplement une ligne (ou une variante dans une ligne existante).
+    Concepts = {
+        // --- Dates -----------------------------------------------------
+        {"date_facture",      {"date facture", "date de facture",
+                               "date depot de la facture", "date envoi facture initial"}},
+        {"date_echeance",     {"date d'echeance facture", "date d'echeance", "date echeance"}},
+        {"date_echeance_calc",{"date echeance calculee / negociee",
+                               "date d'echeance calculee"}},
+        {"date_debut",        {"debut de service", "debut de formation", "debut formation"}},
+        {"date_fin",          {"fin de service", "fin de formation", "fin formation"}},
+        {"date_paiement",     {"date paiement", "date de paiement"}},
+
+        // --- Montants (contrôle ; Pennylane reste la vérité paiement) --
+        {"total_ttc",         {"total ttc", "montant", "montant ttc"}},
+        {"reste_du",          {"reste a devoir ttc",
+                               "reste a payer ( d'apres le grand livre )",
+                               "reste a payer"}},
+        {"montant_partiel",   {"montant partiel recu"}},
+
+        // --- Identité --------------------------------------------------
+        {"client",            {"client", "entreprise"}},
+        {"type_client",       {"type de client"}},
+        {"num_zoho",          {"n° zoho", "no zoho"}},
+
+        // --- Statuts / qualification -----------------------------------
+        {"qualif_recouvrement",{"qualifaction recouvrement", "qualification recouvrement"}},
+        {"statut",            {"statut", "statut 1", "statut initiale"}},
+        {"etape_process",     {"etape process recouvrement"}},
+        {"categorie_dette",   {"categorie de dette"}},
+        {"categorie_retard",  {"categorie de retard"}},
+        {"jours_retard_m",    {"j de retard"}},
+
+        // --- Relances ---------------------------------------------------
+        {"derniere_relance",  {"date derniere relance manuelle", "date derniere relance"}},
+        {"prochaine_relance", {"date prochaine relance", "prochaine relance",
+                               "date de paiement prevu post-echeance",
+                               "date paiement prevue pre-echeance"}},
+        {"responsable_reco",  {"responsable", "responsable recouvrement"}},
+        {"relance_1",         {"relance 1 - j"}},
+        {"date_relance_1",    {"date 1 - recouvrement"}},
+        {"relance_2",         {"relance 2 - j+10"}},
+        {"date_relance_2",    {"date 2 - recouvrement"}},
+        {"relance_3",         {"relance 3 - j+30"}},
+        {"date_relance_3",    {"date 3 - recouvrement"}},
+
+        // --- Divers -----------------------------------------------------
+        {"formation",         {"nom de la formation"}},
+        {"lien_facture",      {"lien public"}},
+        {"commentaire",       {"commentaire post echeance", "commentaire pre-echance",
+                               "commentaire"}}
     },
 
     // =================================================================
-    //  3) Appel GraphQL
+    //  3) Normalisation des titres
+    // =================================================================
+    SansAccents = (t as text) as text =>
+        List.Accumulate(
+            {
+                {"à","a"},{"á","a"},{"â","a"},{"ä","a"},
+                {"é","e"},{"è","e"},{"ê","e"},{"ë","e"},
+                {"í","i"},{"î","i"},{"ï","i"},
+                {"ó","o"},{"ô","o"},{"ö","o"},
+                {"ù","u"},{"ú","u"},{"û","u"},{"ü","u"},
+                {"ç","c"},{"’","'"},{"`","'"},{"‘","'"}
+            },
+            Text.Lower(t),
+            (s, p) => Text.Replace(s, p{0}, p{1})
+        ),
+
+    Norm = (t as any) as text =>
+        if t = null then ""
+        else Text.Trim(Text.Combine(
+                List.Select(Text.Split(SansAccents(Text.From(t)), " "), each _ <> ""), " ")),
+
+    // =================================================================
+    //  4) Appel GraphQL
     // =================================================================
     AppelGraphQL = (requete as text) as record =>
         Json.Document(
@@ -117,8 +192,12 @@ let
         )
     ),
 
-    // --- Résolution nom → board id ------------------------------------
-    Configs = Table.ToRecords(BoardsConfig),
+    // --- Résolution nom → board id (+ rang de priorité) ---------------
+    ListeConfigs = Table.ToRecords(BoardsConfig),
+    Configs = List.Transform(
+        List.Positions(ListeConfigs),
+        (i) => ListeConfigs{i} & [ordre = i]
+    ),
     Resolus = List.Transform(Configs, (cfg) =>
         let
             trouves = List.Select(ListeBoards,
@@ -130,17 +209,19 @@ let
     ),
     ConfigsOk = List.RemoveNulls(Resolus),
 
-    // --- Tous les items d'un tableau (pagination par curseur) ---------
+    // --- Items d'un tableau (pagination par curseur) ------------------
     ItemsDuBoard = (boardId as text) as list =>
         let
-            Req1  = "query { boards(ids: [" & boardId & "]) { items_page(limit: 100) "
-                  & "{ cursor items { id name column_values { id text column { title } } } } } }",
-            Rep1  = AppelGraphQL(Req1),
-            Page1 = Rep1[data][boards]{0}[items_page],
+            Champs = "{ cursor items { id name group { title } "
+                   & "column_values { id text column { title } } } }",
+            Req1   = "query { boards(ids: [" & boardId & "]) { items_page(limit: 100) "
+                   & Champs & " } }",
+            Rep1   = AppelGraphQL(Req1),
+            Page1  = Rep1[data][boards]{0}[items_page],
 
             ReqSuite = (cursor as text) as text =>
                 "query { next_items_page(limit: 100, cursor: """ & cursor & """) "
-              & "{ cursor items { id name column_values { id text column { title } } } } }",
+              & Champs & " }",
 
             Suite = List.Generate(
                 () => [cur = Page1[cursor], items = Page1[items], stop = (Page1[cursor] = null)],
@@ -154,21 +235,47 @@ let
         in
             List.Combine({ Page1[items] } & Suite),
 
-    // --- Un item → un enregistrement (colonnes = titres Monday) -------
+    // =================================================================
+    //  5) Un item → une ligne normalisée (concepts résolus)
+    // =================================================================
+    //  Certains tableaux ont DEUX colonnes de même titre (ex. « Statut »
+    //  en double dans 1.1) : on dédoublonne en gardant la 1re valeur
+    //  non vide.
+    DicoDepuisItem = (item as record) as record =>
+        let
+            paires = List.Transform(item[column_values],
+                        each { Norm(try _[column][title] otherwise null), _[text] }),
+            cles   = List.Distinct(List.Transform(paires, each _{0})),
+            valeur = (k) =>
+                let v = List.Select(paires, each _{0} = k and _{1} <> null and _{1} <> "")
+                in  if List.Count(v) > 0 then v{0}{1} else null
+        in
+            Record.FromList(List.Transform(cles, each valeur(_)), cles),
+
+    // Première variante renseignée pour un concept donné
+    ValeurConcept = (dico as record, variantes as list) as nullable text =>
+        let
+            ok = List.Select(variantes, (v) =>
+                    Record.HasFields(dico, v)
+                    and Record.Field(dico, v) <> null
+                    and Record.Field(dico, v) <> "")
+        in
+            if List.Count(ok) = 0 then null else Record.Field(dico, ok{0}),
+
     LigneDepuisItem = (item as record) as record =>
         let
-            paires = List.Transform(item[column_values], each { _[column][title], _[text] })
+            dico = DicoDepuisItem(item),
+            base = [ item_id       = item[id],
+                     item_nom      = item[name],
+                     groupe_monday = try item[group][title] otherwise null ],
+            champs = Record.FromList(
+                        List.Transform(Concepts, each ValeurConcept(dico, _{1})),
+                        List.Transform(Concepts, each _{0}))
         in
-            Record.Combine({
-                [ item_id = item[id], item_nom = item[name] ],
-                Record.FromList(
-                    List.Transform(paires, each _{1}),
-                    List.Transform(paires, each _{0})
-                )
-            }),
+            Record.Combine({ base, champs }),
 
     // =================================================================
-    //  4) Un tableau Monday → une table typée
+    //  6) Un tableau → une table ; puis empilage et déduplication
     // =================================================================
     TableDuBoard = (cfg as record) as table =>
         let
@@ -176,59 +283,113 @@ let
             Enregs = List.Transform(Items, each LigneDepuisItem(_)),
             T0     = Table.FromRecords(Enregs, missingField.UseNull),
 
-            Presentes = List.Select(ColonnesVoulues,
-                            each List.Contains(Table.ColumnNames(T0), _{0})),
-            T1 = Table.SelectColumns(
-                    T0,
-                    {"item_id","item_nom"} & List.Transform(Presentes, each _{0}),
-                    MissingField.Ignore),
-            T2 = Table.RenameColumns(T1, Presentes, MissingField.Ignore),
+            // Affinage éventuel par groupe (ex. AIF vs POEI dans 2.3)
+            Raffinements = List.Select(Table.ToRecords(GroupesConfig),
+                              (g) => g[prefixe] = cfg[prefixe]),
+            RegleLigne = (groupe as nullable text) as record =>
+                let
+                    g = Norm(groupe),
+                    hits = List.Select(Raffinements, (r) => Text.Contains(g, r[contient]))
+                in
+                    if List.Count(hits) > 0 then hits{0}
+                    else [type_client = cfg[type_client], sous_categorie = cfg[sous_categorie],
+                          base = cfg[base], jours = cfg[jours]],
 
-            // Garantir la présence des colonnes attendues en aval
-            Attendues  = List.Transform(ColonnesVoulues, each _{1}),
-            Manquantes = List.Difference(Attendues, Table.ColumnNames(T2)),
-            T3 = List.Accumulate(Manquantes, T2,
-                    (etat, nom) => Table.AddColumn(etat, nom, each null)),
+            // Métadonnées du tableau (affinées par groupe si applicable)
+            T1 = Table.AddColumn(T0, "board_nom",   each cfg[board_nom], type text),
+            T2 = Table.AddColumn(T1, "board_ordre", each cfg[ordre], Int64.Type),
+            TR = Table.AddColumn(T2, "regle", each RegleLigne([groupe_monday])),
+            T3 = Table.AddColumn(TR, "sous_categorie_monday", each
+                    if [regle][sous_categorie] = "" then null else [regle][sous_categorie], type text),
+            T4 = Table.AddColumn(T3, "regle_base", each
+                    if [regle][base] = "" then null else [regle][base], type text),
+            T5 = Table.AddColumn(T4, "regle_jours", each [regle][jours], Int64.Type),
 
-            // Métadonnées du tableau : type, sous-catégorie, règle
-            T4 = Table.AddColumn(T3, "board_id",  each cfg[board_id], type text),
-            T5 = Table.AddColumn(T4, "board_nom", each cfg[board_nom], type text),
+            // Type de client : colonne Monday d'abord, groupe/tableau en secours
             T6 = Table.AddColumn(T5, "type_client_monday", each
-                    if cfg[type_client] = "" then null else cfg[type_client], type text),
-            T7 = Table.AddColumn(T6, "sous_categorie_monday", each
-                    if cfg[sous_categorie] = "" then null else cfg[sous_categorie], type text),
-            T8 = Table.AddColumn(T7, "regle_base", each
-                    if cfg[base] = "" then null else cfg[base], type text),
-            T9 = Table.AddColumn(T8, "regle_jours", each cfg[jours], Int64.Type),
+                    if [type_client] <> null and [type_client] <> ""
+                       and [type_client] <> "Type de client"
+                    then [type_client]
+                    else if [regle][type_client] = "" then null else [regle][type_client], type text),
 
-            // Clé de réconciliation (n° de facture normalisé)
-            T10 = Table.AddColumn(T9, "cle", each
-                    Text.Upper(Text.Trim(Text.From(
-                        if [numero] <> null and [numero] <> "" then [numero] else [item_nom]
-                    ))), type text)
+            // Statut de suivi : qualification > statut > groupe
+            T7 = Table.AddColumn(T6, "statut_relance", each
+                    if [qualif_recouvrement] <> null then [qualif_recouvrement]
+                    else if [statut] <> null then [statut]
+                    else [groupe_monday], type text),
+
+            // Clé = n° de facture = nom de l'item (FACT-xxxx-xxxxx)
+            T8 = Table.AddColumn(T7, "cle", each
+                    Text.Upper(Text.Trim(
+                        if [item_nom] = null then "" else Text.From([item_nom])
+                    )), type text),
+
+            // Ligne renseignée ou coquille vide ? (cf. déduplication)
+            T9 = Table.AddColumn(T8, "a_des_donnees", each
+                    if [total_ttc] <> null or [date_facture] <> null or [reste_du] <> null
+                    then 1 else 0, Int64.Type),
+            T10 = Table.RemoveColumns(T9, {"regle"})
         in
             T10,
 
-    // =================================================================
-    //  5) Tous les tableaux, empilés
-    // =================================================================
     Tables  = List.Transform(ConfigsOk, each try TableDuBoard(_) otherwise null),
     Valides = List.RemoveNulls(Tables),
     Empile  = Table.Combine(Valides),
 
-    // Typage des dates (Monday renvoie du texte)
-    // 💡 Si une date ne se convertit pas, adaptez la culture ("fr-FR" ↔ "en-US").
-    Resultat = Table.TransformColumnTypes(
-        Empile,
+    SansVides = Table.SelectRows(Empile, each [cle] <> null and [cle] <> ""),
+
+    // ⚠️ Une facture peut figurer dans PLUSIEURS tableaux (notamment dans
+    //    « ALL - Factures payées »), et vos tableaux contiennent beaucoup
+    //    de lignes « coquilles » sans données (groupes Technique/Archive).
+    //    Sans cette étape, la fusion en aval dupliquerait les factures et
+    //    GONFLERAIT les montants. On trie : lignes renseignées d'abord,
+    //    puis priorité de tableau — Table.Distinct garde la première.
+    Trie   = Table.Sort(SansVides, {
+                 {"a_des_donnees", Order.Descending},
+                 {"board_ordre",   Order.Ascending}
+             }),
+    Unique = Table.Distinct(Table.Buffer(Trie), {"cle"}),
+
+    // =================================================================
+    //  7) Typage
+    // =================================================================
+    //  💡 Si une date/un montant ne se convertit pas, vérifiez le format
+    //     affiché dans Monday et adaptez la culture ("fr-FR" ↔ "en-US").
+    Typé = Table.TransformColumnTypes(
+        Unique,
         {
-            {"date_facture_monday", type date},
-            {"date_debut_formation_monday", type date},
-            {"date_fin_formation_monday", type date},
-            {"date_echeance_monday", type date},
-            {"date_derniere_relance", type date},
-            {"date_prochaine_relance", type date}
+            {"date_facture", type date},
+            {"date_echeance", type date},
+            {"date_echeance_calc", type date},
+            {"date_debut", type date},
+            {"date_fin", type date},
+            {"date_paiement", type date},
+            {"derniere_relance", type date},
+            {"prochaine_relance", type date},
+            {"date_relance_1", type date},
+            {"date_relance_2", type date},
+            {"date_relance_3", type date},
+            {"total_ttc", type number},
+            {"reste_du", type number},
+            {"montant_partiel", type number},
+            {"jours_retard_m", Int64.Type}
         },
         "fr-FR"
-    )
+    ),
+
+    // Noms de sortie attendus par la table consolidée
+    Resultat = Table.RenameColumns(Typé, {
+        {"date_facture",       "date_facture_monday"},
+        {"date_echeance",      "date_echeance_monday"},
+        {"date_echeance_calc", "date_echeance_calc_monday"},
+        {"date_debut",         "date_debut_formation_monday"},
+        {"date_fin",           "date_fin_formation_monday"},
+        {"date_paiement",      "date_paiement_monday"},
+        {"derniere_relance",   "date_derniere_relance"},
+        {"prochaine_relance",  "date_prochaine_relance"},
+        {"total_ttc",          "total_ttc_monday"},
+        {"reste_du",           "reste_du_monday"},
+        {"client",             "client_nom_monday"}
+    }, MissingField.Ignore)
 in
     Resultat

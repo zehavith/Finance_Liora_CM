@@ -68,10 +68,12 @@ let
     ExpMonday = Table.ExpandTableColumn(
         JoinMonday, "monday",
         {"item_id","statut_relance","date_derniere_relance","date_prochaine_relance","responsable_reco",
-         "type_client_monday","sous_categorie_monday","regle_base","regle_jours","date_echeance_monday",
+         "type_client_monday","sous_categorie_monday","regle_base","regle_jours",
+         "date_echeance_monday","date_echeance_calc_monday",
          "date_facture_monday","date_debut_formation_monday","date_fin_formation_monday"},
         {"m_item_id","m_statut_relance","m_derniere_relance","m_prochaine_relance","m_responsable",
-         "type_client","sous_categorie","m_regle_base","m_regle_jours","m_date_echeance",
+         "type_client","sous_categorie","m_regle_base","m_regle_jours",
+         "m_date_echeance","m_date_echeance_calc",
          "m_date_facture","date_debut_formation","date_fin_formation"}
     ),
 
@@ -85,11 +87,13 @@ let
             else [montant_ttc], type number),
 
     // --- Échéance : cascade de priorité -------------------------------
-    //  1. Colonne « Date d'échéance » saisie dans Monday
-    //  2. RÈGLE MÉTIER du tableau Monday, appliquée à la bonne date de
-    //     base : date de facture / début de formation / fin de formation
+    //  1. « Date échéance calculée / négociée » de Monday (échéance
+    //     renégociée : c'est elle qui fait foi en recouvrement)
+    //  2. « Date d'échéance » saisie dans Monday
+    //  3. RÈGLE MÉTIER du tableau Monday, appliquée à la bonne date de
+    //     base : date de facture / début de service / fin de service
     //     (les 3 dates viennent de Monday → règles complètes dès la phase 1)
-    //  3. Échéance Pennylane, sinon Sellsy
+    //  4. Échéance Pennylane, sinon Sellsy
     A2 = Table.AddColumn(A1, "date_echeance", each
             let
                 baseDate =
@@ -102,7 +106,8 @@ let
                     if baseDate = null then null
                     else Date.AddDays(baseDate, if [m_regle_jours] = null then 0 else [m_regle_jours])
             in
-                if [m_date_echeance] <> null then [m_date_echeance]
+                if [m_date_echeance_calc] <> null then [m_date_echeance_calc]
+                else if [m_date_echeance] <> null then [m_date_echeance]
                 else if echeanceRegle <> null then echeanceRegle
                 else if [p_date_echeance] <> null then [p_date_echeance]
                 else [date_echeance_sellsy], type date),
