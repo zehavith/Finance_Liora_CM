@@ -54,8 +54,19 @@ pip install -r requirements.txt
 
 ### 2. Autoriser l'accès à Gmail
 
-Il faut créer un identifiant OAuth dans la console Google Cloud. À faire par
-une personne disposant d'un accès à la console (service informatique).
+Il faut créer un identifiant OAuth dans la console Google Cloud. **C'est
+faisable seul, sans passer par le service informatique**, dans la plupart des
+organisations : à la création d'une organisation Google Cloud, tous les
+comptes du domaine reçoivent par défaut le rôle *Créateur de projet*, et un
+projet configuré en **Interne** échappe à la procédure de validation Google
+normalement exigée pour la portée `gmail.readonly`.
+
+Deux cas peuvent malgré tout nécessiter un administrateur :
+
+- l'administrateur a restreint la création de projets sur le domaine — la
+  console affiche alors une erreur d'autorisation à l'étape 1 ;
+- l'accès doit porter sur une **boîte partagée** plutôt que sur la vôtre, ce
+  qui suppose une délégation à l'échelle du domaine (voir plus bas).
 
 1. Ouvrir [console.cloud.google.com](https://console.cloud.google.com/) et
    créer un projet, par exemple `liora-recouvrement`.
@@ -111,8 +122,37 @@ le script avec le numéro de ligne concerné, plutôt que de produire un dossier
 vide passé inaperçu.
 
 Le fichier peut être préparé dans Excel et enregistré en **CSV UTF-8**. Le
-séparateur `;` comme `,` est accepté, ainsi que les intitulés de colonnes
-courants (`mail`, `adresse mail`, `numero facture`, `apprenante`…).
+séparateur `;`, `,` ou tabulation est détecté automatiquement, ainsi que les
+intitulés de colonnes courants (`mail`, `adresse mail`, `numero facture`,
+`apprenante`, `Name`…).
+
+### Depuis un tableau Monday
+
+L'export Monday s'utilise **tel quel**, sans retouche : depuis le tableau,
+menu `⋯` → *Export board to Excel*, puis enregistrer en CSV.
+
+Deux particularités de ces exports sont gérées automatiquement :
+
+- le fichier commence par le nom du tableau et une ligne vide avant les
+  véritables intitulés de colonnes — la ligne d'en-tête est retrouvée seule ;
+- la première colonne s'appelle `Name` et contient le nom de l'apprenante —
+  elle est reconnue comme tel.
+
+En revanche, les **lignes de séparation de groupe** (« Contentieux »,
+« Échéancier accepté »…) n'ont ni adresse ni facture. Par défaut le script
+s'arrête dessus en indiquant le numéro de ligne, pour ne pas risquer de passer
+sous silence un vrai dossier incomplet. Une fois vérifié qu'il s'agit bien de
+lignes de groupe :
+
+```bash
+python export_mails.py --dossiers monday.csv --ignorer-lignes-incompletes --simulation
+```
+
+Les lignes écartées sont alors listées à l'écran, une par une.
+
+Il suffit que le tableau comporte une colonne d'adresses mail **ou** une
+colonne de numéros de facture ; les colonnes supplémentaires (statut, montant,
+propriétaire…) sont ignorées sans gêner.
 
 ## Utilisation
 
@@ -148,6 +188,7 @@ et de pièces jointes.
 | `--seulement REF1,REF2` | Ne traiter que ces références. Pratique pour refaire un dossier. |
 | `--max-mails N` | Plafond par dossier (défaut : 500). Un dépassement est signalé. |
 | `--sans-spam` | Exclut spam et corbeille, inclus par défaut. |
+| `--ignorer-lignes-incompletes` | Passe les lignes sans adresse ni facture (lignes de groupe Monday) au lieu de s'arrêter. Les lignes écartées sont listées. |
 | `--fuseau ZONE` | Fuseau d'affichage des dates (défaut : `Europe/Paris`). |
 | `--boite ADRESSE` + `--compte-service CLE.json` | Lire une boîte partagée (voir ci-dessous). |
 
@@ -221,7 +262,8 @@ intégrées au message (logos de signature) sont, elles, présentes dans le PDF.
 |---|---|
 | `Fichier d'identifiants introuvable` | `credentials.json` absent du répertoire — voir « Mise en place ». |
 | `il faut au minimum une colonne « email » ou « facture »` | Intitulés de colonnes non reconnus dans le CSV. Reprendre `dossiers.exemple.csv`. |
-| `ligne N : ni adresse mail ni numéro de facture` | Ligne incomplète dans le CSV, à corriger ou supprimer. |
+| `ligne N : ni adresse mail ni numéro de facture` | Ligne incomplète dans le CSV, à corriger ou supprimer. S'il s'agit d'une ligne de groupe Monday : `--ignorer-lignes-incompletes`. |
+| Erreur d'autorisation à la création du projet Google Cloud | L'administrateur du domaine a restreint la création de projets ; c'est le seul cas où son intervention est indispensable. |
 | `Date incomprise` | Utiliser `JJ/MM/AAAA` ou `AAAA-MM-JJ`. |
 | `plafond de 500 messages atteint` | Dossier tronqué : relancer avec `--max-mails 2000` et `--seulement REF`. |
 | `⚠ Dossiers sans aucun message` | Vérifier l'adresse et le numéro de facture, ou élargir les bornes de dates. |

@@ -141,6 +141,15 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         help="Exclut spam et corbeille (inclus par défaut).",
     )
     analyseur.add_argument(
+        "--ignorer-lignes-incompletes",
+        action="store_true",
+        help=(
+            "Passe les lignes sans adresse ni facture au lieu de s'arrêter "
+            "(lignes de groupe des exports Monday). Les lignes écartées sont "
+            "listées à l'écran."
+        ),
+    )
+    analyseur.add_argument(
         "--fuseau",
         default=FUSEAU_PAR_DEFAUT,
         help=(
@@ -344,7 +353,11 @@ def executer(options: argparse.Namespace) -> int:
     journal = Journal(None if options.simulation else racine_sortie / "journal.log")
 
     try:
-        liste = lire_dossiers(options.dossiers)
+        liste = lire_dossiers(
+            options.dossiers,
+            ignorer_lignes_incompletes=options.ignorer_lignes_incompletes,
+            signaler=journal,
+        )
 
         if options.seulement:
             voulues = {ref.strip().lower() for ref in options.seulement.split(",") if ref.strip()}

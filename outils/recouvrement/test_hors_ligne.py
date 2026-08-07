@@ -133,6 +133,49 @@ def test_dossiers() -> None:
             verifier(True, "fichier sans colonne email ni facture rejeté")
 
 
+EXPORT_MONDAY = """Recouvrement 2024-2025
+
+Contentieux
+Name,Statut,Email,Facture,Montant,Propriétaire
+Marie Dupont,En cours,marie.dupont@exemple.fr,FA-2024-0153,1890,Zehavit
+Sophie Bernard,Relancée,sophie.bernard@exemple.fr,FA-2024-0161,940,Zehavit
+
+Échéancier accepté
+Camille Leroy,Échéancier,camille.leroy@exemple.fr,FA-2024-0174,2300,Zehavit
+"""
+
+
+def test_export_monday() -> None:
+    """Un export Monday brut, sans retouche : en-tête décalé, séparateur
+    virgule, lignes de groupe intercalées."""
+    print("\nLecture d'un export Monday")
+    with tempfile.TemporaryDirectory() as repertoire:
+        fichier = Path(repertoire) / "monday.csv"
+        fichier.write_text(EXPORT_MONDAY, encoding="utf-8")
+
+        try:
+            lire_dossiers(fichier)
+            verifier(False, "ligne de groupe signalée par défaut")
+        except ErreurDossiers as exc:
+            verifier("ligne 8" in str(exc), f"ligne de groupe localisée en ligne 8 ({exc})")
+            verifier("Échéancier accepté" in str(exc), "contenu de la ligne fautive rappelé")
+
+        avertissements: list[str] = []
+        liste = lire_dossiers(
+            fichier, ignorer_lignes_incompletes=True, signaler=avertissements.append
+        )
+        verifier(len(liste) == 3, f"3 dossiers lus (obtenu : {len(liste)})")
+        verifier(liste[0].nom == "Marie Dupont", "colonne « Name » reconnue comme le nom")
+        verifier(
+            liste[2].emails == ["camille.leroy@exemple.fr"],
+            "dossier situé après une ligne de groupe correctement lu",
+        )
+        verifier(
+            len(avertissements) == 1 and "ligne(s) 8" in avertissements[0],
+            "ligne écartée signalée, jamais silencieusement",
+        )
+
+
 def test_nettoyage_html() -> None:
     print("\nNettoyage du HTML des messages")
     brut = (
@@ -380,6 +423,7 @@ def main() -> int:
     print(f"Moteur PDF détecté : {moteur_pdf_disponible()}")
 
     test_dossiers()
+    test_export_monday()
     test_nettoyage_html()
     test_slug()
     test_rendu_message()

@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import re
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -17,17 +18,29 @@ SEPARATEURS_MULTIVALEUR = re.compile(r"[|,]")
 FORMATS_DATE = ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%y")
 
 # Noms de colonnes acceptés (après normalisation : minuscules, sans accent).
+# « name » et « item » couvrent la première colonne des exports Monday.
 ALIAS_COLONNES = {
-    "reference": {"reference", "ref", "dossier", "n dossier", "numero dossier", "id"},
+    "reference": {"reference", "ref", "dossier", "n dossier", "numero dossier", "id",
+                  "numero de dossier", "ref dossier"},
     "nom": {"nom", "apprenante", "apprenant", "nom apprenante", "nom apprenant",
-            "nom prenom", "stagiaire"},
+            "nom prenom", "prenom nom", "stagiaire", "name", "item", "element",
+            "nom de l apprenante", "titre"},
     "email": {"email", "mail", "adresse", "adresse mail", "adresse email",
-              "email apprenante", "mail apprenante", "e-mail"},
+              "email apprenante", "mail apprenante", "e mail", "courriel",
+              "email de l apprenante", "adresse e mail"},
     "facture": {"facture", "factures", "num facture", "numero facture",
-                "n facture", "no facture", "reference facture"},
+                "n facture", "no facture", "reference facture", "numero de facture",
+                "n de facture", "invoice", "facture n"},
     "date_debut": {"date debut", "debut", "depuis", "date de debut"},
     "date_fin": {"date fin", "fin", "jusqu a", "jusqua", "date de fin"},
 }
+
+# Séparateurs testés lors de la détection de la ligne d'en-tête.
+DELIMITEURS = (";", ",", "\t")
+
+# Un export Monday commence par le nom du tableau et une ligne vide avant les
+# véritables en-têtes ; on cherche donc l'en-tête un peu plus bas si besoin.
+LIGNES_SONDEES = 15
 
 
 class ErreurDossiers(RuntimeError):
@@ -122,7 +135,56 @@ class Dossier:
         return "+".join(trouves) if trouves else "indirect"
 
 
-def lire_dossiers(chemin: Path) -> list[Dossier]:
+def _champ_reconnu(entete: str) -> str | None:
+    normalise = _normaliser_entete(entete)
+    for champ, alias in ALIAS_COLONNES.items():
+        if normalise in alias:
+            return champ
+    return None
+
+
+def _trouver_entete(lignes: list[str]) -> tuple[int, str, dict[str, str]]:
+    """Localise la ligne d'en-tête et le séparateur.
+
+    Un export Monday ou Excel ne commence pas forcément par les intitulés de
+    colonnes : on sonde les premières lignes et on retient celle qui expose le
+    plus de colonnes exploitables.
+    """
+    meilleur: tuple[int, int, str, dict[str, str]] | None = None
+
+    for index, ligne in enumerate(lignes[:LIGNES_SONDEES]):
+        if not ligne.strip():
+            continue
+        for delimiteur in DELIMITEURS:
+            try:
+                entetes = next(csv.reader([ligne], delimiter=delimiteur))
+            except (csv.Error, StopIteration):
+                continue
+
+            correspondance = {}
+            for entete in entetes:
+                champ = _champ_reconnu(entete)
+                # Première colonne reconnue gagnante en cas de doublon.
+                if champ and champ not in correspondance.values():
+                    correspondance[entete] = champ
+
+            score = len(correspondance)
+            if {"email", "facture"} & set(correspondance.values()):
+                score += 10  # Une ligne sans critère de recherche n'est pas l'en-tête.
+
+            if score > 0 and (meilleur is None or score > meilleur[1]):
+                meilleur = (index, score, delimiteur, correspondance)
+
+    if meilleur is None:
+        return -1, ";", {}
+    return meilleur[0], meilleur[2], meilleur[3]
+
+
+def lire_dossiers(
+    chemin: Path,
+    ignorer_lignes_incompletes: bool = False,
+    signaler: Callable[[str], None] | None = None,
+) -> list[Dossier]:
     if not chemin.exists():
         raise ErreurDossiers(f"Fichier des dossiers introuvable : {chemin}")
 
@@ -130,33 +192,28 @@ def lire_dossiers(chemin: Path) -> list[Dossier]:
     if not texte.strip():
         raise ErreurDossiers(f"Fichier des dossiers vide : {chemin}")
 
-    premiere_ligne = texte.splitlines()[0]
-    delimiteur = ";" if premiere_ligne.count(";") >= premiere_ligne.count(",") else ","
+    lignes = texte.splitlines()
+    index_entete, delimiteur, correspondance = _trouver_entete(lignes)
 
-    lecteur = csv.DictReader(texte.splitlines(), delimiter=delimiteur)
-    if not lecteur.fieldnames:
-        raise ErreurDossiers(f"Aucun en-tête de colonne dans {chemin}")
-
-    # Correspondance en-tête du fichier -> champ interne.
-    correspondance: dict[str, str] = {}
-    for entete in lecteur.fieldnames:
-        normalise = _normaliser_entete(entete)
-        for champ, alias in ALIAS_COLONNES.items():
-            if normalise in alias:
-                correspondance[entete] = champ
-                break
-
-    champs_trouves = set(correspondance.values())
-    if not ({"email", "facture"} & champs_trouves):
+    if not ({"email", "facture"} & set(correspondance.values())):
+        apercu = lignes[index_entete] if index_entete >= 0 else lignes[0]
         raise ErreurDossiers(
             f"{chemin} : il faut au minimum une colonne « email » ou « facture ».\n"
-            f"Colonnes lues : {', '.join(lecteur.fieldnames)}"
+            f"Ligne d'en-tête lue : {apercu[:200]}\n"
+            "Renommez la colonne concernée en « email » ou « facture »."
         )
 
+    lecteur = csv.DictReader(lignes[index_entete:], delimiter=delimiteur)
+
     dossiers: list[Dossier] = []
+    ignorees: list[int] = []
     references_vues: set[str] = set()
 
-    for numero, rangee in enumerate(lecteur, start=2):
+    for rangee in lecteur:
+        # `line_num` compte les lignes physiques réellement lues, y compris
+        # celles que le lecteur CSV saute : c'est le seul numéro qui renvoie
+        # l'utilisateur sur la bonne ligne de son tableur.
+        numero = index_entete + lecteur.line_num
         valeurs = {champ: "" for champ in ALIAS_COLONNES}
         for entete, valeur in rangee.items():
             champ = correspondance.get(entete)
@@ -177,8 +234,17 @@ def lire_dossiers(chemin: Path) -> list[Dossier]:
         )
 
         if not dossier.emails and not dossier.factures:
+            # Ligne de groupe ou de sous-total d'un export Monday, ou vraie
+            # ligne incomplète : par défaut on s'arrête plutôt que de produire
+            # un dossier manquant qui passerait inaperçu.
+            if ignorer_lignes_incompletes:
+                ignorees.append(numero)
+                continue
             raise ErreurDossiers(
-                f"{chemin}, ligne {numero} : ni adresse mail ni numéro de facture."
+                f"{chemin}, ligne {numero} : ni adresse mail ni numéro de facture "
+                f"(contenu : « {(valeurs['reference'] or valeurs['nom'])[:60]} »).\n"
+                "Corrigez la ligne, ou relancez avec --ignorer-lignes-incompletes "
+                "pour passer ce type de ligne."
             )
 
         if not dossier.reference:
@@ -198,6 +264,13 @@ def lire_dossiers(chemin: Path) -> list[Dossier]:
             )
 
         dossiers.append(dossier)
+
+    if ignorees and signaler:
+        # Jamais silencieux : les lignes écartées sont nommées une par une.
+        signaler(
+            f"⚠ {len(ignorees)} ligne(s) sans adresse ni facture ignorée(s) : "
+            f"ligne(s) {', '.join(str(numero) for numero in ignorees)}"
+        )
 
     if not dossiers:
         raise ErreurDossiers(f"Aucun dossier exploitable dans {chemin}")
