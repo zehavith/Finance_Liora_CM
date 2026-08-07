@@ -89,24 +89,35 @@ Publiez, renseignez les identifiants des sources, planifiez l'actualisation →
 
 ## Maquette du tableau de bord
 
-### Page 1 — Vue d'ensemble recouvrement
+### Page 1 — Vue d'ensemble : ADV vs Recouvrement ⭐
+
+> **ADV = factures pas en retard · Recouvrement = factures en retard.**
+> C'est l'axe de lecture principal du tableau de bord.
 
 Bandeau de **cartes KPI** (haut) :
 
 ```
 ┌───────────────┬───────────────┬───────────────┬───────────────┬───────────────┐
-│ Encours total │  À jour       │ En recouvrement│  DSO (jours)  │ % échu        │
-│  [Encours     │ [Encours à    │ [Encours en    │ [DSO (jours)] │ [% échu]      │
-│   total]      │  jour]        │  recouvrement] │               │  🔴/🟠/🟢     │
+│ Encours total │   🟢 ADV      │ 🔴 RECOUVREMENT│  DSO (jours)  │ % en recouvr. │
+│ [Encours      │ [Encours ADV] │ [Encours       │ [DSO (jours)] │ [% encours en │
+│  total]       │               │  Recouvrement] │               │  Recouvrement]│
 └───────────────┴───────────────┴───────────────┴───────────────┴───────────────┘
 ```
 
 Corps de page :
-- **Balance âgée** (histogramme empilé) : axe `tranche_age`
-  (Non échu · 0-30 · 31-60 · 61-90 · 90 j +), valeur `[Encours total]`.
-- **Évolution de l'encours** (courbe) : `Calendrier[Année-Mois]` × `[Encours total]`.
-- **Répartition À jour / En recouvrement / Payée** (anneau) : `statut_recouvrement`.
-- **Top 10 clients débiteurs** (barres) : `client_nom` × `[Encours total]`, top N.
+- **Comparatif ADV / Recouvrement** (barres empilées horizontales) :
+  axe `perimetre`, valeur `[Encours total]` — la photo instantanée.
+- **Évolution ADV vs Recouvrement** (courbes, 2 séries) :
+  `Calendrier[Année-Mois]` × `[Encours ADV]` et `[Encours Recouvrement]`
+  → montre si le recouvrement se dégrade ou s'assainit dans le temps.
+- **Balance âgée** (histogramme) : axe `tranche_age` (tranches en mois),
+  valeur `[Encours total]` — vue globale en attendant la page dédiée.
+- **Top 10 clients débiteurs** (barres) : `client_nom` × `[Encours total]`,
+  filtré sur `perimetre = "Recouvrement"`.
+- **Segments** : `type_client`, `sous_categorie`, période.
+
+> 💡 Mettez `perimetre` en **segment global** (synchronisé entre les pages) :
+> vous basculez toute la lecture du dashboard entre ADV et Recouvrement d'un clic.
 
 ### Page 2 — Balance âgée (calquée sur votre feuille actuelle)
 
@@ -154,11 +165,19 @@ Construction :
 
 ### Page 4 — Contrôle de cohérence (Sellsy ↔ Monday)
 
+**A. Factures manquantes sur Monday**
 - **Carte d'alerte** `[Nb factures manquantes sur Monday]` (🔴 si > 0)
   et `[Encours manquant sur Monday]`.
 - **Table** filtrée `present_monday = Faux` : factures émises (Sellsy) à
   **ajouter dans Monday** — liste actionnable pour l'équipe.
 - **Carte** `[% couverture Monday]`.
+
+**B. Factures mal rangées (ADV ↔ Recouvrement)**
+- **Carte d'alerte** `[Nb factures à déplacer]` (🟠) et `[Encours à déplacer]`.
+- **Table** filtrée `coherence_monday = "À déplacer"` : factures devenues
+  en retard mais encore dans un tableau ADV → à basculer côté Recouvrement.
+  Colonnes utiles : `numero`, `client_nom`, `reste_du_net`, `jours_retard`,
+  `perimetre` (calculé) vs `perimetre_monday` (rangement réel).
 
 > Palette conseillée : *À jour* = vert, *En recouvrement* = orange/rouge,
 > *Payée* = gris/bleu. Restez cohérent entre tous les visuels.

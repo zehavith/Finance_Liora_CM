@@ -10,10 +10,13 @@ en **phase 2** (voir la fin de ce document).
 
 ## ✅ Ce que vous aurez à la fin de la phase 1
 
+- ⭐ **Visibilité ADV vs Recouvrement** (ADV = pas en retard,
+  Recouvrement = en retard) : encours, nombre de factures et évolution
+  dans le temps pour chaque périmètre
 - Encours total, montant encaissé, taux de recouvrement
-- **Factures à jour** vs **factures en recouvrement**
 - **DSO** (délai moyen de paiement) et % échu
 - **Factures manquantes sur Monday** (contrôle Sellsy ↔ Monday)
+- **Factures mal rangées** : en retard mais encore côté ADV dans Monday
 - Table détaillée filtrable pour les relances
 - Balance âgée **simple** (par tranche de mois, sans ventilation par type)
 - **Rafraîchissement automatique quotidien**
@@ -142,9 +145,11 @@ contenu du fichier, **renommer la requête** exactement comme indiqué.
 Créer une table `_Mesures`, puis coller depuis [`mesures_dax.md`](mesures_dax.md) :
 
 - [ ] Montant facturé · Encours total · Montant encaissé · Taux de recouvrement
-- [ ] Encours à jour · Encours en recouvrement · Nb factures (à jour / en recouvrement)
+- [ ] ⭐ **Encours ADV · Encours Recouvrement · Nb factures ADV / Recouvrement
+      · % encours en Recouvrement** (§2bis)
 - [ ] DSO (jours) · Total échu · % échu · Retard moyen pondéré
 - [ ] Nb factures manquantes sur Monday · Encours manquant sur Monday
+- [ ] Nb factures à déplacer · Encours à déplacer
 
 > `type_client` et `sous_categorie` sont déjà alimentés par Monday : vous
 > pouvez donc filtrer/segmenter par type dès la phase 1. Seule la **page**
@@ -154,11 +159,12 @@ Créer une table `_Mesures`, puis coller depuis [`mesures_dax.md`](mesures_dax.m
 
 Voir la maquette dans [`README.md`](README.md).
 
-- [ ] **Page 1 — Vue d'ensemble** : cartes KPI, évolution de l'encours,
-      anneau À jour / En recouvrement / Payée, top 10 débiteurs
+- [ ] **Page 1 — ADV vs Recouvrement** ⭐ : cartes KPI, comparatif
+      ADV / Recouvrement, évolution des deux dans le temps, top 10 débiteurs
 - [ ] **Page 2 — Détail & relances** : table filtrable + segments
-- [ ] **Page 3 — Contrôle Sellsy ↔ Monday** : carte d'alerte + liste des
-      factures à ajouter dans Monday
+      (dont segment `perimetre`)
+- [ ] **Page 3 — Contrôle Sellsy ↔ Monday** : factures manquantes sur Monday
+      **+** factures mal rangées (en retard mais côté ADV)
 
 *(La page « Balance âgée » complète arrive en phase 2 — en attendant, un simple
 histogramme `tranche_age` × `[Encours total]` donne déjà la vue globale.)*

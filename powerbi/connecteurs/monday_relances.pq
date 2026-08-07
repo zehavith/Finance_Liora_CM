@@ -111,7 +111,8 @@ let
     // interchangeables sans rien changer dans la table consolidée.
     //  Schéma canonique produit par monday_multi_boards.pq — créé à vide
     //  ici pour que les deux connecteurs restent interchangeables.
-    Compat = {"type_client_monday","sous_categorie_monday","regle_base","regle_jours",
+    Compat = {"type_client_monday","sous_categorie_monday","perimetre_monday",
+              "regle_base","regle_jours",
               "date_echeance_monday","date_echeance_calc_monday","date_facture_monday",
               "date_debut_formation_monday","date_fin_formation_monday"},
     T4 = List.Accumulate(

@@ -72,6 +72,64 @@ DIVIDE ( [Encours en recouvrement], [Encours total] )
 
 ---
 
+## 2bis. ADV vs RECOUVREMENT ⭐
+
+> **Définition retenue : ADV = facture pas en retard · Recouvrement =
+> facture en retard.** La colonne `perimetre` est calculée à l'import sur
+> l'échéance métier, et recalculée à chaque rafraîchissement quotidien.
+> Valeurs : `ADV` · `Recouvrement` · `Payée` · `Non qualifié`.
+
+```DAX
+Encours ADV = CALCULATE ( [Encours total], Factures[perimetre] = "ADV" )
+```
+
+```DAX
+Encours Recouvrement =
+CALCULATE ( [Encours total], Factures[perimetre] = "Recouvrement" )
+```
+
+```DAX
+Nb factures ADV =
+CALCULATE ( DISTINCTCOUNT ( Factures[numero] ), Factures[perimetre] = "ADV" )
+```
+
+```DAX
+Nb factures Recouvrement =
+CALCULATE ( DISTINCTCOUNT ( Factures[numero] ), Factures[perimetre] = "Recouvrement" )
+```
+
+```DAX
+% encours en Recouvrement =
+DIVIDE ( [Encours Recouvrement], [Encours ADV] + [Encours Recouvrement] )
+```
+
+```DAX
+Ticket moyen Recouvrement =
+DIVIDE ( [Encours Recouvrement], [Nb factures Recouvrement] )
+```
+
+### Contrôle : factures mal rangées dans Monday
+
+`coherence_monday` compare le périmètre **calculé** au tableau Monday où la
+facture se trouve réellement. « À déplacer » = facture désormais en retard
+mais encore côté ADV.
+
+```DAX
+Nb factures à déplacer =
+CALCULATE ( DISTINCTCOUNT ( Factures[numero] ),
+    Factures[coherence_monday] = "À déplacer" )
+```
+
+```DAX
+Encours à déplacer =
+CALCULATE ( [Encours total], Factures[coherence_monday] = "À déplacer" )
+```
+
+> Carte d'alerte 🟠 : ces factures ont basculé en retard et devraient passer
+> du tableau ADV au tableau Recouvrement dans Monday.
+
+---
+
 ## 3. DSO — Days Sales Outstanding
 
 Délai moyen de paiement, sur le CA glissant 90 jours :

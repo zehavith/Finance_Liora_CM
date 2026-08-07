@@ -68,11 +68,11 @@ let
     ExpMonday = Table.ExpandTableColumn(
         JoinMonday, "monday",
         {"item_id","statut_relance","date_derniere_relance","date_prochaine_relance","responsable_reco",
-         "type_client_monday","sous_categorie_monday","regle_base","regle_jours",
+         "type_client_monday","sous_categorie_monday","perimetre_monday","regle_base","regle_jours",
          "date_echeance_monday","date_echeance_calc_monday",
          "date_facture_monday","date_debut_formation_monday","date_fin_formation_monday"},
         {"m_item_id","m_statut_relance","m_derniere_relance","m_prochaine_relance","m_responsable",
-         "type_client","sous_categorie","m_regle_base","m_regle_jours",
+         "type_client","sous_categorie","perimetre_monday","m_regle_base","m_regle_jours",
          "m_date_echeance","m_date_echeance_calc",
          "m_date_facture","date_debut_formation","date_fin_formation"}
     ),
@@ -136,8 +136,27 @@ let
             else if [jours_retard] <= 0 then "À jour"
             else "En recouvrement", type text),
 
+    // --- PÉRIMÈTRE : ADV vs RECOUVREMENT ------------------------------
+    //  Définition retenue : ADV = facture PAS EN RETARD ·
+    //  Recouvrement = facture EN RETARD. Calculé sur l'échéance métier,
+    //  donc recalculé à chaque rafraîchissement quotidien.
+    A7b = Table.AddColumn(A7, "perimetre", each
+            if [est_payee] then "Payée"
+            else if [jours_retard] = null then "Non qualifié"
+            else if [jours_retard] <= 0 then "ADV"
+            else "Recouvrement", type text),
+
+    // Contrôle : la facture est-elle rangée dans le bon tableau Monday ?
+    //  « À déplacer » = en retard (donc recouvrement) mais encore côté ADV.
+    A7c = Table.AddColumn(A7b, "coherence_monday", each
+            if [perimetre_monday] = null or [perimetre_monday] = "Non qualifié"
+                or [perimetre] = "Payée" or [perimetre] = "Non qualifié"
+            then "Non évaluable"
+            else if [perimetre] = [perimetre_monday] then "OK"
+            else "À déplacer", type text),
+
     // Tranche d'âge EN MOIS
-    A8 = Table.AddColumn(A7, "tranche_age", each
+    A8 = Table.AddColumn(A7c, "tranche_age", each
             let m = [mois_retard] in
             if [est_payee] then "Soldé"
             else if m = null then "Sans échéance"
@@ -161,6 +180,7 @@ let
         "cle","numero","client_nom","montant_ttc","type_client","sous_categorie",
         "date_emission","date_debut_formation","date_fin_formation","date_echeance",
         "reste_du_net","est_payee","statut_recouvrement",
+        "perimetre","perimetre_monday","coherence_monday",
         "tranche_age","tranche_ordre","jours_retard","mois_retard",
         "present_monday","present_pennylane",
         "m_statut_relance","m_derniere_relance","m_prochaine_relance","m_responsable",

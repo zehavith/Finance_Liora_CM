@@ -37,21 +37,28 @@ let
     //      "fin" = fin de service      | "" = pas de règle
     //
     //  ⚠️ ORDRE = PRIORITÉ pour la déduplication (§6).
+    //  perimetre : « ADV » ou « Recouvrement » — visibilité demandée.
+    //    Laisser "" quand le tableau ne tranche pas : le périmètre est
+    //    alors déduit du statut / de la catégorie de dette / du groupe
+    //    (voir DeduirePerimetre §5).
+    //  ⚠️ À VALIDER : seuls 1.1 (ADV) et 1.2 (Recouvrement) sont certains.
+    //     Pour les tableaux B2C (2.x) et OPCO, dites-moi s'ils relèvent
+    //     de l'ADV ou du recouvrement et je fige la valeur.
     BoardsConfig = #table(
-        {"prefixe","type_client","sous_categorie","base","jours"},
+        {"prefixe","type_client","sous_categorie","perimetre","base","jours"},
         {
-            {"1.0.", "B2C - Entreprise", "Entreprise - Tampon",       "facture", 30},
-            {"1.1.", "B2C - Entreprise", "Entreprise - ADV",          "facture", 30},
-            {"1.2.", "B2C - Entreprise", "Entreprise - Recouvrement", "facture", 30},
-            {"1.3.", "OPCO",             "Entreprise - OPCO",         "fin",     60},
-            {"2.1.", "BTC-Perso",        "Financement Personnel",     "debut",    0},
-            {"2.2.", "CPF",              "Financement CPF",           "fin",     45},
+            {"1.0.", "B2C - Entreprise", "Entreprise - Tampon",       "ADV",          "facture", 30},
+            {"1.1.", "B2C - Entreprise", "Entreprise - ADV",          "ADV",          "facture", 30},
+            {"1.2.", "B2C - Entreprise", "Entreprise - Recouvrement", "Recouvrement", "facture", 30},
+            {"1.3.", "OPCO",             "Entreprise - OPCO",         "",             "fin",     60},
+            {"2.1.", "BTC-Perso",        "Financement Personnel",     "",             "debut",    0},
+            {"2.2.", "CPF",              "Financement CPF",           "",             "fin",     45},
             // 2.3 mélange AIF et POEI — même règle (+60 j), distingués
             // pour l'analyse via GroupesConfig ↓
-            {"2.3.", "AIF",              "Financement pôle emploi",   "fin",     60},
-            {"2.4.", "Region",           "Financement complexe",      "fin",     60},
+            {"2.3.", "AIF",              "Financement pôle emploi",   "",             "fin",     60},
+            {"2.4.", "Region",           "Financement complexe",      "",             "fin",     60},
             // EN DERNIER : complément uniquement
-            {"0.1.", "",                 "ALL - Factures payées",     "facture", 30}
+            {"0.1.", "",                 "ALL - Factures payées",     "",             "facture", 30}
         }
     ),
 
@@ -77,6 +84,14 @@ let
             {"2.3.", "aif",  "AIF",  "Financement AIF",  "fin", 60}
         }
     ),
+
+    // =================================================================
+    //  ⚙️ 1ter) ADV vs RECOUVREMENT — mots-clés de détection
+    // =================================================================
+    //  Cherchés (en minuscules, sans accents) dans le statut, la
+    //  catégorie de dette puis le nom du groupe. Le premier trouvé gagne.
+    MotsRecouvrement = {"payee - recouvrement", "recouvrement"},
+    MotsADV          = {"payee - adv", "adv pas en retard", "adv"},
 
     // =================================================================
     //  ⚙️ 2) CONCEPTS → titres possibles (par ORDRE DE PRIORITÉ)
@@ -119,6 +134,7 @@ let
 
         // --- Statuts / qualification -----------------------------------
         {"qualif_recouvrement",{"qualifaction recouvrement", "qualification recouvrement"}},
+        {"qualif_adv",        {"qualification adv", "qualifaction adv"}},
         {"statut",            {"statut", "statut 1", "statut initiale",
                                "statut paiement", "statut creance"}},
         {"etape_process",     {"etape process recouvrement"}},
@@ -329,8 +345,44 @@ let
                     else if [statut] <> null then [statut]
                     else [groupe_monday], type text),
 
+            // --- Où la facture est-elle rangée DANS MONDAY ? ----------
+            //  ⚠️ Ceci n'est PAS le périmètre de référence : ADV vs
+            //     Recouvrement se calcule sur le RETARD (voir la table
+            //     consolidée). On garde l'info Monday pour la comparer
+            //     au calcul et repérer les factures mal rangées
+            //     (ex. en retard mais toujours dans un tableau ADV).
+            T7b = Table.AddColumn(T7, "perimetre_monday", each
+                    let
+                        Cherche = (txt as nullable text, mots as list) as logical =>
+                            let t = Norm(txt)
+                            in  t <> "" and List.AnyTrue(
+                                    List.Transform(mots, (m) => Text.Contains(t, m))),
+                        parStatut =
+                            if Cherche([statut], {"payee - recouvrement"}) then "Recouvrement"
+                            else if Cherche([statut], {"payee - adv"}) then "ADV"
+                            else null,
+                        parDette =
+                            if Cherche([categorie_dette], {"adv pas en retard"}) then "ADV"
+                            else if Cherche([categorie_dette], MotsRecouvrement) then "Recouvrement"
+                            else null,
+                        parGroupe =
+                            if Cherche([groupe_monday], MotsRecouvrement) then "Recouvrement"
+                            else if Cherche([groupe_monday], MotsADV) then "ADV"
+                            else null,
+                        parQualif =
+                            if [qualif_recouvrement] <> null then "Recouvrement"
+                            else if [qualif_adv] <> null then "ADV"
+                            else null
+                    in
+                        if parStatut <> null then parStatut
+                        else if parDette <> null then parDette
+                        else if parGroupe <> null then parGroupe
+                        else if parQualif <> null then parQualif
+                        else if cfg[perimetre] <> "" then cfg[perimetre]
+                        else "Non qualifié", type text),
+
             // Clé = n° de facture = nom de l'item (FACT-xxxx-xxxxx)
-            T8 = Table.AddColumn(T7, "cle", each
+            T8 = Table.AddColumn(T7b, "cle", each
                     Text.Upper(Text.Trim(
                         if [item_nom] = null then "" else Text.From([item_nom])
                     )), type text),
