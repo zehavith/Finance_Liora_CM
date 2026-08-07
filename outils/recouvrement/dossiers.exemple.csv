@@ -1,0 +1,5 @@
+reference;nom;email;facture;date_debut;date_fin
+2024-118;Marie Dupont;marie.dupont@exemple.fr;FA-2024-0153;01/09/2023;
+2024-119;Sophie Bernard;sophie.bernard@exemple.fr|s.bernard@ancien-employeur.fr;FA-2024-0161;;
+2024-120;Camille Leroy;camille.leroy@exemple.fr;FA-2024-0174|FA-2024-0188;01/01/2024;31/12/2025
+2024-121;Nadia Chevalier;;FA-2024-0201;;

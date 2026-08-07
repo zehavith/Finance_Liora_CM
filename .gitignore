@@ -12,3 +12,14 @@ dist/
 
 # Logs
 *.log
+
+# Outil de recouvrement : secrets d'accès Gmail et données extraites.
+# Ne doivent jamais être versionnés.
+outils/recouvrement/credentials.json
+outils/recouvrement/token.json
+outils/recouvrement/*service*.json
+outils/recouvrement/dossiers.csv
+export/
+outils/recouvrement/export/
+__pycache__/
+*.pyc
