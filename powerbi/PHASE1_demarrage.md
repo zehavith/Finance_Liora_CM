@@ -18,23 +18,23 @@ en **phase 2** (voir la fin de ce document).
 - Balance âgée **simple** (par tranche de mois, sans ventilation par type)
 - **Rafraîchissement automatique quotidien**
 
-## ⚠️ Ce qui est volontairement reporté en phase 2
+## ⚠️ Ce qui reste reporté en phase 2
 
 | Reporté | Conséquence en phase 1 |
 |---|---|
-| Vos **règles d'échéance métier** (fin de formation +30/45/60 j) | L'échéance vient de Pennylane/Sellsy → les chiffres de **retard sont indicatifs**, pas exacts |
-| **Type de client / sous-catégorie** (B2C, CPF, OPCO…) | Pas de ventilation de la balance par catégorie |
 | **Avoirs Sellsy** (montants négatifs) | Les avoirs n'apparaissent pas encore dans l'encours |
+| Classification des factures **absentes de Monday** | Elles restent sans type / sous-catégorie — la page « factures manquantes sur Monday » sert justement à les identifier |
 
-> 👉 Tant que la phase 2 n'est pas faite, **vérifiez la facture dans
-> Pennylane/Sellsy avant toute relance formelle** : le retard affiché peut
-> différer de votre vraie échéance contractuelle.
+> Les **règles d'échéance métier** et le **type de client** ne sont plus
+> reportés : ils sont couverts dès la phase 1 (voir l'encadré ci-dessous).
 
-### ⭐ Comment SUPPRIMER ces limites dès la phase 1 (recommandé)
+### ⭐ Utilisez le connecteur multi-tableaux (recommandé)
 
-Vos tableaux Monday sont déjà organisés par financement (`1. Corporate`,
-`2. B2C`, puis CPF, AIF, Région, OPCO…) **et portent les 3 dates**
-(facture, début et fin de formation). Cela suffit à tout calculer.
+Vos tableaux Monday sont organisés par financement (`1. Corporate`,
+`2. B2C`, puis CPF, AIF, Région, OPCO…) et portent tous les dates
+nécessaires. **Vérifié sur l'export réel de vos 7 tableaux** : les 4 dates
+utiles au calcul d'échéance (date de facture, date d'échéance, début et fin
+de service/formation) sont présentes **partout**.
 
 👉 À l'étape 4, utilisez **`connecteurs/monday_multi_boards.pq`** au lieu de
 `monday_relances.pq`. Il est **déjà pré-rempli** avec vos tableaux et
@@ -49,13 +49,23 @@ Ce que vous gagnez immédiatement, **sans référentiel ni saisie manuelle** :
 | **Sous-catégorie** | Idem → la **balance âgée ventilée** devient possible dès la phase 1 |
 | **Échéance exacte** | Règle métier complète : date de facture / **début** / **fin de formation** + 30/45/60 j |
 
-> Il ne reste alors comme limite que les **avoirs Sellsy** (montants négatifs),
-> et la classification des factures **absentes de Monday** — que la page
-> « factures manquantes sur Monday » vous aide justement à combler.
+**Robustesse aux noms de colonnes.** Vos 7 tableaux ont de 11 à 102 colonnes
+et **seule `Name` est commune** ; la même information y porte des noms
+différents (« Début de service » / « Début de formation » / « Début
+Formation », « Total TTC » / « Montant » / « Total Facture »…). Le
+connecteur reconnaît donc les colonnes **par concept**, insensible à la
+casse, aux accents, aux apostrophes (droite `'` vs typographique `’`) et aux
+espaces. Pour couvrir un nouveau nom, ajoutez simplement une variante dans
+la liste `Concepts` — rien d'autre à toucher.
 
-**À vérifier au premier chargement :** les titres de colonnes dans
-`ColonnesVoulues` (« Date de facture », « Début de formation », « Fin de
-formation »…) doivent correspondre **exactement** à ceux de vos tableaux.
+**Couverture constatée sur vos exports :**
+
+| Concept | Tableaux couverts |
+|---|---|
+| Date de facture · Date d'échéance · Début · Fin | **7 / 7** ✅ |
+| Montant total | 6 / 7 (absent de `1.0. Tampon`, qui ne contient que des dates) |
+| Reste dû | 4 / 7 (Pennylane prend le relais) |
+| Type de client | 4 / 7 (déduit du tableau ailleurs — validé) |
 
 ---
 

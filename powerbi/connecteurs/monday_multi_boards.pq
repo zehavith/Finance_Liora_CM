@@ -89,27 +89,38 @@ let
         {"date_facture",      {"date facture", "date de facture",
                                "date depot de la facture", "date envoi facture initial"}},
         {"date_echeance",     {"date d'echeance facture", "date d'echeance", "date echeance"}},
+        // ⚠️ 2 graphies réelles : avec ET sans espaces autour du « / »
         {"date_echeance_calc",{"date echeance calculee / negociee",
+                               "date d'echeance calculee/negociee",
+                               "date d'echeance calculee / negociee",
+                               "date echeance calculee/negociee",
                                "date d'echeance calculee"}},
         {"date_debut",        {"debut de service", "debut de formation", "debut formation"}},
         {"date_fin",          {"fin de service", "fin de formation", "fin formation"}},
         {"date_paiement",     {"date paiement", "date de paiement"}},
 
         // --- Montants (contrôle ; Pennylane reste la vérité paiement) --
-        {"total_ttc",         {"total ttc", "montant", "montant ttc"}},
+        {"total_ttc",         {"total ttc", "total facture", "montant", "montant ttc"}},
         {"reste_du",          {"reste a devoir ttc",
                                "reste a payer ( d'apres le grand livre )",
-                               "reste a payer"}},
-        {"montant_partiel",   {"montant partiel recu"}},
+                               "reste a payer", "restant a payer",
+                               "montant restant penny", "montant restant sellsy",
+                               "montant en recouvrement"}},
+        {"montant_partiel",   {"montant partiel recu", "total paid"}},
 
         // --- Identité --------------------------------------------------
-        {"client",            {"client", "entreprise"}},
+        //  « apprenant » en dernier : en B2C, l'apprenant EST le client.
+        {"client",            {"client", "entreprise", "apprenant",
+                               "nom & prenom de l'apprenant",
+                               "nom et prenom apprenant", "nom prenom apprenant"}},
         {"type_client",       {"type de client"}},
         {"num_zoho",          {"n° zoho", "no zoho"}},
+        {"id_client_sellsy",  {"id client sellsy"}},
 
         // --- Statuts / qualification -----------------------------------
         {"qualif_recouvrement",{"qualifaction recouvrement", "qualification recouvrement"}},
-        {"statut",            {"statut", "statut 1", "statut initiale"}},
+        {"statut",            {"statut", "statut 1", "statut initiale",
+                               "statut paiement", "statut creance"}},
         {"etape_process",     {"etape process recouvrement"}},
         {"categorie_dette",   {"categorie de dette"}},
         {"categorie_retard",  {"categorie de retard"}},
