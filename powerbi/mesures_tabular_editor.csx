@@ -99,6 +99,43 @@ M("Nb Bad Debt payée",
 M("Somme Bad Debt", "CALCULATE ( [Encours total], Factures[jours_retard] > 360 )", EUR, "3 Parité dashboard");
 
 // ---------------------------------------------------------------------
+//  3bis · Ventilation PAYÉES par périmètre (bloc vert de votre schéma)
+// ---------------------------------------------------------------------
+M("Nb payées ADV",
+  "CALCULATE ( [Nb factures], Factures[perimetre] = \"ADV\", CONTAINSSTRING ( Factures[statut_relance], \"Payée\" ) )",
+  NB, "3 Parité dashboard");
+M("Nb payées Recouvrement",
+  "CALCULATE ( [Nb factures], Factures[perimetre] = \"Recouvrement\", CONTAINSSTRING ( Factures[statut_relance], \"Payée\" ) )",
+  NB, "3 Parité dashboard");
+M("Montant payé ADV",
+  "CALCULATE ( SUM ( Factures[montant_ttc] ), Factures[perimetre] = \"ADV\", CONTAINSSTRING ( Factures[statut_relance], \"Payée\" ) )",
+  EUR, "3 Parité dashboard");
+M("Montant payé Recouvrement",
+  "CALCULATE ( SUM ( Factures[montant_ttc] ), Factures[perimetre] = \"Recouvrement\", CONTAINSSTRING ( Factures[statut_relance], \"Payée\" ) )",
+  EUR, "3 Parité dashboard");
+
+// % payées / non payées — une seule mesure : le périmètre vient des
+// COLONNES de la matrice (ADV ou Recouvrement), pas d'une mesure par cas.
+M("% payées",     "DIVIDE ( [Nb factures payées], [Nb factures créées] )", PCT, "4 Taux");
+M("% non payées", "1 - [% payées]", PCT, "4 Taux");
+
+// ---------------------------------------------------------------------
+//  3ter · Sélecteur de date pilote (facture / début / fin de formation)
+// ---------------------------------------------------------------------
+//  ⚠️ Prérequis : table déconnectée « DatePilote » (colonne Choix) et les
+//     3 relations vers Calendrier[Date] — voir maquette_cible.md §1.
+//     Décommentez une fois la table créée.
+/*
+M("Encours (date pilote)",
+  "VAR c = SELECTEDVALUE ( DatePilote[Choix], \"Date de facture\" ) RETURN " +
+  "SWITCH ( c, " +
+  "\"Début de formation\", CALCULATE ( [Encours total], USERELATIONSHIP ( Calendrier[Date], Factures[date_debut_formation] ) ), " +
+  "\"Fin de formation\",   CALCULATE ( [Encours total], USERELATIONSHIP ( Calendrier[Date], Factures[date_fin_formation] ) ), " +
+  "CALCULATE ( [Encours total], USERELATIONSHIP ( Calendrier[Date], Factures[date_emission] ) ) )",
+  EUR, "8 Date pilote");
+*/
+
+// ---------------------------------------------------------------------
 //  4 · Les taux
 // ---------------------------------------------------------------------
 M("Taux de facture en recouvrement", "DIVIDE ( [Nb factures en recouvrement], [Nb factures créées] )", PCT, "4 Taux");
@@ -183,4 +220,7 @@ M("% couverture Monday",
   "DIVIDE ( CALCULATE ( [Nb factures], Factures[present_monday] = TRUE () ), [Nb factures] )",
   PCT, "7 Contrôles");
 
-Info("✅ " + t.Measures.Count + " mesures présentes sur la table Factures. Ctrl+S pour les envoyer vers Power BI.");
+Info("✅ " + t.Measures.Count + " mesures sur la table Factures.\n\n"
+   + "Ctrl+S pour les envoyer vers Power BI.\n"
+   + "Le sélecteur de date pilote (§3ter) est commenté : décommentez-le\n"
+   + "après avoir créé la table DatePilote et ses 3 relations.");
