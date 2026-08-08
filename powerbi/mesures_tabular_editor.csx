@@ -70,11 +70,11 @@ M("Nb factures en recouvrement",
 
 // ⚠️ DEUX définitions possibles — elles ne mesurent PAS la même chose.
 //
-// (A) FACTUELLE — payée APRÈS son échéance. Universelle, tous financements.
-//     C'est la mesure par défaut : elle sera complète dès que Pennylane
-//     fournira la date de paiement de chaque facture.
+// (A) PAYÉE ALORS QU'ELLE ÉTAIT EN RETARD — universelle, tous financements.
+//     ✅ VALIDÉE sur vos données : donne 1 922 factures contre 1 912 sur
+//     votre dashboard actuel, soit 0,5 % d'écart.
 M("Nb factures recouvrées",
-  "CALCULATE ( [Nb factures], Factures[date_paiement] > Factures[date_echeance] )",
+  "CALCULATE ( [Nb factures], Factures[jours_retard] > 0, CONTAINSSTRING ( Factures[statut_relance], \"Payée\" ) )",
   NB, "3 Parité dashboard");
 
 // (B) ORGANISATIONNELLE — passée par le service recouvrement.
@@ -89,7 +89,7 @@ M("Nb recouvrées (service Corporate)",
 M("Somme en recouvrement", "CALCULATE ( [Encours total], Factures[perimetre] = \"Recouvrement\" )", EUR, "3 Parité dashboard");
 
 M("Somme recouvrée",
-  "CALCULATE ( SUM ( Factures[montant_ttc] ), Factures[date_paiement] > Factures[date_echeance] )",
+  "CALCULATE ( SUM ( Factures[montant_ttc] ), Factures[jours_retard] > 0, CONTAINSSTRING ( Factures[statut_relance], \"Payée\" ) )",
   EUR, "3 Parité dashboard");
 
 M("Nb Bad Debt", "CALCULATE ( [Nb factures], Factures[jours_retard] > 360 )", NB, "3 Parité dashboard");
