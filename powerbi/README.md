@@ -26,7 +26,7 @@ Le déploiement se fait en **2 phases** :
 
 | Phase | Contenu | Durée | Guide |
 |---|---|---|---|
-| **Phase 1** ⬅️ *commencez ici* | Suivi recouvrement (KPI, DSO, à jour / en recouvrement, factures manquantes sur Monday) + refresh auto | 2 h 30 – 3 h | **[`PHASE1_demarrage.md`](PHASE1_demarrage.md)** |
+| **Phase 1** ⬅️ *commencez ici* | Suivi recouvrement (KPI, DSO et sa variation, ADV vs Recouvrement, factures manquantes sur Monday) + refresh auto | **~2 h 15** | ⚡ **[`GUIDE_RAPIDE.md`](GUIDE_RAPIDE.md)** |
 | **Phase 2** | Balance âgée complète : avoirs Sellsy + page matrice détaillée | ~45 min | fin de `PHASE1_demarrage.md` |
 
 ## Contenu du kit
@@ -34,7 +34,9 @@ Le déploiement se fait en **2 phases** :
 ```
 powerbi/
 ├── README.md                          ← vous êtes ici (vue d'ensemble + maquette)
-├── PHASE1_demarrage.md                ⬅️ CHECKLIST DE DÉMARRAGE (commencez ici)
+├── GUIDE_RAPIDE.md                    ⚡ CHEMIN LE PLUS COURT (~2 h 15) — commencez ici
+├── PHASE1_demarrage.md                Checklist détaillée pas-à-pas
+├── mesures_tabular_editor.csx         ⚡ Les 40 mesures créées en 1 clic
 ├── parite_ancien_dashboard.md         ⭐ Parité avec votre dashboard Sheets actuel
 ├── theme_liora.json                   Thème graphique (import en 1 clic)
 ├── connecteurs/

@@ -40,18 +40,40 @@ CALCULATE ( DISTINCTCOUNT ( Factures[numero] ),
     Factures[perimetre] = "Recouvrement" )
 ```
 
+### ⚠️ « Recouvrée » : deux définitions, à ne pas confondre
+
+**(A) Factuelle — payée après l'échéance.** Universelle, tous financements.
+C'est la mesure de référence.
+
 ```DAX
--- Recouvrée = payée APRÈS être passée en retard
 Nb factures recouvrées =
 CALCULATE (
     DISTINCTCOUNT ( Factures[numero] ),
-    Factures[est_payee] = TRUE (),
-    Factures[jours_retard] > 0
+    Factures[date_paiement] > Factures[date_echeance]
 )
 ```
 
-> Variante fidèle à vos statuts Monday, si vous préférez :
-> `CALCULATE ( DISTINCTCOUNT ( Factures[numero] ), CONTAINSSTRING ( Factures[statut_relance], "Payée - Recouvrement" ) )`
+**(B) Organisationnelle — passée par le service recouvrement.**
+
+```DAX
+Nb recouvrées (service Corporate) =
+CALCULATE ( DISTINCTCOUNT ( Factures[numero] ),
+    CONTAINSSTRING ( Factures[statut_relance], "Payée - Recouvrement" ) )
+```
+
+> ⚠️ Le statut **« Payée - Recouvrement » n'existe que pour Corporate**. Les
+> financements B2C portent « Payée - CPF », « Payée B2C », « Payée POEI »…
+> qui ne disent pas s'il y a eu recouvrement. N'utilisez (B) que **filtré sur
+> Corporate**, jamais en global.
+>
+> Mesuré sur vos exports : (A) donne **1 015** factures payées en retard,
+> mais **seules 1 385 factures payées sur 4 828** ont à la fois une date de
+> paiement et une échéance dans Monday. **Pennylane comblera ce trou** en
+> fournissant la date de règlement de chaque facture.
+>
+> Constat parlant : parmi les payées en retard, **412 sont étiquetées
+> « Payée - ADV »** — preuve que l'étiquette dit *quelle équipe a traité*,
+> pas *si la facture était en retard*.
 
 ```DAX
 Somme en recouvrement =
@@ -208,10 +230,11 @@ ci-dessus. Elles donnent l'ordre de grandeur attendu au premier chargement.
 | Indicateur | Votre Sheets | Calcul Monday | Écart |
 |---|---|---|---|
 | Nb factures créées | 15 461 | **7 796** | −50 % ⚠️ |
+| Nb factures payées | — | **4 828** | ✅ conforme à votre estimation (~4 500) |
 | Nb en recouvrement | 5 563 | **4 749** | −15 % |
-| Nb recouvrées | 1 912 | **2 721** | +42 % |
+| Nb recouvrées *(payées en retard)* | 1 912 | **1 015** | mesurable sur 1 385 factures seulement |
 | **Somme en recouvrement** | 27 196 249,71 € | **27 453 193,01 €** | **+0,9 % ✅** |
-| Somme recouvrée | 10 201 193,37 € | 19 088 917,98 € | +87 % |
+| Somme recouvrée | 10 201 193,37 € | **6 350 576,87 €** | même limite de couverture |
 | Délai moyen | 360 j | **83 j** (médiane 46 j) | ⚠️ |
 | Nb Bad Debt | 1 840 | **1 940** | +5 % ✅ |
 | Nb Bad Debt payée | 254 | 1 040 | +309 % |
@@ -228,8 +251,9 @@ ci-dessus. Elles donnent l'ordre de grandeur attendu au premier chargement.
   utiles. 83 j = délai réel **facture → paiement** sur les factures réglées
   (colonne Monday « Délai de paiement »). 360 j = retard moyen sur l'encours
   **non réglé**. Le nouveau dashboard affiche **les deux**, côte à côte.
-- Les écarts sur « recouvrées » viennent de la définition retenue (payée après
-  être passée en retard). Ajustez la mesure §1 si votre définition diffère.
+- ⚠️ **« Recouvrées » est sous-estimé** : la définition factuelle exige une
+  date de paiement, présente sur seulement 1 385 des 4 828 factures payées.
+  Pennylane la fournira pour toutes.
 
 > Le modèle retire aussi **3 831 doublons** inter-tableaux et **8 225 lignes**
 > techniques (groupes Technique / Archive / Tampon / test) que votre Sheets
