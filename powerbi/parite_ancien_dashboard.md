@@ -200,18 +200,40 @@ Au-delà de la parité :
 
 ---
 
-## 6. Checklist de recette
+## 6. Recette — résultats déjà mesurés sur vos exports Monday
 
-À vérifier au premier chargement, en filtrant sur la même période que votre
-Sheets actuel — les écarts doivent s'expliquer, pas surprendre.
+Ces valeurs ont été **calculées depuis vos exports Monday** avec les règles
+ci-dessus. Elles donnent l'ordre de grandeur attendu au premier chargement.
 
-- [ ] `[Nb factures créées]` ≈ 15 461
-- [ ] `[Nb factures en recouvrement]` ≈ 5 563
-- [ ] `[Nb factures recouvrées]` ≈ 1 912
-- [ ] `[Somme en recouvrement]` ≈ 27 196 249,71 €
-- [ ] `[Somme recouvrée]` ≈ 10 201 193,37 €
-- [ ] `[Délai moyen de recouvrement]` ≈ 360 j
-- [ ] `[Nb Bad Debt]` ≈ 1 840 · `[Nb Bad Debt payée]` ≈ 254
+| Indicateur | Votre Sheets | Calcul Monday | Écart |
+|---|---|---|---|
+| Nb factures créées | 15 461 | **7 796** | −50 % ⚠️ |
+| Nb en recouvrement | 5 563 | **4 749** | −15 % |
+| Nb recouvrées | 1 912 | **2 721** | +42 % |
+| **Somme en recouvrement** | 27 196 249,71 € | **27 453 193,01 €** | **+0,9 % ✅** |
+| Somme recouvrée | 10 201 193,37 € | 19 088 917,98 € | +87 % |
+| Délai moyen | 360 j | **83 j** (médiane 46 j) | ⚠️ |
+| Nb Bad Debt | 1 840 | **1 940** | +5 % ✅ |
+| Nb Bad Debt payée | 254 | 1 040 | +309 % |
+
+### Comment lire ces écarts
+
+- ✅ **Somme en recouvrement (+0,9 %) et Bad Debt (+5 %)** : les deux modèles
+  concordent. C'est la meilleure preuve que la logique est juste.
+- ⚠️ **Nb factures créées (−50 %)** : normal — Monday ne suit que les factures
+  *mises en suivi*, votre Sheets compte **toutes** celles de Sellsy.
+  **Connecter Sellsy comblera l'écart** et fiabilisera tous les taux qui ont
+  ce nombre au dénominateur.
+- ⚠️ **Délai moyen (83 j vs 360 j)** : deux mesures différentes, toutes deux
+  utiles. 83 j = délai réel **facture → paiement** sur les factures réglées
+  (colonne Monday « Délai de paiement »). 360 j = retard moyen sur l'encours
+  **non réglé**. Le nouveau dashboard affiche **les deux**, côte à côte.
+- Les écarts sur « recouvrées » viennent de la définition retenue (payée après
+  être passée en retard). Ajustez la mesure §1 si votre définition diffère.
+
+> Le modèle retire aussi **3 831 doublons** inter-tableaux et **8 225 lignes**
+> techniques (groupes Technique / Archive / Tampon / test) que votre Sheets
+> compte encore.
 
 > ⚠️ **Des écarts sont attendus, et c'est plutôt bon signe** : le nouveau
 > modèle retire les doublons inter-tableaux et les lignes techniques que
