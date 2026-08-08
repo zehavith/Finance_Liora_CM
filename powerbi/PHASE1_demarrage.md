@@ -155,6 +155,10 @@ Créer une table `_Mesures`, puis coller depuis [`mesures_dax.md`](mesures_dax.m
 - [ ] DSO (jours) · Total échu · % échu · Retard moyen pondéré
 - [ ] Nb factures manquantes sur Monday · Encours manquant sur Monday
 - [ ] Nb factures à déplacer · Encours à déplacer
+- [ ] ⭐ **Les 8 indicateurs de votre dashboard actuel + les 5 taux**
+      → [`parite_ancien_dashboard.md`](parite_ancien_dashboard.md)
+      (nb créées / en recouvrement / recouvrées, sommes, délai moyen,
+      Bad Debt et Bad Debt payée, et les taux associés)
 
 > `type_client` et `sous_categorie` sont déjà alimentés par Monday : vous
 > pouvez donc filtrer/segmenter par type dès la phase 1. Seule la **page**
@@ -171,6 +175,10 @@ Voir la maquette dans [`README.md`](README.md).
       `jours_retard` décroissant**, + segments (dont `perimetre`)
 - [ ] **Page 3 — Contrôle Sellsy ↔ Monday** : factures manquantes sur Monday
       **+** factures mal rangées (en retard mais côté ADV)
+
+> ⭐ **Recette de parité** : avant de publier, comparez les 8 indicateurs avec
+> votre Sheets actuel sur la même période — checklist en fin de
+> [`parite_ancien_dashboard.md`](parite_ancien_dashboard.md).
 
 *(La page « Balance âgée » complète arrive en phase 2 — en attendant, un simple
 histogramme `tranche_age` × `[Encours total]` donne déjà la vue globale.)*

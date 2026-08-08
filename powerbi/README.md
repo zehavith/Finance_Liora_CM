@@ -35,6 +35,8 @@ Le déploiement se fait en **2 phases** :
 powerbi/
 ├── README.md                          ← vous êtes ici (vue d'ensemble + maquette)
 ├── PHASE1_demarrage.md                ⬅️ CHECKLIST DE DÉMARRAGE (commencez ici)
+├── parite_ancien_dashboard.md         ⭐ Parité avec votre dashboard Sheets actuel
+├── theme_liora.json                   Thème graphique (import en 1 clic)
 ├── connecteurs/
 │   ├── sellsy_factures.pq             Factures émises (référentiel)         → Sellsy_Factures
 │   ├── pennylane_factures.pq          Paiement (reste dû, échéance)         → Pennylane_Paiements
