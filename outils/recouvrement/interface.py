@@ -614,7 +614,15 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <label for="sortie">Dossier de destination</label>
       <input type="text" id="sortie" value="__SORTIE__" />
     </div>
+    <div>
+      <label for="jetonMonday">Jeton Monday — pour télécharger factures et conventions</label>
+      <input type="text" id="jetonMonday" placeholder="__ETAT_MONDAY__" />
+    </div>
   </div>
+  <p class="note">Le jeton Monday est facultatif : sans lui, les factures et
+     conventions du tableau sont seulement citées en lien dans la note, au lieu
+     d'être téléchargées. Il s'obtient dans Monday, profil en haut à droite →
+     Développeurs → Mes jetons d'accès.</p>
   <p class="note">La destination est volontairement hors de OneDrive : l'export
      contient les données personnelles des apprenantes, et la synchronisation
      d'un dossier volumineux provoque des erreurs d'écriture en cours de route.</p>

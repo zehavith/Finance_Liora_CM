@@ -893,6 +893,35 @@ def test_interface() -> None:
         with urllib.request.urlopen(f"{base}/", timeout=10) as reponse:  # noqa: S310
             page = reponse.read().decode("utf-8")
         verifier("Export recouvrement" in page, "la page est servie")
+
+        # Une insertion ratée dans le gabarit ne se voit pas à l'exécution :
+        # la page s'affiche, le champ manque, et l'option devient inatteignable.
+        # Chaque commande de la page est donc vérifiée nommément.
+        attendus = [
+            ('id="fichier"', "dépôt de fichier"),
+            ('id="mEmail"', "recherche par adresse"),
+            ('id="mFacture"', "recherche par facture"),
+            ('id="boites"', "boîtes à interroger"),
+            ('id="sortie"', "dossier de destination"),
+            ('id="jetonMonday"', "jeton Monday"),
+            ('id="simulation"', "option simulation"),
+            ('id="ignorer"', "option lignes incomplètes"),
+            ('id="regrouper"', "option regroupement"),
+            ('id="sansnav"', "option sans navigateur"),
+            ('id="reprendre"', "option reprendre"),
+            ('id="seulement"', "filtre par références"),
+            ('id="lancer"', "bouton lancer"),
+            ('data-vue="vueBord"', "onglet tableau de bord"),
+            ('data-vue="vueSuivi"', "onglet état des dossiers"),
+            ('data-vue="vueDocuments"', "onglet documents"),
+            ('data-vue="vueExport"', "onglet export"),
+        ]
+        manquants = [libelle for marqueur, libelle in attendus if marqueur not in page]
+        verifier(not manquants, f"tous les champs de la page sont présents{' — manque : ' + ', '.join(manquants) if manquants else ''}")
+
+        restants = [m for m in ("__JETON__", "__SORTIE__", "__BOITES__",
+                                "__MOTEUR_PDF__", "__ETAT_MONDAY__") if m in page]
+        verifier(not restants, f"aucun marqueur de gabarit non remplacé{' — reste : ' + ', '.join(restants) if restants else ''}")
         verifier("__JETON__" not in page, "le jeton est injecté dans la page")
         verifier(interface.JETON in page, "la page porte le jeton de la session")
 
