@@ -529,14 +529,37 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <span class="moteur">Moteur PDF : __MOTEUR_PDF__</span>
 </header>
 <nav class="principal">
-  <button class="actif" data-vue="vueExport">Export</button>
-  <button data-vue="vueDocuments">Documents</button>
+  <button class="actif" data-vue="vueBord">Tableau de bord</button>
   <button data-vue="vueSuivi">État des dossiers</button>
-  <button data-vue="vueBord">Tableau de bord</button>
+  <button data-vue="vueDocuments">Documents</button>
+  <button data-vue="vueExport">Export</button>
 </nav>
 <main>
 
-<div class="vue actif" id="vueExport">
+<div class="vue actif" id="vueBord">
+  <div id="tuilesBord" class="tuiles"></div>
+  <div class="graphe" id="grapheBord"></div>
+</div>
+
+<div class="vue" id="vueSuivi">
+  <section>
+    <h2>État des dossiers</h2>
+    <p class="aide">L'avancement et les frais sont enregistrés au fur et à mesure,
+       à côté de l'outil. Refaire un export ne les efface pas.</p>
+    <div id="tableSuivi"></div>
+  </section>
+</div>
+
+<div class="vue" id="vueDocuments">
+  <section>
+    <h2>Documents produits</h2>
+    <p class="aide">Un répertoire par dossier, dans <b id="cheminSortie">—</b>.
+       Cliquez pour ouvrir la note de synthèse ou le répertoire complet.</p>
+    <div id="tableDocuments"></div>
+  </section>
+</div>
+
+<div class="vue" id="vueExport">
 <section>
   <h2>1. Les dossiers à traiter</h2>
   <div class="onglets">
@@ -632,29 +655,6 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <div class="bandeau" id="bandeau"></div>
   <div id="journal" hidden></div>
 </section>
-</div>
-
-<div class="vue" id="vueDocuments">
-  <section>
-    <h2>Documents produits</h2>
-    <p class="aide">Un répertoire par dossier, dans <b id="cheminSortie">—</b>.
-       Cliquez pour ouvrir la note de synthèse ou le répertoire complet.</p>
-    <div id="tableDocuments"></div>
-  </section>
-</div>
-
-<div class="vue" id="vueSuivi">
-  <section>
-    <h2>État des dossiers</h2>
-    <p class="aide">L'avancement et les frais sont enregistrés au fur et à mesure,
-       à côté de l'outil. Refaire un export ne les efface pas.</p>
-    <div id="tableSuivi"></div>
-  </section>
-</div>
-
-<div class="vue" id="vueBord">
-  <div id="tuilesBord" class="tuiles"></div>
-  <div class="graphe" id="grapheBord"></div>
 </div>
 
 </main>
@@ -1048,6 +1048,8 @@ function echapper(texte) {
   div.textContent = texte == null ? "" : String(texte);
   return div.innerHTML;
 }
+
+chargerDossiers();
 
 function afficherBandeau(reussi, message) {
   const bandeau = $("bandeau");

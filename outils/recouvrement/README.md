@@ -97,10 +97,13 @@ L'application comporte quatre onglets :
 
 | Onglet | Rôle |
 |---|---|
-| **Export** | lancer une extraction, depuis un export Monday ou une recherche ponctuelle |
-| **Documents** | les dossiers produits — ouvrir la note de synthèse ou le répertoire |
+| **Tableau de bord** | page d'accueil : montants en recouvrement, frais, issues, répartition par étape |
 | **État des dossiers** | avancement de la procédure et frais engagés, saisis et conservés |
-| **Tableau de bord** | montants en recouvrement, frais, issues, répartition par étape |
+| **Documents** | les dossiers produits — ouvrir la note de synthèse ou le répertoire |
+| **Export** | lancer une extraction, depuis un export Monday ou une recherche ponctuelle |
+
+L'ordre suit l'usage : le tableau de bord se consulte tous les jours,
+l'extraction se lance de loin en loin.
 
 L'avancement suit six états : non transmis, transmis, en cours chez l'avocat,
 passage au tribunal, clôturé gagné, clôturé perdu. Il est enregistré dans
