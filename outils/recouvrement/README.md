@@ -89,9 +89,17 @@ automatiquement ne serait pas vérifiable pièce par pièce.
 ## Deux façons de s'en servir
 
 **L'interface graphique** — double-cliquez sur **`Lancer.bat`** (ou lancez
-`python interface.py`). Votre navigateur s'ouvre sur une page où vous déposez
-l'export Monday, choisissez les boîtes et la destination, puis suivez la
-progression à l'écran. Aucune commande à taper.
+`python interface.py`). Votre navigateur s'ouvre sur une page où vous
+choisissez les boîtes et la destination, puis suivez la progression à l'écran.
+Aucune commande à taper.
+
+Deux façons d'y désigner les dossiers, au choix par onglet :
+
+- **Depuis un export Monday** — vous y déposez le fichier, tel quel ;
+- **Recherche ponctuelle** — vous saisissez une adresse mail et/ou un numéro
+  de facture pour un dossier isolé, sans rien préparer dans Monday. Les deux
+  critères se combinent par un OU, comme pour un fichier : les renseigner tous
+  les deux élargit la recherche, il ne la restreint pas.
 
 C'est un serveur local : il n'écoute que sur `127.0.0.1`, et chaque appel doit
 porter un jeton tiré au hasard au démarrage, connu de la seule page servie. Une

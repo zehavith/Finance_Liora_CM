@@ -806,6 +806,46 @@ def test_interface() -> None:
                 "les deux boîtes sont citées dans le journal",
             )
 
+            print("  -- recherche ponctuelle, sans fichier --")
+            statut, _reponse = appeler(
+                "/api/lancer",
+                {
+                    "mode": "manuel",
+                    "email": "marie.dupont@exemple.fr",
+                    "facture": "FA-2024-0153",
+                    "nom_dossier": "Marie Dupont",
+                    "boites": "recouvrement@liora.io",
+                    "sortie": repertoire,
+                    "simulation": True,
+                },
+            )
+            verifier(statut == 200, "recherche manuelle acceptée")
+
+            etat = {}
+            for _ in range(100):
+                _statut, etat = appeler("/api/journal?depuis=0")
+                if etat.get("termine"):
+                    break
+                time.sleep(0.1)
+            journal = "\n".join(etat.get("lignes", []))
+            verifier(etat.get("code") == 0, "recherche manuelle menée à son terme")
+            verifier(
+                "1 dossier(s) à traiter" in journal,
+                "la saisie manuelle produit bien un dossier",
+            )
+            verifier("Marie Dupont" in journal, "le nom saisi nomme le dossier")
+
+            print("  -- refus d'une saisie manuelle sans aucun critère --")
+            try:
+                appeler(
+                    "/api/lancer",
+                    {"mode": "manuel", "email": "", "facture": "",
+                     "nom_dossier": "X", "sortie": repertoire, "simulation": True},
+                )
+                verifier(False, "saisie manuelle sans critère refusée")
+            except urllib.error.HTTPError as exc:
+                verifier(exc.code == 400, f"saisie manuelle sans critère refusée ({exc.code})")
+
             print("  -- refus d'un second export simultané --")
             interface.EXECUTION.en_cours = True
             try:

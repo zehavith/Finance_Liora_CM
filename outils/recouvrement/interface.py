@@ -18,6 +18,7 @@ que seule la page servie connaît.
 from __future__ import annotations
 
 import base64
+import csv
 import json
 import secrets
 import subprocess
@@ -247,7 +248,35 @@ class Gestionnaire(BaseHTTPRequestHandler):
 
         self._json(404, {"erreur": "Inconnu."})
 
+    def _depot_manuel(self, demande: dict) -> Path:
+        """Recherche ponctuelle : les deux critères saisis à la main tiennent
+        lieu de fichier des dossiers, sans rien préparer dans Monday."""
+        email = (demande.get("email") or "").strip()
+        facture = (demande.get("facture") or "").strip()
+        nom = (demande.get("nom_dossier") or "").strip()
+
+        if not email and not facture:
+            raise ValueError(
+                "Indiquez au moins une adresse mail ou un numéro de facture."
+            )
+
+        depot = RACINE / "dossiers-depose.csv"
+        with depot.open("w", encoding="utf-8-sig", newline="") as fichier:
+            redacteur = csv.writer(fichier, delimiter=";")
+            redacteur.writerow(["reference", "nom", "email", "facture"])
+            redacteur.writerow(["", nom, email, facture])
+        return depot
+
     def _lancer(self, demande: dict) -> None:
+        if demande.get("mode") == "manuel":
+            try:
+                depot = self._depot_manuel(demande)
+            except ValueError as exc:
+                self._json(400, {"erreur": str(exc)})
+                return
+            self._demarrer(demande, depot, "saisie manuelle")
+            return
+
         nom = Path((demande.get("nom") or "").strip()).name
         if not nom:
             self._json(400, {"erreur": "Aucun fichier reçu."})
@@ -280,7 +309,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
         # on peut ainsi le rouvrir pour vérifier ce qui a réellement été lu.
         depot = RACINE / f"dossiers-depose{Path(nom).suffix.lower()}"
         depot.write_bytes(contenu)
+        self._demarrer(demande, depot, nom)
 
+    def _demarrer(self, demande: dict, depot: Path, origine: str) -> None:
         arguments, sortie = construire_arguments(demande, depot)
         try:
             EXECUTION.lancer(arguments, sortie)
@@ -288,10 +319,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self._json(409, {"erreur": str(exc)})
             return
 
-        ecrire_preferences(
-            {"boites": demande.get("boites", ""), "sortie": sortie}
-        )
-        self._json(200, {"demarre": True, "fichier": nom, "sortie": sortie})
+        ecrire_preferences({"boites": demande.get("boites", ""), "sortie": sortie})
+        self._json(200, {"demarre": True, "fichier": origine, "sortie": sortie})
 
     def _ouvrir(self, demande: dict) -> None:
         cible = Path((demande.get("chemin") or "").strip() or sortie_par_defaut())
@@ -344,6 +373,11 @@ section{background:var(--carte);border:1px solid var(--bord);border-radius:14px;
 .fleche{font-size:26px;color:var(--texte-3)}
 #nomFichier{font-weight:600;color:var(--vert)}
 .grille{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.onglets{display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--bord)}
+.onglet{background:none;border:none;border-bottom:2px solid transparent;border-radius:0;
+  color:var(--texte-2);font-size:13.5px;padding:9px 4px;margin-right:14px}
+.onglet.actif{color:var(--accent);border-bottom-color:var(--accent)}
+.volet{display:none} .volet.actif{display:block}
 label{display:block;font-size:12px;color:var(--texte-2);margin-bottom:5px}
 input[type=text]{width:100%;background:var(--champ);border:1px solid var(--bord);
   border-radius:9px;padding:10px 12px;color:var(--texte);font-size:13.5px;font-family:inherit}
@@ -387,14 +421,43 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <main>
 
 <section>
-  <h2>1. Le fichier des dossiers</h2>
-  <p class="aide">Votre export Monday, tel quel. Formats acceptés : .xlsx, .xlsm, .csv</p>
-  <div id="zone">
-    <div class="fleche">&#8593;</div>
-    <div id="texteZone">Glissez-déposez votre fichier, ou cliquez pour le choisir</div>
-    <div id="nomFichier"></div>
+  <h2>1. Les dossiers à traiter</h2>
+  <div class="onglets">
+    <button class="onglet actif" data-volet="voletFichier">Depuis un export Monday</button>
+    <button class="onglet" data-volet="voletManuel">Recherche ponctuelle</button>
   </div>
-  <input type="file" id="fichier" accept=".xlsx,.xlsm,.csv" hidden />
+
+  <div class="volet actif" id="voletFichier">
+    <p class="aide">Votre export Monday, tel quel. Formats acceptés : .xlsx, .xlsm, .csv</p>
+    <div id="zone">
+      <div class="fleche">&#8593;</div>
+      <div id="texteZone">Glissez-déposez votre fichier, ou cliquez pour le choisir</div>
+      <div id="nomFichier"></div>
+    </div>
+    <input type="file" id="fichier" accept=".xlsx,.xlsm,.csv" hidden />
+  </div>
+
+  <div class="volet" id="voletManuel">
+    <p class="aide">Pour un dossier isolé, sans rien préparer dans Monday.
+       Renseignez l'un des deux critères, ou les deux.</p>
+    <div class="grille">
+      <div>
+        <label for="mEmail">Adresse mail</label>
+        <input type="text" id="mEmail" placeholder="marie.dupont@exemple.fr" />
+      </div>
+      <div>
+        <label for="mFacture">Numéro de facture</label>
+        <input type="text" id="mFacture" placeholder="FACT-2405-00030" />
+      </div>
+      <div>
+        <label for="mNom">Nom du dossier (facultatif)</label>
+        <input type="text" id="mNom" placeholder="Marie Dupont" />
+      </div>
+    </div>
+    <p class="note">Les deux critères se combinent par un OU : un message
+       remonte s'il cite l'adresse <b>ou</b> le numéro de facture. Renseigner
+       les deux élargit la recherche, il ne la restreint pas.</p>
+  </div>
 </section>
 
 <section>
@@ -453,7 +516,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <script>
 const JETON = "__JETON__";
 const $ = (id) => document.getElementById(id);
-let fichierChoisi = null, position = 0, sondage = null;
+let fichierChoisi = null, position = 0, sondage = null, mode = "fichier";
 
 async function api(chemin, corps) {
   const options = { headers: { "X-Jeton": JETON } };
@@ -466,6 +529,28 @@ async function api(chemin, corps) {
   const donnees = await reponse.json().catch(() => ({}));
   if (!reponse.ok) throw new Error(donnees.erreur || "Erreur " + reponse.status);
   return donnees;
+}
+
+// -- bascule entre les deux modes
+document.querySelectorAll(".onglet").forEach((onglet) => {
+  onglet.addEventListener("click", () => {
+    document.querySelectorAll(".onglet").forEach((o) => o.classList.remove("actif"));
+    document.querySelectorAll(".volet").forEach((v) => v.classList.remove("actif"));
+    onglet.classList.add("actif");
+    $(onglet.dataset.volet).classList.add("actif");
+    mode = onglet.dataset.volet === "voletManuel" ? "manuel" : "fichier";
+    $("bandeau").className = "bandeau";
+    majBouton();
+  });
+});
+
+["mEmail", "mFacture"].forEach((id) =>
+  $(id).addEventListener("input", majBouton));
+
+function majBouton() {
+  $("lancer").disabled = mode === "manuel"
+    ? !($("mEmail").value.trim() || $("mFacture").value.trim())
+    : !fichierChoisi;
 }
 
 // -- dépôt du fichier
@@ -495,7 +580,7 @@ function retenir(fichier) {
   $("texteZone").textContent = "Fichier retenu :";
   $("nomFichier").textContent = fichier.name +
     "  (" + Math.round(fichier.size / 1024) + " Ko)";
-  $("lancer").disabled = false;
+  majBouton();
   $("bandeau").className = "bandeau";
 }
 
@@ -508,24 +593,7 @@ $("lancer").addEventListener("click", async () => {
   $("journal").textContent = "";
   position = 0;
 
-  let contenu;
-  try {
-    contenu = await new Promise((resoudre, rejeter) => {
-      const lecteur = new FileReader();
-      lecteur.onload = () => resoudre(lecteur.result.split(",")[1]);
-      lecteur.onerror = () => rejeter(new Error("Lecture du fichier impossible."));
-      lecteur.readAsDataURL(fichierChoisi);
-    });
-  } catch (erreur) {
-    afficherBandeau(false, erreur.message);
-    $("lancer").disabled = false;
-    return;
-  }
-
-  try {
-    await api("/api/lancer", {
-      nom: fichierChoisi.name,
-      contenu: contenu,
+  const commun = {
       boites: $("boites").value,
       sortie: $("sortie").value,
       simulation: $("simulation").checked,
@@ -533,10 +601,34 @@ $("lancer").addEventListener("click", async () => {
       sans_navigateur: $("sansnav").checked,
       reprendre: $("reprendre").checked,
       seulement: $("seulement").value,
-    });
+  };
+
+  let charge;
+  if (mode === "manuel") {
+    charge = Object.assign({ mode: "manuel",
+      email: $("mEmail").value, facture: $("mFacture").value,
+      nom_dossier: $("mNom").value }, commun);
+  } else {
+    try {
+      charge = Object.assign({ nom: fichierChoisi.name,
+        contenu: await new Promise((resoudre, rejeter) => {
+          const lecteur = new FileReader();
+          lecteur.onload = () => resoudre(lecteur.result.split(",")[1]);
+          lecteur.onerror = () => rejeter(new Error("Lecture du fichier impossible."));
+          lecteur.readAsDataURL(fichierChoisi);
+        }) }, commun);
+    } catch (erreur) {
+      afficherBandeau(false, erreur.message);
+      majBouton();
+      return;
+    }
+  }
+
+  try {
+    await api("/api/lancer", charge);
   } catch (erreur) {
     afficherBandeau(false, erreur.message);
-    $("lancer").disabled = false;
+    majBouton();
     return;
   }
 
@@ -568,7 +660,7 @@ async function rafraichir() {
   if (etat.termine) {
     clearInterval(sondage);
     $("etat").classList.remove("visible");
-    $("lancer").disabled = false;
+    majBouton();
     if (etat.code === 0) {
       afficherBandeau(true, $("simulation").checked
         ? "Simulation terminée. Vérifiez les volumes ci-dessus, puis décochez « Simulation » pour lancer l'export réel."
