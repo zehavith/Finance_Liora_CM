@@ -90,11 +90,19 @@ ALIAS_COLONNES = {
         "commentaire recouvrement", "commentaire general", "commentaire post echeance",
         "commentaire pre echance", "commentaire pre echeance", "commentaire",
     ],
+    # Documents stockés dans Monday plutôt que joints aux messages : on n'en
+    # retient que l'adresse, pour la citer dans la note. Les télécharger
+    # supposerait une authentification Monday, et un document tiré du tableau
+    # ne prouve de toute façon pas qu'il a été transmis au débiteur.
+    "liens": [
+        "facture pdf", "lien facture", "fichier facture",
+        "convention signee", "convention", "contrat signe", "contrat",
+    ],
 }
 
 # Champs alimentés par plusieurs colonnes à la fois : un dossier peut porter
 # une adresse de contact et une adresse de prélèvement distinctes.
-CHAMPS_MULTICOLONNES = {"email", "facture", "statut", "commentaire"}
+CHAMPS_MULTICOLONNES = {"email", "facture", "statut", "commentaire", "liens"}
 
 # Intitulés qui ne disent rien de leur contenu. Chez Monday, la première
 # colonne s'appelle « Name » et porte selon les tableaux le nom du débiteur ou
@@ -187,6 +195,7 @@ class Dossier:
     formation_fin: str = ""
     statut: str = ""
     commentaire: str = ""
+    liens: list[str] = field(default_factory=list)
 
     @property
     def nom_repertoire(self) -> str:
@@ -331,6 +340,140 @@ def _trouver_entete(grille: list[tuple[int, list[str]]]) -> tuple[int, dict[int,
     if meilleur is None:
         return -1, {}
     return meilleur[0], meilleur[2]
+
+
+def _fusionner(groupe: list[Dossier]) -> Dossier:
+    """Réunit en un seul dossier plusieurs factures d'un même débiteur."""
+    tries = sorted(groupe, key=lambda dossier: dossier.reference)
+    principal = tries[0]
+
+    def _union(extraire) -> list[str]:
+        resultat, vues = [], set()
+        for dossier in tries:
+            for valeur in extraire(dossier):
+                if valeur and valeur.lower() not in vues:
+                    vues.add(valeur.lower())
+                    resultat.append(valeur)
+        return resultat
+
+    def _cumul(champ: str) -> str:
+        total = sum(_montant(getattr(dossier, champ)) for dossier in tries)
+        return f"{total:.2f}".rstrip("0").rstrip(".") if total else ""
+
+    def _extremum(champ: str, prendre_min: bool) -> str:
+        valeurs = [getattr(dossier, champ) for dossier in tries if getattr(dossier, champ)]
+        if not valeurs:
+            return ""
+        dates = [(_date_comparable(valeur), valeur) for valeur in valeurs]
+        dates.sort(key=lambda paire: (paire[0] is None, paire[0]))
+        return dates[0][1] if prendre_min else dates[-1][1]
+
+    return Dossier(
+        reference=principal.reference,
+        nom=principal.nom or next((d.nom for d in tries if d.nom), ""),
+        emails=_union(lambda d: d.emails),
+        factures=_union(lambda d: d.factures),
+        date_debut=min((d.date_debut for d in tries if d.date_debut), default=""),
+        date_fin=max((d.date_fin for d in tries if d.date_fin), default=""),
+        ligne=principal.ligne,
+        # Les montants s'additionnent : c'est la dette totale du débiteur qui
+        # part au contentieux, pas celle d'une facture prise isolément.
+        montant_du=_cumul("montant_du"),
+        montant_total=_cumul("montant_total"),
+        # La plus ancienne échéance : c'est elle qui datera le retard.
+        date_echeance=_extremum("date_echeance", prendre_min=True),
+        formation_debut=_extremum("formation_debut", prendre_min=True),
+        formation_fin=_extremum("formation_fin", prendre_min=False),
+        statut=" · ".join(_union(lambda d: d.statut.split(" · "))),
+        commentaire=" · ".join(_union(lambda d: d.commentaire.split(" · "))),
+        liens=_union(lambda d: d.liens),
+    )
+
+
+def _montant(valeur: str) -> float:
+    texte = str(valeur or "").strip().replace("€", "").replace(" ", "").replace(",", ".")
+    try:
+        return float(texte)
+    except ValueError:
+        return 0.0
+
+
+def _date_comparable(valeur: str):
+    for format_ in FORMATS_DATE + ("%Y/%m/%d",):
+        try:
+            return datetime.strptime(valeur.strip()[:10], format_)
+        except ValueError:
+            continue
+    return None
+
+
+def regrouper_par_debiteur(
+    dossiers: list[Dossier], signaler: Callable[[str], None] | None = None
+) -> list[Dossier]:
+    """Réunit les dossiers qui partagent une adresse mail.
+
+    Un même débiteur porte souvent plusieurs factures. Traités séparément, ils
+    produisent autant de répertoires au contenu identique — la recherche se
+    faisant sur l'adresse, elle ramène les mêmes messages à chaque fois. Les
+    regrouper donne un dossier unique, avec toutes les factures et la dette
+    cumulée.
+
+    Le regroupement se fait sur l'adresse, jamais sur le nom : deux
+    homonymes sont deux débiteurs, alors qu'une adresse partagée désigne bien
+    la même personne.
+    """
+    groupe_de: dict[str, int] = {}
+    groupes: list[list[Dossier]] = []
+
+    for dossier in dossiers:
+        indices = {
+            groupe_de[adresse.lower()]
+            for adresse in dossier.emails
+            if adresse.lower() in groupe_de
+        }
+
+        if not indices:
+            groupes.append([dossier])
+            cible = len(groupes) - 1
+        else:
+            cible = min(indices)
+            groupes[cible].append(dossier)
+            for autre in indices - {cible}:
+                groupes[cible].extend(groupes[autre])
+                groupes[autre] = []
+
+        for adresse in dossier.emails:
+            groupe_de[adresse.lower()] = cible
+        for adresse, indice in groupe_de.items():
+            if indice in indices:
+                groupe_de[adresse] = cible
+
+    resultat: list[Dossier] = []
+    fusions: list[str] = []
+
+    for groupe in groupes:
+        if not groupe:
+            continue
+        if len(groupe) == 1:
+            resultat.append(groupe[0])
+            continue
+        fusionne = _fusionner(groupe)
+        resultat.append(fusionne)
+        fusions.append(
+            f"{fusionne.nom or fusionne.reference} : "
+            f"{len(groupe)} factures réunies "
+            f"({', '.join(sorted(d.reference for d in groupe))})"
+        )
+
+    if fusions and signaler:
+        signaler(
+            f"{len(fusions)} débiteur(s) portant plusieurs factures ont été "
+            f"regroupés en un dossier unique :"
+        )
+        for ligne in fusions:
+            signaler(f"    {ligne}")
+
+    return resultat
 
 
 def _liste(numeros: list[int]) -> str:
@@ -488,6 +631,7 @@ def lire_dossiers(
             formation_fin=_premier("formation_fin"),
             statut=" · ".join(valeurs["statut"]),
             commentaire=" · ".join(valeurs["commentaire"]),
+            liens=[v for v in valeurs["liens"] if v.lower().startswith("http")],
         )
 
         if not dossier.emails and not dossier.factures:

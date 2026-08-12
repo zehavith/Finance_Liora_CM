@@ -31,7 +31,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from dossiers import Dossier, ErreurDossiers, lire_dossiers  # noqa: E402
+from dossiers import (  # noqa: E402
+    Dossier,
+    ErreurDossiers,
+    lire_dossiers,
+    regrouper_par_debiteur,
+)
 import synthese as module_synthese  # noqa: E402
 from gmail_api import ErreurGmail, SourcesGmail, ouvrir_sources  # noqa: E402
 from indexation import (  # noqa: E402
@@ -184,6 +189,15 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
             "Passe les lignes sans adresse ni facture au lieu de s'arrêter "
             "(lignes de groupe des exports Monday). Les lignes écartées sont "
             "listées à l'écran."
+        ),
+    )
+    analyseur.add_argument(
+        "--sans-regroupement",
+        action="store_true",
+        help=(
+            "Traite chaque facture comme un dossier distinct. Par défaut, les "
+            "factures partageant une adresse mail sont réunies en un dossier "
+            "unique — sans quoi elles produisent des répertoires identiques."
         ),
     )
     analyseur.add_argument(
@@ -471,6 +485,9 @@ def executer(
                 return 1
 
         journal(f"{len(liste)} dossier(s) à traiter depuis {options.dossiers}")
+
+        if not options.sans_regroupement:
+            liste = regrouper_par_debiteur(liste, signaler=journal)
 
         if len(liste) > SEUIL_VOLUME_INHABITUEL:
             journal(

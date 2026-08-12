@@ -577,6 +577,18 @@ def construire_html(
             "<p class='chemin'>Les fichiers correspondants se trouvent dans le "
             "sous-répertoire <b>pieces-jointes</b> du dossier, rangés par pièce.</p>"
         )
+
+    liens = [lien for lien in getattr(dossier, "liens", []) if lien]
+    if liens:
+        bloc_pieces += (
+            "<p class='groupe'>Documents référencés dans le tableau de suivi</p>"
+            "<ul class='constats'>"
+            + "".join(f"<li>{html.escape(lien)}</li>" for lien in liens)
+            + "</ul><p class='chemin'>Ces documents sont stockés dans Monday et non "
+            "joints ici. Un document produit depuis le tableau atteste de son "
+            "existence, pas de sa transmission au débiteur : les pièces ci-dessus, "
+            "extraites des messages, sont les seules à établir l'envoi.</p>"
+        )
     else:
         bloc_pieces = (
             "<p>Aucune pièce jointe dans les échanges extraits. Le contrat signé "

@@ -107,6 +107,27 @@ passage au tribunal, clôturé gagné, clôturé perdu. Il est enregistré dans
 `suivi-dossiers.json`, **à côté de l'outil et non dans l'export** : refaire une
 extraction n'efface pas l'état d'avancement.
 
+### Plusieurs factures pour un même débiteur
+
+Par défaut, les factures **partageant une adresse mail** sont réunies en un
+dossier unique, avec la dette cumulée, toutes les factures et l'échéance la
+plus ancienne. Sans cela, elles produiraient autant de répertoires au contenu
+identique : la recherche se faisant sur l'adresse, elle ramène les mêmes
+messages à chaque facture.
+
+Le regroupement s'annonce à l'écran, débiteur par débiteur, avec les
+références réunies. Il se fait sur l'adresse et jamais sur le nom : deux
+homonymes sont deux débiteurs, une adresse partagée désigne la même personne.
+
+### Documents stockés dans Monday
+
+Les colonnes contenant une adresse de document — `Facture PDF`,
+`Convention Signée` — sont reportées dans la partie 2 de la note, sous forme
+de liens. **Ces fichiers ne sont pas téléchargés** : cela supposerait une
+authentification Monday, et surtout un document tiré du tableau atteste de son
+existence, pas de sa transmission au débiteur. Seules les pièces extraites des
+messages établissent l'envoi.
+
 > Sur le tableau de bord, la longueur des barres représente le **montant dû**,
 > pas le nombre de dossiers : c'est l'enjeu financier qui décide où porter
 > l'effort. Les quatre étapes en cours partagent une teinte unique, de la plus
@@ -317,6 +338,7 @@ et de pièces jointes.
 | `--fuseau ZONE` | Fuseau d'affichage des dates (défaut : `Europe/Paris`). |
 | `--boites A,B` | Boîtes à lire, séparées par des virgules. Les doublons entre boîtes sont écartés. |
 | `--sans-synthese` | N'écrit pas la note de synthèse PDF de chaque dossier. |
+| `--sans-regroupement` | Traite chaque facture comme un dossier distinct au lieu de réunir celles d'un même débiteur. |
 | `--sans-navigateur` | N'ouvre pas le navigateur : affiche l'adresse à coller vous-même, dans la fenêtre où la boîte est déjà connectée. |
 | `--compte-service CLE.json` | Lire des boîtes partagées via un compte de service (voir ci-dessous). |
 

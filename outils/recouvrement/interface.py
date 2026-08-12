@@ -157,6 +157,8 @@ def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str
         arguments.append("--ignorer-lignes-incompletes")
     if demande.get("sans_navigateur"):
         arguments.append("--sans-navigateur")
+    if demande.get("sans_regroupement"):
+        arguments.append("--sans-regroupement")
     if demande.get("sans_spam"):
         arguments.append("--sans-spam")
     if demande.get("reprendre"):
@@ -586,6 +588,10 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <label class="case"><input type="checkbox" id="ignorer" checked />
     <span><b>Ignorer les lignes sans adresse ni facture</b><i>Les lignes de total
     et de groupe des exports Monday. Elles sont listées à l'écran.</i></span></label>
+  <label class="case"><input type="checkbox" id="regrouper" checked />
+    <span><b>Regrouper les factures d'un même débiteur</b><i>Plusieurs factures
+    partageant une adresse mail forment un seul dossier, avec la dette cumulée.
+    Sinon elles produisent des répertoires au contenu identique.</i></span></label>
   <label class="case"><input type="checkbox" id="sansnav" />
     <span><b>Ne pas ouvrir le navigateur pour autoriser</b><i>Si une boîte est
     connectée dans une autre fenêtre : l'adresse s'affiche, à coller vous-même.</i></span></label>
@@ -719,6 +725,7 @@ $("lancer").addEventListener("click", async () => {
       sortie: $("sortie").value,
       simulation: $("simulation").checked,
       ignorer_lignes_incompletes: $("ignorer").checked,
+      sans_regroupement: !$("regrouper").checked,
       sans_navigateur: $("sansnav").checked,
       reprendre: $("reprendre").checked,
       seulement: $("seulement").value,

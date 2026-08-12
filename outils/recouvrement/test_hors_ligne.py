@@ -19,7 +19,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from dossiers import ErreurDossiers, lire_dossiers  # noqa: E402
+from dossiers import (  # noqa: E402
+    Dossier,
+    ErreurDossiers,
+    lire_dossiers,
+    regrouper_par_debiteur,
+)
 from indexation import LigneIndex  # noqa: E402
 from synthese import analyser, rediger_constats  # noqa: E402
 from message import lire_message  # noqa: E402
@@ -312,6 +317,54 @@ def test_export_monday_entreprise() -> None:
             liste[0].factures == ["FA-2024-0153"],
             "le vrai numéro de facture n'est pas supplanté",
         )
+
+
+def test_regroupement() -> None:
+    """Plusieurs factures d'un même débiteur forment un dossier unique."""
+    print("\nRegroupement par débiteur")
+    dossiers = [
+        Dossier(reference="F-3", nom="Jean MONNEY", emails=["jb@exemple.fr"],
+                factures=["F-3"], montant_du="1200", montant_total="1200",
+                date_echeance="26/03/2024", liens=["https://monday.com/a"]),
+        Dossier(reference="F-1", nom="Jean MONNEY", emails=["jb@exemple.fr"],
+                factures=["F-1"], montant_du="750,50", montant_total="1500",
+                date_echeance="26/01/2024", liens=["https://monday.com/b"]),
+        Dossier(reference="F-2", nom="Autre Personne", emails=["autre@exemple.fr"],
+                factures=["F-2"], montant_du="300"),
+        # Même nom, adresse différente : deux homonymes, deux débiteurs.
+        Dossier(reference="F-4", nom="Jean MONNEY", emails=["jm2@exemple.fr"],
+                factures=["F-4"], montant_du="90"),
+    ]
+
+    messages: list[str] = []
+    groupes = regrouper_par_debiteur(dossiers, signaler=messages.append)
+    verifier(len(groupes) == 3, f"4 dossiers réduits à 3 (obtenu : {len(groupes)})")
+
+    fusionne = next(d for d in groupes if len(d.factures) > 1)
+    verifier(
+        fusionne.reference == "F-1",
+        f"la référence la plus basse nomme le dossier ({fusionne.reference})",
+    )
+    verifier(
+        sorted(fusionne.factures) == ["F-1", "F-3"], "les deux factures sont réunies"
+    )
+    verifier(fusionne.montant_du == "1950.5", f"dette cumulée ({fusionne.montant_du})")
+    verifier(
+        fusionne.date_echeance == "26/01/2024",
+        "l'échéance la plus ancienne est retenue, c'est elle qui date le retard",
+    )
+    verifier(len(fusionne.liens) == 2, "les liens des deux factures sont conservés")
+    verifier(
+        any("2 factures réunies" in m for m in messages),
+        "le regroupement est annoncé, jamais silencieux",
+    )
+    verifier(
+        sum(1 for d in groupes if d.nom == "Jean MONNEY") == 2,
+        "deux homonymes d'adresses différentes restent deux dossiers",
+    )
+
+    intact = regrouper_par_debiteur(list(dossiers))
+    verifier(len(intact) == 3, "le regroupement est reproductible")
 
 
 def test_lecture_xlsx() -> None:
@@ -978,6 +1031,7 @@ def main() -> int:
     test_export_monday()
     test_export_monday_reel()
     test_export_monday_entreprise()
+    test_regroupement()
     test_lecture_xlsx()
     test_nettoyage_html()
     test_synthese()
