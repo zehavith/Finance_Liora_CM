@@ -250,6 +250,70 @@ def test_export_monday_reel() -> None:
         )
 
 
+def test_export_monday_entreprise() -> None:
+    """Second tableau Monday : le débiteur est une société, « Name » porte le
+    numéro de facture et non un nom, et trois colonnes d'adresses coexistent."""
+    print("\nExport Monday entreprise (« Name » = numéro de facture)")
+    rangees = [
+        ["1.2. Entreprise - Recouvrement"] + [""] * 6,
+        ["1.2.1. Recouvrement - Factures"] + [""] * 6,
+        ["Name", "Service", "Entreprise", "Nom Prénom apprenant",
+         "Email", "Email 2", "Email 3"],
+        ["FACT-2405-02142", "Recouvrement", "Allianz SE", "Anna Geigenberger",
+         "anna.g@ids.com", "compta@allianz.de", ""],
+        ["FACT-2405-01408", "Recouvrement", "Pack and Tool", "Luc Marin",
+         "luc@packandtool.fr", "", "adv@packandtool.fr"],
+    ]
+    with tempfile.TemporaryDirectory() as repertoire:
+        fichier = Path(repertoire) / "entreprise.csv"
+        with fichier.open("w", encoding="utf-8", newline="") as sortie:
+            import csv as module_csv  # noqa: PLC0415
+
+            module_csv.writer(sortie, delimiter=";").writerows(rangees)
+
+        messages: list[str] = []
+        liste = lire_dossiers(fichier, signaler=messages.append)
+        colonnes = " ".join(messages)
+
+        verifier(len(liste) == 2, f"2 dossiers lus (obtenu : {len(liste)})")
+        verifier(
+            "« Name » → facture" in colonnes,
+            "« Name » rempli de références est reconnu comme numéro de facture",
+        )
+        verifier(
+            "« Entreprise » → nom" in colonnes,
+            "la société débitrice l'emporte pour nommer le dossier",
+        )
+        verifier(
+            liste[0].factures == ["FACT-2405-02142"], "numéro de facture retenu"
+        )
+        verifier(liste[0].nom == "Allianz SE", "nom de la société retenu")
+        verifier(
+            liste[1].emails == ["luc@packandtool.fr", "adv@packandtool.fr"],
+            f"les trois colonnes d'adresses sont réunies (obtenu : {liste[1].emails})",
+        )
+        verifier(
+            liste[0].nom_repertoire == "fact-2405-02142_allianz-se",
+            f"répertoire nommé par facture et société ({liste[0].nom_repertoire})",
+        )
+
+    print("\n  -- la même colonne « Name » remplie de noms reste un nom --")
+    with tempfile.TemporaryDirectory() as repertoire:
+        fichier = Path(repertoire) / "personnes.csv"
+        fichier.write_text(
+            "Name;Email;Facture\n"
+            "Marie Dupont;marie@exemple.fr;FA-2024-0153\n"
+            "Sophie Bernard;sophie@exemple.fr;FA-2024-0161\n",
+            encoding="utf-8",
+        )
+        liste = lire_dossiers(fichier)
+        verifier(liste[0].nom == "Marie Dupont", "« Name » de personnes reste un nom")
+        verifier(
+            liste[0].factures == ["FA-2024-0153"],
+            "le vrai numéro de facture n'est pas supplanté",
+        )
+
+
 def test_lecture_xlsx() -> None:
     """Le même tableau au format Excel, lu sans conversion préalable."""
     print("\nLecture directe d'un fichier Excel")
@@ -785,6 +849,7 @@ def main() -> int:
     test_dossiers()
     test_export_monday()
     test_export_monday_reel()
+    test_export_monday_entreprise()
     test_lecture_xlsx()
     test_nettoyage_html()
     test_synthese()

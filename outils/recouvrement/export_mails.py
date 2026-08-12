@@ -59,6 +59,10 @@ from rendu import (  # noqa: E402
 
 RACINE = Path(__file__).resolve().parent
 
+# Au-delà, il ne s'agit probablement plus d'un lot contentieux mais de
+# l'historique complet d'un tableau Monday exporté sans filtre.
+SEUIL_VOLUME_INHABITUEL = 200
+
 
 class Journal:
     """Sortie console + fichier, pour garder une trace de l'extraction.
@@ -468,6 +472,23 @@ def executer(
                 return 1
 
         journal(f"{len(liste)} dossier(s) à traiter depuis {options.dossiers}")
+
+        if len(liste) > SEUIL_VOLUME_INHABITUEL:
+            journal(
+                f"⚠ {len(liste)} dossiers, c'est beaucoup pour un lot contentieux. "
+                "Un tableau Monday exporté en entier contient tout l'historique, "
+                "pas seulement les dossiers à transmettre. Filtrez le tableau "
+                "avant l'export, ou restreignez avec --seulement."
+            )
+
+        sans_adresse = [dossier for dossier in liste if not dossier.emails]
+        if sans_adresse:
+            journal(
+                f"⚠ {len(sans_adresse)} dossier(s) sans adresse mail : recherchés "
+                "sur le seul numéro de facture. Rappel : Gmail n'indexe pas le "
+                "texte des PDF joints, un numéro qui n'apparaît que dans la pièce "
+                "jointe ne remontera pas."
+            )
 
         boites = [
             adresse.strip()

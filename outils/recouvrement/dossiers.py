@@ -33,10 +33,18 @@ ALIAS_COLONNES = {
         "n dossier", "reference", "dossier", "ref",
     ],
     "nom": [
+        # Le débiteur d'abord : sur un tableau entreprise, c'est la société
+        # poursuivie qui doit nommer le répertoire.
+        "entreprise", "societe",
+        # Puis la personne, nommée explicitement. « Raison sociale » vient
+        # après : sur les tableaux de particuliers, cette colonne recopie le
+        # nom de l'apprenante quand elle est remplie, et reste vide sinon.
         "nom prenom de l apprenant", "nom prenom de l apprenante",
+        "nom prenom apprenant", "nom prenom apprenante",
         "nom et prenom de l apprenant", "nom de l apprenante", "nom de l apprenant",
         "nom apprenante", "nom apprenant", "apprenante", "apprenant", "stagiaire",
-        "nom prenom", "prenom nom", "nom", "raison sociale", "raison social",
+        "raison sociale", "raison social",
+        "nom prenom", "prenom nom", "nom",
         "name", "item", "element", "titre",
     ],
     "email": [
@@ -44,7 +52,8 @@ ALIAS_COLONNES = {
         "adresse mail", "adresse email", "adresse e mail",
         "e mail gcard", "email gcard", "mail gcard",
         "e mail", "email", "mail", "courriel",
-        "email 2", "e mail 2", "autre email", "email perso",
+        "email 2", "e mail 2", "email 3", "e mail 3", "email 4", "e mail 4",
+        "autre email", "email perso", "email contact", "mail contact",
     ],
     "facture": [
         "reference facture", "numero de facture", "numero facture", "n de facture",
@@ -58,6 +67,27 @@ ALIAS_COLONNES = {
 # Champs alimentés par plusieurs colonnes à la fois : un dossier peut porter
 # une adresse de contact et une adresse de prélèvement distinctes.
 CHAMPS_MULTICOLONNES = {"email", "facture"}
+
+# Intitulés qui ne disent rien de leur contenu. Chez Monday, la première
+# colonne s'appelle « Name » et porte selon les tableaux le nom du débiteur ou
+# le numéro de facture : on tranche sur les valeurs, pas sur l'intitulé.
+INTITULES_AMBIGUS = {"name", "item", "element", "titre"}
+
+# « FACT-2405-02142 », « 2024-118 », « INV0093 » : au moins trois chiffres
+# d'affilée, et pas une suite de mots comme le serait un nom de personne.
+REFERENCE_PROBABLE = re.compile(r"\d{3,}")
+
+
+def _ressemble_a_une_reference(valeurs: list[str]) -> bool:
+    echantillon = [valeur for valeur in valeurs if valeur.strip()][:30]
+    if not echantillon:
+        return False
+    reperes = sum(
+        1
+        for valeur in echantillon
+        if REFERENCE_PROBABLE.search(valeur) and len(valeur.split()) <= 2
+    )
+    return reperes >= 0.7 * len(echantillon)
 
 # Séparateurs testés lors de la détection de la ligne d'en-tête.
 DELIMITEURS = (";", ",", "\t")
@@ -182,18 +212,32 @@ def _candidats(entete: str) -> list[tuple[str, int]]:
     return trouves
 
 
-def _associer_colonnes(entetes: list[str]) -> dict[int, str]:
+def _associer_colonnes(
+    entetes: list[str], echantillons: list[list[str]] | None = None
+) -> dict[int, str]:
     """Associe chaque colonne à un champ, index de colonne -> champ.
 
     Résolution par spécificité : une colonne n'est jamais rattachée à deux
     champs, et un champ à colonne unique retient le meilleur candidat. Les
     champs multicolonnes absorbent toutes les colonnes qui leur restent.
+
+    Les intitulés ambigus sont tranchés sur leurs valeurs : une colonne
+    « Name » remplie de « FACT-2405-02142 » est un numéro de facture, la même
+    remplie de « Marie Dupont » est un nom.
     """
-    propositions = [
-        (rang, position, position, champ)
-        for position, entete in enumerate(entetes)
-        for champ, rang in _candidats(entete)
-    ]
+    propositions = []
+    for position, entete in enumerate(entetes):
+        candidats = _candidats(entete)
+
+        if _normaliser_entete(entete) in INTITULES_AMBIGUS and echantillons:
+            valeurs = echantillons[position] if position < len(echantillons) else []
+            if _ressemble_a_une_reference(valeurs):
+                # Rang volontairement médiocre : une colonne explicitement
+                # nommée « N° Facture » doit garder la priorité.
+                candidats = [("facture", 900)]
+
+        propositions += [(rang, position, position, champ) for champ, rang in candidats]
+
     propositions.sort()
 
     par_colonne: dict[int, str] = {}
@@ -232,7 +276,16 @@ def _trouver_entete(grille: list[tuple[int, list[str]]]) -> tuple[int, dict[int,
     for position, (_numero, cellules) in enumerate(grille[:LIGNES_SONDEES]):
         if not any(cellule.strip() for cellule in cellules):
             continue
-        association = _associer_colonnes(cellules)
+
+        # Les lignes suivantes servent d'échantillon pour trancher les
+        # intitulés ambigus sur leur contenu.
+        suivantes = [rangee for _numero, rangee in grille[position + 1: position + 31]]
+        echantillons = [
+            [rangee[colonne] for rangee in suivantes if colonne < len(rangee)]
+            for colonne in range(len(cellules))
+        ]
+
+        association = _associer_colonnes(cellules, echantillons)
         score = _score_entete(association)
         if score > 0 and (meilleur is None or score > meilleur[1]):
             meilleur = (position, score, association)
