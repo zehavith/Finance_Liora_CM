@@ -257,6 +257,7 @@ et de pièces jointes.
 | `--fuseau ZONE` | Fuseau d'affichage des dates (défaut : `Europe/Paris`). |
 | `--boites A,B` | Boîtes à lire, séparées par des virgules. Les doublons entre boîtes sont écartés. |
 | `--sans-synthese` | N'écrit pas la note de synthèse PDF de chaque dossier. |
+| `--sans-navigateur` | N'ouvre pas le navigateur : affiche l'adresse à coller vous-même, dans la fenêtre où la boîte est déjà connectée. |
 | `--compte-service CLE.json` | Lire des boîtes partagées via un compte de service (voir ci-dessous). |
 
 ### Lire plusieurs boîtes (billing@ et recouvrement@)
@@ -281,6 +282,17 @@ identifiants). Aucune intervention d'un administrateur n'est nécessaire : le
 navigateur s'ouvre une fois par boîte, et vous vous connectez à chaque fois
 avec le compte correspondant. Un jeton distinct est mémorisé par boîte
 (`token-billing-liora-io.json`, `token-recouvrement-liora-io.json`).
+
+> **Si la boîte est déjà connectée dans une autre fenêtre ou un autre profil
+> du navigateur**, ajoutez `--sans-navigateur`. Sans cette option, l'ouverture
+> automatique se fait dans le profil par défaut, qui valide aussitôt avec le
+> compte qu'il connaît déjà — sans vous laisser le temps de choisir. Avec
+> l'option, le script affiche l'adresse à coller vous-même dans la bonne
+> fenêtre, et attend.
+>
+> C'est aussi la solution quand Google réclame une vérification d'identité sur
+> une boîte générique (« consultez la messagerie de l'adresse indiquée dans
+> 24 heures ») : une session déjà ouverte n'a rien à revérifier.
 
 > Le script vérifie que le compte réellement autorisé est bien celui demandé.
 > Si vous vous connectez par erreur avec un autre compte, il s'arrête et vous

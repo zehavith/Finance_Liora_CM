@@ -126,6 +126,15 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     analyseur.add_argument(
+        "--sans-navigateur",
+        action="store_true",
+        help=(
+            "N'ouvre pas le navigateur automatiquement : affiche l'adresse à "
+            "coller vous-même. À utiliser quand la boîte visée est connectée "
+            "dans une autre fenêtre ou un autre profil du navigateur."
+        ),
+    )
+    analyseur.add_argument(
         "--sans-synthese",
         action="store_true",
         help="N'écrit pas la note de synthèse PDF de chaque dossier.",
@@ -453,6 +462,7 @@ def executer(options: argparse.Namespace) -> int:
             fichier_token=options.token,
             fichier_compte_service=options.compte_service,
             signaler=journal,
+            ouvrir_navigateur=not options.sans_navigateur,
         )
         adresse_boite = ", ".join(sources.adresses)
         journal(f"Boîte(s) interrogée(s) : {adresse_boite}")

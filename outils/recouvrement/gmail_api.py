@@ -46,10 +46,20 @@ def fichier_token_de_boite(fichier_token: Path, boite: str | None) -> Path:
 
 
 def _identifiants_utilisateur(
-    fichier_credentials: Path, fichier_token: Path, boite: str | None = None
+    fichier_credentials: Path,
+    fichier_token: Path,
+    boite: str | None = None,
+    ouvrir_navigateur: bool = True,
 ):
     """Flux OAuth « application de bureau » : ouvre le navigateur au premier
-    lancement, puis réutilise le jeton stocké."""
+    lancement, puis réutilise le jeton stocké.
+
+    `ouvrir_navigateur=False` se contente d'afficher l'adresse à ouvrir. C'est
+    indispensable quand la boîte visée est connectée dans une *autre* fenêtre
+    ou un autre profil du navigateur : l'ouverture automatique se ferait dans
+    le profil par défaut, qui validerait aussitôt avec le mauvais compte sans
+    laisser le temps de choisir.
+    """
     from google.auth.transport.requests import Request  # noqa: PLC0415
     from google.oauth2.credentials import Credentials  # noqa: PLC0415
     from google_auth_oauthlib.flow import InstalledAppFlow  # noqa: PLC0415
@@ -74,12 +84,26 @@ def _identifiants_utilisateur(
             )
         flux = InstalledAppFlow.from_client_secrets_file(str(fichier_credentials), PORTEES)
         precision = f" en tant que {boite}" if boite else ""
-        identifiants = flux.run_local_server(
-            port=0,
-            authorization_prompt_message=(
+
+        if ouvrir_navigateur:
+            invite = (
                 f"Ouvrez cette adresse dans votre navigateur et connectez-vous"
                 f"{precision} pour autoriser l'accès en lecture :\n{{url}}"
-            ),
+            )
+        else:
+            invite = (
+                "\n" + "=" * 74 + "\n"
+                f"COPIEZ l'adresse ci-dessous et collez-la dans la fenêtre du\n"
+                f"navigateur déjà connectée{precision} :\n\n"
+                "{url}\n\n"
+                "Le terminal attend ici jusqu'à ce que l'autorisation soit accordée.\n"
+                + "=" * 74
+            )
+
+        identifiants = flux.run_local_server(
+            port=0,
+            open_browser=ouvrir_navigateur,
+            authorization_prompt_message=invite,
             success_message=(
                 "Autorisation accordée. Vous pouvez fermer cet onglet et "
                 "revenir au terminal."
@@ -113,6 +137,7 @@ class ClientGmail:
         fichier_token: Path,
         fichier_compte_service: Path | None = None,
         boite: str | None = None,
+        ouvrir_navigateur: bool = True,
     ):
         build, http_error = _importer_dependances()
         self._http_error = http_error
@@ -126,7 +151,10 @@ class ClientGmail:
             identifiants = _identifiants_compte_service(fichier_compte_service, boite)
         else:
             identifiants = _identifiants_utilisateur(
-                fichier_credentials, fichier_token_de_boite(fichier_token, boite), boite
+                fichier_credentials,
+                fichier_token_de_boite(fichier_token, boite),
+                boite,
+                ouvrir_navigateur,
             )
 
         self._service = build("gmail", "v1", credentials=identifiants, cache_discovery=False)
@@ -287,6 +315,7 @@ def ouvrir_sources(
     fichier_token: Path,
     fichier_compte_service: Path | None,
     signaler: Callable[[str], None] | None = None,
+    ouvrir_navigateur: bool = True,
 ) -> SourcesGmail:
     clients = []
     for boite in boites or [None]:
@@ -298,6 +327,7 @@ def ouvrir_sources(
                 fichier_token=fichier_token,
                 fichier_compte_service=fichier_compte_service,
                 boite=boite,
+                ouvrir_navigateur=ouvrir_navigateur,
             )
         )
     return SourcesGmail(clients)
