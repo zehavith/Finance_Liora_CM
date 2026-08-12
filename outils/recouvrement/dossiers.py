@@ -94,9 +94,13 @@ ALIAS_COLONNES = {
     # retient que l'adresse, pour la citer dans la note. Les télécharger
     # supposerait une authentification Monday, et un document tiré du tableau
     # ne prouve de toute façon pas qu'il a été transmis au débiteur.
+    # Uniquement des intitulés sans ambiguïté : « facture » ou « document »
+    # tout court désignent ailleurs le numéro de facture, et les rattacher ici
+    # ferait perdre le critère de recherche le plus important.
     "liens": [
         "facture pdf", "lien facture", "fichier facture",
-        "convention signee", "convention", "contrat signe", "contrat",
+        "convention de formation", "convention signee", "convention",
+        "contrat de formation", "contrat signe", "contrat",
     ],
 }
 

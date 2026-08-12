@@ -17,6 +17,8 @@ dist/
 # Ne doivent jamais être versionnés.
 outils/recouvrement/credentials.json
 outils/recouvrement/token.json
+outils/recouvrement/monday-token.txt
+outils/recouvrement/suivi-dossiers.json
 outils/recouvrement/*service*.json
 outils/recouvrement/dossiers.csv
 outils/recouvrement/dossiers-depose.*

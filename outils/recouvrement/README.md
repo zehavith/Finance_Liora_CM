@@ -122,11 +122,24 @@ homonymes sont deux débiteurs, une adresse partagée désigne la même personne
 ### Documents stockés dans Monday
 
 Les colonnes contenant une adresse de document — `Facture PDF`,
-`Convention Signée` — sont reportées dans la partie 2 de la note, sous forme
-de liens. **Ces fichiers ne sont pas téléchargés** : cela supposerait une
-authentification Monday, et surtout un document tiré du tableau atteste de son
-existence, pas de sa transmission au débiteur. Seules les pièces extraites des
-messages établissent l'envoi.
+`Convention de formation` — sont reconnues automatiquement. Avec un **jeton
+d'accès Monday**, les fichiers sont téléchargés dans le sous-répertoire
+`documents-monday` de chaque dossier ; sans jeton, ils sont seulement cités en
+lien dans la note.
+
+Le jeton se crée depuis Monday : avatar en haut à droite → *Développeurs* →
+*Mes jetons d'accès*. Collez-le dans le champ prévu de l'interface : il est
+enregistré dans `monday-token.txt`, exclu du dépôt au même titre que les
+identifiants Gmail.
+
+> Ces documents sont rangés **à part** des pièces extraites des messages, et
+> la note le dit. Un document produit depuis le tableau atteste de son
+> existence ; une pièce extraite d'un message établit qu'elle a été transmise
+> au débiteur. Devant un tribunal, ce n'est pas la même chose.
+
+Une panne de Monday, un jeton refusé ou un document supprimé n'interrompent
+jamais l'export : l'échec est signalé ligne par ligne et les échanges sont
+constitués quand même.
 
 > Sur le tableau de bord, la longueur des barres représente le **montant dû**,
 > pas le nombre de dossiers : c'est l'enjeu financier qui décide où porter

@@ -476,6 +476,7 @@ def construire_html(
     lignes: list[LigneIndex],
     synthese: Synthese,
     date_export: datetime,
+    documents_monday: list[str] | None = None,
 ) -> str:
     constats = rediger_constats(synthese, date_export)
     contexte = rediger_contexte(dossier, synthese, date_export)
@@ -578,16 +579,28 @@ def construire_html(
             "sous-répertoire <b>pieces-jointes</b> du dossier, rangés par pièce.</p>"
         )
 
+    telecharges = list(documents_monday or [])
     liens = [lien for lien in getattr(dossier, "liens", []) if lien]
-    if liens:
+
+    if telecharges:
+        bloc_pieces += (
+            "<p class='groupe'>Documents issus du tableau de suivi</p>"
+            "<ul class='constats'>"
+            + "".join(f"<li>{html.escape(nom)}</li>" for nom in telecharges)
+            + "</ul><p class='chemin'>Ces fichiers ont été téléchargés depuis Monday "
+            "et rangés dans le sous-répertoire <b>documents-monday</b>. Ils sont "
+            "tenus à l'écart des pièces ci-dessus : un document produit depuis le "
+            "tableau atteste de son existence, tandis qu'une pièce extraite d'un "
+            "message établit qu'elle a bien été transmise au débiteur.</p>"
+        )
+    elif liens:
         bloc_pieces += (
             "<p class='groupe'>Documents référencés dans le tableau de suivi</p>"
             "<ul class='constats'>"
             + "".join(f"<li>{html.escape(lien)}</li>" for lien in liens)
-            + "</ul><p class='chemin'>Ces documents sont stockés dans Monday et non "
-            "joints ici. Un document produit depuis le tableau atteste de son "
-            "existence, pas de sa transmission au débiteur : les pièces ci-dessus, "
-            "extraites des messages, sont les seules à établir l'envoi.</p>"
+            + "</ul><p class='chemin'>Ces documents sont stockés dans Monday et n'ont "
+            "pas été téléchargés. Rappel : un document produit depuis le tableau "
+            "atteste de son existence, pas de sa transmission au débiteur.</p>"
         )
     else:
         bloc_pieces = (

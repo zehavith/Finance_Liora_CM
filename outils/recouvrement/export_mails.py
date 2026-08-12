@@ -37,6 +37,7 @@ from dossiers import (  # noqa: E402
     lire_dossiers,
     regrouper_par_debiteur,
 )
+import monday as module_monday  # noqa: E402
 import synthese as module_synthese  # noqa: E402
 from gmail_api import ErreurGmail, SourcesGmail, ouvrir_sources  # noqa: E402
 from indexation import (  # noqa: E402
@@ -189,6 +190,16 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
             "Passe les lignes sans adresse ni facture au lieu de s'arrêter "
             "(lignes de groupe des exports Monday). Les lignes écartées sont "
             "listées à l'écran."
+        ),
+    )
+    analyseur.add_argument(
+        "--jeton-monday",
+        type=Path,
+        default=RACINE / "monday-token.txt",
+        help=(
+            "Fichier contenant le jeton d'accès Monday, pour télécharger les "
+            "factures et conventions référencées dans le tableau. Sans lui, "
+            "les documents sont seulement cités en lien dans la note."
         ),
     )
     analyseur.add_argument(
@@ -345,6 +356,8 @@ def traiter_dossier(
             )
         )
 
+    documents_monday = _documents_monday(dossier, repertoire, options, journal)
+
     ecrire_index_dossier(chemin_index, lignes)
 
     analyse = module_synthese.analyser(lignes, textes_par_piece, doublons)
@@ -357,6 +370,7 @@ def traiter_dossier(
             lignes=lignes,
             synthese=analyse,
             date_export=date_export,
+            documents_monday=documents_monday,
         )
         if not ecrire_pdf(contenu, repertoire / "synthese.pdf")[0]:
             resume.pdf_en_echec += 1
@@ -372,6 +386,38 @@ def traiter_dossier(
     journal(detail)
 
     return resume
+
+
+def _documents_monday(
+    dossier: Dossier,
+    repertoire: Path,
+    options: argparse.Namespace,
+    journal: Journal,
+) -> list[str]:
+    """Récupère les factures et conventions déposées dans Monday.
+
+    Rangées à part des pièces extraites des messages : elles attestent de leur
+    existence, pas de leur transmission au débiteur.
+    """
+    if not dossier.liens:
+        return []
+
+    jeton = module_monday.lire_jeton(options.jeton_monday)
+    if not jeton:
+        journal(
+            f"    {len(dossier.liens)} document(s) Monday référencés mais non "
+            "téléchargés — aucun jeton Monday configuré"
+        )
+        return []
+
+    ecrits, echecs = module_monday.recuperer_documents(
+        dossier.liens, jeton, repertoire / "documents-monday"
+    )
+    if ecrits:
+        journal(f"    {len(ecrits)} document(s) Monday téléchargé(s)")
+    for echec in echecs:
+        journal(f"    ⚠ document Monday non récupéré — {echec}")
+    return ecrits
 
 
 def _reporter_synthese(

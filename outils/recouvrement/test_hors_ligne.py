@@ -367,6 +367,91 @@ def test_regroupement() -> None:
     verifier(len(intact) == 3, "le regroupement est reproductible")
 
 
+def test_monday() -> None:
+    """Téléchargement des documents Monday, API simulée.
+
+    Le vrai service n'est pas joignable depuis un test : ce qui est vérifié
+    ici, c'est la lecture des adresses, la construction de la requête, et
+    surtout que rien n'interrompt l'export quand un document manque.
+    """
+    print("\nDocuments Monday")
+    import monday as module_monday  # noqa: PLC0415
+
+    url = ("https://cyberuniversity.monday.com/protected_static/23434454"
+           "/resources/144307098/FACT-2405-00030.pdf")
+    verifier(module_monday.identifiant(url) == "144307098", "identifiant de ressource extrait")
+    verifier(module_monday.identifiant("https://exemple.fr/x.pdf") is None,
+             "adresse sans identifiant reconnue comme telle")
+    verifier(module_monday.nom_de_fichier(url) == "FACT-2405-00030.pdf", "nom de fichier déduit")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        racine = Path(repertoire)
+        appels: list[str] = []
+
+        def api_simulee(requete, jeton):
+            appels.append(requete)
+            return {"assets": [
+                {"id": 144307098, "name": "FACT-2405-00030.pdf",
+                 "public_url": "https://signe.exemple/facture.pdf"},
+                # 999 est demandé mais absent de la réponse : droits ou suppression.
+            ]}
+
+        def telechargement_simule(url, destination):
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(b"%PDF-1.4 facture")
+            return 16
+
+        vraie_api = module_monday._appeler_api
+        vrai_telechargement = module_monday.telecharger
+        module_monday._appeler_api = api_simulee
+        module_monday.telecharger = telechargement_simule
+        try:
+            ecrits, echecs = module_monday.recuperer_documents(
+                [url, "https://cyberuniversity.monday.com/protected_static/1/resources/999/c.pdf",
+                 "https://exemple.fr/sans-identifiant.pdf"],
+                "jeton", racine / "documents-monday",
+            )
+        finally:
+            module_monday._appeler_api = vraie_api
+            module_monday.telecharger = vrai_telechargement
+
+        verifier(ecrits == ["FACT-2405-00030.pdf"], f"document téléchargé ({ecrits})")
+        verifier(
+            (racine / "documents-monday" / "FACT-2405-00030.pdf").exists(),
+            "fichier écrit sur le disque",
+        )
+        verifier(len(echecs) == 2, f"deux échecs signalés (obtenu : {len(echecs)})")
+        verifier(
+            any("999" in e for e in echecs),
+            "ressource inaccessible nommée dans l'échec",
+        )
+        verifier(
+            any("identifiant" in e for e in echecs),
+            "adresse non reconnue signalée plutôt qu'ignorée",
+        )
+        verifier(
+            "144307098" in appels[0] and "999" in appels[0],
+            "une seule requête pour toutes les ressources du dossier",
+        )
+
+    print("\n  -- un service en panne n'interrompt pas l'export --")
+    def api_en_panne(requete, jeton):
+        raise module_monday.ErreurMonday("Monday injoignable : délai dépassé")
+
+    vraie_api = module_monday._appeler_api
+    module_monday._appeler_api = api_en_panne
+    try:
+        ecrits, echecs = module_monday.recuperer_documents(
+            [url], "jeton", Path(tempfile.gettempdir()) / "inutilise"
+        )
+    finally:
+        module_monday._appeler_api = vraie_api
+    verifier(
+        ecrits == [] and len(echecs) == 1 and "injoignable" in echecs[0],
+        "panne remontée en échec, sans exception",
+    )
+
+
 def test_lecture_xlsx() -> None:
     """Le même tableau au format Excel, lu sans conversion préalable."""
     print("\nLecture directe d'un fichier Excel")
@@ -1032,6 +1117,7 @@ def main() -> int:
     test_export_monday_reel()
     test_export_monday_entreprise()
     test_regroupement()
+    test_monday()
     test_lecture_xlsx()
     test_nettoyage_html()
     test_synthese()

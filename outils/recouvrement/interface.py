@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import base64
 import csv
+import os
 import json
 import secrets
 import subprocess
@@ -41,6 +42,9 @@ PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
 SUIVI = RACINE / "suivi-dossiers.json"
+# Secret au même titre que les identifiants Gmail : fichier dédié,
+# jamais renvoyé à la page, jamais mêlé aux préférences.
+JETON_MONDAY = RACINE / "monday-token.txt"
 EXTENSIONS_ACCEPTEES = {".xlsx", ".xlsm", ".csv"}
 TAILLE_MAX_FICHIER = 25 * 1024 * 1024
 
@@ -214,6 +218,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
             page = page.replace("__MOTEUR_PDF__", moteur_pdf_disponible())
             preferences = lire_preferences()
             page = page.replace(
+                "__ETAT_MONDAY__",
+                "déjà enregistré — laissez vide pour le conserver"
+                if JETON_MONDAY.exists()
+                else "collez le jeton ici (facultatif)",
+            )
+            page = page.replace(
                 "__BOITES__", preferences.get("boites", "")
             ).replace(
                 "__SORTIE__", preferences.get("sortie", str(sortie_par_defaut()))
@@ -335,6 +345,14 @@ class Gestionnaire(BaseHTTPRequestHandler):
         self._demarrer(demande, depot, nom)
 
     def _demarrer(self, demande: dict, depot: Path, origine: str) -> None:
+        jeton = (demande.get("jeton_monday") or "").strip()
+        if jeton:
+            try:
+                JETON_MONDAY.write_text(jeton, encoding="utf-8")
+                os.chmod(JETON_MONDAY, 0o600)
+            except OSError:
+                pass
+
         arguments, sortie = construire_arguments(demande, depot)
         try:
             EXECUTION.lancer(arguments, sortie)
@@ -723,6 +741,7 @@ $("lancer").addEventListener("click", async () => {
   const commun = {
       boites: $("boites").value,
       sortie: $("sortie").value,
+      jeton_monday: $("jetonMonday").value,
       simulation: $("simulation").checked,
       ignorer_lignes_incompletes: $("ignorer").checked,
       sans_regroupement: !$("regrouper").checked,
