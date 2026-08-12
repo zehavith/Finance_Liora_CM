@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -60,16 +61,23 @@ RACINE = Path(__file__).resolve().parent
 
 
 class Journal:
-    """Sortie console + fichier, pour garder une trace de l'extraction."""
+    """Sortie console + fichier, pour garder une trace de l'extraction.
 
-    def __init__(self, chemin: Path | None):
+    `relais` permet à un appelant — l'interface graphique — de recevoir les
+    mêmes lignes au fil de l'eau, sans détourner la sortie standard.
+    """
+
+    def __init__(self, chemin: Path | None, relais: Callable[[str], None] | None = None):
         self._fichier = None
+        self._relais = relais
         if chemin is not None:
             chemin.parent.mkdir(parents=True, exist_ok=True)
             self._fichier = chemin.open("a", encoding="utf-8")
 
     def __call__(self, message: str = "") -> None:
         print(message, flush=True)
+        if self._relais is not None:
+            self._relais(message)
         if self._fichier:
             horodatage = datetime.now().strftime("%H:%M:%S")
             self._fichier.write(f"{horodatage} {message}\n")
@@ -235,7 +243,13 @@ def traiter_dossier(
         resume.statut = f"tronqué au plafond de {options.max_mails}"
 
     if options.simulation:
-        journal(f"    {len(identifiants)} message(s) trouvé(s) — simulation, rien n'est écrit")
+        # Le dédoublonnage suppose de télécharger les messages : en simulation,
+        # le compte annoncé est un majorant quand plusieurs boîtes répondent.
+        nuance = " avant dédoublonnage" if len(sources.clients) > 1 else ""
+        journal(
+            f"    {len(identifiants)} message(s) trouvé(s){nuance}"
+            " — simulation, rien n'est écrit"
+        )
         if resume.statut == "ok":
             resume.statut = "simulation"
         return resume
@@ -428,12 +442,16 @@ lors de la génération des PDF ; elles apparaissent en tant que mention
     )
 
 
-def executer(options: argparse.Namespace) -> int:
+def executer(
+    options: argparse.Namespace, relais: Callable[[str], None] | None = None
+) -> int:
     verifier_environnement()
     fuseau_applique = definir_fuseau(options.fuseau)
 
     racine_sortie = options.sortie
-    journal = Journal(None if options.simulation else racine_sortie / "journal.log")
+    journal = Journal(
+        None if options.simulation else racine_sortie / "journal.log", relais=relais
+    )
 
     try:
         liste = lire_dossiers(

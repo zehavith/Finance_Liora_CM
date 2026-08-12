@@ -74,6 +74,24 @@ automatiquement ne serait pas vérifiable pièce par pièce.
 
 `--sans-synthese` désactive cette génération.
 
+## Deux façons de s'en servir
+
+**L'interface graphique** — double-cliquez sur **`Lancer.bat`** (ou lancez
+`python interface.py`). Votre navigateur s'ouvre sur une page où vous déposez
+l'export Monday, choisissez les boîtes et la destination, puis suivez la
+progression à l'écran. Aucune commande à taper.
+
+C'est un serveur local : il n'écoute que sur `127.0.0.1`, et chaque appel doit
+porter un jeton tiré au hasard au démarrage, connu de la seule page servie. Une
+page web ouverte par ailleurs ne peut donc pas le piloter. Une page HTML seule
+n'aurait de toute façon pas suffi — un navigateur ne peut ni s'authentifier
+auprès de Gmail ni écrire sur le disque ; l'interface n'est qu'un panneau de
+commande, le travail reste sur le poste.
+
+**La ligne de commande** — tout ce que fait l'interface est disponible en
+options de `export_mails.py`, décrites plus bas. Utile pour automatiser ou pour
+les cas particuliers.
+
 ## Mise en place (une seule fois)
 
 ### 1. Python

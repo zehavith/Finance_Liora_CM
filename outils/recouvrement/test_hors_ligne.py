@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sys
 import tempfile
+import threading
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
@@ -657,6 +658,118 @@ def test_synthese() -> None:
     )
 
 
+def test_interface() -> None:
+    """Pilote l'interface graphique par son API, comme le ferait la page."""
+    print("\nInterface graphique")
+    import base64  # noqa: PLC0415
+    import json as module_json  # noqa: PLC0415
+    import time  # noqa: PLC0415
+    import urllib.error  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+
+    import export_mails  # noqa: PLC0415
+    import interface  # noqa: PLC0415
+
+    def appeler(chemin, corps=None, jeton=interface.JETON):
+        requete = urllib.request.Request(f"{base}{chemin}")
+        if jeton is not None:
+            requete.add_header("X-Jeton", jeton)
+        if corps is not None:
+            requete.data = module_json.dumps(corps).encode("utf-8")
+            requete.add_header("Content-Type", "application/json")
+        with urllib.request.urlopen(requete, timeout=10) as reponse:  # noqa: S310
+            return reponse.status, module_json.loads(reponse.read().decode("utf-8"))
+
+    vraies_sources = export_mails.ouvrir_sources
+    export_mails.ouvrir_sources = _sources_fictives
+    serveur = interface.demarrer(ouvrir=False)
+    base = f"http://127.0.0.1:{serveur.server_address[1]}"
+    threading.Thread(target=serveur.serve_forever, daemon=True).start()
+
+    empreinte_avant = set(Path(interface.RACINE).iterdir())
+    try:
+        with urllib.request.urlopen(f"{base}/", timeout=10) as reponse:  # noqa: S310
+            page = reponse.read().decode("utf-8")
+        verifier("Export recouvrement" in page, "la page est servie")
+        verifier("__JETON__" not in page, "le jeton est injecté dans la page")
+        verifier(interface.JETON in page, "la page porte le jeton de la session")
+
+        print("  -- refus sans jeton --")
+        try:
+            appeler("/api/journal", jeton=None)
+            verifier(False, "appel sans jeton refusé")
+        except urllib.error.HTTPError as exc:
+            verifier(exc.code == 403, f"appel sans jeton refusé (HTTP {exc.code})")
+
+        print("  -- refus d'un format inattendu --")
+        try:
+            appeler("/api/lancer", {"nom": "liste.docx", "contenu": "eA=="})
+            verifier(False, "extension non prise en charge refusée")
+        except urllib.error.HTTPError as exc:
+            verifier(exc.code == 400, f"extension non prise en charge refusée ({exc.code})")
+
+        print("  -- export complet piloté par l'interface --")
+        contenu = (
+            "reference;nom;email;facture\n"
+            "2024-118;Marie Dupont;marie.dupont@exemple.fr;FA-2024-0153\n"
+        ).encode("utf-8")
+        with tempfile.TemporaryDirectory() as repertoire:
+            statut, reponse = appeler(
+                "/api/lancer",
+                {
+                    "nom": "export-monday.csv",
+                    "contenu": base64.b64encode(contenu).decode("ascii"),
+                    "boites": "billing@liora.io,recouvrement@liora.io",
+                    "sortie": repertoire,
+                    "simulation": True,
+                },
+            )
+            verifier(statut == 200 and reponse.get("demarre"), "export démarré")
+
+            etat = {}
+            for _ in range(100):
+                _statut, etat = appeler("/api/journal?depuis=0")
+                if etat.get("termine"):
+                    break
+                time.sleep(0.1)
+
+            verifier(etat.get("termine") is True, "l'interface signale la fin")
+            verifier(etat.get("code") == 0, f"code de sortie 0 (obtenu : {etat.get('code')})")
+            journal = "\n".join(etat.get("lignes", []))
+            verifier("1 dossier(s) à traiter" in journal, "le journal remonte à l'interface")
+            verifier(
+                "recouvrement@liora.io" in journal and "billing@liora.io" in journal,
+                "les deux boîtes sont citées dans le journal",
+            )
+
+            print("  -- refus d'un second export simultané --")
+            interface.EXECUTION.en_cours = True
+            try:
+                appeler(
+                    "/api/lancer",
+                    {
+                        "nom": "x.csv",
+                        "contenu": base64.b64encode(contenu).decode("ascii"),
+                        "sortie": repertoire,
+                        "simulation": True,
+                    },
+                )
+                verifier(False, "second export simultané refusé")
+            except urllib.error.HTTPError as exc:
+                verifier(exc.code == 409, f"second export simultané refusé ({exc.code})")
+            finally:
+                interface.EXECUTION.en_cours = False
+    finally:
+        serveur.shutdown()
+        serveur.server_close()
+        export_mails.ouvrir_sources = vraies_sources
+        # L'interface dépose le fichier reçu et ses préférences à côté de
+        # l'outil : on ne laisse pas ces traces derrière un test.
+        for chemin in set(Path(interface.RACINE).iterdir()) - empreinte_avant:
+            if chemin.is_file():
+                chemin.unlink(missing_ok=True)
+
+
 def test_slug() -> None:
     print("\nNoms de fichiers")
     verifier(slug("Relance n°2 — facture échue") == "relance-n2-facture-echue", "accents retirés")
@@ -679,6 +792,7 @@ def main() -> int:
     test_rendu_message()
     test_pdf_image_cassee()
     test_export_complet()
+    test_interface()
 
     print()
     if echecs:

@@ -19,6 +19,8 @@ outils/recouvrement/credentials.json
 outils/recouvrement/token.json
 outils/recouvrement/*service*.json
 outils/recouvrement/dossiers.csv
+outils/recouvrement/dossiers-depose.*
+outils/recouvrement/interface-preferences.json
 outils/recouvrement/dossiers.xlsx
 outils/recouvrement/*.xlsx
 outils/recouvrement/*.xlsm
