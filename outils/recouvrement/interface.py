@@ -34,9 +34,13 @@ import export_mails  # noqa: E402
 from gmail_api import ErreurGmail  # noqa: E402
 from dossiers import ErreurDossiers  # noqa: E402
 from rendu import moteur_pdf_disponible  # noqa: E402
+import suivi as module_suivi  # noqa: E402
 
 RACINE = Path(__file__).resolve().parent
 PREFERENCES = RACINE / "interface-preferences.json"
+# Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
+# ne doit pas effacer l'état d'avancement des dossiers.
+SUIVI = RACINE / "suivi-dossiers.json"
 EXTENSIONS_ACCEPTEES = {".xlsx", ".xlsm", ".csv"}
 TAILLE_MAX_FICHIER = 25 * 1024 * 1024
 
@@ -215,6 +219,20 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self._repondre(200, page.encode("utf-8"), "text/html; charset=utf-8")
             return
 
+        if chemin == "/api/dossiers":
+            if not self._jeton_valide():
+                self._json(403, {"erreur": "Jeton invalide."})
+                return
+            racine = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+            dossiers = module_suivi.inventaire(racine, SUIVI)
+            self._json(200, {
+                "dossiers": dossiers,
+                "agregats": module_suivi.agreger(dossiers),
+                "statuts": module_suivi.STATUTS,
+                "sortie": str(racine),
+            })
+            return
+
         if chemin == "/api/journal":
             if not self._jeton_valide():
                 self._json(403, {"erreur": "Jeton invalide."})
@@ -241,6 +259,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 return
             if chemin == "/api/ouvrir":
                 self._ouvrir(self._corps_json())
+                return
+            if chemin == "/api/suivi":
+                self._enregistrer_suivi(self._corps_json())
                 return
         except ValueError as exc:
             self._json(400, {"erreur": str(exc)})
@@ -322,10 +343,33 @@ class Gestionnaire(BaseHTTPRequestHandler):
         ecrire_preferences({"boites": demande.get("boites", ""), "sortie": sortie})
         self._json(200, {"demarre": True, "fichier": origine, "sortie": sortie})
 
+    def _enregistrer_suivi(self, demande: dict) -> None:
+        reference = (demande.get("reference") or "").strip()
+        if not reference:
+            self._json(400, {"erreur": "Référence de dossier manquante."})
+            return
+        try:
+            donnees = module_suivi.charger(SUIVI)
+            entree = module_suivi.mettre_a_jour(
+                donnees,
+                reference,
+                statut=demande.get("statut"),
+                frais=demande.get("frais"),
+                note=demande.get("note"),
+            )
+            module_suivi.enregistrer(SUIVI, donnees)
+        except ValueError as exc:
+            self._json(400, {"erreur": str(exc)})
+            return
+        except OSError as exc:
+            self._json(500, {"erreur": f"Enregistrement impossible : {exc}"})
+            return
+        self._json(200, {"enregistre": True, "dossier": entree})
+
     def _ouvrir(self, demande: dict) -> None:
         cible = Path((demande.get("chemin") or "").strip() or sortie_par_defaut())
         if not cible.exists():
-            self._json(400, {"erreur": f"Le dossier {cible} n'existe pas encore."})
+            self._json(400, {"erreur": f"{cible} n'existe pas encore."})
             return
         try:
             if sys.platform == "win32":
@@ -373,6 +417,52 @@ section{background:var(--carte);border:1px solid var(--bord);border-radius:14px;
 .fleche{font-size:26px;color:var(--texte-3)}
 #nomFichier{font-weight:600;color:var(--vert)}
 .grille{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+nav.principal{display:flex;gap:26px;padding:0 28px;background:var(--fond-2);
+  border-bottom:1px solid var(--bord)}
+nav.principal button{background:none;border:none;border-radius:0;color:var(--texte-2);
+  font-size:14px;padding:13px 0;border-bottom:2px solid transparent}
+nav.principal button.actif{color:var(--accent);border-bottom-color:var(--accent)}
+.vue{display:none} .vue.actif{display:block}
+.tuiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:14px;
+  margin-bottom:20px}
+.tuile{background:var(--carte);border:1px solid var(--bord);border-radius:12px;padding:16px}
+.tuile .lib{font-size:11.5px;color:var(--texte-2);margin-bottom:7px;
+  display:flex;align-items:center;gap:6px}
+.tuile .val{font-size:23px;font-weight:700;letter-spacing:-.5px}
+.tuile .sous{font-size:11px;color:var(--texte-3);margin-top:3px}
+.pastille{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+table.donnees{width:100%;border-collapse:collapse;font-size:12.5px}
+table.donnees th{text-align:left;font-weight:600;color:var(--texte-2);font-size:11px;
+  text-transform:uppercase;letter-spacing:.4px;padding:9px 8px;
+  border-bottom:1px solid var(--bord)}
+table.donnees td{padding:9px 8px;border-bottom:1px solid rgba(99,102,241,.07);
+  vertical-align:middle}
+table.donnees tr:hover td{background:rgba(255,255,255,.02)}
+table.donnees .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+select,input.frais,input.note{background:var(--champ);border:1px solid var(--bord);
+  border-radius:7px;padding:6px 8px;color:var(--texte);font-size:12.5px;font-family:inherit}
+select{min-width:172px} input.frais{width:88px;text-align:right} input.note{width:100%}
+select:focus,input.frais:focus,input.note:focus{outline:none;border-color:var(--bord-actif)}
+.etat-pastille{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.lien{color:var(--accent);cursor:pointer;text-decoration:none;font-size:12px}
+.lien:hover{text-decoration:underline}
+.lien.inactif{color:var(--texte-3);cursor:default;text-decoration:none}
+.vide{color:var(--texte-2);padding:34px;text-align:center;font-size:13px}
+.graphe{background:var(--carte);border:1px solid var(--bord);border-radius:12px;padding:20px}
+.graphe h3{margin:0 0 3px;font-size:14px;font-weight:600}
+.graphe .aide{margin-bottom:16px}
+.barres{display:flex;flex-direction:column;gap:2px}
+.rangee{display:grid;grid-template-columns:196px 1fr 178px;align-items:center;
+  gap:12px;padding:5px 0}
+.rangee:hover{background:rgba(255,255,255,.025);border-radius:6px}
+.etiquette{font-size:12.5px;color:var(--texte-2);text-align:right}
+.piste{height:14px;background:rgba(255,255,255,.04);border-radius:4px;overflow:hidden}
+.remplissage{height:100%;border-radius:0 4px 4px 0;min-width:3px}
+.valeur{font-size:12.5px;font-variant-numeric:tabular-nums;font-weight:600}
+.valeur span{font-weight:400;color:var(--texte-2)}
+.legende{display:flex;flex-wrap:wrap;gap:14px;margin-top:14px;font-size:11.5px;
+  color:var(--texte-2)}
+.legende span{display:inline-flex;align-items:center;gap:6px}
 .onglets{display:flex;gap:8px;margin-bottom:16px;border-bottom:1px solid var(--bord)}
 .onglet{background:none;border:none;border-bottom:2px solid transparent;border-radius:0;
   color:var(--texte-2);font-size:13.5px;padding:9px 4px;margin-right:14px}
@@ -418,8 +508,15 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <span class="titre">Export recouvrement</span>
   <span class="moteur">Moteur PDF : __MOTEUR_PDF__</span>
 </header>
+<nav class="principal">
+  <button class="actif" data-vue="vueExport">Export</button>
+  <button data-vue="vueDocuments">Documents</button>
+  <button data-vue="vueSuivi">État des dossiers</button>
+  <button data-vue="vueBord">Tableau de bord</button>
+</nav>
 <main>
 
+<div class="vue actif" id="vueExport">
 <section>
   <h2>1. Les dossiers à traiter</h2>
   <div class="onglets">
@@ -511,6 +608,30 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <div class="bandeau" id="bandeau"></div>
   <div id="journal" hidden></div>
 </section>
+</div>
+
+<div class="vue" id="vueDocuments">
+  <section>
+    <h2>Documents produits</h2>
+    <p class="aide">Un répertoire par dossier, dans <b id="cheminSortie">—</b>.
+       Cliquez pour ouvrir la note de synthèse ou le répertoire complet.</p>
+    <div id="tableDocuments"></div>
+  </section>
+</div>
+
+<div class="vue" id="vueSuivi">
+  <section>
+    <h2>État des dossiers</h2>
+    <p class="aide">L'avancement et les frais sont enregistrés au fur et à mesure,
+       à côté de l'outil. Refaire un export ne les efface pas.</p>
+    <div id="tableSuivi"></div>
+  </section>
+</div>
+
+<div class="vue" id="vueBord">
+  <div id="tuilesBord" class="tuiles"></div>
+  <div class="graphe" id="grapheBord"></div>
+</div>
 
 </main>
 <script>
@@ -695,6 +816,211 @@ function elementLigne(texte) {
   }
   if (!texte) div.appendChild(document.createTextNode(" "));
   return div;
+}
+
+
+// ============================================================
+//  Onglets principaux
+// ============================================================
+document.querySelectorAll("nav.principal button").forEach((bouton) => {
+  bouton.addEventListener("click", () => {
+    document.querySelectorAll("nav.principal button").forEach((b) => b.classList.remove("actif"));
+    document.querySelectorAll(".vue").forEach((v) => v.classList.remove("actif"));
+    bouton.classList.add("actif");
+    $(bouton.dataset.vue).classList.add("actif");
+    if (bouton.dataset.vue !== "vueExport") chargerDossiers();
+  });
+});
+
+// ============================================================
+//  Suivi des dossiers
+// ============================================================
+let DOSSIERS = [], STATUTS = [], AGREGATS = null;
+
+const euro = (v) => new Intl.NumberFormat("fr-FR",
+  { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v || 0);
+
+async function chargerDossiers() {
+  let donnees;
+  try { donnees = await api("/api/dossiers"); }
+  catch (erreur) { afficherBandeau(false, erreur.message); return; }
+
+  DOSSIERS = donnees.dossiers;
+  STATUTS = donnees.statuts;
+  AGREGATS = donnees.agregats;
+  $("cheminSortie").textContent = donnees.sortie;
+  rendreDocuments();
+  rendreSuivi();
+  rendreBord();
+}
+
+function messageVide() {
+  return '<p class="vide">Aucun export trouvé dans le dossier de destination.' +
+    "<br />Lancez un export depuis l'onglet « Export » — les dossiers produits " +
+    "apparaîtront ici.</p>";
+}
+
+function pastilleStatut(cle) {
+  const statut = STATUTS.find((s) => s.cle === cle) || STATUTS[0];
+  return '<span class="etat-pastille"><span class="pastille" style="background:' +
+    statut.couleur + '"></span>' + (statut.icone ? statut.icone + " " : "") +
+    statut.libelle + "</span>";
+}
+
+// -- onglet Documents
+function rendreDocuments() {
+  if (!DOSSIERS.length) { $("tableDocuments").innerHTML = messageVide(); return; }
+
+  const lignes = DOSSIERS.map((d) => `
+    <tr>
+      <td><b>${echapper(d.reference)}</b></td>
+      <td>${echapper(d.nom)}</td>
+      <td class="num">${d.nb_mails}</td>
+      <td class="num">${d.nb_pieces_jointes}</td>
+      <td>${d.premier_mail || "—"} → ${d.dernier_mail || "—"}</td>
+      <td>${d.a_synthese
+        ? `<a class="lien" data-ouvrir="${echapper(d.repertoire)}/synthese.pdf">Note de synthèse</a>`
+        : '<span class="lien inactif">pas de note</span>'}</td>
+      <td><a class="lien" data-ouvrir="${echapper(d.repertoire)}">Ouvrir le répertoire</a></td>
+    </tr>`).join("");
+
+  $("tableDocuments").innerHTML = `<table class="donnees">
+    <tr><th>Référence</th><th>Débiteur</th><th>Mails</th><th>PJ</th>
+        <th>Période</th><th>Document</th><th></th></tr>${lignes}</table>`;
+
+  $("tableDocuments").querySelectorAll("[data-ouvrir]").forEach((lien) =>
+    lien.addEventListener("click", async () => {
+      try { await api("/api/ouvrir", { chemin: lien.dataset.ouvrir }); }
+      catch (erreur) { afficherBandeau(false, erreur.message); }
+    }));
+}
+
+// -- onglet État des dossiers
+function rendreSuivi() {
+  if (!DOSSIERS.length) { $("tableSuivi").innerHTML = messageVide(); return; }
+
+  const options = (choisi) => STATUTS.map((s) =>
+    `<option value="${s.cle}"${s.cle === choisi ? " selected" : ""}>` +
+    `${s.icone ? s.icone + " " : ""}${echapper(s.libelle)}</option>`).join("");
+
+  const lignes = DOSSIERS.map((d) => `
+    <tr data-reference="${echapper(d.reference)}">
+      <td><b>${echapper(d.reference)}</b><br />
+          <span style="color:var(--texte-3)">${echapper(d.nom)}</span></td>
+      <td class="num">${euro(d.montant_du)}</td>
+      <td><select data-champ="statut">${options(d.statut)}</select></td>
+      <td class="num"><input class="frais" data-champ="frais" type="text"
+          value="${d.frais ? d.frais : ""}" placeholder="0" /> €</td>
+      <td><input class="note" data-champ="note" type="text"
+          value="${echapper(d.note)}" placeholder="Référence avocat, audience…" /></td>
+      <td style="color:var(--texte-3);font-size:11px">${echapper(d.maj)}</td>
+    </tr>`).join("");
+
+  $("tableSuivi").innerHTML = `<table class="donnees">
+    <tr><th>Dossier</th><th class="num">Montant dû</th><th>État</th>
+        <th class="num">Frais engagés</th><th>Note</th><th>Modifié</th></tr>
+    ${lignes}</table>`;
+
+  $("tableSuivi").querySelectorAll("[data-champ]").forEach((champ) => {
+    const evenement = champ.tagName === "SELECT" ? "change" : "change";
+    champ.addEventListener(evenement, async () => {
+      const reference = champ.closest("tr").dataset.reference;
+      try {
+        const reponse = await api("/api/suivi",
+          { reference: reference, [champ.dataset.champ]: champ.value });
+        const dossier = DOSSIERS.find((d) => d.reference === reference);
+        if (dossier) {
+          dossier.statut = reponse.dossier.statut || dossier.statut;
+          dossier.frais = reponse.dossier.frais || 0;
+          dossier.note = reponse.dossier.note || "";
+          dossier.maj = reponse.dossier.maj || "";
+        }
+        champ.closest("tr").lastElementChild.textContent = reponse.dossier.maj || "";
+        rendreBord();
+      } catch (erreur) { afficherBandeau(false, erreur.message); }
+    });
+  });
+}
+
+// -- onglet Tableau de bord
+function rendreBord() {
+  if (!DOSSIERS.length) {
+    $("tuilesBord").innerHTML = "";
+    $("grapheBord").innerHTML = messageVide();
+    return;
+  }
+  const a = AGREGATS = recalculer();
+
+  const tuiles = [
+    ["Dossiers suivis", a.nb_dossiers, `dont ${a.nb_en_cours} en cours`, ""],
+    ["Montant en recouvrement", euro(a.montant_en_cours), "dossiers non clôturés", ""],
+    ["Frais engagés", euro(a.frais_engages), "avocat, huissier, greffe", ""],
+    ["Recouvré", euro(a.montant_gagne), `${a.nb_gagnes} dossier(s) gagné(s)`, "#0ca30c", "✓"],
+    ["Perdu", euro(a.montant_perdu), `${a.nb_perdus} dossier(s) perdu(s)`, "#d03b3b", "✕"],
+    ["Taux de réussite", a.taux_reussite === null ? "—" : a.taux_reussite + " %",
+     "sur les dossiers clôturés", ""],
+  ];
+
+  $("tuilesBord").innerHTML = tuiles.map(([lib, val, sous, couleur, icone]) => `
+    <div class="tuile">
+      <div class="lib">${couleur ? `<span class="pastille" style="background:${couleur}"></span>` : ""}
+        ${icone ? icone + " " : ""}${lib}</div>
+      <div class="val">${val}</div>
+      <div class="sous">${sous}</div>
+    </div>`).join("");
+
+  // La longueur encode le montant, pas le nombre : c'est l'enjeu financier
+  // qui décide où porter l'effort, et c'est lui que l'œil doit comparer. Le
+  // nombre de dossiers reste en étiquette, jamais encodé par la longueur.
+  const maximum = Math.max(1, ...a.par_statut.map((s) => s.montant));
+  const barres = a.par_statut.map((s) => `
+    <div class="rangee" title="${echapper(s.libelle)} — ${euro(s.montant)}, ${s.nombre} dossier(s)${s.frais ? ", " + euro(s.frais) + " de frais engagés" : ""}">
+      <div class="etiquette">${s.icone ? s.icone + " " : ""}${echapper(s.libelle)}</div>
+      <div class="piste">
+        <div class="remplissage" style="width:${(100 * s.montant / maximum).toFixed(1)}%;
+             background:${s.couleur}"></div>
+      </div>
+      <div class="valeur">${s.montant ? euro(s.montant) : "—"}<span> · ${s.nombre} dossier${s.nombre > 1 ? "s" : ""}</span></div>
+    </div>`).join("");
+
+  $("grapheBord").innerHTML = `
+    <h3>Montant en recouvrement par étape</h3>
+    <p class="aide">La longueur des barres représente le montant dû ; le nombre de
+       dossiers est indiqué à côté. Les quatre étapes en cours partagent une même
+       teinte, de la plus soutenue à la plus claire ; les deux issues portent une
+       couleur d'état et une icône, la couleur seule ne les distinguant pas en
+       vision deutéranope.</p>
+    <div class="barres">${barres}</div>`;
+}
+
+function recalculer() {
+  const par = STATUTS.map((s) => ({ ...s, nombre: 0, montant: 0, frais: 0 }));
+  const index = Object.fromEntries(par.map((s, i) => [s.cle, i]));
+  for (const d of DOSSIERS) {
+    const case_ = par[index[d.statut] ?? 0];
+    case_.nombre += 1; case_.montant += d.montant_du; case_.frais += d.frais || 0;
+  }
+  const clos = ["gagne", "perdu"];
+  const somme = (f) => DOSSIERS.filter(f).reduce((t, d) => t + d.montant_du, 0);
+  const gagnes = DOSSIERS.filter((d) => d.statut === "gagne");
+  const perdus = DOSSIERS.filter((d) => d.statut === "perdu");
+  return {
+    par_statut: par, nb_dossiers: DOSSIERS.length,
+    nb_en_cours: DOSSIERS.filter((d) => !clos.includes(d.statut)).length,
+    montant_en_cours: somme((d) => !clos.includes(d.statut)),
+    frais_engages: DOSSIERS.reduce((t, d) => t + (d.frais || 0), 0),
+    montant_gagne: somme((d) => d.statut === "gagne"),
+    montant_perdu: somme((d) => d.statut === "perdu"),
+    nb_gagnes: gagnes.length, nb_perdus: perdus.length,
+    taux_reussite: (gagnes.length + perdus.length)
+      ? Math.round(100 * gagnes.length / (gagnes.length + perdus.length)) : null,
+  };
+}
+
+function echapper(texte) {
+  const div = document.createElement("div");
+  div.textContent = texte == null ? "" : String(texte);
+  return div.innerHTML;
 }
 
 function afficherBandeau(reussi, message) {

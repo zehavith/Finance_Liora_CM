@@ -874,6 +874,94 @@ def test_interface() -> None:
                 chemin.unlink(missing_ok=True)
 
 
+def test_suivi() -> None:
+    """État d'avancement et frais : persistance et agrégats du tableau de bord."""
+    print("\nSuivi des dossiers")
+    import csv as module_csv  # noqa: PLC0415
+
+    import suivi as module_suivi  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        racine = Path(repertoire)
+        fichier_suivi = racine / "suivi.json"
+
+        colonnes = ["reference", "nom", "montant_du", "montant_total", "nb_mails",
+                    "nb_pieces_jointes", "premier_mail", "dernier_mail",
+                    "mise_en_demeure", "contestation", "jours_sans_echange",
+                    "statut", "repertoire", "emails", "factures"]
+        rangees = [
+            ["F-1", "Allianz SE", "2 700,00", "2700", "12", "3", "01/01/2024",
+             "01/03/2025", "03/03/2025", "non", "48", "ok", "f-1_allianz", "a@b.fr", "F-1"],
+            ["F-2", "Marie Dupont", "680", "1280", "6", "4", "15/10/2024",
+             "03/03/2025", "non", "non", "48", "ok", "f-2_dupont", "m@d.fr", "F-2"],
+            ["F-3", "Pack and Tool", "1500", "1500", "0", "0", "", "",
+             "non", "non", "", "aucun message", "f-3_pack", "", "F-3"],
+        ]
+        (racine / "f-1_allianz").mkdir()
+        (racine / "f-1_allianz" / "synthese.pdf").write_bytes(b"%PDF-")
+        with (racine / "_recapitulatif.csv").open("w", encoding="utf-8-sig", newline="") as f:
+            redacteur = module_csv.writer(f, delimiter=";")
+            redacteur.writerow(colonnes)
+            redacteur.writerows(rangees)
+
+        dossiers = module_suivi.inventaire(racine, fichier_suivi)
+        verifier(len(dossiers) == 3, f"3 dossiers inventoriés (obtenu : {len(dossiers)})")
+        verifier(
+            dossiers[0]["montant_du"] == 2700.0,
+            f"montant « 2 700,00 » lu correctement ({dossiers[0]['montant_du']})",
+        )
+        verifier(
+            all(d["statut"] == "non-transmis" for d in dossiers),
+            "un dossier inconnu du suivi est « non transmis » par défaut",
+        )
+        verifier(dossiers[0]["a_synthese"] is True, "note de synthèse détectée")
+        verifier(dossiers[1]["a_synthese"] is False, "absence de note détectée")
+
+        print("\n  -- enregistrement et relecture --")
+        donnees = module_suivi.charger(fichier_suivi)
+        module_suivi.mettre_a_jour(donnees, "F-1", statut="avocat", frais="450,50")
+        module_suivi.mettre_a_jour(donnees, "F-2", statut="gagne")
+        module_suivi.mettre_a_jour(donnees, "F-3", statut="perdu", frais="120")
+        module_suivi.enregistrer(fichier_suivi, donnees)
+
+        dossiers = module_suivi.inventaire(racine, fichier_suivi)
+        etats = {d["reference"]: d for d in dossiers}
+        verifier(etats["F-1"]["statut"] == "avocat", "statut relu depuis le disque")
+        verifier(etats["F-1"]["frais"] == 450.5, "frais « 450,50 » relus en nombre")
+        verifier(bool(etats["F-1"]["maj"]), "date de modification enregistrée")
+
+        try:
+            module_suivi.mettre_a_jour(donnees, "F-1", statut="inconnu")
+            verifier(False, "statut inconnu refusé")
+        except ValueError:
+            verifier(True, "statut inconnu refusé")
+
+        print("\n  -- agrégats du tableau de bord --")
+        agregats = module_suivi.agreger(dossiers)
+        verifier(agregats["nb_dossiers"] == 3, "nombre de dossiers")
+        verifier(agregats["nb_en_cours"] == 1, "un seul dossier encore en cours")
+        verifier(
+            agregats["montant_en_cours"] == 2700.0,
+            f"montant en cours hors clôturés ({agregats['montant_en_cours']})",
+        )
+        verifier(agregats["montant_gagne"] == 680.0, "montant recouvré")
+        verifier(agregats["montant_perdu"] == 1500.0, "montant perdu")
+        verifier(agregats["frais_engages"] == 570.5, "frais engagés cumulés")
+        verifier(
+            agregats["taux_reussite"] == 50,
+            "taux calculé sur les seuls dossiers clôturés, non sur l'ensemble",
+        )
+
+        print("\n  -- couleurs des états --")
+        cles = [s["cle"] for s in module_suivi.STATUTS]
+        verifier(len(set(cles)) == 6, "six états distincts")
+        verifier(
+            all(s["icone"] for s in module_suivi.STATUTS if s["cle"] in ("gagne", "perdu")),
+            "les deux issues portent une icône, la couleur ne suffisant pas "
+            "à les distinguer en vision deutan",
+        )
+
+
 def test_slug() -> None:
     print("\nNoms de fichiers")
     verifier(slug("Relance n°2 — facture échue") == "relance-n2-facture-echue", "accents retirés")
@@ -898,6 +986,7 @@ def main() -> int:
     test_pdf_image_cassee()
     test_export_complet()
     test_interface()
+    test_suivi()
 
     print()
     if echecs:

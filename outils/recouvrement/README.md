@@ -93,7 +93,29 @@ automatiquement ne serait pas vérifiable pièce par pièce.
 choisissez les boîtes et la destination, puis suivez la progression à l'écran.
 Aucune commande à taper.
 
-Deux façons d'y désigner les dossiers, au choix par onglet :
+L'application comporte quatre onglets :
+
+| Onglet | Rôle |
+|---|---|
+| **Export** | lancer une extraction, depuis un export Monday ou une recherche ponctuelle |
+| **Documents** | les dossiers produits — ouvrir la note de synthèse ou le répertoire |
+| **État des dossiers** | avancement de la procédure et frais engagés, saisis et conservés |
+| **Tableau de bord** | montants en recouvrement, frais, issues, répartition par étape |
+
+L'avancement suit six états : non transmis, transmis, en cours chez l'avocat,
+passage au tribunal, clôturé gagné, clôturé perdu. Il est enregistré dans
+`suivi-dossiers.json`, **à côté de l'outil et non dans l'export** : refaire une
+extraction n'efface pas l'état d'avancement.
+
+> Sur le tableau de bord, la longueur des barres représente le **montant dû**,
+> pas le nombre de dossiers : c'est l'enjeu financier qui décide où porter
+> l'effort. Les quatre étapes en cours partagent une teinte unique, de la plus
+> soutenue à la plus claire ; les deux issues portent une couleur d'état **et
+> une icône**, parce que le vert et le rouge sont indistinguables en vision
+> deutéranope — un daltonien sur douze hommes ne doit pas confondre un dossier
+> gagné avec un dossier perdu.
+
+Deux façons de désigner les dossiers à extraire, au choix par onglet :
 
 - **Depuis un export Monday** — vous y déposez le fichier, tel quel ;
 - **Recherche ponctuelle** — vous saisissez une adresse mail et/ou un numéro
