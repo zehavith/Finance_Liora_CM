@@ -348,18 +348,85 @@ def rediger_contexte(dossier, synthese: Synthese, reference_temps: datetime) -> 
     if dossier.statut:
         lignes.append(f"Statut au tableau de suivi : {dossier.statut}.")
 
-    if synthese.nb_pieces and synthese.dernier is not None:
-        silence = synthese.jours_depuis(synthese.dernier, reference_temps)
-        if synthese.derniere_reponse is None:
+    return lignes
+
+
+def resumer_echanges(dossier, synthese: Synthese, reference_temps: datetime) -> list[str]:
+    """Ce que les échanges établissent du comportement du débiteur.
+
+    C'est la partie du contexte qui vient des messages et non du tableau : les
+    relances restées sans réponse, l'échéancier sollicité, le paiement annoncé
+    puis non honoré, l'absence de contestation.
+    """
+    if not synthese.nb_pieces:
+        return ["Aucun échange n'a été retrouvé pour ce dossier."]
+
+    lignes: list[str] = []
+
+    relances = [ev for ev in synthese.evenements_de("Relance") if ev.sens == "envoyé"]
+    if relances:
+        lignes.append(
+            f"{len(relances)} relance(s) ont été adressées au débiteur, du "
+            f"{relances[0].date:%d/%m/%Y} au {relances[-1].date:%d/%m/%Y}."
+        )
+
+    if synthese.derniere_reponse is None:
+        lignes.append("Le débiteur n'a jamais répondu à ces sollicitations.")
+    else:
+        posterieures = [ev for ev in relances if ev.date > synthese.derniere_reponse]
+        phrase = (
+            f"Sa dernière réponse remonte au {synthese.derniere_reponse:%d/%m/%Y}"
+        )
+        if posterieures:
+            phrase += f" ; les {len(posterieures)} relance(s) suivantes sont restées sans réponse"
+        lignes.append(phrase + ".")
+
+    echeancier = synthese.premier_evenement("Échéancier évoqué")
+    difficultes = synthese.premier_evenement("Difficultés financières invoquées")
+    if echeancier and difficultes:
+        lignes.append(
+            f"Un étalement du paiement a été évoqué le {echeancier.date:%d/%m/%Y}, "
+            "le débiteur invoquant des difficultés financières."
+        )
+    elif echeancier:
+        lignes.append(
+            f"Un étalement du paiement a été évoqué le {echeancier.date:%d/%m/%Y}."
+        )
+    elif difficultes:
+        lignes.append(
+            f"Le débiteur a invoqué des difficultés financières le "
+            f"{difficultes.date:%d/%m/%Y}."
+        )
+
+    paiement = synthese.dernier_evenement("Annonce de paiement")
+    if paiement:
+        # Le rapprochement n'est possible que parce que le solde vient du
+        # tableau : les messages seuls ne diraient pas s'il a été honoré.
+        reste = montant_lisible(dossier.montant_du)
+        if reste:
             lignes.append(
-                "Aucune réponse du débiteur ne figure dans les échanges extraits, "
-                f"et plus aucun message depuis {silence} jours."
+                f"Un paiement a été annoncé le {paiement.date:%d/%m/%Y}, alors que "
+                f"{reste} restent portés au solde du tableau de suivi."
             )
         else:
             lignes.append(
-                f"Dernier échange il y a {silence} jours ; dernière réponse du "
-                f"débiteur le {synthese.derniere_reponse:%d/%m/%Y}."
+                f"Un paiement a été annoncé le {paiement.date:%d/%m/%Y} — "
+                "à rapprocher des encaissements réels."
             )
+
+    demeure = synthese.dernier_evenement("Mise en demeure")
+    if demeure:
+        lignes.append(f"Une mise en demeure a été adressée le {demeure.date:%d/%m/%Y}.")
+
+    if synthese.premier_evenement("Contestation") is None:
+        lignes.append(
+            "À aucun moment le montant ou la prestation n'ont été contestés dans "
+            "les échanges."
+        )
+
+    if synthese.dernier is not None:
+        silence = synthese.jours_depuis(synthese.dernier, reference_temps)
+        lignes.append(f"Plus aucun échange depuis {silence} jours.")
 
     return lignes
 
@@ -412,6 +479,7 @@ def construire_html(
 ) -> str:
     constats = rediger_constats(synthese, date_export)
     contexte = rediger_contexte(dossier, synthese, date_export)
+    echanges = resumer_echanges(dossier, synthese, date_export)
     pieces = classer_pieces_jointes(lignes)
 
     identite = [
@@ -475,7 +543,7 @@ def construire_html(
 
     if contexte:
         bloc_contexte = (
-            '<ul class="constats">'
+            '<p class="groupe">Situation au tableau de suivi</p><ul class="constats">'
             + "".join(f"<li>{html.escape(ligne)}</li>" for ligne in contexte)
             + "</ul>"
         )
@@ -484,6 +552,12 @@ def construire_html(
             "<p>Le tableau de suivi ne renseigne ni montant, ni dates, ni statut "
             "pour ce dossier. À compléter avant transmission.</p>"
         )
+
+    bloc_contexte += (
+        '<p class="groupe">Ce que montrent les échanges</p><ul class="constats">'
+        + "".join(f"<li>{html.escape(ligne)}</li>" for ligne in echanges)
+        + "</ul>"
+    )
 
     if dossier.commentaire:
         bloc_contexte += (
