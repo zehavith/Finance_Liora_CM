@@ -62,11 +62,39 @@ ALIAS_COLONNES = {
     ],
     "date_debut": ["date de debut", "date debut", "debut", "depuis"],
     "date_fin": ["date de fin", "date fin", "fin", "jusqu a", "jusqua"],
+
+    # Colonnes de contexte : elles n'entrent jamais dans la recherche Gmail,
+    # elles alimentent la note de synthèse. Les intitulés diffèrent d'un
+    # tableau à l'autre — « Total TTC » côté entreprise, « Total Facture »
+    # côté particuliers — d'où ces listes un peu longues.
+    "montant_du": [
+        "reste a devoir ttc", "reste a payer d apres le grand livre",
+        "reste a payer", "restant a payer", "reste du", "solde du", "montant du",
+    ],
+    "montant_total": [
+        "total ttc", "total facture", "montant total", "montant facture",
+        "total ht", "montant",
+    ],
+    "date_echeance": [
+        "date d echeance facture", "date echeance facture",
+        "date echeance calculee negociee", "date echeance", "echeance",
+    ],
+    "formation_debut": ["debut de formation", "debut de service", "date de debut de formation"],
+    "formation_fin": ["fin de formation", "fin de service", "date de fin de formation"],
+    "statut": [
+        "statut creance", "statut paiement", "categorie de retard",
+        "qualification recouvrement", "qualification generale", "statut initiale",
+        "categorie de dette", "statut",
+    ],
+    "commentaire": [
+        "commentaire recouvrement", "commentaire general", "commentaire post echeance",
+        "commentaire pre echance", "commentaire pre echeance", "commentaire",
+    ],
 }
 
 # Champs alimentés par plusieurs colonnes à la fois : un dossier peut porter
 # une adresse de contact et une adresse de prélèvement distinctes.
-CHAMPS_MULTICOLONNES = {"email", "facture"}
+CHAMPS_MULTICOLONNES = {"email", "facture", "statut", "commentaire"}
 
 # Intitulés qui ne disent rien de leur contenu. Chez Monday, la première
 # colonne s'appelle « Name » et porte selon les tableaux le nom du débiteur ou
@@ -149,6 +177,16 @@ class Dossier:
     date_debut: str = ""
     date_fin: str = ""
     ligne: int = 0
+
+    # Contexte repris du tableau de suivi, pour la note de synthèse. Ces
+    # valeurs n'interviennent jamais dans la recherche des messages.
+    montant_du: str = ""
+    montant_total: str = ""
+    date_echeance: str = ""
+    formation_debut: str = ""
+    formation_fin: str = ""
+    statut: str = ""
+    commentaire: str = ""
 
     @property
     def nom_repertoire(self) -> str:
@@ -420,10 +458,14 @@ def lire_dossiers(
             if position < len(cellules) and cellules[position].strip():
                 valeurs[champ].append(cellules[position].strip())
 
-        if not any(valeurs.values()):
-            # Aucune colonne exploitable. Si d'autres cellules sont remplies,
-            # c'est une ligne de total ou de séparation de groupe ajoutée par
-            # Monday : on la signale au lieu de l'escamoter.
+        # Une ligne n'est un dossier que si elle désigne quelqu'un : sans
+        # critère de recherche NI identité, c'est une ligne de total ou de
+        # séparation de groupe — les totaux de Monday remplissent les colonnes
+        # de montants et de dates, ce qui ne suffit pas à en faire un dossier.
+        a_critere = bool(valeurs["email"] or valeurs["facture"])
+        a_identite = bool(valeurs["reference"] or valeurs["nom"])
+
+        if not a_critere and not a_identite:
             if any(cellule.strip() for cellule in cellules):
                 hors_sujet.append(numero)
             continue
@@ -439,6 +481,13 @@ def lire_dossiers(
             date_debut=_normaliser_date(_premier("date_debut")),
             date_fin=_normaliser_date(_premier("date_fin")),
             ligne=numero,
+            montant_du=_premier("montant_du"),
+            montant_total=_premier("montant_total"),
+            date_echeance=_premier("date_echeance"),
+            formation_debut=_premier("formation_debut"),
+            formation_fin=_premier("formation_fin"),
+            statut=" · ".join(valeurs["statut"]),
+            commentaire=" · ".join(valeurs["commentaire"]),
         )
 
         if not dossier.emails and not dossier.factures:

@@ -222,6 +222,8 @@ def traiter_dossier(
         factures=" | ".join(dossier.factures),
         requete=requete,
         repertoire=dossier.nom_repertoire,
+        montant_du=dossier.montant_du,
+        montant_total=dossier.montant_total,
     )
 
     repertoire = racine_sortie / dossier.nom_repertoire
@@ -336,10 +338,7 @@ def traiter_dossier(
 
     if not options.sans_synthese:
         contenu = module_synthese.construire_html(
-            reference=dossier.reference,
-            nom=dossier.nom,
-            emails=" | ".join(dossier.emails),
-            factures=" | ".join(dossier.factures),
+            dossier=dossier,
             boites=sources.adresses,
             lignes=lignes,
             synthese=analyse,

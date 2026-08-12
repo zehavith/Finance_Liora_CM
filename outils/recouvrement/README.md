@@ -42,8 +42,20 @@ bandeau du PDF, ce qui permet de citer directement « pièce n° 3 ».
 
 ### La note de synthèse
 
-`synthese.pdf` récapitule le dossier en une à deux pages : identification,
-chiffres clés, **constats**, événements repérés et chronologie complète.
+`synthese.pdf` est la page de couverture du dossier, structurée comme un
+dossier contentieux :
+
+- un bandeau **Montant en recouvrement**, repris du tableau de suivi ;
+- **1. Contexte** — formation suivie, montant facturé et reste dû, ancienneté
+  de l'échéance, statut, et la note interne du tableau reproduite telle quelle ;
+- **2. Contrat signé et factures** — les pièces jointes trouvées dans les
+  échanges, classées par nature (convention, facture, mise en demeure,
+  échéancier), chacune renvoyant à son numéro de pièce ;
+- **3. Preuve des actions engagées** — chiffres clés, constats, événements
+  repérés et chronologie complète des échanges.
+
+Les montants, dates de formation et statuts viennent du tableau Monday ; le
+reste des seuls messages extraits.
 
 Son contenu est **entièrement déduit des messages extraits**, jamais rédigé
 librement. Chaque constat renvoie à un numéro de pièce vérifiable :

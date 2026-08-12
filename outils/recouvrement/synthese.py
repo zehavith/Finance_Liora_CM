@@ -282,6 +282,116 @@ ul.constats li { margin-bottom: 5px; font-size: 9.5pt; }
 """
 
 
+FORMATS_DATE_TABLEAU = ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%y")
+
+
+def montant_lisible(valeur: str) -> str:
+    """« 2700 » → « 2 700,00 € ». Rendu tel quel si ce n'est pas un nombre."""
+    brut = (valeur or "").strip().replace("€", "").replace(" ", "").replace(",", ".")
+    if not brut:
+        return ""
+    try:
+        nombre = float(brut)
+    except ValueError:
+        return valeur.strip()
+    entier, decimales = f"{nombre:,.2f}".split(".")
+    return f"{entier.replace(',', ' ')},{decimales} €"
+
+
+def _date_tableau(valeur: str) -> datetime | None:
+    valeur = (valeur or "").strip()[:10]
+    for format_ in FORMATS_DATE_TABLEAU:
+        try:
+            return datetime.strptime(valeur, format_)
+        except ValueError:
+            continue
+    return None
+
+
+def rediger_contexte(dossier, synthese: Synthese, reference_temps: datetime) -> list[str]:
+    """Situation du dossier, telle qu'elle ressort du tableau de suivi.
+
+    Ces éléments ne viennent pas des messages : ils sont recopiés du tableau,
+    seule source des montants et des dates de formation.
+    """
+    lignes: list[str] = []
+
+    if dossier.formation_debut or dossier.formation_fin:
+        debut = dossier.formation_debut or "?"
+        fin = dossier.formation_fin or "?"
+        lignes.append(f"Formation suivie du {debut} au {fin}.")
+
+    total = montant_lisible(dossier.montant_total)
+    du = montant_lisible(dossier.montant_du)
+    if total and du and total != du:
+        lignes.append(
+            f"Facture de {total}, dont {du} restent dus à ce jour "
+            "— c'est le montant en recouvrement."
+        )
+    elif du:
+        lignes.append(f"Montant en recouvrement : {du}, aucun règlement enregistré.")
+    elif total:
+        lignes.append(f"Montant facturé : {total}.")
+
+    echeance = _date_tableau(dossier.date_echeance)
+    if echeance is not None:
+        retard = (reference_temps.replace(tzinfo=None) - echeance).days
+        if retard > 0:
+            lignes.append(
+                f"Facture échue le {echeance:%d/%m/%Y}, soit {retard} jours de retard."
+            )
+        else:
+            lignes.append(f"Échéance de la facture : {echeance:%d/%m/%Y}.")
+    elif dossier.date_echeance:
+        lignes.append(f"Échéance de la facture : {dossier.date_echeance}.")
+
+    if dossier.statut:
+        lignes.append(f"Statut au tableau de suivi : {dossier.statut}.")
+
+    if synthese.nb_pieces and synthese.dernier is not None:
+        silence = synthese.jours_depuis(synthese.dernier, reference_temps)
+        if synthese.derniere_reponse is None:
+            lignes.append(
+                "Aucune réponse du débiteur ne figure dans les échanges extraits, "
+                f"et plus aucun message depuis {silence} jours."
+            )
+        else:
+            lignes.append(
+                f"Dernier échange il y a {silence} jours ; dernière réponse du "
+                f"débiteur le {synthese.derniere_reponse:%d/%m/%Y}."
+            )
+
+    return lignes
+
+
+CATEGORIES_PIECES = (
+    ("Contrat / convention", ("convention", "contrat", "cgv", "devis", "bon de commande")),
+    ("Facture / avoir", ("facture", "fact-", "fact_", "avoir", "invoice")),
+    ("Mise en demeure / relance", ("demeure", "relance", "recommande", "lrar")),
+    ("Échéancier", ("echeancier", "echelonn")),
+)
+
+
+def classer_pieces_jointes(lignes: list[LigneIndex]) -> list[tuple[str, list[str]]]:
+    """Regroupe les pièces jointes par nature, d'après leur nom de fichier."""
+    groupes: dict[str, list[str]] = {}
+    for ligne in lignes:
+        for nom in (ligne.pieces_jointes or "").split(" | "):
+            nom = nom.strip()
+            if not nom:
+                continue
+            plat = aplatir(nom)
+            categorie = "Autre document"
+            for libelle, motifs in CATEGORIES_PIECES:
+                if any(motif in plat for motif in motifs):
+                    categorie = libelle
+                    break
+            groupes.setdefault(categorie, []).append(f"{nom} (pièce n° {ligne.piece_n})")
+
+    ordre = [libelle for libelle, _ in CATEGORIES_PIECES] + ["Autre document"]
+    return [(libelle, groupes[libelle]) for libelle in ordre if libelle in groupes]
+
+
 def _rangee_chronologie(ligne: LigneIndex) -> str:
     pieces = f"{ligne.nb_pieces_jointes} PJ" if ligne.nb_pieces_jointes else ""
     return (
@@ -294,21 +404,20 @@ def _rangee_chronologie(ligne: LigneIndex) -> str:
 
 
 def construire_html(
-    reference: str,
-    nom: str,
-    emails: str,
-    factures: str,
+    dossier,
     boites: list[str],
     lignes: list[LigneIndex],
     synthese: Synthese,
     date_export: datetime,
 ) -> str:
     constats = rediger_constats(synthese, date_export)
+    contexte = rediger_contexte(dossier, synthese, date_export)
+    pieces = classer_pieces_jointes(lignes)
 
     identite = [
-        ("Apprenante", nom or "—"),
-        ("Adresse(s) mail", emails or "—"),
-        ("Facture(s)", factures or "—"),
+        ("Débiteur", dossier.nom or "—"),
+        ("Adresse(s) mail", " | ".join(dossier.emails) or "—"),
+        ("Facture(s)", " | ".join(dossier.factures) or "—"),
         ("Boîtes interrogées", ", ".join(boites)),
         ("Date d'extraction", date_export.strftime("%d/%m/%Y à %H:%M")),
     ]
@@ -355,42 +464,96 @@ def construire_html(
             "boîtes n'ont été retenus qu'une fois."
         )
 
+    montant = montant_lisible(dossier.montant_du) or montant_lisible(dossier.montant_total)
+    bandeau_montant = (
+        f'<div class="montant"><span>Montant en recouvrement</span>'
+        f"<b>{html.escape(montant)}</b></div>"
+        if montant
+        else '<div class="montant manquant"><span>Montant en recouvrement</span>'
+        "<b>non renseigné au tableau de suivi</b></div>"
+    )
+
+    if contexte:
+        bloc_contexte = (
+            '<ul class="constats">'
+            + "".join(f"<li>{html.escape(ligne)}</li>" for ligne in contexte)
+            + "</ul>"
+        )
+    else:
+        bloc_contexte = (
+            "<p>Le tableau de suivi ne renseigne ni montant, ni dates, ni statut "
+            "pour ce dossier. À compléter avant transmission.</p>"
+        )
+
+    if dossier.commentaire:
+        bloc_contexte += (
+            '<div class="interne"><b>Note interne du tableau de suivi</b> — '
+            "reproduite telle quelle, à relire avant transmission :<br />"
+            f"« {html.escape(dossier.commentaire)} »</div>"
+        )
+
+    if pieces:
+        bloc_pieces = "".join(
+            f"<p class='groupe'>{html.escape(libelle)}</p><ul class='constats'>"
+            + "".join(f"<li>{html.escape(nom)}</li>" for nom in noms)
+            + "</ul>"
+            for libelle, noms in pieces
+        )
+        bloc_pieces += (
+            "<p class='chemin'>Les fichiers correspondants se trouvent dans le "
+            "sous-répertoire <b>pieces-jointes</b> du dossier, rangés par pièce.</p>"
+        )
+    else:
+        bloc_pieces = (
+            "<p>Aucune pièce jointe dans les échanges extraits. Le contrat signé "
+            "et les factures devront être joints depuis une autre source.</p>"
+        )
+
     return f"""<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8" />
-<title>Note de synthèse — dossier {html.escape(reference)}</title>
+<title>Dossier de recouvrement — {html.escape(dossier.reference)}</title>
 <style>{FEUILLE_DE_STYLE}</style></head>
 <body>
-<h1>Note de synthèse — dossier {html.escape(reference)}</h1>
-<div class="sous-titre">Échanges de messagerie constitutifs du dossier de recouvrement</div>
+<h1>Dossier de recouvrement — {html.escape(dossier.reference)}</h1>
+<div class="sous-titre">{html.escape(dossier.nom or 'Débiteur non renseigné')}</div>
 
+{bandeau_montant}
 <table class="identite">{rangees_identite}</table>
 
-<h2>Chiffres clés</h2>
+<h2>1. Contexte</h2>
+{bloc_contexte}
+
+<h2>2. Contrat signé et factures</h2>
+{bloc_pieces}
+
+<h2>3. Preuve des actions engagées</h2>
 <table class="chiffres"><tr>{rangees_chiffres}</tr></table>
 
-<h2>Constats</h2>
+<h3>Constats</h3>
 <ul class="constats">
 {''.join(f'<li>{html.escape(constat)}</li>' for constat in constats)}
 </ul>
 
-<h2>Événements repérés</h2>
+<h3>Événements repérés</h3>
 {bloc_evenements}
 
-<h2>Chronologie complète</h2>
+<h3>Chronologie complète des échanges</h3>
 <table>
 <tr><th>Pièce</th><th>Date</th><th>Sens</th><th>Objet</th><th></th></tr>
 {''.join(_rangee_chronologie(ligne) for ligne in lignes)}
 </table>
 
 <div class="avertissement">
-<b>Portée de cette note.</b> Elle est établie automatiquement à partir des
-seuls messages extraits des boîtes citées ci-dessus, sans autre source.
-Les événements sont repérés par correspondance de formulations dans l'objet et
-le corps des messages : la liste peut être incomplète, et un message rédigé
-autrement peut ne pas avoir été reconnu. Chaque constat renvoie à un numéro de
-pièce, à vérifier dans le message d'origine avant toute utilisation.
-Cette note ne constitue pas une analyse juridique et doit être relue avant
-transmission.{note_doublons}
+<b>Portée de ce document.</b> Les montants, dates de formation, statuts et
+notes de la partie 1 sont recopiés du tableau de suivi. Les parties 2 et 3
+sont établies à partir des seuls messages extraits des boîtes citées
+ci-dessus, sans autre source. Les événements sont repérés par correspondance
+de formulations dans l'objet et le corps des messages : la liste peut être
+incomplète, et un message rédigé autrement peut ne pas avoir été reconnu. La
+nature des pièces jointes est déduite de leur nom de fichier. Chaque constat
+renvoie à un numéro de pièce, à vérifier dans le message d'origine avant toute
+utilisation. Ce document ne constitue pas une analyse juridique et doit être
+relu avant transmission.{note_doublons}
 </div>
 </body></html>
 """
