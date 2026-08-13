@@ -2298,6 +2298,48 @@
     // ── Export ──
     $('#btn-export').addEventListener('click', () => { window.print(); });
 
+    // ── Export Excel de la vue filtrée ──
+    function exportExcel() {
+        if (!filteredData.length) { showSaveToast('Aucune donnée à exporter', true); return; }
+        try {
+            const rows = filteredData.map(r => ({
+                Date: r.dateStr || '',
+                'Libellé': r.libelle || '',
+                Tiers: r.tiers || '',
+                Montant: r.montant,
+                Sens: r.sens || '',
+                'Catégorie': r.categorie || '',
+                'Type financeur': r.typeFinanceur || '',
+                'Mode paiement': r.modePaiement || '',
+                'Équipe': r.equipe || '',
+                Titulaire: r.titulaire || '',
+                'Justifié': r.justifie || '',
+            }));
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Transactions');
+
+            const enc = filteredData.filter(r => r.montant > 0).reduce((s, r) => s + r.montant, 0);
+            const dec = Math.abs(filteredData.filter(r => r.montant < 0).reduce((s, r) => s + r.montant, 0));
+            const byCat = {};
+            filteredData.forEach(r => { byCat[r.categorie] = (byCat[r.categorie] || 0) + r.montant; });
+            const synth = [
+                { Indicateur: 'Encaissements', Montant: enc },
+                { Indicateur: 'Décaissements', Montant: -dec },
+                { Indicateur: 'Solde net', Montant: enc - dec },
+                { Indicateur: 'Nombre de transactions', Montant: filteredData.length },
+                {},
+                { Indicateur: '— Flux net par catégorie —', Montant: '' },
+                ...Object.entries(byCat).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([k, v]) => ({ Indicateur: k, Montant: v })),
+            ];
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(synth), 'Synthèse');
+            XLSX.writeFile(wb, 'liora-export-' + new Date().toISOString().slice(0, 10) + '.xlsx');
+            showSaveToast('Export Excel généré (' + filteredData.length + ' lignes)', false);
+        } catch (e) {
+            showSaveToast('Échec de l\'export : ' + e.message, true);
+        }
+    }
+    $('#btn-export-xlsx').addEventListener('click', exportExcel);
+
     // ── Fichiers Tab: Upload zone ──
     const ftFileInput = document.getElementById('ft-file-input');
     const ftUploadZone = document.getElementById('ft-upload-zone');
