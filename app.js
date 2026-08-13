@@ -380,10 +380,14 @@
     //      en Autres revenus) ou « Financement personnel » (aucune entité immatriculée trouvée).
     //      Le changement de clé invalide l'ancien cache.
     const STORAGE_B2B_KEY = 'liora_b2b_registry_v3';
+    const STORAGE_B2B_PERSO_KEY = 'liora_b2b_apply_personal'; // n'applique le « personnel » qu'après détection manuelle
+    const STORAGE_AUTO_B2B_KEY = 'liora_auto_b2b_import';     // option : auto-B2B à l'import (décochée par défaut)
     let b2bRegistryCache = {}; // { CLEAN_NAME: { found, isCompany, siren, nom, nature } }
+    let b2bApplyPersonal = false;
 
     async function loadB2BCache() {
         try { b2bRegistryCache = (await idbGet(STORAGE_B2B_KEY)) || {}; } catch { b2bRegistryCache = {}; }
+        try { b2bApplyPersonal = (await idbGet(STORAGE_B2B_PERSO_KEY)) === true; } catch { b2bApplyPersonal = false; }
     }
     async function saveB2BCache() {
         try { await idbSet(STORAGE_B2B_KEY, b2bRegistryCache); } catch { /* ignore */ }
@@ -880,8 +884,9 @@
                 if (hit.isCompany) {
                     row.categorie = 'B2B';
                     row.ruleHit = 'Enc: B2B (annuaire officiel' + (hit.siren ? ' — SIREN ' + hit.siren : '') + ')';
-                } else if (hit.found === false && !looksLikeCompanyForm(name)) {
-                    // Aucune entité immatriculée (pas de SIREN) → particulier finançant lui-même
+                } else if (b2bApplyPersonal && hit.found === false && !looksLikeCompanyForm(name)) {
+                    // Aucune entité immatriculée (pas de SIREN) → particulier finançant lui-même.
+                    // Appliqué seulement après une détection MANUELLE (b2bApplyPersonal), jamais en auto-import.
                     row.categorie = 'Financement personnel';
                     row.ruleHit = 'Enc: Financement personnel (absent de l\'annuaire)';
                 }
@@ -1116,6 +1121,10 @@
         buildDashboard();
         await renderFileHistory();
         showScreen('dashboard');
+        // Option : reconnaissance B2B automatique à l'import (annuaire) — B2B uniquement
+        try {
+            if ((await idbGet(STORAGE_AUTO_B2B_KEY)) === true) await autoDetectB2BOnImport();
+        } catch { /* ignore */ }
     }
 
     function parseDate(str) {
@@ -2265,6 +2274,19 @@
         }
     })();
 
+    // ── Option : reconnaissance B2B automatique à l'import ──
+    (async function wireAutoB2BOption() {
+        const cb = document.getElementById('opt-auto-b2b');
+        if (!cb) return;
+        try { cb.checked = (await idbGet(STORAGE_AUTO_B2B_KEY)) === true; } catch { /* ignore */ }
+        cb.addEventListener('change', async () => {
+            try {
+                await idbSet(STORAGE_AUTO_B2B_KEY, cb.checked);
+                showSaveToast(cb.checked ? 'Auto-B2B à l\'import activé' : 'Auto-B2B à l\'import désactivé', false);
+            } catch { /* ignore */ }
+        });
+    })();
+
     // ── Storage status indicator ──
     async function updateStorageStatus() {
         const dot = document.getElementById('storage-status-dot');
@@ -2907,36 +2929,33 @@
         if (b2bBtn) b2bBtn.addEventListener('click', () => runB2BDetection(b2bBtn));
     })();
 
-    // ── B2B detection via annuaire officiel (bouton Data Quality) ──
-    async function runB2BDetection(btn) {
-        // Regrouper les candidats par nom extrait (unique), en ignorant personnes et noms trop courts
-        const nameToRows = new Map();
+    // ── Détection via annuaire officiel ──
+    // Collecte les noms de tiers uniques (candidats) absents du cache.
+    function collectRegistryCandidates() {
+        const seen = new Map();
         for (const row of getB2BCandidateRows()) {
             const name = extractCompanyName(row);
             if (!name || name.length < 4) continue;
             if (looksLikePerson(row._libNorm || normUpper(row.libelle))) continue;
             const key = b2bCacheKey(name);
-            if (!nameToRows.has(key)) nameToRows.set(key, name);
+            if (!seen.has(key)) seen.set(key, name);
         }
-        // Ne réinterroger que les noms absents du cache
-        const toQuery = [...nameToRows.values()].filter(name => !(b2bCacheKey(name) in b2bRegistryCache));
-        const total = toQuery.length;
-        const origLabel = btn ? btn.textContent : '';
-        if (btn) btn.disabled = true;
+        return [...seen.values()].filter(name => !(b2bCacheKey(name) in b2bRegistryCache));
+    }
+
+    async function queryNamesIntoCache(names, onProgress) {
         let done = 0, errored = false;
-        try {
-            for (const name of toQuery) {
-                if (btn) btn.textContent = 'Annuaire… ' + (++done) + '/' + total;
-                try {
-                    b2bRegistryCache[b2bCacheKey(name)] = await queryCompanyRegistry(name);
-                } catch { errored = true; } // échec réseau : non mis en cache (réessayable)
-                await new Promise(r => setTimeout(r, 160)); // throttle ~6 req/s (limite API : 7/s)
-            }
-            await saveB2BCache();
-        } finally {
-            if (btn) { btn.disabled = false; btn.textContent = origLabel; }
+        for (const name of names) {
+            if (onProgress) onProgress(++done, names.length);
+            try { b2bRegistryCache[b2bCacheKey(name)] = await queryCompanyRegistry(name); }
+            catch { errored = true; } // échec réseau : non mis en cache (réessayable)
+            await new Promise(r => setTimeout(r, 160)); // throttle ~6 req/s (limite API : 7/s)
         }
-        // Recatégoriser (Step 3b applique le cache) + rafraîchir toute l'app
+        await saveB2BCache();
+        return errored;
+    }
+
+    async function finalizeRegistry(errored) {
         const beforeB2B = rawData.filter(r => r.categorie === 'B2B').length;
         const beforePerso = rawData.filter(r => r.categorie === 'Financement personnel').length;
         categorizeAll(rawData);
@@ -2950,10 +2969,33 @@
         const parts = [];
         if (addB2B > 0) parts.push(addB2B + ' en B2B');
         if (addPerso > 0) parts.push(addPerso + ' en financement personnel');
-        const msg = parts.length
-            ? 'Reclassé via l\'annuaire : ' + parts.join(' et ')
-            : 'Aucune nouvelle reconnaissance';
+        const msg = parts.length ? 'Reclassé via l\'annuaire : ' + parts.join(' et ') : 'Aucune nouvelle reconnaissance';
         showSaveToast(msg + (errored ? ' (certaines requêtes ont échoué)' : ''), errored);
+    }
+
+    // Détection MANUELLE (bouton Data Quality) : B2B + financements personnels.
+    async function runB2BDetection(btn) {
+        const toQuery = collectRegistryCandidates();
+        const origLabel = btn ? btn.textContent : '';
+        if (btn) btn.disabled = true;
+        let errored = false;
+        try {
+            errored = await queryNamesIntoCache(toQuery, (d, t) => { if (btn) btn.textContent = 'Annuaire… ' + d + '/' + t; });
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = origLabel; }
+        }
+        // Le clic manuel active l'application des « financements personnels » (par élimination)
+        b2bApplyPersonal = true;
+        try { await idbSet(STORAGE_B2B_PERSO_KEY, true); } catch { /* ignore */ }
+        await finalizeRegistry(errored);
+    }
+
+    // Détection AUTOMATIQUE à l'import (option) : B2B UNIQUEMENT — n'active pas le personnel.
+    async function autoDetectB2BOnImport() {
+        const toQuery = collectRegistryCandidates();
+        if (toQuery.length) showSaveToast('Reconnaissance B2B (annuaire) en cours…', false);
+        const errored = await queryNamesIntoCache(toQuery, null);
+        await finalizeRegistry(errored);
     }
 
     // ── Claude API for category suggestion ──
