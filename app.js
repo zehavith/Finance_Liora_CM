@@ -1360,6 +1360,7 @@
         renderFinanceurChart();
         renderFinanceurMonthlyChart();
         renderPaiementChart();
+        renderFixedVariable();
         renderTopVendorsChart();
         renderTeamsChart();
         renderTable();
@@ -1818,6 +1819,88 @@
                 },
             },
         });
+    }
+
+    // ── Décaissements fixes vs variables ──
+    // Classification métier : catégories de charges récurrentes (fixes) vs dépendantes de
+    // l'activité (variables). Interco = mouvements internes, présentés à part.
+    const DEC_FIXED_CATS = new Set([
+        'Salaires', 'URSSAF', 'Prélèvement à la source (PAS)', 'Taxe sur les salaires',
+        'Prévoyance / Mutuelle', 'Ticket restaurant', 'Loyers & charges', 'SaaS/IT',
+        'Banques/Dettes', 'Autres impôts',
+    ]);
+    function decFixedVarType(cat) {
+        if (cat === 'Interco') return 'interco';
+        return DEC_FIXED_CATS.has(cat) ? 'fixe' : 'variable';
+    }
+
+    function renderFixedVariable() {
+        const el = document.getElementById('fixed-var-table');
+        if (!el) return;
+        const dec = filteredData.filter(r => r.sens === 'Décaissement');
+        if (dec.length === 0) {
+            el.innerHTML = '<p class="fv-empty">Aucun décaissement sur la période sélectionnée.</p>';
+            return;
+        }
+        const byCat = {};
+        dec.forEach(r => { byCat[r.categorie] = (byCat[r.categorie] || 0) + Math.abs(r.montant); });
+        const total = Object.values(byCat).reduce((s, v) => s + v, 0);
+        const groups = { fixe: [], variable: [], interco: [] };
+        Object.entries(byCat).forEach(([cat, amt]) => groups[decFixedVarType(cat)].push({ cat, amt }));
+        Object.values(groups).forEach(g => g.sort((a, b) => b.amt - a.amt));
+
+        const pct = amt => total > 0 ? (amt / total * 100) : 0;
+        const fmtPct = p => p.toFixed(1).replace('.', ',') + ' %';
+        const sum = g => g.reduce((s, x) => s + x.amt, 0);
+
+        function groupBlock(label, cls, g) {
+            if (g.length === 0) return '';
+            const sub = sum(g);
+            const rows = g.map(x => `
+                <tr class="fv-row">
+                    <td class="fv-cat">${escapeHtml(x.cat)}</td>
+                    <td class="text-right">${formatCurrency(x.amt)}</td>
+                    <td class="text-right">${fmtPct(pct(x.amt))}</td>
+                </tr>`).join('');
+            return `
+                <tr class="fv-group-head ${cls}">
+                    <td>${label}</td>
+                    <td class="text-right">${formatCurrency(sub)}</td>
+                    <td class="text-right">${fmtPct(pct(sub))}</td>
+                </tr>
+                ${rows}`;
+        }
+
+        el.innerHTML = `
+            <div class="fv-summary">
+                <div class="fv-card fv-card-fixe">
+                    <span class="fv-card-label">Décaissements fixes</span>
+                    <span class="fv-card-value">${formatCurrency(sum(groups.fixe))}</span>
+                    <span class="fv-card-pct">${fmtPct(pct(sum(groups.fixe)))} du total</span>
+                </div>
+                <div class="fv-card fv-card-variable">
+                    <span class="fv-card-label">Décaissements variables</span>
+                    <span class="fv-card-value">${formatCurrency(sum(groups.variable))}</span>
+                    <span class="fv-card-pct">${fmtPct(pct(sum(groups.variable)))} du total</span>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table class="data-table fv-table">
+                    <thead>
+                        <tr><th>Catégorie</th><th class="text-right">Montant</th><th class="text-right">% du total décaissements</th></tr>
+                    </thead>
+                    <tbody>
+                        ${groupBlock('🔒 Décaissements fixes', 'fv-fixe', groups.fixe)}
+                        ${groupBlock('📈 Décaissements variables', 'fv-variable', groups.variable)}
+                        ${groupBlock('🔁 Interco (mouvements internes)', 'fv-interco', groups.interco)}
+                        <tr class="fv-total">
+                            <td>Total décaissements</td>
+                            <td class="text-right">${formatCurrency(total)}</td>
+                            <td class="text-right">100 %</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>`;
     }
 
     // ── Volume by category (horizontal bar) — click filters ──

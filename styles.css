@@ -1514,6 +1514,27 @@ body::before {
     width: 16px; height: 16px; cursor: pointer; accent-color: #14b8a6; vertical-align: middle;
 }
 
+/* Décaissements fixes vs variables */
+.fv-hint { font-size: 0.78rem; color: var(--text-secondary); font-weight: 400; }
+.fv-empty { color: var(--text-secondary); padding: 1rem 0; }
+.fv-summary { display: flex; gap: 1rem; margin-bottom: 1.2rem; flex-wrap: wrap; }
+.fv-card {
+    flex: 1; min-width: 200px; padding: 1rem 1.2rem; border-radius: var(--radius-lg);
+    background: var(--bg-input); border-left: 4px solid var(--border-color);
+    display: flex; flex-direction: column; gap: 0.25rem;
+}
+.fv-card-fixe { border-left-color: var(--green); background: var(--green-bg); }
+.fv-card-variable { border-left-color: var(--amber); background: var(--amber-bg); }
+.fv-card-label { font-size: 0.82rem; color: var(--text-secondary); }
+.fv-card-value { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); }
+.fv-card-pct { font-size: 0.82rem; color: var(--text-secondary); }
+.fv-table .fv-group-head td { font-weight: 700; background: rgba(255,255,255,0.03); }
+.fv-table .fv-group-head.fv-fixe td:first-child { color: var(--green); }
+.fv-table .fv-group-head.fv-variable td:first-child { color: var(--amber); }
+.fv-table .fv-group-head.fv-interco td:first-child { color: var(--text-secondary); }
+.fv-table .fv-cat { padding-left: 1.5rem; color: var(--text-secondary); }
+.fv-table .fv-total td { font-weight: 700; border-top: 2px solid var(--border-hover); color: var(--text-primary); }
+
 /* ── Suggestion cell ── */
 .dq-suggestion {
     min-width: 220px;
