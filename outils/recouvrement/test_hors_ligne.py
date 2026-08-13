@@ -777,6 +777,276 @@ def test_export_complet() -> None:
         export_mails.ouvrir_sources = vraies_sources
 
 
+def _relance_seconde_facture() -> EmailMessage:
+    """Relance ne concernant que la seconde facture."""
+    msg = EmailMessage()
+    msg["From"] = "Recouvrement Liora <recouvrement@liora.io>"
+    msg["To"] = "Marie Dupont <marie.dupont@exemple.fr>"
+    msg["Subject"] = "Relance — facture FA-2024-0154 échue"
+    msg["Date"] = "Wed, 20 Mar 2024 09:00:00 +0100"
+    msg["Message-ID"] = "<relance-fa20240154@liora.io>"
+    msg.set_content("La facture FA-2024-0154 reste impayée à ce jour.")
+    return msg
+
+
+def _relance_generale() -> EmailMessage:
+    """Relance qui ne nomme aucune facture : elle vaut pour toute la dette."""
+    msg = EmailMessage()
+    msg["From"] = "Recouvrement Liora <recouvrement@liora.io>"
+    msg["To"] = "Marie Dupont <marie.dupont@exemple.fr>"
+    msg["Subject"] = "Rappel — solde impayé"
+    msg["Date"] = "Mon, 25 Mar 2024 09:00:00 +0100"
+    msg["Message-ID"] = "<rappel-solde@liora.io>"
+    msg.set_content(
+        "Votre solde reste impayé malgré nos relances. Sans règlement sous "
+        "huit jours, le dossier sera transmis au contentieux."
+    )
+    return msg
+
+
+class ClientMultiFacture:
+    """Boîte contenant les échanges d'une apprenante devant deux factures."""
+
+    MESSAGES = {
+        "m1": _reponse_apprenante,        # 04/03, nomme FA-2024-0153
+        "m2": message_de_test,            # 12/03, nomme FA-2024-0153
+        "m3": _relance_seconde_facture,   # 20/03, nomme FA-2024-0154
+        "m4": _relance_generale,          # 25/03, n'en nomme aucune
+    }
+
+    adresse_boite = "recouvrement@liora.io"
+
+    def rechercher_identifiants(self, requete, inclure_spam_corbeille=True, plafond=None):
+        return list(self.MESSAGES) if "marie.dupont" in requete else []
+
+    def recuperer_messages(self, identifiants):
+        for identifiant in identifiants:
+            message = lire_message(
+                {"id": identifiant, "threadId": "t1", "internalDate": "1710231243000"},
+                self.MESSAGES[identifiant]().as_bytes(),
+            )
+            message.boites = [self.adresse_boite]
+            yield message
+
+
+def _lire_index(chemin: Path) -> list[dict]:
+    import csv as module_csv  # noqa: PLC0415
+
+    return list(
+        module_csv.DictReader(
+            chemin.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"
+        )
+    )
+
+
+def test_sous_dossiers_par_facture() -> None:
+    """Un débiteur, deux factures : un dossier qui mène à deux sous-dossiers."""
+    print("\nUn sous-dossier par facture")
+
+    import export_mails  # noqa: PLC0415
+    from gmail_api import SourcesGmail  # noqa: PLC0415
+
+    vraies_sources = export_mails.ouvrir_sources
+    export_mails.ouvrir_sources = lambda **_: SourcesGmail([ClientMultiFacture()])
+    try:
+        with tempfile.TemporaryDirectory() as repertoire:
+            racine = Path(repertoire)
+            fichier = racine / "dossiers.csv"
+            fichier.write_text(
+                "reference;nom;email;facture;reste a payer\n"
+                "2024-118;Marie Dupont;marie.dupont@exemple.fr;FA-2024-0153;1200\n"
+                "2024-119;Marie Dupont;marie.dupont@exemple.fr;FA-2024-0154;800\n",
+                encoding="utf-8",
+            )
+            sortie = racine / "export"
+            code = export_mails.executer(
+                export_mails.analyser_arguments(
+                    ["--dossiers", str(fichier), "--sortie", str(sortie)]
+                )
+            )
+            verifier(code == 0, "code de sortie 0")
+
+            dossier = sortie / "2024-118_marie-dupont"
+            verifier(dossier.is_dir(), "un seul dossier pour les deux factures")
+            verifier(
+                len(list(sortie.glob("2024-*"))) == 1,
+                "aucun second répertoire au même contenu",
+            )
+
+            index = _lire_index(dossier / "index.csv")
+            par_piece = {int(rangee["piece_n"]): rangee for rangee in index}
+            verifier(len(index) == 4, "index du dossier : 4 pièces")
+            verifier(
+                par_piece[3]["factures_concernees"] == "FA-2024-0154",
+                "la facture nommée dans le message est reconnue",
+            )
+            verifier(
+                par_piece[4]["factures_concernees"] == "",
+                "un message qui ne nomme aucune facture reste sans rattachement",
+            )
+
+            sous = dossier / "factures"
+            verifier(sous.is_dir(), "le dossier mène à un répertoire « factures »")
+            verifier(
+                sorted(chemin.name for chemin in sous.iterdir())
+                == ["fa-2024-0153", "fa-2024-0154"],
+                "un sous-dossier par facture, nommé par son numéro",
+            )
+
+            premier = _lire_index(sous / "fa-2024-0153" / "index.csv")
+            second = _lire_index(sous / "fa-2024-0154" / "index.csv")
+            verifier(
+                [int(r["piece_n"]) for r in premier] == [1, 2, 4],
+                "FA-2024-0153 : ses deux échanges plus la relance générale",
+            )
+            verifier(
+                [int(r["piece_n"]) for r in second] == [3, 4],
+                "FA-2024-0154 : son échange plus la relance générale",
+            )
+            verifier(
+                int(premier[0]["piece_n"]) == 1 and premier[-1]["piece_n"] == "4",
+                "les numéros de pièce du dossier sont conservés, non renumérotés",
+            )
+
+            for nom, attendu in (("fa-2024-0153", 3), ("fa-2024-0154", 2)):
+                cible = sous / nom
+                verifier(
+                    len(list((cible / "mails").glob("*.eml"))) == attendu,
+                    f"{nom} : {attendu} message(s) réellement recopié(s)",
+                )
+                verifier(
+                    (cible / "synthese.pdf").exists() or (cible / "synthese.html").exists(),
+                    f"{nom} : note de synthèse propre au sous-dossier",
+                )
+
+            verifier(
+                len(list((sous / "fa-2024-0153" / "pieces-jointes").rglob("*.pdf"))) == 1,
+                "les pièces jointes suivent leur message dans le sous-dossier",
+            )
+            verifier(
+                not (sous / "fa-2024-0154" / "pieces-jointes").exists(),
+                "aucune pièce jointe recopiée dans le sous-dossier qui n'en a pas",
+            )
+
+            recap = _lire_index(sortie / "_recapitulatif.csv")
+            verifier(
+                recap[0]["sous_dossiers_factures"] == "2",
+                "récapitulatif : les sous-dossiers sont décomptés",
+            )
+            verifier(
+                recap[0]["montant_du"] == "2000",
+                "récapitulatif : la dette du débiteur est bien cumulée",
+            )
+
+            # Sans l'option, la structure d'origine est conservée à l'identique.
+            sortie2 = racine / "export-plat"
+            export_mails.executer(
+                export_mails.analyser_arguments([
+                    "--dossiers", str(fichier), "--sortie", str(sortie2),
+                    "--sans-sous-dossiers",
+                ])
+            )
+            verifier(
+                not (sortie2 / "2024-118_marie-dupont" / "factures").exists(),
+                "--sans-sous-dossiers : aucun découpage par facture",
+            )
+    finally:
+        export_mails.ouvrir_sources = vraies_sources
+
+
+def test_factures_citees() -> None:
+    """Reconnaissance d'un numéro de facture dans le texte d'un message."""
+    print("\nRattachement d'un message à sa facture")
+    from dossiers import Dossier  # noqa: PLC0415
+
+    dossier = Dossier(
+        reference="D1", nom="X",
+        emails=["a@b.fr"], factures=["FA-2024-0153", "118"],
+    )
+    verifier(
+        dossier.factures_citees("la facture fa-2024-0153 reste impayée")
+        == ["FA-2024-0153"],
+        "numéro reconnu quelle que soit la casse",
+    )
+    verifier(
+        dossier.factures_citees("votre facture n° 118 du 3 mars") == ["118"],
+        "numéro court reconnu quand il est isolé",
+    )
+    verifier(
+        dossier.factures_citees("le montant de 1180 euros") == [],
+        "un numéro court n'est pas reconnu à l'intérieur d'un autre nombre",
+    )
+    verifier(
+        dossier.factures_citees("facture fa-2024-01530") == [],
+        "un numéro n'est pas reconnu à l'intérieur d'un numéro plus long",
+    )
+    verifier(
+        dossier.factures_citees("rappel de votre solde impayé") == [],
+        "un message sans numéro ne se rattache à aucune facture",
+    )
+
+    seul = Dossier(reference="D2", nom="Y", emails=["a@b.fr"], factures=["F1"])
+    verifier(
+        seul.repartition_par_facture() == [],
+        "une seule facture : aucun sous-dossier, le découpage n'apporterait rien",
+    )
+
+    multiple = Dossier(
+        reference="D3", nom="Z", emails=["a@b.fr"],
+        factures=["F1", "F2"], montant_du="900",
+    )
+    parts = multiple.repartition_par_facture()
+    verifier(len(parts) == 2, "deux factures sur une même ligne : deux sous-dossiers")
+    verifier(
+        all(part.montant_du == "" for part in parts),
+        "montant d'une ligne unique non réparti : il resterait faux sur chaque facture",
+    )
+
+    # La note du dossier doit annoncer les sous-dossiers, sinon personne ne
+    # pense à les ouvrir : le PDF est le seul document réellement lu.
+    import synthese as module_synthese  # noqa: PLC0415
+
+    lignes = [
+        _ligne(1, 3, "envoyé", "Relance F1"),
+        _ligne(2, 5, "envoyé", "Rappel général"),
+    ]
+    lignes[0].factures_concernees = "F1"
+    page = module_synthese.construire_html(
+        dossier=multiple,
+        boites=["recouvrement@liora.io"],
+        lignes=lignes,
+        synthese=module_synthese.analyser(lignes, {}),
+        date_export=datetime(2025, 4, 1, tzinfo=timezone(timedelta(hours=1))),
+    )
+    verifier(
+        "Répartition par facture" in page and "factures/f1" in page,
+        "la note du dossier annonce ses sous-dossiers et leur chemin",
+    )
+    verifier(
+        "2 dont 1 la nommant" in page,
+        "la note distingue les échanges nommant la facture des relances générales",
+    )
+
+    sous = module_synthese.pieces_de_facture(["F2"], lignes)
+    verifier(
+        [ligne.piece_n for ligne in sous] == [2],
+        "un échange réservé à une autre facture n'entre pas dans le sous-dossier",
+    )
+
+    fille = module_synthese.construire_html(
+        dossier=parts[0],
+        boites=["recouvrement@liora.io"],
+        lignes=lignes,
+        synthese=module_synthese.analyser(lignes, {}),
+        date_export=datetime(2025, 4, 1, tzinfo=timezone(timedelta(hours=1))),
+        rattachement="D3 — Z",
+    )
+    verifier(
+        "Rattaché au dossier" in fille and "Répartition par facture" not in fille,
+        "la note d'un sous-dossier renvoie au dossier parent sans se redécouper",
+    )
+
+
 def _ligne(piece: int, jour: int, sens: str, objet: str) -> LigneIndex:
     return LigneIndex(
         piece_n=piece,
@@ -907,6 +1177,7 @@ def test_interface() -> None:
             ('id="simulation"', "option simulation"),
             ('id="ignorer"', "option lignes incomplètes"),
             ('id="regrouper"', "option regroupement"),
+            ('id="sousdossiers"', "option sous-dossier par facture"),
             ('id="sansnav"', "option sans navigateur"),
             ('id="reprendre"', "option reprendre"),
             ('id="seulement"', "filtre par références"),
@@ -1154,6 +1425,8 @@ def main() -> int:
     test_rendu_message()
     test_pdf_image_cassee()
     test_export_complet()
+    test_factures_citees()
+    test_sous_dossiers_par_facture()
     test_interface()
     test_suivi()
 

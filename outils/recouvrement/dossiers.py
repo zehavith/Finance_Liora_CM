@@ -6,7 +6,7 @@ import csv
 import re
 import unicodedata
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -117,6 +117,24 @@ INTITULES_AMBIGUS = {"name", "item", "element", "titre"}
 # d'affilée, et pas une suite de mots comme le serait un nom de personne.
 REFERENCE_PROBABLE = re.compile(r"\d{3,}")
 
+_MOTIFS_REFERENCE: dict[str, re.Pattern] = {}
+
+
+def _motif_reference(valeur: str) -> re.Pattern:
+    """Motif de reconnaissance d'un numéro de facture dans un texte.
+
+    Bornes volontaires : sans elles, une facture « 118 » serait « reconnue »
+    dans « 1180 », dans un numéro de téléphone ou dans le montant d'une autre
+    facture, et les échanges finiraient rangés sous la mauvaise.
+    """
+    motif = _MOTIFS_REFERENCE.get(valeur)
+    if motif is None:
+        motif = re.compile(
+            rf"(?<![0-9a-z]){re.escape(valeur.strip().lower())}(?![0-9a-z])"
+        )
+        _MOTIFS_REFERENCE[valeur] = motif
+    return motif
+
 
 def _ressemble_a_une_reference(valeurs: list[str]) -> bool:
     echantillon = [valeur for valeur in valeurs if valeur.strip()][:30]
@@ -201,6 +219,11 @@ class Dossier:
     commentaire: str = ""
     liens: list[str] = field(default_factory=list)
 
+    # Lignes d'origine du tableau, quand plusieurs factures d'un même débiteur
+    # ont été réunies. Chacune garde son montant, son échéance et ses propres
+    # documents : c'est ce qui permet de produire un sous-dossier par facture.
+    composants: list["Dossier"] = field(default_factory=list)
+
     @property
     def nom_repertoire(self) -> str:
         from rendu import slug  # noqa: PLC0415 - évite une dépendance circulaire
@@ -250,6 +273,55 @@ class Dossier:
         if any(facture.lower() in texte_message for facture in self.factures):
             trouves.append("facture")
         return "+".join(trouves) if trouves else "indirect"
+
+    def factures_citees(self, texte_message: str) -> list[str]:
+        """Numéros de facture réellement nommés dans le message.
+
+        Sert à ranger l'échange sous la facture qu'il concerne. Un message qui
+        n'en cite aucune — une relance qui ne nomme rien, une réponse de
+        l'apprenante — concerne le débiteur en général, et vaut donc pour
+        toutes ses factures.
+        """
+        return [
+            facture
+            for facture in self.factures
+            if _motif_reference(facture).search(texte_message)
+        ]
+
+    def repartition_par_facture(self) -> list["Dossier"]:
+        """Sous-dossiers à produire, un par facture en retard.
+
+        Vide quand le débiteur ne porte qu'une facture : découper un dossier
+        en un seul sous-dossier n'ajouterait qu'un niveau de répertoire.
+        """
+        if len(self.factures) < 2:
+            return []
+
+        if self.composants:
+            # Une ligne du tableau par facture : chaque sous-dossier conserve
+            # le montant, l'échéance et les documents de sa propre ligne.
+            retenus = [
+                composant for composant in self.composants if composant.factures
+            ]
+            if retenus:
+                return retenus
+
+        # Plusieurs numéros portés par une seule ligne : le montant du tableau
+        # vaut pour l'ensemble, on ne peut pas le répartir. Il est donc laissé
+        # à la ligne d'origine et retiré des sous-dossiers, pour ne pas laisser
+        # croire que chaque facture porte la totalité de la dette.
+        return [
+            replace(
+                self,
+                factures=[facture],
+                emails=list(self.emails),
+                liens=list(self.liens),
+                composants=[],
+                montant_du="",
+                montant_total="",
+            )
+            for facture in self.factures
+        ]
 
 
 def _candidats(entete: str) -> list[tuple[str, int]]:
@@ -391,6 +463,9 @@ def _fusionner(groupe: list[Dossier]) -> Dossier:
         statut=" · ".join(_union(lambda d: d.statut.split(" · "))),
         commentaire=" · ".join(_union(lambda d: d.commentaire.split(" · "))),
         liens=_union(lambda d: d.liens),
+        # Les lignes d'origine sont conservées : le dossier du débiteur mène
+        # ensuite à un sous-dossier par facture, chacun avec son propre montant.
+        composants=tries,
     )
 
 

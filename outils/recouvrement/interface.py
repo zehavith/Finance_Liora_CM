@@ -163,6 +163,8 @@ def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str
         arguments.append("--sans-navigateur")
     if demande.get("sans_regroupement"):
         arguments.append("--sans-regroupement")
+    if demande.get("sans_sous_dossiers"):
+        arguments.append("--sans-sous-dossiers")
     if demande.get("sans_spam"):
         arguments.append("--sans-spam")
     if demande.get("reprendre"):
@@ -641,6 +643,10 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <span><b>Regrouper les factures d'un même débiteur</b><i>Plusieurs factures
     partageant une adresse mail forment un seul dossier, avec la dette cumulée.
     Sinon elles produisent des répertoires au contenu identique.</i></span></label>
+  <label class="case"><input type="checkbox" id="sousdossiers" checked />
+    <span><b>Un sous-dossier par facture</b><i>Un débiteur qui doit plusieurs
+    factures donne un dossier, qui mène lui-même à un sous-dossier complet par
+    facture — transmissible seul, avec sa propre note de synthèse.</i></span></label>
   <label class="case"><input type="checkbox" id="sansnav" />
     <span><b>Ne pas ouvrir le navigateur pour autoriser</b><i>Si une boîte est
     connectée dans une autre fenêtre : l'adresse s'affiche, à coller vous-même.</i></span></label>
@@ -753,6 +759,7 @@ $("lancer").addEventListener("click", async () => {
       simulation: $("simulation").checked,
       ignorer_lignes_incompletes: $("ignorer").checked,
       sans_regroupement: !$("regrouper").checked,
+      sans_sous_dossiers: !$("sousdossiers").checked,
       sans_navigateur: $("sansnav").checked,
       reprendre: $("reprendre").checked,
       seulement: $("seulement").value,
@@ -912,6 +919,9 @@ function rendreDocuments() {
       <td class="num">${d.nb_mails}</td>
       <td class="num">${d.nb_pieces_jointes}</td>
       <td>${d.premier_mail || "—"} → ${d.dernier_mail || "—"}</td>
+      <td>${d.sous_dossiers > 1
+        ? `<a class="lien" data-ouvrir="${echapper(d.repertoire)}/factures">${d.sous_dossiers} factures</a>`
+        : '<span class="lien inactif">1 facture</span>'}</td>
       <td>${d.a_synthese
         ? `<a class="lien" data-ouvrir="${echapper(d.repertoire)}/synthese.pdf">Note de synthèse</a>`
         : '<span class="lien inactif">pas de note</span>'}</td>
@@ -920,7 +930,7 @@ function rendreDocuments() {
 
   $("tableDocuments").innerHTML = `<table class="donnees">
     <tr><th>Référence</th><th>Débiteur</th><th>Mails</th><th>PJ</th>
-        <th>Période</th><th>Document</th><th></th></tr>${lignes}</table>`;
+        <th>Période</th><th>Sous-dossiers</th><th>Document</th><th></th></tr>${lignes}</table>`;
 
   $("tableDocuments").querySelectorAll("[data-ouvrir]").forEach((lien) =>
     lien.addEventListener("click", async () => {

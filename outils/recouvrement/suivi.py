@@ -135,6 +135,10 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 "contestation": (rangee.get("contestation") or "").strip(),
                 "jours_sans_echange": (rangee.get("jours_sans_echange") or "").strip(),
                 "statut_export": (rangee.get("statut") or "").strip(),
+                # Un débiteur portant plusieurs factures a un sous-dossier par
+                # facture ; l'état de suivi reste porté par le dossier entier,
+                # puisque c'est lui qui part au contentieux.
+                "sous_dossiers": int(_nombre(rangee.get("sous_dossiers_factures"))),
                 "repertoire": str(repertoire),
                 "a_synthese": (repertoire / "synthese.pdf").exists(),
                 "a_index": (repertoire / "index.csv").exists(),

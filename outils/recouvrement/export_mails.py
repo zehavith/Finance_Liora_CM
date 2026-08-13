@@ -24,6 +24,7 @@ Voir README.md pour la mise en place de l'accès Gmail.
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 from collections.abc import Callable
 from datetime import datetime
@@ -212,6 +213,15 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     analyseur.add_argument(
+        "--sans-sous-dossiers",
+        action="store_true",
+        help=(
+            "N'ouvre pas un sous-dossier par facture. Par défaut, un débiteur "
+            "portant plusieurs factures en retard donne un dossier qui mène à "
+            "un sous-dossier complet par facture, dans « factures/ »."
+        ),
+    )
+    analyseur.add_argument(
         "--fuseau",
         default=FUSEAU_PAR_DEFAUT,
         help=(
@@ -302,9 +312,11 @@ def traiter_dossier(
     resume.doublons_ecartes = doublons
 
     textes_par_piece: dict[int, str] = {}
+    bases_par_piece: dict[int, str] = {}
     lignes: list[LigneIndex] = []
     for numero, message in enumerate(messages, start=1):
         base = nom_de_base(message, numero)
+        bases_par_piece[numero] = base
 
         chemin_eml = ecrire_eml(message, dossier_mails, base)
 
@@ -331,6 +343,7 @@ def traiter_dossier(
         resume.dates.append(message.date)
         textes_par_piece[numero] = message.corps_texte or message.corps_html or ""
 
+        recherchable = message.texte_recherchable
         lignes.append(
             LigneIndex(
                 piece_n=numero,
@@ -342,7 +355,8 @@ def traiter_dossier(
                 objet=message.objet,
                 nb_pieces_jointes=len(message.pieces_jointes),
                 pieces_jointes=" | ".join(pj.nom for pj in message.pieces_jointes),
-                critere=dossier.criteres_trouves(message.texte_recherchable),
+                critere=dossier.criteres_trouves(recherchable),
+                factures_concernees=" | ".join(dossier.factures_citees(recherchable)),
                 boites=" | ".join(message.boites),
                 fichier_pdf=chemin_relatif(
                     chemin_pdf if pdf_ok else chemin_pdf.with_suffix(".html"), repertoire
@@ -375,6 +389,20 @@ def traiter_dossier(
         if not ecrire_pdf(contenu, repertoire / "synthese.pdf")[0]:
             resume.pdf_en_echec += 1
 
+    if not options.sans_sous_dossiers:
+        resume.sous_dossiers_factures = _ecrire_sous_dossiers(
+            dossier=dossier,
+            repertoire=repertoire,
+            lignes=lignes,
+            textes_par_piece=textes_par_piece,
+            bases_par_piece=bases_par_piece,
+            boites=sources.adresses,
+            date_export=date_export,
+            options=options,
+            journal=journal,
+            resume=resume,
+        )
+
     detail = (
         f"    {resume.nb_mails} message(s) — {resume.nb_recus} reçu(s), "
         f"{resume.nb_envoyes} envoyé(s), {resume.nb_pieces_jointes} pièce(s) jointe(s)"
@@ -386,6 +414,90 @@ def traiter_dossier(
     journal(detail)
 
     return resume
+
+
+def _copier_piece(repertoire: Path, cible: Path, base: str) -> None:
+    """Recopie une pièce — message et pièces jointes — dans un sous-dossier.
+
+    Chaque sous-dossier de facture doit pouvoir partir seul chez l'avocat :
+    un renvoi vers le répertoire parent ne survivrait ni à une copie sur clé,
+    ni à un envoi par archive.
+    """
+    for suffixe in (".pdf", ".html", ".eml"):
+        origine = repertoire / "mails" / f"{base}{suffixe}"
+        if origine.exists():
+            destination = cible / "mails" / origine.name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(origine, destination)
+
+    pieces_jointes = repertoire / "pieces-jointes" / base
+    if pieces_jointes.is_dir():
+        shutil.copytree(
+            pieces_jointes, cible / "pieces-jointes" / base, dirs_exist_ok=True
+        )
+
+
+def _ecrire_sous_dossiers(
+    dossier: Dossier,
+    repertoire: Path,
+    lignes: list[LigneIndex],
+    textes_par_piece: dict[int, str],
+    bases_par_piece: dict[int, str],
+    boites: list[str],
+    date_export: datetime,
+    options: argparse.Namespace,
+    journal: Journal,
+    resume: ResumeDossier,
+) -> int:
+    """Un sous-dossier complet par facture, sous « factures/ ».
+
+    Le dossier du débiteur reste l'ensemble ; chaque sous-dossier en est une
+    vue autonome, limitée à ce qui concerne une facture. Les numéros de pièce
+    ne sont pas renumérotés : « pièce n° 7 » désigne le même message dans le
+    dossier et dans tous ses sous-dossiers.
+    """
+    sous_dossiers = dossier.repartition_par_facture()
+    if not sous_dossiers:
+        return 0
+
+    racine = repertoire / "factures"
+    repartition = module_synthese.repartition_par_facture(sous_dossiers, lignes)
+
+    for sous_dossier, (numero, nom, pieces) in zip(sous_dossiers, repartition):
+        cible = racine / nom
+        cible.mkdir(parents=True, exist_ok=True)
+
+        for ligne in pieces:
+            base = bases_par_piece.get(ligne.piece_n)
+            if base:
+                _copier_piece(repertoire, cible, base)
+
+        ecrire_index_dossier(cible / "index.csv", pieces)
+
+        journal(
+            f"    facture {numero or nom} → sous-dossier « factures/{nom} », "
+            f"{len(pieces)} pièce(s)"
+        )
+
+        documents = _documents_monday(sous_dossier, cible, options, journal)
+
+        if not options.sans_synthese:
+            analyse = module_synthese.analyser(
+                pieces, {ligne.piece_n: textes_par_piece.get(ligne.piece_n, "") for ligne in pieces}
+            )
+            contenu = module_synthese.construire_html(
+                dossier=sous_dossier,
+                boites=boites,
+                lignes=pieces,
+                synthese=analyse,
+                date_export=date_export,
+                documents_monday=documents,
+                rattachement=f"{dossier.reference} — {dossier.nom}".strip(" —"),
+            )
+            if not ecrire_pdf(contenu, cible / "synthese.pdf")[0]:
+                resume.pdf_en_echec += 1
+
+    return len(sous_dossiers)
 
 
 def _documents_monday(
@@ -477,6 +589,19 @@ mails/            Pour chaque message, deux fichiers de même nom :
                     .pdf  version lisible et imprimable du même message.
 pieces-jointes/   Un sous-répertoire par message, contenant ses pièces
                   jointes telles que reçues (factures, conventions, etc.).
+factures/         Présent uniquement quand le débiteur porte plusieurs
+                  factures en retard. Un sous-répertoire par facture, chacun
+                  complet et transmissible seul : sa note de synthèse, sa
+                  chronologie, ses messages et ses pièces jointes.
+                    - un échange qui nomme une facture précise n'est versé
+                      qu'au sous-dossier de cette facture ;
+                    - un échange qui n'en nomme aucune — relance générale,
+                      réponse de l'apprenante — est versé à tous, car il vaut
+                      pour l'ensemble de la dette.
+                  Les numéros de pièce ne sont pas renumérotés : « pièce n° 7 »
+                  désigne le même message dans le dossier et dans chacun de
+                  ses sous-dossiers. La colonne « factures_concernees » de
+                  index.csv indique, pour chaque message, ce qui a été retenu.
 
 MÉTHODE DE RECHERCHE
 --------------------
@@ -615,6 +740,14 @@ def executer(
         pdf_rates = sum(r.pdf_en_echec for r in resumes)
 
         journal(f"Terminé : {total_mails} message(s), {total_pj} pièce(s) jointe(s).")
+
+        total_sous = sum(r.sous_dossiers_factures for r in resumes)
+        if total_sous:
+            multi = sum(1 for r in resumes if r.sous_dossiers_factures)
+            journal(
+                f"{multi} débiteur(s) portant plusieurs factures ont donné "
+                f"{total_sous} sous-dossier(s), un par facture, dans « factures/ »."
+            )
         if vides:
             journal(f"⚠ Dossiers sans aucun message : {', '.join(vides)}")
         if pdf_rates:

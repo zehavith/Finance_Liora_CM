@@ -19,8 +19,15 @@ export/
 │   │   ├── 001_2024-10-15_1022_recouvrement_facture-fa-2024-0153.eml
 │   │   ├── 001_2024-10-15_1022_recouvrement_facture-fa-2024-0153.pdf
 │   │   └── ...
-│   └── pieces-jointes/
-│       └── 001_2024-10-15_1022_.../facture-fa-2024-0153.pdf
+│   ├── pieces-jointes/
+│   │   └── 001_2024-10-15_1022_.../facture-fa-2024-0153.pdf
+│   └── factures/                    si le débiteur en doit plusieurs
+│       ├── fa-2024-0153/            sous-dossier complet, transmissible seul
+│       │   ├── synthese.pdf
+│       │   ├── index.csv
+│       │   ├── mails/
+│       │   └── pieces-jointes/
+│       └── fa-2024-0154/
 ├── 2024-119_sophie-bernard/
 ├── _recapitulatif.csv               une ligne par dossier
 ├── LISEZ-MOI.txt                    méthode d'extraction, à joindre au dossier
@@ -121,6 +128,37 @@ messages à chaque facture.
 Le regroupement s'annonce à l'écran, débiteur par débiteur, avec les
 références réunies. Il se fait sur l'adresse et jamais sur le nom : deux
 homonymes sont deux débiteurs, une adresse partagée désigne la même personne.
+
+#### Un dossier qui mène à un sous-dossier par facture
+
+Le dossier du débiteur reste l'ensemble — c'est lui qui porte la dette
+cumulée, l'état d'avancement et les frais engagés. Il contient en plus un
+sous-répertoire **`factures/`**, avec un sous-dossier par facture en retard :
+
+| Le message… | va dans… |
+|---|---|
+| nomme `FA-2024-0153` | le seul sous-dossier `fa-2024-0153` |
+| nomme les deux factures | les deux sous-dossiers |
+| n'en nomme aucune (relance générale, réponse de l'apprenante) | **tous** les sous-dossiers, car il vaut pour toute la dette |
+
+Chaque sous-dossier est **autonome** : sa propre note de synthèse, sa
+chronologie, ses messages, ses pièces jointes et, s'il y a un jeton Monday, sa
+propre facture PDF et sa convention. Il peut donc partir seul chez l'avocat,
+sur une clé ou dans une archive, sans rien perdre.
+
+Les numéros de pièce ne sont **pas** renumérotés : « pièce n° 7 » désigne le
+même message dans le dossier du débiteur et dans chacun de ses sous-dossiers,
+et la note de couverture du dossier récapitule la répartition. La colonne
+`factures_concernees` de `index.csv` indique, message par message, ce qui a
+été retenu.
+
+Un numéro n'est reconnu que s'il est isolé dans le texte : une facture « 118 »
+n'est jamais reconnue dans « 1180 » ni à l'intérieur d'un numéro plus long.
+
+Un débiteur ne devant qu'une facture ne reçoit pas de `factures/` : le
+découpage n'ajouterait qu'un niveau de répertoire. Pour le désactiver
+entièrement, décochez *Un sous-dossier par facture*, ou passez
+`--sans-sous-dossiers`.
 
 ### Documents stockés dans Monday
 
@@ -355,6 +393,7 @@ et de pièces jointes.
 | `--boites A,B` | Boîtes à lire, séparées par des virgules. Les doublons entre boîtes sont écartés. |
 | `--sans-synthese` | N'écrit pas la note de synthèse PDF de chaque dossier. |
 | `--sans-regroupement` | Traite chaque facture comme un dossier distinct au lieu de réunir celles d'un même débiteur. |
+| `--sans-sous-dossiers` | N'ouvre pas un sous-dossier par facture dans `factures/`. |
 | `--sans-navigateur` | N'ouvre pas le navigateur : affiche l'adresse à coller vous-même, dans la fenêtre où la boîte est déjà connectée. |
 | `--compte-service CLE.json` | Lire des boîtes partagées via un compte de service (voir ci-dessous). |
 

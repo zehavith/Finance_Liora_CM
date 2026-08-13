@@ -459,6 +459,57 @@ def classer_pieces_jointes(lignes: list[LigneIndex]) -> list[tuple[str, list[str
     return [(libelle, groupes[libelle]) for libelle in ordre if libelle in groupes]
 
 
+def factures_de_ligne(ligne: LigneIndex) -> set[str]:
+    return {
+        morceau.strip().lower()
+        for morceau in (ligne.factures_concernees or "").split(" | ")
+        if morceau.strip()
+    }
+
+
+def pieces_de_facture(factures: list[str], lignes: list[LigneIndex]) -> list[LigneIndex]:
+    """Pièces à verser au sous-dossier d'une facture.
+
+    Deux ensembles s'y retrouvent : les échanges qui nomment la facture, et
+    ceux qui n'en nomment aucune. Une relance qui ne cite aucun numéro vaut
+    pour toutes les factures du débiteur ; l'écarter viderait chaque
+    sous-dossier de l'essentiel de sa preuve. Seuls sont exclus les échanges
+    qui ne parlent que d'une autre facture.
+    """
+    voulues = {facture.strip().lower() for facture in factures if facture.strip()}
+    retenues = []
+    for ligne in lignes:
+        citees = factures_de_ligne(ligne)
+        if not citees or citees & voulues:
+            retenues.append(ligne)
+    return retenues
+
+
+def repartition_par_facture(
+    sous_dossiers, lignes: list[LigneIndex]
+) -> list[tuple[str, str, list[LigneIndex]]]:
+    """(numéro de facture, nom de répertoire, pièces) pour chaque sous-dossier.
+
+    Les noms de répertoire sont rendus uniques : deux lignes du tableau
+    peuvent porter le même numéro, et elles écriraient au même endroit.
+    """
+    from rendu import slug  # noqa: PLC0415 - évite une dépendance circulaire
+
+    resultat: list[tuple[str, str, list[LigneIndex]]] = []
+    noms_utilises: set[str] = set()
+
+    for position, sous_dossier in enumerate(sous_dossiers, start=1):
+        numero = sous_dossier.factures[0] if sous_dossier.factures else ""
+        nom = slug(numero or sous_dossier.reference or f"facture-{position}", 40)
+        if nom in noms_utilises:
+            nom = f"{nom}-{position:02d}"
+        noms_utilises.add(nom)
+        resultat.append(
+            (numero, nom, pieces_de_facture(sous_dossier.factures, lignes))
+        )
+    return resultat
+
+
 def _rangee_chronologie(ligne: LigneIndex) -> str:
     pieces = f"{ligne.nb_pieces_jointes} PJ" if ligne.nb_pieces_jointes else ""
     return (
@@ -470,6 +521,49 @@ def _rangee_chronologie(ligne: LigneIndex) -> str:
     )
 
 
+def _bloc_repartition(dossier, lignes: list[LigneIndex]) -> str:
+    """Tableau des sous-dossiers, un par facture, avec leur volume d'échanges."""
+    repartir = getattr(dossier, "repartition_par_facture", None)
+    sous_dossiers = repartir() if callable(repartir) else []
+    if not sous_dossiers:
+        return ""
+
+    rangees = []
+    for numero, nom, pieces in repartition_par_facture(sous_dossiers, lignes):
+        sous_dossier = next(
+            (s for s in sous_dossiers if s.factures and s.factures[0] == numero), None
+        )
+        montant = montant_lisible(getattr(sous_dossier, "montant_du", "") or "")
+        dates = [ligne.date for ligne in pieces]
+        periode = (
+            f"{min(dates):%d/%m/%Y} → {max(dates):%d/%m/%Y}" if dates else "aucun échange"
+        )
+        nommes = sum(1 for ligne in pieces if numero.lower() in factures_de_ligne(ligne))
+        rangees.append(
+            f"<tr><td>{html.escape(numero or '—')}</td>"
+            f"<td>{html.escape(montant or '—')}</td>"
+            f"<td>{len(pieces)} dont {nommes} la nommant</td>"
+            f"<td>{periode}</td>"
+            f"<td>factures/{html.escape(nom)}</td></tr>"
+        )
+
+    return (
+        "<h3>Répartition par facture</h3>"
+        f"<p>Ce débiteur porte {len(sous_dossiers)} factures en retard. Le présent "
+        "dossier les réunit, et le sous-répertoire <b>factures</b> en donne un "
+        "sous-dossier complet par facture, transmissible seul : chacun contient "
+        "sa propre note de synthèse, sa chronologie, les messages et les pièces "
+        "jointes correspondants.</p>"
+        "<table><tr><th>Facture</th><th>Reste dû</th><th>Échanges versés</th>"
+        f"<th>Période</th><th>Sous-dossier</th></tr>{''.join(rangees)}</table>"
+        "<p class='chemin'>Un échange qui ne nomme aucune facture — relance "
+        "générale, réponse de l'apprenante — est versé à <b>tous</b> les "
+        "sous-dossiers : il vaut pour l'ensemble de la dette. Un échange qui "
+        "nomme une facture précise n'est versé qu'à celle-ci. Les numéros de "
+        "pièce restent ceux du présent dossier, d'un sous-dossier à l'autre.</p>"
+    )
+
+
 def construire_html(
     dossier,
     boites: list[str],
@@ -477,6 +571,7 @@ def construire_html(
     synthese: Synthese,
     date_export: datetime,
     documents_monday: list[str] | None = None,
+    rattachement: str = "",
 ) -> str:
     constats = rediger_constats(synthese, date_export)
     contexte = rediger_contexte(dossier, synthese, date_export)
@@ -490,6 +585,10 @@ def construire_html(
         ("Boîtes interrogées", ", ".join(boites)),
         ("Date d'extraction", date_export.strftime("%d/%m/%Y à %H:%M")),
     ]
+    if rattachement:
+        identite.insert(
+            3, ("Rattaché au dossier", rattachement)
+        )
     rangees_identite = "".join(
         f'<tr><td class="cle">{html.escape(cle)}</td><td>{html.escape(str(valeur))}</td></tr>'
         for cle, valeur in identite
@@ -627,6 +726,8 @@ def construire_html(
 
 <h2>3. Preuve des actions engagées</h2>
 <table class="chiffres"><tr>{rangees_chiffres}</tr></table>
+
+{_bloc_repartition(dossier, lignes)}
 
 <h3>Constats</h3>
 <ul class="constats">
