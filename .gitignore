@@ -22,6 +22,8 @@ outils/recouvrement/suivi-dossiers.json
 outils/recouvrement/*service*.json
 outils/recouvrement/dossiers.csv
 outils/recouvrement/dossiers-depose.*
+# L'export comptable déposé : il porte les montants dus de chaque apprenante.
+outils/recouvrement/pennylane-depose.*
 outils/recouvrement/interface-preferences.json
 outils/recouvrement/dossiers.xlsx
 outils/recouvrement/*.xlsx

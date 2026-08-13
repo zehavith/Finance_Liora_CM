@@ -1304,6 +1304,145 @@ def test_synthese() -> None:
     )
 
 
+def test_pennylane() -> None:
+    """Comptes clients : lecture de l'export, affectation des règlements, recherche."""
+    print("\nComptes clients (export Pennylane)")
+    from pennylane import (  # noqa: PLC0415
+        ErreurPennylane,
+        associer_colonnes,
+        construire_html_releve,
+        lire_comptes,
+        montant,
+    )
+
+    print("  -- lecture des montants --")
+    verifier(montant("1 234,56") == 1234.56, "montant à la française")
+    verifier(montant("1,234.56") == 1234.56, "montant à l'anglaise")
+    verifier(montant("3 500,00 €") == 3500.0, "symbole monétaire et espace insécable")
+    verifier(montant("(1 200,00)") == -1200.0, "négatif entre parenthèses")
+    verifier(montant("1 200,00-") == -1200.0, "négatif avec signe suffixé")
+    verifier(montant("") == 0.0 and montant("—") == 0.0, "cellule vide ou tiret")
+
+    print("  -- reconnaissance des colonnes --")
+    association = associer_colonnes(
+        ["Date", "Compte général", "Compte auxiliaire", "Libellé", "Débit", "Crédit"]
+    )
+    # Le compte général vaut 411000 pour tout le monde : le retenir réunirait
+    # tous les apprenants sur un seul compte.
+    verifier(
+        association.get("compte") == 2,
+        "le compte auxiliaire identifie le client, le compte général est écarté",
+    )
+    association = associer_colonnes(["Date d'échéance", "Date", "Montant"])
+    verifier(
+        association.get("echeance") == 0 and association.get("date") == 1,
+        "« date d'échéance » n'est pas happée par « date »",
+    )
+
+    print("  -- grand livre auxiliaire --")
+    comptes = lire_comptes(Path(__file__).resolve().parent / "pennylane.exemple.csv")
+    verifier(len(comptes.comptes) == 6, f"6 comptes lus (obtenu : {len(comptes.comptes)})")
+    verifier(comptes.nb_lignes == 18, f"18 écritures lues (obtenu : {comptes.nb_lignes})")
+
+    martin = comptes.par_numero("411MARTINS")
+    verifier(
+        (martin.total_facture, martin.total_regle, martin.solde) == (4390.0, 3900.0, 490.0),
+        "totaux d'un compte : facturé, réglé, reste dû",
+    )
+
+    print("  -- affectation des règlements --")
+    leroy = comptes.par_numero("411LEROYT")
+    verifier(
+        all(facture.statut == "Payée" for facture in leroy.factures),
+        "lettrage : une facture soldée par deux virements est payée",
+    )
+    petit = comptes.par_numero("411PETITC")
+    ancienne, recente = petit.factures
+    verifier(
+        ancienne.regle == 2000.0 and recente.regle == 0.0,
+        "sans lettrage, la facture la plus ancienne est soldée en premier",
+    )
+    verifier(
+        (ancienne.statut, recente.statut) == ("Partielle", "Impayée"),
+        "statuts déduits du reste dû",
+    )
+    verifier(
+        ancienne.retard(datetime(2026, 8, 13)) == 173,
+        f"retard compté depuis l'échéance (obtenu : {ancienne.retard(datetime(2026, 8, 13))})",
+    )
+    verifier(
+        petit.impaye_echu(datetime(2026, 8, 13)) == 3300.0,
+        "impayé échu : les deux factures dépassées",
+    )
+    verifier(
+        petit.impaye_echu(datetime(2026, 2, 1)) == 0.0,
+        "rien d'échu avant la première échéance",
+    )
+
+    print("  -- recherche --")
+    def libelles(requete):
+        return [compte.libelle for compte in comptes.chercher(requete)]
+
+    verifier(libelles("martin sophie") == ["MARTIN Sophie"], "recherche par nom et prénom")
+    verifier(libelles("sophie martin") == ["MARTIN Sophie"], "le nom se cherche dans les deux ordres")
+    verifier(libelles("411DUBOISJ") == ["DUBOIS Jean-Marc"], "recherche par numéro de compte")
+    verifier(libelles("FA-2026-0602") == ["PETIT Camille"], "recherche par numéro de facture")
+    verifier(libelles("fa20260602") == ["PETIT Camille"], "ponctuation du numéro indifférente")
+    verifier(libelles("petit") == ["PETIT Camille"], "recherche sur le seul nom de famille")
+    verifier(libelles("inconnu zzz") == [], "aucun résultat plutôt qu'un compte au hasard")
+    verifier(len(comptes.chercher("411")) == 6, "un préfixe de compte ramène les comptes concernés")
+
+    print("  -- export à montant signé, autres intitulés --")
+    with tempfile.TemporaryDirectory() as repertoire:
+        variante = Path(repertoire) / "ecritures.csv"
+        variante.write_text(
+            "Export Pennylane - écritures clients\n"
+            "Période : 01/01/2026 - 31/07/2026\n"
+            "\n"
+            "Date opération;Compte auxiliaire;Nom du client;Référence;Libellé écriture;Montant\n"
+            "12/01/2026;411ROUXA;ROUX Alice;FA-2026-0777;Formation IA générative;4 200,00\n"
+            "20/02/2026;411ROUXA;ROUX Alice;VIR-0900;Virement ROUX;-1 200,00\n",
+            encoding="utf-8",
+        )
+        autre = lire_comptes(variante)
+        roux = autre.par_numero("411ROUXA")
+        verifier(
+            (roux.total_facture, roux.total_regle, roux.solde) == (4200.0, 1200.0, 3000.0),
+            "montant signé : positif facturé, négatif réglé",
+        )
+        verifier(
+            roux.factures[0].statut == "Partielle",
+            "le règlement partiel s'impute sur la facture",
+        )
+        inverse = lire_comptes(variante, inverser_sens=True)
+        verifier(
+            inverse.par_numero("411ROUXA").solde == -3000.0,
+            "l'inversion du sens change le signe du solde",
+        )
+
+        print("  -- refus d'un fichier hors sujet --")
+        hors_sujet = Path(repertoire) / "annuaire.csv"
+        hors_sujet.write_text("nom;ville\nMarie Dupont;Paris\n", encoding="utf-8")
+        try:
+            lire_comptes(hors_sujet)
+            verifier(False, "fichier sans montant refusé")
+        except ErreurPennylane as exc:
+            verifier("montant" in str(exc).lower(), f"fichier sans montant refusé ({exc})")
+
+    print("  -- relevé de compte --")
+    releve = construire_html_releve(petit, "pennylane.exemple.csv", datetime(2026, 8, 13))
+    verifier("PETIT Camille" in releve, "le relevé nomme le débiteur")
+    # Espaces insécables : un montant ne doit pas se couper en fin de ligne.
+    verifier("3 300,00 €" in releve, "le relevé porte le reste dû")
+    verifier("FA-2026-0602" in releve, "le relevé détaille les factures")
+    verifier("13/08/2026" in releve, "le relevé porte sa date d'édition")
+    # Un relevé qui sert de pièce doit dire comment ses chiffres ont été obtenus.
+    verifier(
+        "lettrage" in releve and "pennylane.exemple.csv" in releve,
+        "le relevé énonce sa source et sa règle d'affectation",
+    )
+
+
 def test_interface() -> None:
     """Pilote l'interface graphique par son API, comme le ferait la page."""
     print("\nInterface graphique")
@@ -1359,8 +1498,11 @@ def test_interface() -> None:
             ('id="lancer"', "bouton lancer"),
             ('data-vue="vueBord"', "onglet tableau de bord"),
             ('data-vue="vueSuivi"', "onglet état des dossiers"),
+            ('data-vue="vuePaiements"', "onglet paiements"),
             ('data-vue="vueDocuments"', "onglet documents"),
             ('data-vue="vueExport"', "onglet export"),
+            ('id="rechercheCompte"', "recherche d'un compte client"),
+            ('id="fichierCompta"', "dépôt de l'export comptable"),
         ]
         manquants = [libelle for marqueur, libelle in attendus if marqueur not in page]
         verifier(not manquants, f"tous les champs de la page sont présents{' — manque : ' + ', '.join(manquants) if manquants else ''}")
@@ -1503,6 +1645,73 @@ def test_interface() -> None:
                 verifier(False, "saisie manuelle sans critère refusée")
             except urllib.error.HTTPError as exc:
                 verifier(exc.code == 400, f"saisie manuelle sans critère refusée ({exc.code})")
+
+            print("  -- comptes clients pilotés par l'interface --")
+            _statut, etat_compta = appeler("/api/pennylane")
+            verifier(
+                etat_compta.get("charge") is False,
+                "sans export comptable déposé, l'onglet le dit",
+            )
+            try:
+                appeler("/api/pennylane/chercher", {"requete": "dupont"})
+                verifier(False, "recherche refusée sans export comptable")
+            except urllib.error.HTTPError as exc:
+                verifier(exc.code == 400, f"recherche refusée sans export comptable ({exc.code})")
+
+            grand_livre = (
+                Path(interface.RACINE) / "pennylane.exemple.csv"
+            ).read_bytes()
+            statut, importe = appeler(
+                "/api/pennylane/importer",
+                {
+                    "nom": "grand-livre.csv",
+                    "contenu": base64.b64encode(grand_livre).decode("ascii"),
+                },
+            )
+            verifier(
+                statut == 200 and importe.get("nb_comptes") == 6,
+                f"export comptable importé ({importe.get('nb_comptes')} comptes)",
+            )
+
+            _statut, recherche = appeler(
+                "/api/pennylane/chercher", {"requete": "camille petit"}
+            )
+            fiche = recherche.get("fiche") or {}
+            verifier(
+                len(recherche.get("resultats", [])) == 1 and fiche.get("solde") == 3300.0,
+                "un seul compte trouvé : sa fiche part avec la réponse",
+            )
+            _statut, par_facture = appeler(
+                "/api/pennylane/chercher", {"requete": "FA-2026-0602"}
+            )
+            verifier(
+                (par_facture.get("fiche") or {}).get("numero") == "411PETITC",
+                "la recherche par numéro de facture ramène le bon compte",
+            )
+
+            # Le relevé doit rejoindre le dossier du débiteur : c'est là qu'on
+            # ira le chercher au moment de transmettre au contentieux.
+            interface.ecrire_preferences({"sortie": repertoire})
+            (Path(repertoire) / "d1_petit").mkdir(exist_ok=True)
+            (Path(repertoire) / "_recapitulatif.csv").write_text(
+                "reference;nom;factures;montant_du;repertoire\n"
+                "D1;Camille Petit;FA-2026-0134 | FA-2026-0602;3300;d1_petit\n",
+                encoding="utf-8-sig",
+            )
+            _statut, releve = appeler("/api/pennylane/releve", {"numero": "411PETITC"})
+            verifier(
+                Path(releve["chemin"]).parent == Path(repertoire) / "d1_petit",
+                "le relevé est écrit dans le dossier du débiteur",
+            )
+            verifier(
+                Path(releve["chemin"]).exists() and Path(releve["chemin"]).stat().st_size > 0,
+                f"relevé écrit ({'PDF' if releve.get('pdf') else 'HTML de repli'})",
+            )
+            try:
+                appeler("/api/pennylane/releve", {"numero": "411INCONNU"})
+                verifier(False, "relevé d'un compte inconnu refusé")
+            except urllib.error.HTTPError as exc:
+                verifier(exc.code == 404, f"relevé d'un compte inconnu refusé ({exc.code})")
 
             print("  -- refus d'un second export simultané --")
             interface.EXECUTION.en_cours = True
@@ -1648,6 +1857,7 @@ def main() -> int:
     test_factures_citees()
     test_sous_dossiers_par_facture()
     test_sous_dossiers_par_adresse()
+    test_pennylane()
     test_interface()
     test_suivi()
 

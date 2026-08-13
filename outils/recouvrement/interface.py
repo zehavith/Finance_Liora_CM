@@ -34,7 +34,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import export_mails  # noqa: E402
 from gmail_api import ErreurGmail  # noqa: E402
 from dossiers import ErreurDossiers  # noqa: E402
-from rendu import moteur_pdf_disponible  # noqa: E402
+from rendu import ecrire_pdf, moteur_pdf_disponible, slug  # noqa: E402
+import pennylane as module_pennylane  # noqa: E402
 import suivi as module_suivi  # noqa: E402
 
 RACINE = Path(__file__).resolve().parent
@@ -47,6 +48,11 @@ SUIVI = RACINE / "suivi-dossiers.json"
 JETON_MONDAY = RACINE / "monday-token.txt"
 EXTENSIONS_ACCEPTEES = {".xlsx", ".xlsm", ".csv"}
 TAILLE_MAX_FICHIER = 25 * 1024 * 1024
+
+# L'export comptable est conservé sous un nom fixe, à côté de l'outil, comme
+# le fichier des dossiers : on peut le rouvrir pour vérifier ce qui a été lu,
+# et il survit à un redémarrage — inutile de le redéposer chaque matin.
+EXPORT_PENNYLANE = "pennylane-depose"
 
 
 def sortie_par_defaut() -> Path:
@@ -144,7 +150,48 @@ class Execution:
         threading.Thread(target=travail, daemon=True).start()
 
 
+class Comptabilite:
+    """L'export Pennylane déposé, relu dès que le fichier change.
+
+    La lecture d'un grand livre de plusieurs milliers de lignes prend un
+    instant : la refaire à chaque frappe dans le champ de recherche serait
+    inutilement lent. Elle est donc gardée en mémoire, et refaite dès que la
+    date du fichier bouge — remplacer l'export suffit à mettre à jour l'écran,
+    sans redémarrer l'outil.
+    """
+
+    def __init__(self):
+        self._verrou = threading.Lock()
+        self._comptes = None
+        self._signature = None
+
+    def fichier(self) -> Path | None:
+        for extension in (".xlsx", ".xlsm", ".csv"):
+            chemin = RACINE / f"{EXPORT_PENNYLANE}{extension}"
+            if chemin.exists():
+                return chemin
+        return None
+
+    def oublier(self) -> None:
+        with self._verrou:
+            self._comptes = None
+            self._signature = None
+
+    def comptes(self):
+        """Les comptes lus, ou None si aucun export n'a été déposé."""
+        chemin = self.fichier()
+        if chemin is None:
+            return None
+        signature = (str(chemin), chemin.stat().st_mtime_ns)
+        with self._verrou:
+            if self._comptes is None or self._signature != signature:
+                self._comptes = module_pennylane.lire_comptes(chemin)
+                self._signature = signature
+            return self._comptes
+
+
 EXECUTION = Execution()
+COMPTABILITE = Comptabilite()
 JETON = secrets.token_urlsafe(24)
 
 
@@ -249,6 +296,13 @@ class Gestionnaire(BaseHTTPRequestHandler):
             })
             return
 
+        if chemin == "/api/pennylane":
+            if not self._jeton_valide():
+                self._json(403, {"erreur": "Jeton invalide."})
+                return
+            self._json(200, self._etat_pennylane())
+            return
+
         if chemin == "/api/journal":
             if not self._jeton_valide():
                 self._json(403, {"erreur": "Jeton invalide."})
@@ -278,6 +332,18 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 return
             if chemin == "/api/suivi":
                 self._enregistrer_suivi(self._corps_json())
+                return
+            if chemin == "/api/pennylane/importer":
+                self._importer_pennylane(self._corps_json())
+                return
+            if chemin == "/api/pennylane/chercher":
+                self._chercher_pennylane(self._corps_json())
+                return
+            if chemin == "/api/pennylane/fiche":
+                self._fiche_pennylane(self._corps_json())
+                return
+            if chemin == "/api/pennylane/releve":
+                self._releve_pennylane(self._corps_json())
                 return
         except ValueError as exc:
             self._json(400, {"erreur": str(exc)})
@@ -314,32 +380,10 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self._demarrer(demande, depot, "saisie manuelle")
             return
 
-        nom = Path((demande.get("nom") or "").strip()).name
-        if not nom:
-            self._json(400, {"erreur": "Aucun fichier reçu."})
-            return
-        if Path(nom).suffix.lower() not in EXTENSIONS_ACCEPTEES:
-            self._json(
-                400,
-                {
-                    "erreur": (
-                        f"Format non pris en charge ({Path(nom).suffix or 'sans extension'}). "
-                        "Attendu : .xlsx, .xlsm ou .csv."
-                    )
-                },
-            )
-            return
-
         try:
-            contenu = base64.b64decode(demande.get("contenu") or "", validate=True)
-        except (ValueError, TypeError):
-            self._json(400, {"erreur": "Fichier illisible."})
-            return
-        if not contenu:
-            self._json(400, {"erreur": "Fichier vide."})
-            return
-        if len(contenu) > TAILLE_MAX_FICHIER:
-            self._json(400, {"erreur": "Fichier trop volumineux (25 Mo maximum)."})
+            nom, contenu = self._fichier_depose(demande)
+        except ValueError as exc:
+            self._json(400, {"erreur": str(exc)})
             return
 
         # Le fichier déposé est conservé sous un nom fixe, à côté de l'outil :
@@ -347,6 +391,27 @@ class Gestionnaire(BaseHTTPRequestHandler):
         depot = RACINE / f"dossiers-depose{Path(nom).suffix.lower()}"
         depot.write_bytes(contenu)
         self._demarrer(demande, depot, nom)
+
+    def _fichier_depose(self, demande: dict) -> tuple[str, bytes]:
+        """Nom et contenu d'un fichier déposé dans la page, une fois vérifiés."""
+        nom = Path((demande.get("nom") or "").strip()).name
+        if not nom:
+            raise ValueError("Aucun fichier reçu.")
+        if Path(nom).suffix.lower() not in EXTENSIONS_ACCEPTEES:
+            raise ValueError(
+                f"Format non pris en charge ({Path(nom).suffix or 'sans extension'}). "
+                "Attendu : .xlsx, .xlsm ou .csv."
+            )
+
+        try:
+            contenu = base64.b64decode(demande.get("contenu") or "", validate=True)
+        except (ValueError, TypeError):
+            raise ValueError("Fichier illisible.") from None
+        if not contenu:
+            raise ValueError("Fichier vide.")
+        if len(contenu) > TAILLE_MAX_FICHIER:
+            raise ValueError("Fichier trop volumineux (25 Mo maximum).")
+        return nom, contenu
 
     def _demarrer(self, demande: dict, depot: Path, origine: str) -> None:
         jeton = (demande.get("jeton_monday") or "").strip()
@@ -389,6 +454,163 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self._json(500, {"erreur": f"Enregistrement impossible : {exc}"})
             return
         self._json(200, {"enregistre": True, "dossier": entree})
+
+    # -- comptes clients Pennylane ---------------------------------------
+    def _etat_pennylane(self) -> dict:
+        if COMPTABILITE.fichier() is None:
+            return {"charge": False}
+        try:
+            comptes = COMPTABILITE.comptes()
+        except module_pennylane.ErreurPennylane as exc:
+            # L'export est là mais illisible : le dire, plutôt que d'afficher
+            # une page vide qui laisserait croire qu'aucun fichier n'a été
+            # déposé.
+            return {"charge": False, "erreur": str(exc)}
+        return {"charge": True, **comptes.resume()}
+
+    def _importer_pennylane(self, demande: dict) -> None:
+        try:
+            nom, contenu = self._fichier_depose(demande)
+        except ValueError as exc:
+            self._json(400, {"erreur": str(exc)})
+            return
+
+        suffixe = Path(nom).suffix.lower()
+        depot = RACINE / f"{EXPORT_PENNYLANE}{suffixe}"
+        depot.write_bytes(contenu)
+        # Un export déposé en remplace un autre : sans cela, un ancien .csv
+        # continuerait d'être lu à la place du .xlsx qui vient d'arriver.
+        for autre in (".xlsx", ".xlsm", ".csv"):
+            if autre != suffixe:
+                (RACINE / f"{EXPORT_PENNYLANE}{autre}").unlink(missing_ok=True)
+        COMPTABILITE.oublier()
+
+        try:
+            comptes = COMPTABILITE.comptes()
+        except module_pennylane.ErreurPennylane as exc:
+            self._json(400, {"erreur": str(exc)})
+            return
+        self._json(200, {"charge": True, "depose": nom, **comptes.resume()})
+
+    def _comptes_ou_erreur(self):
+        """Les comptes chargés, ou None après avoir répondu l'erreur."""
+        try:
+            comptes = COMPTABILITE.comptes()
+        except module_pennylane.ErreurPennylane as exc:
+            self._json(400, {"erreur": str(exc)})
+            return None
+        if comptes is None:
+            self._json(
+                400,
+                {"erreur": "Aucun export comptable déposé. Déposez l'export Pennylane "
+                           "des comptes clients pour consulter les paiements."},
+            )
+            return None
+        return comptes
+
+    def _chercher_pennylane(self, demande: dict) -> None:
+        comptes = self._comptes_ou_erreur()
+        if comptes is None:
+            return
+
+        requete = (demande.get("requete") or "").strip()
+        trouves = comptes.chercher(requete)
+        resultats = [
+            {
+                "numero": compte.numero,
+                "libelle": compte.libelle,
+                "solde": compte.solde,
+                "nb_factures": len(compte.factures),
+                "nb_impayees": sum(
+                    1 for facture in compte.factures
+                    if facture.reste > module_pennylane.TOLERANCE
+                ),
+            }
+            for compte in trouves
+        ]
+        # Un seul compte trouvé : la fiche part avec la réponse, sans faire
+        # cliquer sur l'unique résultat.
+        fiche = trouves[0].resume() if len(trouves) == 1 else None
+        self._json(200, {"resultats": resultats, "fiche": fiche})
+
+    def _compte_demande(self, demande: dict):
+        comptes = self._comptes_ou_erreur()
+        if comptes is None:
+            return None
+        numero = (demande.get("numero") or "").strip()
+        compte = comptes.par_numero(numero)
+        if compte is None:
+            self._json(404, {"erreur": f"Compte introuvable : {numero}"})
+            return None
+        return compte
+
+    def _fiche_pennylane(self, demande: dict) -> None:
+        compte = self._compte_demande(demande)
+        if compte is not None:
+            self._json(200, {"fiche": compte.resume()})
+
+    def _dossier_du_compte(self, compte, racine: Path) -> Path | None:
+        """Répertoire d'export du débiteur, quand l'un correspond.
+
+        Le rapprochement se fait d'abord sur les numéros de facture — c'est le
+        seul identifiant commun à la comptabilité et au tableau de suivi. Le
+        nom ne sert qu'à défaut, et sans tenir compte de l'ordre : le grand
+        livre écrit « DUPONT Marie » là où Monday écrit « Marie Dupont ».
+        """
+        numeros = {
+            module_pennylane.identifiant(numero)
+            for numero in compte.numeros_de_facture()
+            if numero
+        }
+        mots_du_compte = sorted(module_pennylane.normaliser(compte.libelle).split())
+
+        replis: Path | None = None
+        for dossier in module_suivi.inventaire(racine, SUIVI):
+            repertoire = Path(dossier["repertoire"])
+            if not repertoire.is_dir():
+                continue
+            factures = {
+                module_pennylane.identifiant(facture)
+                for facture in (dossier["factures"] or "").split("|")
+                if facture.strip()
+            }
+            if numeros & factures:
+                return repertoire
+            if mots_du_compte and sorted(
+                module_pennylane.normaliser(dossier["nom"]).split()
+            ) == mots_du_compte:
+                replis = replis or repertoire
+        return replis
+
+    def _releve_pennylane(self, demande: dict) -> None:
+        compte = self._compte_demande(demande)
+        if compte is None:
+            return
+
+        comptes = COMPTABILITE.comptes()
+        racine = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+        repertoire = self._dossier_du_compte(compte, racine)
+
+        if repertoire is not None:
+            # Dans le dossier du débiteur, à côté de la note de synthèse :
+            # c'est là qu'on ira le chercher au moment de transmettre.
+            cible = repertoire / "releve-pennylane.pdf"
+        else:
+            cible = racine / "releves" / f"releve-pennylane_{slug(compte.libelle, 40)}.pdf"
+
+        contenu = module_pennylane.construire_html_releve(compte, comptes.fichier)
+        try:
+            reussi, moteur = ecrire_pdf(contenu, cible)
+        except OSError as exc:
+            self._json(500, {"erreur": f"Écriture impossible : {exc}"})
+            return
+
+        self._json(200, {
+            "chemin": str(cible if reussi else cible.with_suffix(".html")),
+            "pdf": reussi,
+            "moteur": moteur,
+            "dossier": str(repertoire) if repertoire else "",
+        })
 
     def _ouvrir(self, demande: dict) -> None:
         cible = Path((demande.get("chemin") or "").strip() or sortie_par_defaut())
@@ -508,6 +730,17 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .principal:hover:not(:disabled){filter:brightness(1.08)}
 .secondaire{background:transparent;border-color:var(--bord);color:var(--texte-2)}
 .secondaire:hover:not(:disabled){border-color:var(--bord-actif);color:var(--texte)}
+#rechercheCompte{font-size:15px;padding:13px 15px}
+#zoneCompta{border:2px dashed var(--bord);border-radius:12px;padding:26px;text-align:center;
+  cursor:pointer;transition:.15s;background:rgba(255,255,255,.015)}
+#zoneCompta:hover,#zoneCompta.survol{border-color:var(--bord-actif);background:rgba(244,116,88,.06)}
+#zoneCompta.rempli{border-style:solid;border-color:var(--vert)}
+#nomFichierCompta{font-weight:600;color:var(--vert)}
+tr.cliquable{cursor:pointer}
+.du{color:var(--rouge);font-weight:600}
+.regle{color:var(--vert)}
+.st-payee{color:var(--vert)} .st-partielle{color:var(--jaune)} .st-impayee{color:var(--rouge)}
+.retard{color:var(--jaune);font-size:11px}
 #journal{background:#05070f;border:1px solid var(--bord);border-radius:10px;padding:16px;
   font-family:Consolas,Menlo,monospace;font-size:12.5px;white-space:pre-wrap;
   word-break:break-word;max-height:440px;overflow-y:auto;margin-top:14px}
@@ -535,6 +768,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <nav class="principal">
   <button class="actif" data-vue="vueBord">Tableau de bord</button>
   <button data-vue="vueSuivi">État des dossiers</button>
+  <button data-vue="vuePaiements">Paiements</button>
   <button data-vue="vueDocuments">Documents</button>
   <button data-vue="vueExport">Export</button>
 </nav>
@@ -551,6 +785,38 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <p class="aide">L'avancement et les frais sont enregistrés au fur et à mesure,
        à côté de l'outil. Refaire un export ne les efface pas.</p>
     <div id="tableSuivi"></div>
+  </section>
+</div>
+
+<div class="vue" id="vuePaiements">
+  <section>
+    <h2>Le compte d'un apprenant</h2>
+    <p class="aide">Nom et prénom, numéro de compte client (411…) ou numéro de
+       facture. Les paiements viennent de la comptabilité, pas du tableau de
+       suivi : c'est ce qui a été réellement encaissé.</p>
+    <input type="text" id="rechercheCompte" autocomplete="off"
+           placeholder="Marie Dupont, 411DUPONTM, FA-2026-0153…" />
+    <p class="note" id="etatCompta">—</p>
+  </section>
+
+  <div class="bandeau" id="bandeauPaiements"></div>
+  <div id="resultatsComptes"></div>
+  <div id="ficheCompte"></div>
+
+  <section>
+    <h2>L'export comptable</h2>
+    <p class="aide">Le grand livre auxiliaire des comptes clients, exporté de
+       Pennylane (Révision → Grand livre, filtré sur les comptes 411). Formats
+       acceptés : .xlsx, .xlsm, .csv</p>
+    <div id="zoneCompta">
+      <div class="fleche">&#8593;</div>
+      <div id="texteZoneCompta">Glissez-déposez l'export, ou cliquez pour le choisir</div>
+      <div id="nomFichierCompta"></div>
+    </div>
+    <input type="file" id="fichierCompta" accept=".xlsx,.xlsm,.csv" hidden />
+    <p class="note" id="colonnesCompta"></p>
+    <p class="note">L'export est conservé à côté de l'outil : il reste lu au
+       prochain démarrage. En déposer un nouveau remplace le précédent.</p>
   </section>
 </div>
 
@@ -881,9 +1147,215 @@ document.querySelectorAll("nav.principal button").forEach((bouton) => {
     document.querySelectorAll(".vue").forEach((v) => v.classList.remove("actif"));
     bouton.classList.add("actif");
     $(bouton.dataset.vue).classList.add("actif");
-    if (bouton.dataset.vue !== "vueExport") chargerDossiers();
+    if (bouton.dataset.vue === "vuePaiements") { chargerCompta(); $("rechercheCompte").focus(); }
+    else if (bouton.dataset.vue !== "vueExport") chargerDossiers();
   });
 });
+
+// ============================================================
+//  Paiements — les comptes clients de la comptabilité
+// ============================================================
+const euroPrecis = (v) => new Intl.NumberFormat("fr-FR",
+  { style: "currency", currency: "EUR", minimumFractionDigits: 2 }).format(v || 0);
+
+let COMPTA = null, attenteRecherche = null, COMPTE_AFFICHE = null;
+
+function bandeauPaiements(reussi, message) {
+  const bandeau = $("bandeauPaiements");
+  bandeau.textContent = message;
+  bandeau.className = "bandeau visible " + (reussi ? "reussi" : "rate");
+}
+
+async function chargerCompta() {
+  try { COMPTA = await api("/api/pennylane"); }
+  catch (erreur) { bandeauPaiements(false, erreur.message); return; }
+
+  if (COMPTA.charge) {
+    $("etatCompta").innerHTML = COMPTA.nb_comptes + " compte(s) client, " +
+      COMPTA.nb_lignes + " écriture(s) — solde total " + euroPrecis(COMPTA.solde_total) +
+      " · source : " + echapper(COMPTA.fichier) + ", lue le " + echapper(COMPTA.lu_le);
+    $("colonnesCompta").textContent = "Colonnes reconnues : " + COMPTA.colonnes;
+  } else {
+    $("etatCompta").textContent = COMPTA.erreur ||
+      "Aucun export comptable déposé — déposez-le ci-dessous.";
+    $("colonnesCompta").textContent = "";
+  }
+}
+
+$("rechercheCompte").addEventListener("input", () => {
+  clearTimeout(attenteRecherche);
+  attenteRecherche = setTimeout(chercherCompte, 180);
+});
+
+async function chercherCompte() {
+  const requete = $("rechercheCompte").value.trim();
+  if (!requete) { $("resultatsComptes").innerHTML = ""; $("ficheCompte").innerHTML = ""; return; }
+
+  let reponse;
+  try { reponse = await api("/api/pennylane/chercher", { requete: requete }); }
+  catch (erreur) { bandeauPaiements(false, erreur.message); return; }
+  $("bandeauPaiements").className = "bandeau";
+
+  if (!reponse.resultats.length) {
+    $("resultatsComptes").innerHTML =
+      '<p class="vide">Aucun compte ne correspond à « ' + echapper(requete) + ' ».</p>';
+    $("ficheCompte").innerHTML = "";
+    return;
+  }
+
+  // Un seul compte : sa fiche s'ouvre directement, la liste n'apprendrait rien.
+  if (reponse.fiche) {
+    $("resultatsComptes").innerHTML = "";
+    rendreFiche(reponse.fiche);
+    return;
+  }
+
+  $("ficheCompte").innerHTML = "";
+  $("resultatsComptes").innerHTML = '<section><table class="donnees">' +
+    "<tr><th>Compte</th><th>Débiteur</th><th class='num'>Factures</th>" +
+    "<th class='num'>Reste dû</th></tr>" +
+    reponse.resultats.map((r) => `
+      <tr class="cliquable" data-numero="${echapper(r.numero || r.libelle)}">
+        <td>${echapper(r.numero) || "—"}</td>
+        <td><b>${echapper(r.libelle)}</b></td>
+        <td class="num">${r.nb_factures}${r.nb_impayees
+          ? ' <span class="retard">dont ' + r.nb_impayees + " en attente</span>" : ""}</td>
+        <td class="num ${r.solde > 0.01 ? "du" : "regle"}">${euroPrecis(r.solde)}</td>
+      </tr>`).join("") + "</table></section>";
+
+  $("resultatsComptes").querySelectorAll("[data-numero]").forEach((rangee) =>
+    rangee.addEventListener("click", () => ouvrirCompte(rangee.dataset.numero)));
+}
+
+async function ouvrirCompte(numero) {
+  try {
+    const reponse = await api("/api/pennylane/fiche", { numero: numero });
+    rendreFiche(reponse.fiche);
+  } catch (erreur) { bandeauPaiements(false, erreur.message); }
+}
+
+function rendreFiche(fiche) {
+  COMPTE_AFFICHE = fiche;
+
+  const tuiles = [
+    ["Total facturé", euroPrecis(fiche.total_facture), "toutes factures du compte", ""],
+    ["Total réglé", euroPrecis(fiche.total_regle), "encaissements comptabilisés", ""],
+    ["Reste dû", euroPrecis(fiche.solde), "facturé moins réglé", ""],
+    ["Dont échu", euroPrecis(fiche.impaye_echu), "échéance dépassée", ""],
+  ].map(([lib, val, sous]) => `
+    <div class="tuile"><div class="lib">${lib}</div>
+      <div class="val">${val}</div><div class="sous">${sous}</div></div>`).join("");
+
+  const factures = fiche.factures.length ? `<table class="donnees">
+    <tr><th>Date</th><th>N° de facture</th><th>Libellé</th><th>Échéance</th>
+        <th class="num">Montant</th><th class="num">Réglé</th>
+        <th class="num">Reste</th><th>Statut</th></tr>` +
+    fiche.factures.map((f) => `
+      <tr><td>${echapper(f.date)}</td><td>${echapper(f.numero) || "—"}</td>
+        <td>${echapper(f.libelle) || "—"}</td><td>${echapper(f.echeance)}</td>
+        <td class="num">${euroPrecis(f.total)}</td>
+        <td class="num regle">${euroPrecis(f.regle)}</td>
+        <td class="num ${f.reste > 0.01 ? "du" : ""}">${euroPrecis(f.reste)}</td>
+        <td class="st-${f.statut.toLowerCase().replace("é", "e")}">${echapper(f.statut)}${
+          f.retard ? ' <span class="retard">+' + f.retard + " j</span>" : ""}</td>
+      </tr>`).join("") + "</table>"
+    : '<p class="vide">Aucune facture sur ce compte.</p>';
+
+  const reglements = fiche.reglements.length ? `<table class="donnees">
+    <tr><th>Date</th><th>Référence</th><th>Libellé</th><th>Journal</th>
+        <th class="num">Montant</th></tr>` +
+    fiche.reglements.map((r) => `
+      <tr><td>${echapper(r.date)}</td><td>${echapper(r.piece) || "—"}</td>
+        <td>${echapper(r.libelle) || "—"}</td><td>${echapper(r.journal) || "—"}</td>
+        <td class="num regle">${euroPrecis(r.montant)}</td></tr>`).join("") + "</table>"
+    : '<p class="vide">Aucun règlement enregistré sur ce compte.</p>';
+
+  $("ficheCompte").innerHTML = `<section>
+    <h2>${echapper(fiche.libelle)}</h2>
+    <p class="aide">${fiche.numero ? "Compte " + echapper(fiche.numero) + " · " : ""}
+       ${fiche.nb_factures} facture(s), dont ${fiche.nb_impayees} non soldée(s)</p>
+    <div class="tuiles">${tuiles}</div>
+    <h2>Factures</h2>${factures}
+    <h2 style="margin-top:22px">Règlements</h2>${reglements}
+    <div class="boutons" style="margin-top:18px">
+      <button class="principal" id="releve">Enregistrer le relevé en PDF</button>
+    </div>
+    <p class="note">Le relevé se range dans le dossier du débiteur quand il en
+       existe un dans l'export, à côté de la note de synthèse. Les règlements
+       sont rattachés aux factures par le lettrage comptable ; à défaut, les
+       factures les plus anciennes sont soldées en premier.</p>
+  </section>`;
+
+  $("releve").addEventListener("click", enregistrerReleve);
+}
+
+async function enregistrerReleve() {
+  if (!COMPTE_AFFICHE) return;
+  $("releve").disabled = true;
+  try {
+    const reponse = await api("/api/pennylane/releve",
+      { numero: COMPTE_AFFICHE.numero || COMPTE_AFFICHE.libelle });
+    let message = (reponse.pdf
+      ? "Relevé enregistré : " : "PDF impossible — page HTML conservée : ") + reponse.chemin +
+      (reponse.dossier ? " (dans le dossier du débiteur)" : "");
+    // L'ouverture peut échouer sans que le relevé soit perdu : il est écrit,
+    // le dire plutôt que de laisser croire à un échec.
+    try { await api("/api/ouvrir", { chemin: reponse.chemin }); }
+    catch (erreur) { message += " — ouverture automatique impossible (" + erreur.message + ")"; }
+    bandeauPaiements(reponse.pdf, message);
+  } catch (erreur) {
+    bandeauPaiements(false, erreur.message);
+  } finally {
+    $("releve").disabled = false;
+  }
+}
+
+// -- dépôt de l'export comptable
+const zoneCompta = $("zoneCompta");
+zoneCompta.addEventListener("click", () => $("fichierCompta").click());
+["dragenter", "dragover"].forEach((e) => zoneCompta.addEventListener(e, (ev) => {
+  ev.preventDefault(); zoneCompta.classList.add("survol"); }));
+["dragleave", "drop"].forEach((e) =>
+  zoneCompta.addEventListener(e, () => zoneCompta.classList.remove("survol")));
+zoneCompta.addEventListener("drop", (ev) => {
+  ev.preventDefault();
+  if (ev.dataTransfer.files.length) importerCompta(ev.dataTransfer.files[0]);
+});
+$("fichierCompta").addEventListener("change", (ev) => {
+  if (ev.target.files.length) importerCompta(ev.target.files[0]);
+});
+
+async function importerCompta(fichier) {
+  const extension = "." + fichier.name.split(".").pop().toLowerCase();
+  if (![".xlsx", ".xlsm", ".csv"].includes(extension)) {
+    bandeauPaiements(false, "Format non pris en charge : " + extension +
+      ". Attendu : .xlsx, .xlsm ou .csv.");
+    return;
+  }
+
+  $("texteZoneCompta").textContent = "Lecture en cours…";
+  try {
+    const contenu = await new Promise((resoudre, rejeter) => {
+      const lecteur = new FileReader();
+      lecteur.onload = () => resoudre(lecteur.result.split(",")[1]);
+      lecteur.onerror = () => rejeter(new Error("Lecture du fichier impossible."));
+      lecteur.readAsDataURL(fichier);
+    });
+    COMPTA = await api("/api/pennylane/importer", { nom: fichier.name, contenu: contenu });
+  } catch (erreur) {
+    $("texteZoneCompta").textContent = "Glissez-déposez l'export, ou cliquez pour le choisir";
+    bandeauPaiements(false, erreur.message);
+    return;
+  }
+
+  zoneCompta.classList.add("rempli");
+  $("texteZoneCompta").textContent = "Export retenu :";
+  $("nomFichierCompta").textContent = fichier.name;
+  bandeauPaiements(true, COMPTA.nb_comptes + " compte(s) client lus dans " +
+    COMPTA.nb_lignes + " écriture(s).");
+  await chargerCompta();
+  chercherCompte();
+}
 
 // ============================================================
 //  Suivi des dossiers

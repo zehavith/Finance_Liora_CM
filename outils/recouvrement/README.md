@@ -103,12 +103,13 @@ automatiquement ne serait pas vérifiable pièce par pièce.
 choisissez les boîtes et la destination, puis suivez la progression à l'écran.
 Aucune commande à taper.
 
-L'application comporte quatre onglets :
+L'application comporte cinq onglets :
 
 | Onglet | Rôle |
 |---|---|
 | **Tableau de bord** | page d'accueil : montants en recouvrement, frais, issues, répartition par étape |
 | **État des dossiers** | avancement de la procédure et frais engagés, saisis et conservés |
+| **Paiements** | le compte d'un apprenant dans la comptabilité : factures, règlements, reste dû |
 | **Documents** | les dossiers produits — ouvrir la note de synthèse ou le répertoire |
 | **Export** | lancer une extraction, depuis un export Monday ou une recherche ponctuelle |
 
@@ -119,6 +120,53 @@ L'avancement suit six états : non transmis, transmis, en cours chez l'avocat,
 passage au tribunal, clôturé gagné, clôturé perdu. Il est enregistré dans
 `suivi-dossiers.json`, **à côté de l'outil et non dans l'export** : refaire une
 extraction n'efface pas l'état d'avancement.
+
+### Les paiements d'un apprenant
+
+Le tableau Monday dit ce qu'il **reste à devoir** ; la comptabilité dit ce qui
+a été **réellement encaissé**, facture par facture, avec la date de chaque
+règlement. L'onglet **Paiements** donne la seconde, sans quitter l'outil ni
+ouvrir Pennylane.
+
+Déposez-y l'export des comptes clients — depuis Pennylane, *Révision → Grand
+livre*, filtré sur les comptes `411` ; un export de factures et règlements fait
+également l'affaire. Formats acceptés : `.xlsx`, `.xlsm`, `.csv`. L'export est
+conservé à côté de l'outil et rechargé au démarrage suivant : il n'y a pas à le
+redéposer chaque matin, et en déposer un nouveau remplace le précédent.
+
+La recherche se fait ensuite par **nom et prénom**, **numéro de compte
+client** (`411…`) ou **numéro de facture** :
+
+- le nom se cherche dans les deux ordres — le grand livre écrit « DUPONT
+  Marie » là où l'apprenante signe « Marie Dupont » ;
+- la ponctuation d'un numéro est indifférente : `FA-2026-0153`, `fa 2026 0153`
+  et `FA20260153` désignent la même facture ;
+- un seul compte trouvé ouvre directement sa fiche ; plusieurs donnent la liste
+  des comptes avec leur reste dû.
+
+La fiche affiche le total facturé, le total réglé, le reste dû et la part
+échue, puis les factures — avec leur statut (payée, partielle, impayée) et
+leurs jours de retard — et les règlements encaissés.
+
+**Enregistrer le relevé en PDF** produit une pièce à joindre au dossier. Elle
+se range **dans le répertoire du débiteur**, à côté de `synthese.pdf`, dès
+qu'un dossier de l'export lui correspond ; le rapprochement se fait sur les
+numéros de facture, à défaut sur le nom. Sans dossier correspondant, le relevé
+va dans `releves/` à la racine de la destination.
+
+Les colonnes de l'export sont reconnues automatiquement et **la correspondance
+retenue est affichée** sous la zone de dépôt : vérifiez-la au premier import
+d'un nouveau format. Deux points d'attention :
+
+- le **compte général** (`411000`, identique pour tous) n'est jamais retenu
+  comme identifiant : seul le compte auxiliaire distingue les apprenants ;
+- les règlements sont rattachés aux factures par le **lettrage** comptable
+  lorsqu'il figure dans l'export. À défaut, les factures les plus anciennes
+  sont soldées en premier — l'imputation par défaut, énoncée sur le relevé
+  lui-même. Les trois totaux, eux, n'en dépendent pas.
+
+`pennylane.exemple.csv` sert de jeu d'essai : il permet de voir l'onglet
+fonctionner sans sortir de données réelles de Pennylane.
 
 ### Plusieurs factures pour un même débiteur
 
@@ -294,8 +342,8 @@ python test_hors_ligne.py
 
 Ce test ne touche pas à Gmail et ne demande aucune autorisation. Il vérifie la
 lecture du fichier de dossiers, la construction des requêtes, le décodage d'un
-message et la génération des fichiers. Il affiche aussi le **moteur PDF**
-détecté sur le poste.
+message, la lecture d'un export comptable et la génération des fichiers. Il
+affiche aussi le **moteur PDF** détecté sur le poste.
 
 ## Préparer la liste des dossiers
 
@@ -548,6 +596,8 @@ intégrées au message (logos de signature) sont, elles, présentes dans le PDF.
 | `plafond de 500 messages atteint` | Dossier tronqué : relancer avec `--max-mails 2000` et `--seulement REF`. |
 | `⚠ Dossiers sans aucun message` | Vérifier l'adresse et le numéro de facture, ou élargir les bornes de dates. |
 | `PDF non généré` | Aucun moteur PDF n'a abouti. Installer Chrome ou Edge, puis relancer avec `--reprendre`. |
+| `aucune colonne de montant reconnue` | L'export déposé dans l'onglet Paiements n'est pas un grand livre : il lui faut « Débit » et « Crédit », ou « Montant ». |
+| Onglet Paiements : un apprenant introuvable | Son compte n'est pas dans l'export déposé (période trop courte, filtre sur d'autres comptes), ou son nom y est écrit autrement — cherchez alors par numéro de facture. |
 | Interruption en cours d'export | Relancer la même commande avec `--reprendre`. |
 
 ## Données personnelles

@@ -17,39 +17,6 @@ simulations.
 | **Simulation** | Scénarios de trésorerie ajustables à partir des moyennes historiques |
 | **Fichiers** | Import, historique des fichiers, état du stockage, récapitulatif des règles, configuration de la clé API |
 
-## Paiements Apprenants (`paiements-apprenants.html`)
-
-Application autonome, dans le même dossier : **le compte d'un apprenant en une
-recherche**, à partir d'un export Pennylane des comptes clients.
-
-1. Ouvrir `paiements-apprenants.html` (ou le lien « Paiements Apprenants » depuis
-   l'écran d'accueil du Cash Flow Analyzer).
-2. Importer l'export Pennylane (`.csv`, `.xlsx`, `.xls`) — typiquement
-   **Révision → Grand livre**, filtré sur les comptes `411`, ou un export
-   factures / règlements.
-3. Rechercher par **nom et prénom** (dans les deux ordres), **numéro de compte**
-   (`411…`) ou **numéro de facture**.
-
-La fiche affiche : total facturé, total réglé, solde dû, impayé échu, la liste
-des factures avec leur statut (payée / partielle / impayée + jours de retard),
-la liste des règlements et le grand livre du compte. Deux sorties : **Exporter
-PDF** (mise en page d'impression dédiée, prête à envoyer à l'apprenant) et
-**Exporter CSV**.
-
-Points de fonctionnement :
-
-- **Détection automatique des colonnes** (date, échéance, compte, nom, n° de
-  pièce, libellé, débit, crédit, montant, lettrage). Le bouton **Colonnes**
-  permet de corriger une correspondance et d'inverser débit / crédit si l'export
-  utilise une convention de signe différente.
-- Les lignes de titre en tête d'export sont ignorées : la vraie ligne d'en-tête
-  est détectée automatiquement.
-- **Affectation des règlements** : par code de lettrage lorsqu'il figure dans
-  l'export, sinon les factures les plus anciennes sont soldées en premier.
-- Données conservées dans le navigateur (IndexedDB `liora_paiements`, séparée de
-  celle du Cash Flow Analyzer). Rien n'est envoyé sur Internet.
-- `exemple_export_pennylane_clients.csv` sert de jeu d'essai.
-
 ## Stack technique
 
 - **HTML + CSS + JavaScript pur** (vanilla), sans framework ni build.
@@ -89,10 +56,6 @@ Aucune compilation, aucun serveur nécessaire.
 index.html                   Structure de l'application (écrans + onglets)
 app.js                       Logique applicative (≈ 3 750 lignes)
 styles.css                   Styles (thème sombre « navy »)
-paiements-apprenants.html    App autonome : recherche du compte d'un apprenant
-paiements-apprenants.js      Logique de l'app Paiements Apprenants
-paiements-apprenants.css     Styles dédiés + mise en page d'impression (PDF)
-exemple_export_pennylane_clients.csv  Jeu d'essai (grand livre auxiliaire 411)
 vendor/                      Librairies tierces intégrées en local (Chart.js, PapaParse, xlsx, treemap)
 regles_categorisation.csv    Référence des 774 règles de catégorisation (export documentaire)
 Liora_Logo_Orange_alpha.png  Logo

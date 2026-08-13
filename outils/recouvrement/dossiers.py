@@ -599,7 +599,11 @@ def _texte_cellule(valeur) -> str:
     return str(valeur).strip()
 
 
-def _grille_xlsx(chemin: Path) -> list[tuple[int, list[str]]]:
+def _score_grille(grille: list[tuple[int, list[str]]]) -> int:
+    return _score_entete(_trouver_entete(grille)[1])
+
+
+def _grille_xlsx(chemin: Path, score_feuille=None) -> list[tuple[int, list[str]]]:
     try:
         import openpyxl  # noqa: PLC0415
     except ImportError as exc:
@@ -615,7 +619,10 @@ def _grille_xlsx(chemin: Path) -> list[tuple[int, list[str]]]:
         raise ErreurDossiers(f"Fichier Excel illisible ({chemin}) : {exc}") from exc
 
     # Un classeur peut comporter plusieurs onglets : on retient celui dont
-    # l'en-tête expose le plus de colonnes exploitables.
+    # l'en-tête expose le plus de colonnes exploitables. Le barème est
+    # remplaçable — un export comptable ne se reconnaît pas aux mêmes colonnes
+    # qu'un tableau de suivi.
+    noter = score_feuille or _score_grille
     meilleure: list[tuple[int, list[str]]] = []
     meilleur_score = -1
     for feuille in classeur.worksheets:
@@ -623,8 +630,7 @@ def _grille_xlsx(chemin: Path) -> list[tuple[int, list[str]]]:
             (numero, [_texte_cellule(cellule) for cellule in rangee])
             for numero, rangee in enumerate(feuille.iter_rows(values_only=True), start=1)
         ]
-        _index, association = _trouver_entete(grille)
-        score = _score_entete(association)
+        score = noter(grille)
         if score > meilleur_score:
             meilleur_score, meilleure = score, grille
 
@@ -632,11 +638,12 @@ def _grille_xlsx(chemin: Path) -> list[tuple[int, list[str]]]:
     return meilleure
 
 
-def _grille_csv(chemin: Path) -> list[tuple[int, list[str]]]:
+def _grille_csv(chemin: Path, score_feuille=None) -> list[tuple[int, list[str]]]:
     texte = chemin.read_text(encoding="utf-8-sig")
     if not texte.strip():
         raise ErreurDossiers(f"Fichier des dossiers vide : {chemin}")
 
+    noter = score_feuille or _score_grille
     meilleure: list[tuple[int, list[str]]] = []
     meilleur_score = -1
 
@@ -653,20 +660,25 @@ def _grille_csv(chemin: Path) -> list[tuple[int, list[str]]]:
         except csv.Error:
             continue
 
-        _index, association = _trouver_entete(grille)
-        score = _score_entete(association)
+        score = noter(grille)
         if score > meilleur_score:
             meilleur_score, meilleure = score, grille
 
     return meilleure
 
 
-def charger_grille(chemin: Path) -> list[tuple[int, list[str]]]:
+def charger_grille(chemin: Path, score_feuille=None) -> list[tuple[int, list[str]]]:
+    """Lit un tableau (CSV ou Excel) sous forme de lignes numérotées.
+
+    `score_feuille` note une grille candidate — onglet d'un classeur,
+    délimiteur d'un CSV — et désigne celle qui sera retenue. Par défaut, le
+    barème du fichier des dossiers ; un autre lecteur passe le sien.
+    """
     if not chemin.exists():
         raise ErreurDossiers(f"Fichier des dossiers introuvable : {chemin}")
     if chemin.suffix.lower() in {".xlsx", ".xlsm", ".xltx"}:
-        return _grille_xlsx(chemin)
-    return _grille_csv(chemin)
+        return _grille_xlsx(chemin, score_feuille)
+    return _grille_csv(chemin, score_feuille)
 
 
 def lire_dossiers(
