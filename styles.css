@@ -3,6 +3,15 @@
    Design System — Dark Navy
    ============================ */
 
+/* Police Inter intégrée en local (fonctionnement 100% hors-ligne) */
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('vendor/inter-latin.woff2') format('woff2');
+}
+
 :root {
     /* Primary Palette — Navy/Indigo */
     --purple-50: #eef2ff;
