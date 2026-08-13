@@ -362,6 +362,70 @@
         return bestMatch;
     }
 
+    // ── B2B Registry (annuaire officiel — recherche-entreprises.api.gouv.fr, gratuit & sans clé) ──
+    const STORAGE_B2B_KEY = 'liora_b2b_registry';
+    let b2bRegistryCache = {}; // { CLEAN_NAME: { isCompany, siren, nom } }
+
+    async function loadB2BCache() {
+        try { b2bRegistryCache = (await idbGet(STORAGE_B2B_KEY)) || {}; } catch { b2bRegistryCache = {}; }
+    }
+    async function saveB2BCache() {
+        try { await idbSet(STORAGE_B2B_KEY, b2bRegistryCache); } catch { /* ignore */ }
+    }
+    function b2bCacheKey(name) { return normUpper(name); }
+
+    // Extrait un nom d'entreprise interrogeable depuis une transaction
+    // (champ Tiers prioritaire, sinon Libellé nettoyé de ses mentions bancaires)
+    function extractCompanyName(row) {
+        const tiers = (row.tiers || '').trim();
+        let s = (tiers || String(row.libelle || '')).replace(/\s+/g, ' ').trim();
+        if (!tiers) {
+            // Couper au premier jeton contenant 4 chiffres ou plus (souvent une référence de transaction)
+            const cut = s.search(/\S*\d{4,}/);
+            if (cut > 2) s = s.slice(0, cut);
+            // Retirer les mentions bancaires courantes
+            s = s.replace(/\b(VIREMENT|VIR|SCT|INST|SEPA|RE[CÇ]U|RECU|EMIS|PRELEVEMENT|PRLV|PAIEMENT|PAR|CARTE|DE|DU|DES|LA|LE|LES)\b/gi, ' ');
+        }
+        // Nettoyage : lettres/chiffres/espaces et quelques séparateurs, puis 6 mots max
+        s = s.replace(/[^0-9A-Za-zÀ-ÿ &'’.\-]/g, ' ').replace(/\s+/g, ' ').trim();
+        return s.split(' ').slice(0, 6).join(' ').trim();
+    }
+
+    // Contrôle de confiance : le nom trouvé doit partager un jeton significatif avec la requête
+    function registryNameMatches(query, found) {
+        const q = normUpper(query), f = normUpper(found);
+        if (!q || !f) return false;
+        const qTok = q.split(' ').filter(t => t.length >= 4);
+        const fTok = new Set(f.split(' ').filter(t => t.length >= 2));
+        return qTok.some(t => fTok.has(t) || f.includes(t));
+    }
+
+    // Interroge l'annuaire officiel pour un nom → { isCompany, siren, nom }
+    async function queryCompanyRegistry(name) {
+        const url = 'https://recherche-entreprises.api.gouv.fr/search?q='
+            + encodeURIComponent(name) + '&page=1&per_page=1';
+        const resp = await fetchWithRetry(url, { method: 'GET' });
+        if (!resp || !resp.ok) return { isCompany: false };
+        let data;
+        try { data = await resp.json(); } catch { return { isCompany: false }; }
+        const results = (data && data.results) || [];
+        if (!results.length) return { isCompany: false };
+        const top = results[0];
+        const nom = top.nom_complet || top.nom_raison_sociale || '';
+        if (!registryNameMatches(name, nom)) return { isCompany: false };
+        return { isCompany: true, siren: top.siren || '', nom };
+    }
+
+    // Lignes candidates : encaissements retombés en "Autres revenus" via le fallback (aucune règle), non reclassés
+    function getB2BCandidateRows() {
+        return rawData.filter(r =>
+            r.sens === 'Encaissement' &&
+            r.categorie === 'Autres revenus' &&
+            r.ruleHit === 'Enc: Fallback' &&
+            !r.manualCategory
+        );
+    }
+
     // Migrate from localStorage to IndexedDB (one-time)
     async function migrateFromLocalStorage() {
         try {
@@ -766,6 +830,20 @@
             }
         });
 
+        // Step 3b: B2B via annuaire officiel (cache) — reclasse les "Autres revenus" (fallback)
+        //          confirmés comme sociétés immatriculées. Persistant : s'applique à chaque
+        //          recatégorisation et aux imports suivants, sans réinterroger l'API.
+        data.forEach(row => {
+            if (row.manualCategory) return;
+            if (row.sens === 'Encaissement' && row.categorie === 'Autres revenus' && row.ruleHit === 'Enc: Fallback') {
+                const hit = b2bRegistryCache[b2bCacheKey(extractCompanyName(row))];
+                if (hit && hit.isCompany) {
+                    row.categorie = 'B2B';
+                    row.ruleHit = 'Enc: B2B (annuaire officiel' + (hit.siren ? ' — SIREN ' + hit.siren : '') + ')';
+                }
+            }
+        });
+
         // Step 4: Type Financeur (enc only) — from DAX formula
         const INTERCO_FIN_KEYS = ['TRESO','TRESORERIE','AFORSSIC','FORSSIC','VIREMENT COMPENSE','DST GERMANY','APPRO','COMPTE PRO','PRELEVEMENT AUTOMATIQUE'];
         const PUBLIC_FIN_KEYS = ['OPCO','TRANSITIONS PRO','CAISSE DES DEPOTS','CPF','POLE EMPLOI','REGION','FRANCE TRAVAIL','VILLE','COMMUNE','METROPOLE'];
@@ -978,6 +1056,7 @@
         $('#loader-status').textContent = 'Catégorisation des transactions...';
         await new Promise(r => setTimeout(r, 100)); // allow UI update
         await loadLearnedCategories();
+        await loadB2BCache();
         categorizeAll(rawData);
 
         // Save merged data + file history
@@ -2519,6 +2598,7 @@
         console.log('[Liora] Démarrage — chargement des données persistées...');
         await migrateFromLocalStorage();
         await loadLearnedCategories();
+        await loadB2BCache();
         const stored = await loadFromStorage();
         if (stored.length > 0) {
             console.log('[Liora] Restauration de', stored.length, 'transactions depuis IndexedDB');
@@ -2636,6 +2716,56 @@
         renderDqMonthButtons();
         renderDataQuality();
     });
+
+    // Bouton « Détecter B2B (annuaire officiel) » dans la section Autres revenus
+    (function wireB2BButton() {
+        const b2bBtn = document.getElementById('dq-b2b-autres');
+        if (b2bBtn) b2bBtn.addEventListener('click', () => runB2BDetection(b2bBtn));
+    })();
+
+    // ── B2B detection via annuaire officiel (bouton Data Quality) ──
+    async function runB2BDetection(btn) {
+        // Regrouper les candidats par nom extrait (unique), en ignorant personnes et noms trop courts
+        const nameToRows = new Map();
+        for (const row of getB2BCandidateRows()) {
+            const name = extractCompanyName(row);
+            if (!name || name.length < 4) continue;
+            if (looksLikePerson(row._libNorm || normUpper(row.libelle))) continue;
+            const key = b2bCacheKey(name);
+            if (!nameToRows.has(key)) nameToRows.set(key, name);
+        }
+        // Ne réinterroger que les noms absents du cache
+        const toQuery = [...nameToRows.values()].filter(name => !(b2bCacheKey(name) in b2bRegistryCache));
+        const total = toQuery.length;
+        const origLabel = btn ? btn.textContent : '';
+        if (btn) btn.disabled = true;
+        let done = 0, errored = false;
+        try {
+            for (const name of toQuery) {
+                if (btn) btn.textContent = 'Annuaire… ' + (++done) + '/' + total;
+                try {
+                    b2bRegistryCache[b2bCacheKey(name)] = await queryCompanyRegistry(name);
+                } catch { errored = true; } // échec réseau : non mis en cache (réessayable)
+                await new Promise(r => setTimeout(r, 160)); // throttle ~6 req/s (limite API : 7/s)
+            }
+            await saveB2BCache();
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = origLabel; }
+        }
+        // Recatégoriser (Step 3b applique le cache) + rafraîchir toute l'app
+        const before = rawData.filter(r => r.categorie === 'B2B').length;
+        categorizeAll(rawData);
+        const reclassified = rawData.filter(r => r.categorie === 'B2B').length - before;
+        await saveToStorage();
+        computeFilteredData();
+        renderDataQuality();
+        renderLearnedRules();
+        refreshDashboard();
+        const msg = reclassified > 0
+            ? reclassified + ' transaction(s) reclassée(s) en B2B via l\'annuaire officiel'
+            : 'Aucune nouvelle société reconnue';
+        showSaveToast(msg + (errored ? ' (certaines requêtes ont échoué)' : ''), errored);
+    }
 
     // ── Claude API for category suggestion ──
     function getDqApiKey() {
