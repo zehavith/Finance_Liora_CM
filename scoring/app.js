@@ -70,6 +70,20 @@
        Persistance
        ══════════════════════════════════════════════════════════ */
 
+    /**
+     * Assainit des pondérations d'origine externe (IndexedDB, fichier de
+     * sauvegarde) : seules les clés connues sont retenues, contraintes à des
+     * entiers de [0, 50]. Toute autre valeur (chaîne, HTML, NaN) est écartée.
+     */
+    function normaliserPoids(src) {
+        const out = Object.assign({}, S.DEFAULT_WEIGHTS);
+        Object.keys(S.DEFAULT_WEIGHTS).forEach(cle => {
+            const n = Number(src && src[cle]);
+            if (Number.isFinite(n)) out[cle] = Math.min(50, Math.max(0, Math.round(n)));
+        });
+        return out;
+    }
+
     async function chargerEtat() {
         try {
             const pf = await A.idbGet(CLE_PORTEFEUILLE);
@@ -77,7 +91,7 @@
         } catch (e) { console.warn('[Scoring] Portefeuille illisible', e); }
         try {
             const p = await A.idbGet(CLE_POIDS);
-            if (p && typeof p === 'object') poids = Object.assign({}, S.DEFAULT_WEIGHTS, p);
+            if (p && typeof p === 'object') poids = normaliserPoids(p);
         } catch (e) { console.warn('[Scoring] Pondérations illisibles', e); }
     }
 
@@ -687,10 +701,11 @@
                 <td class="cell-name">
                     <strong>${esc(p.nom)}</strong>
                     ${f.etatAdministratif === 'C' ? '<span class="badge badge-danger badge-xs">Cessée</span>' : ''}
+                    ${f.proceduresStatut !== 'ok' ? '<span class="badge badge-danger badge-xs" title="Le contrôle des procédures collectives n’a pas abouti">BODACC non vérifié</span>' : ''}
                 </td>
                 <td>${esc(fmtSiren(p.siren))}</td>
                 <td>${esc(libelleSection(f) || '—')}</td>
-                <td class="num"><span class="${classeNote(r.score || 0)}">${r.score !== undefined ? r.score : '—'}</span></td>
+                <td class="num"><span class="${classeNote(Number(r.score) || 0)}">${r.score !== undefined ? esc(r.score) : '—'}</span></td>
                 <td><span class="grade-chip grade-${esc(r.grade || 'E')}">${esc(r.grade || '—')}</span></td>
                 <td>${esc(r.risque || '—')}</td>
                 <td class="num">${r.encours ? esc(S.fmtEuro(r.encours.montant)) : '—'}</td>
@@ -765,13 +780,19 @@
         const btn = $('#pf-refresh');
         btn.disabled = true;
         let ok = 0, ko = 0;
-        for (let i = 0; i < portefeuille.length; i++) {
-            const p = portefeuille[i];
-            btn.textContent = `Rafraîchissement ${i + 1}/${portefeuille.length}…`;
-            statut('#pf-status', `Mise à jour de ${p.nom}…`, 'info');
+        // Instantané des SIREN à traiter : l'utilisateur peut retirer une entrée
+        // pendant les allers-retours réseau, on ré-adresse donc chaque écriture
+        // par SIREN plutôt que par index.
+        const cibles = portefeuille.map(p => ({ siren: p.siren, nom: p.nom }));
+        for (let i = 0; i < cibles.length; i++) {
+            const c = cibles[i];
+            btn.textContent = `Rafraîchissement ${i + 1}/${cibles.length}…`;
+            statut('#pf-status', `Mise à jour de ${c.nom}…`, 'info');
             try {
-                const { fiche } = await A.obtenirFiche(p.siren, { forcerRafraichissement: true });
-                portefeuille[i] = entreePortefeuille(fiche, S.scorer(fiche, { weights: poids }), p.ajouteLe);
+                const { fiche } = await A.obtenirFiche(c.siren, { forcerRafraichissement: true });
+                const idx = portefeuille.findIndex(x => x.siren === c.siren);
+                if (idx < 0) continue; // retirée du portefeuille entre-temps
+                portefeuille[idx] = entreePortefeuille(fiche, S.scorer(fiche, { weights: poids }), portefeuille[idx].ajouteLe);
                 ok++;
             } catch (e) {
                 ko++;
@@ -847,7 +868,8 @@
                 dernier.ca !== undefined && dernier.ca !== null ? dernier.ca : '',
                 dernier.resultatNet !== undefined && dernier.resultatNet !== null ? dernier.resultatNet : '',
                 r.encours ? r.encours.montant : '',
-                r.procedure ? r.procedure.libelle : 'Aucune',
+                r.procedure ? r.procedure.libelle
+                    : (f.proceduresStatut === 'ok' ? 'Aucune' : 'NON VÉRIFIÉE — contrôle BODACC non abouti'),
                 (r.drapeaux || []).map(d => d.titre).join(' | '),
                 p.majLe || ''
             ];
@@ -987,7 +1009,9 @@
                 <td>${esc(e.fiche.nom)}</td>
                 <td class="num"><span class="${classeNote(e.resultat.score)}">${e.resultat.score}</span></td>
                 <td><span class="grade-chip grade-${esc(e.resultat.grade)}">${esc(e.resultat.grade)}</span></td>
-                <td><span class="status-ok">Scorée</span></td>`;
+                <td>${e.fiche.proceduresStatut === 'ok'
+                    ? '<span class="status-ok">Scorée</span>'
+                    : '<span class="status-warn" title="Procédures collectives non vérifiées">Scorée sans BODACC</span>'}</td>`;
         } else {
             tr.innerHTML = `
                 <td>${esc(fmtSiren(e.siren))}</td>
@@ -1058,8 +1082,14 @@
                     const data = JSON.parse(String(reader.result));
                     if (!Array.isArray(data.portefeuille)) throw new Error('Format inattendu');
                     if (!confirm(`Restaurer ${data.portefeuille.length} entreprise(s) ? Le portefeuille actuel sera remplacé.`)) return;
-                    portefeuille = data.portefeuille;
-                    if (data.poids) poids = Object.assign({}, S.DEFAULT_WEIGHTS, data.poids);
+                    // Assainir les poids AVANT le recalcul, puis rescorer chaque fiche :
+                    // les « resultat » embarqués dans un fichier externe ne sont pas fiables.
+                    if (data.poids) poids = normaliserPoids(data.poids);
+                    portefeuille = data.portefeuille
+                        .filter(p => p && typeof p.siren === 'string')
+                        .map(p => p.fiche
+                            ? Object.assign({}, p, { resultat: S.scorer(p.fiche, { weights: poids }) })
+                            : p);
                     await sauverPortefeuille();
                     await A.idbSet(CLE_POIDS, poids);
                     rendrePoids();
@@ -1192,8 +1222,8 @@
         wrap.innerHTML = Object.keys(S.DEFAULT_WEIGHTS).map(cle => `
         <div class="weight-row">
             <label for="w-${cle}">${esc(S.PILLAR_LABELS[cle])}</label>
-            <input type="range" id="w-${cle}" data-cle="${cle}" min="0" max="50" step="1" value="${poids[cle]}">
-            <output id="wo-${cle}">${poids[cle]}</output>
+            <input type="range" id="w-${cle}" data-cle="${cle}" min="0" max="50" step="1" value="${esc(poids[cle])}">
+            <output id="wo-${cle}">${esc(poids[cle])}</output>
         </div>`).join('');
 
         $$('#weights-list input[type="range"]').forEach(input => {

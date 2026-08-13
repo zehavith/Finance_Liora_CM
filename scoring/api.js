@@ -461,12 +461,12 @@
         inspecter(brut.complements, 'complements', 'complements.');
 
         const fiche = normalise(brut);
-        return {
-            manquants,
-            nonMappes,
-            presents,
-            exercices: fiche ? fiche.exercices.length : 0
-        };
+        // Ne compter que les exercices portant au moins un chiffre : une ligne vide
+        // signifierait que le mapping ca / resultat_net ne colle pas au schéma réel.
+        const exercices = fiche
+            ? fiche.exercices.filter(e => toNumber(e.ca) !== null || toNumber(e.resultatNet) !== null).length
+            : 0;
+        return { manquants, nonMappes, presents, exercices };
     }
 
     /** Recherche renvoyant la réponse BRUTE, sans normalisation (diagnostic). */
@@ -574,7 +574,13 @@
             const entree = await idbGet(cleCache(siren));
             if (!entree || !entree.fiche) return null;
             const ttl = ttlMs === undefined ? CACHE_TTL_MS : ttlMs;
-            if (ttl !== Infinity && Date.now() - (entree.ts || 0) > ttl) return null;
+            if (ttl === Infinity) return entree.fiche; // repli hors ligne : périmé accepté
+            // Une fiche dont le contrôle BODACC a échoué ne doit pas figer ce
+            // défaut 7 jours : on la garde 15 minutes, le temps d'une nouvelle tentative.
+            const ttlEffectif = entree.fiche.proceduresStatut === 'ok'
+                ? ttl
+                : Math.min(ttl, 15 * 60 * 1000);
+            if (Date.now() - (entree.ts || 0) > ttlEffectif) return null;
             return entree.fiche;
         } catch (e) {
             return null;

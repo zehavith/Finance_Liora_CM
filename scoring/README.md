@@ -108,8 +108,10 @@ Certaines situations **plafonnent** le score quelle que soit la moyenne pondér�
 | Entreprise cessée au répertoire SIRENE | 5 |
 | Liquidation judiciaire | 5 |
 | Clôture pour insuffisance d'actif | 8 |
+| Résolution du plan (échec du plan de redressement ou de sauvegarde) | 15 |
 | État de cessation des paiements | 15 |
 | Redressement judiciaire | 20 |
+| **Contrôle BODACC échoué** (aucune procédure ne peut être exclue) | 34 |
 | Procédure de sauvegarde | 35 |
 | Plan de redressement arrêté | 42 |
 | Plan de sauvegarde arrêté | 50 |
@@ -117,7 +119,17 @@ Certaines situations **plafonnent** le score quelle que soit la moyenne pondér�
 
 Seule l'annonce BODACC **la plus récente** est retenue : un plan de redressement
 arrêté après une ouverture de procédure traduit un redressement en cours, pas un
-cumul de sanctions.
+cumul de sanctions. L'ordre d'analyse distingue la *résolution* d'un plan (son
+échec, précurseur habituel de la liquidation) d'un plan *arrêté* (favorable), et
+une *clôture* nommant sa procédure (« clôture du redressement… ») est bien lue
+comme une sortie de procédure, pas comme une procédure en cours.
+
+Le plafond « contrôle BODACC échoué » ne s'applique que si le contrôle a été
+**tenté et a échoué** : il coupe l'encours indicatif (< 35) tant que l'absence de
+procédure n'a pas pu être confirmée. Une fiche dont le contrôle a échoué n'est
+mise en cache que 15 minutes (au lieu de 7 jours), le temps d'une nouvelle
+tentative, et reste signalée « BODACC non vérifié » dans le portefeuille, l'import
+et l'export CSV.
 
 ### Grades
 
@@ -168,9 +180,11 @@ ils s'exécutent aussi bien dans le navigateur (`window.LioraScoring`,
 node scoring/test/test-scoring.js
 ```
 
-32 tests couvrent les cas nominaux, les règles éliminatoires, la détection des
-signaux financiers, la renormalisation des pondérations, la normalisation des
-réponses de l'API et la validation des SIREN (clé de Luhn).
+37 tests couvrent les cas nominaux, les règles éliminatoires (dont la résolution
+de plan, l'ordre clôture/procédure et le plafond « BODACC non vérifié »), la
+détection des signaux financiers, les exercices vides, la renormalisation des
+pondérations, la normalisation des réponses de l'API et la validation des SIREN
+(clé de Luhn).
 
 ---
 

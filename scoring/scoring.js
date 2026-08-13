@@ -166,6 +166,16 @@
         return last[1];
     }
 
+    /** Un exercice n'est exploitable que s'il porte au moins un chiffre. */
+    function exerciceRenseigne(e) {
+        return !!e && (num(e.ca) !== null || num(e.resultatNet) !== null);
+    }
+
+    /** Exercices réellement renseignés, triés du plus ancien au plus récent. */
+    function exercicesUtiles(c) {
+        return (c.exercices || []).filter(exerciceRenseigne).slice().sort((a, b) => a.annee - b.annee);
+    }
+
     /** Âge en années (décimales) entre une date ISO et aujourd'hui. */
     function ageEnAnnees(dateISO, now) {
         if (!dateISO) return null;
@@ -247,7 +257,7 @@
      */
     function scoreFinances(c, ctx) {
         const details = [];
-        const ex = (c.exercices || []).slice().sort((a, b) => a.annee - b.annee);
+        const ex = exercicesUtiles(c);
 
         if (!ex.length) {
             return {
@@ -332,9 +342,10 @@
         const details = [];
         let note = 50;
 
-        if ((c.exercices || []).length >= 3) { note += 22; details.push('Comptes publiés sur 3 exercices ou plus (+22)'); }
-        else if ((c.exercices || []).length === 2) { note += 16; details.push('Comptes publiés sur 2 exercices (+16)'); }
-        else if ((c.exercices || []).length === 1) { note += 9; details.push('Comptes publiés sur 1 exercice (+9)'); }
+        const nbComptes = exercicesUtiles(c).length;
+        if (nbComptes >= 3) { note += 22; details.push('Comptes publiés sur 3 exercices ou plus (+22)'); }
+        else if (nbComptes === 2) { note += 16; details.push('Comptes publiés sur 2 exercices (+16)'); }
+        else if (nbComptes === 1) { note += 9; details.push('Comptes publiés sur 1 exercice (+9)'); }
         else { note -= 14; details.push('Aucun compte annuel publié (-14)'); }
 
         if (c.statutDiffusion === 'P') {
@@ -434,11 +445,26 @@
         const ageMois = (now - new Date(derniere.date)) / (30.44 * 24 * 3600 * 1000);
 
         // Ordre de test important : du plus grave au plus favorable.
+        // Liquidation et insuffisance d'actif priment sur tout (une « résolution du
+        // plan … et la liquidation judiciaire » doit rester une liquidation).
         if (/liquidation/.test(texte)) {
             return { type: 'liquidation', plafond: 5, libelle: 'Liquidation judiciaire', date: derniere.date, gravite: 'critique' };
         }
         if (/insuffisance d.actif|cl[oô]ture pour insuffisance/.test(texte)) {
             return { type: 'cloture-insuffisance', plafond: 8, libelle: 'Clôture pour insuffisance d’actif', date: derniere.date, gravite: 'critique' };
+        }
+        // La résolution d'un plan est son ÉCHEC, pas un plan en cours : à tester AVANT
+        // les branches « plan », sinon « résolution du plan de redressement » serait
+        // lue comme un plan favorable.
+        if (/r[ée]solution|r[ée]siliation|mise [àa] n[ée]ant|inex[ée]cution/.test(texte) && /plan/.test(texte)) {
+            return { type: 'resolution-plan', plafond: 15, libelle: 'Résolution du plan (échec du plan)', date: derniere.date, gravite: 'critique' };
+        }
+        // Clôture / fin de procédure : l'entreprise est SORTIE de procédure. À tester
+        // avant les branches nommant la procédure, sinon « clôture du redressement »
+        // resterait classée comme un redressement en cours.
+        if (/cl[oô]ture/.test(texte)) {
+            if (ageMois > 36) return null; // sortie ancienne, on ne pénalise plus
+            return { type: 'sortie-procedure', plafond: 62, libelle: 'Sortie de procédure collective récente', date: derniere.date, gravite: 'modere' };
         }
         if (/redressement/.test(texte) && /plan|arr[eê]tant|homolog/.test(texte)) {
             return { type: 'plan-redressement', plafond: 42, libelle: 'Plan de redressement arrêté', date: derniere.date, gravite: 'eleve' };
@@ -454,11 +480,6 @@
         }
         if (/cessation des paiements/.test(texte)) {
             return { type: 'cessation-paiements', plafond: 15, libelle: 'État de cessation des paiements', date: derniere.date, gravite: 'critique' };
-        }
-        // Clôture / fin de procédure : l'entreprise est sortie de procédure.
-        if (/cl[oô]ture/.test(texte)) {
-            if (ageMois > 36) return null; // sortie ancienne, on ne pénalise plus
-            return { type: 'sortie-procedure', plafond: 62, libelle: 'Sortie de procédure collective récente', date: derniere.date, gravite: 'modere' };
         }
         return { type: 'procedure', plafond: 45, libelle: derniere.libelle || 'Procédure collective', date: derniere.date, gravite: 'eleve' };
     }
@@ -565,6 +586,20 @@
             });
         }
 
+        // Contrôle BODACC tenté mais échoué : aucune procédure ne peut être exclue.
+        // On plafonne sous le seuil d'encours (35). Le statut « non-verifie »
+        // (contrôle pas encore lancé, ex. vignettes de recherche) n'est pas plafonné :
+        // l'UI l'affiche comme estimation.
+        const bodaccVerifie = c.proceduresStatut === 'ok';
+        if (!procedure && c.proceduresStatut === 'indisponible') {
+            plafond = Math.min(plafond, 34);
+            drapeaux.push({
+                gravite: 'critique',
+                titre: 'Procédures collectives non vérifiées',
+                detail: 'Le contrôle BODACC n’a pas abouti : aucune procédure collective ne peut être exclue.'
+            });
+        }
+
         const scoreBrut = score;
         if (plafond < score) score = plafond;
         score = clamp(Math.round(score), 0, 100);
@@ -578,7 +613,8 @@
                 detail: `Créée il y a ${age.toFixed(1)} an${age >= 2 ? 's' : ''} : absence d’historique de paiement et taux de défaillance élevé.`
             });
         }
-        if (!(c.exercices || []).length) {
+        const exTriTous = exercicesUtiles(c);
+        if (!exTriTous.length) {
             drapeaux.push({
                 gravite: 'modere',
                 titre: 'Comptes non publiés',
@@ -592,7 +628,7 @@
                 detail: 'L’entreprise a demandé le masquage de ses informations au répertoire SIRENE.'
             });
         }
-        const exTri = (c.exercices || []).slice().sort((a, b) => a.annee - b.annee);
+        const exTri = exTriTous;
         const dernier = exTri[exTri.length - 1];
         if (dernier && num(dernier.resultatNet) !== null && num(dernier.resultatNet) < 0) {
             drapeaux.push({
@@ -679,6 +715,7 @@
             drapeaux,
             forces,
             procedure,
+            bodaccVerifie,
             encours: encoursIndicatif(score, c.exercices),
             calculeLe: (ctx.now ? new Date(ctx.now) : new Date()).toISOString()
         };

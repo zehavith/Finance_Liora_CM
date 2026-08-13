@@ -142,6 +142,58 @@ test('une sortie de procédure de plus de trois ans ne plafonne plus', () => {
     assert(!r.plafonne, 'le score ne doit pas être plafonné');
 });
 
+test('la résolution d’un plan est un échec, pas un plan favorable', () => {
+    const r = S.scorer(fiche({
+        procedures: [
+            { date: '2024-03-01', libelle: 'Jugement d’ouverture d’une procédure de redressement judiciaire' },
+            { date: '2024-11-05', libelle: 'Jugement arrêtant le plan de redressement' },
+            { date: '2026-01-20', libelle: 'Jugement prononçant la résolution du plan de redressement' }
+        ]
+    }), opts);
+    assertEgal(r.procedure.type, 'resolution-plan', 'type de procédure');
+    assert(r.score <= 15, 'score attendu ≤ 15, obtenu ' + r.score);
+    assertEgal(r.encours.montant, 0, 'aucun encours après résolution du plan');
+});
+
+test('résolution du plan + liquidation : la liquidation prime', () => {
+    const r = S.scorer(fiche({
+        procedures: [{ date: '2026-01-20', libelle: 'Jugement prononçant la résolution du plan de redressement et la liquidation judiciaire' }]
+    }), opts);
+    assertEgal(r.procedure.type, 'liquidation', 'la liquidation doit primer');
+    assert(r.score <= 5, 'score attendu ≤ 5');
+});
+
+test('une clôture nommant sa procédure est bien une sortie, pas une procédure en cours', () => {
+    // Avant correction, « clôture du redressement » tombait dans la branche
+    // redressement (plafond 20) au lieu de la branche sortie de procédure.
+    const recente = S.scorer(fiche({
+        procedures: [{ date: '2026-02-01', libelle: 'Jugement de clôture de la procédure de redressement judiciaire pour extinction du passif' }]
+    }), opts);
+    assertEgal(recente.procedure.type, 'sortie-procedure', 'sortie récente');
+    assert(recente.score > 20, 'le plafond 62 doit s’appliquer, pas 20 — obtenu ' + recente.score);
+
+    const ancienne = S.scorer(fiche({
+        procedures: [{ date: '2018-06-01', libelle: 'Jugement de clôture de la procédure de sauvegarde' }]
+    }), opts);
+    assertEgal(ancienne.procedure, null, 'une clôture de plus de 3 ans ne plafonne plus');
+    assert(!ancienne.plafonne, 'score non plafonné');
+});
+
+test('un contrôle BODACC échoué plafonne le score et coupe l’encours', () => {
+    const verifie = S.scorer(fiche({ procedures: [], proceduresStatut: 'ok' }), opts);
+    const echoue = S.scorer(fiche({ procedures: [], proceduresStatut: 'indisponible' }), opts);
+    assert(echoue.score <= 34, 'score attendu ≤ 34, obtenu ' + echoue.score);
+    assert(echoue.score < verifie.score, 'le contrôle échoué doit dégrader le score');
+    assertEgal(echoue.encours.montant, 0, 'aucun encours sans contrôle BODACC');
+    assert(echoue.drapeaux.some(d => d.titre === 'Procédures collectives non vérifiées'), 'drapeau attendu');
+    assertEgal(echoue.bodaccVerifie, false, 'bodaccVerifie doit être faux');
+
+    // « non-verifie » (contrôle pas encore lancé, vignettes de recherche) ne plafonne pas :
+    // l'UI l'affiche comme estimation.
+    const enAttente = S.scorer(fiche({ procedures: [], proceduresStatut: 'non-verifie' }), opts);
+    assertEgal(enAttente.score, verifie.score, 'une fiche non encore vérifiée n’est pas plafonnée');
+});
+
 test('seule la procédure la plus récente est retenue', () => {
     const r = S.scorer(fiche({
         procedures: [
@@ -209,6 +261,34 @@ test('des comptes anciens lèvent un drapeau d’obsolescence', () => {
         exercices: [{ annee: 2021, ca: 4000000, resultatNet: 250000 }]
     }), opts);
     assert(r.drapeaux.some(d => d.titre === 'Comptes obsolètes'), 'drapeau « Comptes obsolètes » attendu');
+});
+
+test('les exercices vides (ni CA ni résultat) sont ignorés', () => {
+    const pleine = S.scorer(fiche({
+        exercices: [
+            { annee: 2023, ca: 4000000, resultatNet: 260000 },
+            { annee: 2024, ca: 4600000, resultatNet: 340000 }
+        ]
+    }), opts);
+    const avecLigneVide = S.scorer(fiche({
+        exercices: [
+            { annee: 2023, ca: 4000000, resultatNet: 260000 },
+            { annee: 2024, ca: 4600000, resultatNet: 340000 },
+            { annee: 2025, ca: null, resultatNet: null }
+        ]
+    }), opts);
+    assertEgal(avecLigneVide.score, pleine.score, 'une ligne vide ne doit rien changer');
+
+    const toutVide = S.scorer(fiche({
+        exercices: [
+            { annee: 2023, ca: null, resultatNet: null },
+            { annee: 2024, ca: null, resultatNet: null },
+            { annee: 2025, ca: null, resultatNet: null }
+        ]
+    }), opts);
+    const sansComptes = S.scorer(fiche({ exercices: [] }), opts);
+    assertEgal(toutVide.score, sansComptes.score, 'trois lignes vides valent une absence de comptes');
+    assert(toutVide.drapeaux.some(d => d.titre === 'Comptes non publiés'), 'drapeau attendu');
 });
 
 test('la croissance du chiffre d’affaires améliore le score', () => {
