@@ -116,6 +116,9 @@
             console.log('[Liora] Données chargées depuis IndexedDB:', arr.length, 'transactions');
             return arr.map(r => ({
                 ...r,
+                // Migration libellé de catégorie : « Alternance (OPCO) » → « OPCO »
+                categorie: r.categorie === 'Alternance (OPCO)' ? 'OPCO' : r.categorie,
+                manualCategory: r.manualCategory === 'Alternance (OPCO)' ? 'OPCO' : r.manualCategory,
                 date: r.date ? new Date(r.date) : new Date(0),
             }));
         } catch (e) {
@@ -190,7 +193,7 @@
 
     // Default seed rules (exported from previous version)
     const _seedLearnedRules = {
-        "A F D A S": {category:"Alternance (OPCO)",sens:"Encaissement",count:2,date:1775728913867,originalLibelle:"VIR SEPA RECU /FRM A F D A S /EID 0586742 /RNF FACT-2405-02655  DV-004567"},
+        "A F D A S": {category:"OPCO",sens:"Encaissement",count:2,date:1775728913867,originalLibelle:"VIR SEPA RECU /FRM A F D A S /EID 0586742 /RNF FACT-2405-02655  DV-004567"},
         "ADEL BEGGAH": {category:"B2C",sens:"Encaissement",count:1,date:1775728281981,originalLibelle:"VIR SCT INST RECU /FRM ADEL BEGGAH /EID NOTPROVIDED /RNF FACT-2501-07947 (2/6) BEGGAH ADEL"},
         "AISMT13": {category:"B2B",sens:"Encaissement",count:1,date:1775728804651,originalLibelle:"VIR SEPA RECU /FRM AISMT13 /EID ACH260336 /RNF FACT-2602-13858"},
         "ANTHROPIC": {category:"SaaS/IT",sens:"Décaissement",count:1,date:1775729770424,originalLibelle:"ANTHROPIC"},
@@ -314,6 +317,12 @@
             await saveLearnedCategories();
             console.log('[Liora] Règles par défaut chargées:', Object.keys(_learnedCache).length, 'règles');
         }
+        // Migration libellé de catégorie : « Alternance (OPCO) » → « OPCO »
+        let migrated = false;
+        for (const v of Object.values(_learnedCache)) {
+            if (v && v.category === 'Alternance (OPCO)') { v.category = 'OPCO'; migrated = true; }
+        }
+        if (migrated) { await saveLearnedCategories(); console.log('[Liora] Règles apprises migrées: Alternance (OPCO) → OPCO'); }
     }
 
     async function saveLearnedCategories() {
@@ -703,7 +712,7 @@
     function categoriseEnc(libNorm, tiersNorm) {
         const both = libNorm + ' || ' + tiersNorm;
         if (containsAnyDual(both, INTERCO_ENC_KEYS)) return ['Interco', 'Enc: Interco'];
-        if (containsAnyDual(libNorm, OPCO_KEYS)) return ['Alternance (OPCO)', 'Enc: OPCO'];
+        if (containsAnyDual(libNorm, OPCO_KEYS)) return ['OPCO', 'Enc: OPCO'];
         if (containsAnyDual(libNorm, CPF_KEYS)) return ['CPF', 'Enc: CPF'];
         if (containsAnyDual(libNorm, RECONV_KEYS)) return ['Reconversion', 'Enc: Reconversion'];
         if (containsAnyDual(both, B2B_EXTRA) || isFilizB2B(tiersNorm, libNorm)) return ['B2B', 'Enc: B2B'];
@@ -794,7 +803,7 @@
         });
 
         // Step 3: Post-fix rules
-        const PRIORITY_CATS = new Set(['Interco', 'Alternance (OPCO)', 'CPF', 'Reconversion']);
+        const PRIORITY_CATS = new Set(['Interco', 'OPCO', 'CPF', 'Reconversion']);
 
         data.forEach(row => {
             if (row.manualCategory) return;
@@ -865,7 +874,7 @@
         // Step 4: Type Financeur (enc only) — from DAX formula
         const INTERCO_FIN_KEYS = ['TRESO','TRESORERIE','AFORSSIC','FORSSIC','VIREMENT COMPENSE','DST GERMANY','APPRO','COMPTE PRO','PRELEVEMENT AUTOMATIQUE'];
         const PUBLIC_FIN_KEYS = ['OPCO','TRANSITIONS PRO','CAISSE DES DEPOTS','CPF','POLE EMPLOI','REGION','FRANCE TRAVAIL','VILLE','COMMUNE','METROPOLE'];
-        const PUBLIC_CATS = new Set(['Alternance (OPCO)', 'CPF', 'Reconversion']);
+        const PUBLIC_CATS = new Set(['OPCO', 'CPF', 'Reconversion']);
 
         data.forEach(row => {
             if (row.sens !== 'Encaissement') { row.typeFinanceur = ''; return; }
@@ -1939,7 +1948,7 @@
 
     const CAT_COLOR_MAP = {
         'B2B': 'tag-b2b', 'B2C': 'tag-b2c', 'Interco': 'tag-interco',
-        'Alternance (OPCO)': 'tag-opco', 'CPF': 'tag-cpf', 'Reconversion': 'tag-reconv',
+        'OPCO': 'tag-opco', 'CPF': 'tag-cpf', 'Reconversion': 'tag-reconv',
         'Salaires': 'tag-salaires', 'URSSAF': 'tag-urssaf',
         'SaaS/IT': 'tag-saas', 'Marketing & Acquisition': 'tag-mkt',
         'Formateurs / Freelances': 'tag-ff',
@@ -2226,7 +2235,7 @@
         if (!builtinContainer) return;
         const builtinRules = [
             { label: 'Interco (Enc.)', keys: INTERCO_ENC_KEYS, sens: 'enc' },
-            { label: 'Alternance (OPCO)', keys: OPCO_KEYS, sens: 'enc' },
+            { label: 'OPCO', keys: OPCO_KEYS, sens: 'enc' },
             { label: 'CPF', keys: CPF_KEYS, sens: 'enc' },
             { label: 'Reconversion', keys: RECONV_KEYS, sens: 'enc' },
             { label: 'B2B', keys: B2B_EXTRA, sens: 'enc' },
@@ -2663,7 +2672,7 @@
         'DIVERS',
     ];
     const ENC_CATEGORIES = [
-        'Interco', 'Alternance (OPCO)', 'CPF', 'Reconversion', 'B2B', 'B2C',
+        'Interco', 'OPCO', 'CPF', 'Reconversion', 'B2B', 'B2C',
         'Autres revenus',
     ];
 
@@ -3659,14 +3668,14 @@ Réponds UNIQUEMENT en JSON valide (pas de markdown), sous forme d'un tableau :
     //  SIMULATION PANEL 2: Manual Inputs
     // ══════════════════════════════════════════════
 
-    const SIM_ENC_CATS = ['B2B', 'B2C', 'Alternance (OPCO)', 'CPF', 'Reconversion', 'Autres revenus'];
+    const SIM_ENC_CATS = ['B2B', 'B2C', 'OPCO', 'CPF', 'Reconversion', 'Autres revenus'];
     const SIM_DEC_CATS = [
         'Salaires', 'URSSAF', 'Formateurs / Freelances', 'SaaS/IT',
         'Frais généraux & services', 'Note de frais', 'Marketing & Acquisition',
         'Prévoyance / Mutuelle', 'Ticket restaurant', 'Loyers & charges',
         'Banques/Dettes', 'Autres impôts',
     ];
-    const SIM_ENC_DELAYS = { 'B2B': 45, 'B2C': 0, 'Alternance (OPCO)': 60, 'CPF': 30, 'Reconversion': 30, 'Autres revenus': 0 };
+    const SIM_ENC_DELAYS = { 'B2B': 45, 'B2C': 0, 'OPCO': 60, 'CPF': 30, 'Reconversion': 30, 'Autres revenus': 0 };
 
     function buildSimInputs() {
         // Pre-fill from historical averages

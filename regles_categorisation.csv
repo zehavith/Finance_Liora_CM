@@ -12,18 +12,18 @@ Encaissement;Interco;Mot-clé;APPRO;1
 Encaissement;Interco;Mot-clé;PRELEVEMENT AUTOMATIQUE;1
 Encaissement;Interco;Mot-clé;AMERICAN EXPRESS CARTE;1
 Encaissement;Interco;Mot-clé;AMERICAN EXPRESS CARTE-FRANCE;1
-Encaissement;Alternance (OPCO);Mot-clé;AFDAS;2
-Encaissement;Alternance (OPCO);Mot-clé;ATLAS;2
-Encaissement;Alternance (OPCO);Mot-clé;OCAPIAT;2
-Encaissement;Alternance (OPCO);Mot-clé;UNIFORMATION;2
-Encaissement;Alternance (OPCO);Mot-clé;CONSTRUCTYS;2
-Encaissement;Alternance (OPCO);Mot-clé;L'OPCOMMERCE;2
-Encaissement;Alternance (OPCO);Mot-clé;OPCOMMERCE;2
-Encaissement;Alternance (OPCO);Mot-clé;AKTO;2
-Encaissement;Alternance (OPCO);Mot-clé;OPCO2I;2
-Encaissement;Alternance (OPCO);Mot-clé;OPCO MOBILITES;2
-Encaissement;Alternance (OPCO);Mot-clé;OPCO EP;2
-Encaissement;Alternance (OPCO);Mot-clé;OPCO SANTE;2
+Encaissement;OPCO;Mot-clé;AFDAS;2
+Encaissement;OPCO;Mot-clé;ATLAS;2
+Encaissement;OPCO;Mot-clé;OCAPIAT;2
+Encaissement;OPCO;Mot-clé;UNIFORMATION;2
+Encaissement;OPCO;Mot-clé;CONSTRUCTYS;2
+Encaissement;OPCO;Mot-clé;L'OPCOMMERCE;2
+Encaissement;OPCO;Mot-clé;OPCOMMERCE;2
+Encaissement;OPCO;Mot-clé;AKTO;2
+Encaissement;OPCO;Mot-clé;OPCO2I;2
+Encaissement;OPCO;Mot-clé;OPCO MOBILITES;2
+Encaissement;OPCO;Mot-clé;OPCO EP;2
+Encaissement;OPCO;Mot-clé;OPCO SANTE;2
 Encaissement;CPF;Mot-clé;CPF;3
 Encaissement;CPF;Mot-clé;CAISSE DES DEPOTS;3
 Encaissement;Reconversion;Mot-clé;TRANSITIONS PRO;4
@@ -659,7 +659,7 @@ Décaissement;Autres impôts;Mot-clé;CVAE;18
 Décaissement;Autres impôts;Mot-clé;TAXE FONCIERE;18
 Décaissement;Autres impôts;Mot-clé;CFE;18
 Décaissement;DIVERS;Fallback;Tout décaissement non classé;19
-Règle apprise;A F D A S;Apprentissage;Alternance (OPCO) - Encaissement;0
+Règle apprise;A F D A S;Apprentissage;OPCO - Encaissement;0
 Règle apprise;ADEL BEGGAH;Apprentissage;B2C - Encaissement;0
 Règle apprise;AISMT13;Apprentissage;B2B - Encaissement;0
 Règle apprise;ANTHROPIC;Apprentissage;SaaS/IT - Décaissement;0
