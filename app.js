@@ -363,7 +363,9 @@
     }
 
     // ── B2B Registry (annuaire officiel — recherche-entreprises.api.gouv.fr, gratuit & sans clé) ──
-    const STORAGE_B2B_KEY = 'liora_b2b_registry';
+    // v2 : ne retient que les sociétés commerciales privées (exclut organismes publics,
+    //      collectivités, associations/OPCO). Le changement de clé invalide l'ancien cache.
+    const STORAGE_B2B_KEY = 'liora_b2b_registry_v2';
     let b2bRegistryCache = {}; // { CLEAN_NAME: { isCompany, siren, nom } }
 
     async function loadB2BCache() {
@@ -400,6 +402,20 @@
         return qTok.some(t => fTok.has(t) || f.includes(t));
     }
 
+    // B2B = société commerciale privée uniquement. L'annuaire recense AUSSI les organismes
+    // publics, collectivités, France Travail, CPAM, OPCO (associations)… qui ont tous un SIREN.
+    // On filtre donc sur la catégorie juridique (5xxx = sociétés commerciales) et on exclut
+    // explicitement associations, services publics, collectivités et entrepreneurs individuels.
+    function isCommercialCompany(top) {
+        const nj = String(top.nature_juridique || '');
+        const c = top.complements || {};
+        if (c.est_association) return false;                       // ex. OPCO
+        if (c.est_service_public) return false;                    // ex. France Travail, CPAM
+        if (c.est_collectivite_territoriale || c.collectivite_territoriale) return false; // régions, communes
+        if (c.est_entrepreneur_individuel) return false;           // personne physique → pas B2B société
+        return nj.charAt(0) === '5';                               // 5xxx = sociétés commerciales (SA, SAS, SARL, EURL…)
+    }
+
     // Interroge l'annuaire officiel pour un nom → { isCompany, siren, nom }
     async function queryCompanyRegistry(name) {
         const url = 'https://recherche-entreprises.api.gouv.fr/search?q='
@@ -413,7 +429,9 @@
         const top = results[0];
         const nom = top.nom_complet || top.nom_raison_sociale || '';
         if (!registryNameMatches(name, nom)) return { isCompany: false };
-        return { isCompany: true, siren: top.siren || '', nom };
+        // Exclut les organismes publics / associations / collectivités : seul le B2B privé compte
+        if (!isCommercialCompany(top)) return { isCompany: false, nom, nature: String(top.nature_juridique || '') };
+        return { isCompany: true, siren: top.siren || '', nom, nature: String(top.nature_juridique || '') };
     }
 
     // Lignes candidates : encaissements retombés en "Autres revenus" via le fallback (aucune règle), non reclassés
