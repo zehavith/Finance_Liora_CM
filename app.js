@@ -3136,7 +3136,7 @@ Réponds UNIQUEMENT en JSON valide (pas de markdown), sous forme d'un tableau :
         const bulkBtn = document.getElementById(bulkBtnId);
         const suggestBtn = document.getElementById(suggestBtnId);
         if (rows.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" class="dq-empty">Aucune transaction à reclasser.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="6" class="dq-empty">Aucune transaction à reclasser.</td></tr>`;
             bulkBtn.disabled = true;
             // Remove any existing pagination
             const existingPag = tbody.closest('.dq-section-body').querySelector('.dq-pagination');
@@ -3160,6 +3160,7 @@ Réponds UNIQUEMENT en JSON valide (pas de markdown), sous forme d'un tableau :
             const options = categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
 
             tr.innerHTML = `
+                <td class="dq-cell-check"><input type="checkbox" class="dq-check"></td>
                 <td>${escapeHtml(row.dateStr || '')}</td>
                 <td class="dq-cell-libelle">${escapeHtml(row.libelle)}</td>
                 <td class="text-right" style="white-space:nowrap">${formatCurrency(row.montant)}</td>
@@ -3225,9 +3226,33 @@ Réponds UNIQUEMENT en JSON valide (pas de markdown), sous forme d'un tableau :
             bulkBtn.disabled = !anyFilled;
         }
 
+        // Propagation : changer la catégorie d'une ligne COCHÉE applique la même valeur
+        // à toutes les lignes cochées de la page (sélection multiple).
+        function propagateIfChecked(changedSel) {
+            const srcRow = changedSel.closest('tr');
+            const srcChk = srcRow && srcRow.querySelector('.dq-check');
+            if (!srcChk || !srcChk.checked) return;
+            const val = changedSel.value;
+            tbody.querySelectorAll('tr').forEach(r => {
+                const c = r.querySelector('.dq-check');
+                const s = r.querySelector('.dq-select');
+                if (c && c.checked && s && s !== changedSel) s.value = val;
+            });
+        }
+
         tbody.querySelectorAll('.dq-select').forEach(sel => {
-            sel.addEventListener('change', updateBulkBtn);
+            sel.addEventListener('change', () => { propagateIfChecked(sel); updateBulkBtn(); });
         });
+
+        // Case « tout sélectionner » de l'en-tête (portée : page courante)
+        const dqTable = tbody.closest('table');
+        const checkAll = dqTable && dqTable.querySelector('.dq-check-all');
+        if (checkAll) {
+            checkAll.checked = false;
+            checkAll.onchange = () => {
+                tbody.querySelectorAll('.dq-check').forEach(c => { c.checked = checkAll.checked; });
+            };
+        }
 
         // Bulk suggest all via Claude API (batched) — current page only
         suggestBtn.onclick = async () => {
