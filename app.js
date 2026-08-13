@@ -352,6 +352,21 @@
         await saveLearnedCategories();
     }
 
+    // Ajout manuel d'une règle mot-clé → catégorie (sans passer par un reclassement)
+    async function addManualRule(keyword, category, sens) {
+        const key = cleanLibelleForLearning(normUpper(keyword));
+        if (!key || key.length < 3) return false;
+        _learnedCache[key] = {
+            category, sens,
+            count: (_learnedCache[key]?.count || 0),
+            date: Date.now(),
+            originalLibelle: keyword,
+            manual: true,
+        };
+        await saveLearnedCategories();
+        return true;
+    }
+
     function findLearnedCategory(libelleNorm, sens) {
         const cleaned = cleanLibelleForLearning(libelleNorm);
         // Exact match on cleaned key
@@ -1108,6 +1123,7 @@
         await loadLearnedCategories();
         await loadB2BCache();
         await loadCashBalance();
+        await loadFixedVarOverrides();
         categorizeAll(rawData);
 
         // Save merged data + file history
@@ -1841,8 +1857,13 @@
         'Prévoyance / Mutuelle', 'Ticket restaurant', 'Loyers & charges', 'SaaS/IT',
         'Banques/Dettes', 'Autres impôts',
     ]);
+    let fixedVarOverrides = {}; // { catégorie: 'fixe' | 'variable' } — choix utilisateur
+    async function loadFixedVarOverrides() {
+        try { fixedVarOverrides = (await idbGet('liora_fixed_var_overrides')) || {}; } catch { fixedVarOverrides = {}; }
+    }
     function decFixedVarType(cat) {
         if (cat === 'Interco') return 'interco';
+        if (fixedVarOverrides[cat] === 'fixe' || fixedVarOverrides[cat] === 'variable') return fixedVarOverrides[cat];
         return DEC_FIXED_CATS.has(cat) ? 'fixe' : 'variable';
     }
 
@@ -1865,12 +1886,12 @@
         const fmtPct = p => p.toFixed(1).replace('.', ',') + ' %';
         const sum = g => g.reduce((s, x) => s + x.amt, 0);
 
-        function groupBlock(label, cls, g) {
+        function groupBlock(label, cls, g, toggle) {
             if (g.length === 0) return '';
             const sub = sum(g);
             const rows = g.map(x => `
                 <tr class="fv-row">
-                    <td class="fv-cat">${escapeHtml(x.cat)}</td>
+                    <td class="fv-cat">${escapeHtml(x.cat)}${toggle ? ` <button class="fv-toggle" data-cat="${escapeHtml(x.cat)}" title="Basculer fixe / variable">⇄</button>` : ''}</td>
                     <td class="text-right">${formatCurrency(x.amt)}</td>
                     <td class="text-right">${fmtPct(pct(x.amt))}</td>
                 </tr>`).join('');
@@ -1902,9 +1923,9 @@
                         <tr><th>Catégorie</th><th class="text-right">Montant</th><th class="text-right">% du total décaissements</th></tr>
                     </thead>
                     <tbody>
-                        ${groupBlock('🔒 Décaissements fixes', 'fv-fixe', groups.fixe)}
-                        ${groupBlock('📈 Décaissements variables', 'fv-variable', groups.variable)}
-                        ${groupBlock('🔁 Interco (mouvements internes)', 'fv-interco', groups.interco)}
+                        ${groupBlock('🔒 Décaissements fixes', 'fv-fixe', groups.fixe, true)}
+                        ${groupBlock('📈 Décaissements variables', 'fv-variable', groups.variable, true)}
+                        ${groupBlock('🔁 Interco (mouvements internes)', 'fv-interco', groups.interco, false)}
                         <tr class="fv-total">
                             <td>Total décaissements</td>
                             <td class="text-right">${formatCurrency(total)}</td>
@@ -1913,6 +1934,14 @@
                     </tbody>
                 </table>
             </div>`;
+
+        // Bascule fixe ↔ variable (choix persisté)
+        el.querySelectorAll('.fv-toggle').forEach(b => b.addEventListener('click', async () => {
+            const cat = b.dataset.cat;
+            fixedVarOverrides[cat] = decFixedVarType(cat) === 'fixe' ? 'variable' : 'fixe';
+            try { await idbSet('liora_fixed_var_overrides', fixedVarOverrides); } catch { /* ignore */ }
+            renderFixedVariable();
+        }));
     }
 
     // ── Trésorerie & runway ──
@@ -2968,6 +2997,7 @@
         await loadLearnedCategories();
         await loadB2BCache();
         await loadCashBalance();
+        await loadFixedVarOverrides();
         const stored = await loadFromStorage();
         if (stored.length > 0) {
             console.log('[Liora] Restauration de', stored.length, 'transactions depuis IndexedDB');
@@ -3090,6 +3120,35 @@
     (function wireB2BButton() {
         const b2bBtn = document.getElementById('dq-b2b-autres');
         if (b2bBtn) b2bBtn.addEventListener('click', () => runB2BDetection(b2bBtn));
+    })();
+
+    // Formulaire « Ajouter une règle » (mot-clé → catégorie)
+    (function wireRuleAddForm() {
+        const kw = document.getElementById('rule-add-keyword');
+        const sensSel = document.getElementById('rule-add-sens');
+        const catSel = document.getElementById('rule-add-cat');
+        const btn = document.getElementById('rule-add-btn');
+        if (!kw || !sensSel || !catSel || !btn) return;
+        function fillCats() {
+            const cats = sensSel.value === 'Encaissement' ? ENC_CATEGORIES : DEC_CATEGORIES;
+            catSel.innerHTML = cats.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+        }
+        fillCats();
+        sensSel.addEventListener('change', fillCats);
+        btn.addEventListener('click', async () => {
+            const keyword = kw.value.trim();
+            if (keyword.length < 3) { showSaveToast('Mot-clé trop court (min. 3 caractères)', true); return; }
+            const ok = await addManualRule(keyword, catSel.value, sensSel.value);
+            if (!ok) { showSaveToast('Mot-clé invalide', true); return; }
+            kw.value = '';
+            categorizeAll(rawData);
+            await saveToStorage();
+            computeFilteredData();
+            renderDataQuality();
+            renderLearnedRules();
+            refreshDashboard();
+            showSaveToast('Règle ajoutée : « ' + keyword + ' » → ' + catSel.value, false);
+        });
     })();
 
     // ── Détection via annuaire officiel ──
