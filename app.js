@@ -109,6 +109,10 @@
         }
     }
 
+    // Migration des libellés de catégorie renommés (ancien → nouveau)
+    const CATEGORY_RENAMES = { 'Alternance (OPCO)': 'OPCO', 'B2C': 'Financement personnel' };
+    function migrateCat(c) { return CATEGORY_RENAMES[c] || c; }
+
     async function loadFromStorage() {
         try {
             const arr = await idbGet(STORAGE_DATA_KEY);
@@ -116,9 +120,9 @@
             console.log('[Liora] Données chargées depuis IndexedDB:', arr.length, 'transactions');
             return arr.map(r => ({
                 ...r,
-                // Migration libellé de catégorie : « Alternance (OPCO) » → « OPCO »
-                categorie: r.categorie === 'Alternance (OPCO)' ? 'OPCO' : r.categorie,
-                manualCategory: r.manualCategory === 'Alternance (OPCO)' ? 'OPCO' : r.manualCategory,
+                // Migration des libellés de catégorie renommés (OPCO, Financement personnel…)
+                categorie: migrateCat(r.categorie),
+                manualCategory: migrateCat(r.manualCategory),
                 date: r.date ? new Date(r.date) : new Date(0),
             }));
         } catch (e) {
@@ -194,7 +198,7 @@
     // Default seed rules (exported from previous version)
     const _seedLearnedRules = {
         "A F D A S": {category:"OPCO",sens:"Encaissement",count:2,date:1775728913867,originalLibelle:"VIR SEPA RECU /FRM A F D A S /EID 0586742 /RNF FACT-2405-02655  DV-004567"},
-        "ADEL BEGGAH": {category:"B2C",sens:"Encaissement",count:1,date:1775728281981,originalLibelle:"VIR SCT INST RECU /FRM ADEL BEGGAH /EID NOTPROVIDED /RNF FACT-2501-07947 (2/6) BEGGAH ADEL"},
+        "ADEL BEGGAH": {category:"Financement personnel",sens:"Encaissement",count:1,date:1775728281981,originalLibelle:"VIR SCT INST RECU /FRM ADEL BEGGAH /EID NOTPROVIDED /RNF FACT-2501-07947 (2/6) BEGGAH ADEL"},
         "AISMT13": {category:"B2B",sens:"Encaissement",count:1,date:1775728804651,originalLibelle:"VIR SEPA RECU /FRM AISMT13 /EID ACH260336 /RNF FACT-2602-13858"},
         "ANTHROPIC": {category:"SaaS/IT",sens:"Décaissement",count:1,date:1775729770424,originalLibelle:"ANTHROPIC"},
         "ASP AGENCE COMPTABLE": {category:"Autres revenus",sens:"Encaissement",count:1,date:1775728827668,originalLibelle:"2879926 VIREMENT SEPA RECU ASP AGENCE COMPTABLE"},
@@ -226,7 +230,7 @@
         "CSP GUYANE": {category:"B2B",sens:"Encaissement",count:1,date:1775728804651,originalLibelle:"VIR SEPA RECU /FRM CSP GUYANE"},
         "CU GPSO": {category:"B2B",sens:"Encaissement",count:1,date:1775728281981,originalLibelle:"VIR SEPA RECU /FRM CU GPSO"},
         "CURSOR": {category:"SaaS/IT",sens:"Décaissement",count:1,date:1775730274298,originalLibelle:"CURSOR, AI POWERED IDE"},
-        "DECENCIERE FERRANDIERE STEPHANE": {category:"B2C",sens:"Encaissement",count:2,date:1775728677583,originalLibelle:"VIR SCT INST RECU /FRM DECENCIERE FERRANDIERE STEPHANE"},
+        "DECENCIERE FERRANDIERE STEPHANE": {category:"Financement personnel",sens:"Encaissement",count:2,date:1775728677583,originalLibelle:"VIR SCT INST RECU /FRM DECENCIERE FERRANDIERE STEPHANE"},
         "DEPARTEMENT DU GARD": {category:"B2B",sens:"Encaissement",count:1,date:1775728971668,originalLibelle:"DEPARTEMENT DU GARD - BUDGET PRI  FACT-2405-02044"},
         "EASYVOYAGE": {category:"B2B",sens:"Encaissement",count:1,date:1775728281981,originalLibelle:"VIR SEPA RECU /FRM EASYVOYAGE /EID F02DSUP000181"},
         "EAT ON LINE": {category:"B2B",sens:"Encaissement",count:1,date:1775728281982,originalLibelle:"VIR SEPA RECU /FRM EAT ON LINE /EID EFT-00834956 /RNF FACT-2502-08441"},
@@ -287,7 +291,7 @@
         "SMARTBOX LTD FR0367206": {category:"Frais généraux & services",sens:"Décaissement",count:1,date:1775729974727,originalLibelle:"SMARTBOX LTD FR0367206"},
         "SMI SDEA EAU": {category:"B2B",sens:"Encaissement",count:1,date:1775728804651,originalLibelle:"VIR SEPA RECU /FRM SMI SDEA EAU"},
         "SNCF VOYAGEURS TER PPU FACT--": {category:"B2B",sens:"Encaissement",count:1,date:1775728677583,originalLibelle:"SNCF VOYAGEURS TER PPU  FACT-2602-13782"},
-        "STEPHANE DECENCIERE FERRANDIERE": {category:"B2C",sens:"Encaissement",count:1,date:1775728677583,originalLibelle:"VIR SCT INST RECU /FRM STEPHANE DECENCIERE FERRANDIERE"},
+        "STEPHANE DECENCIERE FERRANDIERE": {category:"Financement personnel",sens:"Encaissement",count:1,date:1775728677583,originalLibelle:"VIR SCT INST RECU /FRM STEPHANE DECENCIERE FERRANDIERE"},
         "SWAN - INCOMING NON-EURO CREDIT TRANSFER": {category:"Banques/Dettes",sens:"Décaissement",count:2,date:1775730173561,originalLibelle:"SWAN - Incoming non-euro credit transfer (group 1)"},
         "TALENDI": {category:"B2B",sens:"Encaissement",count:1,date:1775728804651,originalLibelle:"VIR SEPA RECU /FRM TALENDI"},
         "TELLA": {category:"SaaS/IT",sens:"Décaissement",count:1,date:1775729770424,originalLibelle:"TELLA"},
@@ -317,12 +321,12 @@
             await saveLearnedCategories();
             console.log('[Liora] Règles par défaut chargées:', Object.keys(_learnedCache).length, 'règles');
         }
-        // Migration libellé de catégorie : « Alternance (OPCO) » → « OPCO »
+        // Migration des libellés de catégorie renommés (OPCO, Financement personnel…)
         let migrated = false;
         for (const v of Object.values(_learnedCache)) {
-            if (v && v.category === 'Alternance (OPCO)') { v.category = 'OPCO'; migrated = true; }
+            if (v && CATEGORY_RENAMES[v.category]) { v.category = CATEGORY_RENAMES[v.category]; migrated = true; }
         }
-        if (migrated) { await saveLearnedCategories(); console.log('[Liora] Règles apprises migrées: Alternance (OPCO) → OPCO'); }
+        if (migrated) { await saveLearnedCategories(); console.log('[Liora] Règles apprises migrées vers les nouveaux libellés'); }
     }
 
     async function saveLearnedCategories() {
@@ -371,11 +375,12 @@
         return bestMatch;
     }
 
-    // ── B2B Registry (annuaire officiel — recherche-entreprises.api.gouv.fr, gratuit & sans clé) ──
-    // v2 : ne retient que les sociétés commerciales privées (exclut organismes publics,
-    //      collectivités, associations/OPCO). Le changement de clé invalide l'ancien cache.
-    const STORAGE_B2B_KEY = 'liora_b2b_registry_v2';
-    let b2bRegistryCache = {}; // { CLEAN_NAME: { isCompany, siren, nom } }
+    // ── Registry (annuaire officiel — recherche-entreprises.api.gouv.fr, gratuit & sans clé) ──
+    // v3 : classe chaque encaissement inconnu en B2B (société commerciale), public (laissé
+    //      en Autres revenus) ou « Financement personnel » (aucune entité immatriculée trouvée).
+    //      Le changement de clé invalide l'ancien cache.
+    const STORAGE_B2B_KEY = 'liora_b2b_registry_v3';
+    let b2bRegistryCache = {}; // { CLEAN_NAME: { found, isCompany, siren, nom, nature } }
 
     async function loadB2BCache() {
         try { b2bRegistryCache = (await idbGet(STORAGE_B2B_KEY)) || {}; } catch { b2bRegistryCache = {}; }
@@ -425,22 +430,27 @@
         return nj.charAt(0) === '5';                               // 5xxx = sociétés commerciales (SA, SAS, SARL, EURL…)
     }
 
-    // Interroge l'annuaire officiel pour un nom → { isCompany, siren, nom }
+    // Garde-fou : un nom portant une forme de société (souvent étrangère, absente de l'annuaire FR)
+    // ne doit pas être classé « financement personnel » par erreur.
+    const COMPANY_FORM_RE = /\b(LTD|LIMITED|GMBH|INC|LLC|CORP|CORPORATION|PLC|SPA|SRL|PTY|SARL|SASU|SAS|EURL|HOLDING|GROUP|GROUPE|COMPANY)\b/;
+    function looksLikeCompanyForm(name) { return COMPANY_FORM_RE.test(normUpper(name)); }
+
+    // Interroge l'annuaire officiel pour un nom → { found, isCompany, siren, nom, nature }
+    // found=false : aucune entité immatriculée ne correspond (→ candidat « financement personnel »).
     async function queryCompanyRegistry(name) {
         const url = 'https://recherche-entreprises.api.gouv.fr/search?q='
             + encodeURIComponent(name) + '&page=1&per_page=1';
         const resp = await fetchWithRetry(url, { method: 'GET' });
-        if (!resp || !resp.ok) return { isCompany: false };
-        let data;
-        try { data = await resp.json(); } catch { return { isCompany: false }; }
+        if (!resp || !resp.ok) throw new Error('Annuaire indisponible (' + (resp ? resp.status : 'réseau') + ')');
+        const data = await resp.json(); // JSON invalide → exception capturée en amont (non mis en cache)
         const results = (data && data.results) || [];
-        if (!results.length) return { isCompany: false };
+        if (!results.length) return { found: false, isCompany: false };
         const top = results[0];
         const nom = top.nom_complet || top.nom_raison_sociale || '';
-        if (!registryNameMatches(name, nom)) return { isCompany: false };
-        // Exclut les organismes publics / associations / collectivités : seul le B2B privé compte
-        if (!isCommercialCompany(top)) return { isCompany: false, nom, nature: String(top.nature_juridique || '') };
-        return { isCompany: true, siren: top.siren || '', nom, nature: String(top.nature_juridique || '') };
+        if (!registryNameMatches(name, nom)) return { found: false, isCompany: false };
+        // Organismes publics / associations / collectivités : trouvés mais non B2B
+        if (!isCommercialCompany(top)) return { found: true, isCompany: false, nom, nature: String(top.nature_juridique || '') };
+        return { found: true, isCompany: true, siren: top.siren || '', nom, nature: String(top.nature_juridique || '') };
     }
 
     // Lignes candidates : encaissements retombés en "Autres revenus" via le fallback (aucune règle), non reclassés
@@ -716,7 +726,7 @@
         if (containsAnyDual(libNorm, CPF_KEYS)) return ['CPF', 'Enc: CPF'];
         if (containsAnyDual(libNorm, RECONV_KEYS)) return ['Reconversion', 'Enc: Reconversion'];
         if (containsAnyDual(both, B2B_EXTRA) || isFilizB2B(tiersNorm, libNorm)) return ['B2B', 'Enc: B2B'];
-        if (containsAnyDual(libNorm, B2C_PSP) || looksLikePerson(libNorm) || looksLikePerson(tiersNorm)) return ['B2C', 'Enc: B2C'];
+        if (containsAnyDual(libNorm, B2C_PSP) || looksLikePerson(libNorm) || looksLikePerson(tiersNorm)) return ['Financement personnel', 'Enc: Financement personnel'];
         if (containsAnyDual(libNorm, AUTRES_REV_KEYS)) return ['Autres revenus', 'Enc: Autres revenus'];
         return ['Autres revenus', 'Enc: Fallback'];
     }
@@ -816,8 +826,8 @@
         data.forEach(row => {
             if (row.manualCategory) return;
             if (row.sens === 'Encaissement' && row._libNorm.includes('CA CONSUMER FINANCE')) {
-                row.categorie = 'B2C';
-                row.ruleHit = 'Post-fix: B2C (CA CONSUMER FINANCE)';
+                row.categorie = 'Financement personnel';
+                row.ruleHit = 'Post-fix: Financement personnel (CA CONSUMER FINANCE)';
             }
         });
 
@@ -857,17 +867,25 @@
             }
         });
 
-        // Step 3b: B2B via annuaire officiel (cache) — reclasse les "Autres revenus" (fallback)
-        //          confirmés comme sociétés immatriculées. Persistant : s'applique à chaque
-        //          recatégorisation et aux imports suivants, sans réinterroger l'API.
+        // Step 3b: Annuaire officiel (cache) — reclasse les "Autres revenus" (fallback) :
+        //          société commerciale → B2B ; aucune entité immatriculée → Financement personnel.
+        //          Persistant : s'applique à chaque recatégorisation et aux imports suivants,
+        //          sans réinterroger l'API.
         data.forEach(row => {
             if (row.manualCategory) return;
             if (row.sens === 'Encaissement' && row.categorie === 'Autres revenus' && row.ruleHit === 'Enc: Fallback') {
-                const hit = b2bRegistryCache[b2bCacheKey(extractCompanyName(row))];
-                if (hit && hit.isCompany) {
+                const name = extractCompanyName(row);
+                const hit = b2bRegistryCache[b2bCacheKey(name)];
+                if (!hit) return;
+                if (hit.isCompany) {
                     row.categorie = 'B2B';
                     row.ruleHit = 'Enc: B2B (annuaire officiel' + (hit.siren ? ' — SIREN ' + hit.siren : '') + ')';
+                } else if (hit.found === false && !looksLikeCompanyForm(name)) {
+                    // Aucune entité immatriculée (pas de SIREN) → particulier finançant lui-même
+                    row.categorie = 'Financement personnel';
+                    row.ruleHit = 'Enc: Financement personnel (absent de l\'annuaire)';
                 }
+                // hit.found === true mais non commercial (public / association) → reste "Autres revenus"
             }
         });
 
@@ -1947,7 +1965,7 @@
     }
 
     const CAT_COLOR_MAP = {
-        'B2B': 'tag-b2b', 'B2C': 'tag-b2c', 'Interco': 'tag-interco',
+        'B2B': 'tag-b2b', 'Financement personnel': 'tag-b2c', 'Interco': 'tag-interco',
         'OPCO': 'tag-opco', 'CPF': 'tag-cpf', 'Reconversion': 'tag-reconv',
         'Salaires': 'tag-salaires', 'URSSAF': 'tag-urssaf',
         'SaaS/IT': 'tag-saas', 'Marketing & Acquisition': 'tag-mkt',
@@ -2239,7 +2257,7 @@
             { label: 'CPF', keys: CPF_KEYS, sens: 'enc' },
             { label: 'Reconversion', keys: RECONV_KEYS, sens: 'enc' },
             { label: 'B2B', keys: B2B_EXTRA, sens: 'enc' },
-            { label: 'B2C (PSP)', keys: B2C_PSP, sens: 'enc' },
+            { label: 'Financement personnel (PSP)', keys: B2C_PSP, sens: 'enc' },
             { label: 'Autres revenus', keys: AUTRES_REV_KEYS, sens: 'enc' },
             { label: 'Interco (Déc.)', keys: INTERCO_DEC_KEYS, sens: 'dec' },
             { label: 'Banques/Dettes', keys: BANQUES_DETTES_KEYS, sens: 'dec' },
@@ -2672,7 +2690,7 @@
         'DIVERS',
     ];
     const ENC_CATEGORIES = [
-        'Interco', 'OPCO', 'CPF', 'Reconversion', 'B2B', 'B2C',
+        'Interco', 'OPCO', 'CPF', 'Reconversion', 'B2B', 'Financement personnel',
         'Autres revenus',
     ];
 
@@ -2780,17 +2798,22 @@
             if (btn) { btn.disabled = false; btn.textContent = origLabel; }
         }
         // Recatégoriser (Step 3b applique le cache) + rafraîchir toute l'app
-        const before = rawData.filter(r => r.categorie === 'B2B').length;
+        const beforeB2B = rawData.filter(r => r.categorie === 'B2B').length;
+        const beforePerso = rawData.filter(r => r.categorie === 'Financement personnel').length;
         categorizeAll(rawData);
-        const reclassified = rawData.filter(r => r.categorie === 'B2B').length - before;
+        const addB2B = rawData.filter(r => r.categorie === 'B2B').length - beforeB2B;
+        const addPerso = rawData.filter(r => r.categorie === 'Financement personnel').length - beforePerso;
         await saveToStorage();
         computeFilteredData();
         renderDataQuality();
         renderLearnedRules();
         refreshDashboard();
-        const msg = reclassified > 0
-            ? reclassified + ' transaction(s) reclassée(s) en B2B via l\'annuaire officiel'
-            : 'Aucune nouvelle société reconnue';
+        const parts = [];
+        if (addB2B > 0) parts.push(addB2B + ' en B2B');
+        if (addPerso > 0) parts.push(addPerso + ' en financement personnel');
+        const msg = parts.length
+            ? 'Reclassé via l\'annuaire : ' + parts.join(' et ')
+            : 'Aucune nouvelle reconnaissance';
         showSaveToast(msg + (errored ? ' (certaines requêtes ont échoué)' : ''), errored);
     }
 
@@ -3668,14 +3691,14 @@ Réponds UNIQUEMENT en JSON valide (pas de markdown), sous forme d'un tableau :
     //  SIMULATION PANEL 2: Manual Inputs
     // ══════════════════════════════════════════════
 
-    const SIM_ENC_CATS = ['B2B', 'B2C', 'OPCO', 'CPF', 'Reconversion', 'Autres revenus'];
+    const SIM_ENC_CATS = ['B2B', 'Financement personnel', 'OPCO', 'CPF', 'Reconversion', 'Autres revenus'];
     const SIM_DEC_CATS = [
         'Salaires', 'URSSAF', 'Formateurs / Freelances', 'SaaS/IT',
         'Frais généraux & services', 'Note de frais', 'Marketing & Acquisition',
         'Prévoyance / Mutuelle', 'Ticket restaurant', 'Loyers & charges',
         'Banques/Dettes', 'Autres impôts',
     ];
-    const SIM_ENC_DELAYS = { 'B2B': 45, 'B2C': 0, 'OPCO': 60, 'CPF': 30, 'Reconversion': 30, 'Autres revenus': 0 };
+    const SIM_ENC_DELAYS = { 'B2B': 45, 'Financement personnel': 0, 'OPCO': 60, 'CPF': 30, 'Reconversion': 30, 'Autres revenus': 0 };
 
     function buildSimInputs() {
         // Pre-fill from historical averages

@@ -225,11 +225,11 @@ Encaissement;B2B;Mot-clé;FORMIRIS;5
 Encaissement;B2B;Mot-clé;SPARKS;5
 Encaissement;B2B;Post-fix;Formes juridiques : SAS / SARL / EURL / SA;Post-fix
 Encaissement;B2B;Détection;FILIZ dans tiers (hors OPCO);5
-Encaissement;B2C;Mot-clé;ALMA;6
-Encaissement;B2C;Mot-clé;GOCARDLESS;6
-Encaissement;B2C;Mot-clé;STRIPE;6
-Encaissement;B2C;Détection;Noms de personnes (prénoms + civilités);6
-Encaissement;B2C;Post-fix;CA CONSUMER FINANCE;Post-fix
+Encaissement;Financement personnel;Mot-clé;ALMA;6
+Encaissement;Financement personnel;Mot-clé;GOCARDLESS;6
+Encaissement;Financement personnel;Mot-clé;STRIPE;6
+Encaissement;Financement personnel;Détection;Noms de personnes (prénoms + civilités);6
+Encaissement;Financement personnel;Post-fix;CA CONSUMER FINANCE;Post-fix
 Encaissement;Autres revenus;Mot-clé;CPAM;7
 Encaissement;Autres revenus;Mot-clé;AIDE;7
 Encaissement;Autres revenus;Mot-clé;SUBVENTION;7
