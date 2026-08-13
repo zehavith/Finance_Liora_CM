@@ -1,0 +1,15 @@
+# Accès à l'API Gmail (lecture seule)
+google-api-python-client>=2.100.0
+google-auth>=2.23.0
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
+
+# Génération des PDF.
+# Le script utilise en priorité Chrome ou Edge s'il en trouve un sur le poste
+# (rendu le plus fidèle, aucune installation supplémentaire sous Windows).
+# xhtml2pdf sert de secours sur un poste sans navigateur Chromium.
+xhtml2pdf>=0.2.13
+
+# Lecture directe des fichiers Excel (.xlsx) exportés depuis Monday.
+# Inutile si vous fournissez la liste des dossiers au format CSV.
+openpyxl>=3.1.0
