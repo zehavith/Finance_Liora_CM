@@ -2209,6 +2209,62 @@
         if (saved) updateStorageStatus();
     });
 
+    // ── Sauvegarde / restauration (fichier JSON) ──
+    async function exportBackup() {
+        try {
+            const backup = {
+                app: 'Liora Cash Flow Analyzer',
+                type: 'backup',
+                version: 1,
+                exportedAt: new Date().toISOString(),
+                data: {
+                    [STORAGE_DATA_KEY]: await idbGet(STORAGE_DATA_KEY),
+                    [STORAGE_FILES_KEY]: await idbGet(STORAGE_FILES_KEY),
+                    [STORAGE_LEARNED_KEY]: await idbGet(STORAGE_LEARNED_KEY),
+                    [STORAGE_B2B_KEY]: await idbGet(STORAGE_B2B_KEY),
+                },
+            };
+            const blob = new Blob([JSON.stringify(backup)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'liora-sauvegarde-' + new Date().toISOString().slice(0, 10) + '.json';
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+            showSaveToast('Sauvegarde exportée', false);
+        } catch (e) {
+            showSaveToast('Échec de l\'export : ' + e.message, true);
+        }
+    }
+
+    async function importBackup(file) {
+        try {
+            const backup = JSON.parse(await file.text());
+            const payload = (backup && backup.data) ? backup.data : backup; // tolère un objet brut
+            const keys = [STORAGE_DATA_KEY, STORAGE_FILES_KEY, STORAGE_LEARNED_KEY, STORAGE_B2B_KEY];
+            const present = keys.filter(k => payload && payload[k] !== undefined);
+            if (present.length === 0) { showSaveToast('Fichier de sauvegarde non reconnu', true); return; }
+            const nb = Array.isArray(payload[STORAGE_DATA_KEY]) ? payload[STORAGE_DATA_KEY].length : 0;
+            if (!confirm(`Restaurer cette sauvegarde ?\n\n${nb} transaction(s) et les règles associées remplaceront les données actuelles.`)) return;
+            for (const k of present) await idbSet(k, payload[k]);
+            showSaveToast('Sauvegarde restaurée — rechargement…', false);
+            setTimeout(() => location.reload(), 800);
+        } catch (e) {
+            showSaveToast('Échec de la restauration : ' + e.message, true);
+        }
+    }
+
+    (function wireBackup() {
+        const exp = document.getElementById('ft-backup-export');
+        const impBtn = document.getElementById('ft-backup-import-btn');
+        const impInput = document.getElementById('ft-backup-import');
+        if (exp) exp.addEventListener('click', exportBackup);
+        if (impBtn && impInput) {
+            impBtn.addEventListener('click', () => impInput.click());
+            impInput.addEventListener('change', () => { if (impInput.files.length) importBackup(impInput.files[0]); impInput.value = ''; });
+        }
+    })();
+
     // ── Storage status indicator ──
     async function updateStorageStatus() {
         const dot = document.getElementById('storage-status-dot');
