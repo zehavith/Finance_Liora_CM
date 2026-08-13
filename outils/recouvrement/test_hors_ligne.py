@@ -1221,6 +1221,167 @@ def test_sous_dossiers_par_adresse() -> None:
         export_mails.ouvrir_sources = vraies_sources
 
 
+class ClientDecouverte:
+    """Boîte où le dossier n'est connu que par son numéro de facture."""
+
+    MESSAGES = {
+        # Relance : porte en en-tête l'adresse de l'apprenante, celle de Liora
+        # et celle d'un tiers dont la boîte est énorme.
+        "d1": lambda: _echange(
+            "Relance — facture FA-2024-0153",
+            "recouvrement@liora.io",
+            "marie.dupont@exemple.fr, compta@liora.io, partage@grosclient.fr",
+            12, "La facture FA-2024-0153 reste impayée.",
+        ),
+        # Échange interne citant la facture : aucune adresse externe.
+        "d2": lambda: _echange(
+            "Point sur FA-2024-0153", "compta@liora.io", "recouvrement@liora.io",
+            25, "FA-2024-0153 toujours ouverte au grand livre.",
+        ),
+        # Réponse de l'apprenante : ne cite aucun numéro. Introuvable sans la
+        # découverte d'adresse — c'est tout l'objet de la seconde passe.
+        "d3": lambda: _echange(
+            "Re: ma situation", "marie.dupont@exemple.fr", "recouvrement@liora.io",
+            20, "Je ne peux pas payer ce mois-ci.",
+        ),
+    }
+
+    adresse_boite = "recouvrement@liora.io"
+
+    def rechercher_identifiants(self, requete, inclure_spam_corbeille=True, plafond=None):
+        # Sondage d'une adresse : la requête ne porte que sur elle.
+        if "FA-2024-0153" not in requete:
+            if "marie.dupont@exemple.fr" in requete:
+                return ["d1", "d3"]
+            if "partage@grosclient.fr" in requete:
+                return [f"x{index}" for index in range(6)]
+            return []
+        return ["d1", "d2"]
+
+    def recuperer_messages(self, identifiants):
+        for identifiant in identifiants:
+            message = lire_message(
+                {"id": identifiant, "threadId": "t1", "internalDate": "1710231243000"},
+                self.MESSAGES[identifiant]().as_bytes(),
+            )
+            message.boites = [self.adresse_boite]
+            yield message
+
+
+def test_decouverte_adresses() -> None:
+    """Le numéro de facture suffit à retrouver l'adresse, puis les échanges."""
+    print("\nDécouverte des adresses depuis le numéro de facture")
+
+    import export_mails  # noqa: PLC0415
+    from decouverte import adresses_candidates  # noqa: PLC0415
+    from gmail_api import SourcesGmail  # noqa: PLC0415
+
+    class Faux:
+        def __init__(self, parties):
+            self.parties = parties.lower()
+
+    candidates = adresses_candidates(
+        [
+            Faux("recouvrement@liora.io marie.dupont@exemple.fr noreply@monday.com"),
+            Faux("marie.dupont@exemple.fr mailer-daemon@liora.io tuteur@ecole.fr"),
+        ],
+        domaines_internes={"liora.io"},
+        deja_connues=[],
+    )
+    verifier(
+        [adresse for adresse, _ in candidates]
+        == ["marie.dupont@exemple.fr", "tuteur@ecole.fr"],
+        "adresses internes et robots écartés, les autres classées par fréquence",
+    )
+    verifier(
+        candidates[0][1] == 2,
+        "une adresse présente dans deux messages est comptée deux fois",
+    )
+    verifier(
+        adresses_candidates(
+            [Faux("marie.dupont@exemple.fr")], {"liora.io"},
+            ["MARIE.DUPONT@exemple.fr"],
+        ) == [],
+        "une adresse déjà au dossier n'est pas redécouverte",
+    )
+
+    vraies_sources = export_mails.ouvrir_sources
+    export_mails.ouvrir_sources = lambda **_: SourcesGmail([ClientDecouverte()])
+    try:
+        with tempfile.TemporaryDirectory() as repertoire:
+            racine = Path(repertoire)
+            fichier = racine / "dossiers.csv"
+            # Aucune adresse mail : le dossier n'est connu que par sa facture.
+            fichier.write_text(
+                "reference;nom;facture\n2024-118;Marie Dupont;FA-2024-0153\n",
+                encoding="utf-8",
+            )
+
+            sortie = racine / "export"
+            journal: list[str] = []
+            code = export_mails.executer(
+                export_mails.analyser_arguments([
+                    "--dossiers", str(fichier), "--sortie", str(sortie),
+                    "--decouvrir-adresses", "--max-mails", "5",
+                ]),
+                relais=journal.append,
+            )
+            verifier(code == 0, "code de sortie 0")
+
+            trace = "\n".join(journal)
+            verifier(
+                "adresse découverte : marie.dupont@exemple.fr" in trace,
+                "l'adresse de l'apprenante est retrouvée depuis la facture",
+            )
+            verifier(
+                "adresse écartée : partage@grosclient.fr" in trace,
+                "une adresse ramenant plus que le plafond est écartée, à voix haute",
+            )
+            verifier(
+                "compta@liora.io" not in trace.split("Terminé")[0]
+                .replace("Boîte(s) interrogée(s)", ""),
+                "aucune adresse du domaine interne n'est retenue",
+            )
+
+            index = _lire_index(sortie / "2024-118_marie-dupont" / "index.csv")
+            verifier(
+                len(index) == 3,
+                "la seconde passe ramène la réponse qui ne cite aucun numéro",
+            )
+            verifier(
+                any("ma situation" in rangee["objet"] for rangee in index),
+                "la réponse de l'apprenante figure bien au dossier",
+            )
+
+            recap = _lire_index(sortie / "_recapitulatif.csv")
+            verifier(
+                recap[0]["adresses_decouvertes"] == "marie.dupont@exemple.fr",
+                "récapitulatif : l'adresse découverte est tracée pour vérification",
+            )
+            verifier(
+                "marie.dupont@exemple.fr" in recap[0]["emails"],
+                "l'adresse découverte rejoint les adresses du dossier",
+            )
+            verifier(
+                "from:marie.dupont@exemple.fr" in recap[0]["requete_gmail"],
+                "récapitulatif : la requête reflète la recherche réellement menée",
+            )
+
+            # Sans l'option, la réponse sans numéro reste introuvable.
+            sortie2 = racine / "export-sans"
+            export_mails.executer(
+                export_mails.analyser_arguments(
+                    ["--dossiers", str(fichier), "--sortie", str(sortie2)]
+                )
+            )
+            verifier(
+                len(_lire_index(sortie2 / "2024-118_marie-dupont" / "index.csv")) == 2,
+                "sans l'option, seule la recherche par facture est menée",
+            )
+    finally:
+        export_mails.ouvrir_sources = vraies_sources
+
+
 def _ligne(piece: int, jour: int, sens: str, objet: str) -> LigneIndex:
     return LigneIndex(
         piece_n=piece,
@@ -1353,6 +1514,7 @@ def test_interface() -> None:
             ('id="regrouper"', "option regroupement"),
             ('id="sousdossiers"', "option sous-dossier par facture"),
             ('id="sousdossiersadresse"', "option sous-dossier par adresse"),
+            ('id="decouvrir"', "option découverte d'adresses"),
             ('id="sansnav"', "option sans navigateur"),
             ('id="reprendre"', "option reprendre"),
             ('id="seulement"', "filtre par références"),
@@ -1648,6 +1810,7 @@ def main() -> int:
     test_factures_citees()
     test_sous_dossiers_par_facture()
     test_sous_dossiers_par_adresse()
+    test_decouverte_adresses()
     test_interface()
     test_suivi()
 

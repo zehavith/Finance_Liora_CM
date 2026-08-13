@@ -167,6 +167,8 @@ def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str
         arguments.append("--sans-sous-dossiers")
     if demande.get("sous_dossiers_par_adresse"):
         arguments.append("--sous-dossiers-par-adresse")
+    if demande.get("decouvrir_adresses"):
+        arguments.append("--decouvrir-adresses")
     if demande.get("sans_spam"):
         arguments.append("--sans-spam")
     if demande.get("reprendre"):
@@ -658,6 +660,12 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <span><b>Un sous-dossier par adresse mail</b><i>Même principe quand les
     échanges passent par plusieurs adresses. Le rattachement se fait sur les
     en-têtes du message, pas sur son corps. Les montants n'y sont pas répartis.</i></span></label>
+  <label class="case"><input type="checkbox" id="decouvrir" />
+    <span><b>Retrouver les adresses depuis le numéro de facture</b><i>Relève
+    les adresses du débiteur dans les messages citant la facture, puis relance
+    la recherche sur chacune. Ramène les échanges qui ne citent aucun numéro.
+    Les adresses internes et les robots sont écartés ; chaque adresse retenue
+    est annoncée dans le journal.</i></span></label>
   <label class="case"><input type="checkbox" id="sansnav" />
     <span><b>Ne pas ouvrir le navigateur pour autoriser</b><i>Si une boîte est
     connectée dans une autre fenêtre : l'adresse s'affiche, à coller vous-même.</i></span></label>
@@ -772,6 +780,7 @@ $("lancer").addEventListener("click", async () => {
       sans_regroupement: !$("regrouper").checked,
       sans_sous_dossiers: !$("sousdossiers").checked,
       sous_dossiers_par_adresse: $("sousdossiersadresse").checked,
+      decouvrir_adresses: $("decouvrir").checked,
       sans_navigateur: $("sansnav").checked,
       reprendre: $("reprendre").checked,
       seulement: $("seulement").value,

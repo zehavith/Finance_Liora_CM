@@ -60,6 +60,7 @@ COLONNES_RECAP = [
     "doublons_ecartes",
     "sous_dossiers_factures",
     "sous_dossiers_adresses",
+    "adresses_decouvertes",
     "pdf_en_echec",
     "statut",
     "repertoire",
@@ -137,6 +138,7 @@ class ResumeDossier:
     doublons_ecartes: int = 0
     sous_dossiers_factures: int = 0
     sous_dossiers_adresses: int = 0
+    adresses_decouvertes: str = ""
 
     def en_rangee(self) -> dict[str, str]:
         return {
@@ -160,6 +162,7 @@ class ResumeDossier:
             "doublons_ecartes": str(self.doublons_ecartes),
             "sous_dossiers_factures": str(self.sous_dossiers_factures),
             "sous_dossiers_adresses": str(self.sous_dossiers_adresses),
+            "adresses_decouvertes": self.adresses_decouvertes,
             "pdf_en_echec": str(self.pdf_en_echec),
             "statut": self.statut,
             "repertoire": self.repertoire,

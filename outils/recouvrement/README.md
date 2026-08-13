@@ -190,6 +190,40 @@ Les deux découpages sont indépendants : un débiteur qui doit deux factures et
 écrit depuis deux adresses obtient `factures/` **et** `adresses/`, deux
 lectures du même dossier.
 
+### Retrouver les adresses à partir du numéro de facture
+
+Beaucoup de lignes n'ont qu'un numéro de facture, sans adresse mail. La
+recherche sur ce seul numéro ramène les relances — qui le citent — mais **pas
+les réponses de l'apprenante**, qui n'écrit jamais « FA-2024-0153 » dans son
+message. C'est justement la preuve la plus utile qui manque.
+
+La case *Retrouver les adresses depuis le numéro de facture* (ou
+`--decouvrir-adresses`) ajoute une seconde passe :
+
+1. recherche sur le numéro de facture ;
+2. dans les messages qui le **citent**, relevé des adresses figurant en
+   en-tête (expéditeur, destinataires, copies) ;
+3. recherche relancée sur chaque adresse retenue, et fusion sans doublon.
+
+Tout le risque est dans le filtrage : une relance porte aussi en en-tête les
+adresses de Liora, et relancer la recherche sur `recouvrement@liora.io`
+ramènerait la boîte entière. Trois garde-fous, dans cet ordre :
+
+| Écarté | Pourquoi |
+|---|---|
+| les domaines des boîtes interrogées, plus ceux de `--domaines-internes` | ce sont vos propres adresses |
+| `noreply@`, `mailer-daemon@`, `postmaster@`… | des robots, pas des parties à l'échange |
+| toute adresse ramenant à elle seule plus de `--max-mails` messages | une boîte interne ou partagée, jamais celle d'un débiteur |
+
+**Rien n'est retenu en silence** : chaque adresse découverte est annoncée à
+l'écran avec le nombre de messages qu'elle apporte, chaque adresse écartée est
+annoncée avec son motif, et la colonne `adresses_decouvertes` de
+`_recapitulatif.csv` les récapitule — à relire avant transmission. Au plus
+5 adresses sont sondées par dossier (`--max-adresses-decouvertes`).
+
+L'option n'est pas cochée par défaut : elle double le nombre de requêtes
+Gmail, et elle élargit le dossier. Faites-la d'abord tourner en simulation.
+
 ### Documents stockés dans Monday
 
 Les colonnes contenant une adresse de document — `Facture PDF`,
@@ -425,6 +459,9 @@ et de pièces jointes.
 | `--sans-regroupement` | Traite chaque facture comme un dossier distinct au lieu de réunir celles d'un même débiteur. |
 | `--sans-sous-dossiers` | N'ouvre pas un sous-dossier par facture dans `factures/`. |
 | `--sous-dossiers-par-adresse` | Ouvre en plus un sous-dossier par adresse mail, dans `adresses/`. |
+| `--decouvrir-adresses` | Relève les adresses du débiteur dans les messages citant sa facture, et relance la recherche sur chacune. |
+| `--max-adresses-decouvertes N` | Adresses sondées par dossier (défaut : 5). |
+| `--domaines-internes A,B` | Domaines à ne jamais retenir comme adresse de débiteur. Ceux des boîtes interrogées le sont déjà. |
 | `--sans-navigateur` | N'ouvre pas le navigateur : affiche l'adresse à coller vous-même, dans la fenêtre où la boîte est déjà connectée. |
 | `--compte-service CLE.json` | Lire des boîtes partagées via un compte de service (voir ci-dessous). |
 

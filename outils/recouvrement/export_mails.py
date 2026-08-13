@@ -39,6 +39,7 @@ from dossiers import (  # noqa: E402
     regrouper_par_debiteur,
 )
 import monday as module_monday  # noqa: E402
+from decouverte import adresses_candidates  # noqa: E402
 import synthese as module_synthese  # noqa: E402
 from gmail_api import ErreurGmail, SourcesGmail, ouvrir_sources  # noqa: E402
 from indexation import (  # noqa: E402
@@ -222,6 +223,31 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     analyseur.add_argument(
+        "--decouvrir-adresses",
+        action="store_true",
+        help=(
+            "Après la recherche par numéro de facture, relève les adresses du "
+            "débiteur dans les messages qui citent ce numéro, et relance la "
+            "recherche sur chacune. Les adresses internes et les robots sont "
+            "écartés, et toute adresse ramenant plus de --max-mails messages "
+            "l'est aussi. Chaque adresse retenue est annoncée."
+        ),
+    )
+    analyseur.add_argument(
+        "--max-adresses-decouvertes",
+        type=int,
+        default=5,
+        help="Nombre d'adresses sondées par dossier (défaut : 5).",
+    )
+    analyseur.add_argument(
+        "--domaines-internes",
+        default="",
+        help=(
+            "Domaines à ne jamais retenir comme adresse de débiteur, séparés "
+            "par des virgules. Ceux des boîtes interrogées le sont déjà."
+        ),
+    )
+    analyseur.add_argument(
         "--sous-dossiers-par-adresse",
         action="store_true",
         help=(
@@ -316,6 +342,30 @@ def traiter_dossier(
     adresses_sources = ", ".join(sources.adresses)
 
     messages, doublons = sources.messages(identifiants)
+
+    if options.decouvrir_adresses and dossier.factures:
+        trouvees, supplementaires = _decouvrir_adresses(
+            dossier, messages, sources, options, journal
+        )
+        if trouvees:
+            deja_vus = {(id(client), cle) for client, cle in identifiants}
+            neufs = [
+                paire
+                for paire in supplementaires
+                if (id(paire[0]), paire[1]) not in deja_vus
+            ]
+            nouveaux, _ = sources.messages(neufs)
+            messages, doubles_entre_passes = _fusionner_messages(messages, nouveaux)
+            doublons += doubles_entre_passes
+
+            # Les adresses découvertes deviennent des adresses du dossier :
+            # elles doivent apparaître dans la note, dans l'index et, si la
+            # vue par adresse est demandée, y ouvrir leur sous-dossier.
+            dossier.emails += trouvees
+            resume.emails = " | ".join(dossier.emails)
+            resume.adresses_decouvertes = " | ".join(trouvees)
+            resume.requete = dossier.requete_gmail()
+
     resume.nb_mails = len(messages)
     resume.doublons_ecartes = doublons
 
@@ -439,6 +489,101 @@ def traiter_dossier(
     journal(detail)
 
     return resume
+
+
+def _fusionner_messages(existants, nouveaux) -> tuple[list, int]:
+    """Ajoute des messages à un lot déjà constitué, sans doublon.
+
+    `SourcesGmail.messages` dédoublonne à l'intérieur d'un appel ; ici on
+    dédoublonne entre deux passes de recherche, sur la même clé de
+    Message-ID.
+    """
+    par_cle = {message.cle_dedoublonnage: message for message in existants}
+    doublons = 0
+
+    for message in nouveaux:
+        cle = message.cle_dedoublonnage
+        existant = par_cle.get(cle)
+        if existant is None:
+            par_cle[cle] = message
+            continue
+        doublons += 1
+        for boite in message.boites:
+            if boite not in existant.boites:
+                existant.boites.append(boite)
+
+    return sorted(par_cle.values(), key=lambda message: message.date), doublons
+
+
+def _decouvrir_adresses(
+    dossier: Dossier,
+    messages: list,
+    sources: SourcesGmail,
+    options: argparse.Namespace,
+    journal: Journal,
+) -> tuple[list[str], list]:
+    """Adresses du débiteur déduites des messages citant son numéro de facture.
+
+    Retourne les adresses retenues et les identifiants de leurs messages. Le
+    sondage sert de garde-fou : une adresse qui ramène à elle seule plus que
+    le plafond du dossier est une adresse interne ou partagée, pas celle d'un
+    débiteur, et elle est écartée à voix haute.
+    """
+    citant_facture = [
+        message
+        for message in messages
+        if dossier.factures_citees(message.texte_recherchable)
+    ]
+    if not citant_facture:
+        journal(
+            "    aucun message ne cite le numéro de facture : "
+            "pas de découverte d'adresse possible"
+        )
+        return [], []
+
+    internes = set(sources.domaines) | {
+        domaine.strip().lower()
+        for domaine in (options.domaines_internes or "").split(",")
+        if domaine.strip()
+    }
+    candidates = adresses_candidates(citant_facture, internes, dossier.emails)
+    if not candidates:
+        return [], []
+
+    retenues: list[str] = []
+    identifiants: list = []
+
+    for adresse, occurrences in candidates[: options.max_adresses_decouvertes]:
+        trouves = sources.identifiants_dossier(
+            dossier.requete_adresse(adresse),
+            inclure_spam_corbeille=not options.sans_spam,
+            plafond=options.max_mails + 1,
+        )
+        if len(trouves) > options.max_mails:
+            journal(
+                f"    ⚠ adresse écartée : {adresse} ramène plus de "
+                f"{options.max_mails} messages — adresse interne ou partagée, "
+                "et non celle du débiteur"
+            )
+            continue
+
+        retenues.append(adresse)
+        identifiants += trouves
+        journal(
+            f"    adresse découverte : {adresse} "
+            f"(en en-tête de {occurrences} message(s) citant la facture, "
+            f"{len(trouves)} message(s) au total)"
+        )
+
+    ecartees = len(candidates) - len(candidates[: options.max_adresses_decouvertes])
+    if ecartees:
+        journal(
+            f"    ⚠ {ecartees} autre(s) adresse(s) candidate(s) non sondée(s) : "
+            f"plafond de {options.max_adresses_decouvertes} atteint "
+            "(--max-adresses-decouvertes pour l'élever)"
+        )
+
+    return retenues, identifiants
 
 
 def _copier_piece(repertoire: Path, cible: Path, base: str) -> None:
@@ -677,6 +822,17 @@ La colonne « critere » de index.csv indique, pour chaque message, lequel des
 deux critères l'a fait remonter.
 La requête exacte utilisée pour chaque dossier figure dans _recapitulatif.csv.
 
+Sur option, une seconde passe complète la première : les adresses des parties
+sont relevées dans les messages qui citent le numéro de facture, puis la
+recherche est relancée sur chacune. Elle retrouve ainsi les échanges qui ne
+nomment aucun numéro — la plupart des réponses de l'apprenante — même si
+l'adresse ne figurait nulle part au tableau de suivi. Les adresses des
+domaines internes et les comptes automatiques sont écartés, et toute adresse
+ramenant à elle seule plus de messages que le plafond du dossier l'est aussi :
+c'est une boîte interne ou partagée, pas celle d'un débiteur. Les adresses
+retenues sont annoncées à l'écran et reportées en colonne
+« adresses_decouvertes » de _recapitulatif.csv, à vérifier avant transmission.
+
 LIMITE CONNUE
 -------------
 Le contenu textuel des pièces jointes PDF n'est pas indexé par Gmail : un
@@ -739,6 +895,12 @@ def executer(
                 "texte des PDF joints, un numéro qui n'apparaît que dans la pièce "
                 "jointe ne remontera pas."
             )
+            if not options.decouvrir_adresses:
+                journal(
+                    "    l'option « Retrouver les adresses depuis le numéro de "
+                    "facture » (--decouvrir-adresses) relève l'adresse du débiteur "
+                    "dans les messages trouvés et relance la recherche dessus."
+                )
 
         boites = [
             adresse.strip()

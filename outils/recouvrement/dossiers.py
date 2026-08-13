@@ -265,6 +265,23 @@ class Dossier:
 
         return requete
 
+    def requete_adresse(self, adresse: str) -> str:
+        """Requête limitée à une seule adresse, bornée comme le dossier.
+
+        Sert à sonder puis à verser au dossier les échanges d'une adresse
+        découverte à partir du numéro de facture.
+        """
+        termes = [
+            f"from:{adresse}", f"to:{adresse}", f"cc:{adresse}",
+            f"bcc:{adresse}", f'"{adresse}"',
+        ]
+        requete = "(" + " OR ".join(termes) + ")"
+        if self.date_debut:
+            requete += f" after:{self.date_debut}"
+        if self.date_fin:
+            requete += f" before:{self.date_fin}"
+        return requete
+
     def criteres_trouves(self, texte_message: str) -> str:
         """Quel critère explique la présence de ce message dans le dossier."""
         trouves = []
