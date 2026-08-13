@@ -1448,6 +1448,51 @@ def test_interface() -> None:
             )
             verifier("Marie Dupont" in journal, "le nom saisi nomme le dossier")
 
+            print("  -- saisie manuelle : plusieurs adresses et factures --")
+            appeler(
+                "/api/lancer",
+                {
+                    "mode": "manuel",
+                    "email": "marie.dupont@exemple.fr,m.dupont@travail.fr",
+                    "facture": "FA-2024-0153,FA-2024-0154",
+                    "nom_dossier": "Marie Dupont",
+                    "boites": "recouvrement@liora.io",
+                    "sortie": repertoire,
+                    "simulation": True,
+                },
+            )
+            for _ in range(100):
+                _statut, etat = appeler("/api/journal?depuis=0")
+                if etat.get("termine"):
+                    break
+                time.sleep(0.1)
+            journal = "\n".join(etat.get("lignes", []))
+            verifier(
+                "1 dossier(s) à traiter" in journal,
+                "deux adresses et deux factures forment un seul dossier",
+            )
+            from dossiers import lire_dossiers  # noqa: PLC0415
+
+            depose = lire_dossiers(interface.RACINE / "dossiers-depose.csv")[0]
+            verifier(
+                depose.emails == ["marie.dupont@exemple.fr", "m.dupont@travail.fr"],
+                "les deux adresses saisies sont retenues, dans l'ordre",
+            )
+            verifier(
+                depose.factures == ["FA-2024-0153", "FA-2024-0154"],
+                "les deux numéros de facture saisis sont retenus",
+            )
+            requete = depose.requete_gmail()
+            verifier(
+                "from:m.dupont@travail.fr" in requete and '"FA-2024-0154"' in requete,
+                "les deux adresses et les deux factures entrent dans la requête Gmail",
+            )
+            verifier(
+                len(depose.repartition_par_facture()) == 2
+                and len(depose.repartition_par_adresse()) == 2,
+                "une saisie manuelle multiple donne bien ses sous-dossiers",
+            )
+
             print("  -- refus d'une saisie manuelle sans aucun critère --")
             try:
                 appeler(

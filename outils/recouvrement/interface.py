@@ -586,12 +586,13 @@ button:disabled{opacity:.45;cursor:not-allowed}
        Renseignez l'un des deux critères, ou les deux.</p>
     <div class="grille">
       <div>
-        <label for="mEmail">Adresse mail</label>
-        <input type="text" id="mEmail" placeholder="marie.dupont@exemple.fr" />
+        <label for="mEmail">Adresse(s) mail — séparées par des virgules</label>
+        <input type="text" id="mEmail"
+               placeholder="marie.dupont@exemple.fr,m.dupont@travail.fr" />
       </div>
       <div>
-        <label for="mFacture">Numéro de facture</label>
-        <input type="text" id="mFacture" placeholder="FACT-2405-00030" />
+        <label for="mFacture">Numéro(s) de facture — séparés par des virgules</label>
+        <input type="text" id="mFacture" placeholder="FACT-2405-00030,FACT-2405-00142" />
       </div>
       <div>
         <label for="mNom">Nom du dossier (facultatif)</label>
@@ -599,8 +600,12 @@ button:disabled{opacity:.45;cursor:not-allowed}
       </div>
     </div>
     <p class="note">Les deux critères se combinent par un OU : un message
-       remonte s'il cite l'adresse <b>ou</b> le numéro de facture. Renseigner
-       les deux élargit la recherche, il ne la restreint pas.</p>
+       remonte s'il cite l'une des adresses <b>ou</b> l'un des numéros de
+       facture. Renseigner les deux élargit la recherche, il ne la restreint
+       pas.</p>
+    <p class="note">Plusieurs valeurs dans un champ forment <b>un seul</b>
+       dossier — celui du débiteur —, avec les sous-dossiers par facture et,
+       si l'option est cochée, par adresse.</p>
   </div>
 </section>
 
