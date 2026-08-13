@@ -27,6 +27,9 @@ COLONNES_INDEX = [
     # Facture(s) nommée(s) dans le message : c'est ce qui range l'échange dans
     # le sous-dossier de la facture concernée. Vide = concerne tout le dossier.
     "factures_concernees",
+    # Adresse(s) du dossier parmi les parties au message. Vide = message
+    # rattaché au dossier sans que le débiteur figure dans les en-têtes.
+    "adresses_concernees",
     "boites",
     "fichier_pdf",
     "fichier_eml",
@@ -56,6 +59,7 @@ COLONNES_RECAP = [
     "jours_sans_echange",
     "doublons_ecartes",
     "sous_dossiers_factures",
+    "sous_dossiers_adresses",
     "pdf_en_echec",
     "statut",
     "repertoire",
@@ -82,6 +86,7 @@ class LigneIndex:
     thread_id: str
     message_id: str
     factures_concernees: str = ""
+    adresses_concernees: str = ""
 
     def en_rangee(self) -> dict[str, str]:
         return {
@@ -97,6 +102,7 @@ class LigneIndex:
             "pieces_jointes": self.pieces_jointes,
             "critere": self.critere,
             "factures_concernees": self.factures_concernees,
+            "adresses_concernees": self.adresses_concernees,
             "boites": self.boites,
             "fichier_pdf": self.fichier_pdf,
             "fichier_eml": self.fichier_eml,
@@ -130,6 +136,7 @@ class ResumeDossier:
     jours_sans_echange: str = ""
     doublons_ecartes: int = 0
     sous_dossiers_factures: int = 0
+    sous_dossiers_adresses: int = 0
 
     def en_rangee(self) -> dict[str, str]:
         return {
@@ -152,6 +159,7 @@ class ResumeDossier:
             "jours_sans_echange": self.jours_sans_echange,
             "doublons_ecartes": str(self.doublons_ecartes),
             "sous_dossiers_factures": str(self.sous_dossiers_factures),
+            "sous_dossiers_adresses": str(self.sous_dossiers_adresses),
             "pdf_en_echec": str(self.pdf_en_echec),
             "statut": self.statut,
             "repertoire": self.repertoire,

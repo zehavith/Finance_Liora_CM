@@ -21,13 +21,16 @@ export/
 │   │   └── ...
 │   ├── pieces-jointes/
 │   │   └── 001_2024-10-15_1022_.../facture-fa-2024-0153.pdf
-│   └── factures/                    si le débiteur en doit plusieurs
-│       ├── fa-2024-0153/            sous-dossier complet, transmissible seul
-│       │   ├── synthese.pdf
-│       │   ├── index.csv
-│       │   ├── mails/
-│       │   └── pieces-jointes/
-│       └── fa-2024-0154/
+│   ├── factures/                    si le débiteur en doit plusieurs
+│   │   ├── fa-2024-0153/            sous-dossier complet, transmissible seul
+│   │   │   ├── synthese.pdf
+│   │   │   ├── index.csv
+│   │   │   ├── mails/
+│   │   │   └── pieces-jointes/
+│   │   └── fa-2024-0154/
+│   └── adresses/                    sur option, si plusieurs adresses
+│       ├── marie-dupont-exemple-fr/ même structure, vue par adresse
+│       └── m-dupont-travail-fr/
 ├── 2024-119_sophie-bernard/
 ├── _recapitulatif.csv               une ligne par dossier
 ├── LISEZ-MOI.txt                    méthode d'extraction, à joindre au dossier
@@ -159,6 +162,33 @@ Un débiteur ne devant qu'une facture ne reçoit pas de `factures/` : le
 découpage n'ajouterait qu'un niveau de répertoire. Pour le désactiver
 entièrement, décochez *Un sous-dossier par facture*, ou passez
 `--sans-sous-dossiers`.
+
+#### Le même découpage, par adresse mail
+
+Quand les échanges d'un même débiteur passent par plusieurs adresses —
+personnelle et professionnelle, apprenante et employeur — la case *Un
+sous-dossier par adresse mail* (ou `--sous-dossiers-par-adresse`) produit un
+sous-répertoire `adresses/`, bâti sur le même principe :
+
+| Le message… | va dans… |
+|---|---|
+| a `marie.dupont@exemple.fr` en en-tête | la vue de cette adresse |
+| a les deux adresses en en-tête | les deux vues |
+| n'a aucune adresse du dossier en en-tête (échange interne remonté par le numéro de facture) | **toutes** les vues |
+
+Le rattachement se fait sur les **en-têtes** du message — expéditeur,
+destinataires, copies — et non sur son corps : une adresse recopiée dans un
+message transféré ne fait pas de son titulaire une partie à l'échange.
+
+Deux différences avec le découpage par facture : cette vue est **optionnelle**
+(décochée par défaut, la plupart des dossiers portant une adresse de contact
+et une adresse de prélèvement sans que cela mérite deux répertoires), et les
+**montants n'y sont pas répartis** — une adresse ne porte pas une part de la
+dette, c'est la même dette vue par un autre canal.
+
+Les deux découpages sont indépendants : un débiteur qui doit deux factures et
+écrit depuis deux adresses obtient `factures/` **et** `adresses/`, deux
+lectures du même dossier.
 
 ### Documents stockés dans Monday
 
@@ -394,6 +424,7 @@ et de pièces jointes.
 | `--sans-synthese` | N'écrit pas la note de synthèse PDF de chaque dossier. |
 | `--sans-regroupement` | Traite chaque facture comme un dossier distinct au lieu de réunir celles d'un même débiteur. |
 | `--sans-sous-dossiers` | N'ouvre pas un sous-dossier par facture dans `factures/`. |
+| `--sous-dossiers-par-adresse` | Ouvre en plus un sous-dossier par adresse mail, dans `adresses/`. |
 | `--sans-navigateur` | N'ouvre pas le navigateur : affiche l'adresse à coller vous-même, dans la fenêtre où la boîte est déjà connectée. |
 | `--compte-service CLE.json` | Lire des boîtes partagées via un compte de service (voir ci-dessous). |
 

@@ -222,6 +222,14 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     analyseur.add_argument(
+        "--sous-dossiers-par-adresse",
+        action="store_true",
+        help=(
+            "Ouvre en plus un sous-dossier par adresse mail, dans « adresses/ », "
+            "quand les échanges d'un débiteur passent par plusieurs adresses."
+        ),
+    )
+    analyseur.add_argument(
         "--fuseau",
         default=FUSEAU_PAR_DEFAUT,
         help=(
@@ -344,6 +352,7 @@ def traiter_dossier(
         textes_par_piece[numero] = message.corps_texte or message.corps_html or ""
 
         recherchable = message.texte_recherchable
+        parties = message.parties
         lignes.append(
             LigneIndex(
                 piece_n=numero,
@@ -357,6 +366,7 @@ def traiter_dossier(
                 pieces_jointes=" | ".join(pj.nom for pj in message.pieces_jointes),
                 critere=dossier.criteres_trouves(recherchable),
                 factures_concernees=" | ".join(dossier.factures_citees(recherchable)),
+                adresses_concernees=" | ".join(dossier.adresses_citees(parties)),
                 boites=" | ".join(message.boites),
                 fichier_pdf=chemin_relatif(
                     chemin_pdf if pdf_ok else chemin_pdf.with_suffix(".html"), repertoire
@@ -377,6 +387,12 @@ def traiter_dossier(
     analyse = module_synthese.analyser(lignes, textes_par_piece, doublons)
     _reporter_synthese(resume, analyse, date_export)
 
+    vues = []
+    if not options.sans_sous_dossiers:
+        vues.append("factures")
+    if options.sous_dossiers_par_adresse:
+        vues.append("adresses")
+
     if not options.sans_synthese:
         contenu = module_synthese.construire_html(
             dossier=dossier,
@@ -385,12 +401,16 @@ def traiter_dossier(
             synthese=analyse,
             date_export=date_export,
             documents_monday=documents_monday,
+            # La note annonce les sous-dossiers réellement écrits, et eux
+            # seuls : elle est le seul document lu, et un chemin qu'elle cite
+            # doit exister.
+            vues=set(vues),
         )
         if not ecrire_pdf(contenu, repertoire / "synthese.pdf")[0]:
             resume.pdf_en_echec += 1
 
-    if not options.sans_sous_dossiers:
-        resume.sous_dossiers_factures = _ecrire_sous_dossiers(
+    for vue in vues:
+        nombre = _ecrire_sous_dossiers(
             dossier=dossier,
             repertoire=repertoire,
             lignes=lignes,
@@ -401,7 +421,12 @@ def traiter_dossier(
             options=options,
             journal=journal,
             resume=resume,
+            vue=vue,
         )
+        if vue == "factures":
+            resume.sous_dossiers_factures = nombre
+        else:
+            resume.sous_dossiers_adresses = nombre
 
     detail = (
         f"    {resume.nb_mails} message(s) — {resume.nb_recus} reçu(s), "
@@ -448,22 +473,43 @@ def _ecrire_sous_dossiers(
     options: argparse.Namespace,
     journal: Journal,
     resume: ResumeDossier,
+    vue: str,
 ) -> int:
-    """Un sous-dossier complet par facture, sous « factures/ ».
+    """Une vue autonome du dossier, découpée par facture ou par adresse.
 
     Le dossier du débiteur reste l'ensemble ; chaque sous-dossier en est une
-    vue autonome, limitée à ce qui concerne une facture. Les numéros de pièce
-    ne sont pas renumérotés : « pièce n° 7 » désigne le même message dans le
-    dossier et dans tous ses sous-dossiers.
+    vue autonome, limitée à ce qui concerne une facture — ou une adresse. Les
+    numéros de pièce ne sont pas renumérotés : « pièce n° 7 » désigne le même
+    message dans le dossier et dans tous ses sous-dossiers.
     """
-    sous_dossiers = dossier.repartition_par_facture()
+    if vue == "factures":
+        sous_dossiers = dossier.repartition_par_facture()
+        repartir = module_synthese.repartition_par_facture
+        libelle_vue = "facture"
+        note_vue = (
+            "Vue par facture : ce sous-dossier ne retient que les échanges "
+            "concernant cette facture, plus ceux qui n'en nomment aucune. Le "
+            "dossier complet du débiteur se trouve dans le répertoire parent."
+        )
+    else:
+        sous_dossiers = dossier.repartition_par_adresse()
+        repartir = module_synthese.repartition_par_adresse
+        libelle_vue = "adresse"
+        note_vue = (
+            "Vue par adresse mail : ce sous-dossier ne retient que les échanges "
+            "où cette adresse figure en en-tête, plus ceux où aucune adresse du "
+            "dossier n'apparaît. Le montant affiché est celui de la dette entière "
+            "du débiteur : il n'est pas réparti entre les adresses. Le dossier "
+            "complet se trouve dans le répertoire parent."
+        )
+
     if not sous_dossiers:
         return 0
 
-    racine = repertoire / "factures"
-    repartition = module_synthese.repartition_par_facture(sous_dossiers, lignes)
-
-    for sous_dossier, (numero, nom, pieces) in zip(sous_dossiers, repartition):
+    racine = repertoire / vue
+    for sous_dossier, (designation, nom, pieces) in zip(
+        sous_dossiers, repartir(sous_dossiers, lignes)
+    ):
         cible = racine / nom
         cible.mkdir(parents=True, exist_ok=True)
 
@@ -475,15 +521,19 @@ def _ecrire_sous_dossiers(
         ecrire_index_dossier(cible / "index.csv", pieces)
 
         journal(
-            f"    facture {numero or nom} → sous-dossier « factures/{nom} », "
-            f"{len(pieces)} pièce(s)"
+            f"    {libelle_vue} {designation or nom} → sous-dossier "
+            f"« {vue}/{nom} », {len(pieces)} pièce(s)"
         )
 
         documents = _documents_monday(sous_dossier, cible, options, journal)
 
         if not options.sans_synthese:
             analyse = module_synthese.analyser(
-                pieces, {ligne.piece_n: textes_par_piece.get(ligne.piece_n, "") for ligne in pieces}
+                pieces,
+                {
+                    ligne.piece_n: textes_par_piece.get(ligne.piece_n, "")
+                    for ligne in pieces
+                },
             )
             contenu = module_synthese.construire_html(
                 dossier=sous_dossier,
@@ -493,6 +543,10 @@ def _ecrire_sous_dossiers(
                 date_export=date_export,
                 documents_monday=documents,
                 rattachement=f"{dossier.reference} — {dossier.nom}".strip(" —"),
+                note_vue=note_vue,
+                # Un sous-dossier ne se redécoupe pas : il annoncerait des
+                # répertoires qui n'existent pas à son niveau.
+                vues=set(),
             )
             if not ecrire_pdf(contenu, cible / "synthese.pdf")[0]:
                 resume.pdf_en_echec += 1
@@ -602,6 +656,15 @@ factures/         Présent uniquement quand le débiteur porte plusieurs
                   désigne le même message dans le dossier et dans chacun de
                   ses sous-dossiers. La colonne « factures_concernees » de
                   index.csv indique, pour chaque message, ce qui a été retenu.
+adresses/         Même principe, sur option, quand les échanges d'un débiteur
+                  passent par plusieurs adresses mail : un sous-répertoire par
+                  adresse, avec les échanges où elle figure en en-tête, plus
+                  ceux où aucune adresse du dossier n'apparaît. Le
+                  rattachement se fait sur les en-têtes (expéditeur,
+                  destinataires, copies) et non sur le corps du message : une
+                  adresse recopiée dans une citation ne fait pas de son
+                  titulaire une partie à l'échange. Les montants n'y sont pas
+                  répartis — une adresse ne porte pas une part de la dette.
 
 MÉTHODE DE RECHERCHE
 --------------------
@@ -747,6 +810,14 @@ def executer(
             journal(
                 f"{multi} débiteur(s) portant plusieurs factures ont donné "
                 f"{total_sous} sous-dossier(s), un par facture, dans « factures/ »."
+            )
+
+        total_adresses = sum(r.sous_dossiers_adresses for r in resumes)
+        if total_adresses:
+            multi = sum(1 for r in resumes if r.sous_dossiers_adresses)
+            journal(
+                f"{multi} débiteur(s) joignables à plusieurs adresses ont donné "
+                f"{total_adresses} sous-dossier(s), un par adresse, dans « adresses/ »."
             )
         if vides:
             journal(f"⚠ Dossiers sans aucun message : {', '.join(vides)}")

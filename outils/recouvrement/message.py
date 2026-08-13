@@ -109,6 +109,18 @@ class MessageMail:
         return hashlib.sha256(self.brut).hexdigest()
 
     @property
+    def parties(self) -> str:
+        """Adresses des seules parties à l'échange, en-têtes uniquement.
+
+        Sert à ranger le message sous l'adresse concernée. Le corps en est
+        exclu à dessein : une adresse citée dans un message transféré ne fait
+        pas de son titulaire un destinataire.
+        """
+        return " ".join(
+            [self.expediteur, self.destinataires, self.copie, self.copie_cachee]
+        ).lower()
+
+    @property
     def texte_recherchable(self) -> str:
         """Concaténation utilisée pour savoir quel critère a fait remonter
         le message (adresse mail, numéro de facture, nom de pièce jointe)."""

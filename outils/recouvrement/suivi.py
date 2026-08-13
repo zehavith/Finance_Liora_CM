@@ -139,6 +139,9 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 # facture ; l'état de suivi reste porté par le dossier entier,
                 # puisque c'est lui qui part au contentieux.
                 "sous_dossiers": int(_nombre(rangee.get("sous_dossiers_factures"))),
+                "sous_dossiers_adresses": int(
+                    _nombre(rangee.get("sous_dossiers_adresses"))
+                ),
                 "repertoire": str(repertoire),
                 "a_synthese": (repertoire / "synthese.pdf").exists(),
                 "a_index": (repertoire / "index.csv").exists(),

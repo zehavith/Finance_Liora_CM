@@ -1027,6 +1027,42 @@ def test_factures_citees() -> None:
         "la note distingue les échanges nommant la facture des relances générales",
     )
 
+    # Même annonce pour la vue par adresse, mais seulement quand elle est
+    # demandée : la note ne doit jamais citer un répertoire qui n'existe pas.
+    deux_adresses = Dossier(
+        reference="D4", nom="W", emails=["a@b.fr", "c@d.fr"], factures=["F1"],
+    )
+    verifier(
+        deux_adresses.adresses_citees("De : A <a@b.fr> À : recouvrement@liora.io")
+        == ["a@b.fr"],
+        "adresse reconnue parmi les parties au message",
+    )
+    verifier(
+        deux_adresses.adresses_citees("De : compta@liora.io") == [],
+        "message sans adresse du débiteur en en-tête : aucun rattachement",
+    )
+    lignes[0].adresses_concernees = "a@b.fr"
+    avec = module_synthese.construire_html(
+        dossier=deux_adresses, boites=["recouvrement@liora.io"], lignes=lignes,
+        synthese=module_synthese.analyser(lignes, {}),
+        date_export=datetime(2025, 4, 1, tzinfo=timezone(timedelta(hours=1))),
+        vues={"factures", "adresses"},
+    )
+    verifier(
+        "Répartition par adresse mail" in avec and "adresses/a-b-fr" in avec,
+        "la note annonce la vue par adresse quand elle est produite",
+    )
+    sans = module_synthese.construire_html(
+        dossier=deux_adresses, boites=["recouvrement@liora.io"], lignes=lignes,
+        synthese=module_synthese.analyser(lignes, {}),
+        date_export=datetime(2025, 4, 1, tzinfo=timezone(timedelta(hours=1))),
+        vues={"factures"},
+    )
+    verifier(
+        "Répartition par adresse mail" not in sans,
+        "la note n'annonce pas une vue par adresse qui n'a pas été écrite",
+    )
+
     sous = module_synthese.pieces_de_facture(["F2"], lignes)
     verifier(
         [ligne.piece_n for ligne in sous] == [2],
@@ -1045,6 +1081,144 @@ def test_factures_citees() -> None:
         "Rattaché au dossier" in fille and "Répartition par facture" not in fille,
         "la note d'un sous-dossier renvoie au dossier parent sans se redécouper",
     )
+
+
+def _echange(sujet: str, de: str, a: str, jour: int, corps: str) -> EmailMessage:
+    msg = EmailMessage()
+    msg["From"] = de
+    msg["To"] = a
+    msg["Subject"] = sujet
+    msg["Date"] = f"Mon, {jour:02d} Mar 2024 09:00:00 +0100"
+    msg["Message-ID"] = f"<echange-{jour}@exemple.fr>"
+    msg.set_content(corps)
+    return msg
+
+
+class ClientDeuxAdresses:
+    """Une apprenante joignable à deux adresses, plus un échange interne."""
+
+    MESSAGES = {
+        "a1": lambda: _echange(
+            "Ma situation", "marie.dupont@exemple.fr", "recouvrement@liora.io",
+            4, "Je vous réponds au sujet de mon solde.",
+        ),
+        "a2": lambda: _echange(
+            "Relance", "recouvrement@liora.io", "marie.dupont@exemple.fr",
+            12, "Votre solde reste impayé.",
+        ),
+        "a3": lambda: _echange(
+            "Depuis mon adresse professionnelle", "m.dupont@travail.fr",
+            "recouvrement@liora.io", 20, "Je vous écris depuis mon travail.",
+        ),
+        # Aucune adresse de l'apprenante en en-tête : échange interne remonté
+        # par le numéro de facture. Il concerne les deux adresses.
+        "a4": lambda: _echange(
+            "Point sur FA-2024-0153", "compta@liora.io", "recouvrement@liora.io",
+            25, "La facture FA-2024-0153 reste ouverte au grand livre.",
+        ),
+    }
+
+    adresse_boite = "recouvrement@liora.io"
+
+    def rechercher_identifiants(self, requete, inclure_spam_corbeille=True, plafond=None):
+        return list(self.MESSAGES)
+
+    def recuperer_messages(self, identifiants):
+        for identifiant in identifiants:
+            message = lire_message(
+                {"id": identifiant, "threadId": "t1", "internalDate": "1710231243000"},
+                self.MESSAGES[identifiant]().as_bytes(),
+            )
+            message.boites = [self.adresse_boite]
+            yield message
+
+
+def test_sous_dossiers_par_adresse() -> None:
+    """Plusieurs adresses pour un même débiteur : une vue par adresse."""
+    print("\nUn sous-dossier par adresse mail")
+
+    import export_mails  # noqa: PLC0415
+    from gmail_api import SourcesGmail  # noqa: PLC0415
+
+    vraies_sources = export_mails.ouvrir_sources
+    export_mails.ouvrir_sources = lambda **_: SourcesGmail([ClientDeuxAdresses()])
+    try:
+        with tempfile.TemporaryDirectory() as repertoire:
+            racine = Path(repertoire)
+            fichier = racine / "dossiers.csv"
+            fichier.write_text(
+                "reference;nom;email;facture\n"
+                "2024-118;Marie Dupont;"
+                "marie.dupont@exemple.fr,m.dupont@travail.fr;FA-2024-0153\n",
+                encoding="utf-8",
+            )
+
+            sortie = racine / "export"
+            code = export_mails.executer(
+                export_mails.analyser_arguments([
+                    "--dossiers", str(fichier), "--sortie", str(sortie),
+                    "--sous-dossiers-par-adresse",
+                ])
+            )
+            verifier(code == 0, "code de sortie 0")
+
+            dossier = sortie / "2024-118_marie-dupont"
+            index = _lire_index(dossier / "index.csv")
+            par_piece = {int(rangee["piece_n"]): rangee for rangee in index}
+            verifier(len(index) == 4, "index du dossier : 4 pièces")
+            verifier(
+                par_piece[3]["adresses_concernees"] == "m.dupont@travail.fr",
+                "l'adresse figurant en en-tête est reconnue",
+            )
+            verifier(
+                par_piece[4]["adresses_concernees"] == "",
+                "un échange interne sans adresse du débiteur reste sans rattachement",
+            )
+
+            sous = dossier / "adresses"
+            verifier(
+                sorted(chemin.name for chemin in sous.iterdir())
+                == ["m-dupont-travail-fr", "marie-dupont-exemple-fr"],
+                "un sous-dossier par adresse, nommé par l'adresse",
+            )
+            verifier(
+                [int(r["piece_n"]) for r in _lire_index(
+                    sous / "marie-dupont-exemple-fr" / "index.csv")] == [1, 2, 4],
+                "adresse personnelle : ses échanges plus l'échange interne",
+            )
+            verifier(
+                [int(r["piece_n"]) for r in _lire_index(
+                    sous / "m-dupont-travail-fr" / "index.csv")] == [3, 4],
+                "adresse professionnelle : son échange plus l'échange interne",
+            )
+            verifier(
+                len(list((sous / "m-dupont-travail-fr" / "mails").glob("*.eml"))) == 2,
+                "les messages sont réellement recopiés dans la vue par adresse",
+            )
+            verifier(
+                not (dossier / "factures").exists(),
+                "une seule facture : aucune vue par facture en parallèle",
+            )
+
+            recap = _lire_index(sortie / "_recapitulatif.csv")
+            verifier(
+                recap[0]["sous_dossiers_adresses"] == "2",
+                "récapitulatif : les vues par adresse sont décomptées",
+            )
+
+            # Sans l'option, aucune vue par adresse : c'est un choix explicite.
+            sortie2 = racine / "export-sans"
+            export_mails.executer(
+                export_mails.analyser_arguments(
+                    ["--dossiers", str(fichier), "--sortie", str(sortie2)]
+                )
+            )
+            verifier(
+                not (sortie2 / "2024-118_marie-dupont" / "adresses").exists(),
+                "sans l'option, aucun découpage par adresse",
+            )
+    finally:
+        export_mails.ouvrir_sources = vraies_sources
 
 
 def _ligne(piece: int, jour: int, sens: str, objet: str) -> LigneIndex:
@@ -1178,6 +1352,7 @@ def test_interface() -> None:
             ('id="ignorer"', "option lignes incomplètes"),
             ('id="regrouper"', "option regroupement"),
             ('id="sousdossiers"', "option sous-dossier par facture"),
+            ('id="sousdossiersadresse"', "option sous-dossier par adresse"),
             ('id="sansnav"', "option sans navigateur"),
             ('id="reprendre"', "option reprendre"),
             ('id="seulement"', "filtre par références"),
@@ -1427,6 +1602,7 @@ def main() -> int:
     test_export_complet()
     test_factures_citees()
     test_sous_dossiers_par_facture()
+    test_sous_dossiers_par_adresse()
     test_interface()
     test_suivi()
 

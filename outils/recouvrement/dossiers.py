@@ -323,6 +323,35 @@ class Dossier:
             for facture in self.factures
         ]
 
+    def adresses_citees(self, entetes: str) -> list[str]:
+        """Adresses du dossier qui figurent parmi les parties du message.
+
+        Sur les en-têtes seuls — expéditeur, destinataires, copies — et non
+        sur le corps : une adresse recopiée dans une citation ne fait pas de
+        son titulaire une partie à l'échange.
+        """
+        plat = (entetes or "").lower()
+        return [adresse for adresse in self.emails if adresse.lower() in plat]
+
+    def repartition_par_adresse(self) -> list["Dossier"]:
+        """Sous-dossiers à produire, un par adresse mail utilisée."""
+        if len(self.emails) < 2:
+            return []
+
+        # Les montants restent ceux du débiteur : contrairement aux factures,
+        # une adresse ne porte pas une part de la dette, c'est la même dette
+        # vue par un autre canal d'échange.
+        return [
+            replace(
+                self,
+                emails=[adresse],
+                factures=list(self.factures),
+                liens=list(self.liens),
+                composants=[],
+            )
+            for adresse in self.emails
+        ]
+
 
 def _candidats(entete: str) -> list[tuple[str, int]]:
     """Champs auxquels un intitulé peut correspondre, avec leur spécificité

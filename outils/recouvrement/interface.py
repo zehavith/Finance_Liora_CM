@@ -165,6 +165,8 @@ def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str
         arguments.append("--sans-regroupement")
     if demande.get("sans_sous_dossiers"):
         arguments.append("--sans-sous-dossiers")
+    if demande.get("sous_dossiers_par_adresse"):
+        arguments.append("--sous-dossiers-par-adresse")
     if demande.get("sans_spam"):
         arguments.append("--sans-spam")
     if demande.get("reprendre"):
@@ -647,6 +649,10 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <span><b>Un sous-dossier par facture</b><i>Un débiteur qui doit plusieurs
     factures donne un dossier, qui mène lui-même à un sous-dossier complet par
     facture — transmissible seul, avec sa propre note de synthèse.</i></span></label>
+  <label class="case"><input type="checkbox" id="sousdossiersadresse" />
+    <span><b>Un sous-dossier par adresse mail</b><i>Même principe quand les
+    échanges passent par plusieurs adresses. Le rattachement se fait sur les
+    en-têtes du message, pas sur son corps. Les montants n'y sont pas répartis.</i></span></label>
   <label class="case"><input type="checkbox" id="sansnav" />
     <span><b>Ne pas ouvrir le navigateur pour autoriser</b><i>Si une boîte est
     connectée dans une autre fenêtre : l'adresse s'affiche, à coller vous-même.</i></span></label>
@@ -760,6 +766,7 @@ $("lancer").addEventListener("click", async () => {
       ignorer_lignes_incompletes: $("ignorer").checked,
       sans_regroupement: !$("regrouper").checked,
       sans_sous_dossiers: !$("sousdossiers").checked,
+      sous_dossiers_par_adresse: $("sousdossiersadresse").checked,
       sans_navigateur: $("sansnav").checked,
       reprendre: $("reprendre").checked,
       seulement: $("seulement").value,
@@ -919,9 +926,14 @@ function rendreDocuments() {
       <td class="num">${d.nb_mails}</td>
       <td class="num">${d.nb_pieces_jointes}</td>
       <td>${d.premier_mail || "—"} → ${d.dernier_mail || "—"}</td>
-      <td>${d.sous_dossiers > 1
-        ? `<a class="lien" data-ouvrir="${echapper(d.repertoire)}/factures">${d.sous_dossiers} factures</a>`
-        : '<span class="lien inactif">1 facture</span>'}</td>
+      <td>${[
+        d.sous_dossiers > 1
+          ? `<a class="lien" data-ouvrir="${echapper(d.repertoire)}/factures">${d.sous_dossiers} factures</a>`
+          : "",
+        d.sous_dossiers_adresses > 1
+          ? `<a class="lien" data-ouvrir="${echapper(d.repertoire)}/adresses">${d.sous_dossiers_adresses} adresses</a>`
+          : "",
+      ].filter(Boolean).join(" · ") || '<span class="lien inactif">aucun</span>'}</td>
       <td>${d.a_synthese
         ? `<a class="lien" data-ouvrir="${echapper(d.repertoire)}/synthese.pdf">Note de synthèse</a>`
         : '<span class="lien inactif">pas de note</span>'}</td>
