@@ -225,6 +225,22 @@
             </div>
 
             <div class="card card-wide">
+                <h3 class="card-title">Diagnostic des API</h3>
+                <p class="card-sub">
+                    Vérifie que les deux API publiques répondent depuis ce navigateur et que tous les champs
+                    attendus sont bien présents dans leurs réponses. À lancer une fois à l’installation, ou si
+                    des fiches paraissent incomplètes.
+                </p>
+                <div class="diag-bar">
+                    <input type="text" id="diag-siren" value="552032534" maxlength="14"
+                           aria-label="SIREN à tester" placeholder="SIREN de test">
+                    <button class="btn btn-primary btn-sm" id="diag-run">Lancer le diagnostic</button>
+                    <button class="btn btn-ghost btn-sm hidden" id="diag-copy">Copier le rapport</button>
+                </div>
+                <div id="diag-result"></div>
+            </div>
+
+            <div class="card card-wide">
                 <h3 class="card-title">Méthodologie du score</h3>
                 <p class="card-sub">
                     Le score va de <strong>0 à 100</strong> : plus il est élevé, plus le risque d’impayé est faible.

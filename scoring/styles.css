@@ -809,6 +809,64 @@ input[type="range"]::-moz-range-thumb {
 
 .grade-legend { display: flex; gap: 9px; flex-wrap: wrap; }
 
+/* ── Diagnostic des API ── */
+
+.diag-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+.diag-bar input[type="text"] { width: 160px; font-variant-numeric: tabular-nums; }
+
+.diag-lines { display: flex; flex-direction: column; gap: 2px; }
+.diag-line {
+    display: grid;
+    grid-template-columns: 20px 210px 1fr;
+    gap: 10px;
+    align-items: baseline;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+}
+.diag-line:nth-child(odd) { background: rgba(255, 255, 255, 0.02); }
+.diag-mark { font-weight: 800; }
+.diag-ok .diag-mark { color: var(--green); }
+.diag-ko .diag-mark { color: var(--red); }
+.diag-title { font-weight: 600; }
+.diag-detail { color: var(--text-secondary); word-break: break-word; }
+
+.diag-verdict {
+    margin-top: 14px;
+    padding: 12px 15px;
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    border: 1px solid var(--border-color);
+}
+.diag-verdict-ok { background: var(--green-bg); border-color: rgba(132, 204, 22, 0.28); color: var(--green); }
+.diag-verdict-warn { background: var(--amber-bg); border-color: rgba(245, 158, 11, 0.28); color: var(--amber); }
+.diag-verdict-ko { background: var(--red-bg); border-color: rgba(239, 68, 68, 0.28); color: #fca5a5; }
+
+#diag-fallback { margin-top: 12px; }
+
+.diag-raw { margin-top: 14px; }
+.diag-raw summary {
+    cursor: pointer;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    padding: 7px 0;
+    user-select: none;
+}
+.diag-raw summary:hover { color: var(--text-primary); }
+.diag-raw pre {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    overflow-x: auto;
+    max-height: 420px;
+    overflow-y: auto;
+    font-family: 'SF Mono', 'Menlo', Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+}
+
 .source-list { margin-top: 4px; }
 .source-list li { font-size: 12.5px; color: var(--text-secondary); padding-left: 16px; position: relative; }
 .source-list li::before { content: '•'; position: absolute; left: 3px; color: var(--accent); }

@@ -31,7 +31,7 @@ comme le portefeuille suivi.
 | **Recherche** | Recherche par nom, SIREN ou SIRET, avec filtres département / secteur / état. Fiche détaillée : score, jauge, points de vigilance, détail des six piliers, comptes annuels, procédures collectives, dirigeants. |
 | **Portefeuille** | Entreprises suivies, avec score moyen, répartition par grade, tri, filtre par grade, rafraîchissement de masse et export CSV. |
 | **Import en masse** | Collage ou dépôt d'un fichier CSV/TXT de SIREN : scoring séquentiel avec barre de progression, ajout automatique au portefeuille, export des résultats. |
-| **Réglages** | Pondération des six piliers (curseurs), gestion du cache, sauvegarde / restauration JSON, méthodologie complète. |
+| **Réglages** | Pondération des six piliers (curseurs), **diagnostic des API**, gestion du cache, sauvegarde / restauration JSON, méthodologie complète. |
 
 ---
 
@@ -49,6 +49,34 @@ et le cache restent dans le navigateur (IndexedDB, base `liora_scoring`).
 Si le BODACC est injoignable, le scoring se poursuit sans lui et l'interface
 signale explicitement que le contrôle des procédures collectives n'a pas abouti —
 l'absence de procédure affichée ne vaut alors pas confirmation.
+
+### Résilience de la requête BODACC
+
+Le schéma du jeu de données `annonces-commerciales` peut évoluer. Plutôt que de
+dépendre d'une syntaxe unique, `procedures()` essaie trois stratégies successives
+et retient la première qui répond :
+
+1. filtre sur `registre` **et** `familleavis = "collective"` ;
+2. filtre sur `registre` seul, puis tri des annonces côté client ;
+3. recherche plein texte sur le SIREN, puis tri côté client.
+
+Une erreur de réseau ou un quota atteint (HTTP 429) interrompt la chaîne
+immédiatement : changer de syntaxe n'y changerait rien.
+
+### Diagnostic intégré
+
+**Réglages → Diagnostic des API** appelle les deux API depuis votre navigateur et
+vérifie que chaque champ attendu est bien présent dans les réponses réelles. Le
+rapport distingue :
+
+- les **champs critiques manquants** (leur absence dégrade le score) ;
+- les champs optionnels absents (sans gravité) ;
+- les **clés renvoyées par l'API mais non exploitées** — c'est le signal qu'un
+  champ a été renommé ou que l'API expose désormais davantage de données.
+
+La réponse brute est consultable en JSON, et le bouton « Copier le rapport »
+produit un résumé texte transmissible. C'est le moyen le plus rapide de confirmer
+que le mapping colle à l'API en production.
 
 ---
 

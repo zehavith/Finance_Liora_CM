@@ -278,42 +278,86 @@
     /* ── BODACC : procédures collectives ── */
 
     /**
+     * Stratégies d'interrogation du BODACC, de la plus précise à la plus permissive.
+     * Le schéma exact du jeu « annonces-commerciales » peut évoluer (nom du champ
+     * portant le SIREN, valeurs de familleavis) : plutôt que de dépendre d'une seule
+     * syntaxe, on essaie successivement et on retient la première qui répond.
+     */
+    function strategiesBodacc(siren) {
+        const espace = siren.slice(0, 3) + ' ' + siren.slice(3, 6) + ' ' + siren.slice(6);
+        return [
+            {
+                nom: 'registre+famille',
+                where: `(registre like "${siren}" or registre like "${espace}") and familleavis = "collective"`,
+                filtrerCollective: false
+            },
+            {
+                nom: 'registre',
+                where: `registre like "${siren}" or registre like "${espace}"`,
+                filtrerCollective: true
+            },
+            {
+                nom: 'plein-texte',
+                where: `"${siren}"`,
+                filtrerCollective: true
+            }
+        ];
+    }
+
+    /** Une annonce relève-t-elle d'une procédure collective ? */
+    function estCollective(rec) {
+        const famille = String(rec.familleavis || '').toLowerCase();
+        if (famille) return famille.indexOf('collective') >= 0;
+        const libelle = String(rec.familleavis_lib || '').toLowerCase();
+        return libelle.indexOf('collective') >= 0 || libelle.indexOf('rétablissement') >= 0;
+    }
+
+    function annonceDepuisRecord(rec) {
+        const j = parseJugement(rec.jugement);
+        return {
+            date: rec.dateparution || null,
+            libelle: [j.famille, j.nature, j.complement].filter(Boolean).join(' — ')
+                || rec.familleavis_lib || 'Annonce de procédure collective',
+            tribunal: rec.tribunal || null,
+            famille: j.famille || null,
+            nature: j.nature || null
+        };
+    }
+
+    /**
      * Interroge le BODACC pour les annonces de procédure collective d'un SIREN.
-     * En cas d'échec (réseau, quota, changement de schéma) on ne fait pas échouer
-     * le scoring : le statut passe à « indisponible » et l'UI le signale.
+     * En cas d'échec total (réseau, quota, schéma incompatible) on ne fait pas échouer
+     * le scoring : le statut passe à « indisponible » et l'UI le signale explicitement.
      */
     async function procedures(siren, options) {
         options = options || {};
         const s = chiffres(siren);
-        if (s.length !== 9) return { statut: 'indisponible', annonces: [] };
+        if (s.length !== 9) return { statut: 'indisponible', annonces: [], erreur: 'SIREN invalide' };
 
-        // Le SIREN apparaît dans le champ « registre » sous deux formes.
-        const espace = s.slice(0, 3) + ' ' + s.slice(3, 6) + ' ' + s.slice(6);
-        const where = `(registre like "${s}" or registre like "${espace}") and familleavis = "collective"`;
-        const params = new URLSearchParams();
-        params.set('where', where);
-        params.set('limit', '20');
-        params.set('order_by', 'dateparution desc');
-        params.set('select', 'dateparution,jugement,familleavis_lib,tribunal,commercant,numeroannonce');
+        const erreurs = [];
+        for (const strat of strategiesBodacc(s)) {
+            const params = new URLSearchParams();
+            params.set('where', strat.where);
+            params.set('limit', '20');
+            params.set('order_by', 'dateparution desc');
 
-        try {
-            const data = await fetchJson(BODACC_URL + '?' + params.toString(), options.timeout || 12000);
-            const records = Array.isArray(data && data.results) ? data.results : [];
-            const annonces = records.map(rec => {
-                const j = parseJugement(rec.jugement);
+            try {
+                const data = await fetchJson(BODACC_URL + '?' + params.toString(), options.timeout || 12000);
+                const records = Array.isArray(data && data.results) ? data.results : [];
+                const retenus = strat.filtrerCollective ? records.filter(estCollective) : records;
                 return {
-                    date: rec.dateparution || null,
-                    libelle: [j.famille, j.nature, j.complement].filter(Boolean).join(' — ')
-                        || rec.familleavis_lib || 'Annonce de procédure collective',
-                    tribunal: rec.tribunal || null,
-                    famille: j.famille || null,
-                    nature: j.nature || null
+                    statut: 'ok',
+                    strategie: strat.nom,
+                    annonces: retenus.map(annonceDepuisRecord).filter(a => a.date)
                 };
-            }).filter(a => a.date);
-            return { statut: 'ok', annonces };
-        } catch (e) {
-            return { statut: 'indisponible', annonces: [], erreur: e.message };
+            } catch (e) {
+                erreurs.push(strat.nom + ' : ' + e.message);
+                // Une erreur réseau ou un quota atteint ne sera pas résolu par une
+                // autre syntaxe : inutile d'enchaîner les tentatives.
+                if (e.status === 429 || e.name === 'AbortError' || e instanceof TypeError) break;
+            }
         }
+        return { statut: 'indisponible', annonces: [], erreur: erreurs.join(' | ') };
     }
 
     /** Le champ « jugement » du BODACC arrive tantôt en objet, tantôt en JSON encodé. */
@@ -341,6 +385,184 @@
         fiche.proceduresStatut = res.statut;
         if (res.erreur) fiche.proceduresErreur = res.erreur;
         return fiche;
+    }
+
+    /* ── Diagnostic du mapping ──────────────────────────────────
+       Le mapping ci-dessus suit le contrat documenté de l'API. Ces fonctions
+       permettent de le confronter à une réponse réelle depuis le navigateur de
+       l'utilisateur, et de repérer un éventuel écart de schéma.
+       ────────────────────────────────────────────────────────── */
+
+    // Champs lus par normalise(), par niveau. « critique » = son absence dégrade le score.
+    const CHAMPS_LUS = {
+        racine: {
+            critique: ['siren', 'nom_complet', 'date_creation', 'etat_administratif',
+                'nature_juridique', 'activite_principale', 'tranche_effectif_salarie'],
+            utile: ['nom_raison_sociale', 'sigle', 'section_activite_principale',
+                'annee_tranche_effectif_salarie', 'categorie_entreprise', 'annee_categorie_entreprise',
+                'statut_diffusion', 'nombre_etablissements', 'nombre_etablissements_ouverts',
+                'date_mise_a_jour', 'libelle_activite_principale', 'siege', 'dirigeants',
+                'finances', 'complements']
+        },
+        siege: {
+            critique: [],
+            utile: ['siret', 'adresse', 'code_postal', 'libelle_commune', 'commune',
+                'departement', 'region', 'etat_administratif', 'numero_voie', 'type_voie',
+                'libelle_voie', 'activite_principale', 'libelle_activite_principale', 'date_creation']
+        },
+        complements: {
+            critique: [],
+            utile: ['convention_collective_renseignee', 'est_ess', 'est_rge', 'est_qualiopi',
+                'est_bio', 'est_service_public', 'est_societe_mission', 'est_organisme_formation',
+                'est_association', 'est_entrepreneur_individuel', 'bilan_financier']
+        }
+    };
+
+    /**
+     * Compare une réponse brute de l'API au mapping attendu.
+     * @returns {{manquants: Array, nonMappes: Array, presents: number, exercices: number}}
+     */
+    function diagnostiquerMapping(brut) {
+        if (!brut || typeof brut !== 'object') {
+            return { manquants: [], nonMappes: [], presents: 0, exercices: 0, erreur: 'Réponse vide' };
+        }
+        const manquants = [];
+        const nonMappes = [];
+        let presents = 0;
+
+        function inspecter(objet, niveau, prefixe) {
+            const spec = CHAMPS_LUS[niveau];
+            if (!objet || typeof objet !== 'object') return;
+            const connus = spec.critique.concat(spec.utile);
+
+            connus.forEach(champ => {
+                const valeur = objet[champ];
+                const absent = valeur === undefined || valeur === null
+                    || (Array.isArray(valeur) && !valeur.length);
+                if (absent) {
+                    manquants.push({
+                        champ: prefixe + champ,
+                        critique: spec.critique.indexOf(champ) >= 0
+                    });
+                } else {
+                    presents++;
+                }
+            });
+
+            // Clés renvoyées par l'API que normalise() n'exploite pas : signal d'un
+            // schéma plus riche que prévu, ou d'un renommage de champ.
+            Object.keys(objet).forEach(cle => {
+                if (connus.indexOf(cle) < 0) nonMappes.push(prefixe + cle);
+            });
+        }
+
+        inspecter(brut, 'racine', '');
+        inspecter(brut.siege, 'siege', 'siege.');
+        inspecter(brut.complements, 'complements', 'complements.');
+
+        const fiche = normalise(brut);
+        return {
+            manquants,
+            nonMappes,
+            presents,
+            exercices: fiche ? fiche.exercices.length : 0
+        };
+    }
+
+    /** Recherche renvoyant la réponse BRUTE, sans normalisation (diagnostic). */
+    async function rechercherBrut(query, options) {
+        options = options || {};
+        const params = new URLSearchParams();
+        params.set('q', String(query || '').trim());
+        params.set('per_page', String(options.perPage || 1));
+        return fetchJson(RECHERCHE_URL + '?' + params.toString(), options.timeout);
+    }
+
+    /**
+     * Teste les deux API de bout en bout et rend un rapport exploitable.
+     * Conçu pour être lancé depuis le navigateur de l'utilisateur, seul endroit
+     * d'où les API publiques sont réellement joignables.
+     */
+    async function diagnostiquer(entree) {
+        const siren = extraireSiren(entree) || '552032534'; // Danone par défaut
+        const rapport = {
+            siren,
+            lanceLe: new Date().toISOString(),
+            origine: (typeof location !== 'undefined' && location.protocol) || 'inconnue',
+            recherche: null,
+            bodacc: null
+        };
+
+        // — API Recherche d'Entreprises
+        const t0 = Date.now();
+        try {
+            const data = await rechercherBrut(siren, { perPage: 1 });
+            const premier = (data && Array.isArray(data.results) && data.results[0]) || null;
+            rapport.recherche = {
+                ok: true,
+                ms: Date.now() - t0,
+                totalResultats: toNumber(data && data.total_results),
+                clesRacine: data ? Object.keys(data) : [],
+                brut: premier,
+                mapping: premier ? diagnostiquerMapping(premier) : { erreur: 'Aucun résultat renvoyé' }
+            };
+        } catch (e) {
+            rapport.recherche = { ok: false, ms: Date.now() - t0, erreur: e.message, status: e.status || null };
+        }
+
+        // — BODACC
+        const t1 = Date.now();
+        try {
+            const res = await procedures(siren);
+            rapport.bodacc = {
+                ok: res.statut === 'ok',
+                ms: Date.now() - t1,
+                strategie: res.strategie || null,
+                annonces: res.annonces.length,
+                erreur: res.erreur || null
+            };
+        } catch (e) {
+            rapport.bodacc = { ok: false, ms: Date.now() - t1, erreur: e.message };
+        }
+
+        return rapport;
+    }
+
+    /** Rapport de diagnostic condensé, en texte brut, prêt à être copié/collé. */
+    function rapportTexte(r) {
+        const l = [];
+        l.push('=== Diagnostic API — Liora Scoring Entreprises ===');
+        l.push('SIREN testé : ' + r.siren);
+        l.push('Lancé le : ' + r.lanceLe);
+        l.push('Origine de la page : ' + r.origine);
+        l.push('');
+
+        l.push('--- API Recherche d’Entreprises ---');
+        if (!r.recherche || !r.recherche.ok) {
+            l.push('ÉCHEC : ' + ((r.recherche && r.recherche.erreur) || 'inconnu'));
+            if (r.recherche && r.recherche.status) l.push('Code HTTP : ' + r.recherche.status);
+        } else {
+            const m = r.recherche.mapping || {};
+            l.push('OK en ' + r.recherche.ms + ' ms — ' + (r.recherche.totalResultats || 0) + ' résultat(s)');
+            l.push('Clés racine de la réponse : ' + (r.recherche.clesRacine || []).join(', '));
+            l.push('Champs attendus trouvés : ' + (m.presents || 0));
+            l.push('Exercices comptables lus : ' + (m.exercices || 0));
+            const critiques = (m.manquants || []).filter(x => x.critique).map(x => x.champ);
+            const autres = (m.manquants || []).filter(x => !x.critique).map(x => x.champ);
+            l.push('MANQUANTS CRITIQUES : ' + (critiques.length ? critiques.join(', ') : 'aucun'));
+            l.push('Manquants non bloquants : ' + (autres.length ? autres.join(', ') : 'aucun'));
+            l.push('Clés renvoyées mais non exploitées : ' + ((m.nonMappes || []).length ? m.nonMappes.join(', ') : 'aucune'));
+        }
+        l.push('');
+
+        l.push('--- BODACC (procédures collectives) ---');
+        if (!r.bodacc || !r.bodacc.ok) {
+            l.push('ÉCHEC : ' + ((r.bodacc && r.bodacc.erreur) || 'inconnu'));
+        } else {
+            l.push('OK en ' + r.bodacc.ms + ' ms — stratégie retenue : ' + r.bodacc.strategie);
+            l.push('Annonces de procédure collective trouvées : ' + r.bodacc.annonces);
+        }
+        return l.join('\n');
     }
 
     /* ── Cache ── */
@@ -410,9 +632,11 @@
 
     return {
         // Réseau
-        rechercher, parSiren, procedures, enrichirProcedures, obtenirFiche,
+        rechercher, rechercherBrut, parSiren, procedures, enrichirProcedures, obtenirFiche,
         // Normalisation
-        normalise, parseJugement,
+        normalise, parseJugement, estCollective,
+        // Diagnostic
+        diagnostiquer, diagnostiquerMapping, rapportTexte, CHAMPS_LUS,
         // Cache
         ficheEnCache, mettreEnCache, viderCache, tailleCache, CACHE_TTL_MS,
         // Stockage générique (portefeuille, réglages)

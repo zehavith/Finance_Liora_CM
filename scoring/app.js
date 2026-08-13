@@ -1077,6 +1077,116 @@
         });
     }
 
+    /* ── Diagnostic des API ── */
+
+    let dernierDiagnostic = null;
+
+    function initDiagnostic() {
+        $('#diag-run').addEventListener('click', lancerDiagnostic);
+        $('#diag-copy').addEventListener('click', () => {
+            if (!dernierDiagnostic) return;
+            const texte = A.rapportTexte(dernierDiagnostic);
+            // navigator.clipboard est indisponible en origine file:// sur certains
+            // navigateurs : on retombe sur une zone de texte sélectionnable.
+            const copier = navigator.clipboard && navigator.clipboard.writeText
+                ? navigator.clipboard.writeText(texte)
+                : Promise.reject(new Error('presse-papiers indisponible'));
+            copier.then(() => toast('Rapport copié dans le presse-papiers', 'success'))
+                .catch(() => {
+                    const zone = $('#diag-fallback');
+                    if (zone) {
+                        zone.classList.remove('hidden');
+                        zone.value = texte;
+                        zone.select();
+                        toast('Sélectionnez puis copiez le texte affiché');
+                    }
+                });
+        });
+    }
+
+    async function lancerDiagnostic() {
+        const btn = $('#diag-run');
+        btn.disabled = true;
+        btn.textContent = 'Diagnostic en cours…';
+        $('#diag-copy').classList.add('hidden');
+        $('#diag-result').innerHTML = '<p class="empty-inline">Interrogation des deux API…</p>';
+
+        try {
+            const r = await A.diagnostiquer($('#diag-siren').value);
+            dernierDiagnostic = r;
+            $('#diag-result').innerHTML = gabaritDiagnostic(r);
+            $('#diag-copy').classList.remove('hidden');
+        } catch (e) {
+            $('#diag-result').innerHTML = `<p class="empty-inline warn">${esc(messageErreur(e))}</p>`;
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Lancer le diagnostic';
+        }
+    }
+
+    function gabaritDiagnostic(r) {
+        const rech = r.recherche || {};
+        const bod = r.bodacc || {};
+        const m = rech.mapping || {};
+        const critiques = (m.manquants || []).filter(x => x.critique);
+        const autres = (m.manquants || []).filter(x => !x.critique);
+
+        function ligne(ok, titre, detail) {
+            return `<div class="diag-line ${ok ? 'diag-ok' : 'diag-ko'}">
+                <span class="diag-mark">${ok ? '✓' : '✗'}</span>
+                <span class="diag-title">${esc(titre)}</span>
+                <span class="diag-detail">${esc(detail)}</span>
+            </div>`;
+        }
+
+        const blocs = [];
+
+        blocs.push(ligne(!!rech.ok, 'API Recherche d’Entreprises',
+            rech.ok ? `${rech.ms} ms · ${rech.totalResultats || 0} résultat(s)`
+                : (rech.erreur || 'échec')));
+
+        if (rech.ok) {
+            blocs.push(ligne(critiques.length === 0, 'Champs critiques du mapping',
+                critiques.length === 0
+                    ? `les ${m.presents} champs attendus sont présents`
+                    : `manquants : ${critiques.map(x => x.champ).join(', ')}`));
+
+            blocs.push(ligne((m.exercices || 0) > 0, 'Comptes annuels',
+                m.exercices > 0 ? `${m.exercices} exercice(s) lisible(s)`
+                    : 'aucun exercice lu — normal si l’entreprise ne publie pas ses comptes'));
+
+            if (autres.length) {
+                blocs.push(ligne(true, 'Champs optionnels absents',
+                    autres.map(x => x.champ).join(', ')));
+            }
+            if ((m.nonMappes || []).length) {
+                blocs.push(ligne(true, 'Champs renvoyés mais non exploités',
+                    m.nonMappes.join(', ')));
+            }
+        }
+
+        blocs.push(ligne(!!bod.ok, 'BODACC — procédures collectives',
+            bod.ok ? `${bod.ms} ms · stratégie « ${bod.strategie} » · ${bod.annonces} annonce(s)`
+                : (bod.erreur || 'échec')));
+
+        const toutOk = rech.ok && bod.ok && critiques.length === 0;
+        const verdict = toutOk
+            ? { classe: 'diag-verdict-ok', texte: 'Tout est opérationnel : les deux API répondent et le mapping est complet.' }
+            : rech.ok
+                ? { classe: 'diag-verdict-warn', texte: 'L’application fonctionne, mais un écart a été détecté (voir ci-dessus). Copiez le rapport pour le transmettre.' }
+                : { classe: 'diag-verdict-ko', texte: 'L’API principale est injoignable depuis ce navigateur. Vérifiez la connexion, un éventuel proxy d’entreprise ou un bloqueur de scripts.' };
+
+        return `
+        <div class="diag-lines">${blocs.join('')}</div>
+        <p class="diag-verdict ${verdict.classe}">${esc(verdict.texte)}</p>
+        <textarea id="diag-fallback" class="hidden" rows="10" readonly aria-label="Rapport de diagnostic"></textarea>
+        ${rech.brut ? `
+        <details class="diag-raw">
+            <summary>Réponse brute de l’API (JSON)</summary>
+            <pre>${esc(JSON.stringify(rech.brut, null, 2))}</pre>
+        </details>` : ''}`;
+    }
+
     function rendrePoids() {
         const wrap = $('#weights-list');
         wrap.innerHTML = Object.keys(S.DEFAULT_WEIGHTS).map(cle => `
@@ -1137,6 +1247,7 @@
         initPortefeuille();
         initImport();
         initReglages();
+        initDiagnostic();
         majBadgePortefeuille();
         rendrePortefeuille();
         await rafraichirStatsReglages();
