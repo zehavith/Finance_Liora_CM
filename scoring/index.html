@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scoring Entreprises — Liora</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="navbar">
+    <div class="nav-brand">
+        <img src="assets/Liora_Logo_Orange_alpha.png" alt="Liora" class="brand-logo">
+        <span class="brand-name">Scoring<span class="brand-sub">Entreprises</span></span>
+    </div>
+    <div class="nav-tabs">
+        <button class="nav-tab active" data-tab="recherche">Recherche</button>
+        <button class="nav-tab" data-tab="portefeuille">Portefeuille <span class="tab-badge" id="badge-portefeuille">0</span></button>
+        <button class="nav-tab" data-tab="import">Import en masse</button>
+        <button class="nav-tab" data-tab="reglages">Réglages</button>
+    </div>
+    <div class="nav-right">
+        <span class="net-status" id="net-status" title="État de la connexion">
+            <span class="net-dot"></span><span class="net-label">En ligne</span>
+        </span>
+    </div>
+</nav>
+
+<main class="app-main">
+
+    <!-- ═══════════════ RECHERCHE ═══════════════ -->
+    <section class="tab-content active" id="tab-recherche">
+
+        <div class="search-hero">
+            <h1 class="hero-title">Évaluez le risque de vos <span class="gradient-text">clients &amp; fournisseurs</span></h1>
+            <p class="hero-subtitle">
+                Recherchez une entreprise française par nom, SIREN ou SIRET. Le score de solvabilité est calculé
+                à partir des données publiques officielles — répertoire SIRENE, comptes annuels déposés et
+                annonces BODACC.
+            </p>
+
+            <form class="search-bar" id="search-form" autocomplete="off">
+                <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input type="search" id="search-input" placeholder="Nom d’entreprise, SIREN (9 chiffres) ou SIRET (14 chiffres)…" aria-label="Recherche d’entreprise">
+                <button type="submit" class="btn btn-primary" id="search-btn">Rechercher</button>
+            </form>
+
+            <div class="search-filters">
+                <label class="filter">
+                    <span>Département</span>
+                    <input type="text" id="filter-dept" maxlength="3" placeholder="ex. 75" aria-label="Filtrer par département">
+                </label>
+                <label class="filter">
+                    <span>Secteur</span>
+                    <select id="filter-section" aria-label="Filtrer par section d’activité">
+                        <option value="">Tous secteurs</option>
+                    </select>
+                </label>
+                <label class="filter">
+                    <span>État</span>
+                    <select id="filter-etat" aria-label="Filtrer par état administratif">
+                        <option value="">Tous</option>
+                        <option value="A">Entreprises actives</option>
+                        <option value="C">Entreprises cessées</option>
+                    </select>
+                </label>
+                <button type="button" class="btn btn-ghost btn-sm" id="filters-reset">Réinitialiser</button>
+            </div>
+        </div>
+
+        <div id="search-status" class="status-line"></div>
+        <div id="search-results" class="results-grid"></div>
+
+        <!-- Fiche détaillée -->
+        <div id="fiche" class="fiche hidden"></div>
+    </section>
+
+    <!-- ═══════════════ PORTEFEUILLE ═══════════════ -->
+    <section class="tab-content" id="tab-portefeuille">
+        <div class="section-head">
+            <div>
+                <h2 class="section-title">Portefeuille suivi</h2>
+                <p class="section-sub">Les entreprises que vous suivez, rescorées à la demande.</p>
+            </div>
+            <div class="section-actions">
+                <button class="btn btn-ghost btn-sm" id="pf-refresh">Rafraîchir tout</button>
+                <button class="btn btn-ghost btn-sm" id="pf-export">Exporter CSV</button>
+                <button class="btn btn-danger btn-sm" id="pf-clear">Vider</button>
+            </div>
+        </div>
+
+        <div class="pf-summary" id="pf-summary"></div>
+
+        <div class="pf-toolbar">
+            <input type="search" id="pf-search" placeholder="Filtrer par nom ou SIREN…" aria-label="Filtrer le portefeuille">
+            <select id="pf-sort" aria-label="Trier le portefeuille">
+                <option value="score-asc">Score croissant (plus risqués d’abord)</option>
+                <option value="score-desc">Score décroissant</option>
+                <option value="nom">Nom (A → Z)</option>
+                <option value="ajout">Date d’ajout</option>
+            </select>
+            <select id="pf-grade" aria-label="Filtrer par grade">
+                <option value="">Tous les grades</option>
+                <option value="A">Grade A</option>
+                <option value="B">Grade B</option>
+                <option value="C">Grade C</option>
+                <option value="D">Grade D</option>
+                <option value="E">Grade E</option>
+            </select>
+        </div>
+
+        <div id="pf-status" class="status-line"></div>
+        <div class="table-wrapper">
+            <table class="data-table" id="pf-table">
+                <thead>
+                    <tr>
+                        <th>Entreprise</th>
+                        <th>SIREN</th>
+                        <th>Secteur</th>
+                        <th class="num">Score</th>
+                        <th>Grade</th>
+                        <th>Risque</th>
+                        <th class="num">Encours indicatif</th>
+                        <th>Mis à jour</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="pf-tbody"></tbody>
+            </table>
+        </div>
+        <div id="pf-empty" class="empty-state">
+            Aucune entreprise suivie pour l’instant. Recherchez une entreprise puis cliquez sur
+            « Ajouter au portefeuille ».
+        </div>
+    </section>
+
+    <!-- ═══════════════ IMPORT EN MASSE ═══════════════ -->
+    <section class="tab-content" id="tab-import">
+        <div class="section-head">
+            <div>
+                <h2 class="section-title">Import en masse</h2>
+                <p class="section-sub">Scorez une liste de SIREN d’un coup et ajoutez-les au portefeuille.</p>
+            </div>
+        </div>
+
+        <div class="import-grid">
+            <div class="card">
+                <h3 class="card-title">1. Fournir les SIREN</h3>
+                <div class="upload-zone" id="import-drop">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    <p class="upload-text">Glissez un fichier CSV ou TXT</p>
+                    <p class="upload-hint">une colonne de SIREN ou SIRET — ou cliquez pour parcourir</p>
+                    <input type="file" id="import-file" accept=".csv,.txt" hidden>
+                </div>
+                <p class="or-sep">ou collez-les directement</p>
+                <textarea id="import-text" rows="7" placeholder="552032534&#10;443061841&#10;542107651&#10;&#10;Un identifiant par ligne (les séparateurs , ; et tabulation sont acceptés)."></textarea>
+                <div class="import-actions">
+                    <label class="checkbox">
+                        <input type="checkbox" id="import-add-pf" checked>
+                        <span>Ajouter automatiquement au portefeuille</span>
+                    </label>
+                    <button class="btn btn-primary" id="import-run">Lancer le scoring</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">2. Résultats</h3>
+                <div class="progress-wrap hidden" id="import-progress-wrap">
+                    <div class="progress-bar"><div class="progress-fill" id="import-progress"></div></div>
+                    <span class="progress-label" id="import-progress-label">0 / 0</span>
+                </div>
+                <div id="import-status" class="status-line"></div>
+                <div class="table-wrapper import-results-wrap">
+                    <table class="data-table" id="import-table">
+                        <thead>
+                            <tr><th>SIREN</th><th>Entreprise</th><th class="num">Score</th><th>Grade</th><th>Statut</th></tr>
+                        </thead>
+                        <tbody id="import-tbody"></tbody>
+                    </table>
+                </div>
+                <button class="btn btn-ghost btn-sm hidden" id="import-export">Exporter les résultats en CSV</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════ RÉGLAGES ═══════════════ -->
+    <section class="tab-content" id="tab-reglages">
+        <div class="section-head">
+            <div>
+                <h2 class="section-title">Réglages &amp; méthodologie</h2>
+                <p class="section-sub">Ajustez le poids de chaque pilier selon votre politique de crédit.</p>
+            </div>
+        </div>
+
+        <div class="settings-grid">
+            <div class="card">
+                <h3 class="card-title">Pondération des piliers</h3>
+                <p class="card-sub">Le score est une moyenne pondérée. Les poids sont renormalisés automatiquement,
+                    leur somme n’a donc pas besoin de faire exactement 100.</p>
+                <div id="weights-list" class="weights-list"></div>
+                <div class="weights-total">Somme actuelle : <strong id="weights-total">100</strong></div>
+                <div class="section-actions">
+                    <button class="btn btn-primary btn-sm" id="weights-save">Enregistrer</button>
+                    <button class="btn btn-ghost btn-sm" id="weights-reset">Valeurs par défaut</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3 class="card-title">Données &amp; cache</h3>
+                <p class="card-sub">Les fiches récupérées sont conservées localement (IndexedDB) pendant 7 jours
+                    pour éviter de solliciter inutilement les API publiques.</p>
+                <div class="kv-row"><span>Fiches en cache</span><strong id="cache-count">—</strong></div>
+                <div class="kv-row"><span>Entreprises suivies</span><strong id="pf-count">—</strong></div>
+                <div class="section-actions">
+                    <button class="btn btn-ghost btn-sm" id="cache-clear">Vider le cache</button>
+                    <button class="btn btn-ghost btn-sm" id="pf-backup">Sauvegarder le portefeuille (JSON)</button>
+                    <label class="btn btn-ghost btn-sm file-label">
+                        Restaurer<input type="file" id="pf-restore" accept=".json" hidden>
+                    </label>
+                </div>
+            </div>
+
+            <div class="card card-wide">
+                <h3 class="card-title">Méthodologie du score</h3>
+                <p class="card-sub">
+                    Le score va de <strong>0 à 100</strong> : plus il est élevé, plus le risque d’impayé est faible.
+                    Il agrège six piliers, puis applique des règles éliminatoires.
+                </p>
+
+                <div class="method-grid">
+                    <div class="method-item">
+                        <h4>Pérennité</h4>
+                        <p>Ancienneté de l’entreprise. Les défaillances se concentrent sur les trois premières années
+                            d’existence ; le score progresse fortement jusqu’à 10 ans puis se stabilise.</p>
+                    </div>
+                    <div class="method-item">
+                        <h4>Taille &amp; structure</h4>
+                        <p>Tranche d’effectif salarié et catégorie INSEE (PME / ETI / GE), corrigées du nombre
+                            d’établissements ouverts et de la part d’établissements fermés.</p>
+                    </div>
+                    <div class="method-item">
+                        <h4>Santé financière</h4>
+                        <p>Comptes annuels déposés : marge nette du dernier exercice, tendance du chiffre d’affaires,
+                            exercices déficitaires consécutifs et fraîcheur des comptes.</p>
+                    </div>
+                    <div class="method-item">
+                        <h4>Transparence</h4>
+                        <p>Publication effective des comptes, convention collective renseignée, dirigeants identifiés,
+                            labels vérifiables (RGE, Qualiopi, ESS…). Une entreprise non diffusible est pénalisée.</p>
+                    </div>
+                    <div class="method-item">
+                        <h4>Forme juridique</h4>
+                        <p>Degré de protection du patrimoine et obligations comptables : une SA ou une SAS n’expose
+                            pas au même risque qu’une entreprise individuelle.</p>
+                    </div>
+                    <div class="method-item">
+                        <h4>Secteur d’activité</h4>
+                        <p>Sinistralité observée par section NAF. La construction, l’hébergement-restauration et les
+                            activités récréatives sont les secteurs les plus exposés.</p>
+                    </div>
+                </div>
+
+                <h4 class="method-sub">Règles éliminatoires</h4>
+                <p class="card-sub">
+                    Certaines situations plafonnent le score quelle que soit la moyenne pondérée :
+                    entreprise cessée au répertoire SIRENE (plafond 5), liquidation judiciaire (5),
+                    cessation des paiements (15), redressement judiciaire (20), procédure de sauvegarde (35),
+                    plan de redressement arrêté (42), plan de sauvegarde arrêté (50), sortie de procédure
+                    de moins de trois ans (62).
+                </p>
+
+                <h4 class="method-sub">Grades</h4>
+                <div class="grade-legend">
+                    <span class="grade-chip grade-A">A — 80 à 100 · risque très faible</span>
+                    <span class="grade-chip grade-B">B — 65 à 79 · risque faible</span>
+                    <span class="grade-chip grade-C">C — 50 à 64 · risque modéré</span>
+                    <span class="grade-chip grade-D">D — 35 à 49 · risque élevé</span>
+                    <span class="grade-chip grade-E">E — 0 à 34 · risque très élevé</span>
+                </div>
+
+                <h4 class="method-sub">Indice de confiance</h4>
+                <p class="card-sub">
+                    Il indique la part des piliers réellement documentés par les données publiques. Un score
+                    accompagné d’une confiance faible repose sur des valeurs neutres par défaut : il doit être
+                    interprété avec prudence, notamment pour les entreprises qui ne déposent pas leurs comptes.
+                </p>
+
+                <h4 class="method-sub">Sources de données</h4>
+                <ul class="source-list">
+                    <li><strong>API Recherche d’Entreprises</strong> (DINUM) — répertoire SIRENE, comptes annuels,
+                        dirigeants, labels. Gratuite, sans clé, licence ouverte.</li>
+                    <li><strong>BODACC</strong> (DILA, plateforme Opendatasoft) — annonces de procédures collectives.
+                        Gratuite, sans clé.</li>
+                </ul>
+
+                <p class="disclaimer">
+                    <strong>Avertissement.</strong> Ce score est un outil d’aide à la décision construit sur des
+                    données publiques ouvertes. Il ne constitue ni une notation financière réglementée, ni une
+                    garantie de solvabilité, et le plafond d’encours proposé est purement indicatif. Les données
+                    publiques comportent des délais de mise à jour : une procédure très récente peut ne pas encore
+                    y figurer.
+                </p>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script src="scoring.js"></script>
+<script src="api.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
