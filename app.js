@@ -1366,6 +1366,7 @@
         renderRunway();
         renderFlowChart();
         renderCumulativeChart();
+        renderMonthlyComparison();
         renderEncCategoriesChart();
         renderDecCategoriesChart();
         renderFinanceurChart();
@@ -1971,6 +1972,64 @@
             try { await idbSet('liora_cash_balance', cashBalance); } catch { /* ignore */ }
             renderRunway();
         });
+    }
+
+    // ── Comparaison mensuelle (dernier mois vs précédent) ──
+    function renderMonthlyComparison() {
+        const el = document.getElementById('month-compare-body');
+        if (!el) return;
+        const byMonth = {};
+        filteredData.forEach(r => {
+            const k = getMonthKey(r); if (!k) return;
+            if (!byMonth[k]) byMonth[k] = { enc: 0, dec: 0, cats: {} };
+            if (r.montant > 0) byMonth[k].enc += r.montant;
+            else byMonth[k].dec += Math.abs(r.montant);
+            if (r.categorie !== 'Interco') byMonth[k].cats[r.categorie] = (byMonth[k].cats[r.categorie] || 0) + r.montant;
+        });
+        const months = Object.keys(byMonth).sort();
+        const titleEl = document.getElementById('month-compare-title');
+        if (months.length < 2) {
+            el.innerHTML = '<p class="fv-empty">Il faut au moins deux mois de données pour comparer.</p>';
+            if (titleEl) titleEl.textContent = 'dernier mois vs précédent';
+            return;
+        }
+        const cur = months[months.length - 1], prev = months[months.length - 2];
+        if (titleEl) titleEl.textContent = monthKeyToLabel(cur) + ' vs ' + monthKeyToLabel(prev);
+        const c = byMonth[cur], p = byMonth[prev];
+
+        function deltaHtml(curV, prevV, goodWhenUp) {
+            const d = curV - prevV;
+            const pct = prevV !== 0 ? (d / Math.abs(prevV) * 100) : (curV !== 0 ? 100 : 0);
+            if (Math.abs(d) < 0.5) return '<span class="mc-delta mc-flat">= stable</span>';
+            const up = d > 0;
+            const good = up === goodWhenUp;
+            return `<span class="mc-delta ${good ? 'mc-good' : 'mc-bad'}">${up ? '▲' : '▼'} ${up ? '+' : ''}${formatCurrency(d)} (${up ? '+' : ''}${pct.toFixed(0)}%)</span>`;
+        }
+        function card(label, curV, prevV, goodWhenUp) {
+            return `<div class="mc-card">
+                <span class="mc-label">${label}</span>
+                <span class="mc-value">${formatCurrency(curV)}</span>
+                ${deltaHtml(curV, prevV, goodWhenUp)}
+                <span class="mc-prev">mois préc. : ${formatCurrency(prevV)}</span>
+            </div>`;
+        }
+
+        const catKeys = new Set([...Object.keys(c.cats), ...Object.keys(p.cats)]);
+        const movers = [...catKeys].map(cat => ({ cat, d: (c.cats[cat] || 0) - (p.cats[cat] || 0) }))
+            .filter(x => Math.abs(x.d) > 0.5).sort((a, b) => Math.abs(b.d) - Math.abs(a.d)).slice(0, 5);
+        const moversHtml = movers.length ? `
+            <div class="mc-movers">
+                <div class="mc-movers-title">Plus fortes variations par catégorie (flux net)</div>
+                ${movers.map(m => `<div class="mc-mover"><span>${escapeHtml(m.cat)}</span><span class="${m.d >= 0 ? 'mc-good' : 'mc-bad'}">${m.d >= 0 ? '+' : ''}${formatCurrency(m.d)}</span></div>`).join('')}
+            </div>` : '';
+
+        el.innerHTML = `
+            <div class="mc-cards">
+                ${card('Encaissements', c.enc, p.enc, true)}
+                ${card('Décaissements', c.dec, p.dec, false)}
+                ${card('Solde net', c.enc - c.dec, p.enc - p.dec, true)}
+            </div>
+            ${moversHtml}`;
     }
 
     // ── Volume by category (horizontal bar) — click filters ──

@@ -1548,6 +1548,23 @@ body::before {
 .runway-danger { border-left-color: var(--red); background: var(--red-bg); }
 @media (max-width: 760px) { .runway-grid { grid-template-columns: 1fr; } }
 
+/* Comparaison mensuelle */
+.mc-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.mc-card { padding: 1rem 1.2rem; border-radius: var(--radius-lg); background: var(--bg-input); display: flex; flex-direction: column; gap: 0.3rem; }
+.mc-label { font-size: 0.82rem; color: var(--text-secondary); }
+.mc-value { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); }
+.mc-delta { font-size: 0.85rem; font-weight: 600; }
+.mc-prev { font-size: 0.78rem; color: var(--text-muted); }
+.mc-good { color: var(--green); }
+.mc-bad { color: var(--red); }
+.mc-flat { color: var(--text-secondary); }
+.mc-movers { margin-top: 1.2rem; }
+.mc-movers-title { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem; }
+.mc-mover { display: flex; justify-content: space-between; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; }
+.mc-mover span:first-child { color: var(--text-primary); }
+.mc-mover span:last-child { font-weight: 600; }
+@media (max-width: 760px) { .mc-cards { grid-template-columns: 1fr; } }
+
 /* Décaissements fixes vs variables */
 .fv-hint { font-size: 0.78rem; color: var(--text-secondary); font-weight: 400; }
 .fv-empty { color: var(--text-secondary); padding: 1rem 0; }
