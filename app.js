@@ -2577,8 +2577,9 @@
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
     }
 
-    // DQ multi-month filter state: null = all selected
-    let dqSelectedMonths = null;
+    // DQ multi-month filter state: null = all selected, empty Set = none selected
+    // Par défaut : aucun mois sélectionné (l'utilisateur choisit le(s) mois à traiter).
+    let dqSelectedMonths = new Set();
     let dqAllMonthKeys = [];
 
     function populateDqMonthFilter() {

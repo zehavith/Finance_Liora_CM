@@ -20,11 +20,13 @@ simulations.
 ## Stack technique
 
 - **HTML + CSS + JavaScript pur** (vanilla), sans framework ni build.
-- Librairies chargées via CDN :
-  - [Chart.js](https://www.chartjs.org/) 4.4.1 + plugin `chartjs-chart-treemap` (graphiques)
+- Librairies **intégrées en local** (dossier `vendor/`) — l'app fonctionne
+  hors-ligne, sans dépendre d'un CDN :
+  - [Chart.js](https://www.chartjs.org/) 4.4.1 + plugin `chartjs-chart-treemap` 2.3.0 (graphiques)
   - [PapaParse](https://www.papaparse.com/) 5.4.1 (lecture CSV)
   - [SheetJS / xlsx](https://sheetjs.com/) 0.18.5 (lecture Excel)
-  - Police Inter (Google Fonts)
+- Police Inter (Google Fonts) — seule ressource encore chargée depuis Internet ;
+  en cas d'absence de connexion, une police système prend le relais.
 - **Persistance locale** via **IndexedDB** (base `liora_cashflow`). Les données
   et les règles apprises restent dans le navigateur ; rien n'est envoyé sur un
   serveur, **hormis** les appels à l'API Claude si une clé API est renseignée
@@ -34,11 +36,15 @@ simulations.
 
 Aucune compilation, aucun serveur nécessaire.
 
-1. Ouvrir `index.html` dans un navigateur moderne (double-clic, ou glisser le
+1. Extraire l'ensemble des fichiers dans un même dossier (ne pas ouvrir
+   `index.html` depuis l'intérieur d'une archive `.zip` : les fichiers voisins
+   ne seraient pas chargés).
+2. Ouvrir `index.html` dans un navigateur moderne (double-clic, ou glisser le
    fichier dans le navigateur).
-2. Une connexion Internet est requise au premier chargement pour récupérer les
-   librairies CDN.
-3. Importer un fichier `.csv`, `.xlsx` ou `.xls` via la zone d'upload.
+3. L'app fonctionne **sans connexion Internet** (librairies locales). Seule la
+   police Inter se charge en ligne, avec repli automatique sur une police
+   système si nécessaire.
+4. Importer un fichier `.csv`, `.xlsx` ou `.xls` via la zone d'upload.
 
 > Astuce : les données des mois précédents sont conservées automatiquement
 > (IndexedDB). Pour repartir de zéro, utiliser « Tout effacer » dans l'onglet
@@ -50,6 +56,7 @@ Aucune compilation, aucun serveur nécessaire.
 index.html                   Structure de l'application (écrans + onglets)
 app.js                       Logique applicative (≈ 3 750 lignes)
 styles.css                   Styles (thème sombre « navy »)
+vendor/                      Librairies tierces intégrées en local (Chart.js, PapaParse, xlsx, treemap)
 regles_categorisation.csv    Référence des 774 règles de catégorisation (export documentaire)
 Liora_Logo_Orange_alpha.png  Logo
 extract-rules.html           Outil annexe : exporter les règles apprises depuis IndexedDB
