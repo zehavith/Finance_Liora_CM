@@ -1531,6 +1531,23 @@ body::before {
 .ft-option-row input { width: 18px; height: 18px; margin-top: 2px; accent-color: #14b8a6; cursor: pointer; flex-shrink: 0; }
 .ft-option-row strong { color: var(--text-primary); }
 
+/* Trésorerie & runway */
+.runway-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; align-items: stretch; }
+.runway-input-group { display: flex; flex-direction: column; gap: 0.4rem; justify-content: center; }
+.runway-input-group label { font-size: 0.82rem; color: var(--text-secondary); }
+.runway-metric {
+    padding: 1rem 1.2rem; border-radius: var(--radius-lg); background: var(--bg-input);
+    border-left: 4px solid var(--border-color); display: flex; flex-direction: column; gap: 0.25rem;
+}
+.runway-label { font-size: 0.82rem; color: var(--text-secondary); }
+.runway-value { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); }
+.runway-unit { font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); }
+.runway-sub { font-size: 0.8rem; color: var(--text-secondary); }
+.runway-ok { border-left-color: var(--green); background: var(--green-bg); }
+.runway-warn { border-left-color: var(--amber); background: var(--amber-bg); }
+.runway-danger { border-left-color: var(--red); background: var(--red-bg); }
+@media (max-width: 760px) { .runway-grid { grid-template-columns: 1fr; } }
+
 /* Décaissements fixes vs variables */
 .fv-hint { font-size: 0.78rem; color: var(--text-secondary); font-weight: 400; }
 .fv-empty { color: var(--text-secondary); padding: 1rem 0; }

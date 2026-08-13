@@ -1107,6 +1107,7 @@
         await new Promise(r => setTimeout(r, 100)); // allow UI update
         await loadLearnedCategories();
         await loadB2BCache();
+        await loadCashBalance();
         categorizeAll(rawData);
 
         // Save merged data + file history
@@ -1362,6 +1363,7 @@
         currentPage = 1;
         renderFilterChips();
         renderKPIs();
+        renderRunway();
         renderFlowChart();
         renderCumulativeChart();
         renderEncCategoriesChart();
@@ -1910,6 +1912,65 @@
                     </tbody>
                 </table>
             </div>`;
+    }
+
+    // ── Trésorerie & runway ──
+    let cashBalance = 0;
+    async function loadCashBalance() {
+        try { cashBalance = Number(await idbGet('liora_cash_balance')) || 0; } catch { cashBalance = 0; }
+    }
+    function renderRunway() {
+        const el = document.getElementById('runway-body');
+        if (!el) return;
+        // Flux net mensuel moyen, hors Interco (mouvements internes) et hors lignes neutres
+        const rows = filteredData.filter(r => r.categorie !== 'Interco' && r.sens !== 'Neutre');
+        const byMonth = {};
+        rows.forEach(r => { const k = getMonthKey(r); if (k) byMonth[k] = (byMonth[k] || 0) + r.montant; });
+        const months = Object.keys(byMonth).sort();
+        const n = months.length;
+        const avgNet = n ? months.reduce((s, k) => s + byMonth[k], 0) / n : 0;
+        const burning = avgNet < 0;
+
+        let runwayHtml;
+        if (!burning) {
+            runwayHtml = `<div class="runway-metric runway-ok">
+                <span class="runway-label">Runway</span>
+                <span class="runway-value">Illimité</span>
+                <span class="runway-sub">trésorerie excédentaire en moyenne</span></div>`;
+        } else if (cashBalance > 0) {
+            const monthsLeft = cashBalance / Math.abs(avgNet);
+            const d = new Date(); d.setMonth(d.getMonth() + Math.floor(monthsLeft));
+            const cls = monthsLeft < 3 ? 'runway-danger' : (monthsLeft < 6 ? 'runway-warn' : 'runway-ok');
+            runwayHtml = `<div class="runway-metric ${cls}">
+                <span class="runway-label">Runway estimé</span>
+                <span class="runway-value">${monthsLeft.toFixed(1).replace('.', ',')} mois</span>
+                <span class="runway-sub">≈ jusqu'à ${d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}</span></div>`;
+        } else {
+            runwayHtml = `<div class="runway-metric runway-warn">
+                <span class="runway-label">Runway</span>
+                <span class="runway-value">—</span>
+                <span class="runway-sub">renseigne ta trésorerie actuelle pour l'estimer</span></div>`;
+        }
+
+        el.innerHTML = `
+            <div class="runway-grid">
+                <div class="runway-input-group">
+                    <label for="runway-balance">Trésorerie actuelle (€)</label>
+                    <input type="number" id="runway-balance" class="sim-input" value="${cashBalance}" step="1000">
+                </div>
+                <div class="runway-metric ${avgNet >= 0 ? 'runway-ok' : 'runway-danger'}">
+                    <span class="runway-label">Flux net moyen</span>
+                    <span class="runway-value">${formatCurrency(avgNet)}<span class="runway-unit"> / mois</span></span>
+                    <span class="runway-sub">sur ${n} mois (hors Interco)</span>
+                </div>
+                ${runwayHtml}
+            </div>`;
+        const inp = document.getElementById('runway-balance');
+        if (inp) inp.addEventListener('change', async () => {
+            cashBalance = Number(inp.value) || 0;
+            try { await idbSet('liora_cash_balance', cashBalance); } catch { /* ignore */ }
+            renderRunway();
+        });
     }
 
     // ── Volume by category (horizontal bar) — click filters ──
@@ -2805,6 +2866,7 @@
         await migrateFromLocalStorage();
         await loadLearnedCategories();
         await loadB2BCache();
+        await loadCashBalance();
         const stored = await loadFromStorage();
         if (stored.length > 0) {
             console.log('[Liora] Restauration de', stored.length, 'transactions depuis IndexedDB');
