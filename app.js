@@ -1393,6 +1393,7 @@
         renderTeamsChart();
         renderTable();
         renderSummary();
+        renderAnomalies();
     }
 
     // ── KPIs (use filteredData) ──
@@ -2059,6 +2060,64 @@
                 ${card('Solde net', c.enc - c.dec, p.enc - p.dec, true)}
             </div>
             ${moversHtml}`;
+    }
+
+    // ── Anomalies & doublons ──
+    function renderAnomalies() {
+        const el = document.getElementById('anomalies-body');
+        if (!el) return;
+        const data = filteredData;
+
+        // Doublons potentiels : même jour + même montant + même début de libellé
+        const groups = {};
+        data.forEach(r => {
+            const k = (r.dateStr || '') + '|' + Math.abs(r.montant) + '|' + normUpper(r.libelle).slice(0, 25);
+            (groups[k] = groups[k] || []).push(r);
+        });
+        const dups = Object.values(groups).filter(g => g.length >= 2 && Math.abs(g[0].montant) > 0)
+            .sort((a, b) => Math.abs(b[0].montant) - Math.abs(a[0].montant)).slice(0, 8);
+
+        // Montants inhabituels : décaissement très supérieur à la médiane de sa catégorie
+        const byCat = {};
+        data.forEach(r => { if (r.montant < 0) (byCat[r.categorie] = byCat[r.categorie] || []).push(r); });
+        const outliers = [];
+        Object.entries(byCat).forEach(([cat, rows]) => {
+            if (rows.length < 5) return;
+            const amts = rows.map(r => Math.abs(r.montant)).sort((a, b) => a - b);
+            const median = amts[Math.floor(amts.length / 2)];
+            if (median <= 0) return;
+            rows.forEach(r => {
+                const a = Math.abs(r.montant);
+                if (a > median * 6 && a > 500) outliers.push({ r, cat, median, ratio: a / median });
+            });
+        });
+        outliers.sort((x, y) => Math.abs(y.r.montant) - Math.abs(x.r.montant));
+        const top = outliers.slice(0, 8);
+
+        if (!dups.length && !top.length) {
+            el.innerHTML = '<p class="fv-empty">Aucun doublon ni montant inhabituel détecté sur la période sélectionnée.</p>';
+            return;
+        }
+
+        const dupHtml = dups.length ? `
+            <div class="anom-block">
+                <div class="anom-title">🔁 Doublons potentiels <span class="anom-badge">${dups.length}</span></div>
+                ${dups.map(g => `<div class="anom-item">
+                    <span class="anom-main">${g.length}× ${escapeHtml(truncate(g[0].libelle, 55))}</span>
+                    <span class="anom-meta">${escapeHtml(g[0].dateStr || '')} · ${formatCurrency(g[0].montant)}</span>
+                </div>`).join('')}
+            </div>` : '';
+
+        const outHtml = top.length ? `
+            <div class="anom-block">
+                <div class="anom-title">⚠️ Montants inhabituels <span class="anom-badge">${top.length}</span></div>
+                ${top.map(o => `<div class="anom-item">
+                    <span class="anom-main">${escapeHtml(truncate(o.r.libelle, 55))}</span>
+                    <span class="anom-meta">${formatCurrency(o.r.montant)} · ${escapeHtml(o.cat)} · ≈ ${o.ratio.toFixed(0)}× la médiane</span>
+                </div>`).join('')}
+            </div>` : '';
+
+        el.innerHTML = `<div class="anom-grid">${dupHtml}${outHtml}</div>`;
     }
 
     // ── Volume by category (horizontal bar) — click filters ──

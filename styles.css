@@ -1531,6 +1531,16 @@ body::before {
 .ft-option-row input { width: 18px; height: 18px; margin-top: 2px; accent-color: #14b8a6; cursor: pointer; flex-shrink: 0; }
 .ft-option-row strong { color: var(--text-primary); }
 
+/* Anomalies & doublons */
+.anom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.anom-block { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 1rem 1.2rem; }
+.anom-title { font-size: 0.95rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.5rem; }
+.anom-badge { background: var(--amber-bg); color: var(--amber); border-radius: 10px; padding: 0.05rem 0.5rem; font-size: 0.78rem; font-weight: 700; }
+.anom-item { display: flex; flex-direction: column; padding: 0.45rem 0; border-bottom: 1px solid var(--border-color); }
+.anom-main { color: var(--text-primary); font-size: 0.88rem; }
+.anom-meta { color: var(--text-secondary); font-size: 0.78rem; margin-top: 0.15rem; }
+@media (max-width: 760px) { .anom-grid { grid-template-columns: 1fr; } }
+
 /* Formulaire d'ajout de règle */
 .rule-add-form { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; margin: 0.75rem 0 1.2rem; }
 .rule-add-form input, .rule-add-form select {
