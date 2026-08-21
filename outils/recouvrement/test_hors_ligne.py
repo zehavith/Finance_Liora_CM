@@ -1528,7 +1528,8 @@ def test_interface() -> None:
         verifier(not manquants, f"tous les champs de la page sont présents{' — manque : ' + ', '.join(manquants) if manquants else ''}")
 
         restants = [m for m in ("__JETON__", "__SORTIE__", "__BOITES__",
-                                "__MOTEUR_PDF__", "__ETAT_MONDAY__") if m in page]
+                                "__MOTEUR_PDF__", "__ETAT_MONDAY__",
+                                "__IMPORT__") if m in page]
         verifier(not restants, f"aucun marqueur de gabarit non remplacé{' — reste : ' + ', '.join(restants) if restants else ''}")
         verifier("__JETON__" not in page, "le jeton est injecté dans la page")
         verifier(interface.JETON in page, "la page porte le jeton de la session")
@@ -1580,6 +1581,53 @@ def test_interface() -> None:
                 "recouvrement@liora.io" in journal and "billing@liora.io" in journal,
                 "les deux boîtes sont citées dans le journal",
             )
+
+            print("  -- le fichier importé survit à la fermeture de l'appli --")
+            memoire = interface.dernier_import()
+            verifier(
+                memoire is not None and memoire["nom"] == "export-monday.csv",
+                "l'import est mémorisé avec son nom d'origine",
+            )
+            rechargee = urllib.request.urlopen(f"{base}/").read().decode("utf-8")
+            verifier(
+                "export-monday.csv" in rechargee
+                and "Dernier fichier importé" in rechargee,
+                "rouvrir l'application rappelle le dernier fichier importé",
+            )
+
+            statut, reponse = appeler(
+                "/api/lancer",
+                {"reutiliser": True, "sortie": repertoire, "simulation": True,
+                 "boites": "recouvrement@liora.io"},
+            )
+            verifier(
+                statut == 200 and reponse.get("fichier") == "export-monday.csv",
+                "relance possible sans redéposer le fichier",
+            )
+            for _ in range(100):
+                _statut, etat = appeler("/api/journal?depuis=0")
+                if etat.get("termine"):
+                    break
+                time.sleep(0.1)
+            verifier(
+                etat.get("code") == 0
+                and "1 dossier(s) à traiter" in "\n".join(etat.get("lignes", [])),
+                "la relance lit bien le fichier conservé sur le disque",
+            )
+
+            (interface.RACINE / "dossiers-depose.csv").unlink(missing_ok=True)
+            verifier(
+                interface.dernier_import() is None,
+                "un fichier effacé à la main ne laisse pas de rappel trompeur",
+            )
+            statut = None
+            try:
+                appeler("/api/lancer", {"reutiliser": True, "sortie": repertoire})
+                verifier(False, "relance refusée quand le fichier a disparu")
+            except urllib.error.HTTPError as exc:
+                verifier(
+                    exc.code == 400, f"relance refusée quand le fichier a disparu ({exc.code})"
+                )
 
             print("  -- recherche ponctuelle, sans fichier --")
             statut, _reponse = appeler(

@@ -26,6 +26,7 @@ import subprocess
 import sys
 import threading
 import webbrowser
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -73,6 +74,39 @@ def ecrire_preferences(valeurs: dict) -> None:
         )
     except OSError:
         pass
+
+
+def memoriser_preferences(nouvelles: dict) -> None:
+    """Met à jour les préférences sans effacer les autres clés."""
+    valeurs = lire_preferences()
+    valeurs.update(nouvelles)
+    ecrire_preferences(valeurs)
+
+
+def dernier_import(preferences: dict | None = None) -> dict | None:
+    """Le fichier déposé au dernier export, s'il est toujours là.
+
+    Un fichier supprimé à la main entre deux sessions ne doit pas laisser un
+    rappel qui promet un lancement impossible.
+    """
+    memoire = (preferences or lire_preferences()).get("import")
+    if not isinstance(memoire, dict) or not memoire.get("fichier"):
+        return None
+    chemin = RACINE / Path(str(memoire["fichier"])).name
+    if not chemin.exists():
+        return None
+    return {
+        "nom": memoire.get("nom") or chemin.name,
+        "date": memoire.get("date") or "",
+        "taille": chemin.stat().st_size,
+    }
+
+
+def _dernier_import_json(preferences: dict) -> str:
+    memoire = dernier_import(preferences)
+    # `<` échappé : le nom vient du poste de l'utilisateur et atterrit dans
+    # une balise <script>.
+    return json.dumps(memoire, ensure_ascii=False).replace("<", "\\u003c")
 
 
 class Execution:
@@ -234,6 +268,10 @@ class Gestionnaire(BaseHTTPRequestHandler):
             ).replace(
                 "__SORTIE__", preferences.get("sortie", str(sortie_par_defaut()))
             )
+            # Le fichier importé reste sur le disque, mais un navigateur ne
+            # peut pas repeupler un champ de fichier : sans ce rappel, rouvrir
+            # l'application donne l'impression que l'import s'est perdu.
+            page = page.replace("__IMPORT__", _dernier_import_json(preferences))
             self._repondre(200, page.encode("utf-8"), "text/html; charset=utf-8")
             return
 
@@ -316,6 +354,20 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self._demarrer(demande, depot, "saisie manuelle")
             return
 
+        if demande.get("reutiliser"):
+            memoire = lire_preferences().get("import") or {}
+            depot = RACINE / Path(str(memoire.get("fichier") or "")).name
+            if not memoire.get("fichier") or not depot.exists():
+                self._json(400, {
+                    "erreur": (
+                        "Le fichier importé précédemment est introuvable. "
+                        "Déposez-le à nouveau."
+                    )
+                })
+                return
+            self._demarrer(demande, depot, memoire.get("nom") or depot.name)
+            return
+
         nom = Path((demande.get("nom") or "").strip()).name
         if not nom:
             self._json(400, {"erreur": "Aucun fichier reçu."})
@@ -348,6 +400,13 @@ class Gestionnaire(BaseHTTPRequestHandler):
         # on peut ainsi le rouvrir pour vérifier ce qui a réellement été lu.
         depot = RACINE / f"dossiers-depose{Path(nom).suffix.lower()}"
         depot.write_bytes(contenu)
+        memoriser_preferences({
+            "import": {
+                "fichier": depot.name,
+                "nom": nom,
+                "date": datetime.now().strftime("%d/%m/%Y à %H:%M"),
+            }
+        })
         self._demarrer(demande, depot, nom)
 
     def _demarrer(self, demande: dict, depot: Path, origine: str) -> None:
@@ -366,7 +425,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self._json(409, {"erreur": str(exc)})
             return
 
-        ecrire_preferences({"boites": demande.get("boites", ""), "sortie": sortie})
+        memoriser_preferences(
+            {"boites": demande.get("boites", ""), "sortie": sortie}
+        )
         self._json(200, {"demarre": True, "fichier": origine, "sortie": sortie})
 
     def _enregistrer_suivi(self, demande: dict) -> None:
@@ -694,7 +755,12 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <script>
 const JETON = "__JETON__";
 const $ = (id) => document.getElementById(id);
+const IMPORT_PRECEDENT = __IMPORT__;
 let fichierChoisi = null, position = 0, sondage = null, mode = "fichier";
+// Le fichier importé est conservé à côté de l'outil, mais aucun navigateur
+// ne peut repeupler un champ de fichier : on le rappelle, et on permet de
+// relancer dessus sans le redéposer.
+let reutiliserImport = Boolean(IMPORT_PRECEDENT);
 
 async function api(chemin, corps) {
   const options = { headers: { "X-Jeton": JETON } };
@@ -728,7 +794,17 @@ document.querySelectorAll(".onglet").forEach((onglet) => {
 function majBouton() {
   $("lancer").disabled = mode === "manuel"
     ? !($("mEmail").value.trim() || $("mFacture").value.trim())
-    : !fichierChoisi;
+    : !(fichierChoisi || reutiliserImport);
+}
+
+if (IMPORT_PRECEDENT) {
+  $("zone").classList.add("rempli");
+  $("texteZone").textContent = "Dernier fichier importé, prêt à relancer :";
+  $("nomFichier").textContent = IMPORT_PRECEDENT.nom +
+    "  (importé le " + IMPORT_PRECEDENT.date + ", " +
+    Math.round(IMPORT_PRECEDENT.taille / 1024) + " Ko)" +
+    " — déposez-en un autre pour le remplacer";
+  majBouton();
 }
 
 // -- dépôt du fichier
@@ -754,6 +830,7 @@ function retenir(fichier) {
     return;
   }
   fichierChoisi = fichier;
+  reutiliserImport = false;
   zone.classList.add("rempli");
   $("texteZone").textContent = "Fichier retenu :";
   $("nomFichier").textContent = fichier.name +
@@ -764,7 +841,7 @@ function retenir(fichier) {
 
 // -- lancement
 $("lancer").addEventListener("click", async () => {
-  if (!fichierChoisi) return;
+  if (mode !== "manuel" && !fichierChoisi && !reutiliserImport) return;
   $("lancer").disabled = true;
   $("bandeau").className = "bandeau";
   $("journal").hidden = false;
@@ -791,6 +868,10 @@ $("lancer").addEventListener("click", async () => {
     charge = Object.assign({ mode: "manuel",
       email: $("mEmail").value, facture: $("mFacture").value,
       nom_dossier: $("mNom").value }, commun);
+  } else if (!fichierChoisi) {
+    // Relance sur le fichier déjà déposé : il n'a pas à repasser par le
+    // navigateur, il est resté sur le disque à côté de l'outil.
+    charge = Object.assign({ reutiliser: true }, commun);
   } else {
     try {
       charge = Object.assign({ nom: fichierChoisi.name,

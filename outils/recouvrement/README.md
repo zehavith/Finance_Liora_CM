@@ -432,6 +432,13 @@ C'est le moment de repérer les dossiers à 0 message (adresse erronée,
 apprenante qui écrivait depuis une autre adresse) et ceux qui en ont
 anormalement beaucoup.
 
+Dans l'application, le fichier importé est conservé à côté de l'outil sous le
+nom `dossiers-depose.xlsx`. À la réouverture, la zone de dépôt le rappelle —
+« Dernier fichier importé, prêt à relancer » — et le bouton *Lancer* repart
+dessus sans qu'il faille le redéposer. Aucun navigateur ne sait repeupler un
+champ de fichier : sans ce rappel, l'import semblait perdu. Déposer un autre
+fichier le remplace.
+
 Puis l'export réel :
 
 ```bash
