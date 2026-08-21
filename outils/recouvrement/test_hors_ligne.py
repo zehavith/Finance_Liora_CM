@@ -1460,6 +1460,30 @@ def test_export_interrompu() -> None:
                 "\n".join(reprise).count("déjà exporté, ignoré") == 2,
                 "--reprendre saute les deux dossiers déjà écrits",
             )
+
+            # Une panne imprévue doit laisser sa trace dans journal.log :
+            # c'est la seule source consultable une fois l'appli refermée.
+            class ClientCassé(ClientFictif):
+                def rechercher_identifiants(self, requete, inclure_spam_corbeille=True, plafond=None):
+                    raise ZeroDivisionError("panne simulée")
+
+            export_mails.ouvrir_sources = lambda **_: SourcesGmail([ClientCassé()])
+            sortie3 = racine / "export-panne"
+            code = export_mails.executer(
+                export_mails.analyser_arguments(
+                    ["--dossiers", str(fichier), "--sortie", str(sortie3)]
+                )
+            )
+            trace = (sortie3 / "journal.log").read_text(encoding="utf-8")
+            verifier(code == 3, "une panne imprévue a son propre code de sortie")
+            verifier(
+                "Erreur inattendue : ZeroDivisionError : panne simulée" in trace,
+                "journal.log nomme la panne au lieu de s'arrêter sans un mot",
+            )
+            verifier(
+                "ZeroDivisionError" in trace and "rechercher_identifiants" in trace,
+                "journal.log conserve la trace complète, exploitable à distance",
+            )
     finally:
         export_mails.ouvrir_sources = vraies_sources
 

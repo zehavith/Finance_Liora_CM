@@ -1017,6 +1017,18 @@ def executer(
     except KeyboardInterrupt:
         journal("Interrompu. Relancez avec --reprendre pour continuer où vous en étiez.")
         return 130
+    except Exception as exc:  # noqa: BLE001 - le journal doit dire pourquoi
+        # Sans cette branche, une panne imprévue laissait journal.log s'arrêter
+        # en plein milieu, sans un mot : impossible de distinguer un plantage
+        # d'une fenêtre fermée. La trace complète part dans le fichier, seule
+        # source consultable une fois l'application refermée.
+        import traceback  # noqa: PLC0415
+
+        journal(f"Erreur inattendue : {exc.__class__.__name__} : {exc}")
+        for ligne in traceback.format_exc().splitlines():
+            journal(f"    {ligne}")
+        journal("Relancez avec --reprendre pour continuer où vous en étiez.")
+        return 3
     finally:
         journal.fermer()
 
