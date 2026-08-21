@@ -46,6 +46,9 @@ SUIVI = RACINE / "suivi-dossiers.json"
 # Secret au même titre que les identifiants Gmail : fichier dédié,
 # jamais renvoyé à la page, jamais mêlé aux préférences.
 JETON_MONDAY = RACINE / "monday-token.txt"
+# Liora s'appelait DataScientest : les relances les plus anciennes partent
+# encore de ce domaine, et sans lui elles passeraient pour des messages reçus.
+DOMAINES_PAR_DEFAUT = "datascientest.com"
 EXTENSIONS_ACCEPTEES = {".xlsx", ".xlsm", ".csv"}
 TAILLE_MAX_FICHIER = 25 * 1024 * 1024
 
@@ -203,6 +206,10 @@ def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str
         arguments.append("--sous-dossiers-par-adresse")
     if demande.get("decouvrir_adresses"):
         arguments.append("--decouvrir-adresses")
+
+    domaines = (demande.get("domaines") or "").strip()
+    if domaines:
+        arguments += ["--domaines-internes", domaines]
     if demande.get("sans_spam"):
         arguments.append("--sans-spam")
     if demande.get("reprendre"):
@@ -272,6 +279,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             # peut pas repeupler un champ de fichier : sans ce rappel, rouvrir
             # l'application donne l'impression que l'import s'est perdu.
             page = page.replace("__IMPORT__", _dernier_import_json(preferences))
+            page = page.replace(
+                "__DOMAINES__", preferences.get("domaines", DOMAINES_PAR_DEFAUT)
+            )
             self._repondre(200, page.encode("utf-8"), "text/html; charset=utf-8")
             return
 
@@ -425,9 +435,11 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self._json(409, {"erreur": str(exc)})
             return
 
-        memoriser_preferences(
-            {"boites": demande.get("boites", ""), "sortie": sortie}
-        )
+        memoriser_preferences({
+            "boites": demande.get("boites", ""),
+            "sortie": sortie,
+            "domaines": (demande.get("domaines") or "").strip(),
+        })
         self._json(200, {"demarre": True, "fichier": origine, "sortie": sortie})
 
     def _enregistrer_suivi(self, demande: dict) -> None:
@@ -690,6 +702,11 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <label for="jetonMonday">Jeton Monday — pour télécharger factures et conventions</label>
       <input type="text" id="jetonMonday" placeholder="__ETAT_MONDAY__" />
     </div>
+    <div>
+      <label for="domaines">Vos autres domaines d\'envoi</label>
+      <input type="text" id="domaines" value="__DOMAINES__"
+             placeholder="datascientest.com" />
+    </div>
   </div>
   <p class="note">Le jeton Monday est facultatif : sans lui, les factures et
      conventions du tableau sont seulement citées en lien dans la note, au lieu
@@ -853,6 +870,7 @@ $("lancer").addEventListener("click", async () => {
       boites: $("boites").value,
       sortie: $("sortie").value,
       jeton_monday: $("jetonMonday").value,
+      domaines: $("domaines").value,
       simulation: $("simulation").checked,
       ignorer_lignes_incompletes: $("ignorer").checked,
       sans_regroupement: !$("regrouper").checked,

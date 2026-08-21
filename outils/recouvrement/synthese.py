@@ -17,50 +17,93 @@ from datetime import datetime
 
 from indexation import LigneIndex
 
-# Événements repérés dans l'objet et le corps des messages. Le premier motif
-# rencontré suffit ; les motifs sont comparés sur un texte mis à plat
-# (minuscules, sans accent).
+# Formulations qui annulent une occurrence de « contestation » : nos propres
+# courriers de relance en sont pleins — « en cas de contestation, merci de
+# nous écrire sous huit jours » — et les compter reviendrait à faire dire à
+# une mise en demeure que le débiteur a contesté.
+SANS_PORTEE = (
+    "en cas de", "en l absence de", "a defaut de", "faute de", "sauf",
+    "toute", "pour toute", "aucune", "sans", "si vous", "en cas d",
+)
+
+
+@dataclass(frozen=True)
+class Motif:
+    """Un événement à repérer, et les conditions pour le retenir."""
+
+    libelle: str
+    motifs: tuple[str, ...]
+    # Un événement dont le libellé désigne un auteur ne doit être retenu que
+    # dans ce sens : une mise en demeure est adressée par Liora, une
+    # contestation vient du débiteur. Vide = les deux sens conviennent.
+    sens: str = ""
+    annulateurs: tuple[str, ...] = ()
+
+
+# Événements repérés dans l'objet et le corps des messages. Les motifs sont
+# comparés sur un texte mis à plat (minuscules, sans accent).
 EVENEMENTS = [
-    ("Mise en demeure", [
+    Motif("Mise en demeure", (
         "mise en demeure", "mettons en demeure", "mettre en demeure",
         "derniere relance avant", "avant poursuites",
-    ]),
-    ("Transmission au contentieux", [
+    ), sens="envoyé"),
+    Motif("Transmission au contentieux", (
         "transmis au contentieux", "service contentieux", "huissier",
         "commissaire de justice", "injonction de payer", "notre avocat",
         "procedure judiciaire", "recouvrement judiciaire",
-    ]),
-    ("Contestation", [
-        "je conteste", "nous contestons", "contestation", "desaccord",
-        "je refuse de payer", "erreur de facturation", "montant abusif",
-        "je n ai jamais", "ne correspond pas",
-    ]),
+    ), sens="envoyé"),
+    # Uniquement sur un message reçu, et jamais sur la mention de principe
+    # qui figure dans nos propres relances.
+    Motif("Contestation", (
+        "je conteste", "nous contestons", "je contesterai", "contestation",
+        "desaccord", "pas d accord", "je refuse de payer", "erreur de facturation",
+        "montant abusif", "je n ai jamais", "ne correspond pas",
+    ), sens="reçu", annulateurs=SANS_PORTEE),
     # Libellé neutre : le même échéancier est tantôt demandé par l'apprenante,
     # tantôt accordé par Liora. La colonne « sens » tranche.
     # Pas de « mensualite » seul : « la première mensualité reste impayée » est
     # une relance, pas une demande d'étalement.
-    ("Échéancier évoqué", [
+    Motif("Échéancier évoqué", (
         "echeancier", "echelonner", "echelonne", "etaler le paiement",
         "en plusieurs fois", "plusieurs mensualites", "delai de paiement",
         "delai supplementaire",
-    ]),
-    ("Annonce de paiement", [
+    )),
+    Motif("Annonce de paiement", (
         "virement effectue", "j ai regle", "j ai paye", "paiement effectue",
         "reglement effectue", "virement realise", "vous trouverez le reglement",
-    ]),
-    ("Difficultés financières invoquées", [
+    ), sens="reçu"),
+    Motif("Difficultés financières invoquées", (
         "difficulte financiere", "difficultes financieres", "situation financiere difficile",
         "sans emploi", "au chomage", "perte d emploi", "je ne peux pas payer",
-    ]),
-    ("Relance", [
+    ), sens="reçu"),
+    Motif("Relance", (
         "relance", "rappel", "reste impayee", "reste impaye", "demeure impayee",
         "toujours pas recu", "sans reponse de votre part", "non regle",
-    ]),
-    ("Envoi de facture", [
+    ), sens="envoyé"),
+    Motif("Envoi de facture", (
         "ci-joint la facture", "veuillez trouver la facture", "vous trouverez ci-joint",
         "votre facture", "facture correspondant",
-    ]),
+    ), sens="envoyé"),
 ]
+
+
+def mentionne(texte: str, motifs, annulateurs=()) -> bool:
+    """Le texte porte-t-il l'un de ces motifs, hors formulation de principe ?
+
+    Chaque occurrence est examinée avec ce qui la précède : « en cas de
+    contestation » n'est pas une contestation, « je conteste » en est une.
+    """
+    for motif in motifs:
+        depart = 0
+        while True:
+            position = texte.find(motif, depart)
+            if position == -1:
+                break
+            avant = texte[max(0, position - 40):position]
+            if not any(annulateur in avant for annulateur in annulateurs):
+                return True
+            depart = position + len(motif)
+    return False
 
 # Un accusé de remise automatique n'est pas un échange avec l'apprenante.
 MOTIFS_AUTOMATIQUES = [
@@ -149,10 +192,12 @@ def analyser(lignes: list[LigneIndex], textes: dict[int, str], doublons: int = 0
         if automatique:
             continue
 
-        for libelle, motifs in EVENEMENTS:
-            if any(motif in texte for motif in motifs):
+        for repere in EVENEMENTS:
+            if repere.sens and ligne.sens != repere.sens:
+                continue
+            if mentionne(texte, repere.motifs, repere.annulateurs):
                 synthese.evenements.append(
-                    Evenement(ligne.piece_n, ligne.date, libelle, ligne.sens)
+                    Evenement(ligne.piece_n, ligne.date, repere.libelle, ligne.sens)
                 )
 
     synthese.evenements.sort(key=lambda ev: (ev.date, ev.piece))
@@ -172,6 +217,19 @@ def rediger_constats(synthese: Synthese, reference_temps: datetime) -> list[str]
         f"(soit {synthese.duree_jours} jours), dont {synthese.nb_envoyes} "
         f"message(s) émis par Liora et {synthese.nb_recus} reçu(s)."
     )
+
+    # Un dossier de recouvrement sans un seul message sortant n'existe pas :
+    # c'est le sens des messages qui est mal établi, et tous les constats
+    # ci-dessous en dépendent. Le dire ici plutôt que de laisser lire une note
+    # qui conclurait à l'absence de relance.
+    if synthese.nb_envoyes == 0 and synthese.nb_recus > 0:
+        constats.append(
+            "⚠ Aucun message émis par Liora n'a été reconnu. Les relances "
+            "partent probablement d'un domaine non déclaré à l'outil (une "
+            "ancienne marque, un prestataire d'envoi). Les constats qui "
+            "suivent reposent sur le sens des messages : ils sont à reprendre "
+            "après avoir renseigné ce domaine."
+        )
 
     facture = synthese.premier_evenement("Envoi de facture")
     if facture:

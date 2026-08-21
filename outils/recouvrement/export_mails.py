@@ -266,10 +266,26 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     return analyseur.parse_args(argv)
 
 
+def domaines_maison(sources: SourcesGmail, options: argparse.Namespace) -> set[str]:
+    """Les domaines qui sont les nôtres : boîtes interrogées et domaines déclarés.
+
+    Les boîtes seules ne suffisent pas. Une relance envoyée sous une ancienne
+    marque — datascientest.com pour Liora — part d'un autre domaine, et serait
+    comptée comme un message *reçu* : le dossier conclurait alors à l'absence
+    de toute relance, et prendrait nos propres courriers pour des réponses du
+    débiteur.
+    """
+    return set(sources.domaines) | {
+        domaine.strip().lower().lstrip("@")
+        for domaine in (options.domaines_internes or "").split(",")
+        if domaine.strip()
+    }
+
+
 def _sens_du_message(message: MessageMail, domaines: set[str]) -> str:
-    """« envoyé » dès lors que l'expéditeur appartient au domaine des boîtes
-    interrogées : un courrier parti de billing@ ou du compte d'un collègue
-    reste un courrier émis par Liora, pas une réponse de l'apprenante."""
+    """« envoyé » dès lors que l'expéditeur appartient à l'un de nos domaines :
+    un courrier parti de billing@ ou du compte d'un collègue reste un courrier
+    émis par Liora, pas une réponse de l'apprenante."""
     expediteur = (message.expediteur or "").lower()
     if any(f"@{domaine}" in expediteur for domaine in domaines):
         return "envoyé"
@@ -393,7 +409,7 @@ def traiter_dossier(
         pieces_ecrites = ecrire_pieces_jointes(message, dossier_pj, base)
         resume.nb_pieces_jointes += len(pieces_ecrites)
 
-        sens = _sens_du_message(message, sources.domaines)
+        sens = _sens_du_message(message, domaines_maison(sources, options))
         if sens == "envoyé":
             resume.nb_envoyes += 1
         else:
@@ -541,12 +557,9 @@ def _decouvrir_adresses(
         )
         return [], []
 
-    internes = set(sources.domaines) | {
-        domaine.strip().lower()
-        for domaine in (options.domaines_internes or "").split(",")
-        if domaine.strip()
-    }
-    candidates = adresses_candidates(citant_facture, internes, dossier.emails)
+    candidates = adresses_candidates(
+        citant_facture, domaines_maison(sources, options), dossier.emails
+    )
     if not candidates:
         return [], []
 

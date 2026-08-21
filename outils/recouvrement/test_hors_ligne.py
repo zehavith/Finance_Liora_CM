@@ -1382,6 +1382,109 @@ def test_decouverte_adresses() -> None:
         export_mails.ouvrir_sources = vraies_sources
 
 
+def test_sens_et_faux_positifs() -> None:
+    """Relances émises sous une ancienne marque, et fausses contestations."""
+    print("\nSens des messages et faux positifs")
+
+    import export_mails  # noqa: PLC0415
+    import synthese as module_synthese  # noqa: PLC0415
+
+    class FausseSource:
+        domaines = {"liora.io"}
+
+    relance = lire_message(
+        {"id": "r", "threadId": "t", "internalDate": "1710231243000"},
+        _echange(
+            "DataScientest - Suivi de facturation",
+            "facturation@datascientest.com", "apprenante@exemple.fr",
+            12, "Votre facture reste impayée.",
+        ).as_bytes(),
+    )
+
+    sans = export_mails.analyser_arguments(["--dossiers", "x"])
+    verifier(
+        export_mails._sens_du_message(
+            relance, export_mails.domaines_maison(FausseSource(), sans)
+        ) == "reçu",
+        "sans domaine déclaré, une relance d'une ancienne marque passe pour reçue",
+    )
+
+    avec = export_mails.analyser_arguments(
+        ["--dossiers", "x", "--domaines-internes", "datascientest.com"]
+    )
+    verifier(
+        export_mails._sens_du_message(
+            relance, export_mails.domaines_maison(FausseSource(), avec)
+        ) == "envoyé",
+        "domaine déclaré : la relance est bien reconnue comme émise par nous",
+    )
+
+    # -- fausses contestations ------------------------------------------
+    formule = (
+        "en cas de contestation de votre part, merci de nous ecrire "
+        "sous huit jours. la facture reste impayee."
+    )
+    verifier(
+        not module_synthese.mentionne(
+            formule, ("contestation",), module_synthese.SANS_PORTEE
+        ),
+        "« en cas de contestation » n'est pas une contestation",
+    )
+    verifier(
+        module_synthese.mentionne(
+            "je conteste le montant de cette facture", ("je conteste", "contestation"),
+            module_synthese.SANS_PORTEE,
+        ),
+        "« je conteste » en est une",
+    )
+    verifier(
+        module_synthese.mentionne(
+            "en cas de contestation ecrivez-nous. par ailleurs votre contestation "
+            "du 3 mars est enregistree",
+            ("contestation",), module_synthese.SANS_PORTEE,
+        ),
+        "une occurrence de principe n'occulte pas une occurrence réelle",
+    )
+
+    mise_en_demeure = _ligne(1, 3, "envoyé", "Mise en demeure")
+    reponse = _ligne(2, 5, "reçu", "Re: votre courrier")
+    analyse = module_synthese.analyser(
+        [mise_en_demeure, reponse],
+        {1: formule, 2: "je conteste ce montant, je n ai jamais suivi cette formation"},
+    )
+    libelles = {(ev.piece, ev.libelle) for ev in analyse.evenements}
+    verifier(
+        (1, "Contestation") not in libelles,
+        "aucune contestation retenue sur notre propre mise en demeure",
+    )
+    verifier(
+        (2, "Contestation") in libelles,
+        "la contestation du débiteur est bien retenue",
+    )
+    verifier(
+        (1, "Mise en demeure") in libelles and (2, "Mise en demeure") not in libelles,
+        "une mise en demeure n'est retenue que sur un message émis",
+    )
+
+    # -- alerte quand aucun message émis n'est reconnu -------------------
+    muet = module_synthese.analyser([reponse], {2: "bonjour"})
+    constats = module_synthese.rediger_constats(
+        muet, datetime(2025, 4, 1, tzinfo=timezone(timedelta(hours=1)))
+    )
+    verifier(
+        any("Aucun message émis par Liora n'a été reconnu" in c for c in constats),
+        "la note alerte quand aucun message sortant n'est reconnu",
+    )
+    complet = module_synthese.analyser([mise_en_demeure, reponse], {})
+    constats = module_synthese.rediger_constats(
+        complet, datetime(2025, 4, 1, tzinfo=timezone(timedelta(hours=1)))
+    )
+    verifier(
+        not any("Aucun message émis" in c for c in constats),
+        "pas d'alerte quand les deux sens sont présents",
+    )
+
+
 def test_export_interrompu() -> None:
     """Un export coupé en plein milieu laisse un récapitulatif exploitable."""
     print("\nExport interrompu")
@@ -1615,6 +1718,7 @@ def test_interface() -> None:
             ('id="boites"', "boîtes à interroger"),
             ('id="sortie"', "dossier de destination"),
             ('id="jetonMonday"', "jeton Monday"),
+            ('id="domaines"', "domaines d'envoi"),
             ('id="simulation"', "option simulation"),
             ('id="ignorer"', "option lignes incomplètes"),
             ('id="regrouper"', "option regroupement"),
@@ -1636,7 +1740,7 @@ def test_interface() -> None:
 
         restants = [m for m in ("__JETON__", "__SORTIE__", "__BOITES__",
                                 "__MOTEUR_PDF__", "__ETAT_MONDAY__",
-                                "__IMPORT__") if m in page]
+                                "__IMPORT__", "__DOMAINES__") if m in page]
         verifier(not restants, f"aucun marqueur de gabarit non remplacé{' — reste : ' + ', '.join(restants) if restants else ''}")
         verifier("__JETON__" not in page, "le jeton est injecté dans la page")
         verifier(interface.JETON in page, "la page porte le jeton de la session")
@@ -1966,6 +2070,7 @@ def main() -> int:
     test_sous_dossiers_par_facture()
     test_sous_dossiers_par_adresse()
     test_decouverte_adresses()
+    test_sens_et_faux_positifs()
     test_export_interrompu()
     test_interface()
     test_suivi()
