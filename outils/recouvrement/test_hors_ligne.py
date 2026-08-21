@@ -1382,6 +1382,88 @@ def test_decouverte_adresses() -> None:
         export_mails.ouvrir_sources = vraies_sources
 
 
+def test_export_interrompu() -> None:
+    """Un export coupé en plein milieu laisse un récapitulatif exploitable."""
+    print("\nExport interrompu")
+
+    import export_mails  # noqa: PLC0415
+    from gmail_api import SourcesGmail  # noqa: PLC0415
+
+    class ClientCoupure(ClientFictif):
+        """Le poste se met en veille au troisième dossier."""
+
+        def rechercher_identifiants(self, requete, inclure_spam_corbeille=True, plafond=None):
+            if "troisieme@exemple.fr" in requete:
+                raise KeyboardInterrupt
+            return ["m1"] if "@exemple.fr" in requete else []
+
+    vraies_sources = export_mails.ouvrir_sources
+    export_mails.ouvrir_sources = lambda **_: SourcesGmail([
+        ClientCoupure("recouvrement@liora.io", ["m1"])
+    ])
+    try:
+        with tempfile.TemporaryDirectory() as repertoire:
+            racine = Path(repertoire)
+            fichier = racine / "dossiers.csv"
+            fichier.write_text(
+                "reference;nom;email;facture\n"
+                "D1;Premiere;premiere@exemple.fr;FA-1\n"
+                "D2;Deuxieme;deuxieme@exemple.fr;FA-2\n"
+                "D3;Troisieme;troisieme@exemple.fr;FA-3\n",
+                encoding="utf-8",
+            )
+            sortie = racine / "export"
+
+            code = export_mails.executer(
+                export_mails.analyser_arguments(
+                    ["--dossiers", str(fichier), "--sortie", str(sortie)]
+                )
+            )
+            verifier(
+                code == 130,
+                "l'interruption est signalée par un code distinct d'une erreur",
+            )
+            verifier(
+                (sortie / "_recapitulatif.csv").exists(),
+                "le récapitulatif existe malgré l'interruption",
+            )
+            recap = _lire_index(sortie / "_recapitulatif.csv")
+            verifier(
+                [rangee["reference"] for rangee in recap] == ["D1", "D2"],
+                "il décrit les dossiers réellement traités, et eux seuls",
+            )
+            verifier(
+                (sortie / "LISEZ-MOI.txt").exists(),
+                "la note de méthode est écrite dès le départ, pas à la fin",
+            )
+
+            # C'est ce que lit le tableau de bord : sans récapitulatif, il
+            # resterait vide alors que le travail est fait.
+            from suivi import inventaire  # noqa: PLC0415
+
+            dossiers = inventaire(sortie, racine / "suivi.json")
+            verifier(
+                len(dossiers) == 2 and all(d["a_index"] for d in dossiers),
+                "le tableau de bord retrouve les dossiers d'un export interrompu",
+            )
+
+            # Reprise : les deux premiers sont sautés, le troisième repasse.
+            reprise: list[str] = []
+            export_mails.executer(
+                export_mails.analyser_arguments([
+                    "--dossiers", str(fichier), "--sortie", str(sortie),
+                    "--reprendre",
+                ]),
+                relais=reprise.append,
+            )
+            verifier(
+                "\n".join(reprise).count("déjà exporté, ignoré") == 2,
+                "--reprendre saute les deux dossiers déjà écrits",
+            )
+    finally:
+        export_mails.ouvrir_sources = vraies_sources
+
+
 def _ligne(piece: int, jour: int, sens: str, objet: str) -> LigneIndex:
     return LigneIndex(
         piece_n=piece,
@@ -1860,6 +1942,7 @@ def main() -> int:
     test_sous_dossiers_par_facture()
     test_sous_dossiers_par_adresse()
     test_decouverte_adresses()
+    test_export_interrompu()
     test_interface()
     test_suivi()
 

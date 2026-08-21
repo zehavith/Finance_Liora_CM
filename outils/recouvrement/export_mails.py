@@ -926,6 +926,17 @@ def executer(
         resumes: list[ResumeDossier] = []
         echecs = 0
 
+        if not options.simulation:
+            # Écrite avant le premier dossier : la note de méthode fait partie
+            # du dossier remis, et un export interrompu doit la comporter.
+            ecrire_note_methode(
+                racine_sortie / "LISEZ-MOI.txt",
+                adresse_boite,
+                len(liste),
+                options,
+                fuseau_applique,
+            )
+
         for position, dossier in enumerate(liste, start=1):
             etiquette = dossier.nom or (dossier.emails[0] if dossier.emails else "")
             journal(f"[{position}/{len(liste)}] {dossier.reference} — {etiquette}")
@@ -948,16 +959,21 @@ def executer(
                     )
                 )
 
+            # Réécrit à chaque dossier, et non à la fin : un export interrompu
+            # — veille du poste, fenêtre fermée, coupure réseau — laissait
+            # jusqu'ici les dossiers sur le disque sans récapitulatif, donc un
+            # tableau de bord vide alors que le travail était fait.
+            if not options.simulation:
+                try:
+                    ecrire_recapitulatif(
+                        racine_sortie / "_recapitulatif.csv", resumes
+                    )
+                except OSError as exc:
+                    journal(f"    ⚠ récapitulatif non mis à jour : {exc}")
+
         journal("")
         if not options.simulation:
             ecrire_recapitulatif(racine_sortie / "_recapitulatif.csv", resumes)
-            ecrire_note_methode(
-                racine_sortie / "LISEZ-MOI.txt",
-                adresse_boite,
-                len(liste),
-                options,
-                fuseau_applique,
-            )
 
         total_mails = sum(r.nb_mails for r in resumes)
         total_pj = sum(r.nb_pieces_jointes for r in resumes)
