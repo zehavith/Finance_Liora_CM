@@ -733,6 +733,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <label class="case"><input type="checkbox" id="reprendre" />
     <span><b>Reprendre</b><i>Passe les dossiers déjà exportés. Après une
     interruption.</i></span></label>
+  <p class="note" id="dejaExporte" hidden></p>
   <div>
     <label for="seulement">Ne traiter que ces références (optionnel)</label>
     <input type="text" id="seulement" placeholder="FACT-2405-00030,FACT-2405-00142" />
@@ -995,6 +996,21 @@ async function chargerDossiers() {
   rendreDocuments();
   rendreSuivi();
   rendreBord();
+  rappelerExportExistant(donnees.sortie);
+}
+
+// Un export réel dure longtemps. Relancer sans « Reprendre » le referait
+// entièrement : mieux vaut le dire avant, à côté de la case concernée.
+function rappelerExportExistant(sortie) {
+  const faits = DOSSIERS.filter((d) => d.a_index).length;
+  const note = $("dejaExporte");
+  if (!faits) { note.hidden = true; return; }
+
+  note.hidden = false;
+  note.innerHTML = "<b>" + faits + " dossier(s) sont déjà exportés</b> dans " +
+    echapper(sortie) + ". Ils sont conservés : relancer sans cocher " +
+    "<b>Reprendre</b> les referait tous depuis le début. Cochez " +
+    "<b>Reprendre</b> pour ne traiter que ce qui manque.";
 }
 
 function messageVide() {

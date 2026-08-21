@@ -1515,6 +1515,7 @@ def test_interface() -> None:
             ('id="sousdossiers"', "option sous-dossier par facture"),
             ('id="sousdossiersadresse"', "option sous-dossier par adresse"),
             ('id="decouvrir"', "option découverte d'adresses"),
+            ('id="dejaExporte"', "rappel d'un export déjà présent"),
             ('id="sansnav"', "option sans navigateur"),
             ('id="reprendre"', "option reprendre"),
             ('id="seulement"', "filtre par références"),
