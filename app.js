@@ -11,8 +11,9 @@
     let rawData = [];
     let filteredData = [];
     let currentPage = 1;
-    const PAGE_SIZE = 25;
+    let PAGE_SIZE = 25;
     let charts = {};
+    const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 
     // ── Persistence (IndexedDB — unlimited storage) ──
     const STORAGE_DATA_KEY = 'liora_cf_data';
@@ -1124,6 +1125,7 @@
         await loadB2BCache();
         await loadCashBalance();
         await loadFixedVarOverrides();
+        await loadPageSize();
         categorizeAll(rawData);
 
         // Save merged data + file history
@@ -2238,29 +2240,52 @@
         renderPagination();
     }
 
+    async function loadPageSize() {
+        try {
+            const v = Number(await idbGet('liora_page_size'));
+            if (PAGE_SIZE_OPTIONS.includes(v)) { PAGE_SIZE = v; DQ_PAGE_SIZE = v; }
+        } catch { /* ignore */ }
+    }
+    function pageSizeSelectorHtml(current) {
+        return `<label class="page-size-label">Lignes par page :
+            <select class="page-size-select">${PAGE_SIZE_OPTIONS.map(n => `<option value="${n}"${n === current ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`;
+    }
+    async function setPageSize(v) {
+        if (!PAGE_SIZE_OPTIONS.includes(v)) return;
+        PAGE_SIZE = v; DQ_PAGE_SIZE = v;
+        try { await idbSet('liora_page_size', v); } catch { /* ignore */ }
+    }
+
     function renderPagination() {
-        const totalPages = Math.ceil(filteredData.length / PAGE_SIZE);
         const container = $('#pagination');
-        if (totalPages <= 1) { container.innerHTML = ''; return; }
+        const totalPages = Math.ceil(filteredData.length / PAGE_SIZE) || 1;
+        if (currentPage > totalPages) currentPage = totalPages;
 
-        let html = '';
-        const maxVisible = 7;
-        let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-        let endPage = Math.min(totalPages, startPage + maxVisible - 1);
-        if (endPage - startPage < maxVisible - 1) startPage = Math.max(1, endPage - maxVisible + 1);
+        let pages = '';
+        if (totalPages > 1) {
+            const maxVisible = 7;
+            let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+            let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+            if (endPage - startPage < maxVisible - 1) startPage = Math.max(1, endPage - maxVisible + 1);
+            if (currentPage > 1) pages += `<button class="page-btn" data-page="${currentPage - 1}">&laquo;</button>`;
+            for (let i = startPage; i <= endPage; i++)
+                pages += `<button class="page-btn ${i === currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
+            if (currentPage < totalPages) pages += `<button class="page-btn" data-page="${currentPage + 1}">&raquo;</button>`;
+        }
 
-        if (currentPage > 1) html += `<button class="page-btn" data-page="${currentPage - 1}">&laquo;</button>`;
-        for (let i = startPage; i <= endPage; i++)
-            html += `<button class="page-btn ${i === currentPage ? 'active' : ''}" data-page="${i}">${i}</button>`;
-        if (currentPage < totalPages) html += `<button class="page-btn" data-page="${currentPage + 1}">&raquo;</button>`;
-
-        container.innerHTML = html;
+        container.innerHTML = `<div class="pagination-pages">${pages}</div>${pageSizeSelectorHtml(PAGE_SIZE)}`;
         container.querySelectorAll('.page-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 currentPage = parseInt(btn.dataset.page, 10);
                 renderTable();
                 document.querySelector('.table-wrapper').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             });
+        });
+        const sel = container.querySelector('.page-size-select');
+        if (sel) sel.addEventListener('change', async () => {
+            await setPageSize(Number(sel.value));
+            currentPage = 1;
+            renderTable();
         });
     }
 
@@ -3057,6 +3082,7 @@
         await loadB2BCache();
         await loadCashBalance();
         await loadFixedVarOverrides();
+        await loadPageSize();
         const stored = await loadFromStorage();
         if (stored.length > 0) {
             console.log('[Liora] Restauration de', stored.length, 'transactions depuis IndexedDB');
@@ -3590,7 +3616,7 @@ Réponds UNIQUEMENT en JSON valide (pas de markdown), sous forme d'un tableau :
         _dqCollapsibleWired = true;
     }
 
-    const DQ_PAGE_SIZE = 25;
+    let DQ_PAGE_SIZE = 25;
     const _dqPageState = {};
 
     function renderDqTable(tbodyId, rows, categories, bulkBtnId, suggestBtnId) {
@@ -3660,27 +3686,27 @@ Réponds UNIQUEMENT en JSON valide (pas de markdown), sous forme d'un tableau :
             pagEl.className = 'dq-pagination';
             sectionBody.appendChild(pagEl);
         }
-        if (totalPages <= 1) {
-            pagEl.innerHTML = '';
-        } else {
-            const from = startIdx + 1;
-            const to = Math.min(startIdx + DQ_PAGE_SIZE, rows.length);
-            pagEl.innerHTML = `
-                <button class="dq-pag-btn" data-dir="prev" ${currentPage === 0 ? 'disabled' : ''}>&lsaquo; Préc.</button>
-                <span class="dq-pag-info">${from}–${to} sur ${rows.length}</span>
-                <button class="dq-pag-btn" data-dir="next" ${currentPage >= totalPages - 1 ? 'disabled' : ''}>Suiv. &rsaquo;</button>
-            `;
-            pagEl.querySelectorAll('.dq-pag-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    if (btn.dataset.dir === 'prev' && _dqPageState[tbodyId] > 0) {
-                        _dqPageState[tbodyId]--;
-                    } else if (btn.dataset.dir === 'next' && _dqPageState[tbodyId] < totalPages - 1) {
-                        _dqPageState[tbodyId]++;
-                    }
-                    renderDqTable(tbodyId, rows, categories, bulkBtnId, suggestBtnId);
-                });
+        const from = startIdx + 1;
+        const to = Math.min(startIdx + DQ_PAGE_SIZE, rows.length);
+        const navHtml = totalPages > 1
+            ? `<button class="dq-pag-btn" data-dir="prev" ${currentPage === 0 ? 'disabled' : ''}>&lsaquo; Préc.</button>
+               <span class="dq-pag-info">${from}–${to} sur ${rows.length}</span>
+               <button class="dq-pag-btn" data-dir="next" ${currentPage >= totalPages - 1 ? 'disabled' : ''}>Suiv. &rsaquo;</button>`
+            : `<span class="dq-pag-info">${rows.length} ligne(s)</span>`;
+        pagEl.innerHTML = `<div class="pagination-pages">${navHtml}</div>${pageSizeSelectorHtml(DQ_PAGE_SIZE)}`;
+        pagEl.querySelectorAll('.dq-pag-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (btn.dataset.dir === 'prev' && _dqPageState[tbodyId] > 0) _dqPageState[tbodyId]--;
+                else if (btn.dataset.dir === 'next' && _dqPageState[tbodyId] < totalPages - 1) _dqPageState[tbodyId]++;
+                renderDqTable(tbodyId, rows, categories, bulkBtnId, suggestBtnId);
             });
-        }
+        });
+        const dqSizeSel = pagEl.querySelector('.page-size-select');
+        if (dqSizeSel) dqSizeSel.addEventListener('change', async () => {
+            await setPageSize(Number(dqSizeSel.value));
+            _dqPageState[tbodyId] = 0;
+            renderDataQuality();
+        });
 
         function updateBulkBtn() {
             const anyFilled = tbody.querySelector('.dq-select') &&
