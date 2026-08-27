@@ -1556,6 +1556,14 @@ def test_lanceurs_windows() -> None:
         "le raccourci porte le bon nom et la bonne icône",
     )
     verifier(
+        "pythonw.exe" in script and "interface.py" in script,
+        "le raccourci vise pythonw directement, sans passer par un script",
+    )
+    verifier(
+        "Unblock-File" in script,
+        "la marque « téléchargé d'Internet » est retirée des fichiers",
+    )
+    verifier(
         "exit 1" in script,
         "un échec est remonté au .bat, qui affiche alors la solution de secours",
     )
