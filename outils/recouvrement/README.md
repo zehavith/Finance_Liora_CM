@@ -273,6 +273,34 @@ commande, le travail reste sur le poste.
 options de `export_mails.py`, décrites plus bas. Utile pour automatiser ou pour
 les cas particuliers.
 
+## L'application sur le Bureau
+
+Un double-clic sur **`Installer.bat`**, une seule fois, crée le raccourci
+**Liora - Suivi contentieux** sur le Bureau et dans le menu Démarrer, avec son
+icône. Ensuite, l'application s'ouvre depuis ce raccourci comme n'importe quel
+logiciel.
+
+Le raccourci vise `Lancer-silencieux.vbs` et non `Lancer.bat` : le `.bat`
+ouvre une fenêtre de commande que l'on referme par réflexe, et sa fermeture
+tue l'export en cours. Le `.vbs` lance le même outil sans aucune fenêtre.
+
+Sans fenêtre à fermer, l'outil s'arrête de lui-même : trois minutes sans
+aucune page ouverte et il rend la main. Un export en cours l'emporte toujours
+— fermer l'onglet ne l'interrompt pas, il va à son terme et l'outil s'arrête
+ensuite.
+
+L'icône est produite par `creer_icone.py`, sans dépendance. Le fichier
+`liora.ico` est versionné ; le script ne sert qu'à le refaire si le dessin
+doit changer.
+
+### Rien à enregistrer
+
+Les champs et les cases de l'onglet Export sont mémorisés au fil de la saisie
+et à la fermeture de la page. Adresses, destination, domaines d'envoi, filtre
+de références, jeton Monday, cases cochées : tout revient dans l'état laissé.
+L'avancement des dossiers et les frais engagés le sont déjà à chaque
+modification.
+
 ## Mise en place (une seule fois)
 
 ### 1. Python

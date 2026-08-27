@@ -19,12 +19,14 @@ from __future__ import annotations
 
 import base64
 import csv
+import html
 import os
 import json
 import secrets
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -49,6 +51,19 @@ JETON_MONDAY = RACINE / "monday-token.txt"
 # Liora s'appelait DataScientest : les relances les plus anciennes partent
 # encore de ce domaine, et sans lui elles passeraient pour des messages reçus.
 DOMAINES_PAR_DEFAUT = "datascientest.com"
+# Cases de l'onglet Export mémorisées d'une session à l'autre, avec leur
+# valeur au tout premier lancement. La simulation est cochée au départ : on
+# ne lance pas un premier export réel sans avoir compté ce qu'il ramènera.
+CASES_MEMORISEES = {
+    "simulation": True,
+    "ignorer": True,
+    "regrouper": True,
+    "sousdossiers": True,
+    "sousdossiersadresse": False,
+    "decouvrir": False,
+    "sansnav": False,
+    "reprendre": False,
+}
 EXTENSIONS_ACCEPTEES = {".xlsx", ".xlsm", ".csv"}
 TAILLE_MAX_FICHIER = 25 * 1024 * 1024
 
@@ -103,6 +118,25 @@ def dernier_import(preferences: dict | None = None) -> dict | None:
         "date": memoire.get("date") or "",
         "taille": chemin.stat().st_size,
     }
+
+
+def cases_memorisees(preferences: dict | None = None) -> dict:
+    """État des cases à cocher, complété par les valeurs de premier lancement."""
+    enregistrees = (preferences or lire_preferences()).get("options")
+    valeurs = dict(CASES_MEMORISEES)
+    if isinstance(enregistrees, dict):
+        for cle in valeurs:
+            if cle in enregistrees:
+                valeurs[cle] = bool(enregistrees[cle])
+    return valeurs
+
+
+def _attribut(valeur) -> str:
+    return html.escape(str(valeur or ""), quote=True)
+
+
+def _cases_json(preferences: dict) -> str:
+    return json.dumps(cases_memorisees(preferences))
 
 
 def _dernier_import_json(preferences: dict) -> str:
@@ -184,6 +218,35 @@ class Execution:
 EXECUTION = Execution()
 JETON = secrets.token_urlsafe(24)
 
+# Lancée depuis le raccourci, l'application n'a plus de fenêtre à fermer :
+# sans cette veille, chaque ouverture laisserait un processus caché de plus.
+# Le délai est confortable — un rechargement de page ou une pause dans la
+# navigation ne doit pas couper l'outil sous les pieds.
+DELAI_INACTIVITE = 180.0
+_dernier_contact = time.monotonic()
+
+
+def signaler_activite() -> None:
+    global _dernier_contact  # noqa: PLW0603
+    _dernier_contact = time.monotonic()
+
+
+def _veiller(serveur) -> None:
+    """Arrête le serveur quand plus aucune page ne l'interroge.
+
+    Un export en cours l'emporte toujours : fermer l'onglet ne doit pas
+    interrompre un traitement de vingt minutes, il se termine et le serveur
+    s'arrête ensuite.
+    """
+    while True:
+        time.sleep(15)
+        if EXECUTION.en_cours:
+            signaler_activite()
+            continue
+        if time.monotonic() - _dernier_contact > DELAI_INACTIVITE:
+            threading.Thread(target=serveur.shutdown, daemon=True).start()
+            return
+
 
 def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str], str]:
     sortie = (demande.get("sortie") or "").strip() or str(sortie_par_defaut())
@@ -246,6 +309,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
         )
 
     def _jeton_valide(self) -> bool:
+        signaler_activite()
         """Une autre page ouverte dans le navigateur pourrait tenter d'appeler
         ce serveur ; sans le jeton, elle n'obtient rien."""
         return secrets.compare_digest(self.headers.get("X-Jeton", ""), JETON)
@@ -270,19 +334,34 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 if JETON_MONDAY.exists()
                 else "collez le jeton ici (facultatif)",
             )
+            # Ces valeurs atterrissent dans des attributs HTML : elles
+            # viennent du poste, mais un guillemet suffirait à casser la page.
             page = page.replace(
-                "__BOITES__", preferences.get("boites", "")
+                "__BOITES__", _attribut(preferences.get("boites", ""))
             ).replace(
-                "__SORTIE__", preferences.get("sortie", str(sortie_par_defaut()))
+                "__SORTIE__",
+                _attribut(preferences.get("sortie", str(sortie_par_defaut()))),
             )
             # Le fichier importé reste sur le disque, mais un navigateur ne
             # peut pas repeupler un champ de fichier : sans ce rappel, rouvrir
             # l'application donne l'impression que l'import s'est perdu.
             page = page.replace("__IMPORT__", _dernier_import_json(preferences))
             page = page.replace(
-                "__DOMAINES__", preferences.get("domaines", DOMAINES_PAR_DEFAUT)
-            )
+                "__DOMAINES__",
+                _attribut(preferences.get("domaines", DOMAINES_PAR_DEFAUT)),
+            ).replace(
+                "__SEULEMENT__", _attribut(preferences.get("seulement", ""))
+            ).replace("__OPTIONS__", _cases_json(preferences))
             self._repondre(200, page.encode("utf-8"), "text/html; charset=utf-8")
+            return
+
+        if chemin == "/api/vivant":
+            # Battement de cœur de la page : c'est lui qui distingue une
+            # application encore ouverte d'un onglet refermé.
+            if not self._jeton_valide():
+                self._json(403, {"erreur": "Jeton invalide."})
+                return
+            self._json(200, {"vivant": True})
             return
 
         if chemin == "/api/dossiers":
@@ -329,11 +408,53 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/suivi":
                 self._enregistrer_suivi(self._corps_json())
                 return
+            if chemin == "/api/reglages":
+                self._enregistrer_reglages(self._corps_json())
+                return
         except ValueError as exc:
             self._json(400, {"erreur": str(exc)})
             return
 
         self._json(404, {"erreur": "Inconnu."})
+
+    def _enregistrer_reglages(self, demande: dict) -> None:
+        """Mémorise les champs et les cases de l'onglet Export.
+
+        Appelé au fil de la saisie et à la fermeture de la page : rien n'est à
+        refaire d'une session à l'autre, et une page fermée sans avoir lancé
+        d'export ne perd pas ce qui vient d'être renseigné.
+        """
+        valeurs = {
+            cle: str(demande.get(cle) or "").strip()
+            for cle in ("boites", "sortie", "domaines", "seulement")
+            if cle in demande
+        }
+
+        options = demande.get("options")
+        if isinstance(options, dict):
+            valeurs["options"] = {
+                cle: bool(valeur)
+                for cle, valeur in options.items()
+                if cle in CASES_MEMORISEES
+            }
+
+        if valeurs:
+            memoriser_preferences(valeurs)
+
+        # Le jeton reste dans son propre fichier, jamais dans les préférences.
+        jeton = str(demande.get("jeton_monday") or "").strip()
+        if jeton:
+            self._ecrire_jeton_monday(jeton)
+
+        self._json(200, {"enregistre": True})
+
+    @staticmethod
+    def _ecrire_jeton_monday(jeton: str) -> None:
+        try:
+            JETON_MONDAY.write_text(jeton, encoding="utf-8")
+            os.chmod(JETON_MONDAY, 0o600)
+        except OSError:
+            pass
 
     def _depot_manuel(self, demande: dict) -> Path:
         """Recherche ponctuelle : les deux critères saisis à la main tiennent
@@ -422,11 +543,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
     def _demarrer(self, demande: dict, depot: Path, origine: str) -> None:
         jeton = (demande.get("jeton_monday") or "").strip()
         if jeton:
-            try:
-                JETON_MONDAY.write_text(jeton, encoding="utf-8")
-                os.chmod(JETON_MONDAY, 0o600)
-            except OSError:
-                pass
+            self._ecrire_jeton_monday(jeton)
 
         arguments, sortie = construire_arguments(demande, depot)
         try:
@@ -753,7 +870,8 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <p class="note" id="dejaExporte" hidden></p>
   <div>
     <label for="seulement">Ne traiter que ces références (optionnel)</label>
-    <input type="text" id="seulement" placeholder="FACT-2405-00030,FACT-2405-00142" />
+    <input type="text" id="seulement" value="__SEULEMENT__"
+           placeholder="FACT-2405-00030,FACT-2405-00142" />
   </div>
 </section>
 
@@ -774,6 +892,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 const JETON = "__JETON__";
 const $ = (id) => document.getElementById(id);
 const IMPORT_PRECEDENT = __IMPORT__;
+const CASES = __OPTIONS__;
 let fichierChoisi = null, position = 0, sondage = null, mode = "fichier";
 // Le fichier importé est conservé à côté de l'outil, mais aucun navigateur
 // ne peut repeupler un champ de fichier : on le rappelle, et on permet de
@@ -814,6 +933,56 @@ function majBouton() {
     ? !($("mEmail").value.trim() || $("mFacture").value.trim())
     : !(fichierChoisi || reutiliserImport);
 }
+
+// Les cases reprennent l'état de la dernière session : ce qui a été décidé
+// une fois n'a pas à être redécidé à chaque ouverture.
+Object.keys(CASES).forEach((id) => { if ($(id)) $(id).checked = CASES[id]; });
+
+// Enregistrement automatique : à la saisie (différé) et à la fermeture de la
+// page. Une page fermée sans avoir lancé d'export ne perd plus rien.
+const CHAMPS_REGLAGES = ["boites", "sortie", "domaines", "seulement", "jetonMonday"];
+let minuterieReglages = null;
+
+function reglages() {
+  const options = {};
+  Object.keys(CASES).forEach((id) => { if ($(id)) options[id] = $(id).checked; });
+  return {
+    boites: $("boites").value, sortie: $("sortie").value,
+    domaines: $("domaines").value, seulement: $("seulement").value,
+    jeton_monday: $("jetonMonday").value, options: options,
+  };
+}
+
+async function enregistrerReglages(fermeture) {
+  try {
+    await fetch("/api/reglages", {
+      method: "POST", keepalive: Boolean(fermeture),
+      headers: { "Content-Type": "application/json", "X-Jeton": JETON },
+      body: JSON.stringify(reglages()),
+    });
+  } catch (erreur) { /* rien à signaler : la prochaine frappe réessaiera */ }
+}
+
+CHAMPS_REGLAGES.forEach((id) => $(id) && $(id).addEventListener("input", () => {
+  clearTimeout(minuterieReglages);
+  minuterieReglages = setTimeout(enregistrerReglages, 600);
+}));
+Object.keys(CASES).forEach((id) => $(id) &&
+  $(id).addEventListener("change", () => enregistrerReglages()));
+
+// `pagehide` plutôt que `beforeunload` : c'est le seul événement que tous les
+// navigateurs déclenchent lors d'une fermeture d'onglet.
+window.addEventListener("pagehide", () => enregistrerReglages(true));
+
+// Battement de cœur : tant que la page est ouverte, l'outil reste en vie.
+// L'application n'ayant plus de fenêtre à fermer, c'est ce signal — et son
+// silence — qui décide de son arrêt.
+setInterval(() => {
+  fetch("/api/vivant", { headers: { "X-Jeton": JETON } }).catch(() => {});
+}, 20000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") enregistrerReglages(true);
+});
 
 if (IMPORT_PRECEDENT) {
   $("zone").classList.add("rempli");
@@ -1220,7 +1389,7 @@ function afficherBandeau(reussi, message) {
 """
 
 
-def demarrer(port: int = 0, ouvrir: bool = True) -> ThreadingHTTPServer:
+def demarrer(port: int = 0, ouvrir: bool = True, veille: bool = False) -> ThreadingHTTPServer:
     serveur = ThreadingHTTPServer(("127.0.0.1", port), Gestionnaire)
     adresse = f"http://127.0.0.1:{serveur.server_address[1]}/"
 
@@ -1231,11 +1400,14 @@ def demarrer(port: int = 0, ouvrir: bool = True) -> ThreadingHTTPServer:
 
     if ouvrir:
         threading.Timer(0.4, lambda: webbrowser.open(adresse)).start()
+    if veille:
+        signaler_activite()
+        threading.Thread(target=_veiller, args=(serveur,), daemon=True).start()
     return serveur
 
 
 def main() -> int:
-    serveur = demarrer()
+    serveur = demarrer(veille=True)
     try:
         serveur.serve_forever()
     except KeyboardInterrupt:

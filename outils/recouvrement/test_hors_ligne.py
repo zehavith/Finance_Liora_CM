@@ -1740,7 +1740,8 @@ def test_interface() -> None:
 
         restants = [m for m in ("__JETON__", "__SORTIE__", "__BOITES__",
                                 "__MOTEUR_PDF__", "__ETAT_MONDAY__",
-                                "__IMPORT__", "__DOMAINES__") if m in page]
+                                "__IMPORT__", "__DOMAINES__", "__OPTIONS__",
+                                "__SEULEMENT__") if m in page]
         verifier(not restants, f"aucun marqueur de gabarit non remplacé{' — reste : ' + ', '.join(restants) if restants else ''}")
         verifier("__JETON__" not in page, "le jeton est injecté dans la page")
         verifier(interface.JETON in page, "la page porte le jeton de la session")
@@ -1792,6 +1793,59 @@ def test_interface() -> None:
                 "recouvrement@liora.io" in journal and "billing@liora.io" in journal,
                 "les deux boîtes sont citées dans le journal",
             )
+
+            print("  -- réglages enregistrés sans rien cliquer --")
+            statut, _reponse = appeler(
+                "/api/reglages",
+                {
+                    "boites": "  billing@liora.io,recouvrement@liora.io  ",
+                    "sortie": repertoire,
+                    "domaines": "datascientest.com",
+                    "seulement": "FACT-1",
+                    "options": {"simulation": False, "decouvrir": True,
+                                "inconnue": True},
+                },
+            )
+            verifier(statut == 200, "réglages acceptés")
+
+            preferences = interface.lire_preferences()
+            verifier(
+                preferences.get("boites") == "billing@liora.io,recouvrement@liora.io",
+                "les adresses sont enregistrées, espaces retirés",
+            )
+            verifier(
+                preferences.get("domaines") == "datascientest.com"
+                and preferences.get("seulement") == "FACT-1",
+                "domaines et filtre de références enregistrés",
+            )
+            cases = interface.cases_memorisees()
+            verifier(
+                cases["simulation"] is False and cases["decouvrir"] is True,
+                "les cases décochées le restent à la réouverture",
+            )
+            verifier(
+                cases["regrouper"] is True,
+                "une case non transmise garde sa valeur de premier lancement",
+            )
+            verifier(
+                "inconnue" not in cases and "inconnue" not in (
+                    preferences.get("options") or {}
+                ),
+                "une case inconnue est ignorée plutôt qu'enregistrée",
+            )
+
+            page = urllib.request.urlopen(f"{base}/").read().decode("utf-8")
+            verifier(
+                '"simulation": false' in page or '"simulation":false' in page,
+                "la page rouvre avec les cases dans l'état laissé",
+            )
+            verifier(
+                'value="datascientest.com"' in page,
+                "la page rouvre avec les domaines renseignés",
+            )
+
+            statut, _reponse = appeler("/api/vivant")
+            verifier(statut == 200, "battement de cœur accepté")
 
             print("  -- le fichier importé survit à la fermeture de l'appli --")
             memoire = interface.dernier_import()
