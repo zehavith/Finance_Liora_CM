@@ -1522,6 +1522,139 @@ class ClientEvolutif:
             yield message
 
 
+def _facture_pdf(chemin: Path, texte: str) -> None:
+    """Écrit un PDF minimal, au format qu'un logiciel de facturation produit :
+    flux de contenu compressé, texte en chaînes littérales."""
+    import zlib as module_zlib  # noqa: PLC0415
+
+    lignes = "".join(
+        f"BT /F1 11 Tf 40 {760 - 18 * rang} Td ({ligne}) Tj ET\n"
+        for rang, ligne in enumerate(texte.splitlines())
+    )
+    flux = module_zlib.compress(lignes.encode("latin-1"))
+
+    objets = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] "
+        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length " + str(len(flux)).encode() + b" /Filter /FlateDecode >>\nstream\n"
+        + flux + b"\nendstream",
+    ]
+
+    sortie = bytearray(b"%PDF-1.4\n")
+    decalages = []
+    for numero, corps in enumerate(objets, start=1):
+        decalages.append(len(sortie))
+        sortie += f"{numero} 0 obj\n".encode() + corps + b"\nendobj\n"
+
+    depart = len(sortie)
+    sortie += f"xref\n0 {len(objets) + 1}\n0000000000 65535 f \n".encode()
+    for decalage in decalages:
+        sortie += f"{decalage:010d} 00000 n \n".encode()
+    sortie += (
+        f"trailer\n<< /Size {len(objets) + 1} /Root 1 0 R >>\nstartxref\n"
+        f"{depart}\n%%EOF\n"
+    ).encode()
+    chemin.write_bytes(bytes(sortie))
+
+
+def test_echeance_facture() -> None:
+    """Lecture de l'échéance dans la facture PDF téléchargée depuis Monday."""
+    print("\nÉchéance lue sur la facture")
+
+    import facture_pdf  # noqa: PLC0415
+
+    verifier(
+        facture_pdf.dates_de_facture(
+            "Date de facture : 12/03/2025\nDate d'échéance : 11/04/2025"
+        )["echeance"] == "11/04/2025",
+        "l'échéance est distinguée de la date de facture",
+    )
+    verifier(
+        facture_pdf.dates_de_facture("Facture du 5 janvier 2024 — "
+                                     "À régler avant le 4 février 2024")["echeance"]
+        == "04/02/2024",
+        "une date en toutes lettres et un intitulé indirect sont reconnus",
+    )
+    verifier(
+        facture_pdf.dates_de_facture(
+            "Formation du 12/03/2024 au 20/06/2024. Montant 1 200 €"
+        ) == {"echeance": "", "emission": "", "intitule": ""},
+        "une date sans intitulé de facture n'est jamais retenue",
+    )
+    verifier(
+        facture_pdf.dates_de_facture("Echéance le 31/02/2026")["echeance"] == "",
+        "une date qui n'existe pas au calendrier est écartée, non rattrapée",
+    )
+    verifier(
+        facture_pdf.dates_de_facture("DATE D'ÉCHÉANCE 05.11.2025")["echeance"]
+        == "05/11/2025",
+        "majuscules, accents et points de séparation ne gênent pas la lecture",
+    )
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        racine = Path(repertoire)
+        facture = racine / "FACT-2405-00030.pdf"
+        _facture_pdf(facture, (
+            "LIORA - FACTURE FACT-2405-00030\n"
+            "Date de facture : 12/03/2025\n"
+            "Date d'echeance : 11/04/2025\n"
+            "Total TTC 2 700,00 EUR"
+        ))
+
+        verifier(
+            "11/04/2025" in facture_pdf.texte_du_pdf(facture),
+            "le texte est extrait d'un vrai PDF au flux compressé",
+        )
+        date, origine = facture_pdf.echeance_de_la_facture(facture)
+        verifier(date == "11/04/2025", f"échéance lue du PDF (obtenu : {date})")
+        verifier("échéance" in origine, "l'origine de la date est rapportée")
+
+        # Sans pypdf, le lecteur minimal doit donner le même résultat.
+        vrai = facture_pdf._texte_via_pypdf
+        facture_pdf._texte_via_pypdf = lambda chemin: ""
+        try:
+            verifier(
+                facture_pdf.echeance_de_la_facture(facture)[0] == "11/04/2025",
+                "le lecteur de secours, sans pypdf, lit la même échéance",
+            )
+        finally:
+            facture_pdf._texte_via_pypdf = vrai
+
+        scannee = racine / "scan.pdf"
+        scannee.write_bytes(b"%PDF-1.4\n% pas de texte\n%%EOF\n")
+        date, origine = facture_pdf.echeance_de_la_facture(scannee)
+        verifier(
+            date == "" and origine == "illisible",
+            "une facture scannée est déclarée illisible, non devinée",
+        )
+
+    # La convention n'est jamais lue comme une facture.
+    import export_mails  # noqa: PLC0415
+    from dossiers import Dossier  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        racine = Path(repertoire)
+        documents = racine / "documents-monday"
+        documents.mkdir()
+        _facture_pdf(documents / "Convention de formation.pdf",
+                     "Convention\nDate d'echeance : 01/01/2000")
+        _facture_pdf(documents / "Facture FACT-1.pdf",
+                     "Facture\nDate d'echeance : 15/06/2026")
+
+        journal: list[str] = []
+        date, _origine = export_mails._echeance_depuis_facture(
+            Dossier(reference="FACT-1", nom="X", emails=["a@b.fr"], factures=["FACT-1"]),
+            racine, journal.append,
+        )
+        verifier(
+            date == "15/06/2026",
+            f"la facture est lue, la convention écartée (obtenu : {date})",
+        )
+
+
 def test_lecture_tableau_monday() -> None:
     """Lecture directe du tableau, et filtrage sur l'étape du process."""
     print("\nTableau Monday lu en direct")
@@ -3007,6 +3140,7 @@ def main() -> int:
     test_sous_dossiers_par_adresse()
     test_decouverte_adresses()
     test_sens_et_faux_positifs()
+    test_echeance_facture()
     test_lecture_tableau_monday()
     test_historique_etapes()
     test_liste_complete_tableaux()

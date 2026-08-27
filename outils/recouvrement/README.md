@@ -182,6 +182,34 @@ bleue, et deux échelles de même teinte sur un même écran se confondraient.
 Du plus sombre au plus clair — c'est la créance la plus ancienne qui doit
 ressortir.
 
+#### L'échéance lue sur la facture
+
+Quand le tableau ne renseigne pas l'échéance, elle est lue **dans la facture
+PDF** déjà téléchargée depuis Monday. Sans elle, la tranche d'ancienneté
+resterait vide, et c'est la lecture la plus utile du tableau de bord qui
+manquerait.
+
+L'échéance saisie au tableau prime toujours : la facture n'est qu'un repli.
+La colonne `source_echeance` de `_recapitulatif.csv` dit laquelle a servi.
+
+Trois règles, parce qu'une facture porte plusieurs dates :
+
+- **une date n'est retenue que si elle est étiquetée** — « Date d'échéance »,
+  « À régler avant le », « Date limite de paiement ». Une date isolée, comme
+  celle d'une période de formation, ne l'est jamais ;
+- à défaut d'échéance, la **date d'émission** sert de repli, et le fait est
+  écrit : un retard compté depuis l'émission est plus long qu'il ne l'est
+  réellement, du délai de paiement accordé ;
+- une date qui n'existe pas au calendrier est **écartée**, jamais rattrapée.
+
+Les conventions de formation sont exclues de cette lecture : elles portent des
+dates, mais aucune échéance de paiement.
+
+Une facture **scannée** ne rend aucun texte. C'est dit à l'écran, pas deviné —
+l'échéance reste alors à saisir dans Monday. `pypdf` améliore l'extraction s'il
+est installé ; sans lui, un lecteur interne suffit pour une facture produite
+par un logiciel de facturation. `--sans-echeance-facture` désactive la lecture.
+
 ### Les dossiers en souffrance
 
 Les dossiers **transmis, non clôturés, et sans changement d'étape depuis plus

@@ -13,3 +13,9 @@ xhtml2pdf>=0.2.13
 # Lecture directe des fichiers Excel (.xlsx) exportés depuis Monday.
 # Inutile si vous fournissez la liste des dossiers au format CSV.
 openpyxl>=3.1.0
+
+# Lecture de l'échéance dans les factures PDF téléchargées depuis Monday,
+# quand le tableau ne la renseigne pas. Facultatif : sans lui, l'outil se
+# rabat sur un lecteur interne, suffisant pour une facture générée par un
+# logiciel de facturation.
+pypdf>=4.0.0

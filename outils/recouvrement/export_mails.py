@@ -43,6 +43,7 @@ from dossiers import (  # noqa: E402
 )
 import monday as module_monday  # noqa: E402
 from decouverte import adresses_candidates  # noqa: E402
+from facture_pdf import echeance_de_la_facture  # noqa: E402
 import synthese as module_synthese  # noqa: E402
 from gmail_api import ErreurGmail, SourcesGmail, ouvrir_sources  # noqa: E402
 from indexation import (  # noqa: E402
@@ -253,6 +254,14 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
             "par des virgules. La comparaison ignore accents et casse, et se "
             "fait par inclusion : « contentieux » retient « 🔴 Dossier à faire "
             "passer en contentieux »."
+        ),
+    )
+    analyseur.add_argument(
+        "--sans-echeance-facture",
+        action="store_true",
+        help=(
+            "Ne cherche pas l'échéance dans la facture PDF quand le tableau ne "
+            "la renseigne pas."
         ),
     )
     analyseur.add_argument(
@@ -558,6 +567,17 @@ def traiter_dossier(
     _reporter_pieces(resume, lignes)
 
     documents_monday = _documents_monday(dossier, repertoire, options, journal)
+
+    # L'échéance du tableau prime toujours : elle est saisie par le service,
+    # la facture n'est qu'un repli quand la colonne est restée vide.
+    if not dossier.date_echeance and not options.sans_echeance_facture:
+        date, origine = _echeance_depuis_facture(dossier, repertoire, journal)
+        if date:
+            dossier.date_echeance = date
+            resume.date_echeance = date
+            resume.source_echeance = origine
+    elif dossier.date_echeance:
+        resume.source_echeance = "tableau de suivi"
 
     ecrire_index_dossier(chemin_index, lignes)
 
@@ -945,6 +965,47 @@ def _ecrire_sous_dossiers(
                 resume.pdf_en_echec += 1
 
     return len(sous_dossiers)
+
+
+def _echeance_depuis_facture(
+    dossier: Dossier, repertoire: Path, journal: Journal
+) -> tuple[str, str]:
+    """Cherche l'échéance dans la facture PDF téléchargée depuis Monday.
+
+    Le tableau ne renseigne pas toujours l'échéance ; la facture, elle, la
+    porte. Sans elle, l'ancienneté de la créance reste vide, et c'est la
+    lecture la plus utile du tableau de bord qui manque.
+
+    Les fichiers dont le nom évoque une facture sont essayés d'abord : une
+    convention de formation porte elle aussi des dates, et y lire une échéance
+    de paiement n'aurait aucun sens.
+    """
+    racine = repertoire / "documents-monday"
+    if not racine.is_dir():
+        return "", ""
+
+    pdfs = sorted(racine.glob("*.pdf"))
+    if not pdfs:
+        return "", ""
+
+    def _priorite(chemin: Path) -> tuple[int, str]:
+        nom = chemin.name.lower()
+        if "convention" in nom or "contrat" in nom:
+            return (2, nom)
+        if "fact" in nom or any(f.lower() in nom for f in dossier.factures):
+            return (0, nom)
+        return (1, nom)
+
+    for chemin in sorted(pdfs, key=_priorite):
+        if _priorite(chemin)[0] == 2:
+            continue  # une convention ne porte pas d'échéance de paiement
+        date, origine = echeance_de_la_facture(chemin)
+        if date:
+            journal(f"    échéance lue dans {chemin.name} : {date} ({origine})")
+            return date, origine
+        journal(f"    échéance non trouvée dans {chemin.name} — {origine}")
+
+    return "", ""
 
 
 def _documents_monday(
