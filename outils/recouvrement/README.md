@@ -190,6 +190,42 @@ Les deux découpages sont indépendants : un débiteur qui doit deux factures et
 écrit depuis deux adresses obtient `factures/` **et** `adresses/`, deux
 lectures du même dossier.
 
+### Compléter un dossier au lieu de le refaire
+
+Un dossier vit : l'apprenante répond, une relance part, une mise en demeure
+est envoyée. Trois façons de relancer l'outil sur un export existant :
+
+| | Ce qui se passe |
+|---|---|
+| *(rien de coché)* | tout est refait de zéro, les numéros de pièce sont réattribués |
+| **Reprendre** | les dossiers déjà exportés sont passés sans être regardés |
+| **Compléter les dossiers déjà exportés** | les messages déjà présents sont conservés tels quels, les nouveaux ajoutés à la suite |
+
+En mode *Compléter*, un message déjà au dossier est reconnu à son
+**Message-ID** — l'identifiant que lui donne le serveur d'envoi, stable d'une
+boîte et d'une extraction à l'autre. Ni son `.eml`, ni son PDF, ni ses pièces
+jointes ne sont réécrits, et son numéro de pièce ne change pas : une note déjà
+transmise citant « pièce n° 7 » reste exacte.
+
+Les nouvelles pièces prennent les numéros suivants, **même si elles sont plus
+anciennes**. `index.csv` reste trié par date, les numéros n'y sont donc plus
+forcément croissants — c'est assumé : un dossier contentieux numérote ses
+pièces dans l'ordre où elles y sont versées, pas dans celui des faits.
+
+La note de synthèse, elle, est refaite entièrement à chaque mise à jour :
+constats, événements et chronologie tiennent compte des nouvelles pièces. Les
+textes des anciennes sont relus dans les `.eml` conservés, sans retélécharger
+quoi que ce soit.
+
+Un dossier sans rien de nouveau est laissé intact, à l'octet près, et signalé
+« à jour ». Et si la recherche ne ramène plus rien alors que le dossier est
+constitué — boîte purgée, requête modifiée —, il est **conservé** : réécrire
+un index vide effacerait un dossier complet.
+
+*Reprendre* et *Compléter* ensemble n'ont pas de sens : reprendre passe les
+dossiers avant de les regarder, donc rien n'est complété. L'outil le signale
+plutôt que de laisser croire à une mise à jour.
+
 ### Retrouver les adresses à partir du numéro de facture
 
 Beaucoup de lignes n'ont qu'un numéro de facture, sans adresse mail. La
@@ -484,6 +520,7 @@ et de pièces jointes.
 | `--sortie CHEMIN` | Répertoire de destination (défaut : `./export`). |
 | `--simulation` | Compte les messages sans rien écrire. |
 | `--reprendre` | Passe les dossiers déjà exportés. À utiliser après une interruption. |
+| `--mettre-a-jour` | Complète les dossiers déjà exportés au lieu de les refaire : seuls les messages nouveaux sont ajoutés. |
 | `--seulement REF1,REF2` | Ne traiter que ces références. Pratique pour refaire un dossier. |
 | `--max-mails N` | Plafond par dossier (défaut : 500). Un dépassement est signalé. |
 | `--sans-spam` | Exclut spam et corbeille, inclus par défaut. |

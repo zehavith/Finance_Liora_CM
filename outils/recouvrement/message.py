@@ -52,6 +52,18 @@ def _vers_fuseau_affichage(date: datetime) -> datetime:
     return date.astimezone()
 
 
+def fuseau_actuel():
+    """Le fuseau d'affichage en vigueur, jamais None.
+
+    Sert à redonner un fuseau aux dates relues d'un index déjà écrit : elles y
+    figurent sans fuseau, et une date naïve comparée à une date de message
+    lèverait une exception.
+    """
+    if _fuseau_affichage is not None:
+        return _fuseau_affichage
+    return datetime.now().astimezone().tzinfo
+
+
 def maintenant() -> datetime:
     """Instant présent dans le fuseau d'affichage.
 

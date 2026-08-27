@@ -52,6 +52,8 @@ from message import (  # noqa: E402
     FUSEAU_PAR_DEFAUT,
     MessageMail,
     definir_fuseau,
+    fuseau_actuel,
+    lire_message,
     maintenant,
 )
 from rendu import (  # noqa: E402
@@ -168,6 +170,16 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "--reprendre",
         action="store_true",
         help="Passe les dossiers déjà exportés (index.csv présent).",
+    )
+    analyseur.add_argument(
+        "--mettre-a-jour",
+        action="store_true",
+        help=(
+            "Complète les dossiers déjà exportés au lieu de les refaire : les "
+            "messages déjà présents sont reconnus à leur Message-ID et "
+            "conservés tels quels, seuls les nouveaux sont ajoutés à la suite. "
+            "Les numéros de pièce déjà attribués ne changent pas."
+        ),
     )
     analyseur.add_argument(
         "--seulement",
@@ -319,6 +331,21 @@ def traiter_dossier(
         resume.statut = "ignoré (déjà exporté)"
         return resume
 
+    # Mise à jour : le dossier existant est relu, jamais refait. Ce qui y
+    # figure garde son numéro de pièce et ses fichiers ; seuls les messages
+    # inconnus sont ajoutés à la suite.
+    existantes: list[LigneIndex] = []
+    textes_existants: dict[int, str] = {}
+    bases_existantes: dict[int, str] = {}
+    cles_existantes: set[str] = set()
+    if options.mettre_a_jour and chemin_index.exists():
+        try:
+            existantes, textes_existants, bases_existantes, cles_existantes = (
+                relire_dossier(repertoire, chemin_index)
+            )
+        except OSError as exc:
+            journal(f"    ⚠ index existant illisible ({exc}) — dossier refait")
+
     identifiants = sources.identifiants_dossier(
         requete,
         inclure_spam_corbeille=not options.sans_spam,
@@ -346,6 +373,17 @@ def traiter_dossier(
         return resume
 
     if not identifiants:
+        if existantes:
+            # Recherche muette sur un dossier déjà constitué : la boîte a pu
+            # être purgée, ou la requête modifiée. Réécrire un index vide
+            # effacerait un dossier complet — on n'y touche pas.
+            journal(
+                f"    aucun message trouvé, mais {len(existantes)} pièce(s) "
+                "déjà au dossier : il est conservé tel quel"
+            )
+            _reporter_pieces(resume, existantes)
+            resume.statut = "à jour"
+            return resume
         journal("    aucun message trouvé")
         repertoire.mkdir(parents=True, exist_ok=True)
         ecrire_index_dossier(chemin_index, [])
@@ -382,13 +420,37 @@ def traiter_dossier(
             resume.adresses_decouvertes = " | ".join(trouvees)
             resume.requete = dossier.requete_gmail()
 
-    resume.nb_mails = len(messages)
     resume.doublons_ecartes = doublons
 
-    textes_par_piece: dict[int, str] = {}
-    bases_par_piece: dict[int, str] = {}
+    if cles_existantes:
+        inconnus = [
+            message
+            for message in messages
+            if message.cle_dedoublonnage not in cles_existantes
+        ]
+        deja = len(messages) - len(inconnus)
+        if not inconnus:
+            journal(
+                f"    à jour — {len(existantes)} pièce(s) au dossier, "
+                "aucun message nouveau"
+            )
+            _reporter_pieces(resume, existantes)
+            resume.statut = "à jour"
+            return resume
+        journal(
+            f"    {len(inconnus)} message(s) nouveau(x) ajouté(s) — "
+            f"{deja} déjà au dossier, conservé(s) tel(s) quel(s)"
+        )
+        messages = inconnus
+
+    # Les nouvelles pièces prennent la suite : renuméroter l'existant
+    # invaliderait les « pièce n° 7 » déjà cités dans une note transmise.
+    depart = max((ligne.piece_n for ligne in existantes), default=0) + 1
+
+    textes_par_piece: dict[int, str] = dict(textes_existants)
+    bases_par_piece: dict[int, str] = dict(bases_existantes)
     lignes: list[LigneIndex] = []
-    for numero, message in enumerate(messages, start=1):
+    for numero, message in enumerate(messages, start=depart):
         base = nom_de_base(message, numero)
         bases_par_piece[numero] = base
 
@@ -407,14 +469,8 @@ def traiter_dossier(
             resume.pdf_en_echec += 1
 
         pieces_ecrites = ecrire_pieces_jointes(message, dossier_pj, base)
-        resume.nb_pieces_jointes += len(pieces_ecrites)
 
         sens = _sens_du_message(message, domaines_maison(sources, options))
-        if sens == "envoyé":
-            resume.nb_envoyes += 1
-        else:
-            resume.nb_recus += 1
-        resume.dates.append(message.date)
         textes_par_piece[numero] = message.corps_texte or message.corps_html or ""
 
         recherchable = message.texte_recherchable
@@ -445,6 +501,12 @@ def traiter_dossier(
                 message_id=message.message_id,
             )
         )
+
+    # Chronologie complète, existant compris. Les numéros de pièce ne suivent
+    # plus forcément les dates après une mise à jour : c'est assumé, un dossier
+    # contentieux numérote ses pièces dans l'ordre où elles sont versées.
+    lignes = sorted(existantes + lignes, key=lambda ligne: (ligne.date, ligne.piece_n))
+    _reporter_pieces(resume, lignes)
 
     documents_monday = _documents_monday(dossier, repertoire, options, journal)
 
@@ -505,6 +567,93 @@ def traiter_dossier(
     journal(detail)
 
     return resume
+
+
+def relire_dossier(
+    repertoire: Path, chemin_index: Path
+) -> tuple[list[LigneIndex], dict[int, str], dict[int, str], set[str]]:
+    """Relit un dossier déjà exporté, pour le compléter sans le refaire.
+
+    Les pièces sont reconstituées depuis `index.csv`, et leur texte relu dans
+    les `.eml` conservés — ce sont eux qui alimentent la détection des
+    événements de la note de synthèse. Aucun message n'est retéléchargé pour
+    cela, et aucun PDF n'est régénéré.
+    """
+    import csv as module_csv  # noqa: PLC0415
+
+    lignes: list[LigneIndex] = []
+    textes: dict[int, str] = {}
+    bases: dict[int, str] = {}
+    cles: set[str] = set()
+    fuseau = fuseau_actuel()
+
+    texte = chemin_index.read_text(encoding="utf-8-sig")
+    for rangee in module_csv.DictReader(texte.splitlines(), delimiter=";"):
+        try:
+            numero = int(rangee.get("piece_n") or 0)
+            date = datetime.strptime(
+                f"{rangee.get('date', '')} {rangee.get('heure', '') or '00:00'}",
+                "%d/%m/%Y %H:%M",
+            ).replace(tzinfo=fuseau)
+        except ValueError:
+            continue
+
+        fichier_eml = (rangee.get("fichier_eml") or "").strip()
+        base = Path(fichier_eml).stem
+        if base:
+            bases[numero] = base
+
+        chemin = repertoire / fichier_eml if fichier_eml else None
+        if chemin is not None and chemin.exists():
+            try:
+                relu = lire_message({}, chemin.read_bytes())
+            except Exception:  # noqa: BLE001 - un .eml abîmé ne doit rien bloquer
+                relu = None
+            if relu is not None:
+                textes[numero] = relu.corps_texte or relu.corps_html or ""
+
+        identifiant = (rangee.get("message_id") or "").strip()
+        if identifiant:
+            cles.add(identifiant.lower())
+
+        lignes.append(
+            LigneIndex(
+                piece_n=numero,
+                date=date,
+                sens=rangee.get("sens") or "reçu",
+                expediteur=rangee.get("expediteur") or "",
+                destinataires=rangee.get("destinataires") or "",
+                copie=rangee.get("copie") or "",
+                objet=rangee.get("objet") or "",
+                nb_pieces_jointes=int(rangee.get("nb_pieces_jointes") or 0),
+                pieces_jointes=rangee.get("pieces_jointes") or "",
+                critere=rangee.get("critere") or "",
+                factures_concernees=rangee.get("factures_concernees") or "",
+                adresses_concernees=rangee.get("adresses_concernees") or "",
+                boites=rangee.get("boites") or "",
+                fichier_pdf=rangee.get("fichier_pdf") or "",
+                fichier_eml=fichier_eml,
+                dossier_pieces_jointes=rangee.get("dossier_pieces_jointes") or "",
+                thread_id=rangee.get("thread_id") or "",
+                message_id=identifiant,
+            )
+        )
+
+    return lignes, textes, bases, cles
+
+
+def _reporter_pieces(resume: ResumeDossier, lignes: list[LigneIndex]) -> None:
+    """Recompte le résumé sur l'ensemble des pièces du dossier.
+
+    Après une mise à jour, compter les seuls messages téléchargés cette fois
+    ferait dire au récapitulatif qu'un dossier de vingt pièces n'en compte que
+    deux.
+    """
+    resume.nb_mails = len(lignes)
+    resume.nb_envoyes = sum(1 for ligne in lignes if ligne.sens == "envoyé")
+    resume.nb_recus = len(lignes) - resume.nb_envoyes
+    resume.nb_pieces_jointes = sum(ligne.nb_pieces_jointes for ligne in lignes)
+    resume.dates = [ligne.date for ligne in lignes]
 
 
 def _fusionner_messages(existants, nouveaux) -> tuple[list, int]:
@@ -898,6 +1047,13 @@ def executer(
                 "Un tableau Monday exporté en entier contient tout l'historique, "
                 "pas seulement les dossiers à transmettre. Filtrez le tableau "
                 "avant l'export, ou restreignez avec --seulement."
+            )
+
+        if options.reprendre and options.mettre_a_jour:
+            journal(
+                "⚠ « Reprendre » et « Compléter » sont demandés ensemble : "
+                "reprendre passe les dossiers déjà exportés, donc rien ne sera "
+                "complété. Décochez « Reprendre » pour compléter."
             )
 
         sans_adresse = [dossier for dossier in liste if not dossier.emails]

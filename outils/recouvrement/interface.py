@@ -63,6 +63,7 @@ CASES_MEMORISEES = {
     "decouvrir": False,
     "sansnav": False,
     "reprendre": False,
+    "majdossiers": False,
 }
 EXTENSIONS_ACCEPTEES = {".xlsx", ".xlsm", ".csv"}
 TAILLE_MAX_FICHIER = 25 * 1024 * 1024
@@ -277,6 +278,8 @@ def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str
         arguments.append("--sans-spam")
     if demande.get("reprendre"):
         arguments.append("--reprendre")
+    if demande.get("mettre_a_jour"):
+        arguments.append("--mettre-a-jour")
     if demande.get("sans_synthese"):
         arguments.append("--sans-synthese")
 
@@ -864,9 +867,14 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <label class="case"><input type="checkbox" id="sansnav" />
     <span><b>Ne pas ouvrir le navigateur pour autoriser</b><i>Si une boîte est
     connectée dans une autre fenêtre : l'adresse s'affiche, à coller vous-même.</i></span></label>
+  <label class="case"><input type="checkbox" id="majdossiers" />
+    <span><b>Compléter les dossiers déjà exportés</b><i>Ne recrée pas un
+    dossier déjà constitué : y ajoute seulement les messages nouveaux, à la
+    suite. Les numéros de pièce déjà attribués ne changent pas, et rien n'est
+    réimprimé.</i></span></label>
   <label class="case"><input type="checkbox" id="reprendre" />
-    <span><b>Reprendre</b><i>Passe les dossiers déjà exportés. Après une
-    interruption.</i></span></label>
+    <span><b>Reprendre</b><i>Passe entièrement les dossiers déjà exportés,
+    sans les regarder. Après une interruption.</i></span></label>
   <p class="note" id="dejaExporte" hidden></p>
   <div>
     <label for="seulement">Ne traiter que ces références (optionnel)</label>
@@ -1048,6 +1056,7 @@ $("lancer").addEventListener("click", async () => {
       decouvrir_adresses: $("decouvrir").checked,
       sans_navigateur: $("sansnav").checked,
       reprendre: $("reprendre").checked,
+      mettre_a_jour: $("majdossiers").checked,
       seulement: $("seulement").value,
   };
 

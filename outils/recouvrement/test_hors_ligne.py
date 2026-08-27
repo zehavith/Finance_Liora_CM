@@ -1485,6 +1485,156 @@ def test_sens_et_faux_positifs() -> None:
     )
 
 
+class ClientEvolutif:
+    """Boîte à laquelle un message s'ajoute entre deux exports."""
+
+    TOUS = {
+        "e1": lambda: _echange(
+            "Relance FA-2024-0153", "recouvrement@liora.io",
+            "marie.dupont@exemple.fr", 4, "La facture FA-2024-0153 reste impayée.",
+        ),
+        "e2": lambda: _echange(
+            "Re: relance", "marie.dupont@exemple.fr", "recouvrement@liora.io",
+            12, "Je vous réponds.",
+        ),
+        # Arrivé après le premier export, et antérieur aux deux autres : il ne
+        # doit pas décaler les numéros de pièce déjà attribués.
+        "e3": lambda: _echange(
+            "Envoi initial", "recouvrement@liora.io", "marie.dupont@exemple.fr",
+            2, "Veuillez trouver la facture FA-2024-0153.",
+        ),
+    }
+
+    adresse_boite = "recouvrement@liora.io"
+    disponibles = ["e1", "e2"]
+
+    def rechercher_identifiants(self, requete, inclure_spam_corbeille=True, plafond=None):
+        return list(self.disponibles)
+
+    def recuperer_messages(self, identifiants):
+        for identifiant in identifiants:
+            message = lire_message(
+                {"id": identifiant, "threadId": "t1", "internalDate": "1710231243000"},
+                self.TOUS[identifiant]().as_bytes(),
+            )
+            message.boites = [self.adresse_boite]
+            yield message
+
+
+def test_mise_a_jour() -> None:
+    """Compléter un dossier déjà exporté sans le refaire ni le renuméroter."""
+    print("\nMise à jour d'un dossier existant")
+
+    import export_mails  # noqa: PLC0415
+    from gmail_api import SourcesGmail  # noqa: PLC0415
+
+    client = ClientEvolutif()
+    vraies_sources = export_mails.ouvrir_sources
+    export_mails.ouvrir_sources = lambda **_: SourcesGmail([client])
+    try:
+        with tempfile.TemporaryDirectory() as repertoire:
+            racine = Path(repertoire)
+            fichier = racine / "dossiers.csv"
+            fichier.write_text(
+                "reference;nom;email;facture\n"
+                "2024-118;Marie Dupont;marie.dupont@exemple.fr;FA-2024-0153\n",
+                encoding="utf-8",
+            )
+            sortie = racine / "export"
+            arguments = ["--dossiers", str(fichier), "--sortie", str(sortie)]
+
+            export_mails.executer(export_mails.analyser_arguments(arguments))
+            dossier = sortie / "2024-118_marie-dupont"
+            index = _lire_index(dossier / "index.csv")
+            verifier(len(index) == 2, "premier export : 2 pièces")
+
+            empreintes = {
+                chemin.name: chemin.stat().st_mtime_ns
+                for chemin in (dossier / "mails").iterdir()
+            }
+
+            # Rien de neuf : le dossier ne doit pas bouger d'un octet.
+            journal: list[str] = []
+            export_mails.executer(
+                export_mails.analyser_arguments(arguments + ["--mettre-a-jour"]),
+                relais=journal.append,
+            )
+            verifier(
+                "aucun message nouveau" in "\n".join(journal),
+                "sans nouveauté, la mise à jour le dit et s'arrête",
+            )
+            verifier(
+                {c.name: c.stat().st_mtime_ns for c in (dossier / "mails").iterdir()}
+                == empreintes,
+                "aucun fichier réécrit quand il n'y a rien de nouveau",
+            )
+            recap = _lire_index(sortie / "_recapitulatif.csv")
+            verifier(
+                recap[0]["nb_mails"] == "2" and recap[0]["statut"] == "à jour",
+                "le récapitulatif compte les pièces du dossier, pas les téléchargements",
+            )
+
+            # Un message arrive, antérieur aux deux autres.
+            client.disponibles = ["e1", "e2", "e3"]
+            journal = []
+            export_mails.executer(
+                export_mails.analyser_arguments(arguments + ["--mettre-a-jour"]),
+                relais=journal.append,
+            )
+            verifier(
+                "1 message(s) nouveau(x)" in "\n".join(journal),
+                "un seul message est signalé comme nouveau",
+            )
+
+            index = _lire_index(dossier / "index.csv")
+            par_objet = {r["objet"]: r for r in index}
+            verifier(len(index) == 3, "le dossier compte désormais 3 pièces")
+            verifier(
+                par_objet["Relance FA-2024-0153"]["piece_n"] == "1"
+                and par_objet["Re: relance"]["piece_n"] == "2",
+                "les numéros de pièce déjà attribués ne changent pas",
+            )
+            verifier(
+                par_objet["Envoi initial"]["piece_n"] == "3",
+                "la pièce nouvelle prend le numéro suivant, malgré sa date antérieure",
+            )
+            verifier(
+                [r["date"] for r in index]
+                == ["02/03/2024", "04/03/2024", "12/03/2024"],
+                "l'index reste trié par date",
+            )
+            verifier(
+                {c.name: c.stat().st_mtime_ns
+                 for c in (dossier / "mails").iterdir()
+                 if c.name in empreintes} == empreintes,
+                "les pièces existantes ne sont ni retéléchargées ni réimprimées",
+            )
+            verifier(
+                (dossier / "mails" / "003_2024-03-02_0900_recouvrement_envoi-initial.eml").exists(),
+                "le nouveau message est bien écrit",
+            )
+
+            recap = _lire_index(sortie / "_recapitulatif.csv")
+            verifier(recap[0]["nb_mails"] == "3", "récapitulatif à jour")
+            verifier(
+                recap[0]["nb_envoyes"] == "2" and recap[0]["nb_recus"] == "1",
+                "les sens sont recomptés sur l'ensemble du dossier",
+            )
+
+            # Recherche devenue muette : un dossier constitué ne s'efface pas.
+            client.disponibles = []
+            export_mails.executer(
+                export_mails.analyser_arguments(arguments + ["--mettre-a-jour"])
+            )
+            verifier(
+                len(_lire_index(dossier / "index.csv")) == 3,
+                "une recherche sans résultat n'efface pas un dossier existant",
+            )
+    finally:
+        export_mails.ouvrir_sources = vraies_sources
+        ClientEvolutif.disponibles = ["e1", "e2"]
+
+
 def test_export_interrompu() -> None:
     """Un export coupé en plein milieu laisse un récapitulatif exploitable."""
     print("\nExport interrompu")
@@ -1728,6 +1878,7 @@ def test_interface() -> None:
             ('id="dejaExporte"', "rappel d'un export déjà présent"),
             ('id="sansnav"', "option sans navigateur"),
             ('id="reprendre"', "option reprendre"),
+            ('id="majdossiers"', "option compléter les dossiers"),
             ('id="seulement"', "filtre par références"),
             ('id="lancer"', "bouton lancer"),
             ('data-vue="vueBord"', "onglet tableau de bord"),
@@ -2125,6 +2276,7 @@ def main() -> int:
     test_sous_dossiers_par_adresse()
     test_decouverte_adresses()
     test_sens_et_faux_positifs()
+    test_mise_a_jour()
     test_export_interrompu()
     test_interface()
     test_suivi()
