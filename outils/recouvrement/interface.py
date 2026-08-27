@@ -758,6 +758,10 @@ select:focus,input.frais:focus,input.note:focus{outline:none;border-color:var(--
   color:var(--texte-2);font-size:13.5px;padding:9px 4px;margin-right:14px}
 .onglet.actif{color:var(--accent);border-bottom-color:var(--accent)}
 .volet{display:none} .volet.actif{display:block}
+.liste-tableaux{max-height:260px;overflow-y:auto;margin-top:10px;
+  border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:6px 10px}
+.liste-tableaux .case{margin:2px 0}
+.liste-tableaux .case i{display:block;font-size:11px;opacity:.6;font-style:normal}
 label{display:block;font-size:12px;color:var(--texte-2);margin-bottom:5px}
 input[type=text]{width:100%;background:var(--champ);border:1px solid var(--bord);
   border-radius:9px;padding:10px 12px;color:var(--texte);font-size:13.5px;font-family:inherit}
@@ -853,14 +857,15 @@ button:disabled{opacity:.45;cursor:not-allowed}
        d'export à refaire à chaque fois. Demande le jeton Monday (section 2).</p>
     <div class="grille">
       <div>
-        <label>Tableaux a lire</label>
-        <div id="tableau">Cliquez sur « Lister mes tableaux ».</div>
+        <label for="chercheTableau">Chercher un tableau</label>
+        <input type="text" id="chercheTableau" placeholder="recouvrement, financement…" />
       </div>
       <div>
         <label for="listerTableaux">&nbsp;</label>
         <button class="secondaire" id="listerTableaux">Lister mes tableaux</button>
       </div>
     </div>
+    <div id="tableau" class="liste-tableaux">Cliquez sur « Lister mes tableaux ».</div>
     <p class="note">Cochez-en plusieurs : les lignes de tous les tableaux
        cochés sont réunies en un seul lot, et le filtre ci-dessous s'y applique
        de la même façon.</p>
@@ -1011,6 +1016,10 @@ const $ = (id) => document.getElementById(id);
 const IMPORT_PRECEDENT = __IMPORT__;
 const CASES = __OPTIONS__;
 const TABLEAU_MEMORISE = "__TABLEAU__";
+// Les cases cochées survivent au filtrage de la liste : chercher « personnel »
+// après avoir coché « recouvrement » ne doit pas décocher ce dernier.
+let TABLEAUX = [];
+const TABLEAUX_COCHES = new Set(TABLEAU_MEMORISE.split(",").filter(Boolean));
 let fichierChoisi = null, position = 0, sondage = null, mode = "fichier";
 // Le fichier importé est conservé à côté de l'outil, mais aucun navigateur
 // ne peut repeupler un champ de fichier : on le rappelle, et on permet de
@@ -1066,24 +1075,9 @@ $("listerTableaux").addEventListener("click", async () => {
   try {
     const reponse = await api("/api/tableaux",
       { jeton_monday: $("jetonMonday").value });
-    const coches = new Set(TABLEAU_MEMORISE.split(",").filter(Boolean));
-    const liste = $("tableau");
-    liste.innerHTML = "";
-    reponse.tableaux.forEach((tab) => {
-      const etiquette = document.createElement("label");
-      etiquette.className = "case";
-      const case_ = document.createElement("input");
-      case_.type = "checkbox";
-      case_.value = tab.id;
-      case_.checked = coches.has(tab.id);
-      case_.addEventListener("change", () => { majBouton(); enregistrerReglages(); });
-      const texte = document.createElement("span");
-      texte.innerHTML = "<b>" + echapper(tab.nom) + "</b><i>identifiant " + tab.id + "</i>";
-      etiquette.appendChild(case_);
-      etiquette.appendChild(texte);
-      liste.appendChild(etiquette);
-    });
-    afficherBandeau(true, reponse.tableaux.length + " tableau(x) trouvé(s).");
+    TABLEAUX = reponse.tableaux;
+    rendreTableaux();
+    afficherBandeau(true, TABLEAUX.length + " tableau(x) trouvé(s).");
   } catch (erreur) {
     afficherBandeau(false, erreur.message);
   } finally {
@@ -1092,9 +1086,47 @@ $("listerTableaux").addEventListener("click", async () => {
     majBouton();
   }
 });
+function rendreTableaux() {
+  const cherche = $("chercheTableau").value.trim().toLowerCase();
+  const liste = $("tableau");
+  liste.innerHTML = "";
+
+  const visibles = TABLEAUX.filter((tab) =>
+    !cherche || (tab.nom + " " + (tab.espace || "")).toLowerCase().includes(cherche));
+
+  if (!visibles.length) {
+    liste.textContent = TABLEAUX.length
+      ? "Aucun tableau ne correspond a cette recherche."
+      : "Cliquez sur « Lister mes tableaux ».";
+    return;
+  }
+
+  visibles.forEach((tab) => {
+    const etiquette = document.createElement("label");
+    etiquette.className = "case";
+    const coche = document.createElement("input");
+    coche.type = "checkbox";
+    coche.value = tab.id;
+    coche.checked = TABLEAUX_COCHES.has(tab.id);
+    coche.addEventListener("change", () => {
+      if (coche.checked) TABLEAUX_COCHES.add(tab.id);
+      else TABLEAUX_COCHES.delete(tab.id);
+      majBouton();
+      enregistrerReglages();
+    });
+    const texte = document.createElement("span");
+    texte.innerHTML = "<b>" + echapper(tab.nom) + "</b><i>" +
+      (tab.espace ? echapper(tab.espace) + " · " : "") + "n° " + tab.id + "</i>";
+    etiquette.appendChild(coche);
+    etiquette.appendChild(texte);
+    liste.appendChild(etiquette);
+  });
+}
+
+$("chercheTableau").addEventListener("input", rendreTableaux);
+
 function tableauxCoches() {
-  return Array.from($("tableau").querySelectorAll("input:checked"))
-    .map((c) => c.value).join(",");
+  return Array.from(TABLEAUX_COCHES).join(",");
 }
 
 // Les cases reprennent l'état de la dernière session : ce qui a été décidé

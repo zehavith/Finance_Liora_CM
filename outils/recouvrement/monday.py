@@ -24,6 +24,7 @@ import json
 import re
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 API = "https://api.monday.com/v2"
@@ -108,18 +109,59 @@ def adresses_signees(identifiants: list[str], jeton: str) -> dict[str, dict]:
     return resultat
 
 
-def lister_tableaux(jeton: str, limite: int = 50) -> list[dict]:
-    """Les tableaux accessibles avec ce jeton : identifiant et nom."""
-    donnees = _appeler_api(
-        f"query {{ boards (limit: {int(limite)}, order_by: used_at) "
-        "{ id name } }",
-        jeton,
-    )
-    return [
-        {"id": str(tableau["id"]), "nom": tableau.get("name") or str(tableau["id"])}
-        for tableau in (donnees.get("boards") or [])
-        if tableau.get("id")
-    ]
+# Un compte Monday d'entreprise porte facilement plusieurs dizaines de
+# tableaux. La liste est paginée, et le plafond n'existe que pour ne pas
+# boucler indéfiniment si l'API se mettait à répondre toujours la même page.
+TABLEAUX_PAR_PAGE = 100
+PLAFOND_TABLEAUX = 1000
+
+
+def lister_tableaux(jeton: str) -> list[dict]:
+    """Tous les tableaux accessibles avec ce jeton, du premier au dernier.
+
+    La pagination est suivie jusqu'au bout : s'arrêter à la première page
+    masquerait des tableaux sans le dire, et l'utilisateur chercherait en vain
+    celui qu'il vient d'ouvrir dans Monday.
+    """
+    trouves: list[dict] = []
+    vus: set[str] = set()
+    page = 1
+
+    while len(trouves) < PLAFOND_TABLEAUX:
+        donnees = _appeler_api(
+            f"query {{ boards (limit: {TABLEAUX_PAR_PAGE}, page: {page}, "
+            "state: active, order_by: used_at) "
+            "{ id name workspace { name } } }",
+            jeton,
+        )
+        lot = donnees.get("boards") or []
+        nouveaux = 0
+        for tableau in lot:
+            identifiant = str(tableau.get("id") or "")
+            if not identifiant or identifiant in vus:
+                continue
+            vus.add(identifiant)
+            nouveaux += 1
+            espace = (tableau.get("workspace") or {}).get("name") or ""
+            trouves.append({
+                "id": identifiant,
+                "nom": tableau.get("name") or identifiant,
+                "espace": espace,
+            })
+
+        # On s'arrête sur une page incomplète, mais aussi sur une page qui
+        # n'apporte rien de neuf : une API qui renverrait indéfiniment le même
+        # lot ferait tourner cette boucle sans fin, le plafond portant sur le
+        # nombre de tableaux retenus et non sur celui des pages demandées.
+        if len(lot) < TABLEAUX_PAR_PAGE or nouveaux == 0:
+            break
+        page += 1
+
+    # Les tableaux sont numérotés dans Monday (« 1.2. Entreprise -
+    # Recouvrement ») : l'ordre alphabétique est donc leur ordre naturel, et
+    # bien plus utile que l'ordre de dernière consultation.
+    trouves.sort(key=lambda tableau: (tableau["espace"].lower(), tableau["nom"].lower()))
+    return trouves
 
 
 def _valeur_colonne(colonne: dict) -> str:
@@ -176,7 +218,7 @@ def lire_tableau(identifiant: str, jeton: str, par_page: int = 100) -> list[tupl
         )
         donnees = _appeler_api(
             f"query {{ boards (ids: [{int(identifiant)}]) {{ "
-            f"{page} {{ cursor items {{ name column_values {{ "
+            f"{page} {{ cursor items {{ id name column_values {{ "
             "column { title } text value } } } } } }",
             jeton,
         )
@@ -191,12 +233,15 @@ def lire_tableau(identifiant: str, jeton: str, par_page: int = 100) -> list[tupl
         for element in contenu.get("items") or []:
             colonnes = element.get("column_values") or []
             if not entetes:
-                entetes = ["Name"] + [
+                # « Monday ID » n'est reconnu comme aucun champ : il voyage
+                # avec la ligne sans rien perturber, et c'est lui qui relie
+                # ensuite le dossier à son historique d'étapes.
+                entetes = ["Name", "Monday ID"] + [
                     ((colonne.get("column") or {}).get("title") or "").strip()
                     for colonne in colonnes
                 ]
             lignes.append(
-                [element.get("name") or ""]
+                [element.get("name") or "", str(element.get("id") or "")]
                 + [_valeur_colonne(colonne) for colonne in colonnes]
             )
 
@@ -210,6 +255,154 @@ def lire_tableau(identifiant: str, jeton: str, par_page: int = 100) -> list[tupl
     grille = [(1, entetes)]
     grille += [(numero, ligne) for numero, ligne in enumerate(lignes, start=2)]
     return grille
+
+
+def _horodatage(valeur) -> datetime | None:
+    """Date d'une entrée de journal Monday.
+
+    `created_at` y est un entier de dix-sept chiffres : des microsecondes
+    multipliées par dix. Le lire comme des secondes daterait tous les
+    changements d'étape de l'an 500 millions.
+    """
+    texte = str(valeur or "").strip().strip('"')
+    if not texte:
+        return None
+
+    if texte.isdigit():
+        nombre = int(texte)
+        # 10^17 pour 2023 en dix-millionièmes de seconde, 10^10 en secondes.
+        for diviseur in (10_000_000, 1_000_000, 1_000, 1):
+            secondes = nombre / diviseur
+            if 946_684_800 < secondes < 4_102_444_800:  # 2000 -> 2100
+                return datetime.fromtimestamp(secondes, tz=timezone.utc)
+        return None
+
+    try:
+        return datetime.fromisoformat(texte.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _etiquette(valeur) -> str:
+    """Le libellé lisible d'une valeur de colonne « statut »."""
+    if isinstance(valeur, str):
+        try:
+            valeur = json.loads(valeur)
+        except ValueError:
+            return valeur.strip()
+    if isinstance(valeur, dict):
+        etiquette = valeur.get("label")
+        if isinstance(etiquette, dict):
+            return str(etiquette.get("text") or "").strip()
+        if isinstance(etiquette, str):
+            return etiquette.strip()
+        return str(valeur.get("text") or "").strip()
+    return ""
+
+
+def colonnes_du_tableau(identifiant: str, jeton: str) -> dict[str, str]:
+    """Identifiant technique -> intitulé, pour chaque colonne du tableau.
+
+    Le journal d'activité ne cite que l'identifiant technique de la colonne
+    (« status_1 ») : sans cette table, impossible de savoir laquelle porte
+    l'étape du process.
+    """
+    donnees = _appeler_api(
+        f"query {{ boards (ids: [{int(identifiant)}]) {{ columns {{ id title }} }} }}",
+        jeton,
+    )
+    tableaux = donnees.get("boards") or []
+    if not tableaux:
+        return {}
+    return {
+        str(colonne.get("id")): (colonne.get("title") or "").strip()
+        for colonne in (tableaux[0].get("columns") or [])
+        if colonne.get("id")
+    }
+
+
+def historique_colonne(
+    identifiant: str,
+    jeton: str,
+    titre_colonne: str,
+    depuis: datetime | None = None,
+    pages_max: int = 20,
+) -> dict[str, list[dict]]:
+    """Changements d'étape, ligne par ligne : quand, de quoi, vers quoi.
+
+    Retourne, pour chaque élément du tableau, la liste de ses changements
+    triés du plus ancien au plus récent.
+
+    Attention à la portée : Monday ne conserve le journal d'activité que sur
+    une période limitée selon l'abonnement. Un historique vide ne veut donc
+    pas dire qu'il ne s'est rien passé, mais que rien n'en est resté — c'est
+    dit dans la note plutôt que passé sous silence.
+    """
+    if not titre_colonne.strip():
+        return {}
+
+    intitules = colonnes_du_tableau(identifiant, jeton)
+    vise = titre_colonne.strip().lower()
+    concernees = {
+        cle for cle, titre in intitules.items() if titre.strip().lower() == vise
+    }
+    if not concernees:
+        return {}
+
+    borne = ""
+    if depuis is not None:
+        borne = f', from: "{depuis.date().isoformat()}"'
+
+    historique: dict[str, list[dict]] = {}
+    vus: set[str] = set()
+
+    for page in range(1, pages_max + 1):
+        donnees = _appeler_api(
+            f"query {{ boards (ids: [{int(identifiant)}]) {{ activity_logs "
+            f"(limit: 500, page: {page}{borne}) "
+            "{ id event data created_at } } }",
+            jeton,
+        )
+        tableaux = donnees.get("boards") or []
+        if not tableaux:
+            break
+        entrees = tableaux[0].get("activity_logs") or []
+
+        nouvelles = 0
+        for entree in entrees:
+            cle = str(entree.get("id") or "")
+            if cle and cle in vus:
+                continue
+            if cle:
+                vus.add(cle)
+            nouvelles += 1
+
+            if entree.get("event") != "update_column_value":
+                continue
+            try:
+                charge = json.loads(entree.get("data") or "{}")
+            except ValueError:
+                continue
+            if str(charge.get("column_id")) not in concernees:
+                continue
+
+            element = str(charge.get("pulse_id") or "")
+            vers = _etiquette(charge.get("value"))
+            if not element or not vers:
+                continue
+
+            historique.setdefault(element, []).append({
+                "date": _horodatage(entree.get("created_at")),
+                "de": _etiquette(charge.get("previous_value")),
+                "vers": vers,
+            })
+
+        if len(entrees) < 500 or nouvelles == 0:
+            break
+
+    for changements in historique.values():
+        changements.sort(key=lambda c: c["date"] or datetime.min.replace(tzinfo=timezone.utc))
+    return historique
 
 
 def telecharger(url: str, destination: Path) -> int:

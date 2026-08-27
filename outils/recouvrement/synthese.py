@@ -366,6 +366,46 @@ def _date_tableau(valeur: str) -> datetime | None:
     return None
 
 
+def _bloc_parcours(dossier) -> str:
+    """Le parcours du dossier dans Monday, étape par étape et daté."""
+    resume = parcours(dossier)
+    if not resume["etapes"]:
+        return ""
+
+    rangees = "".join(
+        "<tr>"
+        f"<td>{etape['date']:%d/%m/%Y}</td>"
+        f"<td>{html.escape(etape.get('de') or '—')}</td>"
+        f"<td>{html.escape(etape.get('vers') or '')}</td>"
+        "</tr>"
+        for etape in resume["etapes"]
+    )
+
+    entete = "<p class='groupe'>Parcours du dossier</p>"
+    if resume["contentieux"]:
+        entete += (
+            "<p>Passé au contentieux le <b>"
+            f"{resume['contentieux']:%d/%m/%Y}</b>"
+        )
+        if resume["cloture"]:
+            entete += (
+                f", clôturé le <b>{resume['cloture']:%d/%m/%Y}</b> "
+                f"({html.escape(resume['issue'].split('— ')[-1])})"
+            )
+            if resume["duree_jours"] is not None:
+                entete += f", soit {resume['duree_jours']} jours de procédure"
+        entete += ".</p>"
+
+    return (
+        entete
+        + "<table><tr><th>Date</th><th>Étape précédente</th>"
+        f"<th>Nouvelle étape</th></tr>{rangees}</table>"
+        "<p class='chemin'>Dates relevées dans le journal d'activité de Monday. "
+        "Ce journal n'est conservé que sur une durée limitée : les étapes les "
+        "plus anciennes peuvent en être absentes.</p>"
+    )
+
+
 def rediger_contexte(dossier, synthese: Synthese, reference_temps: datetime) -> list[str]:
     """Situation du dossier, telle qu'elle ressort du tableau de suivi.
 
@@ -487,6 +527,55 @@ def resumer_echanges(dossier, synthese: Synthese, reference_temps: datetime) -> 
         lignes.append(f"Plus aucun échange depuis {silence} jours.")
 
     return lignes
+
+
+# Étapes du process de recouvrement reconnues dans l'historique Monday.
+# Repérées sur le libellé mis à plat : « 🔴 Dossier à faire passer en
+# contentieux » et « Dossier à transmettre au service contentieux » désignent
+# le même passage, sous deux tableaux différents.
+ETAPES_MARQUANTES = (
+    ("Passage au contentieux", ("contentieux",)),
+    ("Clôture — montant récupéré", ("termine montant recup", "termine montant recupere")),
+    ("Clôture — montant perdu", ("termine montant perdu",)),
+)
+
+
+def qualifier_etape(libelle: str) -> str:
+    """Le nom d'étape marquante correspondant à un libellé Monday, s'il y en a."""
+    plat = aplatir(libelle)
+    if "termine" in plat and ("recup" in plat or "recouvr" in plat):
+        return "Clôture — montant récupéré"
+    if "termine" in plat and "perdu" in plat:
+        return "Clôture — montant perdu"
+    if "contentieux" in plat:
+        return "Passage au contentieux"
+    return ""
+
+
+def parcours(dossier) -> dict:
+    """Dates clés du parcours, telles que le journal Monday les établit."""
+    etapes = [e for e in getattr(dossier, "etapes", []) if e.get("date")]
+    resume = {
+        "etapes": etapes,
+        "contentieux": None,
+        "cloture": None,
+        "issue": "",
+        "duree_jours": None,
+    }
+    if not etapes:
+        return resume
+
+    for etape in etapes:
+        qualification = qualifier_etape(etape.get("vers", ""))
+        if qualification == "Passage au contentieux" and resume["contentieux"] is None:
+            resume["contentieux"] = etape["date"]
+        elif qualification.startswith("Clôture"):
+            resume["cloture"] = etape["date"]
+            resume["issue"] = qualification
+
+    if resume["contentieux"] and resume["cloture"]:
+        resume["duree_jours"] = (resume["cloture"] - resume["contentieux"]).days
+    return resume
 
 
 CATEGORIES_PIECES = (
@@ -716,6 +805,8 @@ def construire_html(
     echanges = resumer_echanges(dossier, synthese, date_export)
     pieces = classer_pieces_jointes(lignes)
 
+    trajet = parcours(dossier)
+
     identite = [
         ("Débiteur", dossier.nom or "—"),
         ("Adresse(s) mail", " | ".join(dossier.emails) or "—"),
@@ -723,6 +814,18 @@ def construire_html(
         ("Boîtes interrogées", ", ".join(boites)),
         ("Date d'extraction", date_export.strftime("%d/%m/%Y à %H:%M")),
     ]
+    if trajet["contentieux"]:
+        identite.insert(
+            3, ("Passé au contentieux le", f"{trajet['contentieux']:%d/%m/%Y}")
+        )
+    if trajet["cloture"]:
+        identite.insert(
+            4,
+            (
+                "Clôturé le",
+                f"{trajet['cloture']:%d/%m/%Y} — {trajet['issue'].split('— ')[-1]}",
+            ),
+        )
     if rattachement:
         identite.insert(
             3, ("Rattaché au dossier", rattachement)
@@ -796,6 +899,8 @@ def construire_html(
         + "".join(f"<li>{html.escape(ligne)}</li>" for ligne in echanges)
         + "</ul>"
     )
+
+    bloc_contexte += _bloc_parcours(dossier)
 
     if dossier.commentaire:
         bloc_contexte += (

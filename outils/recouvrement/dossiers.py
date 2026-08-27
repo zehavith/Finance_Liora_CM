@@ -7,7 +7,7 @@ import re
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Gmail rejette les requêtes trop longues ; on prévient bien avant la limite.
@@ -222,6 +222,11 @@ class Dossier:
     # Toutes les colonnes de la ligne d'origine, intitulés normalisés. Sert au
     # filtrage sur une colonne que l'outil n'exploite pas par ailleurs.
     colonnes: dict[str, str] = field(default_factory=dict)
+
+    # Changements d'étape relevés dans le journal Monday : {date, de, vers},
+    # du plus ancien au plus récent. Vide quand le tableau vient d'un fichier
+    # déposé, ou quand le journal ne remonte pas assez loin.
+    etapes: list[dict] = field(default_factory=list)
 
     # Lignes d'origine du tableau, quand plusieurs factures d'un même débiteur
     # ont été réunies. Chacune garde son montant, son échéance et ses propres
@@ -513,6 +518,14 @@ def _fusionner(groupe: list[Dossier]) -> Dossier:
         statut=" · ".join(_union(lambda d: d.statut.split(" · "))),
         commentaire=" · ".join(_union(lambda d: d.commentaire.split(" · "))),
         liens=_union(lambda d: d.liens),
+        # Le parcours du débiteur est celui de ses factures réunies, remis en
+        # ordre : sans tri, les étapes de la seconde suivraient celles de la
+        # première au lieu de s'y entremêler.
+        etapes=sorted(
+            (etape for dossier in tries for etape in dossier.etapes),
+            key=lambda etape: etape.get("date")
+            or datetime.min.replace(tzinfo=timezone.utc),
+        ),
         # Les lignes d'origine sont conservées : le dossier du débiteur mène
         # ensuite à un sous-dossier par facture, chacun avec son propre montant.
         composants=tries,

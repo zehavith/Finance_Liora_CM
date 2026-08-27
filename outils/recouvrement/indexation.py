@@ -61,6 +61,10 @@ COLONNES_RECAP = [
     "sous_dossiers_factures",
     "sous_dossiers_adresses",
     "adresses_decouvertes",
+    "date_contentieux",
+    "date_cloture",
+    "issue_process",
+    "jours_de_procedure",
     "pdf_en_echec",
     "statut",
     "repertoire",
@@ -139,6 +143,10 @@ class ResumeDossier:
     sous_dossiers_factures: int = 0
     sous_dossiers_adresses: int = 0
     adresses_decouvertes: str = ""
+    date_contentieux: str = ""
+    date_cloture: str = ""
+    issue_process: str = ""
+    jours_de_procedure: str = ""
 
     def en_rangee(self) -> dict[str, str]:
         return {
@@ -163,6 +171,10 @@ class ResumeDossier:
             "sous_dossiers_factures": str(self.sous_dossiers_factures),
             "sous_dossiers_adresses": str(self.sous_dossiers_adresses),
             "adresses_decouvertes": self.adresses_decouvertes,
+            "date_contentieux": self.date_contentieux,
+            "date_cloture": self.date_cloture,
+            "issue_process": self.issue_process,
+            "jours_de_procedure": self.jours_de_procedure,
             "pdf_en_echec": str(self.pdf_en_echec),
             "statut": self.statut,
             "repertoire": self.repertoire,

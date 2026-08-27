@@ -1594,7 +1594,7 @@ def test_lecture_tableau_monday() -> None:
     try:
         tableaux = module_monday.lister_tableaux("jeton")
         verifier(
-            tableaux == [{"id": "42", "nom": "Recouvrement 2026"}],
+            tableaux == [{"id": "42", "nom": "Recouvrement 2026", "espace": ""}],
             "les tableaux accessibles sont listés avec leur identifiant",
         )
 
@@ -1664,6 +1664,222 @@ def test_lecture_tableau_monday() -> None:
             "Valeurs présentes" in str(exc),
             "une valeur sans correspondance est signalée, avec les valeurs vues",
         )
+
+
+def test_historique_etapes() -> None:
+    """Dates de passage d'étape en étape, relevées dans le journal Monday."""
+    print("\nHistorique des étapes")
+
+    import monday as module_monday  # noqa: PLC0415
+    import synthese as module_synthese  # noqa: PLC0415
+    from dossiers import Dossier  # noqa: PLC0415
+
+    def horodatage(jour):
+        # Monday date ses journaux en dix-millionièmes de seconde.
+        base = datetime(2026, 3, jour, 10, 0, tzinfo=timezone.utc)
+        return str(int(base.timestamp() * 10_000_000))
+
+    def entree(identifiant, jour, de, vers, colonne="status_1", element="777"):
+        return {
+            "id": identifiant,
+            "event": "update_column_value",
+            "created_at": horodatage(jour),
+            "data": json.dumps({
+                "pulse_id": element,
+                "column_id": colonne,
+                "previous_value": {"label": {"text": de}} if de else None,
+                "value": {"label": {"text": vers}},
+            }),
+        }
+
+    journaux = [
+        entree("1", 2, "", "Relance 1"),
+        entree("2", 5, "Relance 1", "Relance 2"),
+        # Sur une autre colonne : ne doit pas entrer dans le parcours.
+        entree("3", 6, "Vert", "Rouge", colonne="couleur"),
+        entree("4", 9, "Relance 2", "🔴 Dossier à faire passer en contentieux"),
+        entree("5", 20, "🔴 Dossier à faire passer en contentieux",
+               "Process terminé - Montant récupéré"),
+        # Un autre élément du même tableau.
+        entree("6", 11, "Relance 1", "Dossier à transmettre au service contentieux",
+               element="888"),
+    ]
+
+    def faux_appel(requete, jeton):
+        if "columns" in requete:
+            return {"boards": [{"columns": [
+                {"id": "status_1", "title": "Etape process recouvrement"},
+                {"id": "couleur", "title": "Priorité"},
+            ]}]}
+        return {"boards": [{"activity_logs": journaux}]}
+
+    vrai_appel = module_monday._appeler_api
+    module_monday._appeler_api = faux_appel
+    try:
+        historique = module_monday.historique_colonne(
+            "42", "jeton", "Etape process recouvrement"
+        )
+        vide = module_monday.historique_colonne("42", "jeton", "Colonne absente")
+    finally:
+        module_monday._appeler_api = vrai_appel
+
+    verifier(set(historique) == {"777", "888"}, "un historique par élément du tableau")
+    verifier(
+        len(historique["777"]) == 4,
+        f"les changements d'une autre colonne sont écartés (obtenu : {len(historique['777'])})",
+    )
+    verifier(
+        [e["vers"] for e in historique["777"]][:2] == ["Relance 1", "Relance 2"],
+        "les changements sont rendus du plus ancien au plus récent",
+    )
+    verifier(
+        historique["777"][0]["date"].year == 2026
+        and historique["777"][0]["date"].month == 3,
+        "l'horodatage Monday est correctement converti en date",
+    )
+    verifier(vide == {}, "une colonne absente rend un historique vide, sans erreur")
+
+    dossier = Dossier(
+        reference="FACT-1", nom="Marie", emails=["m@x.fr"], etapes=historique["777"]
+    )
+    trajet = module_synthese.parcours(dossier)
+    verifier(
+        trajet["contentieux"] is not None and trajet["contentieux"].day == 9,
+        "la date de passage au contentieux est celle du changement d'étape",
+    )
+    verifier(
+        trajet["cloture"] is not None and trajet["cloture"].day == 20,
+        "la date de clôture est celle de l'étape « process terminé »",
+    )
+    verifier(
+        trajet["issue"] == "Clôture — montant récupéré",
+        "l'issue distingue le montant récupéré du montant perdu",
+    )
+    verifier(trajet["duree_jours"] == 11, "la durée de procédure est calculée")
+
+    verifier(
+        module_synthese.qualifier_etape("Process terminé - Montant perdu")
+        == "Clôture — montant perdu",
+        "le montant perdu est reconnu comme tel",
+    )
+    verifier(
+        module_synthese.qualifier_etape("Dossier à transmettre au service contentieux")
+        == "Passage au contentieux",
+        "les deux libellés de passage au contentieux sont reconnus",
+    )
+    verifier(
+        module_synthese.qualifier_etape("Relance 2") == "",
+        "une étape courante n'est pas prise pour une étape marquante",
+    )
+
+    page = module_synthese.construire_html(
+        dossier=dossier,
+        boites=["recouvrement@liora.io"],
+        lignes=[_ligne(1, 3, "envoyé", "Relance")],
+        synthese=module_synthese.analyser([_ligne(1, 3, "envoyé", "Relance")], {}),
+        date_export=datetime(2026, 4, 1, tzinfo=timezone(timedelta(hours=1))),
+    )
+    verifier(
+        "Parcours du dossier" in page and "Passé au contentieux le" in page,
+        "la note porte le parcours et la date de passage au contentieux",
+    )
+    verifier(
+        "09/03/2026" in page and "20/03/2026" in page,
+        "les dates des étapes figurent dans la note",
+    )
+    verifier(
+        "11 jours de procédure" in page,
+        "la durée de procédure est annoncée",
+    )
+    verifier(
+        "journal d'activité de Monday" in page,
+        "la note dit d'où viennent ces dates, et que ce journal est limité",
+    )
+
+    sans = module_synthese.construire_html(
+        dossier=Dossier(reference="F", nom="X", emails=["a@b.fr"]),
+        boites=["recouvrement@liora.io"],
+        lignes=[_ligne(1, 3, "envoyé", "Relance")],
+        synthese=module_synthese.analyser([_ligne(1, 3, "envoyé", "Relance")], {}),
+        date_export=datetime(2026, 4, 1, tzinfo=timezone(timedelta(hours=1))),
+    )
+    verifier(
+        "Parcours du dossier" not in sans,
+        "sans historique, la note n'annonce pas un parcours vide",
+    )
+
+
+def test_liste_complete_tableaux() -> None:
+    """Tous les tableaux du compte, pagination comprise, en ordre naturel."""
+    print("\nListe des tableaux Monday")
+
+    import monday as module_monday  # noqa: PLC0415
+
+    # Les tableaux de Liora, tels qu'ils apparaissent dans Monday.
+    noms = [
+        "1.1. Entreprise - ADV", "1.2. Entreprise - Recouvrement",
+        "1.3. Entreprise - OPCO", "1.9. Opco et plateforme - Technique",
+        "1.9. Entreprise - Technique", "2.1. Financement Personnel",
+        "2.2. Financement CPF", "2.3. Financement pôle emploi : AIF / POEI",
+        "2.4. Financement complexe : REGION / TRANSITION / AGEFIPH",
+        "2.9. Dossier AIF en cours - Technique", "2.9. Zone Kairos - Technique",
+        "2.9. RIB Reçus - Technique", "2.9. Transactions - Technique",
+    ]
+    tous = [
+        {"id": 100 + rang, "name": nom, "workspace": {"name": "Recouvrement"}}
+        for rang, nom in enumerate(noms)
+    ]
+
+    pages: list[int] = []
+
+    def faux_appel(requete, jeton):
+        # Deux pages : la première pleine, la seconde partielle.
+        page = int(requete.split("page: ")[1].split(",")[0])
+        pages.append(page)
+        taille = module_monday.TABLEAUX_PAR_PAGE
+        debut = (page - 1) * taille
+        return {"boards": tous[debut:debut + taille]}
+
+    vrai_appel = module_monday._appeler_api
+    taille_reelle = module_monday.TABLEAUX_PAR_PAGE
+    module_monday._appeler_api = faux_appel
+    module_monday.TABLEAUX_PAR_PAGE = 10  # force une seconde page
+    try:
+        tableaux = module_monday.lister_tableaux("jeton")
+    finally:
+        module_monday._appeler_api = vrai_appel
+        module_monday.TABLEAUX_PAR_PAGE = taille_reelle
+
+    verifier(pages == [1, 2], "la seconde page est demandée, puis la lecture s'arrête")
+    verifier(
+        len(tableaux) == len(noms),
+        f"les {len(noms)} tableaux sont tous listés (obtenu : {len(tableaux)})",
+    )
+    verifier(
+        [tab["nom"] for tab in tableaux] == sorted(noms, key=str.lower),
+        "l'ordre est celui de la numérotation Monday, non celui d'usage",
+    )
+    verifier(
+        tableaux[0]["espace"] == "Recouvrement",
+        "l'espace de travail accompagne chaque tableau",
+    )
+    verifier(
+        {tab["id"] for tab in tableaux} == {str(100 + rang) for rang in range(len(noms))},
+        "chaque tableau porte son identifiant, sous forme de texte",
+    )
+
+    # Une API qui renverrait toujours la même page ne doit pas boucler sans fin.
+    module_monday._appeler_api = lambda requete, jeton: {"boards": tous[:1] * 10}
+    module_monday.TABLEAUX_PAR_PAGE = 10
+    try:
+        bornes = module_monday.lister_tableaux("jeton")
+    finally:
+        module_monday._appeler_api = vrai_appel
+        module_monday.TABLEAUX_PAR_PAGE = taille_reelle
+    verifier(
+        len(bornes) == 1,
+        "un même tableau renvoyé en boucle n'est compté qu'une fois",
+    )
 
 
 def test_deux_tableaux() -> None:
@@ -2183,6 +2399,7 @@ def test_interface() -> None:
             ('id="domaines"', "domaines d'envoi"),
             ('id="tableau"', "choix du tableau Monday"),
             ('id="listerTableaux"', "bouton de listage des tableaux"),
+            ('id="chercheTableau"', "recherche dans les tableaux"),
             ('id="filtreColonne"', "colonne de filtrage"),
             ('id="filtreValeur"', "valeur de filtrage"),
             ('data-volet="voletMonday"', "volet Monday en direct"),
@@ -2595,6 +2812,8 @@ def main() -> int:
     test_decouverte_adresses()
     test_sens_et_faux_positifs()
     test_lecture_tableau_monday()
+    test_historique_etapes()
+    test_liste_complete_tableaux()
     test_deux_tableaux()
     test_lanceurs_windows()
     test_mise_a_jour()

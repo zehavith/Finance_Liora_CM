@@ -229,6 +229,15 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     analyseur.add_argument(
+        "--colonne-etapes",
+        default="",
+        help=(
+            "Colonne dont l'historique des changements est relevé dans Monday, "
+            "pour dater le passage au contentieux et la clôture. Par défaut, "
+            "celle de --filtre-colonne."
+        ),
+    )
+    analyseur.add_argument(
         "--filtre-colonne",
         default="",
         help=(
@@ -352,6 +361,15 @@ def traiter_dossier(
         montant_du=dossier.montant_du,
         montant_total=dossier.montant_total,
     )
+
+    trajet = module_synthese.parcours(dossier)
+    if trajet["contentieux"]:
+        resume.date_contentieux = f"{trajet['contentieux']:%d/%m/%Y}"
+    if trajet["cloture"]:
+        resume.date_cloture = f"{trajet['cloture']:%d/%m/%Y}"
+        resume.issue_process = trajet["issue"].split("— ")[-1]
+    if trajet["duree_jours"] is not None:
+        resume.jours_de_procedure = str(trajet["duree_jours"])
 
     repertoire = racine_sortie / dossier.nom_repertoire
     chemin_index = repertoire / "index.csv"
@@ -778,6 +796,43 @@ def _decouvrir_adresses(
     return retenues, identifiants
 
 
+def _attacher_historique(
+    dossiers: list[Dossier],
+    tableau: str,
+    jeton: str,
+    colonne: str,
+    journal: Journal,
+) -> None:
+    """Rattache à chaque ligne son historique de changements d'étape.
+
+    Un échec n'interrompt rien : l'historique enrichit la note, il ne la
+    conditionne pas. Un journal Monday tronqué par l'abonnement, ou une
+    colonne renommée, ne doivent pas faire perdre l'export des messages.
+    """
+    try:
+        historique = module_monday.historique_colonne(tableau, jeton, colonne)
+    except module_monday.ErreurMonday as exc:
+        journal(f"    ⚠ historique des étapes indisponible : {exc}")
+        return
+
+    if not historique:
+        journal(
+            f"    aucun changement d'étape relevé sur « {colonne} » — Monday ne "
+            "conserve son journal d'activité que sur une durée limitée"
+        )
+        return
+
+    rattaches = 0
+    for dossier in dossiers:
+        element = dossier.colonnes.get("monday id", "")
+        changements = historique.get(element)
+        if changements:
+            dossier.etapes = list(changements)
+            rattaches += 1
+
+    journal(f"    historique des étapes relevé pour {rattaches} ligne(s)")
+
+
 def _copier_piece(repertoire: Path, cible: Path, base: str) -> None:
     """Recopie une pièce — message et pièces jointes — dans un sous-dossier.
 
@@ -1080,6 +1135,15 @@ def executer(
                     signaler=journal,
                 )
                 journal(f"    {len(lignes_tableau)} ligne(s) exploitable(s)")
+
+                colonne_etapes = (
+                    options.colonne_etapes or options.filtre_colonne or ""
+                ).strip()
+                if colonne_etapes:
+                    _attacher_historique(
+                        lignes_tableau, identifiant, jeton, colonne_etapes, journal
+                    )
+
                 liste += lignes_tableau
 
             # Chaque tableau numérote ses lignes pour lui seul : réunis, deux
