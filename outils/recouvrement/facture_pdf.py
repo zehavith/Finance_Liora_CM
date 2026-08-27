@@ -26,7 +26,7 @@ from __future__ import annotations
 import re
 import unicodedata
 import zlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # 12/03/2026, 12-03-2026, 12.03.26
@@ -41,24 +41,61 @@ DATE_EN_LETTRES = re.compile(
     r"\b(\d{1,2})\s+(" + "|".join(MOIS) + r")\s+(\d{4})\b"
 )
 
-# Intitulés cherchés, par ordre de préférence. L'échéance prime : c'est elle
-# qui date le retard. À défaut, la date d'émission sert de repli, et le fait
-# est signalé — un retard compté depuis l'émission est plus long qu'il ne l'est
-# réellement, du délai de paiement accordé.
+# Intitulés cherchés, par champ et par ordre de préférence.
+#
+# Aucun intitulé générique — pas de « date » tout court : une facture Liora
+# porte « Dates de service : 06/06/2022 - 13/06/2022 », et un intitulé trop
+# large y lirait le début de la prestation en croyant lire la facture.
 INTITULES = (
-    ("echeance", (
-        "date d echeance", "date echeance", "echeance le", "echeance",
-        "date limite de paiement", "a regler avant le", "a regler avant",
-        "payable avant le", "payable avant", "date de reglement",
+    ("facture", (
+        "en date du", "date de facture", "date de la facture", "facture du",
+        "date d emission", "date d edition", "emise le",
     )),
-    ("emission", (
-        "date de facture", "date d emission", "date d edition", "facture du",
-        "emise le", "date de la facture", "date",
+    ("debut_formation", (
+        "debut de formation", "date de debut de formation", "debut de service",
+        "dates de service", "date de debut",
+    )),
+    # Une échéance parfois imprimée sur la facture. Elle ne fait pas foi chez
+    # Liora — l'échéance se calcule — mais elle sert de dernier recours quand
+    # ni la date de facture ni le début de formation ne sont lisibles.
+    ("limite_imprimee", (
+        "date limite de reglement", "date limite de paiement",
+        "date d echeance", "date echeance", "a regler avant le",
+        "payable avant le", "echeance le",
     )),
 )
 
+# Règles d'échéance en vigueur chez Liora. Elles ne figurent pas sur la
+# facture : celle-ci porte « À réception de facture » quel que soit le cas.
+REGIMES = {
+    "formation": "début de formation",
+    "facture30": "date de facture + {delai} jours",
+}
+REGIME_PAR_DEFAUT = "facture30"
+DELAI_PAIEMENT = 30
+
 # Au-delà, l'intitulé et la date n'ont plus de rapport l'un avec l'autre.
 PORTEE_INTITULE = 60
+
+
+# Les tableaux B2C financent la formation par l'apprenant lui-même : l'échéance
+# y tombe au début de la formation. Les tableaux entreprise suivent la règle
+# commerciale ordinaire. Le nom du tableau tranche, et le choix reste affiché
+# et modifiable — un tableau renommé ne doit pas changer les échéances en
+# silence.
+MOTS_FORMATION = ("financement", "personnel", "particulier", "cpf", "b2c",
+                  "pole emploi", "aif", "poei", "region", "transition", "agefiph")
+MOTS_FACTURE30 = ("entreprise", "opco", "societe", "b2b", "adv")
+
+
+def regime_deduit(nom_tableau: str, defaut: str = REGIME_PAR_DEFAUT) -> str:
+    """Règle d'échéance déduite du nom du tableau, à défaut d'un choix explicite."""
+    plat = _aplatir(nom_tableau)
+    if any(mot in plat for mot in MOTS_FACTURE30):
+        return "facture30"
+    if any(mot in plat for mot in MOTS_FORMATION):
+        return "formation"
+    return defaut
 
 
 def _aplatir(texte: str) -> str:
@@ -203,15 +240,14 @@ def _premiere_date(fragment: str) -> str:
 
 
 def dates_de_facture(texte: str) -> dict:
-    """Échéance et date d'émission portées par le texte d'une facture.
+    """Dates portées par une facture : émission, début de formation, limite.
 
     Chaque date est cherchée derrière son intitulé, jamais isolément.
     """
     plat = _aplatir(texte)
     # Les positions se correspondent : la mise à plat conserve la longueur
-    # d'origine sur les caractères ASCII, et les accents sont retirés sans
-    # décaler ce qui suit dans le fragment examiné.
-    resultat = {"echeance": "", "emission": "", "intitule": ""}
+    # d'origine, et les accents sont retirés sans décaler ce qui suit.
+    resultat = {champ: "" for champ, _ in INTITULES}
 
     for champ, intitules in INTITULES:
         for intitule in intitules:
@@ -227,8 +263,6 @@ def dates_de_facture(texte: str) -> dict:
                 date = _premiere_date(fragment)
                 if date:
                     resultat[champ] = date
-                    if champ == "echeance" and not resultat["intitule"]:
-                        resultat["intitule"] = intitule
                     break
                 depart = position + len(intitule)
             if resultat[champ]:
@@ -237,19 +271,56 @@ def dates_de_facture(texte: str) -> dict:
     return resultat
 
 
-def echeance_de_la_facture(chemin: Path) -> tuple[str, str]:
-    """(date, origine) lues dans une facture PDF.
+def _ajouter_jours(date: str, jours: int) -> str:
+    try:
+        lue = datetime.strptime(date, "%d/%m/%Y")
+    except ValueError:
+        return ""
+    return (lue + timedelta(days=jours)).strftime("%d/%m/%Y")
 
-    L'origine dit ce qui a été trouvé — échéance ou date d'émission — pour que
-    le récapitulatif n'affiche jamais une date sans dire ce qu'elle est.
+
+def echeance_selon_regime(
+    dates: dict, regime: str = REGIME_PAR_DEFAUT, delai: int = DELAI_PAIEMENT
+) -> tuple[str, str]:
+    """Échéance calculée selon la règle en vigueur, et son mode d'obtention.
+
+    Chez Liora l'échéance ne s'imprime pas sur la facture : en financement
+    personnel elle tombe au **début de la formation**, ailleurs à la **date de
+    facture plus trente jours**. La facture porte « À réception de facture »
+    dans les deux cas — s'y fier daterait tous les retards du même jour.
+
+    Le mode d'obtention est toujours retourné : une échéance calculée et une
+    échéance imprimée n'ont pas le même statut, et le récapitulatif le dit.
     """
+    if regime == "formation" and dates.get("debut_formation"):
+        return dates["debut_formation"], "début de formation"
+
+    if regime != "formation" and dates.get("facture"):
+        calculee = _ajouter_jours(dates["facture"], delai)
+        if calculee:
+            return calculee, f"date de facture ({dates['facture']}) + {delai} jours"
+
+    # Replis, dans l'ordre où ils restent défendables.
+    if dates.get("limite_imprimee"):
+        return dates["limite_imprimee"], "date limite imprimée sur la facture"
+    if regime == "formation" and dates.get("facture"):
+        calculee = _ajouter_jours(dates["facture"], delai)
+        if calculee:
+            return calculee, (
+                f"début de formation absent — date de facture + {delai} jours"
+            )
+    if regime != "formation" and dates.get("debut_formation"):
+        return dates["debut_formation"], (
+            "date de facture absente — début de formation retenu"
+        )
+    return "", "aucune date étiquetée"
+
+
+def echeance_de_la_facture(
+    chemin: Path, regime: str = REGIME_PAR_DEFAUT, delai: int = DELAI_PAIEMENT
+) -> tuple[str, str]:
+    """(date, origine) calculées à partir d'une facture PDF."""
     texte = texte_du_pdf(chemin)
     if not texte.strip():
         return "", "illisible"
-
-    dates = dates_de_facture(texte)
-    if dates["echeance"]:
-        return dates["echeance"], "échéance lue sur la facture"
-    if dates["emission"]:
-        return dates["emission"], "date d'émission de la facture, à défaut d'échéance"
-    return "", "aucune date étiquetée"
+    return echeance_selon_regime(dates_de_facture(texte), regime, delai)

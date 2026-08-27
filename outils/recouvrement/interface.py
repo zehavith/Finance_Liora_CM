@@ -288,6 +288,14 @@ def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str
     if tableau:
         arguments += ["--tableau-monday", tableau]
 
+    regimes = (demande.get("regimes_echeance") or "").strip()
+    if regimes:
+        arguments += ["--regimes-echeance", regimes]
+
+    delai = str(demande.get("delai_paiement") or "").strip()
+    if delai.isdigit():
+        arguments += ["--delai-paiement", delai]
+
     colonne = (demande.get("filtre_colonne") or "").strip()
     valeur = (demande.get("filtre_valeur") or "").strip()
     if colonne and valeur:
@@ -379,6 +387,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 "__FILTRE_VALEUR__",
                 _attribut(preferences.get("filtre_valeur", FILTRE_VALEUR_PAR_DEFAUT)),
             ).replace(
+                # Objet JSON inséré tel quel dans le script : `<` échappé,
+                # le nom d'un tableau n'a rien à faire dans une balise.
+                "__REGIMES__",
+                json.dumps(preferences.get("regimes_echeance") or {},
+                           ensure_ascii=False).replace("<", "\\u003c"),
+            ).replace(
                 "__TABLEAU__", _attribut(preferences.get("tableau", ""))
             ).replace("__OPTIONS__", _cases_json(preferences))
             self._repondre(200, page.encode("utf-8"), "text/html; charset=utf-8")
@@ -465,6 +479,14 @@ class Gestionnaire(BaseHTTPRequestHandler):
                         "filtre_colonne", "filtre_valeur", "tableau")
             if cle in demande
         }
+
+        regimes = demande.get("regimes_echeance")
+        if isinstance(regimes, str) and regimes:
+            valeurs["regimes_echeance"] = {
+                cle.strip(): valeur.strip()
+                for morceau in regimes.split(",") if "=" in morceau
+                for cle, valeur in [morceau.split("=", 1)]
+            }
 
         options = demande.get("options")
         if isinstance(options, dict):
@@ -797,6 +819,8 @@ select:focus,input.frais:focus,input.note:focus{outline:none;border-color:var(--
   border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:6px 10px}
 .liste-tableaux .case{margin:2px 0}
 .liste-tableaux .case i{display:block;font-size:11px;opacity:.6;font-style:normal}
+.liste-tableaux .case{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}
+.liste-tableaux select.regime{font-size:11.5px;padding:3px 6px}
 .courbe svg{width:100%;height:auto;aspect-ratio:760/240;display:block;overflow:visible}
 .courbe .grille{stroke:rgba(255,255,255,.10);stroke-width:1}
 .courbe .axe{fill:var(--doux);font-size:10px}
@@ -1077,6 +1101,7 @@ const TABLEAU_MEMORISE = "__TABLEAU__";
 // après avoir coché « recouvrement » ne doit pas décocher ce dernier.
 let TABLEAUX = [];
 const TABLEAUX_COCHES = new Set(TABLEAU_MEMORISE.split(",").filter(Boolean));
+const REGIMES_ECHEANCE = __REGIMES__;
 let fichierChoisi = null, position = 0, sondage = null, mode = "fichier";
 // Le fichier importé est conservé à côté de l'outil, mais aucun navigateur
 // ne peut repeupler un champ de fichier : on le rappelle, et on permet de
@@ -1143,6 +1168,16 @@ $("listerTableaux").addEventListener("click", async () => {
     majBouton();
   }
 });
+// Mêmes mots-clés que côté outil : les tableaux B2C financent la formation par
+// l'apprenant, l'échéance y tombe au début de la formation.
+function regimeDeduit(nom) {
+  const plat = (nom || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/(entreprise|opco|societe|b2b|adv)/.test(plat)) return "facture30";
+  if (/(financement|personnel|particulier|cpf|b2c|pole emploi|aif|poei|region|transition|agefiph)/.test(plat))
+    return "formation";
+  return "facture30";
+}
+
 function rendreTableaux() {
   const cherche = $("chercheTableau").value.trim().toLowerCase();
   const liste = $("tableau");
@@ -1176,6 +1211,22 @@ function rendreTableaux() {
       (tab.espace ? echapper(tab.espace) + " · " : "") + "n° " + tab.id + "</i>";
     etiquette.appendChild(coche);
     etiquette.appendChild(texte);
+
+    // L'échéance ne s'imprime pas sur la facture : elle se calcule, et pas de
+    // la même façon selon le financement. Le choix est déduit du nom du
+    // tableau, mais reste affiché et modifiable — un tableau renommé ne doit
+    // pas changer les échéances en silence.
+    const regime = document.createElement("select");
+    regime.className = "regime";
+    regime.innerHTML =
+      '<option value="formation">échéance = début de formation</option>' +
+      '<option value="facture30">échéance = date de facture + 30 j</option>';
+    regime.value = REGIMES_ECHEANCE[tab.id] || regimeDeduit(tab.nom);
+    regime.addEventListener("change", () => {
+      REGIMES_ECHEANCE[tab.id] = regime.value;
+      enregistrerReglages();
+    });
+    etiquette.appendChild(regime);
     liste.appendChild(etiquette);
   });
 }
@@ -1184,6 +1235,10 @@ $("chercheTableau").addEventListener("input", rendreTableaux);
 
 function tableauxCoches() {
   return Array.from(TABLEAUX_COCHES).join(",");
+}
+
+function reglesEcheance() {
+  return Object.entries(REGIMES_ECHEANCE).map(([id, r]) => id + "=" + r).join(",");
 }
 
 // Les cases reprennent l'état de la dernière session : ce qui a été décidé
@@ -1205,6 +1260,7 @@ function reglages() {
     filtre_colonne: $("filtreColonne").value,
     filtre_valeur: $("filtreValeur").value,
     tableau: tableauxCoches(),
+    regimes_echeance: reglesEcheance(),
     jeton_monday: $("jetonMonday").value, options: options,
   };
 }
@@ -1300,6 +1356,7 @@ $("lancer").addEventListener("click", async () => {
       filtre_colonne: $("filtreColonne").value,
       filtre_valeur: $("filtreValeur").value,
       tableau: tableauxCoches(),
+      regimes_echeance: reglesEcheance(),
       simulation: $("simulation").checked,
       ignorer_lignes_incompletes: $("ignorer").checked,
       sans_regroupement: !$("regrouper").checked,

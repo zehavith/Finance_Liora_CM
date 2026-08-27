@@ -217,7 +217,7 @@ def lire_tableau(identifiant: str, jeton: str, par_page: int = 100) -> list[tupl
             else f"items_page (limit: {int(par_page)})"
         )
         donnees = _appeler_api(
-            f"query {{ boards (ids: [{int(identifiant)}]) {{ "
+            f"query {{ boards (ids: [{int(identifiant)}]) {{ name "
             f"{page} {{ cursor items {{ id name column_values {{ "
             "column { title } text value } } } } } }",
             jeton,
@@ -229,6 +229,7 @@ def lire_tableau(identifiant: str, jeton: str, par_page: int = 100) -> list[tupl
                 f"Tableau {identifiant} introuvable, ou inaccessible avec ce jeton."
             )
 
+        nom_tableau = (tableaux[0].get("name") or "").strip()
         contenu = tableaux[0].get("items_page") or {}
         for element in contenu.get("items") or []:
             colonnes = element.get("column_values") or []
@@ -236,12 +237,12 @@ def lire_tableau(identifiant: str, jeton: str, par_page: int = 100) -> list[tupl
                 # « Monday ID » n'est reconnu comme aucun champ : il voyage
                 # avec la ligne sans rien perturber, et c'est lui qui relie
                 # ensuite le dossier à son historique d'étapes.
-                entetes = ["Name", "Monday ID"] + [
+                entetes = ["Name", "Monday ID", "Monday tableau"] + [
                     ((colonne.get("column") or {}).get("title") or "").strip()
                     for colonne in colonnes
                 ]
             lignes.append(
-                [element.get("name") or "", str(element.get("id") or "")]
+                [element.get("name") or "", str(element.get("id") or ""), nom_tableau]
                 + [_valeur_colonne(colonne) for colonne in colonnes]
             )
 

@@ -1566,32 +1566,75 @@ def test_echeance_facture() -> None:
 
     import facture_pdf  # noqa: PLC0415
 
+    facture_liora = (
+        "Facture FACT-2405-00030\n"
+        "En date du : 06/06/2022\n"
+        "Objet : Apprenant : AÏSSATA CONTE\n"
+        "Début de formation : 06/06/2022\n"
+        "Dates de service : 06/06/2022 - 13/06/2022\n"
+        "Délai de règlement : À réception de facture\n"
+        "Date limite de règlement : 06/06/2022\n"
+    )
+    dates = facture_pdf.dates_de_facture(facture_liora)
     verifier(
-        facture_pdf.dates_de_facture(
-            "Date de facture : 12/03/2025\nDate d'échéance : 11/04/2025"
-        )["echeance"] == "11/04/2025",
-        "l'échéance est distinguée de la date de facture",
+        dates["facture"] == "06/06/2022",
+        f"« En date du » donne la date de facture (obtenu : {dates['facture']})",
     )
     verifier(
-        facture_pdf.dates_de_facture("Facture du 5 janvier 2024 — "
-                                     "À régler avant le 4 février 2024")["echeance"]
-        == "04/02/2024",
-        "une date en toutes lettres et un intitulé indirect sont reconnus",
+        dates["debut_formation"] == "06/06/2022",
+        "le début de formation est relevé",
     )
+
+    verifier(
+        facture_pdf.echeance_selon_regime(dates, "formation")
+        == ("06/06/2022", "début de formation"),
+        "financement personnel : l'échéance tombe au début de la formation",
+    )
+    date, origine = facture_pdf.echeance_selon_regime(dates, "facture30")
+    verifier(
+        date == "06/07/2022",
+        f"hors financement personnel : facture + 30 jours (obtenu : {date})",
+    )
+    verifier("30 jours" in origine, "le mode de calcul est rapporté avec la date")
+    verifier(
+        facture_pdf.echeance_selon_regime(dates, "facture30", delai=45)[0]
+        == "21/07/2022",
+        "le délai est paramétrable",
+    )
+
     verifier(
         facture_pdf.dates_de_facture(
             "Formation du 12/03/2024 au 20/06/2024. Montant 1 200 €"
-        ) == {"echeance": "", "emission": "", "intitule": ""},
-        "une date sans intitulé de facture n'est jamais retenue",
+        ) == {"facture": "", "debut_formation": "", "limite_imprimee": ""},
+        "une date sans intitulé reconnu n'est jamais retenue",
     )
     verifier(
-        facture_pdf.dates_de_facture("Echéance le 31/02/2026")["echeance"] == "",
+        facture_pdf.dates_de_facture("Date limite de règlement : 31/02/2026")
+        ["limite_imprimee"] == "",
         "une date qui n'existe pas au calendrier est écartée, non rattrapée",
     )
     verifier(
-        facture_pdf.dates_de_facture("DATE D'ÉCHÉANCE 05.11.2025")["echeance"]
+        facture_pdf.dates_de_facture("DATE D'ÉCHÉANCE 05.11.2025")["limite_imprimee"]
         == "05/11/2025",
         "majuscules, accents et points de séparation ne gênent pas la lecture",
+    )
+    verifier(
+        facture_pdf.echeance_selon_regime(
+            {"limite_imprimee": "01/02/2026"}, "formation"
+        ) == ("01/02/2026", "date limite imprimée sur la facture"),
+        "sans date calculable, la limite imprimée sert de dernier recours",
+    )
+    verifier(
+        facture_pdf.echeance_selon_regime({}, "formation")[0] == "",
+        "sans aucune date, rien n'est inventé",
+    )
+
+    verifier(
+        [facture_pdf.regime_deduit(nom) for nom in (
+            "1.2. Entreprise - Recouvrement", "2.1. Financement Personnel",
+            "2.2. Financement CPF", "1.3. Entreprise - OPCO")]
+        == ["facture30", "formation", "formation", "facture30"],
+        "la règle est déduite du nom du tableau, entreprise contre financement",
     )
 
     with tempfile.TemporaryDirectory() as repertoire:
@@ -1599,25 +1642,25 @@ def test_echeance_facture() -> None:
         facture = racine / "FACT-2405-00030.pdf"
         _facture_pdf(facture, (
             "LIORA - FACTURE FACT-2405-00030\n"
-            "Date de facture : 12/03/2025\n"
-            "Date d'echeance : 11/04/2025\n"
+            "En date du : 12/03/2025\n"
             "Total TTC 2 700,00 EUR"
         ))
 
         verifier(
-            "11/04/2025" in facture_pdf.texte_du_pdf(facture),
+            "12/03/2025" in facture_pdf.texte_du_pdf(facture),
             "le texte est extrait d'un vrai PDF au flux compressé",
         )
-        date, origine = facture_pdf.echeance_de_la_facture(facture)
-        verifier(date == "11/04/2025", f"échéance lue du PDF (obtenu : {date})")
-        verifier("échéance" in origine, "l'origine de la date est rapportée")
+        date, origine = facture_pdf.echeance_de_la_facture(facture, "facture30")
+        verifier(date == "11/04/2025", f"échéance calculée du PDF (obtenu : {date})")
+        verifier("30 jours" in origine, "l'origine de la date est rapportée")
 
         # Sans pypdf, le lecteur minimal doit donner le même résultat.
         vrai = facture_pdf._texte_via_pypdf
         facture_pdf._texte_via_pypdf = lambda chemin: ""
         try:
             verifier(
-                facture_pdf.echeance_de_la_facture(facture)[0] == "11/04/2025",
+                facture_pdf.echeance_de_la_facture(facture, "facture30")[0]
+                == "11/04/2025",
                 "le lecteur de secours, sans pypdf, lit la même échéance",
             )
         finally:
@@ -1640,14 +1683,14 @@ def test_echeance_facture() -> None:
         documents = racine / "documents-monday"
         documents.mkdir()
         _facture_pdf(documents / "Convention de formation.pdf",
-                     "Convention\nDate d'echeance : 01/01/2000")
+                     "Convention\nDébut de formation : 01/01/2000")
         _facture_pdf(documents / "Facture FACT-1.pdf",
-                     "Facture\nDate d'echeance : 15/06/2026")
+                     "Facture\nDébut de formation : 15/06/2026")
 
         journal: list[str] = []
         date, _origine = export_mails._echeance_depuis_facture(
             Dossier(reference="FACT-1", nom="X", emails=["a@b.fr"], factures=["FACT-1"]),
-            racine, journal.append,
+            racine, journal.append, "formation",
         )
         verifier(
             date == "15/06/2026",
@@ -2562,7 +2605,7 @@ def test_interface() -> None:
         restants = [m for m in ("__JETON__", "__SORTIE__", "__BOITES__",
                                 "__MOTEUR_PDF__", "__ETAT_MONDAY__",
                                 "__IMPORT__", "__DOMAINES__", "__OPTIONS__",
-                                "__SEULEMENT__", "__TABLEAU__",
+                                "__SEULEMENT__", "__TABLEAU__", "__REGIMES__",
                                 "__FILTRE_COLONNE__", "__FILTRE_VALEUR__") if m in page]
         verifier(not restants, f"aucun marqueur de gabarit non remplacé{' — reste : ' + ', '.join(restants) if restants else ''}")
         verifier("__JETON__" not in page, "le jeton est injecté dans la page")

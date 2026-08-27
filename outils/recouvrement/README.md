@@ -182,25 +182,40 @@ bleue, et deux échelles de même teinte sur un même écran se confondraient.
 Du plus sombre au plus clair — c'est la créance la plus ancienne qui doit
 ressortir.
 
-#### L'échéance lue sur la facture
+#### L'échéance calculée depuis la facture
 
-Quand le tableau ne renseigne pas l'échéance, elle est lue **dans la facture
-PDF** déjà téléchargée depuis Monday. Sans elle, la tranche d'ancienneté
-resterait vide, et c'est la lecture la plus utile du tableau de bord qui
-manquerait.
+**L'échéance ne figure pas sur la facture.** Une facture Liora porte « Délai de
+règlement : À réception de facture », quel que soit le cas — s'y fier daterait
+tous les retards du même jour. Elle se calcule, et pas de la même façon selon
+le financement :
 
-L'échéance saisie au tableau prime toujours : la facture n'est qu'un repli.
-La colonne `source_echeance` de `_recapitulatif.csv` dit laquelle a servi.
+| Financement | Échéance |
+|---|---|
+| personnel (B2C : CPF, Pôle emploi, région…) | **début de formation** |
+| entreprise, OPCO | **date de facture + 30 jours** |
 
-Trois règles, parce qu'une facture porte plusieurs dates :
+Les deux dates nécessaires, elles, sont bien sur la facture : « En date du »
+pour la facture, « Début de formation » pour la formation. Le délai de 30 jours
+se règle avec `--delai-paiement`.
 
-- **une date n'est retenue que si elle est étiquetée** — « Date d'échéance »,
-  « À régler avant le », « Date limite de paiement ». Une date isolée, comme
-  celle d'une période de formation, ne l'est jamais ;
-- à défaut d'échéance, la **date d'émission** sert de repli, et le fait est
-  écrit : un retard compté depuis l'émission est plus long qu'il ne l'est
-  réellement, du délai de paiement accordé ;
-- une date qui n'existe pas au calendrier est **écartée**, jamais rattrapée.
+La règle applicable **se choisit par tableau**, dans la liste des tableaux
+Monday : elle est proposée d'après le nom du tableau — « Entreprise » d'un côté,
+« Financement » de l'autre — mais reste affichée et modifiable. Un tableau
+renommé ne doit pas changer les échéances en silence.
+
+L'échéance saisie au tableau prime toujours sur le calcul, et le début de
+formation renseigné au tableau évite d'ouvrir la facture. La colonne
+`source_echeance` de `_recapitulatif.csv` dit d'où vient chaque date :
+« tableau de suivi », « début de formation », « date de facture (…) + 30 jours ».
+
+Trois précautions dans la lecture du PDF :
+
+- **une date n'est retenue que si elle est étiquetée.** Une facture Liora porte
+  « Dates de service : 06/06/2022 - 13/06/2022 » ; un intitulé trop large y
+  lirait le début de la prestation en croyant lire la facture ;
+- une date qui n'existe pas au calendrier est **écartée**, jamais rattrapée ;
+- à défaut de toute date calculable, la **limite imprimée** sur la facture sert
+  de dernier recours — et c'est dit.
 
 Les conventions de formation sont exclues de cette lecture : elles portent des
 dates, mais aucune échéance de paiement.

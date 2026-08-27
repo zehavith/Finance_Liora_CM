@@ -223,6 +223,11 @@ class Dossier:
     # filtrage sur une colonne que l'outil n'exploite pas par ailleurs.
     colonnes: dict[str, str] = field(default_factory=dict)
 
+    # Nom du tableau d'où vient la ligne. Un export Monday le porte en première
+    # ligne, avant les intitulés de colonnes ; c'est lui qui dit si l'échéance
+    # se compte au début de la formation ou à la facture plus trente jours.
+    origine_tableau: str = ""
+
     # Changements d'étape relevés dans le journal Monday : {date, de, vers},
     # du plus ancien au plus récent. Vide quand le tableau vient d'un fichier
     # déposé, ou quand le journal ne remonte pas assez loin.
@@ -840,6 +845,17 @@ def dossiers_depuis_grille(
         )
         signaler(f"Colonnes reconnues : {detail}")
 
+    # Un export Monday porte le nom du tableau au-dessus des intitulés.
+    titre_tableau = next(
+        (
+            cellule.strip()
+            for _numero, cellules in grille[:max(index_entete, 0)]
+            for cellule in cellules
+            if cellule.strip()
+        ),
+        "",
+    )
+
     dossiers: list[Dossier] = []
     ignorees: list[int] = []
     hors_sujet: list[int] = []
@@ -895,6 +911,7 @@ def dossiers_depuis_grille(
             commentaire=" · ".join(valeurs["commentaire"]),
             liens=[v for v in valeurs["liens"] if v.lower().startswith("http")],
             colonnes=brutes,
+            origine_tableau=titre_tableau,
         )
 
         if not dossier.emails and not dossier.factures:
