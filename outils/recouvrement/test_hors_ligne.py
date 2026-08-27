@@ -1521,6 +1521,52 @@ class ClientEvolutif:
             yield message
 
 
+def test_lanceurs_windows() -> None:
+    """Les lanceurs Windows doivent rester en ASCII pur.
+
+    Un .bat, un .ps1 ou un .vbs est lu dans la page de codes du poste, jamais
+    en UTF-8. Un seul accent y suffit à tout casser : « echo. » devient
+    « cho. » dans un .bat après un chcp, et PowerShell perd le guillemet
+    fermant d'une chaîne. Les deux se sont produits.
+    """
+    print("\nLanceurs Windows")
+    racine = Path(__file__).resolve().parent
+
+    for nom in ("Installer.bat", "Lancer.bat", "Lancer-silencieux.vbs", "installer.ps1"):
+        chemin = racine / nom
+        if not chemin.exists():
+            verifier(False, f"{nom} présent")
+            continue
+        octets = chemin.read_bytes()
+        fautifs = sorted({octet for octet in octets if octet > 127})
+        verifier(
+            not fautifs,
+            f"{nom} en ASCII pur"
+            + (f" — octets fautifs : {[hex(o) for o in fautifs[:6]]}" if fautifs else ""),
+        )
+
+    installateur = (racine / "Installer.bat").read_text(encoding="ascii")
+    verifier(
+        "installer.ps1" in installateur and "Lancer-silencieux.vbs" in installateur,
+        "l'installateur nomme le script PowerShell et la solution de secours",
+    )
+    script = (racine / "installer.ps1").read_text(encoding="ascii")
+    verifier(
+        "liora.ico" in script and "Liora - Suivi contentieux.lnk" in script,
+        "le raccourci porte le bon nom et la bonne icône",
+    )
+    verifier(
+        "exit 1" in script,
+        "un échec est remonté au .bat, qui affiche alors la solution de secours",
+    )
+    lanceur = (racine / "Lancer-silencieux.vbs").read_text(encoding="ascii")
+    verifier(
+        "pythonw.exe" in lanceur and "interface.py" in lanceur,
+        "le lanceur silencieux vise pythonw et l'interface",
+    )
+    verifier((racine / "liora.ico").exists(), "l'icône est présente")
+
+
 def test_mise_a_jour() -> None:
     """Compléter un dossier déjà exporté sans le refaire ni le renuméroter."""
     print("\nMise à jour d'un dossier existant")
@@ -2276,6 +2322,7 @@ def main() -> int:
     test_sous_dossiers_par_adresse()
     test_decouverte_adresses()
     test_sens_et_faux_positifs()
+    test_lanceurs_windows()
     test_mise_a_jour()
     test_export_interrompu()
     test_interface()
