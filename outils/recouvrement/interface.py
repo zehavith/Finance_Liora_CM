@@ -274,6 +274,15 @@ def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str
     domaines = (demande.get("domaines") or "").strip()
     if domaines:
         arguments += ["--domaines-internes", domaines]
+
+    tableau = (demande.get("tableau") or "").strip()
+    if tableau:
+        arguments += ["--tableau-monday", tableau]
+
+    colonne = (demande.get("filtre_colonne") or "").strip()
+    valeur = (demande.get("filtre_valeur") or "").strip()
+    if colonne and valeur:
+        arguments += ["--filtre-colonne", colonne, "--filtre-valeur", valeur]
     if demande.get("sans_spam"):
         arguments.append("--sans-spam")
     if demande.get("reprendre"):
@@ -354,6 +363,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 _attribut(preferences.get("domaines", DOMAINES_PAR_DEFAUT)),
             ).replace(
                 "__SEULEMENT__", _attribut(preferences.get("seulement", ""))
+            ).replace(
+                "__FILTRE_COLONNE__", _attribut(preferences.get("filtre_colonne", ""))
+            ).replace(
+                "__FILTRE_VALEUR__", _attribut(preferences.get("filtre_valeur", ""))
+            ).replace(
+                "__TABLEAU__", _attribut(preferences.get("tableau", ""))
             ).replace("__OPTIONS__", _cases_json(preferences))
             self._repondre(200, page.encode("utf-8"), "text/html; charset=utf-8")
             return
@@ -414,6 +429,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/reglages":
                 self._enregistrer_reglages(self._corps_json())
                 return
+            if chemin == "/api/tableaux":
+                self._lister_tableaux(self._corps_json())
+                return
         except ValueError as exc:
             self._json(400, {"erreur": str(exc)})
             return
@@ -429,7 +447,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
         """
         valeurs = {
             cle: str(demande.get(cle) or "").strip()
-            for cle in ("boites", "sortie", "domaines", "seulement")
+            for cle in ("boites", "sortie", "domaines", "seulement",
+                        "filtre_colonne", "filtre_valeur", "tableau")
             if cle in demande
         }
 
@@ -459,6 +478,34 @@ class Gestionnaire(BaseHTTPRequestHandler):
         except OSError:
             pass
 
+    def _lister_tableaux(self, demande: dict) -> None:
+        """Les tableaux Monday accessibles, pour que le choix se fasse dans
+        une liste plutôt qu'en recopiant un identifiant à la main."""
+        import monday as module_monday  # noqa: PLC0415
+
+        jeton = str(demande.get("jeton_monday") or "").strip()
+        if jeton:
+            self._ecrire_jeton_monday(jeton)
+        else:
+            jeton = module_monday.lire_jeton(JETON_MONDAY)
+
+        if not jeton:
+            self._json(400, {
+                "erreur": (
+                    "Renseignez d'abord le jeton Monday, en section 2, puis "
+                    "recommencez."
+                )
+            })
+            return
+
+        try:
+            tableaux = module_monday.lister_tableaux(jeton)
+        except module_monday.ErreurMonday as exc:
+            self._json(400, {"erreur": str(exc)})
+            return
+
+        self._json(200, {"tableaux": tableaux})
+
     def _depot_manuel(self, demande: dict) -> Path:
         """Recherche ponctuelle : les deux critères saisis à la main tiennent
         lieu de fichier des dossiers, sans rien préparer dans Monday."""
@@ -479,6 +526,16 @@ class Gestionnaire(BaseHTTPRequestHandler):
         return depot
 
     def _lancer(self, demande: dict) -> None:
+        if demande.get("mode") == "monday":
+            tableau = str(demande.get("tableau") or "").strip()
+            if not tableau:
+                self._json(400, {"erreur": "Choisissez un tableau Monday."})
+                return
+            # Le tableau est lu par l'API : le chemin de fichier n'est là que
+            # pour satisfaire la ligne de commande, il n'est jamais ouvert.
+            self._demarrer(demande, RACINE / "dossiers.csv", f"tableau Monday {tableau}")
+            return
+
         if demande.get("mode") == "manuel":
             try:
                 depot = self._depot_manuel(demande)
@@ -559,6 +616,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             "boites": demande.get("boites", ""),
             "sortie": sortie,
             "domaines": (demande.get("domaines") or "").strip(),
+            "filtre_colonne": (demande.get("filtre_colonne") or "").strip(),
+            "filtre_valeur": (demande.get("filtre_valeur") or "").strip(),
+            "tableau": (demande.get("tableau") or "").strip(),
         })
         self._json(200, {"demarre": True, "fichier": origine, "sortie": sortie})
 
@@ -763,6 +823,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <h2>1. Les dossiers à traiter</h2>
   <div class="onglets">
     <button class="onglet actif" data-volet="voletFichier">Depuis un export Monday</button>
+    <button class="onglet" data-volet="voletMonday">Depuis Monday, en direct</button>
     <button class="onglet" data-volet="voletManuel">Recherche ponctuelle</button>
   </div>
 
@@ -774,6 +835,23 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <div id="nomFichier"></div>
     </div>
     <input type="file" id="fichier" accept=".xlsx,.xlsm,.csv" hidden />
+  </div>
+
+  <div class="volet" id="voletMonday">
+    <p class="aide">L'outil lit le tableau directement dans Monday : plus
+       d'export à refaire à chaque fois. Demande le jeton Monday (section 2).</p>
+    <div class="grille">
+      <div>
+        <label for="tableau">Tableau Monday</label>
+        <select id="tableau"><option value="">— cliquez sur Lister —</option></select>
+      </div>
+      <div>
+        <label for="listerTableaux">&nbsp;</label>
+        <button class="secondaire" id="listerTableaux">Lister mes tableaux</button>
+      </div>
+    </div>
+    <p class="note">Le jeton n'est jamais transmis à la page : il reste sur le
+       poste, dans son propre fichier.</p>
   </div>
 
   <div class="volet" id="voletManuel">
@@ -802,6 +880,23 @@ button:disabled{opacity:.45;cursor:not-allowed}
        dossier — celui du débiteur —, avec les sous-dossiers par facture et,
        si l'option est cochée, par adresse.</p>
   </div>
+</section>
+
+<div class="grille">
+    <div>
+      <label for="filtreColonne">Ne traiter qu'une étape du process (colonne)</label>
+      <input type="text" id="filtreColonne" value="__FILTRE_COLONNE__"
+             placeholder="Etape process recouvrement" />
+    </div>
+    <div>
+      <label for="filtreValeur">Valeur attendue dans cette colonne</label>
+      <input type="text" id="filtreValeur" value="__FILTRE_VALEUR__"
+             placeholder="Dossier a faire passer en contentieux" />
+    </div>
+  </div>
+  <p class="note">Laissez les deux vides pour traiter tout le tableau. La
+     comparaison ignore accents, casse et emojis, et se fait par inclusion :
+     « contentieux » retient « 🔴 Dossier à faire passer en contentieux ».</p>
 </section>
 
 <section>
@@ -901,6 +996,7 @@ const JETON = "__JETON__";
 const $ = (id) => document.getElementById(id);
 const IMPORT_PRECEDENT = __IMPORT__;
 const CASES = __OPTIONS__;
+const TABLEAU_MEMORISE = "__TABLEAU__";
 let fichierChoisi = null, position = 0, sondage = null, mode = "fichier";
 // Le fichier importé est conservé à côté de l'outil, mais aucun navigateur
 // ne peut repeupler un champ de fichier : on le rappelle, et on permet de
@@ -927,7 +1023,8 @@ document.querySelectorAll(".onglet").forEach((onglet) => {
     document.querySelectorAll(".volet").forEach((v) => v.classList.remove("actif"));
     onglet.classList.add("actif");
     $(onglet.dataset.volet).classList.add("actif");
-    mode = onglet.dataset.volet === "voletManuel" ? "manuel" : "fichier";
+    mode = { voletManuel: "manuel", voletMonday: "monday" }[onglet.dataset.volet]
+      || "fichier";
     $("bandeau").className = "bandeau";
     majBouton();
   });
@@ -937,10 +1034,43 @@ document.querySelectorAll(".onglet").forEach((onglet) => {
   $(id).addEventListener("input", majBouton));
 
 function majBouton() {
-  $("lancer").disabled = mode === "manuel"
-    ? !($("mEmail").value.trim() || $("mFacture").value.trim())
-    : !(fichierChoisi || reutiliserImport);
+  if (mode === "manuel") {
+    $("lancer").disabled = !($("mEmail").value.trim() || $("mFacture").value.trim());
+  } else if (mode === "monday") {
+    $("lancer").disabled = !$("tableau").value;
+  } else {
+    $("lancer").disabled = !(fichierChoisi || reutiliserImport);
+  }
 }
+
+// -- lecture directe du tableau Monday
+$("listerTableaux").addEventListener("click", async () => {
+  const bouton = $("listerTableaux");
+  bouton.disabled = true;
+  const ancien = bouton.textContent;
+  bouton.textContent = "Interrogation de Monday…";
+  try {
+    const reponse = await api("/api/tableaux",
+      { jeton_monday: $("jetonMonday").value });
+    const liste = $("tableau");
+    liste.innerHTML = '<option value="">— choisissez —</option>';
+    reponse.tableaux.forEach((tab) => {
+      const choix = document.createElement("option");
+      choix.value = tab.id;
+      choix.textContent = tab.nom + "  (" + tab.id + ")";
+      liste.appendChild(choix);
+    });
+    if (TABLEAU_MEMORISE) liste.value = TABLEAU_MEMORISE;
+    afficherBandeau(true, reponse.tableaux.length + " tableau(x) trouvé(s).");
+  } catch (erreur) {
+    afficherBandeau(false, erreur.message);
+  } finally {
+    bouton.disabled = false;
+    bouton.textContent = ancien;
+    majBouton();
+  }
+});
+$("tableau").addEventListener("change", () => { majBouton(); enregistrerReglages(); });
 
 // Les cases reprennent l'état de la dernière session : ce qui a été décidé
 // une fois n'a pas à être redécidé à chaque ouverture.
@@ -948,7 +1078,8 @@ Object.keys(CASES).forEach((id) => { if ($(id)) $(id).checked = CASES[id]; });
 
 // Enregistrement automatique : à la saisie (différé) et à la fermeture de la
 // page. Une page fermée sans avoir lancé d'export ne perd plus rien.
-const CHAMPS_REGLAGES = ["boites", "sortie", "domaines", "seulement", "jetonMonday"];
+const CHAMPS_REGLAGES = ["boites", "sortie", "domaines", "seulement",
+                         "filtreColonne", "filtreValeur", "jetonMonday"];
 let minuterieReglages = null;
 
 function reglages() {
@@ -957,6 +1088,9 @@ function reglages() {
   return {
     boites: $("boites").value, sortie: $("sortie").value,
     domaines: $("domaines").value, seulement: $("seulement").value,
+    filtre_colonne: $("filtreColonne").value,
+    filtre_valeur: $("filtreValeur").value,
+    tableau: $("tableau").value,
     jeton_monday: $("jetonMonday").value, options: options,
   };
 }
@@ -1036,7 +1170,8 @@ function retenir(fichier) {
 
 // -- lancement
 $("lancer").addEventListener("click", async () => {
-  if (mode !== "manuel" && !fichierChoisi && !reutiliserImport) return;
+  if (mode === "monday" && !$("tableau").value) return;
+  if (mode === "fichier" && !fichierChoisi && !reutiliserImport) return;
   $("lancer").disabled = true;
   $("bandeau").className = "bandeau";
   $("journal").hidden = false;
@@ -1048,6 +1183,9 @@ $("lancer").addEventListener("click", async () => {
       sortie: $("sortie").value,
       jeton_monday: $("jetonMonday").value,
       domaines: $("domaines").value,
+      filtre_colonne: $("filtreColonne").value,
+      filtre_valeur: $("filtreValeur").value,
+      tableau: $("tableau").value,
       simulation: $("simulation").checked,
       ignorer_lignes_incompletes: $("ignorer").checked,
       sans_regroupement: !$("regrouper").checked,
@@ -1061,7 +1199,9 @@ $("lancer").addEventListener("click", async () => {
   };
 
   let charge;
-  if (mode === "manuel") {
+  if (mode === "monday") {
+    charge = Object.assign({ mode: "monday" }, commun);
+  } else if (mode === "manuel") {
     charge = Object.assign({ mode: "manuel",
       email: $("mEmail").value, facture: $("mFacture").value,
       nom_dossier: $("mNom").value }, commun);

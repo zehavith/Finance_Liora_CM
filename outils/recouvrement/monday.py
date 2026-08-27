@@ -108,6 +108,110 @@ def adresses_signees(identifiants: list[str], jeton: str) -> dict[str, dict]:
     return resultat
 
 
+def lister_tableaux(jeton: str, limite: int = 50) -> list[dict]:
+    """Les tableaux accessibles avec ce jeton : identifiant et nom."""
+    donnees = _appeler_api(
+        f"query {{ boards (limit: {int(limite)}, order_by: used_at) "
+        "{ id name } }",
+        jeton,
+    )
+    return [
+        {"id": str(tableau["id"]), "nom": tableau.get("name") or str(tableau["id"])}
+        for tableau in (donnees.get("boards") or [])
+        if tableau.get("id")
+    ]
+
+
+def _valeur_colonne(colonne: dict) -> str:
+    """Le texte d'une cellule, quel que soit son type.
+
+    `text` couvre les colonnes simples ; pour un fichier, il est vide et
+    l'adresse ne se trouve que dans la valeur brute. Sans ce repli, les
+    colonnes « Facture PDF » et « Convention Signée » reviendraient vides et
+    les documents ne seraient jamais téléchargés.
+    """
+    texte = (colonne.get("text") or "").strip()
+    if texte:
+        return texte
+
+    brut = colonne.get("value")
+    if not brut:
+        return ""
+    try:
+        charge = json.loads(brut)
+    except ValueError:
+        return ""
+
+    fichiers = charge.get("files") if isinstance(charge, dict) else None
+    if isinstance(fichiers, list):
+        adresses = [
+            fichier.get("public_url") or fichier.get("url") or ""
+            for fichier in fichiers
+            if isinstance(fichier, dict)
+        ]
+        return ", ".join(adresse for adresse in adresses if adresse)
+    return ""
+
+
+def lire_tableau(identifiant: str, jeton: str, par_page: int = 100) -> list[tuple[int, list[str]]]:
+    """Le contenu d'un tableau Monday, sous la forme d'une grille.
+
+    Même forme qu'un export Excel lu depuis le disque — ligne d'en-tête puis
+    lignes de données — pour que la suite du traitement ne fasse aucune
+    différence entre un tableau lu en direct et un fichier déposé à la main.
+
+    La pagination est suivie jusqu'au bout : un tableau de recouvrement
+    dépasse largement une page, et s'arrêter à la première produirait
+    silencieusement un lot incomplet.
+    """
+    entetes: list[str] = []
+    lignes: list[list[str]] = []
+    curseur: str | None = None
+
+    while True:
+        page = (
+            f'items_page (limit: {int(par_page)}, cursor: "{curseur}")'
+            if curseur
+            else f"items_page (limit: {int(par_page)})"
+        )
+        donnees = _appeler_api(
+            f"query {{ boards (ids: [{int(identifiant)}]) {{ "
+            f"{page} {{ cursor items {{ name column_values {{ "
+            "column { title } text value } } } } } }",
+            jeton,
+        )
+
+        tableaux = donnees.get("boards") or []
+        if not tableaux:
+            raise ErreurMonday(
+                f"Tableau {identifiant} introuvable, ou inaccessible avec ce jeton."
+            )
+
+        contenu = tableaux[0].get("items_page") or {}
+        for element in contenu.get("items") or []:
+            colonnes = element.get("column_values") or []
+            if not entetes:
+                entetes = ["Name"] + [
+                    ((colonne.get("column") or {}).get("title") or "").strip()
+                    for colonne in colonnes
+                ]
+            lignes.append(
+                [element.get("name") or ""]
+                + [_valeur_colonne(colonne) for colonne in colonnes]
+            )
+
+        curseur = contenu.get("cursor")
+        if not curseur:
+            break
+
+    if not entetes:
+        raise ErreurMonday(f"Le tableau {identifiant} ne contient aucun élément.")
+
+    grille = [(1, entetes)]
+    grille += [(numero, ligne) for numero, ligne in enumerate(lignes, start=2)]
+    return grille
+
+
 def telecharger(url: str, destination: Path) -> int:
     destination.parent.mkdir(parents=True, exist_ok=True)
     try:

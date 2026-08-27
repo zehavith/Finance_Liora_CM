@@ -260,6 +260,46 @@ annoncée avec son motif, et la colonne `adresses_decouvertes` de
 L'option n'est pas cochée par défaut : elle double le nombre de requêtes
 Gmail, et elle élargit le dossier. Faites-la d'abord tourner en simulation.
 
+### Lire le tableau directement dans Monday
+
+L'onglet **Depuis Monday, en direct** de la section 1 évite de réexporter le
+tableau à chaque fois. Le bouton *Lister mes tableaux* interroge Monday avec
+votre jeton, vous choisissez le tableau dans la liste, et c'est tout — il est
+mémorisé pour les fois suivantes.
+
+Le tableau lu par l'API et un export Excel déposé à la main suivent ensuite
+exactement le même chemin : mêmes colonnes reconnues, même regroupement, mêmes
+sous-dossiers. La pagination est suivie jusqu'au bout ; s'arrêter à la
+première page produirait un lot incomplet sans le dire.
+
+Les colonnes « fichier » (Facture PDF, Convention Signée) reviennent vides
+dans le champ texte de l'API : l'adresse est lue dans la valeur brute de la
+colonne, sans quoi les documents ne seraient jamais téléchargés.
+
+### Ne traiter que les dossiers qualifiés
+
+Deux champs en bas de la section 1 : **une colonne** et **la valeur
+attendue**. Renseignez par exemple `Etape process recouvrement` et
+`Dossier à faire passer en contentieux`, et seules les lignes ainsi qualifiées
+dans Monday sont traitées.
+
+La comparaison est volontairement souple — sans accent, sans casse, par
+inclusion — parce qu'une étiquette Monday se lit
+« 🔴 Dossier à faire passer en contentieux » et qu'exiger l'égalité stricte
+ferait échouer le filtre en silence. Taper `contentieux` suffit.
+
+Deux erreurs sont signalées plutôt que d'aboutir à un lot vide :
+
+- **colonne introuvable** — la liste des colonnes du tableau est affichée ;
+- **aucune ligne avec cette valeur** — les valeurs réellement présentes dans
+  la colonne sont affichées.
+
+Sans cela, une faute de frappe passerait pour « rien à traiter aujourd'hui ».
+
+Le filtre s'applique aussi bien au tableau lu en direct qu'à un export déposé.
+Combiné à *Compléter les dossiers déjà exportés*, le geste quotidien tient en
+un clic : qualifier dans Monday, puis **Lancer**.
+
 ### Documents stockés dans Monday
 
 Les colonnes contenant une adresse de document — `Facture PDF`,

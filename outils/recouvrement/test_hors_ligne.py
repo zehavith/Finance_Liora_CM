@@ -10,6 +10,7 @@ installation pour vérifier que le poste est correctement équipé :
 
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import threading
@@ -1521,6 +1522,150 @@ class ClientEvolutif:
             yield message
 
 
+def test_lecture_tableau_monday() -> None:
+    """Lecture directe du tableau, et filtrage sur l'étape du process."""
+    print("\nTableau Monday lu en direct")
+
+    import monday as module_monday  # noqa: PLC0415
+    from dossiers import (  # noqa: PLC0415
+        ErreurDossiers,
+        dossiers_depuis_grille,
+        filtrer_par_colonne,
+    )
+
+    def colonne(titre, texte="", valeur=None):
+        return {"column": {"title": titre}, "text": texte, "value": valeur}
+
+    def element(nom, etape, email, montant, fichier=None):
+        return {
+            "name": nom,
+            "column_values": [
+                colonne("Nom & Prénom de l'apprenant", nom.split(" — ")[0]),
+                colonne("E-mail", email),
+                colonne("Etape process recouvrement", etape),
+                colonne("Reste à payer", montant),
+                colonne(
+                    "Facture PDF", "",
+                    json.dumps({"files": [{"public_url": fichier}]}) if fichier else None,
+                ),
+            ],
+        }
+
+    pages = [
+        {
+            "boards": [{"items_page": {
+                "cursor": "page2",
+                "items": [
+                    element(
+                        "FACT-2405-00030", "🔴 Dossier à faire passer en contentieux",
+                        "aissata@exemple.fr", "1200",
+                        "https://liora.monday.com/protected_static/1/resources/9/f.pdf",
+                    ),
+                    element(
+                        "FACT-2405-00031", "Relance 2 en cours",
+                        "paul@exemple.fr", "300",
+                    ),
+                ],
+            }}]
+        },
+        {
+            "boards": [{"items_page": {
+                "cursor": None,
+                "items": [
+                    element(
+                        "FACT-2405-00037", "Dossier a faire passer en contentieux",
+                        "aldric@exemple.fr", "800",
+                    ),
+                ],
+            }}]
+        },
+    ]
+
+    requetes: list[str] = []
+
+    def faux_appel(requete, jeton):
+        requetes.append(requete)
+        if "boards (limit" in requete:
+            return {"boards": [{"id": 42, "name": "Recouvrement 2026"}]}
+        return pages[min(len(requetes) - 1, len(pages) - 1)]
+
+    vrai_appel = module_monday._appeler_api
+    module_monday._appeler_api = faux_appel
+    try:
+        tableaux = module_monday.lister_tableaux("jeton")
+        verifier(
+            tableaux == [{"id": "42", "nom": "Recouvrement 2026"}],
+            "les tableaux accessibles sont listés avec leur identifiant",
+        )
+
+        requetes.clear()
+        grille = module_monday.lire_tableau("42", "jeton")
+    finally:
+        module_monday._appeler_api = vrai_appel
+
+    verifier(len(requetes) == 2, "la pagination est suivie jusqu'au bout")
+    verifier(
+        'cursor: "page2"' in requetes[1],
+        "la seconde page est demandée avec le curseur rendu par la première",
+    )
+    verifier(
+        grille[0][1][0] == "Name"
+        and "Etape process recouvrement" in grille[0][1],
+        "la première ligne porte les intitulés de colonnes",
+    )
+    verifier(len(grille) == 4, "trois éléments lus sur les deux pages")
+
+    dossiers = dossiers_depuis_grille(grille, "tableau Monday 42")
+    verifier(len(dossiers) == 3, "les trois lignes deviennent des dossiers")
+    verifier(
+        dossiers[0].liens == [
+            "https://liora.monday.com/protected_static/1/resources/9/f.pdf"
+        ],
+        "l'adresse d'un fichier est extraite de la valeur brute de la colonne",
+    )
+    verifier(
+        dossiers[0].colonnes.get("etape process recouvrement", "").endswith(
+            "Dossier à faire passer en contentieux"
+        ),
+        "les colonnes non exploitées restent disponibles pour le filtrage",
+    )
+
+    retenus = filtrer_par_colonne(
+        dossiers, "Etape process recouvrement", "Dossier à faire passer en contentieux"
+    )
+    verifier(
+        [d.reference for d in retenus] == ["FACT-2405-00030", "FACT-2405-00037"],
+        "seules les lignes qualifiées sont retenues, emoji et accents ignorés",
+    )
+    verifier(
+        len(filtrer_par_colonne(dossiers, "etape process recouvrement", "CONTENTIEUX"))
+        == 2,
+        "la comparaison se fait par inclusion, sans tenir compte de la casse",
+    )
+    verifier(
+        filtrer_par_colonne(dossiers, "", "") == dossiers,
+        "un filtre vide laisse passer tout le tableau",
+    )
+
+    try:
+        filtrer_par_colonne(dossiers, "Etape du process", "contentieux")
+        verifier(False, "une colonne introuvable est signalée")
+    except ErreurDossiers as exc:
+        verifier(
+            "introuvable" in str(exc) and "Colonnes disponibles" in str(exc),
+            "une colonne introuvable est signalée, avec la liste des colonnes",
+        )
+
+    try:
+        filtrer_par_colonne(dossiers, "Etape process recouvrement", "cloture")
+        verifier(False, "une valeur sans correspondance est signalée")
+    except ErreurDossiers as exc:
+        verifier(
+            "Valeurs présentes" in str(exc),
+            "une valeur sans correspondance est signalée, avec les valeurs vues",
+        )
+
+
 def test_lanceurs_windows() -> None:
     """Les lanceurs Windows doivent rester en ASCII pur.
 
@@ -1923,6 +2068,11 @@ def test_interface() -> None:
             ('id="sortie"', "dossier de destination"),
             ('id="jetonMonday"', "jeton Monday"),
             ('id="domaines"', "domaines d'envoi"),
+            ('id="tableau"', "choix du tableau Monday"),
+            ('id="listerTableaux"', "bouton de listage des tableaux"),
+            ('id="filtreColonne"', "colonne de filtrage"),
+            ('id="filtreValeur"', "valeur de filtrage"),
+            ('data-volet="voletMonday"', "volet Monday en direct"),
             ('id="simulation"', "option simulation"),
             ('id="ignorer"', "option lignes incomplètes"),
             ('id="regrouper"', "option regroupement"),
@@ -1946,7 +2096,8 @@ def test_interface() -> None:
         restants = [m for m in ("__JETON__", "__SORTIE__", "__BOITES__",
                                 "__MOTEUR_PDF__", "__ETAT_MONDAY__",
                                 "__IMPORT__", "__DOMAINES__", "__OPTIONS__",
-                                "__SEULEMENT__") if m in page]
+                                "__SEULEMENT__", "__TABLEAU__",
+                                "__FILTRE_COLONNE__", "__FILTRE_VALEUR__") if m in page]
         verifier(not restants, f"aucun marqueur de gabarit non remplacé{' — reste : ' + ', '.join(restants) if restants else ''}")
         verifier("__JETON__" not in page, "le jeton est injecté dans la page")
         verifier(interface.JETON in page, "la page porte le jeton de la session")
@@ -2330,6 +2481,7 @@ def main() -> int:
     test_sous_dossiers_par_adresse()
     test_decouverte_adresses()
     test_sens_et_faux_positifs()
+    test_lecture_tableau_monday()
     test_lanceurs_windows()
     test_mise_a_jour()
     test_export_interrompu()

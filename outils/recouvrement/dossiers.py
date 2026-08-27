@@ -219,6 +219,10 @@ class Dossier:
     commentaire: str = ""
     liens: list[str] = field(default_factory=list)
 
+    # Toutes les colonnes de la ligne d'origine, intitulés normalisés. Sert au
+    # filtrage sur une colonne que l'outil n'exploite pas par ailleurs.
+    colonnes: dict[str, str] = field(default_factory=dict)
+
     # Lignes d'origine du tableau, quand plusieurs factures d'un même débiteur
     # ont été réunies. Chacune garde son montant, son échéance et ses propres
     # documents : c'est ce qui permet de produire un sous-dossier par facture.
@@ -601,6 +605,70 @@ def regrouper_par_debiteur(
     return resultat
 
 
+def filtrer_par_colonne(
+    dossiers: list[Dossier],
+    colonne: str,
+    valeur: str,
+    signaler: Callable[[str], None] | None = None,
+) -> list[Dossier]:
+    """Ne retient que les lignes dont une colonne porte la valeur voulue.
+
+    La comparaison est souple — sans accent, sans casse, par inclusion — parce
+    qu'une étiquette Monday se lit « 🔴 Dossier à faire passer en contentieux »
+    et qu'exiger l'égalité stricte ferait échouer le filtre sans rien dire.
+
+    Une colonne introuvable est une erreur, jamais un filtre vide : renvoyer
+    zéro dossier sur une faute de frappe passerait pour « rien à traiter ».
+    """
+    if not colonne.strip() or not valeur.strip():
+        return dossiers
+
+    cible = _normaliser_entete(colonne)
+    voulues = [
+        _normaliser_entete(morceau)
+        for morceau in SEPARATEURS_MULTIVALEUR.split(valeur)
+        if morceau.strip()
+    ]
+
+    connues = {nom for dossier in dossiers for nom in dossier.colonnes}
+    if cible not in connues:
+        apercu = ", ".join(sorted(connues)[:15])
+        raise ErreurDossiers(
+            f"Colonne « {colonne} » introuvable dans le tableau.\n"
+            f"Colonnes disponibles : {apercu}\n"
+            "Corrigez l'intitulé, ou videz le filtre pour traiter tout le tableau."
+        )
+
+    retenus = [
+        dossier
+        for dossier in dossiers
+        if any(
+            attendue and attendue in _normaliser_entete(dossier.colonnes.get(cible, ""))
+            for attendue in voulues
+        )
+    ]
+
+    if signaler:
+        signaler(
+            f"Filtre « {colonne} » = « {valeur} » : {len(retenus)} dossier(s) "
+            f"retenu(s) sur {len(dossiers)}."
+        )
+
+    if not retenus:
+        vues = sorted({
+            dossier.colonnes.get(cible, "").strip()
+            for dossier in dossiers
+            if dossier.colonnes.get(cible, "").strip()
+        })
+        raise ErreurDossiers(
+            f"Aucune ligne avec « {colonne} » = « {valeur} ».\n"
+            f"Valeurs présentes dans cette colonne : {', '.join(vues[:15]) or 'aucune'}\n"
+            "Vérifiez l'orthographe, ou videz le filtre."
+        )
+
+    return retenus
+
+
 def _liste(numeros: list[int]) -> str:
     return ", ".join(str(numero) for numero in numeros)
 
@@ -691,9 +759,26 @@ def lire_dossiers(
     ignorer_lignes_incompletes: bool = False,
     signaler: Callable[[str], None] | None = None,
 ) -> list[Dossier]:
-    grille = charger_grille(chemin)
+    return dossiers_depuis_grille(
+        charger_grille(chemin), str(chemin), ignorer_lignes_incompletes, signaler
+    )
+
+
+def dossiers_depuis_grille(
+    grille: list[tuple[int, list[str]]],
+    origine: str = "tableau",
+    ignorer_lignes_incompletes: bool = False,
+    signaler: Callable[[str], None] | None = None,
+) -> list[Dossier]:
+    """Construit les dossiers depuis un tableau déjà chargé.
+
+    Séparé de la lecture du fichier : le même tableau peut venir d'un export
+    Excel déposé à la main ou de l'API Monday, et il n'y a aucune raison d'en
+    faire deux lectures différentes.
+    """
+    chemin = origine
     if not grille:
-        raise ErreurDossiers(f"Fichier des dossiers vide : {chemin}")
+        raise ErreurDossiers(f"Tableau des dossiers vide : {chemin}")
 
     index_entete, association = _trouver_entete(grille)
 
@@ -741,6 +826,16 @@ def lire_dossiers(
         def _premier(champ: str) -> str:
             return valeurs[champ][0] if valeurs[champ] else ""
 
+        # Toutes les colonnes, y compris celles qui n'alimentent aucun champ :
+        # le filtrage par étape du process porte sur une colonne que l'outil
+        # n'a aucune raison de connaître autrement.
+        entetes = grille[index_entete][1]
+        brutes = {
+            _normaliser_entete(entetes[position]): cellules[position].strip()
+            for position in range(min(len(entetes), len(cellules)))
+            if entetes[position].strip()
+        }
+
         dossier = Dossier(
             reference=_premier("reference"),
             nom=_premier("nom"),
@@ -757,6 +852,7 @@ def lire_dossiers(
             statut=" · ".join(valeurs["statut"]),
             commentaire=" · ".join(valeurs["commentaire"]),
             liens=[v for v in valeurs["liens"] if v.lower().startswith("http")],
+            colonnes=brutes,
         )
 
         if not dossier.emails and not dossier.factures:

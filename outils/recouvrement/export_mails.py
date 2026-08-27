@@ -35,6 +35,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from dossiers import (  # noqa: E402
     Dossier,
     ErreurDossiers,
+    dossiers_depuis_grille,
+    filtrer_par_colonne,
     lire_dossiers,
     regrouper_par_debiteur,
 )
@@ -214,6 +216,32 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
             "Fichier contenant le jeton d'accès Monday, pour télécharger les "
             "factures et conventions référencées dans le tableau. Sans lui, "
             "les documents sont seulement cités en lien dans la note."
+        ),
+    )
+    analyseur.add_argument(
+        "--tableau-monday",
+        default=None,
+        help=(
+            "Identifiant du tableau Monday à lire directement, au lieu d'un "
+            "fichier déposé. Demande le jeton Monday."
+        ),
+    )
+    analyseur.add_argument(
+        "--filtre-colonne",
+        default="",
+        help=(
+            "Intitulé d'une colonne du tableau sur laquelle filtrer les lignes "
+            "(ex. « Etape process recouvrement »)."
+        ),
+    )
+    analyseur.add_argument(
+        "--filtre-valeur",
+        default="",
+        help=(
+            "Valeur attendue dans cette colonne ; plusieurs valeurs séparées "
+            "par des virgules. La comparaison ignore accents et casse, et se "
+            "fait par inclusion : « contentieux » retient « 🔴 Dossier à faire "
+            "passer en contentieux »."
         ),
     )
     analyseur.add_argument(
@@ -1023,11 +1051,38 @@ def executer(
     )
 
     try:
-        liste = lire_dossiers(
-            options.dossiers,
-            ignorer_lignes_incompletes=options.ignorer_lignes_incompletes,
-            signaler=journal,
-        )
+        if options.tableau_monday:
+            jeton = module_monday.lire_jeton(options.jeton_monday)
+            if not jeton:
+                raise ErreurDossiers(
+                    "Lire le tableau directement dans Monday demande le jeton "
+                    "d'accès Monday. Renseignez-le, ou déposez un export du "
+                    "tableau."
+                )
+            journal(f"Lecture du tableau Monday {options.tableau_monday}…")
+            try:
+                grille = module_monday.lire_tableau(options.tableau_monday, jeton)
+            except module_monday.ErreurMonday as exc:
+                raise ErreurDossiers(str(exc)) from exc
+            origine = f"tableau Monday {options.tableau_monday}"
+            liste = dossiers_depuis_grille(
+                grille,
+                origine,
+                ignorer_lignes_incompletes=options.ignorer_lignes_incompletes,
+                signaler=journal,
+            )
+        else:
+            origine = str(options.dossiers)
+            liste = lire_dossiers(
+                options.dossiers,
+                ignorer_lignes_incompletes=options.ignorer_lignes_incompletes,
+                signaler=journal,
+            )
+
+        if options.filtre_colonne and options.filtre_valeur:
+            liste = filtrer_par_colonne(
+                liste, options.filtre_colonne, options.filtre_valeur, signaler=journal
+            )
 
         if options.seulement:
             voulues = {ref.strip().lower() for ref in options.seulement.split(",") if ref.strip()}
@@ -1036,7 +1091,7 @@ def executer(
                 journal(f"Aucun dossier ne correspond à --seulement {options.seulement}")
                 return 1
 
-        journal(f"{len(liste)} dossier(s) à traiter depuis {options.dossiers}")
+        journal(f"{len(liste)} dossier(s) à traiter depuis {origine}")
 
         if not options.sans_regroupement:
             liste = regrouper_par_debiteur(liste, signaler=journal)
