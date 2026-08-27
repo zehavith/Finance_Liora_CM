@@ -149,6 +149,51 @@ Tout est enregistré dans `suivi-dossiers.json`, **à côté de l'outil et non d
 l'export** : refaire une extraction n'efface pas l'avancement. Les états de la
 version précédente sont repris automatiquement.
 
+### Les indicateurs du tableau de bord
+
+Neuf tuiles : dossiers suivis, montant en recouvrement, frais engagés,
+recouvré, perdu, taux de réussite, durée médiane, **coût du recouvrement** et
+**dossiers en souffrance**.
+
+Trois précisions de méthode, parce qu'elles changent la lecture :
+
+- le **taux de réussite** ne porte que sur les dossiers clôturés ; le calculer
+  sur l'ensemble ferait passer pour des échecs ceux qui sont simplement encore
+  en cours ;
+- la durée est une **médiane**, non une moyenne : un dossier bloqué deux ans en
+  attente d'audience rendrait la moyenne inutilisable ;
+- le **coût du recouvrement** rapporte les frais engagés sur *tout* le
+  portefeuille aux montants *déjà* recouvrés. Il dit ce que le recouvrement a
+  coûté à ce jour ; il ne prédit pas ce que coûtera un dossier encore ouvert.
+
+### L'ancienneté des créances
+
+Un graphique donne le **montant encore dû par tranche d'ancienneté**, comptée
+depuis l'échéance de la facture : moins de 3 mois, 3 à 6 mois, 6 mois à 1 an,
+1 à 2 ans, plus de 2 ans.
+
+Les dossiers clôturés en sont exclus — une créance recouvrée n'a plus
+d'ancienneté, et la compter gonflerait les tranches les plus vieilles de tout
+ce qui a justement été réglé. Une échéance absente du tableau a sa **propre
+ligne** plutôt que d'être fondue dans la tranche la plus récente.
+
+La rampe est orange, non bleue : les étapes du process occupent déjà une rampe
+bleue, et deux échelles de même teinte sur un même écran se confondraient.
+Du plus sombre au plus clair — c'est la créance la plus ancienne qui doit
+ressortir.
+
+### Les dossiers en souffrance
+
+Les dossiers **transmis, non clôturés, et sans changement d'étape depuis plus
+de 60 jours**, du plus ancien au plus récent, avec leur montant et leur étape.
+
+Les dossiers jamais transmis n'y figurent pas : ils ne dorment pas, ils n'ont
+pas commencé, et les mêler ferait perdre de vue les vrais dossiers en
+souffrance. Ils sont comptés à part.
+
+La liste montre les douze plus anciens et **annonce combien d'autres suivent** :
+un tableau tronqué sans le dire ferait croire que le reste va bien.
+
 ### La courbe d'avancement
 
 Le tableau de bord porte une **aire empilée** : à la fin de chaque mois,

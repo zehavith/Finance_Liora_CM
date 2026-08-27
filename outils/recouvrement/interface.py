@@ -868,6 +868,8 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <div id="tuilesBord" class="tuiles"></div>
   <div class="graphe" id="courbeBord"></div>
   <div class="graphe" id="grapheBord"></div>
+  <div class="graphe" id="anciennete"></div>
+  <div class="graphe" id="dormants"></div>
 </div>
 
 <div class="vue" id="vueSuivi">
@@ -1427,7 +1429,7 @@ document.querySelectorAll("nav.principal button").forEach((bouton) => {
 // ============================================================
 //  Suivi des dossiers
 // ============================================================
-let DOSSIERS = [], STATUTS = [], AGREGATS = null, COURBE = null;
+let DOSSIERS = [], STATUTS = [], AGREGATS = null, COURBE = null, SERVEUR = null;
 
 const euro = (v) => new Intl.NumberFormat("fr-FR",
   { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v || 0);
@@ -1441,6 +1443,7 @@ async function chargerDossiers() {
   STATUTS = donnees.statuts;
   AGREGATS = donnees.agregats;
   COURBE = donnees.agregats ? donnees.agregats.courbe : null;
+  SERVEUR = donnees.agregats || null;
   $("cheminSortie").textContent = donnees.sortie;
   rendreDocuments();
   rendreSuivi();
@@ -1650,6 +1653,77 @@ function rendreDetail(reference) {
   zone.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
+
+// -- ancienneté des créances et dossiers en souffrance
+function rendreAnciennete() {
+  const a = AGREGATS;
+  const tranches = (a && a.tranches_anciennete) || [];
+  const total = tranches.reduce((somme, t) => somme + t.montant, 0);
+
+  if (!total) {
+    $("anciennete").innerHTML = "<h3>Ancienneté des créances</h3>" +
+      '<p class="vide">Aucune échéance de facture n\'est renseignée dans le ' +
+      "tableau de suivi : sans elle, l'ancienneté d'une créance ne peut pas " +
+      "être calculée.</p>";
+    return;
+  }
+
+  const maximum = Math.max(1, ...tranches.map((t) => t.montant));
+  $("anciennete").innerHTML = `
+    <h3>Montant encore dû, par ancienneté de la créance</h3>
+    <p class="aide">Depuis l'échéance de la facture, sur les seuls dossiers non
+       clôturés. Une créance déjà recouvrée n'a plus d'ancienneté.</p>
+    <div class="barres">${tranches.map((t) => `
+      <div class="rangee" title="${echapper(t.libelle)} — ${euro(t.montant)}, ${t.nombre} dossier(s)">
+        <div class="etiquette">${echapper(t.libelle)}</div>
+        <div class="piste">
+          <div class="remplissage" style="width:${(100 * t.montant / maximum).toFixed(1)}%;
+               background:${t.couleur}"></div>
+        </div>
+        <div class="valeur">${t.montant ? euro(t.montant) : "—"}<span> · ${t.nombre} dossier${t.nombre > 1 ? "s" : ""}</span></div>
+      </div>`).join("")}</div>`;
+}
+
+function rendreDormants() {
+  const a = AGREGATS;
+  const liste = (a && a.dormants) || [];
+  const zone = $("dormants");
+
+  if (!liste.length) {
+    zone.innerHTML = "<h3>Dossiers en souffrance</h3>" +
+      `<p class="vide">Aucun dossier transmis n'est resté plus de ${a.seuil_dormance} ` +
+      "jours sans changement d'étape." +
+      (a.nb_jamais_transmis ? ` ${a.nb_jamais_transmis} dossier(s) restent à transmettre.` : "") +
+      "</p>";
+    return;
+  }
+
+  // Liste plafonnée, mais jamais en silence : un tableau tronqué sans le dire
+  // ferait croire que tout le reste va bien.
+  const PLAFOND = 12;
+  const montres = liste.slice(0, PLAFOND);
+  const restants = liste.length - montres.length;
+
+  zone.innerHTML = `
+    <h3>Dossiers en souffrance — ${liste.length}</h3>
+    <p class="aide">Transmis, non clôturés, et sans changement d'étape depuis plus
+       de ${a.seuil_dormance} jours — du plus ancien au plus récent. Les dossiers
+       jamais transmis n'y figurent pas : ils n'ont pas commencé.${
+       restants ? ` Les ${PLAFOND} plus anciens sont listés ; ${restants} autre(s) suivent, à voir dans l'onglet « État des dossiers ».` : ""}</p>
+    <table class="donnees">
+      <tr><th>Dossier</th><th class="num">Montant dû</th><th>Étape</th>
+          <th class="num">Sans mouvement</th></tr>
+      ${montres.map((d) => `
+        <tr>
+          <td><b>${echapper(d.reference)}</b><br />
+              <span style="color:var(--texte-3)">${echapper(d.nom)}</span></td>
+          <td class="num">${euro(d.montant_du)}</td>
+          <td>${pastilleStatut(d.statut)}</td>
+          <td class="num">${d.jours_sans_mouvement} j</td>
+        </tr>`).join("")}
+    </table>`;
+}
+
 function rendreCourbe() {
   const zone = $("courbeBord");
   const courbe = (AGREGATS && AGREGATS.courbe) || { mois: [], series: [] };
@@ -1769,6 +1843,12 @@ function rendreBord() {
      "sur les dossiers clôturés", ""],
     ["Durée médiane", a.duree_mediane === null ? "—" : a.duree_mediane + " j",
      "de la transmission à la clôture", ""],
+    ["Coût du recouvrement", a.cout_par_euro === null ? "—" :
+       a.cout_par_euro.toFixed(2).replace(".", ",") + " €",
+     "de frais par euro déjà recouvré", ""],
+    ["Dossiers en souffrance", a.dormants.length,
+     `sans mouvement depuis plus de ${a.seuil_dormance} jours`,
+     a.dormants.length ? "#fab219" : ""],
   ];
 
   $("tuilesBord").innerHTML = tuiles.map(([lib, val, sous, couleur, icone]) => `
@@ -1794,6 +1874,8 @@ function rendreBord() {
     </div>`).join("");
 
   rendreCourbe();
+  rendreAnciennete();
+  rendreDormants();
 
   $("grapheBord").innerHTML = `
     <h3>Montant en recouvrement par étape</h3>
@@ -1836,6 +1918,14 @@ function recalculer() {
     // dupliquerait l'empilement mois par mois, et les deux finiraient par
     // ne plus dire la même chose.
     courbe: COURBE,
+    // Ancienneté, dossiers en souffrance et coût du recouvrement se calculent
+    // sur le poste : les redériver ici les ferait diverger dès qu'une règle
+    // change d'un côté seulement.
+    tranches_anciennete: SERVEUR ? SERVEUR.tranches_anciennete : [],
+    dormants: SERVEUR ? SERVEUR.dormants : [],
+    seuil_dormance: SERVEUR ? SERVEUR.seuil_dormance : 60,
+    nb_jamais_transmis: SERVEUR ? SERVEUR.nb_jamais_transmis : 0,
+    cout_par_euro: SERVEUR ? SERVEUR.cout_par_euro : null,
     taux_reussite: (gagnes.length + perdus.length)
       ? Math.round(100 * gagnes.length / (gagnes.length + perdus.length)) : null,
   };

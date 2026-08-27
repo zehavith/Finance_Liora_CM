@@ -360,6 +360,7 @@ def traiter_dossier(
         repertoire=dossier.nom_repertoire,
         montant_du=dossier.montant_du,
         montant_total=dossier.montant_total,
+        date_echeance=dossier.date_echeance,
     )
 
     trajet = module_synthese.parcours(dossier)

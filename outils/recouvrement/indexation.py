@@ -61,6 +61,7 @@ COLONNES_RECAP = [
     "sous_dossiers_factures",
     "sous_dossiers_adresses",
     "adresses_decouvertes",
+    "date_echeance",
     "date_contentieux",
     "date_cloture",
     "issue_process",
@@ -143,6 +144,7 @@ class ResumeDossier:
     sous_dossiers_factures: int = 0
     sous_dossiers_adresses: int = 0
     adresses_decouvertes: str = ""
+    date_echeance: str = ""
     date_contentieux: str = ""
     date_cloture: str = ""
     issue_process: str = ""
@@ -171,6 +173,7 @@ class ResumeDossier:
             "sous_dossiers_factures": str(self.sous_dossiers_factures),
             "sous_dossiers_adresses": str(self.sous_dossiers_adresses),
             "adresses_decouvertes": self.adresses_decouvertes,
+            "date_echeance": self.date_echeance,
             "date_contentieux": self.date_contentieux,
             "date_cloture": self.date_cloture,
             "issue_process": self.issue_process,

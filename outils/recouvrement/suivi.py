@@ -64,6 +64,30 @@ CLOTURES = {cle for cle, famille in FAMILLES.items() if famille != "cours"}
 GAGNES = {cle for cle, famille in FAMILLES.items() if famille == "gagne"}
 PERDUS = {cle for cle, famille in FAMILLES.items() if famille == "perdu"}
 
+# Tranches d'ancienneté de la créance, comptées depuis l'échéance de la facture.
+#
+# Rampe orange, et non bleue : les étapes du process occupent déjà une rampe
+# bleue, et deux échelles de la même teinte sur un même écran se confondraient.
+# Validée pour le fond sombre — teinte unique, clarté monotone, écarts visibles.
+# Du plus sombre au plus clair : c'est la créance la plus ancienne qui doit
+# ressortir, c'est elle qui coûte le plus cher à laisser courir.
+TRANCHES_ANCIENNETE = [
+    {"cle": "0-90", "libelle": "Moins de 3 mois", "min": 0, "max": 90,
+     "couleur": "#8f3d10"},
+    {"cle": "91-180", "libelle": "3 à 6 mois", "min": 91, "max": 180,
+     "couleur": "#bb4f14"},
+    {"cle": "181-365", "libelle": "6 mois à 1 an", "min": 181, "max": 365,
+     "couleur": "#e0621f"},
+    {"cle": "365-730", "libelle": "1 à 2 ans", "min": 366, "max": 730,
+     "couleur": "#f08a56"},
+    {"cle": "730+", "libelle": "Plus de 2 ans", "min": 731, "max": 10 ** 6,
+     "couleur": "#f9bc9c"},
+]
+
+# Au-delà, un dossier transmis qui n'a pas bougé mérite qu'on aille voir.
+# Deux mois : le temps qu'un avocat accuse réception et engage la procédure.
+SEUIL_DORMANCE = 60
+
 
 def _nombre(valeur) -> float:
     """Lit un montant tel qu'il sort d'un tableur : « 1 280,50 », « 680 », 42.0."""
@@ -232,6 +256,22 @@ def parcours_dossier(entree: dict) -> dict:
     }
 
 
+def _jours_depuis(valeur, reference: datetime | None = None) -> int | None:
+    date = _date_lisible(valeur)
+    if date is None:
+        return None
+    return ((reference or datetime.now()) - date).days
+
+
+def tranche_anciennete(jours: int | None) -> dict | None:
+    if jours is None or jours < 0:
+        return None
+    for tranche in TRANCHES_ANCIENNETE:
+        if tranche["min"] <= jours <= tranche["max"]:
+            return tranche
+    return TRANCHES_ANCIENNETE[-1]
+
+
 def _lire_recapitulatif(chemin: Path) -> list[dict]:
     texte = chemin.read_text(encoding="utf-8-sig")
     return list(csv.DictReader(texte.splitlines(), delimiter=";"))
@@ -296,6 +336,15 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 # Monday figurent à part, au récapitulatif : celles-ci sont
                 # celles du service, et lui seul les corrige.
                 **parcours_dossier(etat),
+                "date_echeance": (rangee.get("date_echeance") or "").strip(),
+                "anciennete_jours": _jours_depuis(rangee.get("date_echeance")),
+                # Jours écoulés depuis le dernier changement d'étape. None quand
+                # le dossier n'a jamais bougé : ce n'est pas un dossier qui
+                # dort, c'est un dossier qui n'est pas encore parti.
+                "jours_sans_mouvement": _jours_depuis(
+                    (etat.get("historique") or [{}])[-1].get("date")
+                    if etat.get("historique") else None
+                ),
                 "date_contentieux_monday": (
                     rangee.get("date_contentieux") or "").strip(),
                 "date_cloture_monday": (rangee.get("date_cloture") or "").strip(),
@@ -303,6 +352,56 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
         )
 
     return dossiers
+
+
+def tranches_anciennete(dossiers: list[dict]) -> list[dict]:
+    """Montant encore dû, par ancienneté de la créance.
+
+    Sur les seuls dossiers non clôturés : une créance recouvrée n'a plus
+    d'ancienneté, et la compter gonflerait les tranches les plus vieilles de
+    tout ce qui a justement été réglé.
+    """
+    par_cle = {
+        tranche["cle"]: dict(tranche, montant=0.0, nombre=0)
+        for tranche in TRANCHES_ANCIENNETE
+    }
+    sans_echeance = {"montant": 0.0, "nombre": 0}
+
+    for dossier in dossiers:
+        if dossier["statut"] in CLOTURES:
+            continue
+        tranche = tranche_anciennete(dossier.get("anciennete_jours"))
+        cible = par_cle[tranche["cle"]] if tranche else sans_echeance
+        cible["montant"] += dossier["montant_du"]
+        cible["nombre"] += 1
+
+    resultat = [par_cle[tranche["cle"]] for tranche in TRANCHES_ANCIENNETE]
+    if sans_echeance["nombre"]:
+        # Jamais fondu dans une tranche : une échéance absente du tableau ne
+        # doit pas passer pour une créance récente.
+        resultat.append({
+            "cle": "inconnue", "libelle": "Échéance non renseignée",
+            "couleur": "#5a6070", **sans_echeance,
+        })
+    return resultat
+
+
+def dormants(dossiers: list[dict], seuil: int = SEUIL_DORMANCE) -> list[dict]:
+    """Dossiers transmis qui n'ont pas bougé depuis plus de `seuil` jours.
+
+    Les dossiers jamais transmis en sont exclus : ils ne dorment pas, ils
+    n'ont pas encore commencé — et les mêler ferait perdre de vue les vrais
+    dossiers en souffrance.
+    """
+    retenus = [
+        dossier
+        for dossier in dossiers
+        if dossier["statut"] not in CLOTURES
+        and dossier["statut"] != STATUT_INITIAL
+        and (dossier.get("jours_sans_mouvement") or 0) > seuil
+    ]
+    retenus.sort(key=lambda d: -(d.get("jours_sans_mouvement") or 0))
+    return retenus
 
 
 def courbe_par_mois(dossiers: list[dict], mois_max: int = 24) -> dict:
@@ -433,6 +532,23 @@ def agreger(dossiers: list[dict]) -> dict:
         "taux_reussite": (
             round(100 * len(gagnes) / len(clotures)) if clotures else None
         ),
+        # Ce que coûte un euro recouvré. Les frais portent sur l'ensemble du
+        # portefeuille, les montants récupérés sur les seuls dossiers clos :
+        # le rapport dit ce que le recouvrement a coûté à ce jour, il ne
+        # prédit pas ce que coûtera un dossier encore ouvert.
+        "cout_par_euro": (
+            round(
+                sum(d["frais"] for d in dossiers)
+                / sum(d["montant_du"] for d in gagnes), 3
+            )
+            if sum(d["montant_du"] for d in gagnes) else None
+        ),
+        "tranches_anciennete": tranches_anciennete(dossiers),
+        "dormants": dormants(dossiers),
+        "seuil_dormance": SEUIL_DORMANCE,
+        "nb_jamais_transmis": sum(
+            1 for d in dossiers if d["statut"] == STATUT_INITIAL
+        ),
         "nb_sans_tribunal": sum(
             1 for d in dossiers if d["statut"] == "cloture-recouvrement"
         ),
@@ -444,7 +560,7 @@ def agreger(dossiers: list[dict]) -> dict:
         ),
         "courbe": courbe_par_mois(dossiers),
         "sans_mise_en_demeure": sum(
-            1 for d in dossiers if d["statut"] == "non-transmis"
-            and d["mise_en_demeure"] in ("non", "")
+            1 for d in dossiers if d["statut"] == STATUT_INITIAL
+            and d.get("mise_en_demeure", "") in ("non", "")
         ),
     }

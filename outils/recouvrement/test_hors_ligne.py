@@ -2411,6 +2411,8 @@ def test_interface() -> None:
             ('id="decouvrir"', "option découverte d'adresses"),
             ('id="dejaExporte"', "rappel d'un export déjà présent"),
             ('id="courbeBord"', "courbe d'avancement"),
+            ('id="anciennete"', "ancienneté des créances"),
+            ('id="dormants"', "dossiers en souffrance"),
             ('id="sansnav"', "option sans navigateur"),
             ('id="reprendre"', "option reprendre"),
             ('id="majdossiers"', "option compléter les dossiers"),
@@ -2893,6 +2895,70 @@ def test_suivi() -> None:
         verifier(
             module_suivi.courbe_par_mois([{"etapes": []}])["series"] == [],
             "sans aucune étape datée, la courbe reste vide plutôt qu'inventée",
+        )
+
+        print("\n  -- ancienneté, souffrance, coût --")
+        aujourdhui = datetime.now()
+        def il_y_a(jours):
+            return (aujourdhui - timedelta(days=jours)).strftime("%d/%m/%Y")
+
+        portefeuille = [
+            {"statut": "avocats", "montant_du": 1000.0, "frais": 300.0,
+             "anciennete_jours": 400, "jours_sans_mouvement": 95,
+             "reference": "A", "nom": "Ancien", "duree_jours": None},
+            {"statut": "transmis-contentieux", "montant_du": 500.0, "frais": 0.0,
+             "anciennete_jours": 30, "jours_sans_mouvement": 10,
+             "reference": "B", "nom": "Récent", "duree_jours": None},
+            {"statut": "non-transmis", "montant_du": 800.0, "frais": 0.0,
+             "anciennete_jours": 900, "jours_sans_mouvement": None,
+             "reference": "C", "nom": "Jamais parti", "duree_jours": None},
+            {"statut": "cloture-recouvrement", "montant_du": 2000.0, "frais": 200.0,
+             "anciennete_jours": 800, "jours_sans_mouvement": 400,
+             "reference": "D", "nom": "Réglé", "duree_jours": 60},
+            {"statut": "avocats", "montant_du": 700.0, "frais": 0.0,
+             "anciennete_jours": None, "jours_sans_mouvement": 3,
+             "reference": "E", "nom": "Sans échéance", "duree_jours": None},
+        ]
+        agregats = module_suivi.agreger(portefeuille)
+
+        tranches = {t["libelle"]: t for t in agregats["tranches_anciennete"]}
+        verifier(
+            tranches["1 à 2 ans"]["montant"] == 1000.0,
+            "la créance de 400 jours tombe dans la tranche 1 à 2 ans",
+        )
+        verifier(
+            tranches["Plus de 2 ans"]["montant"] == 800.0,
+            "un dossier jamais transmis compte quand même dans l'ancienneté",
+        )
+        verifier(
+            all(t["montant"] != 2000.0 for t in agregats["tranches_anciennete"]),
+            "un dossier clôturé sort de l'ancienneté : sa créance n'a plus d'âge",
+        )
+        verifier(
+            tranches["Échéance non renseignée"]["montant"] == 700.0,
+            "une échéance absente a sa propre ligne, jamais fondue dans une tranche",
+        )
+
+        verifier(
+            [d["reference"] for d in agregats["dormants"]] == ["A"],
+            "seul le dossier transmis et immobile est en souffrance",
+        )
+        verifier(
+            agregats["nb_jamais_transmis"] == 1,
+            "les dossiers jamais transmis sont comptés à part",
+        )
+        verifier(
+            agregats["cout_par_euro"] == 0.25,
+            f"coût par euro recouvré : 500 € de frais / 2 000 € (obtenu : {agregats['cout_par_euro']})",
+        )
+        verifier(
+            module_suivi.agreger([portefeuille[0]])["cout_par_euro"] is None,
+            "sans rien de recouvré, aucun coût par euro n'est inventé",
+        )
+        verifier(
+            module_suivi.tranche_anciennete(None) is None
+            and module_suivi.tranche_anciennete(-5) is None,
+            "une échéance à venir ou absente n'entre dans aucune tranche",
         )
 
         print("\n  -- couleurs des états --")
