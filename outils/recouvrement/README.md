@@ -115,10 +115,55 @@ L'application comporte quatre onglets :
 L'ordre suit l'usage : le tableau de bord se consulte tous les jours,
 l'extraction se lance de loin en loin.
 
-L'avancement suit six états : non transmis, transmis, en cours chez l'avocat,
-passage au tribunal, clôturé gagné, clôturé perdu. Il est enregistré dans
-`suivi-dossiers.json`, **à côté de l'outil et non dans l'export** : refaire une
-extraction n'efface pas l'état d'avancement.
+### L'avancement, étape par étape et daté
+
+Huit étapes, dans l'ordre où un dossier les traverse :
+
+| Étape | |
+|---|---|
+| Non transmis | point de départ |
+| En cours de transmission au service contentieux | |
+| Transmis au service contentieux — dossier complet | |
+| Transmis aux avocats | |
+| Procédure via tribunaux en cours | |
+| Clôturé via recouvrement | ✓ issue favorable, sans tribunal |
+| Procédure via tribunaux clôturée — montant reçu | ⚖ issue favorable, au tribunal |
+| Procédure via tribunaux clôturée — montant perdu | ✕ |
+
+**Chaque changement d'étape est daté** au moment où il est saisi, et la date
+reste modifiable : une étape se note souvent quelques jours après s'être
+produite, et sans correction la durée de procédure serait fausse de toute la
+latence de saisie. Le lien *Parcours* de chaque ligne ouvre le détail — toutes
+les étapes, leurs dates, et la durée écoulée entre l'entrée au contentieux et
+la clôture. Vider une date retire l'étape.
+
+L'entrée au contentieux est le premier changement au-delà de « non transmis » :
+c'est ce jour-là que le dossier quitte le recouvrement amiable.
+
+Les cinq étapes en cours partagent une teinte, de la plus soutenue à la plus
+claire — la couleur dit l'avancement, pas l'identité. Les trois issues portent
+les couleurs d'état réservées ; ce vert et ce rouge étant indistinguables en
+vision deutan, l'icône et le libellé les accompagnent toujours.
+
+Tout est enregistré dans `suivi-dossiers.json`, **à côté de l'outil et non dans
+l'export** : refaire une extraction n'efface pas l'avancement. Les états de la
+version précédente sont repris automatiquement.
+
+### La courbe d'avancement
+
+Le tableau de bord porte une **aire empilée** : à la fin de chaque mois,
+combien de dossiers à chaque étape. C'est la lecture qui répond à « où en
+sommes-nous globalement » — un simple décompte des étapes atteintes montrerait
+une progression même là où tout stagne.
+
+Les deux clôtures favorables y forment une seule bande : elles portent la même
+couleur d'état, et deux bandes vertes voisines se liraient comme une seule. Le
+détail reste au tableau des dossiers, et dans la tuile *Recouvré* qui indique
+combien de dossiers se sont réglés sans tribunal.
+
+Un dossier n'apparaît qu'à partir du mois de sa première étape datée : le
+faire figurer avant reviendrait à inventer un portefeuille qui n'existait pas
+encore.
 
 ### Plusieurs factures pour un même débiteur
 

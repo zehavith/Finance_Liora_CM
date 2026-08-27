@@ -443,6 +443,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/tableaux":
                 self._lister_tableaux(self._corps_json())
                 return
+            if chemin == "/api/etape":
+                self._dater_etape(self._corps_json())
+                return
         except ValueError as exc:
             self._json(400, {"erreur": str(exc)})
             return
@@ -646,6 +649,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 statut=demande.get("statut"),
                 frais=demande.get("frais"),
                 note=demande.get("note"),
+                date_etape=demande.get("date_etape"),
             )
             module_suivi.enregistrer(SUIVI, donnees)
         except ValueError as exc:
@@ -655,6 +659,37 @@ class Gestionnaire(BaseHTTPRequestHandler):
             self._json(500, {"erreur": f"Enregistrement impossible : {exc}"})
             return
         self._json(200, {"enregistre": True, "dossier": entree})
+
+    def _dater_etape(self, demande: dict) -> None:
+        """Corrige la date d'une étape, ou la retire si la date est vidée."""
+        reference = (demande.get("reference") or "").strip()
+        if not reference:
+            self._json(400, {"erreur": "Référence de dossier manquante."})
+            return
+        try:
+            rang = int(demande.get("rang"))
+        except (TypeError, ValueError):
+            self._json(400, {"erreur": "Étape inconnue."})
+            return
+
+        try:
+            donnees = module_suivi.charger(SUIVI)
+            entree = module_suivi.dater_etape(
+                donnees, reference, rang, str(demande.get("date") or "")
+            )
+            module_suivi.enregistrer(SUIVI, donnees)
+        except ValueError as exc:
+            self._json(400, {"erreur": str(exc)})
+            return
+        except OSError as exc:
+            self._json(500, {"erreur": f"Enregistrement impossible : {exc}"})
+            return
+
+        self._json(200, {
+            "enregistre": True,
+            "dossier": entree,
+            "parcours": module_suivi.parcours_dossier(entree),
+        })
 
     def _ouvrir(self, demande: dict) -> None:
         cible = Path((demande.get("chemin") or "").strip() or sortie_par_defaut())
@@ -762,6 +797,25 @@ select:focus,input.frais:focus,input.note:focus{outline:none;border-color:var(--
   border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:6px 10px}
 .liste-tableaux .case{margin:2px 0}
 .liste-tableaux .case i{display:block;font-size:11px;opacity:.6;font-style:normal}
+.courbe svg{width:100%;height:auto;aspect-ratio:760/240;display:block;overflow:visible}
+.courbe .grille{stroke:rgba(255,255,255,.10);stroke-width:1}
+.courbe .axe{fill:var(--doux);font-size:10px}
+.courbe .curseur{stroke:rgba(255,255,255,.35);stroke-width:1;pointer-events:none}
+.legende{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:12px}
+.legende span{display:flex;align-items:center;gap:6px}
+.legende i{width:11px;height:11px;border-radius:3px;display:inline-block}
+.infobulle{position:absolute;pointer-events:none;background:#0b0e1a;
+  border:1px solid rgba(255,255,255,.22);border-radius:8px;padding:8px 10px;
+  font-size:12px;z-index:40;box-shadow:0 8px 24px rgba(0,0,0,.5);min-width:190px}
+.infobulle b{display:block;margin-bottom:5px}
+.infobulle div{display:flex;justify-content:space-between;gap:14px}
+.detail{margin-top:14px;border-top:1px solid rgba(255,255,255,.12);padding-top:12px}
+.detail table{width:100%;border-collapse:collapse}
+table.donnees td:first-child b{white-space:nowrap}
+table.donnees td:first-child{min-width:170px}
+table.donnees input.note{min-width:170px}
+.detail td{padding:4px 6px;font-size:12.5px}
+.detail input[type=text]{width:110px;padding:4px 6px;font-size:12.5px}
 label{display:block;font-size:12px;color:var(--texte-2);margin-bottom:5px}
 input[type=text]{width:100%;background:var(--champ);border:1px solid var(--bord);
   border-radius:9px;padding:10px 12px;color:var(--texte);font-size:13.5px;font-family:inherit}
@@ -812,6 +866,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 
 <div class="vue actif" id="vueBord">
   <div id="tuilesBord" class="tuiles"></div>
+  <div class="graphe" id="courbeBord"></div>
   <div class="graphe" id="grapheBord"></div>
 </div>
 
@@ -1372,7 +1427,7 @@ document.querySelectorAll("nav.principal button").forEach((bouton) => {
 // ============================================================
 //  Suivi des dossiers
 // ============================================================
-let DOSSIERS = [], STATUTS = [], AGREGATS = null;
+let DOSSIERS = [], STATUTS = [], AGREGATS = null, COURBE = null;
 
 const euro = (v) => new Intl.NumberFormat("fr-FR",
   { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v || 0);
@@ -1385,6 +1440,7 @@ async function chargerDossiers() {
   DOSSIERS = donnees.dossiers;
   STATUTS = donnees.statuts;
   AGREGATS = donnees.agregats;
+  COURBE = donnees.agregats ? donnees.agregats.courbe : null;
   $("cheminSortie").textContent = donnees.sortie;
   rendreDocuments();
   rendreSuivi();
@@ -1473,13 +1529,20 @@ function rendreSuivi() {
           value="${d.frais ? d.frais : ""}" placeholder="0" /> €</td>
       <td><input class="note" data-champ="note" type="text"
           value="${echapper(d.note)}" placeholder="Référence avocat, audience…" /></td>
+      <td class="num" style="font-size:12px">${d.duree_jours === null ||
+          d.duree_jours === undefined ? "—" : d.duree_jours + " j"}</td>
+      <td><a class="lien" data-detail="${echapper(d.reference)}">Parcours</a></td>
       <td style="color:var(--texte-3);font-size:11px">${echapper(d.maj)}</td>
     </tr>`).join("");
 
   $("tableSuivi").innerHTML = `<table class="donnees">
     <tr><th>Dossier</th><th class="num">Montant dû</th><th>État</th>
-        <th class="num">Frais engagés</th><th>Note</th><th>Modifié</th></tr>
-    ${lignes}</table>`;
+        <th class="num">Frais engagés</th><th>Note</th>
+        <th class="num">Durée</th><th></th><th>Modifié</th></tr>
+    ${lignes}</table><div id="detailDossier"></div>`;
+
+  $("tableSuivi").querySelectorAll("[data-detail]").forEach((lien) =>
+    lien.addEventListener("click", () => rendreDetail(lien.dataset.detail)));
 
   $("tableSuivi").querySelectorAll("[data-champ]").forEach((champ) => {
     const evenement = champ.tagName === "SELECT" ? "change" : "change";
@@ -1496,6 +1559,9 @@ function rendreSuivi() {
           dossier.maj = reponse.dossier.maj || "";
         }
         champ.closest("tr").lastElementChild.textContent = reponse.dossier.maj || "";
+        // Le changement d'étape vient d'être daté : la courbe et les durées se
+        // recalculent sur le poste, on recharge plutôt que de les deviner ici.
+        if (champ.dataset.champ === "statut") { chargerDossiers(); return; }
         rendreBord();
       } catch (erreur) { afficherBandeau(false, erreur.message); }
     });
@@ -1503,6 +1569,186 @@ function rendreSuivi() {
 }
 
 // -- onglet Tableau de bord
+
+// -- courbe : où en est le portefeuille, mois après mois
+//
+// Aire empilée : à la fin de chaque mois, combien de dossiers à chaque étape.
+// Un simple cumul des étapes atteintes montrerait une progression même là où
+// tout stagne ; l'empilement montre le portefeuille tel qu'il est.
+//
+// Les cinq étapes en cours partagent une teinte, de la plus soutenue à la plus
+// claire — la couleur dit l'avancement, pas l'identité. Les deux issues portent
+// une couleur d'état et une icône : ce vert et ce rouge ne se distinguent pas
+// en vision deutan, l'icône et le libellé portent seuls le sens.
+
+// -- parcours d'un dossier : chaque étape, sa date, et la durée totale
+//
+// Les dates sont modifiables : une étape se saisit souvent quelques jours
+// après s'être produite, et la durée de procédure serait fausse de toute la
+// latence de saisie.
+function rendreDetail(reference) {
+  const dossier = DOSSIERS.find((d) => d.reference === reference);
+  const zone = $("detailDossier");
+  if (!dossier) { zone.innerHTML = ""; return; }
+
+  const nom = (cle) => {
+    const statut = STATUTS.find((s) => s.cle === cle);
+    return statut ? (statut.icone ? statut.icone + " " : "") + statut.libelle : cle;
+  };
+  const couleur = (cle) => {
+    const statut = STATUTS.find((s) => s.cle === cle);
+    return statut ? statut.couleur : "var(--texte-3)";
+  };
+
+  const etapes = dossier.etapes || [];
+  const rangees = etapes.length ? etapes.map((etape, rang) => `
+    <tr>
+      <td><input type="text" data-rang="${rang}" value="${echapper(etape.date)}"
+           placeholder="JJ/MM/AAAA" /></td>
+      <td><span class="pastille" style="background:${couleur(etape.statut)}"></span>
+          ${echapper(nom(etape.statut))}</td>
+    </tr>`).join("")
+    : '<tr><td colspan="2" class="vide">Aucune étape enregistrée. Changez l\'état ' +
+      "du dossier ci-dessus : le changement sera daté du jour.</td></tr>";
+
+  const monday = [];
+  if (dossier.date_contentieux_monday) {
+    monday.push("passage au contentieux le " + echapper(dossier.date_contentieux_monday));
+  }
+  if (dossier.date_cloture_monday) {
+    monday.push("clôture le " + echapper(dossier.date_cloture_monday));
+  }
+
+  zone.innerHTML = `
+    <div class="detail">
+      <h3>Parcours — ${echapper(dossier.reference)} · ${echapper(dossier.nom)}</h3>
+      <p class="aide">
+        ${dossier.debut ? "Entré au contentieux le <b>" + echapper(dossier.debut) + "</b>" : "Pas encore transmis"}${
+          dossier.cloture ? ", clôturé le <b>" + echapper(dossier.cloture) + "</b>" : ""}${
+          dossier.duree_jours !== null && dossier.duree_jours !== undefined
+            ? " — <b>" + dossier.duree_jours + " jours</b> de procédure" : ""}.
+      </p>
+      <table>${rangees}</table>
+      <p class="note">Corrigez une date en la modifiant ; videz-la pour retirer
+         l'étape. ${monday.length
+           ? "D'après le journal Monday : " + monday.join(", ") + "."
+           : ""}</p>
+      <div class="boutons"><button class="secondaire" id="fermerDetail">Fermer</button></div>
+    </div>`;
+
+  zone.querySelectorAll("input[data-rang]").forEach((champ) =>
+    champ.addEventListener("change", async () => {
+      try {
+        await api("/api/etape", {
+          reference: reference, rang: Number(champ.dataset.rang), date: champ.value,
+        });
+        await chargerDossiers();
+        rendreDetail(reference);
+      } catch (erreur) { afficherBandeau(false, erreur.message); }
+    }));
+  $("fermerDetail").addEventListener("click", () => { zone.innerHTML = ""; });
+  zone.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function rendreCourbe() {
+  const zone = $("courbeBord");
+  const courbe = (AGREGATS && AGREGATS.courbe) || { mois: [], series: [] };
+
+  if (courbe.mois.length < 2 || !courbe.series.length) {
+    zone.innerHTML = "<h3>Avancement du portefeuille</h3>" +
+      '<p class="vide">La courbe apparaît dès que deux mois d\'étapes sont ' +
+      "enregistrés. Renseignez l'étape de vos dossiers dans l'onglet " +
+      "« État des dossiers » : chaque changement est daté.</p>";
+    return;
+  }
+
+  const L = 760, H = 240, marge = { g: 34, d: 12, h: 12, b: 26 };
+  const largeur = L - marge.g - marge.d, hauteur = H - marge.h - marge.b;
+  const n = courbe.mois.length;
+  const total = courbe.mois.map((_, i) =>
+    courbe.series.reduce((somme, s) => somme + s.valeurs[i], 0));
+  const plafond = Math.max(1, ...total);
+
+  const x = (i) => marge.g + (n === 1 ? largeur / 2 : (largeur * i) / (n - 1));
+  const y = (v) => marge.h + hauteur - (hauteur * v) / plafond;
+
+  // Empilement du bas vers le haut, dans l'ordre des étapes.
+  let bas = new Array(n).fill(0);
+  const aires = courbe.series.map((serie) => {
+    const haut = bas.map((v, i) => v + serie.valeurs[i]);
+    // Le contour remonte par le haut puis redescend par le bas, en sens
+    // inverse. Inverser une liste déjà indexée à l'envers la remettrait à
+    // l'endroit, et le polygone se croiserait sur toute sa longueur.
+    const chemin =
+      haut.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("") +
+      bas.slice().reverse()
+         .map((v, k) => `L${x(n - 1 - k).toFixed(1)},${y(v).toFixed(1)}`).join("") + "Z";
+    const ligne = haut.map((v, i) =>
+      `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+    bas = haut;
+    return { serie, chemin, ligne };
+  });
+
+  const graduations = [0, 0.5, 1].map((part) => {
+    const valeur = Math.round(plafond * part);
+    return `<line class="grille" x1="${marge.g}" y1="${y(valeur)}" x2="${L - marge.d}" y2="${y(valeur)}" />` +
+      `<text class="axe" x="${marge.g - 6}" y="${y(valeur) + 3}" text-anchor="end">${valeur}</text>`;
+  }).join("");
+
+  const pas = Math.max(1, Math.ceil(n / 8));
+  const mois = courbe.mois.map((libelle, i) => i % pas === 0
+    ? `<text class="axe" x="${x(i)}" y="${H - 8}" text-anchor="middle">${libelle}</text>` : "").join("");
+
+  // Un trait de 2 px au sommet de chaque bande, sur le fond : la séparation
+  // reste lisible quand deux bandes voisines ont la même couleur.
+  const bandes = aires.map(({ serie, chemin, ligne }) => `
+    <path d="${chemin}" fill="${serie.couleur}" fill-opacity="0.85" />
+    <path d="${ligne}" fill="none" stroke="#0b0e1a" stroke-width="2" />`).join("");
+
+  zone.innerHTML = `
+    <h3>Avancement du portefeuille</h3>
+    <p class="aide">Nombre de dossiers à chaque étape, à la fin de chaque mois.</p>
+    <div class="courbe" style="position:relative">
+      <svg viewBox="0 0 ${L} ${H}" id="svgCourbe">
+        ${graduations}${bandes}${mois}
+        <line class="curseur" id="curseurCourbe" y1="${marge.h}" y2="${marge.h + hauteur}" style="display:none" />
+        <rect x="${marge.g}" y="${marge.h}" width="${largeur}" height="${hauteur}"
+              fill="transparent" id="zoneCourbe" />
+      </svg>
+      <div class="infobulle" id="bulleCourbe" style="display:none"></div>
+    </div>
+    <div class="legende">${courbe.series.map((s) =>
+      `<span><i style="background:${s.couleur}"></i>${s.icone ? s.icone + " " : ""}${echapper(s.libelle)}</span>`
+    ).join("")}</div>`;
+
+  const zoneSurvol = $("zoneCourbe"), bulle = $("bulleCourbe"), curseur = $("curseurCourbe");
+  zoneSurvol.addEventListener("mousemove", (ev) => {
+    const cadre = $("svgCourbe").getBoundingClientRect();
+    const relatif = ((ev.clientX - cadre.left) / cadre.width) * L;
+    const i = Math.max(0, Math.min(n - 1,
+      Math.round(((relatif - marge.g) / largeur) * (n - 1))));
+
+    curseur.setAttribute("x1", x(i));
+    curseur.setAttribute("x2", x(i));
+    curseur.style.display = "";
+
+    bulle.innerHTML = "<b>" + courbe.mois[i] + " — " + total[i] + " dossier(s)</b>" +
+      courbe.series.filter((s) => s.valeurs[i]).reverse().map((s) =>
+        `<div><span><i style="background:${s.couleur};width:9px;height:9px;` +
+        `border-radius:2px;display:inline-block;margin-right:6px"></i>` +
+        `${s.icone ? s.icone + " " : ""}${echapper(s.libelle)}</span><b style="display:inline">` +
+        `${s.valeurs[i]}</b></div>`).join("");
+    bulle.style.display = "";
+    const gauche = (x(i) / L) * cadre.width;
+    bulle.style.left = Math.min(cadre.width - 210, Math.max(0, gauche + 12)) + "px";
+    bulle.style.top = "8px";
+  });
+  zoneSurvol.addEventListener("mouseleave", () => {
+    bulle.style.display = "none";
+    curseur.style.display = "none";
+  });
+}
+
 function rendreBord() {
   if (!DOSSIERS.length) {
     $("tuilesBord").innerHTML = "";
@@ -1515,10 +1761,14 @@ function rendreBord() {
     ["Dossiers suivis", a.nb_dossiers, `dont ${a.nb_en_cours} en cours`, ""],
     ["Montant en recouvrement", euro(a.montant_en_cours), "dossiers non clôturés", ""],
     ["Frais engagés", euro(a.frais_engages), "avocat, huissier, greffe", ""],
-    ["Recouvré", euro(a.montant_gagne), `${a.nb_gagnes} dossier(s) gagné(s)`, "#0ca30c", "✓"],
+    ["Recouvré", euro(a.montant_gagne),
+     `${a.nb_sans_tribunal} sans tribunal · ${a.nb_au_tribunal} au tribunal`,
+     "#0ca30c", "✓"],
     ["Perdu", euro(a.montant_perdu), `${a.nb_perdus} dossier(s) perdu(s)`, "#d03b3b", "✕"],
     ["Taux de réussite", a.taux_reussite === null ? "—" : a.taux_reussite + " %",
      "sur les dossiers clôturés", ""],
+    ["Durée médiane", a.duree_mediane === null ? "—" : a.duree_mediane + " j",
+     "de la transmission à la clôture", ""],
   ];
 
   $("tuilesBord").innerHTML = tuiles.map(([lib, val, sous, couleur, icone]) => `
@@ -1543,11 +1793,13 @@ function rendreBord() {
       <div class="valeur">${s.montant ? euro(s.montant) : "—"}<span> · ${s.nombre} dossier${s.nombre > 1 ? "s" : ""}</span></div>
     </div>`).join("");
 
+  rendreCourbe();
+
   $("grapheBord").innerHTML = `
     <h3>Montant en recouvrement par étape</h3>
     <p class="aide">La longueur des barres représente le montant dû ; le nombre de
-       dossiers est indiqué à côté. Les quatre étapes en cours partagent une même
-       teinte, de la plus soutenue à la plus claire ; les deux issues portent une
+       dossiers est indiqué à côté. Les cinq étapes en cours partagent une même
+       teinte, de la plus soutenue à la plus claire ; les trois issues portent une
        couleur d'état et une icône, la couleur seule ne les distinguant pas en
        vision deutéranope.</p>
     <div class="barres">${barres}</div>`;
@@ -1560,18 +1812,30 @@ function recalculer() {
     const case_ = par[index[d.statut] ?? 0];
     case_.nombre += 1; case_.montant += d.montant_du; case_.frais += d.frais || 0;
   }
-  const clos = ["gagne", "perdu"];
+  // La famille — en cours, gagné, perdu — vient du serveur avec les états :
+  // la coder ici en dur ferait diverger les deux dès qu'une étape est ajoutée.
+  const famille = Object.fromEntries(STATUTS.map((s) => [s.cle, s.famille]));
+  const est = (d, f) => famille[d.statut] === f;
   const somme = (f) => DOSSIERS.filter(f).reduce((t, d) => t + d.montant_du, 0);
-  const gagnes = DOSSIERS.filter((d) => d.statut === "gagne");
-  const perdus = DOSSIERS.filter((d) => d.statut === "perdu");
+  const gagnes = DOSSIERS.filter((d) => est(d, "gagne"));
+  const perdus = DOSSIERS.filter((d) => est(d, "perdu"));
+  const durees = DOSSIERS.map((d) => d.duree_jours)
+    .filter((v) => v !== null && v !== undefined).sort((a, b) => a - b);
   return {
     par_statut: par, nb_dossiers: DOSSIERS.length,
-    nb_en_cours: DOSSIERS.filter((d) => !clos.includes(d.statut)).length,
-    montant_en_cours: somme((d) => !clos.includes(d.statut)),
+    nb_en_cours: DOSSIERS.filter((d) => est(d, "cours")).length,
+    montant_en_cours: somme((d) => est(d, "cours")),
     frais_engages: DOSSIERS.reduce((t, d) => t + (d.frais || 0), 0),
-    montant_gagne: somme((d) => d.statut === "gagne"),
-    montant_perdu: somme((d) => d.statut === "perdu"),
+    montant_gagne: somme((d) => est(d, "gagne")),
+    montant_perdu: somme((d) => est(d, "perdu")),
     nb_gagnes: gagnes.length, nb_perdus: perdus.length,
+    nb_sans_tribunal: DOSSIERS.filter((d) => d.statut === "cloture-recouvrement").length,
+    nb_au_tribunal: DOSSIERS.filter((d) => d.statut === "tribunal-gagne").length,
+    duree_mediane: durees.length ? durees[Math.floor(durees.length / 2)] : null,
+    // La courbe se calcule sur le poste, une seule fois : la recalculer ici
+    // dupliquerait l'empilement mois par mois, et les deux finiraient par
+    // ne plus dire la même chose.
+    courbe: COURBE,
     taux_reussite: (gagnes.length + perdus.length)
       ? Math.round(100 * gagnes.length / (gagnes.length + perdus.length)) : null,
   };

@@ -2410,6 +2410,7 @@ def test_interface() -> None:
             ('id="sousdossiersadresse"', "option sous-dossier par adresse"),
             ('id="decouvrir"', "option découverte d'adresses"),
             ('id="dejaExporte"', "rappel d'un export déjà présent"),
+            ('id="courbeBord"', "courbe d'avancement"),
             ('id="sansnav"', "option sans navigateur"),
             ('id="reprendre"', "option reprendre"),
             ('id="majdossiers"', "option compléter les dossiers"),
@@ -2738,14 +2739,23 @@ def test_suivi() -> None:
 
         print("\n  -- enregistrement et relecture --")
         donnees = module_suivi.charger(fichier_suivi)
-        module_suivi.mettre_a_jour(donnees, "F-1", statut="avocat", frais="450,50")
-        module_suivi.mettre_a_jour(donnees, "F-2", statut="gagne")
-        module_suivi.mettre_a_jour(donnees, "F-3", statut="perdu", frais="120")
+        module_suivi.mettre_a_jour(
+            donnees, "F-1", statut="transmission-en-cours", date_etape="01/02/2026"
+        )
+        module_suivi.mettre_a_jour(
+            donnees, "F-1", statut="avocats", frais="450,50", date_etape="20/02/2026"
+        )
+        module_suivi.mettre_a_jour(
+            donnees, "F-2", statut="cloture-recouvrement", date_etape="05/01/2026"
+        )
+        module_suivi.mettre_a_jour(
+            donnees, "F-3", statut="tribunal-perdu", frais="120", date_etape="10/03/2026"
+        )
         module_suivi.enregistrer(fichier_suivi, donnees)
 
         dossiers = module_suivi.inventaire(racine, fichier_suivi)
         etats = {d["reference"]: d for d in dossiers}
-        verifier(etats["F-1"]["statut"] == "avocat", "statut relu depuis le disque")
+        verifier(etats["F-1"]["statut"] == "avocats", "statut relu depuis le disque")
         verifier(etats["F-1"]["frais"] == 450.5, "frais « 450,50 » relus en nombre")
         verifier(bool(etats["F-1"]["maj"]), "date de modification enregistrée")
 
@@ -2771,13 +2781,133 @@ def test_suivi() -> None:
             "taux calculé sur les seuls dossiers clôturés, non sur l'ensemble",
         )
 
+        print("\n  -- parcours daté --")
+        verifier(
+            [e["date"] for e in etats["F-1"]["etapes"]] == ["01/02/2026", "20/02/2026"],
+            "chaque changement d'étape est daté, dans l'ordre",
+        )
+        verifier(
+            etats["F-1"]["debut"] == "01/02/2026" and etats["F-1"]["cloture"] == "",
+            "l'entrée au contentieux est datée, la clôture reste ouverte",
+        )
+        verifier(
+            etats["F-3"]["duree_jours"] is None,
+            "sans étape intermédiaire, aucune durée n'est inventée",
+        )
+
+        module_suivi.mettre_a_jour(
+            donnees, "F-1", statut="tribunal-gagne", date_etape="12/05/2026"
+        )
+        module_suivi.enregistrer(fichier_suivi, donnees)
+        parcours = module_suivi.parcours_dossier(
+            module_suivi.charger(fichier_suivi)["F-1"]
+        )
+        verifier(parcours["duree_jours"] == 100, "durée de procédure calculée")
+        verifier(parcours["issue"] == "tribunal-gagne", "issue de la procédure retenue")
+
+        module_suivi.dater_etape(donnees, "F-1", 0, "15/01/2026")
+        verifier(
+            module_suivi.parcours_dossier(donnees["F-1"])["debut"] == "15/01/2026",
+            "une date corrigée après coup change la durée de procédure",
+        )
+        module_suivi.dater_etape(donnees, "F-1", 0, "")
+        verifier(
+            len(donnees["F-1"]["historique"]) == 2,
+            "une date vidée retire l'étape",
+        )
+        try:
+            module_suivi.dater_etape(donnees, "F-1", 9, "01/01/2026")
+            verifier(False, "étape inexistante refusée")
+        except ValueError:
+            verifier(True, "étape inexistante refusée")
+        try:
+            module_suivi.mettre_a_jour(donnees, "F-2", statut="avocats", date_etape="32/13/2026")
+            verifier(False, "date impossible refusée")
+        except ValueError:
+            verifier(True, "date impossible refusée")
+
+        print("\n  -- reprise des anciens états --")
+        ancien = racine / "ancien.json"
+        ancien.write_text(
+            '{"F-9": {"statut": "avocat", "frais": 10, '
+            '"historique": [{"statut": "gagne", "date": "01/01/2026"}]}}',
+            encoding="utf-8",
+        )
+        repris = module_suivi.charger(ancien)
+        verifier(
+            repris["F-9"]["statut"] == "avocats",
+            "un état de l'ancienne version est repris, non perdu",
+        )
+        verifier(
+            repris["F-9"]["historique"][0]["statut"] == "cloture-recouvrement",
+            "les étapes déjà enregistrées sont reprises elles aussi",
+        )
+
+        print("\n  -- courbe d'avancement --")
+        courbe = module_suivi.courbe_par_mois([
+            {"etapes": [
+                {"statut": "transmission-en-cours", "date": "10/01/2026"},
+                {"statut": "avocats", "date": "05/03/2026"},
+            ]},
+            {"etapes": [
+                {"statut": "transmission-en-cours", "date": "20/02/2026"},
+                {"statut": "cloture-recouvrement", "date": "02/03/2026"},
+            ]},
+            {"etapes": []},
+        ])
+        par_cle = {s["cle"]: s["valeurs"] for s in courbe["series"]}
+        verifier(
+            courbe["mois"][:3] == ["01/2026", "02/2026", "03/2026"],
+            f"la courbe part du premier mois daté (obtenu : {courbe['mois'][:3]})",
+        )
+        verifier(
+            par_cle["transmission-en-cours"][:3] == [1, 2, 0],
+            "un dossier compte à son étape du moment, pas à toutes celles franchies",
+        )
+        verifier(
+            par_cle["avocats"][:3] == [0, 0, 1] and par_cle["gagne"][:3] == [0, 0, 1],
+            "en mars, chaque dossier est passé à son étape suivante",
+        )
+        verifier(
+            "cloture-recouvrement" not in par_cle and "tribunal-gagne" not in par_cle,
+            "les deux clôtures favorables ne forment qu'une bande, de même couleur",
+        )
+        fusion = module_suivi.courbe_par_mois([
+            {"etapes": [{"statut": "cloture-recouvrement", "date": "10/01/2026"}]},
+            {"etapes": [{"statut": "tribunal-gagne", "date": "12/01/2026"}]},
+            {"etapes": [{"statut": "transmission-en-cours", "date": "15/02/2026"}]},
+        ])
+        bande_gagne = next(s for s in fusion["series"] if s["cle"] == "gagne")
+        verifier(
+            bande_gagne["valeurs"][0] == 2,
+            "clôture amiable et clôture judiciaire comptent dans la même bande",
+        )
+        verifier(
+            len({s["couleur"] for s in fusion["series"]}) == len(fusion["series"]),
+            "deux bandes voisines n'ont jamais la même couleur",
+        )
+        verifier(
+            "non-transmis" not in par_cle,
+            "une étape que personne n'a atteinte ne figure pas dans la courbe",
+        )
+        verifier(
+            module_suivi.courbe_par_mois([{"etapes": []}])["series"] == [],
+            "sans aucune étape datée, la courbe reste vide plutôt qu'inventée",
+        )
+
         print("\n  -- couleurs des états --")
         cles = [s["cle"] for s in module_suivi.STATUTS]
-        verifier(len(set(cles)) == 6, "six états distincts")
+        verifier(len(set(cles)) == 8, f"huit étapes distinctes (obtenu : {len(set(cles))})")
         verifier(
-            all(s["icone"] for s in module_suivi.STATUTS if s["cle"] in ("gagne", "perdu")),
-            "les deux issues portent une icône, la couleur ne suffisant pas "
+            all(s["icone"] for s in module_suivi.STATUTS
+                if s["famille"] in ("gagne", "perdu")),
+            "les trois issues portent une icône, la couleur ne suffisant pas "
             "à les distinguer en vision deutan",
+        )
+        cours = [s["couleur"] for s in module_suivi.STATUTS if s["famille"] == "cours"]
+        verifier(
+            len(set(cours)) == len(cours) == 5,
+            "les cinq étapes en cours ont chacune leur nuance",
         )
 
 
