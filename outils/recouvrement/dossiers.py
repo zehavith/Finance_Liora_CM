@@ -605,6 +605,35 @@ def regrouper_par_debiteur(
     return resultat
 
 
+def rendre_repertoires_uniques(
+    dossiers: list[Dossier], signaler: Callable[[str], None] | None = None
+) -> list[Dossier]:
+    """Écarte les collisions de nom de répertoire entre plusieurs tableaux.
+
+    Chaque tableau numérote ses lignes pour lui seul : deux tableaux réunis
+    peuvent porter la même référence pour deux débiteurs différents, et le
+    second écraserait silencieusement le premier.
+    """
+    vus: dict[str, int] = {}
+    for dossier in dossiers:
+        nom = dossier.nom_repertoire
+        if nom not in vus:
+            vus[nom] = 1
+            continue
+
+        origine = dossier.reference
+        while dossier.nom_repertoire in vus:
+            vus[nom] += 1
+            dossier.reference = f"{origine}-{vus[nom]}"
+        vus[dossier.nom_repertoire] = 1
+        if signaler:
+            signaler(
+                f"⚠ référence « {origine} » présente dans plusieurs tableaux : "
+                f"le second dossier est renommé « {dossier.reference} »"
+            )
+    return dossiers
+
+
 def filtrer_par_colonne(
     dossiers: list[Dossier],
     colonne: str,

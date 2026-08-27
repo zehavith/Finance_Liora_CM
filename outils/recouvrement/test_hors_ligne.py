@@ -1666,6 +1666,119 @@ def test_lecture_tableau_monday() -> None:
         )
 
 
+def test_deux_tableaux() -> None:
+    """Deux tableaux, deux libellés de qualification, un seul lot."""
+    print("\nDeux tableaux réunis")
+
+    import export_mails  # noqa: PLC0415
+    import monday as module_monday  # noqa: PLC0415
+    from dossiers import rendre_repertoires_uniques  # noqa: PLC0415
+    from gmail_api import SourcesGmail  # noqa: PLC0415
+
+    def colonne(titre, texte):
+        return {"column": {"title": titre}, "text": texte, "value": None}
+
+    def ligne(nom, societe, etape, email):
+        return {
+            "name": nom,
+            "column_values": [
+                colonne("Entreprise", societe),
+                colonne("E-mail", email),
+                colonne("Etape process recouvrement", etape),
+            ],
+        }
+
+    # Le tableau entreprise « fait passer », celui des particuliers
+    # « transmet » : deux libellés pour la même étape.
+    tableaux = {
+        "101": [
+            ligne("FACT-2405-00030", "ACME SARL",
+                  "🔴 Dossier à faire passer en contentieux", "compta@acme.fr"),
+            ligne("FACT-2405-00031", "BETA SAS", "Relance 1", "compta@beta.fr"),
+        ],
+        "202": [
+            ligne("FACT-2405-00030", "", "Dossier à transmettre au service contentieux",
+                  "marie@exemple.fr"),
+            ligne("FACT-2405-00099", "", "Echéancier en cours", "paul@exemple.fr"),
+        ],
+    }
+
+    def faux_appel(requete, jeton):
+        for identifiant, elements in tableaux.items():
+            if f"ids: [{identifiant}]" in requete:
+                return {"boards": [{"items_page": {"cursor": None, "items": elements}}]}
+        return {"boards": []}
+
+    vrai_appel = module_monday._appeler_api
+    vraies_sources = export_mails.ouvrir_sources
+    module_monday._appeler_api = faux_appel
+    export_mails.ouvrir_sources = lambda **_: SourcesGmail([ClientFictif()])
+    try:
+        with tempfile.TemporaryDirectory() as repertoire:
+            racine = Path(repertoire)
+            jeton = racine / "monday.txt"
+            jeton.write_text("faux-jeton", encoding="utf-8")
+
+            journal: list[str] = []
+            code = export_mails.executer(
+                export_mails.analyser_arguments([
+                    "--sortie", str(racine / "export"),
+                    "--jeton-monday", str(jeton),
+                    "--tableau-monday", "101,202",
+                    "--filtre-colonne", "Etape process recouvrement",
+                    "--filtre-valeur",
+                    "Dossier à faire passer en contentieux,"
+                    "Dossier à transmettre au service contentieux",
+                    "--simulation",
+                ]),
+                relais=journal.append,
+            )
+            trace = "\n".join(journal)
+            verifier(code == 0, "code de sortie 0")
+            verifier(
+                "Lecture du tableau Monday 101" in trace
+                and "Lecture du tableau Monday 202" in trace,
+                "les deux tableaux sont lus",
+            )
+            verifier(
+                "2 dossier(s) retenu(s) sur 4" in trace,
+                "un seul dossier retenu par tableau, chacun sur son propre libellé",
+            )
+            verifier(
+                "2 tableau(x) Monday" in trace,
+                "le lot annonce son origine multiple",
+            )
+            verifier(
+                trace.count("FACT-2405-00030") >= 1,
+                "un numéro de facture présent dans les deux tableaux reste traité",
+            )
+            verifier(
+                "[1/2]" in trace and "[2/2]" in trace,
+                "les deux dossiers retenus sont traités séparément",
+            )
+    finally:
+        module_monday._appeler_api = vrai_appel
+        export_mails.ouvrir_sources = vraies_sources
+
+    # Le renommage lui-même, indépendamment de Monday.
+    from dossiers import Dossier  # noqa: PLC0415
+
+    doubles = [
+        Dossier(reference="FACT-1", nom="ACME", emails=["a@acme.fr"]),
+        Dossier(reference="FACT-1", nom="ACME", emails=["b@acme.fr"]),
+        Dossier(reference="FACT-1", nom="ACME", emails=["c@acme.fr"]),
+    ]
+    rendre_repertoires_uniques(doubles)
+    verifier(
+        len({d.nom_repertoire for d in doubles}) == 3,
+        "trois références identiques donnent trois répertoires distincts",
+    )
+    verifier(
+        doubles[0].reference == "FACT-1",
+        "le premier garde sa référence, seuls les suivants sont renommés",
+    )
+
+
 def test_lanceurs_windows() -> None:
     """Les lanceurs Windows doivent rester en ASCII pur.
 
@@ -2482,6 +2595,7 @@ def main() -> int:
     test_decouverte_adresses()
     test_sens_et_faux_positifs()
     test_lecture_tableau_monday()
+    test_deux_tableaux()
     test_lanceurs_windows()
     test_mise_a_jour()
     test_export_interrompu()

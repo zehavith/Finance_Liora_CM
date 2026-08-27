@@ -39,6 +39,7 @@ from dossiers import (  # noqa: E402
     filtrer_par_colonne,
     lire_dossiers,
     regrouper_par_debiteur,
+    rendre_repertoires_uniques,
 )
 import monday as module_monday  # noqa: E402
 from decouverte import adresses_candidates  # noqa: E402
@@ -222,8 +223,9 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "--tableau-monday",
         default=None,
         help=(
-            "Identifiant du tableau Monday à lire directement, au lieu d'un "
-            "fichier déposé. Demande le jeton Monday."
+            "Identifiants des tableaux Monday à lire directement, séparés par "
+            "des virgules, au lieu d'un fichier déposé. Les lignes de tous les "
+            "tableaux sont réunies en un seul lot. Demande le jeton Monday."
         ),
     )
     analyseur.add_argument(
@@ -1059,17 +1061,36 @@ def executer(
                     "d'accès Monday. Renseignez-le, ou déposez un export du "
                     "tableau."
                 )
-            journal(f"Lecture du tableau Monday {options.tableau_monday}…")
-            try:
-                grille = module_monday.lire_tableau(options.tableau_monday, jeton)
-            except module_monday.ErreurMonday as exc:
-                raise ErreurDossiers(str(exc)) from exc
-            origine = f"tableau Monday {options.tableau_monday}"
-            liste = dossiers_depuis_grille(
-                grille,
-                origine,
-                ignorer_lignes_incompletes=options.ignorer_lignes_incompletes,
-                signaler=journal,
+            identifiants = [
+                morceau.strip()
+                for morceau in str(options.tableau_monday).split(",")
+                if morceau.strip()
+            ]
+            liste = []
+            for identifiant in identifiants:
+                journal(f"Lecture du tableau Monday {identifiant}…")
+                try:
+                    grille = module_monday.lire_tableau(identifiant, jeton)
+                except module_monday.ErreurMonday as exc:
+                    raise ErreurDossiers(str(exc)) from exc
+                lignes_tableau = dossiers_depuis_grille(
+                    grille,
+                    f"tableau Monday {identifiant}",
+                    ignorer_lignes_incompletes=options.ignorer_lignes_incompletes,
+                    signaler=journal,
+                )
+                journal(f"    {len(lignes_tableau)} ligne(s) exploitable(s)")
+                liste += lignes_tableau
+
+            # Chaque tableau numérote ses lignes pour lui seul : réunis, deux
+            # d'entre eux peuvent porter la même référence.
+            if len(identifiants) > 1:
+                rendre_repertoires_uniques(liste, signaler=journal)
+
+            origine = (
+                f"{len(identifiants)} tableau(x) Monday"
+                if len(identifiants) > 1
+                else f"tableau Monday {options.tableau_monday}"
             )
         else:
             origine = str(options.dossiers)

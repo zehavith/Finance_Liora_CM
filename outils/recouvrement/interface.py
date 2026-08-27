@@ -51,6 +51,15 @@ JETON_MONDAY = RACINE / "monday-token.txt"
 # Liora s'appelait DataScientest : les relances les plus anciennes partent
 # encore de ce domaine, et sans lui elles passeraient pour des messages reçus.
 DOMAINES_PAR_DEFAUT = "datascientest.com"
+# Les deux tableaux de recouvrement qualifient le passage au contentieux dans
+# la même colonne, mais avec deux libellés distincts : celui des entreprises
+# « fait passer », celui des financements personnels « transmet ». Les deux
+# sont proposés d'emblée, la comparaison retenant l'un ou l'autre.
+FILTRE_COLONNE_PAR_DEFAUT = "Etape process recouvrement"
+FILTRE_VALEUR_PAR_DEFAUT = (
+    "Dossier à faire passer en contentieux,"
+    "Dossier à transmettre au service contentieux"
+)
 # Cases de l'onglet Export mémorisées d'une session à l'autre, avec leur
 # valeur au tout premier lancement. La simulation est cochée au départ : on
 # ne lance pas un premier export réel sans avoir compté ce qu'il ramènera.
@@ -364,9 +373,11 @@ class Gestionnaire(BaseHTTPRequestHandler):
             ).replace(
                 "__SEULEMENT__", _attribut(preferences.get("seulement", ""))
             ).replace(
-                "__FILTRE_COLONNE__", _attribut(preferences.get("filtre_colonne", ""))
+                "__FILTRE_COLONNE__",
+                _attribut(preferences.get("filtre_colonne", FILTRE_COLONNE_PAR_DEFAUT)),
             ).replace(
-                "__FILTRE_VALEUR__", _attribut(preferences.get("filtre_valeur", ""))
+                "__FILTRE_VALEUR__",
+                _attribut(preferences.get("filtre_valeur", FILTRE_VALEUR_PAR_DEFAUT)),
             ).replace(
                 "__TABLEAU__", _attribut(preferences.get("tableau", ""))
             ).replace("__OPTIONS__", _cases_json(preferences))
@@ -842,14 +853,17 @@ button:disabled{opacity:.45;cursor:not-allowed}
        d'export à refaire à chaque fois. Demande le jeton Monday (section 2).</p>
     <div class="grille">
       <div>
-        <label for="tableau">Tableau Monday</label>
-        <select id="tableau"><option value="">— cliquez sur Lister —</option></select>
+        <label>Tableaux a lire</label>
+        <div id="tableau">Cliquez sur « Lister mes tableaux ».</div>
       </div>
       <div>
         <label for="listerTableaux">&nbsp;</label>
         <button class="secondaire" id="listerTableaux">Lister mes tableaux</button>
       </div>
     </div>
+    <p class="note">Cochez-en plusieurs : les lignes de tous les tableaux
+       cochés sont réunies en un seul lot, et le filtre ci-dessous s'y applique
+       de la même façon.</p>
     <p class="note">Le jeton n'est jamais transmis à la page : il reste sur le
        poste, dans son propre fichier.</p>
   </div>
@@ -1037,7 +1051,7 @@ function majBouton() {
   if (mode === "manuel") {
     $("lancer").disabled = !($("mEmail").value.trim() || $("mFacture").value.trim());
   } else if (mode === "monday") {
-    $("lancer").disabled = !$("tableau").value;
+    $("lancer").disabled = !tableauxCoches();
   } else {
     $("lancer").disabled = !(fichierChoisi || reutiliserImport);
   }
@@ -1052,15 +1066,23 @@ $("listerTableaux").addEventListener("click", async () => {
   try {
     const reponse = await api("/api/tableaux",
       { jeton_monday: $("jetonMonday").value });
+    const coches = new Set(TABLEAU_MEMORISE.split(",").filter(Boolean));
     const liste = $("tableau");
-    liste.innerHTML = '<option value="">— choisissez —</option>';
+    liste.innerHTML = "";
     reponse.tableaux.forEach((tab) => {
-      const choix = document.createElement("option");
-      choix.value = tab.id;
-      choix.textContent = tab.nom + "  (" + tab.id + ")";
-      liste.appendChild(choix);
+      const etiquette = document.createElement("label");
+      etiquette.className = "case";
+      const case_ = document.createElement("input");
+      case_.type = "checkbox";
+      case_.value = tab.id;
+      case_.checked = coches.has(tab.id);
+      case_.addEventListener("change", () => { majBouton(); enregistrerReglages(); });
+      const texte = document.createElement("span");
+      texte.innerHTML = "<b>" + echapper(tab.nom) + "</b><i>identifiant " + tab.id + "</i>";
+      etiquette.appendChild(case_);
+      etiquette.appendChild(texte);
+      liste.appendChild(etiquette);
     });
-    if (TABLEAU_MEMORISE) liste.value = TABLEAU_MEMORISE;
     afficherBandeau(true, reponse.tableaux.length + " tableau(x) trouvé(s).");
   } catch (erreur) {
     afficherBandeau(false, erreur.message);
@@ -1070,7 +1092,10 @@ $("listerTableaux").addEventListener("click", async () => {
     majBouton();
   }
 });
-$("tableau").addEventListener("change", () => { majBouton(); enregistrerReglages(); });
+function tableauxCoches() {
+  return Array.from($("tableau").querySelectorAll("input:checked"))
+    .map((c) => c.value).join(",");
+}
 
 // Les cases reprennent l'état de la dernière session : ce qui a été décidé
 // une fois n'a pas à être redécidé à chaque ouverture.
@@ -1090,7 +1115,7 @@ function reglages() {
     domaines: $("domaines").value, seulement: $("seulement").value,
     filtre_colonne: $("filtreColonne").value,
     filtre_valeur: $("filtreValeur").value,
-    tableau: $("tableau").value,
+    tableau: tableauxCoches(),
     jeton_monday: $("jetonMonday").value, options: options,
   };
 }
@@ -1170,7 +1195,7 @@ function retenir(fichier) {
 
 // -- lancement
 $("lancer").addEventListener("click", async () => {
-  if (mode === "monday" && !$("tableau").value) return;
+  if (mode === "monday" && !tableauxCoches()) return;
   if (mode === "fichier" && !fichierChoisi && !reutiliserImport) return;
   $("lancer").disabled = true;
   $("bandeau").className = "bandeau";
@@ -1185,7 +1210,7 @@ $("lancer").addEventListener("click", async () => {
       domaines: $("domaines").value,
       filtre_colonne: $("filtreColonne").value,
       filtre_valeur: $("filtreValeur").value,
-      tableau: $("tableau").value,
+      tableau: tableauxCoches(),
       simulation: $("simulation").checked,
       ignorer_lignes_incompletes: $("ignorer").checked,
       sans_regroupement: !$("regrouper").checked,

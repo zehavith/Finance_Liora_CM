@@ -276,12 +276,31 @@ Les colonnes « fichier » (Facture PDF, Convention Signée) reviennent vides
 dans le champ texte de l'API : l'adresse est lue dans la valeur brute de la
 colonne, sans quoi les documents ne seraient jamais téléchargés.
 
+#### Plusieurs tableaux à la fois
+
+Les cases se cochent, pas les boutons radio : le recouvrement se suit sur deux
+tableaux — **1.2. Entreprise** et **2.1. Financement Personnel** —, et les
+lignes des deux sont réunies en un seul lot.
+
+Chaque tableau numérote ses lignes pour lui seul. Réunis, ils peuvent porter
+la même référence pour deux débiteurs différents : le second dossier est alors
+renommé, et le renommage est annoncé. Sans cela, il écraserait le premier en
+silence.
+
 ### Ne traiter que les dossiers qualifiés
 
 Deux champs en bas de la section 1 : **une colonne** et **la valeur
-attendue**. Renseignez par exemple `Etape process recouvrement` et
-`Dossier à faire passer en contentieux`, et seules les lignes ainsi qualifiées
-dans Monday sont traitées.
+attendue**. Ils sont pré-remplis avec la colonne et les deux libellés en usage :
+
+| Champ | Valeur par défaut |
+|---|---|
+| Colonne | `Etape process recouvrement` |
+| Valeur attendue | `Dossier à faire passer en contentieux,Dossier à transmettre au service contentieux` |
+
+Les deux tableaux qualifient la même étape avec deux libellés distincts —
+l'un « fait passer », l'autre « transmet ». Plusieurs valeurs séparées par des
+virgules sont acceptées, et une ligne est retenue dès qu'elle correspond à
+l'une d'elles.
 
 La comparaison est volontairement souple — sans accent, sans casse, par
 inclusion — parce qu'une étiquette Monday se lit
