@@ -1571,6 +1571,7 @@ def test_echeance_facture() -> None:
         "En date du : 06/06/2022\n"
         "Objet : Apprenant : AÏSSATA CONTE\n"
         "Début de formation : 06/06/2022\n"
+        "Fin de formation : 13/06/2022\n"
         "Dates de service : 06/06/2022 - 13/06/2022\n"
         "Délai de règlement : À réception de facture\n"
         "Date limite de règlement : 06/06/2022\n"
@@ -1581,31 +1582,47 @@ def test_echeance_facture() -> None:
         f"« En date du » donne la date de facture (obtenu : {dates['facture']})",
     )
     verifier(
-        dates["debut_formation"] == "06/06/2022",
-        "le début de formation est relevé",
+        dates["debut_formation"] == "06/06/2022"
+        and dates["fin_formation"] == "13/06/2022",
+        "début et fin de formation sont relevés séparément",
     )
 
+    # Les cinq règles de Liora, sur cette facture.
+    attendus = {
+        "debut-formation": "06/06/2022",
+        "facture30": "06/07/2022",
+        "fin-formation-30": "13/07/2022",
+        "fin-formation-45": "28/07/2022",
+        "fin-formation-60": "12/08/2022",
+    }
+    obtenus = {
+        cle: facture_pdf.echeance_selon_regle(dates, cle)[0]
+        for cle in facture_pdf.REGLES
+    }
     verifier(
-        facture_pdf.echeance_selon_regime(dates, "formation")
-        == ("06/06/2022", "début de formation"),
-        "financement personnel : l'échéance tombe au début de la formation",
+        obtenus == attendus,
+        f"les cinq règles d'échéance donnent la bonne date (obtenu : {obtenus})",
     )
-    date, origine = facture_pdf.echeance_selon_regime(dates, "facture30")
     verifier(
-        date == "06/07/2022",
-        f"hors financement personnel : facture + 30 jours (obtenu : {date})",
+        "30 jours" in facture_pdf.echeance_selon_regle(dates, "facture30")[1],
+        "le mode de calcul est rapporté avec la date",
     )
-    verifier("30 jours" in origine, "le mode de calcul est rapporté avec la date")
     verifier(
-        facture_pdf.echeance_selon_regime(dates, "facture30", delai=45)[0]
+        facture_pdf.echeance_selon_regle(dates, "facture30", delai=45)[0]
         == "21/07/2022",
-        "le délai est paramétrable",
+        "le délai peut être forcé, quelle que soit la règle",
+    )
+    verifier(
+        facture_pdf.normaliser_regle("formation") == "debut-formation"
+        and facture_pdf.normaliser_regle("n'importe quoi") == "facture30",
+        "une règle inconnue ou périmée retombe sur une règle valable",
     )
 
     verifier(
         facture_pdf.dates_de_facture(
             "Formation du 12/03/2024 au 20/06/2024. Montant 1 200 €"
-        ) == {"facture": "", "debut_formation": "", "limite_imprimee": ""},
+        ) == {"facture": "", "debut_formation": "", "fin_formation": "",
+              "limite_imprimee": ""},
         "une date sans intitulé reconnu n'est jamais retenue",
     )
     verifier(
@@ -1619,22 +1636,40 @@ def test_echeance_facture() -> None:
         "majuscules, accents et points de séparation ne gênent pas la lecture",
     )
     verifier(
-        facture_pdf.echeance_selon_regime(
-            {"limite_imprimee": "01/02/2026"}, "formation"
+        facture_pdf.echeance_selon_regle(
+            {"limite_imprimee": "01/02/2026"}, "debut-formation"
         ) == ("01/02/2026", "date limite imprimée sur la facture"),
         "sans date calculable, la limite imprimée sert de dernier recours",
     )
+    date, origine = facture_pdf.echeance_selon_regle(
+        {"facture": "01/03/2026"}, "fin-formation-60"
+    )
     verifier(
-        facture_pdf.echeance_selon_regime({}, "formation")[0] == "",
+        date == "30/04/2026" and "fin de formation absent" in origine,
+        f"un repli sur une autre date est appliqué et nommé (obtenu : {origine})",
+    )
+    verifier(
+        facture_pdf.echeance_selon_regle({}, "debut-formation")[0] == "",
         "sans aucune date, rien n'est inventé",
     )
 
+    deduites = {
+        nom: facture_pdf.regle_deduite(nom) for nom in (
+            "1.1. Entreprise - ADV", "1.2. Entreprise - Recouvrement",
+            "1.3. Entreprise - OPCO", "2.1. Financement Personnel",
+            "2.2. Financement CPF", "2.3. Financement pôle emploi : AIF / POEI",
+            "2.4. Financement complexe : REGION / TRANSITION / AGEFIPH")
+    }
     verifier(
-        [facture_pdf.regime_deduit(nom) for nom in (
-            "1.2. Entreprise - Recouvrement", "2.1. Financement Personnel",
-            "2.2. Financement CPF", "1.3. Entreprise - OPCO")]
-        == ["facture30", "formation", "formation", "facture30"],
-        "la règle est déduite du nom du tableau, entreprise contre financement",
+        list(deduites.values()) == [
+            "facture30", "facture30", "fin-formation-30", "debut-formation",
+            "fin-formation-45", "fin-formation-60", "fin-formation-60",
+        ],
+        f"chaque tableau reçoit sa règle (obtenu : {list(deduites.values())})",
+    )
+    verifier(
+        deduites["1.3. Entreprise - OPCO"] == "fin-formation-30",
+        "« Entreprise - OPCO » suit la règle OPCO, la plus précise des deux",
     )
 
     with tempfile.TemporaryDirectory() as repertoire:
@@ -1690,7 +1725,7 @@ def test_echeance_facture() -> None:
         journal: list[str] = []
         date, _origine = export_mails._echeance_depuis_facture(
             Dossier(reference="FACT-1", nom="X", emails=["a@b.fr"], factures=["FACT-1"]),
-            racine, journal.append, "formation",
+            racine, journal.append, "debut-formation",
         )
         verifier(
             date == "15/06/2026",

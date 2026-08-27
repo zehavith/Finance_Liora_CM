@@ -288,13 +288,9 @@ def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str
     if tableau:
         arguments += ["--tableau-monday", tableau]
 
-    regimes = (demande.get("regimes_echeance") or "").strip()
-    if regimes:
-        arguments += ["--regimes-echeance", regimes]
-
-    delai = str(demande.get("delai_paiement") or "").strip()
-    if delai.isdigit():
-        arguments += ["--delai-paiement", delai]
+    regles = (demande.get("regimes_echeance") or "").strip()
+    if regles:
+        arguments += ["--regles-echeance", regles]
 
     colonne = (demande.get("filtre_colonne") or "").strip()
     valeur = (demande.get("filtre_valeur") or "").strip()
@@ -1172,9 +1168,11 @@ $("listerTableaux").addEventListener("click", async () => {
 // l'apprenant, l'échéance y tombe au début de la formation.
 function regimeDeduit(nom) {
   const plat = (nom || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  if (/(entreprise|opco|societe|b2b|adv)/.test(plat)) return "facture30";
-  if (/(financement|personnel|particulier|cpf|b2c|pole emploi|aif|poei|region|transition|agefiph)/.test(plat))
-    return "formation";
+  if (/(cpf)/.test(plat)) return "fin-formation-45";
+  if (/(transition|region|aif|poei|agefiph|interco|allemagne|pole emploi|complexe)/.test(plat)) return "fin-formation-60";
+  if (/(opco|b2b|alternance|etat)/.test(plat)) return "fin-formation-30";
+  if (/(personnel|perso|particulier|b2c)/.test(plat)) return "debut-formation";
+  if (/(entreprise|corporate|societe|adv|btc)/.test(plat)) return "facture30";
   return "facture30";
 }
 
@@ -1219,8 +1217,11 @@ function rendreTableaux() {
     const regime = document.createElement("select");
     regime.className = "regime";
     regime.innerHTML =
-      '<option value="formation">échéance = début de formation</option>' +
-      '<option value="facture30">échéance = date de facture + 30 j</option>';
+      '<option value="facture30">échéance = date de facture + 30 j</option>' +
+      '<option value="debut-formation">échéance = début de formation</option>' +
+      '<option value="fin-formation-30">échéance = fin de formation + 30 j</option>' +
+      '<option value="fin-formation-45">échéance = fin de formation + 45 j</option>' +
+      '<option value="fin-formation-60">échéance = fin de formation + 60 j</option>';
     regime.value = REGIMES_ECHEANCE[tab.id] || regimeDeduit(tab.nom);
     regime.addEventListener("change", () => {
       REGIMES_ECHEANCE[tab.id] = regime.value;

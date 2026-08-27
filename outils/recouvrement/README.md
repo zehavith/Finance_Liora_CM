@@ -187,16 +187,28 @@ ressortir.
 **L'échéance ne figure pas sur la facture.** Une facture Liora porte « Délai de
 règlement : À réception de facture », quel que soit le cas — s'y fier daterait
 tous les retards du même jour. Elle se calcule, et pas de la même façon selon
-le financement :
+le financement.
 
-| Financement | Échéance |
-|---|---|
-| personnel (B2C : CPF, Pôle emploi, région…) | **début de formation** |
-| entreprise, OPCO | **date de facture + 30 jours** |
+Quinze types de financement, mais **cinq règles** : toutes se ramènent à une
+date de départ et un délai.
 
-Les deux dates nécessaires, elles, sont bien sur la facture : « En date du »
-pour la facture, « Début de formation » pour la formation. Le délai de 30 jours
-se règle avec `--delai-paiement`.
+| Règle | Échéance | Financements |
+|---|---|---|
+| `facture30` | date de facture + 30 j | BTC-Entreprise, Corporate Alternance |
+| `debut-formation` | début de formation | financement personnel, BTC-Perso, Perso-Alternance |
+| `fin-formation-30` | fin de formation + 30 j | B2B, Alternance, État, OPCO |
+| `fin-formation-45` | fin de formation + 45 j | CPF |
+| `fin-formation-60` | fin de formation + 60 j | Transition pro, Région, AIF, POEI, Agefiph, Interco, DST Allemagne |
+
+Les trois dates de départ figurent sur la facture — « En date du », « Début de
+formation », « Fin de formation » — ou dans les colonnes du tableau, qui sont
+alors lues directement. `--delai-paiement` force un délai, quelle que soit la
+règle retenue.
+
+**Une exception non automatisée** : en BTC-Entreprise, une facture *modifiée*
+suit « début de formation + 30 j ». Rien dans le PDF ne dit qu'une facture a
+été modifiée ; ces dossiers sont à corriger à la main, ou à renseigner dans la
+colonne d'échéance du tableau, qui prime toujours.
 
 La règle applicable **se choisit par tableau**, dans la liste des tableaux
 Monday : elle est proposée d'après le nom du tableau — « Entreprise » d'un côté,

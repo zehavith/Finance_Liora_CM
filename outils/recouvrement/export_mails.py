@@ -257,30 +257,33 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     analyseur.add_argument(
-        "--regime-echeance",
+        "--regle-echeance",
         default="auto",
-        choices=("auto", "formation", "facture30"),
+        choices=("auto", *module_facture.REGLES),
         help=(
-            "Règle de calcul de l'échéance : « formation » = début de "
-            "formation (financement personnel), « facture30 » = date de "
-            "facture + délai. « auto » déduit la règle du nom du tableau."
+            "Règle de calcul de l'échéance, la même pour tout le lot. "
+            "« auto » la déduit du nom du tableau. Règles : "
+            + " ; ".join(
+                f"{cle} = {regle['libelle']} ({regle['pour']})"
+                for cle, regle in module_facture.REGLES.items()
+            )
         ),
     )
     analyseur.add_argument(
-        "--regimes-echeance",
+        "--regles-echeance",
         default="",
         help=(
             "Règle par tableau, séparées par des virgules : "
-            "« 101=facture30,202=formation ». Prime sur --regime-echeance."
+            "« 101=facture30,202=debut-formation ». Prime sur --regle-echeance."
         ),
     )
     analyseur.add_argument(
         "--delai-paiement",
         type=int,
-        default=module_facture.DELAI_PAIEMENT,
+        default=None,
         help=(
-            "Jours accordés après la date de facture, hors financement "
-            f"personnel (défaut : {module_facture.DELAI_PAIEMENT})."
+            "Force le délai en jours, quelle que soit la règle retenue. Sans "
+            "cette option, chaque règle applique le sien."
         ),
     )
     analyseur.add_argument(
@@ -600,17 +603,26 @@ def traiter_dossier(
     if dossier.date_echeance:
         resume.source_echeance = "tableau de suivi"
     elif not options.sans_echeance_facture:
-        regime = regime_du_dossier(dossier, options)
+        cle = regle_du_dossier(dossier, options)
+        regle = module_facture.REGLES[cle]
+        jours = regle["delai"] if options.delai_paiement is None else options.delai_paiement
 
-        # Le début de formation figure souvent au tableau : inutile d'ouvrir
-        # la facture pour le lire, et une colonne saisie vaut mieux qu'un PDF
+        # Les dates de formation figurent au tableau : inutile d'ouvrir la
+        # facture pour les y relire, et une colonne saisie vaut mieux qu'un PDF
         # analysé.
-        date, origine = "", ""
-        if regime == "formation" and dossier.formation_debut:
-            date, origine = dossier.formation_debut, "début de formation (tableau)"
+        au_tableau = {
+            "debut_formation": dossier.formation_debut,
+            "fin_formation": dossier.formation_fin,
+        }.get(regle["base"], "")
+
+        if au_tableau:
+            date, origine = module_facture.echeance_selon_regle(
+                {regle["base"]: au_tableau}, cle, jours
+            )
+            origine = f"{origine} (tableau)"
         else:
             date, origine = _echeance_depuis_facture(
-                dossier, repertoire, journal, regime, options.delai_paiement
+                dossier, repertoire, journal, cle, jours
             )
 
         if date:
@@ -1006,37 +1018,37 @@ def _ecrire_sous_dossiers(
     return len(sous_dossiers)
 
 
-def regime_du_dossier(dossier: Dossier, options: argparse.Namespace) -> str:
+def regle_du_dossier(dossier: Dossier, options: argparse.Namespace) -> str:
     """Règle d'échéance applicable à ce dossier.
 
     Un choix explicite pour son tableau l'emporte ; à défaut, la règle
     générale ; et si elle vaut « auto », le nom du tableau tranche.
     """
-    regles = {}
-    for morceau in (options.regimes_echeance or "").split(","):
-        if "=" in morceau:
-            cle, valeur = morceau.split("=", 1)
-            regles[cle.strip()] = valeur.strip()
-
     # Décidée au moment de la lecture du tableau : c'est là qu'on sait de quel
-    # tableau vient la ligne, et donc quel mode de financement s'applique.
-    deja = dossier.colonnes.get("regime echeance")
-    if deja in module_facture.REGIMES:
-        return deja
+    # tableau vient la ligne, et donc quel financement s'applique.
+    deja = dossier.colonnes.get("regle echeance")
+    if deja:
+        return module_facture.normaliser_regle(deja)
 
+    regles = {
+        cle.strip(): valeur.strip()
+        for morceau in (options.regles_echeance or "").split(",")
+        if "=" in morceau
+        for cle, valeur in [morceau.split("=", 1)]
+    }
     nom = dossier.colonnes.get("monday tableau") or dossier.origine_tableau
     if nom and nom in regles:
-        return regles[nom]
+        return module_facture.normaliser_regle(regles[nom])
 
-    if options.regime_echeance != "auto":
-        return options.regime_echeance
-    return module_facture.regime_deduit(nom)
+    if options.regle_echeance != "auto":
+        return module_facture.normaliser_regle(options.regle_echeance)
+    return module_facture.regle_deduite(nom)
 
 
 def _echeance_depuis_facture(
     dossier: Dossier, repertoire: Path, journal: Journal,
-    regime: str = module_facture.REGIME_PAR_DEFAUT,
-    delai: int = module_facture.DELAI_PAIEMENT,
+    regle: str = module_facture.REGLE_PAR_DEFAUT,
+    delai: int | None = None,
 ) -> tuple[str, str]:
     """Cherche l'échéance dans la facture PDF téléchargée depuis Monday.
 
@@ -1067,7 +1079,7 @@ def _echeance_depuis_facture(
     for chemin in sorted(pdfs, key=_priorite):
         if _priorite(chemin)[0] == 2:
             continue  # une convention ne porte pas d'échéance de paiement
-        date, origine = module_facture.echeance_de_la_facture(chemin, regime, delai)
+        date, origine = module_facture.echeance_de_la_facture(chemin, regle, delai)
         if date:
             journal(f"    échéance lue dans {chemin.name} : {date} ({origine})")
             return date, origine
@@ -1253,7 +1265,7 @@ def executer(
             ]
             regles_par_tableau = {
                 cle.strip(): valeur.strip()
-                for morceau in (options.regimes_echeance or "").split(",")
+                for morceau in (options.regles_echeance or "").split(",")
                 if "=" in morceau
                 for cle, valeur in [morceau.split("=", 1)]
             }
@@ -1272,18 +1284,22 @@ def executer(
                 )
                 # La règle d'échéance se décide par tableau : elle dépend du
                 # mode de financement, et un même lot peut réunir les deux.
-                regime = (regles_par_tableau.get(identifiant)
-                          or (options.regime_echeance
-                              if options.regime_echeance != "auto" else "")
-                          or module_facture.regime_deduit(
-                              lignes_tableau[0].origine_tableau
-                              if lignes_tableau else ""))
+                nom_tableau = (
+                    lignes_tableau[0].colonnes.get("monday tableau", "")
+                    if lignes_tableau else ""
+                )
+                cle = module_facture.normaliser_regle(
+                    regles_par_tableau.get(identifiant)
+                    or (options.regle_echeance
+                        if options.regle_echeance != "auto" else ""),
+                    module_facture.regle_deduite(nom_tableau),
+                )
                 for ligne_dossier in lignes_tableau:
-                    ligne_dossier.colonnes["regime echeance"] = regime
+                    ligne_dossier.colonnes["regle echeance"] = cle
 
                 journal(
                     f"    {len(lignes_tableau)} ligne(s) exploitable(s) — "
-                    f"échéance : {module_facture.REGIMES[regime].format(delai=options.delai_paiement)}"
+                    f"échéance : {module_facture.REGLES[cle]['libelle']}"
                 )
 
                 colonne_etapes = (

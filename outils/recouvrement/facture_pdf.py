@@ -55,6 +55,10 @@ INTITULES = (
         "debut de formation", "date de debut de formation", "debut de service",
         "dates de service", "date de debut",
     )),
+    ("fin_formation", (
+        "fin de formation", "date de fin de formation", "fin de service",
+        "date de fin",
+    )),
     # Une échéance parfois imprimée sur la facture. Elle ne fait pas foi chez
     # Liora — l'échéance se calcule — mais elle sert de dernier recours quand
     # ni la date de facture ni le début de formation ne sont lisibles.
@@ -65,37 +69,82 @@ INTITULES = (
     )),
 )
 
-# Règles d'échéance en vigueur chez Liora. Elles ne figurent pas sur la
-# facture : celle-ci porte « À réception de facture » quel que soit le cas.
-REGIMES = {
-    "formation": "début de formation",
-    "facture30": "date de facture + {delai} jours",
+# Règles d'échéance en vigueur chez Liora. Aucune ne figure sur la facture :
+# celle-ci porte « À réception de facture » quel que soit le financement.
+#
+# Elles se ramènent toutes à une date de départ et un délai, ce qui évite
+# d'avoir une règle par type de financement — quinze types, cinq règles.
+REGLES = {
+    "facture30": {
+        "libelle": "date de facture + 30 j",
+        "base": "facture", "delai": 30,
+        "pour": "BTC-Entreprise, Corporate Alternance",
+    },
+    "debut-formation": {
+        "libelle": "début de formation",
+        "base": "debut_formation", "delai": 0,
+        "pour": "financement personnel, BTC-Perso, Perso-Alternance",
+    },
+    "fin-formation-30": {
+        "libelle": "fin de formation + 30 j",
+        "base": "fin_formation", "delai": 30,
+        "pour": "B2B, Alternance, État, OPCO",
+    },
+    "fin-formation-45": {
+        "libelle": "fin de formation + 45 j",
+        "base": "fin_formation", "delai": 45,
+        "pour": "CPF",
+    },
+    "fin-formation-60": {
+        "libelle": "fin de formation + 60 j",
+        "base": "fin_formation", "delai": 60,
+        "pour": "Transition pro, Région, AIF, POEI, Agefiph, Interco, DST Allemagne",
+    },
 }
-REGIME_PAR_DEFAUT = "facture30"
-DELAI_PAIEMENT = 30
+REGLE_PAR_DEFAUT = "facture30"
+
+# Anciens noms, conservés le temps que les préférences déjà enregistrées
+# soient relues au moins une fois.
+ANCIENNES_REGLES = {"formation": "debut-formation"}
+
+# Noms lisibles des dates de départ, pour dire d'où vient une échéance.
+BASES = {
+    "facture": "date de facture",
+    "debut_formation": "début de formation",
+    "fin_formation": "fin de formation",
+}
 
 # Au-delà, l'intitulé et la date n'ont plus de rapport l'un avec l'autre.
 PORTEE_INTITULE = 60
 
 
-# Les tableaux B2C financent la formation par l'apprenant lui-même : l'échéance
-# y tombe au début de la formation. Les tableaux entreprise suivent la règle
-# commerciale ordinaire. Le nom du tableau tranche, et le choix reste affiché
-# et modifiable — un tableau renommé ne doit pas changer les échéances en
-# silence.
-MOTS_FORMATION = ("financement", "personnel", "particulier", "cpf", "b2c",
-                  "pole emploi", "aif", "poei", "region", "transition", "agefiph")
-MOTS_FACTURE30 = ("entreprise", "opco", "societe", "b2b", "adv")
+# Mots-clés du nom du tableau, du plus précis au plus général. L'ordre compte :
+# « 1.3. Entreprise - OPCO » porte les deux mentions, et c'est OPCO qui donne
+# la règle. Le choix déduit reste affiché et modifiable — un tableau renommé ne
+# doit pas changer les échéances en silence.
+DEDUCTION = (
+    ("fin-formation-45", ("cpf",)),
+    ("fin-formation-60", ("transition", "region", "aif", "poei", "agefiph",
+                          "interco", "allemagne", "pole emploi", "complexe")),
+    ("fin-formation-30", ("opco", "b2b", "alternance", "etat")),
+    ("debut-formation", ("personnel", "perso", "particulier", "b2c")),
+    ("facture30", ("entreprise", "corporate", "societe", "adv", "btc")),
+)
 
 
-def regime_deduit(nom_tableau: str, defaut: str = REGIME_PAR_DEFAUT) -> str:
+def regle_deduite(nom_tableau: str, defaut: str = REGLE_PAR_DEFAUT) -> str:
     """Règle d'échéance déduite du nom du tableau, à défaut d'un choix explicite."""
     plat = _aplatir(nom_tableau)
-    if any(mot in plat for mot in MOTS_FACTURE30):
-        return "facture30"
-    if any(mot in plat for mot in MOTS_FORMATION):
-        return "formation"
+    for cle, mots in DEDUCTION:
+        if any(mot in plat for mot in mots):
+            return cle
     return defaut
+
+
+def normaliser_regle(cle: str, defaut: str = REGLE_PAR_DEFAUT) -> str:
+    cle = (cle or "").strip()
+    cle = ANCIENNES_REGLES.get(cle, cle)
+    return cle if cle in REGLES else defaut
 
 
 def _aplatir(texte: str) -> str:
@@ -279,48 +328,53 @@ def _ajouter_jours(date: str, jours: int) -> str:
     return (lue + timedelta(days=jours)).strftime("%d/%m/%Y")
 
 
-def echeance_selon_regime(
-    dates: dict, regime: str = REGIME_PAR_DEFAUT, delai: int = DELAI_PAIEMENT
+def echeance_selon_regle(
+    dates: dict, cle: str = REGLE_PAR_DEFAUT, delai: int | None = None
 ) -> tuple[str, str]:
-    """Échéance calculée selon la règle en vigueur, et son mode d'obtention.
+    """Échéance calculée selon la règle voulue, et son mode d'obtention.
 
-    Chez Liora l'échéance ne s'imprime pas sur la facture : en financement
-    personnel elle tombe au **début de la formation**, ailleurs à la **date de
-    facture plus trente jours**. La facture porte « À réception de facture »
-    dans les deux cas — s'y fier daterait tous les retards du même jour.
+    Chez Liora l'échéance ne s'imprime jamais sur la facture : elle se compte
+    depuis la date de facture, le début ou la fin de la formation, selon le
+    financement. La facture porte « À réception de facture » dans tous les cas
+    — s'y fier daterait tous les retards du même jour.
 
     Le mode d'obtention est toujours retourné : une échéance calculée et une
     échéance imprimée n'ont pas le même statut, et le récapitulatif le dit.
     """
-    if regime == "formation" and dates.get("debut_formation"):
-        return dates["debut_formation"], "début de formation"
+    regle = REGLES[normaliser_regle(cle)]
+    jours = regle["delai"] if delai is None else delai
 
-    if regime != "formation" and dates.get("facture"):
-        calculee = _ajouter_jours(dates["facture"], delai)
+    depart = dates.get(regle["base"])
+    if depart:
+        calculee = _ajouter_jours(depart, jours) if jours else depart
         if calculee:
-            return calculee, f"date de facture ({dates['facture']}) + {delai} jours"
+            libelle = BASES[regle["base"]]
+            if jours:
+                return calculee, f"{libelle} ({depart}) + {jours} jours"
+            return calculee, libelle
 
-    # Replis, dans l'ordre où ils restent défendables.
+    # Replis, dans l'ordre où ils restent défendables. Chacun est nommé : une
+    # échéance obtenue autrement que par la règle doit pouvoir être repérée.
     if dates.get("limite_imprimee"):
         return dates["limite_imprimee"], "date limite imprimée sur la facture"
-    if regime == "formation" and dates.get("facture"):
-        calculee = _ajouter_jours(dates["facture"], delai)
+
+    for base in ("fin_formation", "debut_formation", "facture"):
+        if base == regle["base"] or not dates.get(base):
+            continue
+        calculee = _ajouter_jours(dates[base], jours) if jours else dates[base]
         if calculee:
             return calculee, (
-                f"début de formation absent — date de facture + {delai} jours"
+                f"{BASES[regle['base']]} absent — {BASES[base]} "
+                f"({dates[base]})" + (f" + {jours} jours" if jours else "")
             )
-    if regime != "formation" and dates.get("debut_formation"):
-        return dates["debut_formation"], (
-            "date de facture absente — début de formation retenu"
-        )
     return "", "aucune date étiquetée"
 
 
 def echeance_de_la_facture(
-    chemin: Path, regime: str = REGIME_PAR_DEFAUT, delai: int = DELAI_PAIEMENT
+    chemin: Path, cle: str = REGLE_PAR_DEFAUT, delai: int | None = None
 ) -> tuple[str, str]:
     """(date, origine) calculées à partir d'une facture PDF."""
     texte = texte_du_pdf(chemin)
     if not texte.strip():
         return "", "illisible"
-    return echeance_selon_regime(dates_de_facture(texte), regime, delai)
+    return echeance_selon_regle(dates_de_facture(texte), cle, delai)
