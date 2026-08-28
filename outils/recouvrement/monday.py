@@ -438,8 +438,6 @@ def lire_tableau(
                 regles = _regles_filtre(colonne_id, valeurs)
 
     retenus = _groupes_retenus(identifiant, jeton, groupes or [])
-    for groupe in retenus:
-        dire(f"    groupe « {groupe['titre']} »")
 
     lignes: list[dict[str, str]] = []
     vus: set[str] = set()
@@ -447,15 +445,26 @@ def lire_tableau(
     # Chaque groupe désigné est lu pour lui-même ; le filtre par colonne
     # balaie ensuite tout le tableau. Une ligne prise deux fois ne compte
     # qu'une : c'est son identifiant Monday qui en décide.
-    lots = [{"groupe": groupe["id"], "regles": ""} for groupe in retenus]
+    lots = [
+        {"groupe": groupe["id"], "regles": "", "libelle": f"groupe « {groupe['titre']} »"}
+        for groupe in retenus
+    ]
     if regles or not retenus:
-        lots.append({"groupe": "", "regles": regles})
+        lots.append({
+            "groupe": "", "regles": regles,
+            "libelle": "colonne d'étape" if regles else "tout le tableau",
+        })
 
+    # Dire ce que chaque source apporte : sans ce compte, un total de 53 ne
+    # laisse pas voir que 41 viennent de la colonne et 12 des groupes, ni
+    # laquelle des deux ramène ce qu'on ne voulait pas.
     for lot in lots:
+        avant = len(vus)
         _lire_lot(
             identifiant, jeton, par_page, sous, avec_sous_elements,
             lot["groupe"], lot["regles"], lignes, vus,
         )
+        dire(f"    {len(vus) - avant} élément(s) — {lot['libelle']}")
 
     entetes: list[str] = []
     # Union ordonnée des colonnes : un sous-élément n'a pas les mêmes que son

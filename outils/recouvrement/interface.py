@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "37"
+VERSION = "38"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -1052,6 +1052,11 @@ button:disabled{opacity:.45;cursor:not-allowed}
      sans que la colonne d'étape en dise rien. Un élément retenu par son groupe
      <b>ou</b> par sa colonne est traité ; retenu par les deux, il ne compte
      qu'une fois.</p>
+  <p class="note"><b>Pour ne traiter que les groupes</b>, videz les deux champs
+     de gauche et ne gardez que celui-ci. La colonne d'étape ramène aussi les
+     factures qui portent l'étiquette sans être dans le groupe — c'est utile
+     pour n'en manquer aucune, encombrant si le groupe fait déjà foi. Le
+     journal indique ce que chaque source apporte.</p>
 </section>
 
 <section>
