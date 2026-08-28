@@ -1952,6 +1952,97 @@ def test_refus_monday() -> None:
         module_monday._appeler_api = vrai_appel
 
 
+def test_filtre_chez_monday() -> None:
+    """Le tri se fait chez Monday, pas après avoir tout rapatrié."""
+    print("\nFiltre appliqué par Monday")
+
+    import monday as module_monday  # noqa: PLC0415
+
+    requetes: list[str] = []
+    refuser = {"filtre": False}
+
+    def faux_appel(requete, jeton):
+        requetes.append(requete)
+        if "columns {" in requete:
+            return {"boards": [{"columns": [
+                {"id": "status_1", "title": "Etape process recouvrement"},
+                {"id": "text_4", "title": "E-mail"},
+            ]}]}
+        if refuser["filtre"] and "query_params" in requete:
+            raise module_monday.ErreurMonday(
+                "Monday a refusé la requête (HTTP 400). "
+                "Argument 'query_params' on field 'items_page' is not supported"
+            )
+        return {"boards": [{"name": "1.2. Entreprise - Recouvrement",
+                            "items_page": {"cursor": None, "items": [
+                                {"id": 1, "name": "FACT-1", "column_values": [
+                                    {"column": {"title": "E-mail"}, "text": "a@b.fr"}]}]}}]}
+
+    vrai_appel = module_monday._appeler_api
+    module_monday._appeler_api = faux_appel
+    try:
+        module_monday.lire_tableau(
+            "42", "jeton",
+            filtre=("Etape process recouvrement",
+                    ["Dossier à faire passer en contentieux",
+                     "Dossier à transmettre au service contentieux"]),
+        )
+        demande = [r for r in requetes if "items_page" in r][0]
+        verifier("query_params" in demande, "le filtre part avec la requête")
+        verifier('column_id: "status_1"' in demande,
+                 "la colonne est désignée par son identifiant technique, pas son titre")
+        verifier(demande.count("contains_text") == 2 and "operator: or" in demande,
+                 "les deux libellés sont reliés par « ou »")
+
+        # Un intitulé de colonne inconnu ne doit pas faire échouer la lecture :
+        # le filtre local dira lui-même que la colonne est introuvable.
+        requetes.clear()
+        module_monday.lire_tableau("42", "jeton", filtre=("Colonne absente", ["x"]))
+        verifier("query_params" not in [r for r in requetes if "items_page" in r][0],
+                 "une colonne introuvable annule le filtre plutôt que la lecture")
+
+        # Si l'API refuse le filtre, on relit sans lui : le tri local suffit.
+        refuser["filtre"] = True
+        requetes.clear()
+        grille = module_monday.lire_tableau(
+            "42", "jeton", filtre=("Etape process recouvrement", ["contentieux"]),
+        )
+        demandes = [r for r in requetes if "items_page" in r]
+        verifier(len(demandes) == 2 and "query_params" not in demandes[-1],
+                 "un filtre refusé est abandonné, et la lecture reprend sans lui")
+        verifier(len(grille) == 2, "le tableau est lu malgré le refus du filtre")
+    finally:
+        module_monday._appeler_api = vrai_appel
+
+    # Le curseur porte déjà le filtre : le répéter est refusé par l'API.
+    suite = {"tour": 0}
+
+    def deux_pages(requete, jeton):
+        requetes.append(requete)
+        if "columns {" in requete:
+            return {"boards": [{"columns": [
+                {"id": "status_1", "title": "Etape process recouvrement"}]}]}
+        suite["tour"] += 1
+        return {"boards": [{"name": "T", "items_page": {
+            "cursor": "page2" if suite["tour"] == 1 else None,
+            "items": [{"id": suite["tour"], "name": f"FACT-{suite['tour']}",
+                       "column_values": []}],
+        }}]}
+
+    module_monday._appeler_api = deux_pages
+    requetes.clear()
+    try:
+        module_monday.lire_tableau(
+            "42", "jeton", filtre=("Etape process recouvrement", ["contentieux"]),
+        )
+    finally:
+        module_monday._appeler_api = vrai_appel
+
+    pages = [r for r in requetes if "items_page" in r]
+    verifier("query_params" in pages[0] and "query_params" not in pages[1],
+             "le filtre n'accompagne que la première page, jamais le curseur")
+
+
 def test_sous_elements_monday() -> None:
     """Les sous-éléments donnent des lignes, héritées de leur parent."""
     print("\nSous-éléments Monday")
@@ -3462,6 +3553,7 @@ def main() -> int:
     test_echeance_facture()
     test_lecture_tableau_monday()
     test_refus_monday()
+    test_filtre_chez_monday()
     test_sous_elements_monday()
     test_historique_etapes()
     test_liste_complete_tableaux()

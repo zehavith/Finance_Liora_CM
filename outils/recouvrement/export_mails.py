@@ -33,6 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from dossiers import (  # noqa: E402
+    SEPARATEURS_MULTIVALEUR,
     Dossier,
     ErreurDossiers,
     dossiers_depuis_grille,
@@ -1286,6 +1287,16 @@ def executer(
                     grille = module_monday.lire_tableau(
                         identifiant, jeton,
                         avec_sous_elements=options.avec_sous_elements,
+                        # Le même filtre qu'en local, mais appliqué chez
+                        # Monday : sur un tableau de plusieurs milliers de
+                        # lignes, tout rapatrier pour en garder dix coûte des
+                        # minutes. Le tri local reste derrière, en sécurité.
+                        filtre=(
+                            (options.filtre_colonne,
+                             SEPARATEURS_MULTIVALEUR.split(options.filtre_valeur))
+                            if options.filtre_colonne and options.filtre_valeur
+                            else None
+                        ),
                     )
                 except module_monday.ErreurMonday as exc:
                     raise ErreurDossiers(str(exc)) from exc

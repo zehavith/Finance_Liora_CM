@@ -445,6 +445,22 @@ Elle est décochée par défaut. Si vos factures sont déjà des éléments, la
 cocher ferait remonter chaque dossier deux fois. Elle alourdit aussi la
 requête, ce qui compte sur un gros tableau.
 
+### Le filtre est appliqué par Monday
+
+Le filtre de la section 1 ne sert pas qu'à trier ce qui est arrivé : il est
+transmis à Monday, qui n'envoie que les lignes qualifiées. Sur un tableau de
+plusieurs milliers de lignes dont une poignée sont au contentieux, tout
+rapatrier pour en écarter 99 % coûte des minutes d'attente et fait dépasser le
+budget de complexité de l'API.
+
+La colonne est désignée à l'API par son identifiant technique (`status_1`),
+retrouvé depuis son intitulé ; la comparaison reste `contains_text`, une
+étiquette de statut se lisant « 🔴 Dossier à faire passer en contentieux ».
+Plusieurs libellés sont reliés par « ou ».
+
+Le tri local reste en place derrière : si l'API refuse le filtre, la lecture
+reprend sans lui et rien n'est perdu — seulement du temps.
+
 ### Un tableau trop gros pour une seule requête
 
 L'API Monday facture chaque requête en « complexité ». Un tableau large peut

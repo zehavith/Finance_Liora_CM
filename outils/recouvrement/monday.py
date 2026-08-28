@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -170,6 +171,41 @@ def _budget_epuise(exc: Exception) -> bool:
     return any(marqueur in texte for marqueur in BUDGET_EPUISE)
 
 
+FILTRE_REFUSE = ("query_params", "rules", "compare_value", "operator", "column_id")
+
+
+def _filtre_refuse(exc: Exception) -> bool:
+    """Le refus porte-t-il sur le filtre transmis à Monday ?"""
+    texte = str(exc).lower()
+    return any(marqueur in texte for marqueur in FILTRE_REFUSE)
+
+
+def _colonne_par_titre(identifiant: str, jeton: str, titre: str) -> str:
+    """L'identifiant technique d'une colonne, depuis son intitulé.
+
+    Le filtre de l'API ne connaît que « status_1 », jamais « Etape process
+    recouvrement ». La comparaison ignore accents et casse, comme le filtre
+    local : les deux doivent désigner la même colonne, sans quoi le tri
+    côté Monday et le tri local ne diraient pas la même chose.
+    """
+    voulu = _sans_accent(titre)
+    try:
+        colonnes = colonnes_du_tableau(identifiant, jeton)
+    except ErreurMonday:
+        return ""
+    for colonne_id, intitule in colonnes.items():
+        if _sans_accent(intitule) == voulu:
+            return colonne_id
+    return ""
+
+
+def _sans_accent(texte: str) -> str:
+    decompose = unicodedata.normalize("NFKD", texte or "")
+    return "".join(
+        c for c in decompose if not unicodedata.combining(c)
+    ).strip().lower()
+
+
 def _est_sous_elements(tableau: dict) -> bool:
     """Le tableau technique que Monday crée pour les sous-éléments.
 
@@ -287,11 +323,32 @@ def _ligne_element(element: dict, nom_tableau: str) -> dict[str, str]:
     return ligne
 
 
+def _regles_filtre(colonne_id: str, valeurs: list[str]) -> str:
+    """Le filtre, écrit dans la langue de l'API Monday.
+
+    `contains_text` plutôt qu'une comparaison stricte : une étiquette de statut
+    se lit « 🔴 Dossier à faire passer en contentieux », emoji compris, et
+    exiger l'égalité ne ramènerait rien. Plusieurs valeurs sont reliées par
+    « ou », comme le fait le filtre local.
+    """
+    regles = ", ".join(
+        f'{{column_id: "{colonne_id}", '
+        f'compare_value: "{_echapper_graphql(valeur)}", operator: contains_text}}'
+        for valeur in valeurs
+    )
+    return f"query_params: {{rules: [{regles}], operator: or}}"
+
+
+def _echapper_graphql(texte: str) -> str:
+    return (texte or "").replace("\\", "\\\\").replace('"', '\\"')
+
+
 def lire_tableau(
     identifiant: str,
     jeton: str,
     par_page: int = 100,
     avec_sous_elements: bool = False,
+    filtre: tuple[str, list[str]] | None = None,
 ) -> list[tuple[int, list[str]]]:
     """Le contenu d'un tableau Monday, sous la forme d'une grille.
 
@@ -317,12 +374,29 @@ def lire_tableau(
         else ""
     )
 
+    # Filtrer chez Monday plutôt qu'ici : sur un tableau de plusieurs milliers
+    # de lignes dont une poignée sont au contentieux, tout rapatrier pour en
+    # écarter 99 % coûte des minutes d'attente — et fait dépasser le budget de
+    # complexité de l'API. Le filtre local reste en place derrière, il n'est
+    # plus qu'une sécurité.
+    regles = ""
+    if filtre:
+        titre, valeurs = filtre
+        valeurs = [v.strip() for v in valeurs if v and v.strip()]
+        if titre.strip() and valeurs:
+            colonne_id = _colonne_par_titre(identifiant, jeton, titre)
+            if colonne_id:
+                regles = _regles_filtre(colonne_id, valeurs)
+
     while True:
-        page = (
-            f'items_page (limit: {int(par_page)}, cursor: "{curseur}")'
-            if curseur
-            else f"items_page (limit: {int(par_page)})"
-        )
+        arguments = [f"limit: {int(par_page)}"]
+        if curseur:
+            # Un curseur porte déjà le filtre de la requête qui l'a produit :
+            # le répéter est refusé par l'API.
+            arguments.append(f'cursor: "{curseur}"')
+        elif regles:
+            arguments.append(regles)
+        page = f"items_page ({', '.join(arguments)})"
         try:
             donnees = _appeler_api(
                 f"query {{ boards (ids: [{int(identifiant)}]) {{ name "
@@ -335,6 +409,12 @@ def lire_tableau(
             # même requête, demandée par plus petits paquets, passe. Un curseur
             # reste valable après un changement de taille de page, la lecture
             # reprend donc où elle s'était arrêtée.
+            # Le filtre côté Monday est un gain de temps, pas une nécessité :
+            # si l'API le refuse, on relit sans lui et le filtre local fait le
+            # tri. Un tableau lu lentement vaut mieux qu'un tableau non lu.
+            if regles and _filtre_refuse(exc):
+                regles = ""
+                continue
             if not _budget_epuise(exc) or par_page <= MINIMUM_PAR_PAGE:
                 raise
             par_page = max(MINIMUM_PAR_PAGE, int(par_page) // 4)
