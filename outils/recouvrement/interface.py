@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "38"
+VERSION = "39"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -58,11 +58,23 @@ DOMAINES_PAR_DEFAUT = "datascientest.com"
 # la même colonne, mais avec deux libellés distincts : celui des entreprises
 # « fait passer », celui des financements personnels « transmet ». Les deux
 # sont proposés d'emblée, la comparaison retenant l'un ou l'autre.
-FILTRE_COLONNE_PAR_DEFAUT = "Etape process recouvrement"
-FILTRE_VALEUR_PAR_DEFAUT = (
-    "Dossier à faire passer en contentieux,"
-    "Dossier à transmettre au service contentieux"
-)
+# Le groupe fait foi : une facture passe au contentieux quand on la range
+# dans « 1.2.5 Service contentieux » ou « 2.1.6. Facture en Contentieux ».
+# La colonne d'étape, elle, garde son étiquette longtemps après — sur les
+# tableaux de Liora elle ramenait cinquante-trois lignes là où les groupes en
+# comptent une poignée. Elle reste disponible, vide par défaut.
+FILTRE_COLONNE_PAR_DEFAUT = ""
+FILTRE_VALEUR_PAR_DEFAUT = ""
+# Ces valeurs ont été proposées par défaut dans les versions précédentes.
+# Retrouvées telles quelles, elles n'ont jamais été choisies : elles sont
+# retirées une fois, au profit du groupe. Une valeur modifiée est respectée.
+ANCIENS_FILTRES = {
+    "filtre_colonne": {"Etape process recouvrement"},
+    "filtre_valeur": {
+        "Dossier à faire passer en contentieux,"
+        "Dossier à transmettre au service contentieux",
+    },
+}
 # Ces deux tableaux sont le travail courant du service : ils se cochent seuls
 # au premier listage, pour que « Lister mes tableaux » suffise à être prêt.
 # Le repérage se fait sur le numéro, qui ne bouge pas, plutôt que sur le nom
@@ -101,12 +113,40 @@ def sortie_par_defaut() -> Path:
 
 
 def lire_preferences() -> dict:
-    if PREFERENCES.exists():
-        try:
-            return json.loads(PREFERENCES.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
-            return {}
-    return {}
+    if not PREFERENCES.exists():
+        return {}
+    try:
+        valeurs = json.loads(PREFERENCES.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
+    return _migrer_preferences(valeurs) if isinstance(valeurs, dict) else {}
+
+
+def _migrer_preferences(valeurs: dict) -> dict:
+    """Retire les filtres proposés par les versions précédentes.
+
+    Ils avaient été mis là par défaut, jamais choisis. Le groupe désigne
+    désormais les dossiers au contentieux, et la colonne d'étape ramenait
+    par-dessus tout ce qui en porte encore l'étiquette. Une valeur que
+    l'utilisateur a modifiée n'est pas touchée, et la migration n'a lieu
+    qu'une fois.
+    """
+    if valeurs.get("filtres_migres"):
+        return valeurs
+    if not any(
+        valeurs.get(cle, "").strip() in anciennes
+        for cle, anciennes in ANCIENS_FILTRES.items()
+    ):
+        return valeurs
+
+    modifie = dict(valeurs)
+    for cle, anciennes in ANCIENS_FILTRES.items():
+        if modifie.get(cle, "").strip() in anciennes:
+            modifie[cle] = ""
+    modifie["filtres_migres"] = True
+    modifie.setdefault("groupes", GROUPES_PAR_DEFAUT)
+    ecrire_preferences(modifie)
+    return modifie
 
 
 def ecrire_preferences(valeurs: dict) -> None:
@@ -522,6 +562,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
         # suivant.
         if demande.get("chantiers_proposes"):
             valeurs["chantiers_proposes"] = True
+        # Une fois la page servie, les anciens filtres sont derrière nous :
+        # ce que la page renvoie fait foi, y compris un champ vidé à la main.
+        valeurs["filtres_migres"] = True
 
         regimes = demande.get("regimes_echeance")
         if isinstance(regimes, str) and regimes:
@@ -866,6 +909,16 @@ select:focus,input.frais:focus,input.note:focus{outline:none;border-color:var(--
 .liste-tableaux select.regime{font-size:11.5px;padding:3px 6px}
 .echec-liste{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.35);
   border-radius:8px;padding:11px 13px;font-size:13px}
+.lancement #resume{font-size:14px;color:var(--texte);background:var(--fond-2);
+  border:1px solid var(--bord);border-radius:9px;padding:11px 13px;margin:2px 0 15px}
+details#avance{margin-top:22px}
+details#avance > summary{cursor:pointer;list-style:none;font-size:13px;
+  color:var(--texte-3);padding:11px 15px;border:1px dashed var(--bord);
+  border-radius:10px;user-select:none}
+details#avance > summary::-webkit-details-marker{display:none}
+details#avance > summary::before{content:"▸ ";font-size:11px}
+details#avance[open] > summary::before{content:"▾ "}
+details#avance > summary:hover{color:var(--texte-2);border-color:var(--texte-3)}
 .courbe svg{width:100%;height:auto;aspect-ratio:760/240;display:block;overflow:visible}
 .courbe .grille{stroke:rgba(255,255,255,.10);stroke-width:1}
 .courbe .axe{fill:var(--doux);font-size:10px}
@@ -960,6 +1013,23 @@ button:disabled{opacity:.45;cursor:not-allowed}
 </div>
 
 <div class="vue" id="vueExport">
+<section class="lancement">
+  <h2>Lancer l'export</h2>
+  <p class="aide" id="resume">—</p>
+  <div class="boutons">
+    <button class="secondaire" id="tester">Tester d'abord</button>
+    <button class="principal" id="lancer" disabled>Lancer l'export</button>
+    <button class="secondaire" id="ouvrir">Ouvrir le dossier de destination</button>
+  </div>
+  <p class="note"><b>Tester d'abord</b> compte ce qui sera traité sans rien
+     écrire sur le disque. <b>Lancer l'export</b> constitue les dossiers.</p>
+  <div id="etat"><div class="rond"></div><span id="texteEtat">Export en cours…</span></div>
+  <div class="bandeau" id="bandeau"></div>
+  <div id="journal" hidden></div>
+</section>
+
+<details id="avance">
+<summary>Réglages — à ne toucher qu'en cas de besoin</summary>
 <section>
   <h2>1. Les dossiers à traiter</h2>
   <div class="onglets">
@@ -1146,16 +1216,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
   </div>
 </section>
 
-<section>
-  <h2>4. Lancer</h2>
-  <div class="boutons">
-    <button class="principal" id="lancer" disabled>Lancer</button>
-    <button class="secondaire" id="ouvrir">Ouvrir le dossier de destination</button>
-  </div>
-  <div id="etat"><div class="rond"></div><span id="texteEtat">Export en cours…</span></div>
-  <div class="bandeau" id="bandeau"></div>
-  <div id="journal" hidden></div>
-</section>
+</details>
 </div>
 
 </main>
@@ -1208,14 +1269,48 @@ document.querySelectorAll(".onglet").forEach((onglet) => {
 ["mEmail", "mFacture"].forEach((id) =>
   $(id).addEventListener("input", majBouton));
 
-function majBouton() {
-  if (mode === "manuel") {
-    $("lancer").disabled = !($("mEmail").value.trim() || $("mFacture").value.trim());
-  } else if (mode === "monday") {
-    $("lancer").disabled = !tableauxCoches();
+// Ce qui va effectivement tourner, en une phrase. Les reglages sont replies :
+// sans ce rappel, on lance sans savoir sur quoi.
+function majResume(pret) {
+  const bouts = [];
+  if (mode === "monday") {
+    const coches = Array.from(TABLEAUX_COCHES);
+    const noms = coches
+      .map((id) => (TABLEAUX.find((t) => t.id === id) || {}).nom)
+      .filter(Boolean);
+    bouts.push(noms.length ? noms.join(", ")
+      : coches.length + (coches.length > 1 ? " tableaux Monday" : " tableau Monday"));
+    const groupe = $("groupes").value.trim();
+    const colonne = $("filtreValeur").value.trim();
+    if (groupe) bouts.push("groupe « " + groupe + " »");
+    if (colonne) bouts.push("étape « " + colonne.split(",")[0].trim() + " »"
+      + (colonne.includes(",") ? " (et autres)" : ""));
+    if (!groupe && !colonne) bouts.push("tout le tableau");
+  } else if (mode === "manuel") {
+    bouts.push("recherche ponctuelle");
   } else {
-    $("lancer").disabled = !(fichierChoisi || reutiliserImport);
+    bouts.push(fichierChoisi ? fichierChoisi.name
+      : (reutiliserImport ? "le dernier fichier importé" : "aucun fichier"));
   }
+  const boites = $("boites").value.trim();
+  if (boites) bouts.push(boites);
+  $("resume").textContent = pret
+    ? bouts.join("  ·  ")
+    : "Rien à traiter pour le moment — voyez les réglages ci-dessous.";
+}
+
+function majBouton() {
+  let pret;
+  if (mode === "manuel") {
+    pret = Boolean($("mEmail").value.trim() || $("mFacture").value.trim());
+  } else if (mode === "monday") {
+    pret = Boolean(tableauxCoches());
+  } else {
+    pret = Boolean(fichierChoisi || reutiliserImport);
+  }
+  $("lancer").disabled = !pret;
+  $("tester").disabled = !pret;
+  majResume(pret);
 }
 
 // -- lecture directe du tableau Monday
@@ -1350,6 +1445,12 @@ function reglesEcheance() {
 // une fois n'a pas à être redécidé à chaque ouverture.
 Object.keys(CASES).forEach((id) => { if ($(id)) $(id).checked = CASES[id]; });
 
+if (TABLEAUX_COCHES.size) {
+  const onglet = document.querySelector('.onglet[data-volet="voletMonday"]');
+  if (onglet) onglet.click();
+}
+majBouton();
+
 // Enregistrement automatique : à la saisie (différé) et à la fermeture de la
 // page. Une page fermée sans avoir lancé d'export ne perd plus rien.
 const CHAMPS_REGLAGES = ["boites", "sortie", "domaines", "seulement",
@@ -1382,6 +1483,9 @@ async function enregistrerReglages(fermeture) {
     });
   } catch (erreur) { /* rien à signaler : la prochaine frappe réessaiera */ }
 }
+
+["groupes", "filtreValeur", "boites"].forEach((id) =>
+  $(id) && $(id).addEventListener("input", majBouton));
 
 CHAMPS_REGLAGES.forEach((id) => $(id) && $(id).addEventListener("input", () => {
   clearTimeout(minuterieReglages);
@@ -1447,10 +1551,21 @@ function retenir(fichier) {
 }
 
 // -- lancement
-$("lancer").addEventListener("click", async () => {
+// Deux boutons plutôt qu'une case à cocher lue de travers : « Tester »
+// n'écrit rien, « Lancer l'export » constitue les dossiers. La case de la
+// section repliée suit le bouton employé, elle ne le contredit jamais.
+let simulationDemandee = true;
+
+$("tester").addEventListener("click", () => demarrer(true));
+$("lancer").addEventListener("click", () => demarrer(false));
+
+async function demarrer(simulation) {
+  simulationDemandee = simulation;
+  $("simulation").checked = simulation;
   if (mode === "monday" && !tableauxCoches()) return;
   if (mode === "fichier" && !fichierChoisi && !reutiliserImport) return;
   $("lancer").disabled = true;
+  $("tester").disabled = true;
   $("bandeau").className = "bandeau";
   $("journal").hidden = false;
   $("journal").textContent = "";
@@ -1466,7 +1581,7 @@ $("lancer").addEventListener("click", async () => {
       groupes: $("groupes").value,
       tableau: tableauxCoches(),
       regimes_echeance: reglesEcheance(),
-      simulation: $("simulation").checked,
+      simulation: simulationDemandee,
       ignorer_lignes_incompletes: $("ignorer").checked,
       sans_regroupement: !$("regrouper").checked,
       sans_sous_dossiers: !$("sousdossiers").checked,
@@ -1519,7 +1634,7 @@ $("lancer").addEventListener("click", async () => {
   $("etat").classList.add("visible");
   sondage = setInterval(rafraichir, 700);
   rafraichir();
-});
+}
 
 $("ouvrir").addEventListener("click", async () => {
   try { await api("/api/ouvrir", { chemin: $("sortie").value }); }
@@ -1544,8 +1659,8 @@ async function rafraichir() {
     $("etat").classList.remove("visible");
     majBouton();
     if (etat.code === 0) {
-      afficherBandeau(true, $("simulation").checked
-        ? "Simulation terminée. Vérifiez les volumes ci-dessus, puis décochez « Simulation » pour lancer l'export réel."
+      afficherBandeau(true, simulationDemandee
+        ? "Test terminé — rien n'a été écrit. Si les volumes vous conviennent, cliquez sur « Lancer l'export »."
         : "Export terminé. Le bouton « Ouvrir le dossier de destination » vous y emmène.");
     } else {
       afficherBandeau(false, etat.erreur || "Terminé avec des erreurs — voir le détail ci-dessus.");

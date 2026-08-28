@@ -3030,6 +3030,36 @@ def test_interface() -> None:
         except urllib.error.HTTPError as exc:
             verifier(exc.code == 400, f"extension non prise en charge refusée ({exc.code})")
 
+        print("  -- les anciens filtres par colonne sont retirés une fois --")
+        avant_migration = interface.lire_preferences()
+        try:
+            interface.ecrire_preferences({
+                "filtre_colonne": "Etape process recouvrement",
+                "filtre_valeur": "Dossier à faire passer en contentieux,"
+                                 "Dossier à transmettre au service contentieux",
+            })
+            migrees = interface.lire_preferences()
+            verifier(migrees.get("filtre_valeur") == ""
+                     and migrees.get("filtre_colonne") == "",
+                     "un filtre laissé tel que proposé est retiré au profit du groupe")
+            verifier(migrees.get("groupes") == interface.GROUPES_PAR_DEFAUT,
+                     "le groupe prend le relais")
+            verifier(migrees.get("filtres_migres") is True,
+                     "la migration est marquée, elle n'a lieu qu'une fois")
+
+            # Un champ vidé à la main ne doit pas se voir re-remplir, et une
+            # valeur choisie par l'utilisateur ne doit pas être effacée.
+            interface.ecrire_preferences({
+                "filtre_colonne": "Statut Créance", "filtre_valeur": "impayé",
+            })
+            intactes = interface.lire_preferences()
+            verifier(intactes.get("filtre_valeur") == "impayé",
+                     "un filtre choisi par l'utilisateur est respecté")
+            verifier("filtres_migres" not in intactes,
+                     "rien n'est marqué quand il n'y a rien à migrer")
+        finally:
+            interface.ecrire_preferences(avant_migration)
+
         print("  -- les options de la page arrivent bien à l'outil --")
         # Une case ajoutée à la page mais oubliée dans la ligne de commande ne
         # se voit pas : elle se coche, et ne change rien.

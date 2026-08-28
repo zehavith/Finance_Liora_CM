@@ -115,6 +115,26 @@ L'application comporte quatre onglets :
 L'ordre suit l'usage : le tableau de bord se consulte tous les jours,
 l'extraction se lance de loin en loin.
 
+### L'onglet Export tient en deux boutons
+
+Les réglages sont repliés derrière *Réglages — à ne toucher qu'en cas de
+besoin*. Restent visibles une phrase disant ce qui va tourner — les tableaux,
+le groupe, les boîtes — et deux boutons :
+
+| Bouton | |
+|---|---|
+| **Tester d'abord** | compte ce qui sera traité, sans rien écrire sur le disque |
+| **Lancer l'export** | constitue les dossiers |
+
+Deux boutons plutôt qu'une case « Simulation » à cocher puis à décocher : la
+case se lisait de travers, et un export réel lancé en croyant simuler ne se
+rattrape pas. La case existe toujours, dans les réglages, et suit le bouton
+employé.
+
+L'onglet s'ouvre directement sur le mode Monday quand des tableaux ont déjà
+été choisis — c'est le cas courant, et l'onglet « fichier » laissait le bouton
+grisé sans dire pourquoi.
+
 ### L'avancement, étape par étape et daté
 
 Huit étapes, dans l'ordre où un dossier les traverse :
