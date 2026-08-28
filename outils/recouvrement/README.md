@@ -432,6 +432,12 @@ la même référence pour deux débiteurs différents : le second dossier est al
 renommé, et le renommage est annoncé. Sans cela, il écraserait le premier en
 silence.
 
+Monday crée en coulisses un tableau technique par colonne de sous-éléments,
+nommé « Sous-éléments de … ». Il n'est pas proposé dans la liste : il double
+l'affichage de doublons apparents dont il faut deviner qu'ils ne servent à
+rien. Un tableau dont le nom commence simplement par « Sous- » reste, lui,
+parfaitement listé.
+
 Au tout premier listage, les deux tableaux du travail courant — ceux dont le
 nom commence par `1.2.` et `2.1.` — se cochent seuls : « Lister mes tableaux »
 suffit à être prêt à lancer. Le repérage se fait sur le numéro, qui ne bouge

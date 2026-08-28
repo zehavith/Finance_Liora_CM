@@ -116,6 +116,19 @@ TABLEAUX_PAR_PAGE = 100
 PLAFOND_TABLEAUX = 1000
 
 
+def _est_sous_elements(tableau: dict) -> bool:
+    """Le tableau technique que Monday crée pour les sous-éléments.
+
+    Le champ `type` tranche quand l'API le renvoie. Le nom sert de repli : une
+    version d'API qui l'omettrait laisserait sinon repasser ces tableaux, et
+    l'intitulé « Sous-éléments de … » est imposé par Monday, non saisi.
+    """
+    if str(tableau.get("type") or "").lower() == "sub_items_board":
+        return True
+    nom = (tableau.get("name") or "").strip().lower()
+    return nom.startswith("sous-éléments de ") or nom.startswith("subitems of ")
+
+
 def lister_tableaux(jeton: str) -> list[dict]:
     """Tous les tableaux accessibles avec ce jeton, du premier au dernier.
 
@@ -131,7 +144,7 @@ def lister_tableaux(jeton: str) -> list[dict]:
         donnees = _appeler_api(
             f"query {{ boards (limit: {TABLEAUX_PAR_PAGE}, page: {page}, "
             "state: active, order_by: used_at) "
-            "{ id name workspace { name } } }",
+            "{ id name type workspace { name } } }",
             jeton,
         )
         lot = donnees.get("boards") or []
@@ -142,6 +155,12 @@ def lister_tableaux(jeton: str) -> list[dict]:
                 continue
             vus.add(identifiant)
             nouveaux += 1
+            # Monday crée en coulisses un tableau par colonne de sous-éléments.
+            # Personne ne l'ouvre jamais : le proposer double la liste de
+            # doublons apparents, dont il faut deviner qu'ils ne servent à
+            # rien. Comptés comme vus pour ne pas relancer la pagination.
+            if _est_sous_elements(tableau):
+                continue
             espace = (tableau.get("workspace") or {}).get("name") or ""
             trouves.append({
                 "id": identifiant,

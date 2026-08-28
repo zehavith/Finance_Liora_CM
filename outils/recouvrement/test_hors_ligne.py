@@ -2037,9 +2037,26 @@ def test_liste_complete_tableaux() -> None:
         "2.9. RIB Reçus - Technique", "2.9. Transactions - Technique",
     ]
     tous = [
-        {"id": 100 + rang, "name": nom, "workspace": {"name": "Recouvrement"}}
+        {"id": 100 + rang, "name": nom, "type": "board",
+         "workspace": {"name": "Recouvrement"}}
         for rang, nom in enumerate(noms)
     ]
+    # Monday crée un tableau technique par colonne de sous-éléments, glissé
+    # dans la même liste. Les deux voies de détection sont éprouvées : le
+    # champ `type`, et le nom seul quand l'API ne renvoie pas ce champ.
+    parasites = [
+        {"id": 900, "name": "Sous-éléments de 1.2. Entreprise - Recouvrement",
+         "type": "sub_items_board", "workspace": {"name": "Recouvrement"}},
+        {"id": 901, "name": "Sous-éléments de 2.1. Financement Personnel",
+         "workspace": {"name": "Recouvrement"}},
+        {"id": 902, "name": "Subitems of 1.1. Entreprise - ADV",
+         "workspace": {"name": "Recouvrement"}},
+        # Un vrai tableau dont le type manque doit rester, lui.
+        {"id": 903, "name": "3.1. Sous-traitance", "workspace": {"name": "Recouvrement"}},
+    ]
+    noms.append("3.1. Sous-traitance")
+    attendus = {str(tab["id"]) for tab in tous} | {"903"}
+    tous = tous[:3] + parasites + tous[3:]
 
     pages: list[int] = []
 
@@ -2075,8 +2092,17 @@ def test_liste_complete_tableaux() -> None:
         "l'espace de travail accompagne chaque tableau",
     )
     verifier(
-        {tab["id"] for tab in tableaux} == {str(100 + rang) for rang in range(len(noms))},
+        {tab["id"] for tab in tableaux} == attendus,
         "chaque tableau porte son identifiant, sous forme de texte",
+    )
+    verifier(
+        not [tab for tab in tableaux if "ous-éléments" in tab["nom"]
+             or tab["nom"].lower().startswith("subitems of")],
+        "les tableaux de sous-éléments ne sont pas proposés",
+    )
+    verifier(
+        any(tab["nom"] == "3.1. Sous-traitance" for tab in tableaux),
+        "un tableau dont le nom commence par « Sous- » n'est pas écarté pour autant",
     )
 
     # Une API qui renverrait toujours la même page ne doit pas boucler sans fin.
