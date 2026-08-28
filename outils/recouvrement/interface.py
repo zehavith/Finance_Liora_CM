@@ -41,6 +41,9 @@ from rendu import moteur_pdf_disponible  # noqa: E402
 import suivi as module_suivi  # noqa: E402
 
 RACINE = Path(__file__).resolve().parent
+# Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
+# mieux que deviner d'après la présence d'un champ à l'écran.
+VERSION = "32"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -352,6 +355,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
         if chemin == "/":
             page = PAGE.replace("__JETON__", JETON)
             page = page.replace("__MOTEUR_PDF__", moteur_pdf_disponible())
+            page = page.replace("__VERSION__", VERSION)
             preferences = lire_preferences()
             page = page.replace(
                 "__ETAT_MONDAY__",
@@ -874,7 +878,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <header>
   <span class="logo">Liora</span>
   <span class="titre">Export recouvrement</span>
-  <span class="moteur">Moteur PDF : __MOTEUR_PDF__</span>
+  <span class="moteur">Version __VERSION__ &nbsp;·&nbsp; Moteur PDF : __MOTEUR_PDF__</span>
 </header>
 <nav class="principal">
   <button class="actif" data-vue="vueBord">Tableau de bord</button>

@@ -2638,12 +2638,14 @@ def test_interface() -> None:
         verifier(not manquants, f"tous les champs de la page sont présents{' — manque : ' + ', '.join(manquants) if manquants else ''}")
 
         restants = [m for m in ("__JETON__", "__SORTIE__", "__BOITES__",
-                                "__MOTEUR_PDF__", "__ETAT_MONDAY__",
+                                "__MOTEUR_PDF__", "__ETAT_MONDAY__", "__VERSION__",
                                 "__IMPORT__", "__DOMAINES__", "__OPTIONS__",
                                 "__SEULEMENT__", "__TABLEAU__", "__REGIMES__",
                                 "__FILTRE_COLONNE__", "__FILTRE_VALEUR__") if m in page]
         verifier(not restants, f"aucun marqueur de gabarit non remplacé{' — reste : ' + ', '.join(restants) if restants else ''}")
         verifier("__JETON__" not in page, "le jeton est injecté dans la page")
+        verifier(f"Version {interface.VERSION}" in page,
+                 f"l'en-tête annonce la version (obtenu : {interface.VERSION})")
         verifier(interface.JETON in page, "la page porte le jeton de la session")
 
         print("  -- refus sans jeton --")
