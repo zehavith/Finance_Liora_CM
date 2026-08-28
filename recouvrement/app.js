@@ -1,0 +1,2043 @@
+/* ==========================================================
+   Liora — Suivi Recouvrement
+   app.js — Orchestration : état, chargement, filtres, rendu
+
+   v1.0.0
+   ========================================================== */
+
+(function () {
+    'use strict';
+
+    const R = window.LioraRules;
+    const S = window.LioraStore;
+    const M = window.LioraMonday;
+    const I = window.LioraIngest;
+    const X = window.LioraMetrics;
+    const U = window.LioraUI;
+    const { $, $$ } = U;
+
+    // ══════════════════════════════════════════════
+    //  État
+    // ══════════════════════════════════════════════
+
+    const state = {
+        factures: [],          // factures consolidées + enrichies
+        brutes: [],            // factures avant consolidation (pour ré-enrichir)
+        boards: [],            // [{ id, name, role, perimetre, source, financementDefaut, actif, itemsCount, columns, mapping }]
+        rules: R.DEFAULT_ECHEANCE_RULES.map(r => ({ ...r })),
+        grandLivre: [],
+        imports: [],
+        token: '',
+        compte: null,
+
+        options: {
+            prefereEcheanceMonday: true,
+            masquerTechnique: true,
+            payeesHorsPortefeuille: false,
+        },
+
+        filtres: {
+            mois: null,                    // Set|null
+            baseMois: 'echeance',
+            perimetre: 'Tous',
+            sources: new Set(['recouvrement', 'adv', 'opco', 'b2c']),
+            financements: null,
+            etats: null,
+            boards: null,
+            bucket: null,
+            client: null,
+            recherche: '',
+            dateRef: R.stripTime(new Date()),
+        },
+
+        ui: {
+            uniteMois: 'euros',
+            uniteHeat: 'euros',
+            agingDim: 'financement',
+            page: 1,
+            pageSize: 50,
+            tri: { key: 'retardJours', sens: 'desc' },
+            triFin: { key: 'eurEnRetard', sens: 'desc' },
+            mappingBoardId: null,
+            onglet: 'dashboard',
+        },
+
+        moisDispo: [],
+    };
+
+    window.__recouvrement = state;   // utile pour le débogage
+
+    // ══════════════════════════════════════════════
+    //  Démarrage
+    // ══════════════════════════════════════════════
+
+    async function boot() {
+        U.initChartDefaults();
+        brancherEvenements();
+
+        const [token, boards, rules, options, imports, gl, factures] = await Promise.all([
+            S.get(S.KEYS.settings, {}).then(s => (s && s.token) || ''),
+            S.get(S.KEYS.boards, []),
+            S.get(S.KEYS.rules, null),
+            S.get(S.KEYS.settings, {}),
+            S.get(S.KEYS.imports, []),
+            S.get(S.KEYS.grandLivre, []),
+            S.get(S.KEYS.factures, []),
+        ]);
+
+        state.token = token || '';
+        state.boards = boards || [];
+        state.imports = imports || [];
+        state.grandLivre = gl || [];
+        if (rules && rules.length) state.rules = rules;
+        if (options && options.options) Object.assign(state.options, options.options);
+
+        if (state.token) {
+            $('#monday-token').value = state.token;
+            $('#settings-token').value = state.token;
+        }
+        appliquerOptionsAuxCases();
+
+        const brutes = (factures || []).map(revivre);
+        if (brutes.length) {
+            state.brutes = brutes;
+            $('#saved-count').textContent = U.nombre(brutes.length);
+            $('#btn-open-saved').hidden = false;
+        }
+    }
+
+    /** Les dates perdent leur type au passage par IndexedDB → reconstruction. */
+    const CHAMPS_DATE = ['dateFacture', 'dateDebutFormation', 'dateFinFormation',
+        'dateEcheanceSource', 'datePaiement', 'dateControlePaiement'];
+
+    function revivre(f) {
+        const o = { ...f };
+        for (const c of CHAMPS_DATE) o[c] = o[c] ? R.parseDate(o[c]) : null;
+        return o;
+    }
+
+    /** Les objets Date ne survivent pas toujours au clonage structuré → sérialisation ISO. */
+    function serialiser(f) {
+        const o = {};
+        for (const k of Object.keys(f)) {
+            const v = f[k];
+            if (v instanceof Date) o[k] = isNaN(v.getTime()) ? null : v.toISOString().slice(0, 10);
+            else if (v instanceof Set) o[k] = [...v];
+            else if (k === 'bucket' && v) o[k] = null;      // recalculé
+            else o[k] = v;
+        }
+        return o;
+    }
+
+    // ══════════════════════════════════════════════
+    //  Pipeline de calcul
+    // ══════════════════════════════════════════════
+
+    /** Consolide, enrichit et rafraîchit toute l'interface. */
+    function recalculer(options) {
+        const o = options || {};
+        let consolidees = I.consolider(state.brutes);
+        if (state.grandLivre.length) I.appliquerGrandLivre(consolidees, state.grandLivre);
+
+        I.enrichir(consolidees, {
+            dateRef: state.filtres.dateRef,
+            rules: state.rules,
+            prefereEcheanceMonday: state.options.prefereEcheanceMonday,
+        });
+
+        if (state.options.payeesHorsPortefeuille) consolidees = consolidees.filter(f => !f.paye);
+
+        state.factures = consolidees;
+        majMoisDisponibles(o.conserverPeriode);
+        rendreTout();
+    }
+
+    function majMoisDisponibles(conserver) {
+        const champ = state.filtres.baseMois === 'facture' ? 'moisFacture'
+            : state.filtres.baseMois === 'paiement' ? 'moisPaiement' : 'moisEcheance';
+        state.moisDispo = [...new Set(state.factures.map(f => f[champ]).filter(Boolean))].sort();
+
+        if (!conserver) state.filtres.mois = null;
+        else if (state.filtres.mois) {
+            // Retirer les mois qui n'existent plus
+            const valides = new Set(state.moisDispo);
+            state.filtres.mois = new Set([...state.filtres.mois].filter(m => valides.has(m)));
+            if (state.filtres.mois.size === state.moisDispo.length) state.filtres.mois = null;
+        }
+        rendreBoutonsMois();
+    }
+
+    /** Factures après application de tous les filtres actifs. */
+    function facturesFiltrees() {
+        return X.filtrer(state.factures, {
+            ...state.filtres,
+            masquerTechnique: state.options.masquerTechnique,
+        });
+    }
+
+    // ══════════════════════════════════════════════
+    //  Barre de filtres
+    // ══════════════════════════════════════════════
+
+    function rendreBoutonsMois() {
+        const c = $('#date-filter-months');
+        if (!c) return;
+        c.innerHTML = '';
+        for (const mk of state.moisDispo) {
+            const b = document.createElement('button');
+            b.className = 'date-month-btn';
+            b.dataset.month = mk;
+            b.textContent = U.moisLabel(mk, true);
+            if (!state.filtres.mois || state.filtres.mois.has(mk)) b.classList.add('active');
+            b.addEventListener('click', () => basculerMois(mk));
+            c.appendChild(b);
+        }
+        if (!state.moisDispo.length) {
+            c.innerHTML = '<span class="fv-hint">Aucun mois exploitable — vérifiez les dates dans l\'onglet Data Quality.</span>';
+        }
+    }
+
+    function basculerMois(mk) {
+        const f = state.filtres;
+        if (!f.mois) { f.mois = new Set(state.moisDispo); f.mois.delete(mk); }
+        else if (f.mois.has(mk)) f.mois.delete(mk);
+        else f.mois.add(mk);
+        if (f.mois && f.mois.size === state.moisDispo.length) f.mois = null;
+        state.ui.page = 1;
+        rendreBoutonsMois();
+        rendreTout();
+    }
+
+    function rendreChipsSources() {
+        const c = $('#chips-sources');
+        if (!c) return;
+        c.innerHTML = '';
+        for (const s of R.SOURCES) {
+            const b = document.createElement('button');
+            b.className = 'chip' + (state.filtres.sources.has(s.key) ? ' active' : '');
+            b.title = s.hint;
+            b.textContent = s.label;
+            const n = state.factures.filter(f => X.sourceDe(f) === s.key && f.etat === 'En retard').length;
+            if (n) b.innerHTML += ` <span class="chip-count">${U.nombre(n)}</span>`;
+            b.addEventListener('click', () => {
+                const set = state.filtres.sources;
+                if (set.has(s.key)) set.delete(s.key); else set.add(s.key);
+                if (!set.size) { R.SOURCES.forEach(x => set.add(x.key)); }
+                state.ui.page = 1;
+                rendreTout();
+            });
+            c.appendChild(b);
+        }
+    }
+
+    function rendreChipsEtats() {
+        const c = $('#chips-etats');
+        if (!c) return;
+        const etats = ['En retard', 'Non échue', 'Payée en retard', 'Payée', 'Échéance inconnue'];
+        c.innerHTML = '';
+        for (const e of etats) {
+            const b = document.createElement('button');
+            const actif = !state.filtres.etats || state.filtres.etats.has(e);
+            b.className = 'chip chip-etat ' + U.etatClass(e) + (actif ? ' active' : '');
+            const n = state.factures.filter(f => f.etat === e).length;
+            b.innerHTML = U.escapeHtml(e) + (n ? ` <span class="chip-count">${U.nombre(n)}</span>` : '');
+            b.addEventListener('click', () => {
+                let set = state.filtres.etats;
+                if (!set) { set = new Set(etats); }
+                if (set.has(e)) set.delete(e); else set.add(e);
+                state.filtres.etats = set.size === etats.length || set.size === 0 ? null : set;
+                state.ui.page = 1;
+                rendreTout();
+            });
+            c.appendChild(b);
+        }
+    }
+
+    function rendreFiltresActifs() {
+        const c = $('#active-filters');
+        if (!c) return;
+        const f = state.filtres;
+        const chips = [];
+        const add = (label, onRemove) => chips.push({ label, onRemove });
+
+        if (f.perimetre !== 'Tous') add('Périmètre : ' + f.perimetre, () => { f.perimetre = 'Tous'; majSegments(); });
+        if (f.financements && f.financements.size)
+            add('Financement : ' + [...f.financements].map(k => R.getRule(k, state.rules).label).join(', '), () => { f.financements = null; });
+        if (f.bucket) add('Antériorité : ' + (R.AGING_BUCKETS.find(b => b.key === f.bucket) || {}).label, () => { f.bucket = null; });
+        if (f.client) add('Client : ' + f.client, () => { f.client = null; });
+        if (f.boards && f.boards.size) add('Tableau : ' + [...f.boards].join(', '), () => { f.boards = null; });
+        if (f.etats && f.etats.size) add('État : ' + [...f.etats].join(', '), () => { f.etats = null; rendreChipsEtats(); });
+        if (f.recherche) add('Recherche : ' + f.recherche, () => { f.recherche = ''; $('#search-input').value = ''; });
+        if (f.mois) add(`Période : ${f.mois.size} mois sur ${state.moisDispo.length}`, () => { f.mois = null; rendreBoutonsMois(); });
+
+        if (!chips.length) { c.classList.add('hidden'); c.innerHTML = ''; return; }
+        c.classList.remove('hidden');
+        c.innerHTML = chips.map((ch, i) =>
+            `<span class="filter-chip">${U.escapeHtml(ch.label)}<button data-i="${i}" title="Retirer">×</button></span>`
+        ).join('') + '<button class="btn btn-ghost btn-sm" id="clear-all-filters">Tout retirer</button>';
+
+        $$('.filter-chip button', c).forEach(b => b.addEventListener('click', () => {
+            chips[+b.dataset.i].onRemove();
+            state.ui.page = 1;
+            rendreTout();
+        }));
+        $('#clear-all-filters', c).addEventListener('click', reinitialiserFiltres);
+    }
+
+    function reinitialiserFiltres() {
+        const f = state.filtres;
+        f.mois = null; f.perimetre = 'Tous'; f.financements = null; f.etats = null;
+        f.boards = null; f.bucket = null; f.client = null; f.recherche = '';
+        f.sources = new Set(['recouvrement', 'adv', 'opco', 'b2c']);
+        $('#search-input').value = '';
+        state.ui.page = 1;
+        majSegments();
+        rendreBoutonsMois();
+        rendreTout();
+    }
+
+    function majSegments() {
+        $$('#seg-perimetre .seg-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.perimetre === state.filtres.perimetre));
+        $$('#seg-base-mois .seg-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.base === state.filtres.baseMois));
+    }
+
+    function appliquerOptionsAuxCases() {
+        $('#opt-prefere-monday').checked = state.options.prefereEcheanceMonday;
+        $('#opt-masquer-technique').checked = state.options.masquerTechnique;
+        $('#opt-payees-hors-portefeuille').checked = state.options.payeesHorsPortefeuille;
+    }
+
+    // ══════════════════════════════════════════════
+    //  Rendu global
+    // ══════════════════════════════════════════════
+
+    function rendreTout() {
+        const data = facturesFiltrees();
+        rendreChipsSources();
+        rendreChipsEtats();
+        rendreFiltresActifs();
+        majBadgesPeriode(data);
+
+        switch (state.ui.onglet) {
+            case 'dashboard':    rendreDashboard(data); break;
+            case 'aging':        rendreAging(data); break;
+            case 'financements': rendreFinancements(data); break;
+            case 'factures':     rendreFactures(data); break;
+            case 'quality':      rendreQualite(data); break;
+            case 'donnees':      rendreDonnees(); break;
+        }
+    }
+
+    function majBadgesPeriode(data) {
+        const mois = state.filtres.mois ? [...state.filtres.mois].sort() : state.moisDispo;
+        const txt = mois.length
+            ? (mois.length === 1 ? U.moisLabel(mois[0]) : U.moisLabel(mois[0]) + ' → ' + U.moisLabel(mois[mois.length - 1]))
+            : 'Aucune période';
+        const compl = ` · ${U.nombre(data.length)} factures · arrêté au ${U.dateFR(state.filtres.dateRef)}`;
+        ['#period-badge', '#aging-badge', '#fin-badge', '#factures-badge', '#quality-badge'].forEach(sel => {
+            const el = $(sel); if (el) el.textContent = txt + compl;
+        });
+    }
+
+    // ══════════════════════════════════════════════
+    //  Onglet : Tableau de bord
+    // ══════════════════════════════════════════════
+
+    function rendreDashboard(data) {
+        const v = X.vueEnsemble(data);
+
+        // ── KPIs ──
+        $('#kpi-euros-retard').textContent = U.euros(v.eurosEnRetard);
+        $('#kpi-euros-retard-sub').textContent = v.eurosPayeesRetard
+            ? `${U.eurosCourt(v.eurosPayeesRetard)} déjà réglés en retard` : '';
+
+        $('#kpi-nb-retard').textContent = U.nombre(v.nbEnRetard);
+        $('#kpi-nb-retard-sub').textContent = `sur ${U.nombre(v.total)} factures · ${U.pourcent(v.tauxNb)}`;
+
+        $('#kpi-taux-euros').textContent = U.pourcent(v.tauxEuros);
+        $('#kpi-taux-nb-sub').textContent =
+            `cohorte échue : ${U.pourcent(v.tauxCohorteEuros)} en € · ${U.pourcent(v.tauxCohorteNb)} en nombre`;
+
+        $('#kpi-total-euros').textContent = U.euros(v.totalEuros);
+        $('#kpi-total-sub').textContent = `${U.nombre(v.total)} factures`;
+
+        $('#kpi-encaisse').textContent = U.euros(v.eurosPayees);
+        $('#kpi-encaisse-sub').textContent = `${U.nombre(v.nbPayees)} factures réglées`;
+
+        $('#kpi-encours').textContent = U.euros(v.encoursTotal);
+        $('#kpi-encours-sub').textContent = `dont ${U.eurosCourt(v.eurosNonEchues)} non échus`;
+
+        $('#kpi-retard-moyen').textContent = U.jours(v.retardMoyen);
+        $('#kpi-retard-moyen-sub').textContent = v.retardMedian != null
+            ? `médiane ${U.jours(v.retardMedian)} · max ${U.jours(v.retardMax)}` : '';
+
+        $('#kpi-retard-pondere').textContent = U.jours(v.retardMoyenPondere);
+
+        $('#kpi-retard-paiement').textContent = U.jours(v.retardMoyenPaiement);
+        $('#kpi-delai-paiement-sub').textContent = v.delaiPaiementMoyen != null
+            ? `délai facture → règlement : ${U.jours(v.delaiPaiementMoyen)}` : '';
+
+        rendreNoteperimetre(data, v);
+
+        // ── Graphique mensuel ──
+        const rows = X.parMois(data, state.filtres.baseMois);
+        rendreChartMois(rows);
+        rendreComparaison(rows);
+
+        // ── Financement / balance âgée ──
+        const fins = X.parFinancement(data, state.rules);
+        rendreChartFinancement(fins);
+        rendreChartAging(X.balanceAgee(data));
+
+        // ── Heatmap mois × financement ──
+        rendreHeatmap(X.croiseMoisFinancement(data, state.filtres.baseMois, state.rules));
+
+        // ── Classements ──
+        rendreTopClients(X.topClients(data, 12));
+        rendreParTableau(X.parTableau(data));
+    }
+
+    /** Rappels métier contextuels (OPCO sans recouvrement, retards côté ADV). */
+    function rendreNoteperimetre(data, v) {
+        const el = $('#scope-note');
+        if (!el) return;
+        const notes = [];
+
+        const advRetard = data.filter(f => f.etat === 'En retard' && (f.role === 'adv' || f.role === 'tampon'));
+        if (advRetard.length) {
+            notes.push({
+                ton: 'warn',
+                titre: `${U.nombre(advRetard.length)} factures en retard encore côté ADV / Tampon`,
+                texte: `${U.euros(X.sum(advRetard, x => x.encours))} d'encours. Elles dépassent l'échéance sans être passées en recouvrement.`,
+                action: { label: 'Voir ces factures', fn: () => { state.filtres.sources = new Set(['adv']); state.filtres.etats = new Set(['En retard']); ouvrirOnglet('factures'); } },
+            });
+        }
+
+        const opcoRetard = data.filter(f => f.etat === 'En retard' && (f.role === 'opco' || f.financement === 'OPCO'));
+        if (opcoRetard.length) {
+            notes.push({
+                ton: 'info',
+                titre: `${U.nombre(opcoRetard.length)} factures OPCO en retard`,
+                texte: `${U.euros(X.sum(opcoRetard, x => x.encours))} d'encours. Pas de recouvrement OPCO : suivi du retard uniquement — décochez « OPCO » pour les exclure des indicateurs.`,
+                action: { label: 'Exclure les OPCO', fn: () => { state.filtres.sources.delete('opco'); rendreTout(); } },
+            });
+        }
+
+        if (v.nbSansEcheance) {
+            notes.push({
+                ton: 'danger',
+                titre: `${U.nombre(v.nbSansEcheance)} factures sans échéance calculable`,
+                texte: `${U.euros(v.eurosSansEcheance)} exclus des taux de recouvrement, faute de date de facture ou de fin de formation.`,
+                action: { label: 'Voir le détail', fn: () => ouvrirOnglet('quality') },
+            });
+        }
+
+        if (!notes.length) { el.innerHTML = ''; el.classList.add('hidden'); return; }
+        el.classList.remove('hidden');
+        el.innerHTML = notes.map((n, i) => `
+            <div class="note note-${n.ton}">
+                <div class="note-body">
+                    <strong>${U.escapeHtml(n.titre)}</strong>
+                    <span>${U.escapeHtml(n.texte)}</span>
+                </div>
+                ${n.action ? `<button class="btn btn-ghost btn-sm" data-note="${i}">${U.escapeHtml(n.action.label)}</button>` : ''}
+            </div>`).join('');
+        $$('[data-note]', el).forEach(b => b.addEventListener('click', () => notes[+b.dataset.note].action.fn()));
+    }
+
+    function rendreChartMois(rows) {
+        const eur = state.ui.uniteMois === 'euros';
+        const labels = rows.map(r => U.moisLabel(r.mois, true));
+        const fmt = eur ? U.eurosCourt : U.nombre;
+
+        const jeu = (label, cle, couleur) => ({
+            label, backgroundColor: couleur, borderRadius: 3, stack: 'a',
+            data: rows.map(r => r[(eur ? 'eur' : 'nb') + cle]),
+            yAxisID: 'y',
+        });
+
+        U.chart('chart-mois', {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    jeu('Payée à temps', 'PayeeATemps', U.couleurs.paye),
+                    jeu('Payée en retard', 'PayeeRetard', U.couleurs.payeRetard),
+                    jeu('En retard (impayée)', 'EnRetard', U.couleurs.retard),
+                    jeu('Non échue', 'NonEchue', U.couleurs.nonEchue),
+                    jeu('Échéance inconnue', 'SansEcheance', U.couleurs.inconnu),
+                    {
+                        type: 'line', label: '% en retard', yAxisID: 'y1',
+                        data: rows.map(r => eur ? r.tauxEur : r.tauxNb),
+                        borderColor: U.couleurs.accent, backgroundColor: U.couleurs.accent,
+                        borderWidth: 2.5, tension: 0.3, pointRadius: 3, pointHoverRadius: 5, order: 0,
+                    },
+                    {
+                        type: 'line', label: '% encore impayé', yAxisID: 'y1',
+                        data: rows.map(r => eur ? r.tauxImpayeEur : r.tauxImpayeNb),
+                        borderColor: U.couleurs.retard, borderDash: [5, 4],
+                        borderWidth: 2, tension: 0.3, pointRadius: 0, order: 0,
+                    },
+                ],
+            },
+            options: {
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { stacked: true, grid: { display: false } },
+                    y: { stacked: true, grid: U.grille, ticks: { callback: v => fmt(v) } },
+                    y1: {
+                        position: 'right', min: 0, max: 100, grid: { display: false },
+                        ticks: { callback: v => v + ' %' },
+                    },
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const d = ctx.dataset;
+                                if (d.yAxisID === 'y1') return `${d.label} : ${U.pourcent(ctx.parsed.y)}`;
+                                return `${d.label} : ${eur ? U.euros(ctx.parsed.y) : U.nombre(ctx.parsed.y) + ' factures'}`;
+                            },
+                            afterBody: items => {
+                                const r = rows[items[0].dataIndex];
+                                if (!r) return '';
+                                return ['', `Retard moyen : ${U.jours(r.retardMoyen)}`,
+                                    `Base échue : ${U.nombre(r.assietteNb)} factures / ${U.eurosCourt(r.assietteEur)}`];
+                            },
+                        },
+                    },
+                },
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    const mk = rows[els[0].index].mois;
+                    state.filtres.mois = new Set([mk]);
+                    state.ui.page = 1;
+                    rendreBoutonsMois();
+                    rendreTout();
+                },
+            },
+        });
+    }
+
+    function rendreComparaison(rows) {
+        const el = $('#month-compare-body');
+        const cmp = X.comparaisonMensuelle(rows, R.monthKey(state.filtres.dateRef));
+        if (!cmp) { el.innerHTML = '<p class="fv-hint">Deux mois au minimum sont nécessaires pour comparer.</p>'; $('#month-compare-title').textContent = ''; return; }
+
+        $('#month-compare-title').textContent = `${U.moisLabel(cmp.mois)} vs ${U.moisLabel(cmp.moisPrec)}`;
+
+        const ligne = (label, d, fmt, inverse) => {
+            const hausse = d.ecart > 0;
+            const bon = inverse ? !hausse : hausse;
+            const cls = d.ecart === 0 ? 'neutre' : (bon ? 'bon' : 'mauvais');
+            const fleche = d.ecart === 0 ? '=' : (hausse ? '▲' : '▼');
+            return `<div class="cmp-row">
+                <span class="cmp-label">${U.escapeHtml(label)}</span>
+                <span class="cmp-prev">${fmt(d.prev)}</span>
+                <span class="cmp-arrow cmp-${cls}">${fleche}</span>
+                <span class="cmp-cur">${fmt(d.cur)}</span>
+                <span class="cmp-delta cmp-${cls}">${d.ecartPct == null ? '—' : (d.ecartPct > 0 ? '+' : '') + U.pourcent(d.ecartPct, 0)}</span>
+            </div>`;
+        };
+
+        el.innerHTML = `<div class="cmp-table">
+            <div class="cmp-row cmp-head"><span>Indicateur</span><span>${U.moisLabel(cmp.moisPrec, true)}</span><span></span><span>${U.moisLabel(cmp.mois, true)}</span><span>Écart</span></div>
+            ${ligne('Encours en retard', cmp.eurEnRetard, U.eurosCourt, true)}
+            ${ligne('Factures en retard', cmp.nbEnRetard, U.nombre, true)}
+            ${ligne('% en retard (€)', cmp.tauxEur, v => U.pourcent(v), true)}
+            ${ligne('% en retard (nb)', cmp.tauxNb, v => U.pourcent(v), true)}
+            ${ligne('Retard moyen', cmp.retardMoyen, U.jours, true)}
+        </div>`;
+    }
+
+    function rendreChartFinancement(fins) {
+        const top = fins.filter(f => f.eurEnRetard > 0).slice(0, 12);
+        if (!top.length) { U.chart('chart-financement', videConfig('Aucune facture en retard')); return; }
+
+        U.chart('chart-financement', {
+            type: 'bar',
+            data: {
+                labels: top.map(f => f.label),
+                datasets: [{
+                    label: 'Encours en retard',
+                    data: top.map(f => f.eurEnRetard),
+                    backgroundColor: top.map((_, i) => U.palette[i % U.palette.length]),
+                    borderRadius: 4,
+                }],
+            },
+            options: {
+                indexAxis: 'y',
+                scales: {
+                    x: { grid: U.grille, ticks: { callback: v => U.eurosCourt(v) } },
+                    y: { grid: { display: false } },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => U.euros(ctx.parsed.x),
+                            afterLabel: ctx => {
+                                const f = top[ctx.dataIndex];
+                                return [`${U.nombre(f.nbEnRetard)} factures · ${U.pourcent(f.tauxEur)} du portefeuille`,
+                                    `Retard moyen : ${U.jours(f.retardMoyen)}`];
+                            },
+                        },
+                    },
+                },
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    state.filtres.financements = new Set([top[els[0].index].key]);
+                    state.ui.page = 1;
+                    rendreTout();
+                },
+            },
+        });
+    }
+
+    function rendreChartAging(buckets) {
+        const actifs = buckets.filter(b => b.nb > 0);
+        if (!actifs.length) { U.chart('chart-aging', videConfig('Aucun encours')); return; }
+
+        U.chart('chart-aging', {
+            type: 'doughnut',
+            data: {
+                labels: actifs.map(b => b.label),
+                datasets: [{
+                    data: actifs.map(b => b.euros),
+                    backgroundColor: actifs.map(b => b.couleur),
+                    borderColor: 'rgba(11,14,26,0.9)', borderWidth: 2,
+                }],
+            },
+            options: {
+                cutout: '60%',
+                plugins: {
+                    legend: { position: 'right' },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const b = actifs[ctx.dataIndex];
+                                return `${U.euros(b.euros)} · ${U.nombre(b.nb)} factures · ${U.pourcent(b.partEuros)}`;
+                            },
+                        },
+                    },
+                },
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    state.filtres.bucket = actifs[els[0].index].key;
+                    state.ui.page = 1;
+                    rendreTout();
+                },
+            },
+        });
+    }
+
+    function videConfig(message) {
+        return {
+            type: 'bar',
+            data: { labels: [message], datasets: [{ data: [0], backgroundColor: 'transparent' }] },
+            options: { plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } } },
+        };
+    }
+
+    /** Heatmap mois × financement du taux de retard. */
+    function rendreHeatmap(croise) {
+        const el = $('#heatmap-mois-financement');
+        const eur = state.ui.uniteHeat === 'euros';
+        if (!croise.mois.length || !croise.fins.length) {
+            el.innerHTML = '<p class="fv-hint">Pas assez de données pour le croisement.</p>';
+            return;
+        }
+
+        const couleurCase = t => {
+            if (t == null) return 'background:transparent;color:var(--text-muted)';
+            const p = Math.max(0, Math.min(100, t)) / 100;
+            const alpha = 0.12 + p * 0.78;
+            return `background:rgba(239,68,68,${alpha.toFixed(2)});color:${p > 0.45 ? '#fff' : 'var(--text-primary)'}`;
+        };
+
+        let h = '<table class="heatmap"><thead><tr><th class="hm-corner">Financement</th>';
+        for (const m of croise.mois) h += `<th>${U.escapeHtml(U.moisLabel(m, true))}</th>`;
+        h += '<th class="hm-total">Total</th></tr></thead><tbody>';
+
+        for (const fin of croise.fins) {
+            let totNum = 0, totDen = 0;
+            let cells = '';
+            for (const m of croise.mois) {
+                const c = croise.cell(m, fin);
+                if (!c || (eur ? c.eurAssiette : c.nbAssiette) === 0) {
+                    cells += '<td class="hm-empty">·</td>';
+                    continue;
+                }
+                const num = eur ? c.eurRetard : c.nbRetard;
+                const den = eur ? c.eurAssiette : c.nbAssiette;
+                totNum += num; totDen += den;
+                const t = den > 0 ? (num / den) * 100 : null;
+                const detail = eur
+                    ? `${U.eurosCourt(num)} en retard sur ${U.eurosCourt(den)} échus`
+                    : `${c.nbRetard} en retard sur ${c.nbAssiette} échues`;
+                cells += `<td style="${couleurCase(t)}" title="${U.escapeHtml(U.moisLabel(m) + ' — ' + croise.labels[fin] + ' : ' + detail)}"
+                          data-mois="${m}" data-fin="${U.escapeHtml(fin)}" class="hm-cell">${t == null ? '·' : Math.round(t) + '%'}</td>`;
+            }
+            const tTot = totDen > 0 ? (totNum / totDen) * 100 : null;
+            h += `<tr><th class="hm-row-label" data-fin="${U.escapeHtml(fin)}">${U.escapeHtml(croise.labels[fin] || fin)}</th>${cells}`
+               + `<td class="hm-total" style="${couleurCase(tTot)}">${tTot == null ? '·' : Math.round(tTot) + '%'}</td></tr>`;
+        }
+        h += '</tbody></table>';
+        el.innerHTML = h;
+
+        $$('.hm-cell', el).forEach(td => td.addEventListener('click', () => {
+            state.filtres.mois = new Set([td.dataset.mois]);
+            state.filtres.financements = new Set([td.dataset.fin]);
+            state.ui.page = 1;
+            rendreBoutonsMois();
+            rendreTout();
+        }));
+        $$('.hm-row-label', el).forEach(th => th.addEventListener('click', () => {
+            state.filtres.financements = new Set([th.dataset.fin]);
+            state.ui.page = 1;
+            rendreTout();
+        }));
+    }
+
+    function rendreTopClients(rows) {
+        const el = $('#top-clients');
+        const max = rows.length ? rows[0].euros : 0;
+        const html = U.table([
+            { key: 'client', label: 'Client' },
+            { key: 'euros', label: 'Encours', align: 'right', format: (v) => `${U.euros(v)} ${U.barre(v, max, U.couleurs.retard)}` },
+            { key: 'nb', label: 'Nb', align: 'right', format: U.nombre },
+            { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
+            { key: 'plusVieille', label: 'Plus ancien', align: 'right', format: v => U.pastilleRetard(v) },
+        ], rows, { vide: 'Aucune facture en retard sur ce périmètre.', onRowClick: true });
+        el.innerHTML = html;
+        U.bindTable(el, rows, { onRowClick: r => { state.filtres.client = r.client; state.ui.page = 1; rendreTout(); } });
+    }
+
+    function rendreParTableau(rows) {
+        const el = $('#par-tableau');
+        const max = rows.length ? Math.max(...rows.map(r => r.eurRetard)) : 0;
+        el.innerHTML = U.table([
+            { key: 'board', label: 'Tableau' },
+            { key: 'role', label: 'Rôle', format: v => `<span class="pill pill-role">${U.escapeHtml(R.ROLE_LABELS[v] || v || '—')}</span>` },
+            { key: 'eurRetard', label: 'En retard', align: 'right', format: v => `${U.eurosCourt(v)} ${U.barre(v, max, U.couleurs.retard)}` },
+            { key: 'nbRetard', label: 'Nb', align: 'right', format: U.nombre },
+            { key: 'tauxNb', label: '% nb', align: 'right', format: v => U.pourcent(v, 0) },
+        ], rows, { vide: 'Aucun tableau chargé.', onRowClick: true });
+        U.bindTable(el, rows, { onRowClick: r => { state.filtres.boards = new Set([r.board]); state.ui.page = 1; rendreTout(); } });
+    }
+
+    // ══════════════════════════════════════════════
+    //  Onglet : Balance âgée
+    // ══════════════════════════════════════════════
+
+    function rendreAging(data) {
+        const buckets = X.balanceAgee(data);
+        const totalEuros = X.sum(buckets, b => b.euros);
+
+        $('#bucket-cards').innerHTML = buckets.map(b => `
+            <button class="bucket-card${state.filtres.bucket === b.key ? ' selected' : ''}" data-bucket="${b.key}">
+                <span class="bucket-bar" style="background:${b.couleur}"></span>
+                <span class="bucket-label">${U.escapeHtml(b.label)}</span>
+                <span class="bucket-value">${U.euros(b.euros)}</span>
+                <span class="bucket-sub">${U.nombre(b.nb)} factures · ${U.pourcent(b.partEuros, 0)}</span>
+            </button>`).join('')
+            + `<div class="bucket-card bucket-total">
+                 <span class="bucket-label">Encours total</span>
+                 <span class="bucket-value">${U.euros(totalEuros)}</span>
+                 <span class="bucket-sub">${U.nombre(X.sum(buckets, b => b.nb))} factures non réglées</span>
+               </div>`;
+
+        $$('#bucket-cards [data-bucket]').forEach(b => b.addEventListener('click', () => {
+            state.filtres.bucket = state.filtres.bucket === b.dataset.bucket ? null : b.dataset.bucket;
+            state.ui.page = 1;
+            rendreTout();
+        }));
+
+        rendreAgingTable(data);
+        rendreAgingParMois(data);
+    }
+
+    function rendreAgingTable(data) {
+        const dim = state.ui.agingDim;
+        const dimFn = {
+            financement: f => f.financement || 'INCONNU',
+            board: f => f.board,
+            client: f => f.client,
+            proprietaire: f => f.proprietaire,
+        }[dim];
+        const labelFn = dim === 'financement' ? (k => R.getRule(k, state.rules).label) : (k => k);
+
+        let rows = X.balanceAgeeParDimension(data, dimFn, labelFn);
+        if (dim === 'client' || dim === 'proprietaire') rows = rows.slice(0, 40);
+
+        const cols = [
+            { key: 'label', label: dim === 'financement' ? 'Financement' : dim === 'board' ? 'Tableau' : dim === 'client' ? 'Client' : 'Propriétaire' },
+            ...R.AGING_BUCKETS.map(b => ({
+                key: b.key, label: b.label, align: 'right',
+                format: (v, row) => v ? `<span class="ag-cell" title="${row[b.key + '_nb']} factures">${U.eurosCourt(v)}</span>` : '<span class="ag-zero">·</span>',
+                cls: () => 'ag-col',
+            })),
+            { key: 'total', label: 'Total', align: 'right', format: U.euros, cls: () => 'ag-total' },
+            { key: 'nb', label: 'Nb', align: 'right', format: U.nombre },
+        ];
+
+        const total = { label: 'Total général', total: U.euros(X.sum(rows, r => r.total)), nb: U.nombre(X.sum(rows, r => r.nb)) };
+        for (const b of R.AGING_BUCKETS) total[b.key] = U.eurosCourt(X.sum(rows, r => r[b.key]));
+
+        const el = $('#aging-table');
+        el.innerHTML = U.table(cols, rows, { vide: 'Aucun encours non réglé.', total, onRowClick: true });
+        U.bindTable(el, rows, {
+            onRowClick: r => {
+                if (dim === 'financement') state.filtres.financements = new Set([r.key]);
+                else if (dim === 'board') state.filtres.boards = new Set([r.key]);
+                else if (dim === 'client') state.filtres.client = r.key;
+                state.ui.page = 1;
+                ouvrirOnglet('factures');
+            },
+        });
+    }
+
+    function rendreAgingParMois(data) {
+        const nonPayees = data.filter(f => !f.paye && f.dateEcheance);
+        const mois = [...new Set(nonPayees.map(f => f.moisEcheance))].sort();
+        if (!mois.length) { U.chart('chart-aging-mois', videConfig('Aucun encours')); return; }
+
+        const datasets = R.AGING_BUCKETS.map(b => ({
+            label: b.label,
+            backgroundColor: b.couleur,
+            borderRadius: 3,
+            data: mois.map(m => X.sum(nonPayees.filter(f => f.moisEcheance === m && f.bucket && f.bucket.key === b.key), f => f.encours)),
+        }));
+
+        U.chart('chart-aging-mois', {
+            type: 'bar',
+            data: { labels: mois.map(m => U.moisLabel(m, true)), datasets },
+            options: {
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { stacked: true, grid: { display: false } },
+                    y: { stacked: true, grid: U.grille, ticks: { callback: v => U.eurosCourt(v) } },
+                },
+                plugins: {
+                    tooltip: { callbacks: { label: ctx => `${ctx.dataset.label} : ${U.euros(ctx.parsed.y)}` } },
+                },
+            },
+        });
+    }
+
+    // ══════════════════════════════════════════════
+    //  Onglet : Financements
+    // ══════════════════════════════════════════════
+
+    function rendreFinancements(data) {
+        let rows = X.parFinancement(data, state.rules);
+        const t = state.ui.triFin;
+        rows.sort((a, b) => {
+            const va = a[t.key], vb = b[t.key];
+            const cmp = (typeof va === 'string')
+                ? String(va).localeCompare(String(vb), 'fr')
+                : ((va == null ? -Infinity : va) - (vb == null ? -Infinity : vb));
+            return t.sens === 'asc' ? cmp : -cmp;
+        });
+
+        const maxEur = Math.max(1, ...rows.map(r => r.eurEnRetard));
+        const cols = [
+            { key: 'label', label: 'Type de financement', format: (v, r) => `${U.escapeHtml(v)}${r.sansRecouvrement ? ' <span class="pill pill-muted" title="Pas de recouvrement OPCO">hors recouvrement</span>' : ''}` },
+            { key: 'perimetre', label: 'Périmètre', format: v => `<span class="pill pill-role">${U.escapeHtml(v)}</span>` },
+            { key: 'nbTotal', label: 'Factures', align: 'right', format: U.nombre },
+            { key: 'eurTotal', label: 'Total facturé', align: 'right', format: U.euros },
+            { key: 'nbEnRetard', label: 'En retard', align: 'right', format: U.nombre },
+            { key: 'eurEnRetard', label: 'Encours en retard', align: 'right', format: v => `${U.euros(v)} ${U.barre(v, maxEur, U.couleurs.retard)}` },
+            { key: 'tauxNb', label: '% nb', align: 'right', format: v => U.pourcent(v, 1), title: 'Part des factures actuellement en retard' },
+            { key: 'tauxEur', label: '% €', align: 'right', format: v => U.pourcent(v, 1), title: "Part de l'encours en retard sur le total facturé" },
+            { key: 'tauxCohorteEur', label: '% cohorte €', align: 'right', format: v => U.pourcent(v, 1), title: 'Sur les factures échues : part payée en retard ou encore impayée' },
+            { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
+            { key: 'retardMoyenPaiement', label: 'Retard au paiement', align: 'right', format: U.jours, title: 'Retard constaté sur les factures déjà réglées' },
+        ];
+
+        const total = {
+            label: 'Total', nbTotal: U.nombre(X.sum(rows, r => r.nbTotal)),
+            eurTotal: U.euros(X.sum(rows, r => r.eurTotal)),
+            nbEnRetard: U.nombre(X.sum(rows, r => r.nbEnRetard)),
+            eurEnRetard: U.euros(X.sum(rows, r => r.eurEnRetard)),
+        };
+
+        const el = $('#fin-table');
+        el.innerHTML = U.table(cols, rows, {
+            vide: 'Aucune facture sur ce périmètre.', total, onRowClick: true,
+            tri: t, onSort: k => { t.sens = (t.key === k && t.sens === 'desc') ? 'asc' : 'desc'; t.key = k; rendreTout(); },
+        });
+        U.bindTable(el, rows, {
+            onSort: k => { t.sens = (t.key === k && t.sens === 'desc') ? 'asc' : 'desc'; t.key = k; rendreTout(); },
+            onRowClick: r => { state.filtres.financements = new Set([r.key]); state.ui.page = 1; ouvrirOnglet('factures'); },
+        });
+
+        // Graphiques
+        const top = X.parFinancement(data, state.rules).filter(r => r.nbTotal > 0).slice(0, 12);
+        U.chart('chart-fin-taux', {
+            type: 'bar',
+            data: {
+                labels: top.map(r => r.label),
+                datasets: [
+                    { label: '% en retard (à date)', data: top.map(r => r.tauxEur), backgroundColor: U.couleurs.retard, borderRadius: 4 },
+                    { label: '% cohorte échue', data: top.map(r => r.tauxCohorteEur), backgroundColor: U.couleurs.payeRetard, borderRadius: 4 },
+                ],
+            },
+            options: {
+                scales: { x: { grid: { display: false }, ticks: { maxRotation: 45, minRotation: 30 } }, y: { grid: U.grille, ticks: { callback: v => v + ' %' } } },
+                plugins: { tooltip: { callbacks: { label: ctx => `${ctx.dataset.label} : ${U.pourcent(ctx.parsed.y)}` } } },
+            },
+        });
+
+        U.chart('chart-fin-retard', {
+            type: 'bar',
+            data: {
+                labels: top.map(r => r.label),
+                datasets: [
+                    { label: 'Retard moyen (impayées)', data: top.map(r => r.retardMoyen || 0), backgroundColor: U.couleurs.indigo, borderRadius: 4 },
+                    { label: 'Retard moyen au paiement', data: top.map(r => r.retardMoyenPaiement || 0), backgroundColor: U.couleurs.paye, borderRadius: 4 },
+                ],
+            },
+            options: {
+                scales: { x: { grid: { display: false }, ticks: { maxRotation: 45, minRotation: 30 } }, y: { grid: U.grille, ticks: { callback: v => v + ' j' } } },
+                plugins: { tooltip: { callbacks: { label: ctx => `${ctx.dataset.label} : ${U.jours(ctx.parsed.y)}` } } },
+            },
+        });
+
+        rendreTableRegles();
+    }
+
+    function rendreTableRegles() {
+        const baseLabel = { dateFacture: 'Date de facture', dateFinFormation: 'Fin de formation', dateDebutFormation: 'Début de formation' };
+        const rows = state.rules.map(r => ({
+            ...r,
+            baseTxt: baseLabel[r.base] || r.base,
+            reglePhrase: `${baseLabel[r.base] || r.base} ${r.jours >= 0 ? '+' : '−'} ${Math.abs(r.jours)} jours`,
+            repliTxt: r.fallback ? `${baseLabel[r.fallback] || r.fallback} + ${r.fallbackJours != null ? r.fallbackJours : r.jours} j` : '—',
+            nb: state.factures.filter(f => f.financement === r.key).length,
+        }));
+
+        const el = $('#rules-table');
+        el.innerHTML = U.table([
+            { key: 'label', label: 'Type de financement' },
+            { key: 'reglePhrase', label: "Règle d'échéance" },
+            { key: 'repliTxt', label: 'Repli si date absente' },
+            { key: 'perimetre', label: 'Périmètre' },
+            { key: 'nb', label: 'Factures', align: 'right', format: U.nombre },
+            { key: 'note', label: 'Remarque', cls: () => 'cell-note' },
+        ], rows, { vide: 'Aucune règle.' });
+    }
+
+    // ══════════════════════════════════════════════
+    //  Onglet : Factures
+    // ══════════════════════════════════════════════
+
+    function rendreFactures(data) {
+        const t = state.ui.tri;
+        const rows = data.slice().sort((a, b) => {
+            let va = a[t.key], vb = b[t.key];
+            if (va instanceof Date) va = va.getTime();
+            if (vb instanceof Date) vb = vb.getTime();
+            let cmp;
+            if (typeof va === 'string' || typeof vb === 'string') cmp = String(va || '').localeCompare(String(vb || ''), 'fr');
+            else cmp = (va == null ? -Infinity : va) - (vb == null ? -Infinity : vb);
+            return t.sens === 'asc' ? cmp : -cmp;
+        });
+
+        const pageSize = state.ui.pageSize;
+        const nbPages = Math.max(1, Math.ceil(rows.length / pageSize));
+        if (state.ui.page > nbPages) state.ui.page = nbPages;
+        const debut = (state.ui.page - 1) * pageSize;
+        const page = rows.slice(debut, debut + pageSize);
+
+        // L'état et le retard viennent juste après le client : ce sont les deux
+        // signaux que la responsable recouvrement lit en premier.
+        const cols = [
+            { key: 'numero', label: 'Facture', format: (v, r) => `<span class="mono">${U.escapeHtml(v || '—')}</span>${r.doublon ? ' <span class="pill pill-muted" title="Présente sur plusieurs tableaux : ' + U.escapeHtml(r.presenceTableaux.join(', ')) + '">×' + r.presenceTableaux.length + '</span>' : ''}` },
+            { key: 'client', label: 'Client', format: (v) => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v)}">${U.escapeHtml(v)}</span>` },
+            { key: 'etat', label: 'État', format: v => `<span class="pill ${U.etatClass(v)}">${U.escapeHtml(v)}</span>` },
+            { key: 'retardJours', label: 'Retard', align: 'right', format: v => U.pastilleRetard(v) },
+            { key: 'encours', label: 'Encours', align: 'right', format: v => v ? U.euros(v) : '—' },
+            { key: 'montant', label: 'Montant', align: 'right', format: v => U.euros(v) },
+            {
+                key: 'financement', label: 'Financement',
+                format: v => { const l = R.getRule(v, state.rules).label; return `<span class="cell-clip" title="${U.escapeHtml(l)}">${U.escapeHtml(l)}</span>`; },
+            },
+            { key: 'dateFacture', label: 'Facture', align: 'center', format: U.dateFR },
+            { key: 'dateEcheance', label: 'Échéance', align: 'center', format: (v, r) => `${U.dateFR(v)}${r.echeanceOrigine === 'Règle' ? `<span class="calc-flag" title="Calculée par la règle ${U.escapeHtml(r.regleLabel)}">ƒ</span>` : ''}` },
+            { key: 'datePaiementEffective', label: 'Paiement', align: 'center', format: (v, r) => v ? `${U.dateFR(v)}${r.paiementEstime ? '<span class="calc-flag" title="Date de contrôle paiement — le règlement réel est antérieur">≈</span>' : ''}` : '—' },
+            { key: 'board', label: 'Tableau', format: (v, r) => `<span class="cell-clip cell-board" title="${U.escapeHtml((v || '') + (r.groupe ? ' — ' + r.groupe : ''))}">${U.escapeHtml(v || '—')}</span>` },
+        ];
+
+        const el = $('#factures-table');
+        el.innerHTML = U.table(cols, page, {
+            vide: 'Aucune facture ne correspond aux filtres.',
+            tri: t, onSort: true, onRowClick: true,
+            rowClass: r => U.etatClass(r.etat) + '-row',
+        });
+        U.bindTable(el, page, {
+            onSort: k => { t.sens = (t.key === k && t.sens === 'desc') ? 'asc' : 'desc'; t.key = k; rendreTout(); },
+            onRowClick: ouvrirFiche,
+        });
+
+        // Pagination
+        const p = $('#factures-pagination');
+        const totalEuros = X.sum(rows, r => r.montant);
+        const totalEncours = X.sum(rows, r => r.encours);
+        p.innerHTML = `
+            <div class="pagination-info">
+                ${U.nombre(rows.length)} factures · ${U.euros(totalEuros)} facturés · ${U.euros(totalEncours)} d'encours
+            </div>
+            <div class="pagination-controls">
+                <button class="btn btn-ghost btn-sm" data-page="1" ${state.ui.page === 1 ? 'disabled' : ''}>«</button>
+                <button class="btn btn-ghost btn-sm" data-page="${state.ui.page - 1}" ${state.ui.page === 1 ? 'disabled' : ''}>‹</button>
+                <span class="pagination-page">Page ${state.ui.page} / ${nbPages}</span>
+                <button class="btn btn-ghost btn-sm" data-page="${state.ui.page + 1}" ${state.ui.page >= nbPages ? 'disabled' : ''}>›</button>
+                <button class="btn btn-ghost btn-sm" data-page="${nbPages}" ${state.ui.page >= nbPages ? 'disabled' : ''}>»</button>
+            </div>`;
+        $$('[data-page]', p).forEach(b => b.addEventListener('click', () => {
+            state.ui.page = Math.max(1, Math.min(nbPages, +b.dataset.page));
+            rendreTout();
+        }));
+    }
+
+    /** Fiche détaillée d'une facture, avec la traçabilité du calcul d'échéance. */
+    function ouvrirFiche(f) {
+        const baseLabel = { dateFacture: 'date de facture', dateFinFormation: 'fin de formation', dateDebutFormation: 'début de formation', 'colonne Monday': 'colonne Monday' };
+        const ligne = (l, v) => `<div class="fiche-row"><span>${U.escapeHtml(l)}</span><strong>${v}</strong></div>`;
+
+        const explication = f.echeanceOrigine === 'Monday'
+            ? "Échéance lue directement dans Monday."
+            : f.echeanceBase
+                ? `Échéance calculée : ${baseLabel[f.echeanceBase] || f.echeanceBase} (${U.dateFR(f[f.echeanceBase])}) + ${R.getRule(f.financement, state.rules).jours} jours.`
+                : "Échéance non calculable : ni date de facture ni date de fin de formation.";
+
+        U.modal(`Facture ${f.numero || '—'}`, `
+            <div class="fiche">
+                <div class="fiche-head">
+                    <span class="pill ${U.etatClass(f.etat)}">${U.escapeHtml(f.etat)}</span>
+                    ${U.pastilleRetard(f.retardJours)}
+                </div>
+                <div class="fiche-grid">
+                    ${ligne('Client', U.escapeHtml(f.client))}
+                    ${ligne('Type de financement', U.escapeHtml(R.getRule(f.financement, state.rules).label) + (f.financementBrut ? ` <span class="fv-hint">(« ${U.escapeHtml(f.financementBrut)} »)</span>` : ''))}
+                    ${ligne('Montant', U.euros(f.montant, true))}
+                    ${ligne('Encours restant dû', U.euros(f.encours, true))}
+                    ${ligne('Date de facture', U.dateFR(f.dateFacture))}
+                    ${ligne('Début de formation', U.dateFR(f.dateDebutFormation))}
+                    ${ligne('Fin de formation', U.dateFR(f.dateFinFormation))}
+                    ${ligne('Échéance retenue', U.dateFR(f.dateEcheance) + ` <span class="fv-hint">(${f.echeanceOrigine || 'non calculée'})</span>`)}
+                    ${ligne('Date de paiement', U.dateFR(f.datePaiement))}
+                    ${ligne('Date contrôle paiement', U.dateFR(f.dateControlePaiement))}
+                    ${ligne('Tableau', U.escapeHtml(f.board || '—'))}
+                    ${ligne('Groupe', U.escapeHtml(f.groupe || '—'))}
+                    ${ligne("Groupe d'origine (payées)", U.escapeHtml(f.groupeOrigine || '—'))}
+                    ${ligne('Propriétaire', U.escapeHtml(f.proprietaire || '—'))}
+                    ${ligne('Statut Monday', U.escapeHtml(f.statut || '—'))}
+                    ${f.qualifRecouvrement ? ligne('Qualification recouvrement', U.escapeHtml(f.qualifRecouvrement)) : ''}
+                    ${f.presenceTableaux && f.presenceTableaux.length > 1 ? ligne('Présente sur', U.escapeHtml(f.presenceTableaux.join(' · '))) : ''}
+                </div>
+                <div class="fiche-note">
+                    <strong>Règle appliquée — ${U.escapeHtml(R.getRule(f.financement, state.rules).label)}</strong>
+                    <p>${U.escapeHtml(R.getRule(f.financement, state.rules).note || '')}</p>
+                    <p>${U.escapeHtml(explication)}</p>
+                </div>
+            </div>`, [{ label: 'Fermer', primary: true }]);
+    }
+
+    // ══════════════════════════════════════════════
+    //  Onglet : Data Quality
+    // ══════════════════════════════════════════════
+
+    function rendreQualite(data) {
+        const anomalies = X.qualite(data);
+        const score = X.scoreQualite(data, anomalies);
+        const couleur = score >= 85 ? 'var(--green)' : score >= 65 ? 'var(--amber)' : 'var(--red)';
+
+        $('#quality-score').innerHTML = `
+            <div class="score-ring" style="--score:${score};--score-color:${couleur}">
+                <span class="score-value">${score}</span>
+                <span class="score-label">/ 100</span>
+            </div>
+            <div class="score-text">
+                <h3>Fiabilité des indicateurs</h3>
+                <p>${U.nombre(data.length)} factures analysées · ${anomalies.length} type${anomalies.length > 1 ? 's' : ''} d'anomalie détecté${anomalies.length > 1 ? 's' : ''}.</p>
+                <p class="fv-hint">Chaque anomalie renvoie vers les factures concernées. Corriger dans Monday puis actualiser.</p>
+            </div>`;
+
+        const el = $('#quality-list');
+        if (!anomalies.length) {
+            el.innerHTML = '<div class="note note-ok"><div class="note-body"><strong>Aucune anomalie détectée</strong><span>Les dates, montants et types de financement sont exploitables sur l\'ensemble du périmètre.</span></div></div>';
+            return;
+        }
+
+        el.innerHTML = anomalies.map((a, i) => `
+            <div class="quality-item quality-${a.gravite}">
+                <div class="quality-head">
+                    <span class="quality-dot"></span>
+                    <div class="quality-title">
+                        <strong>${U.escapeHtml(a.titre)}</strong>
+                        <span>${U.nombre(a.nb)} facture${a.nb > 1 ? 's' : ''}${a.euros ? ' · ' + U.euros(a.euros) : ''}</span>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" data-q="${i}">Voir les factures</button>
+                </div>
+                <p class="quality-advice">${U.escapeHtml(a.conseil)}</p>
+            </div>`).join('');
+
+        $$('[data-q]', el).forEach(b => b.addEventListener('click', () => {
+            const a = anomalies[+b.dataset.q];
+            const rows = a.items.slice(0, 300);
+            U.modal(a.titre + ` — ${U.nombre(a.nb)} factures`, U.table([
+                { key: 'numero', label: 'Facture' },
+                { key: 'client', label: 'Client' },
+                { key: 'board', label: 'Tableau' },
+                { key: 'montant', label: 'Montant', align: 'right', format: v => U.euros(v) },
+                { key: 'dateFacture', label: 'Date facture', align: 'center', format: U.dateFR },
+                { key: 'dateEcheance', label: 'Échéance', align: 'center', format: U.dateFR },
+                { key: 'etat', label: 'État', format: v => `<span class="pill ${U.etatClass(v)}">${U.escapeHtml(v)}</span>` },
+            ], rows, { vide: '—' })
+            + (a.nb > 300 ? `<p class="fv-hint">Affichage limité aux 300 premières lignes sur ${U.nombre(a.nb)}.</p>` : ''),
+            [
+                { label: 'Exporter cette liste', onClick: () => exporterListe(a.items, a.titre) },
+                { label: 'Fermer', primary: true },
+            ]);
+        }));
+    }
+
+    // ══════════════════════════════════════════════
+    //  Onglet : Données
+    // ══════════════════════════════════════════════
+
+    async function rendreDonnees() {
+        rendreTableBoards();
+        rendreSelectMapping();
+        rendreTableMapping();
+        rendreHistoriqueImports();
+        rendreInfoStockage();
+
+        const st = $('#settings-monday-status');
+        if (state.compte) {
+            st.className = 'connect-status ok';
+            st.textContent = `Connecté : ${state.compte.name} — compte ${state.compte.account ? state.compte.account.name : ''}`;
+        }
+    }
+
+    function rendreTableBoards() {
+        const el = $('#boards-table');
+        if (!state.boards.length) {
+            el.innerHTML = '<p class="fv-hint">Aucun tableau. Connectez-vous à Monday puis cliquez sur « Rafraîchir la liste », ou importez des exports de fichiers.</p>';
+            return;
+        }
+
+        const roles = Object.keys(R.ROLE_LABELS);
+        const rows = state.boards;
+        el.innerHTML = U.table([
+            {
+                key: 'actif', label: '', align: 'center', width: '40px', sortable: false,
+                format: (v, r) => `<input type="checkbox" class="board-actif" data-id="${U.escapeHtml(r.id)}" ${v ? 'checked' : ''}>`,
+            },
+            { key: 'name', label: 'Tableau' },
+            {
+                key: 'role', label: 'Rôle', sortable: false,
+                format: (v, r) => `<select class="input input-sm board-role" data-id="${U.escapeHtml(r.id)}">`
+                    + roles.map(k => `<option value="${k}"${k === v ? ' selected' : ''}>${U.escapeHtml(R.ROLE_LABELS[k])}</option>`).join('')
+                    + '</select>',
+            },
+            { key: 'perimetre', label: 'Périmètre' },
+            { key: 'itemsCount', label: 'Éléments', align: 'right', format: v => v == null ? '—' : U.nombre(v) },
+            { key: 'charge', label: 'Chargé', align: 'right', format: v => v == null ? '—' : U.nombre(v) },
+            { key: 'workspace', label: 'Espace de travail', format: v => U.escapeHtml(v || '—') },
+        ], rows, { vide: '—' });
+
+        $$('.board-actif', el).forEach(c => c.addEventListener('change', () => {
+            const b = state.boards.find(x => String(x.id) === c.dataset.id);
+            if (b) { b.actif = c.checked; sauverBoards(); }
+        }));
+        $$('.board-role', el).forEach(s => s.addEventListener('change', () => {
+            const b = state.boards.find(x => String(x.id) === s.dataset.id);
+            if (!b) return;
+            b.role = s.value;
+            const meta = ROLE_META[b.role] || {};
+            b.perimetre = meta.perimetre || 'Inconnu';
+            b.source = meta.source || null;
+            sauverBoards();
+            rendreTableBoards();
+        }));
+    }
+
+    const ROLE_META = {
+        payees:       { perimetre: 'Tous',      source: 'payees' },
+        tampon:       { perimetre: 'Corporate', source: 'adv' },
+        adv:          { perimetre: 'Corporate', source: 'adv' },
+        recouvrement: { perimetre: 'Corporate', source: 'recouvrement' },
+        opco:         { perimetre: 'Corporate', source: 'opco' },
+        b2c:          { perimetre: 'B2C',       source: 'b2c' },
+        technique:    { perimetre: 'Tous',      source: 'technique' },
+        ignore:       { perimetre: 'Inconnu',   source: null },
+    };
+
+    function rendreSelectMapping() {
+        const sel = $('#mapping-board-select');
+        const avecCols = state.boards.filter(b => b.columns && b.columns.length);
+        sel.innerHTML = avecCols.length
+            ? avecCols.map(b => `<option value="${U.escapeHtml(String(b.id))}">${U.escapeHtml(b.name)}</option>`).join('')
+            : '<option value="">Aucun tableau chargé</option>';
+        if (state.ui.mappingBoardId && avecCols.some(b => String(b.id) === state.ui.mappingBoardId)) {
+            sel.value = state.ui.mappingBoardId;
+        } else if (avecCols.length) {
+            state.ui.mappingBoardId = String(avecCols[0].id);
+            sel.value = state.ui.mappingBoardId;
+        }
+    }
+
+    function rendreTableMapping() {
+        const el = $('#mapping-table');
+        const board = state.boards.find(b => String(b.id) === state.ui.mappingBoardId);
+        if (!board || !board.columns) {
+            el.innerHTML = '<p class="fv-hint">Chargez un tableau pour ajuster la correspondance de ses colonnes.</p>';
+            return;
+        }
+        const mapping = board.mapping || {};
+        const rows = I.FIELD_DEFS.map(def => ({
+            field: def.field, label: def.label,
+            colId: mapping[def.field] || '',
+            exemple: exempleValeur(board, mapping[def.field]),
+        }));
+
+        el.innerHTML = U.table([
+            { key: 'label', label: 'Champ de l\'application' },
+            {
+                key: 'colId', label: 'Colonne Monday', sortable: false,
+                format: (v, r) => `<select class="input input-sm map-sel" data-field="${r.field}">`
+                    + '<option value="">— non utilisé —</option>'
+                    + board.columns.map(c => `<option value="${U.escapeHtml(c.id)}"${c.id === v ? ' selected' : ''}>${U.escapeHtml(c.title)}${c.type ? ' (' + c.type + ')' : ''}</option>`).join('')
+                    + '</select>',
+            },
+            { key: 'exemple', label: 'Exemple de valeur', cls: () => 'cell-note' },
+        ], rows, { vide: '—' });
+
+        $$('.map-sel', el).forEach(s => s.addEventListener('change', () => {
+            board.mapping = board.mapping || {};
+            if (s.value) board.mapping[s.dataset.field] = s.value;
+            else delete board.mapping[s.dataset.field];
+            sauverBoards();
+            U.toast('Correspondance mise à jour — rechargez le tableau pour l\'appliquer.', 'info');
+        }));
+    }
+
+    function exempleValeur(board, colId) {
+        if (!colId) return '';
+        const f = state.brutes.find(x => String(x.boardId) === String(board.id) && x.__brut && x.__brut[colId]);
+        return f ? String(f.__brut[colId]).slice(0, 60) : '';
+    }
+
+    function rendreHistoriqueImports() {
+        const el = $('#import-history');
+        if (!state.imports.length && !state.grandLivre.length) {
+            el.innerHTML = '<p class="fv-hint">Aucun import de fichier.</p>';
+            return;
+        }
+        let h = '';
+        if (state.grandLivre.length) {
+            h += `<div class="import-row">
+                <span class="pill pill-role">Grand livre</span>
+                <span>${U.nombre(state.grandLivre.length)} lignes pointées</span>
+                <button class="btn btn-ghost btn-sm" id="btn-clear-gl">Retirer</button>
+            </div>`;
+        }
+        h += state.imports.map(im => `<div class="import-row">
+            <span class="pill pill-role">${U.escapeHtml(R.ROLE_LABELS[im.role] || im.role)}</span>
+            <span>${U.escapeHtml(im.nom)}</span>
+            <span class="fv-hint">${U.nombre(im.lignes)} lignes · ${U.escapeHtml(im.date)}</span>
+        </div>`).join('');
+        el.innerHTML = h;
+
+        const btn = $('#btn-clear-gl');
+        if (btn) btn.addEventListener('click', async () => {
+            state.grandLivre = [];
+            await S.set(S.KEYS.grandLivre, []);
+            U.toast('Grand livre retiré.', 'info');
+            recalculer({ conserverPeriode: true });
+            rendreHistoriqueImports();
+        });
+    }
+
+    async function rendreInfoStockage() {
+        const u = await S.usage();
+        const mo = v => (v / 1048576).toFixed(1).replace('.', ',') + ' Mo';
+        $('#storage-info').innerHTML = `
+            <div class="storage-line"><span>Factures enregistrées</span><strong>${U.nombre(state.brutes.length)}</strong></div>
+            <div class="storage-line"><span>Tableaux configurés</span><strong>${U.nombre(state.boards.length)}</strong></div>
+            <div class="storage-line"><span>Espace utilisé</span><strong>${u.quota ? mo(u.used) + ' / ' + mo(u.quota) : '—'}</strong></div>`;
+    }
+
+    // ══════════════════════════════════════════════
+    //  Chargement depuis Monday
+    // ══════════════════════════════════════════════
+
+    function log(msg) {
+        const el = $('#loader-log');
+        if (!el) return;
+        const p = document.createElement('div');
+        p.textContent = msg;
+        el.appendChild(p);
+        el.scrollTop = el.scrollHeight;
+        if (el.childElementCount > 200) el.removeChild(el.firstChild);
+    }
+
+    function statut(msg) { const el = $('#loader-status'); if (el) el.textContent = msg; }
+
+    async function connecterMonday(token, silencieux) {
+        if (!token) { U.toast('Renseignez un jeton API Monday.', 'error'); return false; }
+        const cibles = [$('#monday-status'), $('#settings-monday-status')].filter(Boolean);
+        cibles.forEach(c => { c.className = 'connect-status pending'; c.textContent = 'Connexion…'; });
+        try {
+            const me = await M.me(token);
+            state.token = token;
+            state.compte = me;
+            if ($('#monday-remember').checked !== false) await sauverReglages();
+            cibles.forEach(c => {
+                c.className = 'connect-status ok';
+                c.textContent = `Connecté : ${me.name}${me.account ? ' — ' + me.account.name : ''}`;
+            });
+            if (!silencieux) U.toast('Connexion Monday établie.', 'success');
+            return true;
+        } catch (e) {
+            cibles.forEach(c => { c.className = 'connect-status error'; c.textContent = e.message; });
+            U.toast(e.message, 'error', 9000);
+            return false;
+        }
+    }
+
+    async function chargerListeBoards() {
+        if (!state.token) { U.toast('Connectez-vous à Monday d\'abord.', 'error'); return; }
+        U.toast('Récupération de la liste des tableaux…', 'info');
+        try {
+            const boards = await M.listBoards(state.token);
+            const existants = new Map(state.boards.map(b => [String(b.id), b]));
+            state.boards = boards.map(b => {
+                const prev = existants.get(String(b.id));
+                const detect = R.detectBoardRole(b.name);
+                return {
+                    id: String(b.id),
+                    name: b.name,
+                    itemsCount: b.items_count,
+                    workspace: b.workspace ? b.workspace.name : '',
+                    role: prev ? prev.role : detect.role,
+                    perimetre: prev ? prev.perimetre : detect.perimetre,
+                    source: prev ? prev.source : detect.source,
+                    financementDefaut: prev ? prev.financementDefaut : detect.financementDefaut,
+                    actif: prev ? prev.actif : detect.role !== 'ignore' && detect.role !== 'technique',
+                    columns: prev ? prev.columns : null,
+                    mapping: prev ? prev.mapping : null,
+                    charge: prev ? prev.charge : null,
+                };
+            });
+            await sauverBoards();
+            rendreTableBoards();
+            rendreSelectMapping();
+            const actifs = state.boards.filter(b => b.actif).length;
+            U.toast(`${boards.length} tableaux trouvés — ${actifs} sélectionnés automatiquement.`, 'success');
+        } catch (e) {
+            U.toast(e.message, 'error', 9000);
+        }
+    }
+
+    async function chargerBoardsActifs() {
+        const actifs = state.boards.filter(b => b.actif && b.role !== 'ignore');
+        if (!actifs.length) { U.toast('Cochez au moins un tableau à charger.', 'error'); return; }
+        if (!state.token) { U.toast('Connectez-vous à Monday d\'abord.', 'error'); return; }
+
+        montrerEcran('loading');
+        $('#loader-log').innerHTML = '';
+        statut(`Chargement de ${actifs.length} tableaux`);
+
+        // Les factures issues de fichiers sont conservées, celles de Monday remplacées
+        const conserve = state.brutes.filter(f => String(f.boardId).startsWith('file:'));
+        const collecte = [...conserve];
+
+        try {
+            for (let i = 0; i < actifs.length; i++) {
+                const b = actifs[i];
+                statut(`(${i + 1}/${actifs.length}) ${b.name}`);
+                log(`→ ${b.name}`);
+
+                // Colonnes + mapping
+                if (!b.columns) {
+                    const meta = await M.boardColumns(state.token, b.id);
+                    b.columns = meta ? meta.columns : [];
+                }
+                if (!b.mapping || !Object.keys(b.mapping).length) {
+                    b.mapping = I.autoMapColumns(b.columns || []);
+                    const manquants = ['numero', 'montant'].filter(k => !b.mapping[k]);
+                    if (manquants.length) log(`   ⚠ colonnes non reconnues : ${manquants.join(', ')}`);
+                }
+
+                const { board, items } = await M.fetchBoardItems(state.token, b.id, log);
+                if (!board) { log(`   ✗ tableau inaccessible`); continue; }
+
+                const factures = I.facturesFromMondayBoard(board, items, b.mapping, b);
+                // Conserver les valeurs brutes pour l'aperçu du mapping
+                items.forEach((it, idx) => {
+                    const brut = {};
+                    for (const cv of (it.column_values || [])) { const v = M.columnValue(cv); if (v) brut[cv.id] = v; }
+                    if (factures[idx]) factures[idx].__brut = brut;
+                });
+
+                collecte.push(...factures);
+                b.charge = factures.length;
+                log(`   ✓ ${factures.length} factures`);
+            }
+
+            state.brutes = collecte;
+            await sauverFactures();
+            await sauverBoards();
+            statut('Calcul des indicateurs');
+            recalculer();
+            montrerEcran('app');
+            U.toast(`${U.nombre(collecte.length)} factures chargées depuis Monday.`, 'success');
+        } catch (e) {
+            log('✗ ' + e.message);
+            statut('Échec du chargement');
+            U.toast(e.message, 'error', 12000);
+            setTimeout(() => montrerEcran(state.factures.length ? 'app' : 'welcome'), 1500);
+        }
+    }
+
+    // ══════════════════════════════════════════════
+    //  Import de fichiers
+    // ══════════════════════════════════════════════
+
+    function lireFichier(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            const estCSV = /\.csv$/i.test(file.name);
+            reader.onerror = () => reject(new Error('Lecture impossible : ' + file.name));
+            reader.onload = e => {
+                try {
+                    if (estCSV) {
+                        const res = Papa.parse(e.target.result, { header: true, skipEmptyLines: true, delimiter: '' });
+                        resolve(res.data);
+                    } else {
+                        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+                        const sheet = wb.Sheets[wb.SheetNames[0]];
+                        resolve(XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false }));
+                    }
+                } catch (err) { reject(err); }
+            };
+            if (estCSV) reader.readAsText(file, 'UTF-8');
+            else reader.readAsArrayBuffer(file);
+        });
+    }
+
+    async function importerFichiers(files) {
+        if (!files || !files.length) return;
+        montrerEcran('loading');
+        $('#loader-log').innerHTML = '';
+        statut('Lecture des fichiers');
+        log(`${files.length} fichier(s) à traiter`);
+
+        const collecte = state.brutes.filter(f => !String(f.boardId).startsWith('file:'));
+        const dejaImportes = new Map(state.imports.map(im => [im.nom, im]));
+
+        try {
+            for (const file of files) {
+                const nom = file.name.replace(/\.(csv|xlsx|xls)$/i, '');
+                log(`→ ${file.name}`);
+                const rows = await lireFichier(file);
+                if (!rows.length) { log('   ⚠ fichier vide'); continue; }
+
+                const detect = R.detectBoardRole(nom);
+                const cfg = {
+                    role: detect.role === 'ignore' ? 'adv' : detect.role,
+                    perimetre: detect.perimetre === 'Inconnu' ? 'Corporate' : detect.perimetre,
+                    source: detect.source || 'adv',
+                    financementDefaut: detect.financementDefaut,
+                    mapping: null,
+                };
+                const { factures, mapping, columns } = I.facturesFromRows(rows, cfg, nom);
+
+                // Le fichier devient un « tableau » de la configuration
+                const id = 'file:' + nom;
+                const existant = state.boards.find(b => b.id === id);
+                const entree = {
+                    id, name: nom, itemsCount: rows.length, workspace: 'Import fichier',
+                    role: cfg.role, perimetre: cfg.perimetre, source: cfg.source,
+                    financementDefaut: cfg.financementDefaut, actif: true,
+                    columns, mapping, charge: factures.length,
+                };
+                if (existant) Object.assign(existant, entree); else state.boards.push(entree);
+
+                factures.forEach((f, i) => { f.__brut = rows[i]; });
+                collecte.push(...factures);
+                dejaImportes.set(file.name, { nom: file.name, role: cfg.role, lignes: rows.length, date: new Date().toLocaleString('fr-FR') });
+                log(`   ✓ ${factures.length} lignes · rôle « ${R.ROLE_LABELS[cfg.role]} »`);
+            }
+
+            state.brutes = collecte;
+            state.imports = [...dejaImportes.values()];
+            await Promise.all([sauverFactures(), sauverBoards(), S.set(S.KEYS.imports, state.imports)]);
+            recalculer();
+            montrerEcran('app');
+            U.toast(`${U.nombre(collecte.length)} factures au total après import.`, 'success');
+        } catch (e) {
+            log('✗ ' + e.message);
+            U.toast(e.message, 'error', 9000);
+            setTimeout(() => montrerEcran(state.factures.length ? 'app' : 'welcome'), 1500);
+        }
+    }
+
+    /** Import du grand livre pointé : numéro de facture → date de règlement. */
+    async function importerGrandLivre(file) {
+        try {
+            const rows = await lireFichier(file);
+            if (!rows.length) { U.toast('Fichier vide.', 'error'); return; }
+
+            const cols = Object.keys(rows[0]).map(h => ({ id: h, title: h }));
+            const map = I.autoMapColumns(cols);
+            const colNum = map.numero, colDate = map.datePaiement || map.dateFacture, colMt = map.montant;
+
+            if (!colNum || !colDate) {
+                U.toast("Colonnes « numéro de facture » et « date de règlement » introuvables dans le fichier.", 'error', 9000);
+                return;
+            }
+
+            state.grandLivre = rows.map(r => ({
+                numero: r[colNum], datePaiement: r[colDate], montant: colMt ? r[colMt] : null,
+            })).filter(l => l.numero);
+
+            await S.set(S.KEYS.grandLivre, state.grandLivre);
+            recalculer({ conserverPeriode: true });
+            rendreHistoriqueImports();
+            U.toast(`Grand livre intégré : ${U.nombre(state.grandLivre.length)} lignes pointées.`, 'success');
+        } catch (e) {
+            U.toast(e.message, 'error', 9000);
+        }
+    }
+
+    // ══════════════════════════════════════════════
+    //  Persistance
+    // ══════════════════════════════════════════════
+
+    async function sauverFactures() {
+        try { await S.set(S.KEYS.factures, state.brutes.map(serialiser)); }
+        catch (e) { console.warn('[Recouvrement] Sauvegarde impossible', e); }
+    }
+    async function sauverBoards() {
+        try { await S.set(S.KEYS.boards, state.boards.map(b => ({ ...b, columns: b.columns || null }))); }
+        catch (e) { console.warn('[Recouvrement] Sauvegarde des tableaux impossible', e); }
+    }
+    async function sauverReglages() {
+        try {
+            await S.set(S.KEYS.settings, {
+                token: $('#monday-remember') && $('#monday-remember').checked === false ? '' : state.token,
+                options: state.options,
+            });
+        } catch (e) { console.warn('[Recouvrement] Sauvegarde des réglages impossible', e); }
+    }
+    async function sauverRegles() {
+        try { await S.set(S.KEYS.rules, state.rules); } catch { /* ignore */ }
+    }
+
+    // ══════════════════════════════════════════════
+    //  Exports
+    // ══════════════════════════════════════════════
+
+    function lignesExport(factures) {
+        return factures.map(f => ({
+            'Numéro de facture': f.numero,
+            'Client': f.client,
+            'Type de financement': R.getRule(f.financement, state.rules).label,
+            'Montant': f.montant,
+            'Encours': f.encours,
+            'Date de facture': f.dateFacture ? U.dateFR(f.dateFacture) : '',
+            'Début de formation': f.dateDebutFormation ? U.dateFR(f.dateDebutFormation) : '',
+            'Fin de formation': f.dateFinFormation ? U.dateFR(f.dateFinFormation) : '',
+            'Date d\'échéance': f.dateEcheance ? U.dateFR(f.dateEcheance) : '',
+            'Origine échéance': f.echeanceOrigine || '',
+            'Règle appliquée': R.getRule(f.financement, state.rules).note || '',
+            'Date de paiement': f.datePaiement ? U.dateFR(f.datePaiement) : '',
+            'Date contrôle paiement': f.dateControlePaiement ? U.dateFR(f.dateControlePaiement) : '',
+            'Retard (jours)': f.retardJours,
+            'Antériorité': f.bucket ? f.bucket.label : '',
+            'État': f.etat,
+            'Tableau': f.board,
+            'Groupe': f.groupe,
+            'Groupe d\'origine': f.groupeOrigine,
+            'Périmètre': f.perimetre,
+            'Propriétaire': f.proprietaire,
+            'Statut Monday': f.statut,
+        }));
+    }
+
+    function exporterExcel() {
+        const data = facturesFiltrees();
+        if (!data.length) { U.toast('Aucune donnée à exporter.', 'error'); return; }
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lignesExport(data)), 'Factures');
+
+        // Synthèse
+        const v = X.vueEnsemble(data);
+        const synthese = [
+            { Indicateur: 'Factures analysées', Valeur: v.total },
+            { Indicateur: 'Total facturé (€)', Valeur: Math.round(v.totalEuros) },
+            { Indicateur: 'Factures en retard', Valeur: v.nbEnRetard },
+            { Indicateur: 'Encours en retard (€)', Valeur: Math.round(v.eurosEnRetard) },
+            { Indicateur: '% en recouvrement (nombre)', Valeur: +v.tauxNb.toFixed(2) },
+            { Indicateur: '% en recouvrement (€)', Valeur: +v.tauxEuros.toFixed(2) },
+            { Indicateur: '% cohorte échue en retard (nombre)', Valeur: +v.tauxCohorteNb.toFixed(2) },
+            { Indicateur: '% cohorte échue en retard (€)', Valeur: +v.tauxCohorteEuros.toFixed(2) },
+            { Indicateur: 'Retard moyen (jours)', Valeur: v.retardMoyen == null ? '' : Math.round(v.retardMoyen) },
+            { Indicateur: 'Retard médian (jours)', Valeur: v.retardMedian == null ? '' : Math.round(v.retardMedian) },
+            { Indicateur: 'Retard moyen pondéré € (jours)', Valeur: v.retardMoyenPondere == null ? '' : Math.round(v.retardMoyenPondere) },
+            { Indicateur: 'Retard moyen au paiement (jours)', Valeur: v.retardMoyenPaiement == null ? '' : Math.round(v.retardMoyenPaiement) },
+            { Indicateur: 'Délai moyen facture → règlement (jours)', Valeur: v.delaiPaiementMoyen == null ? '' : Math.round(v.delaiPaiementMoyen) },
+            { Indicateur: 'Encours total (€)', Valeur: Math.round(v.encoursTotal) },
+            { Indicateur: 'Arrêté au', Valeur: U.dateFR(state.filtres.dateRef) },
+        ];
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(synthese), 'Synthèse');
+
+        // Par mois
+        const mois = X.parMois(data, state.filtres.baseMois).map(m => ({
+            'Mois': U.moisLabel(m.mois),
+            'Factures échues': m.assietteNb,
+            'Montant échu (€)': Math.round(m.assietteEur),
+            'Payées à temps': m.nbPayeeATemps,
+            'Payées en retard': m.nbPayeeRetard,
+            'Encore en retard': m.nbEnRetard,
+            'Encours en retard (€)': Math.round(m.eurEnRetard),
+            '% en retard (nombre)': +m.tauxNb.toFixed(2),
+            '% en retard (€)': +m.tauxEur.toFixed(2),
+            '% encore impayé (€)': +m.tauxImpayeEur.toFixed(2),
+            'Retard moyen (j)': m.retardMoyen == null ? '' : Math.round(m.retardMoyen),
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(mois), 'Par mois');
+
+        // Par financement
+        const fins = X.parFinancement(data, state.rules).map(r => ({
+            'Type de financement': r.label,
+            'Périmètre': r.perimetre,
+            'Factures': r.nbTotal,
+            'Total facturé (€)': Math.round(r.eurTotal),
+            'En retard (nombre)': r.nbEnRetard,
+            'Encours en retard (€)': Math.round(r.eurEnRetard),
+            '% en retard (nombre)': +r.tauxNb.toFixed(2),
+            '% en retard (€)': +r.tauxEur.toFixed(2),
+            '% cohorte échue (€)': +r.tauxCohorteEur.toFixed(2),
+            'Retard moyen (j)': r.retardMoyen == null ? '' : Math.round(r.retardMoyen),
+            'Retard au paiement (j)': r.retardMoyenPaiement == null ? '' : Math.round(r.retardMoyenPaiement),
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fins), 'Par financement');
+
+        // Balance âgée
+        const aging = X.balanceAgee(data).map(b => ({
+            'Antériorité': b.label, 'Factures': b.nb, 'Encours (€)': Math.round(b.euros),
+            '% de l\'encours': +b.partEuros.toFixed(2),
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(aging), 'Balance âgée');
+
+        const nom = `Suivi_Recouvrement_Liora_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        XLSX.writeFile(wb, nom);
+        U.toast('Export Excel généré.', 'success');
+    }
+
+    function exporterListe(factures, titre) {
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lignesExport(factures)), 'Factures');
+        XLSX.writeFile(wb, `Recouvrement_${(titre || 'liste').replace(/[^\w]+/g, '_')}.xlsx`);
+    }
+
+    // ══════════════════════════════════════════════
+    //  Navigation
+    // ══════════════════════════════════════════════
+
+    function montrerEcran(nom) {
+        $$('.screen').forEach(s => s.classList.remove('active'));
+        const el = $('#' + nom + '-screen');
+        if (el) el.classList.add('active');
+        window.scrollTo(0, 0);
+        if (nom === 'app') requestAnimationFrame(mesurerNavbar);
+    }
+
+    function ouvrirOnglet(nom) {
+        state.ui.onglet = nom;
+        $$('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === nom));
+        $$('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + nom));
+        // La barre de filtres n'a pas de sens sur l'onglet Données
+        $('#filters-wrap').classList.toggle('hidden', nom === 'donnees');
+        rendreTout();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ══════════════════════════════════════════════
+    //  Éditeur de règles
+    // ══════════════════════════════════════════════
+
+    function ouvrirEditeurRegles() {
+        const bases = [
+            ['dateFacture', 'Date de facture'],
+            ['dateFinFormation', 'Fin de formation'],
+            ['dateDebutFormation', 'Début de formation'],
+        ];
+        const html = `
+            <p class="fv-hint">L'échéance est calculée en ajoutant un nombre de jours à une date de référence. Les modifications s'appliquent immédiatement et sont conservées sur ce poste.</p>
+            <table class="data-table rules-editor">
+                <thead><tr><th>Type de financement</th><th>Date de référence</th><th>Jours</th><th>Repli</th><th>Jours repli</th></tr></thead>
+                <tbody>
+                ${state.rules.map((r, i) => `
+                    <tr>
+                        <td>${U.escapeHtml(r.label)}</td>
+                        <td><select class="input input-sm" data-r="${i}" data-k="base">${bases.map(b => `<option value="${b[0]}"${r.base === b[0] ? ' selected' : ''}>${b[1]}</option>`).join('')}</select></td>
+                        <td><input class="input input-sm input-num" type="number" data-r="${i}" data-k="jours" value="${r.jours}"></td>
+                        <td><select class="input input-sm" data-r="${i}" data-k="fallback"><option value="">— aucun —</option>${bases.map(b => `<option value="${b[0]}"${r.fallback === b[0] ? ' selected' : ''}>${b[1]}</option>`).join('')}</select></td>
+                        <td><input class="input input-sm input-num" type="number" data-r="${i}" data-k="fallbackJours" value="${r.fallbackJours != null ? r.fallbackJours : r.jours}"></td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>`;
+
+        const body = U.modal('Règles de date d\'échéance', html, [
+            {
+                label: 'Rétablir les règles Liora', onClick: async () => {
+                    state.rules = R.DEFAULT_ECHEANCE_RULES.map(r => ({ ...r }));
+                    await sauverRegles();
+                    recalculer({ conserverPeriode: true });
+                    U.toast('Règles rétablies.', 'success');
+                },
+            },
+            { label: 'Fermer', primary: true },
+        ]);
+
+        $$('[data-r]', body).forEach(inp => inp.addEventListener('change', async () => {
+            const r = state.rules[+inp.dataset.r];
+            const k = inp.dataset.k;
+            r[k] = (k === 'jours' || k === 'fallbackJours') ? (parseInt(inp.value, 10) || 0) : (inp.value || null);
+            await sauverRegles();
+            recalculer({ conserverPeriode: true });
+        }));
+    }
+
+    // ══════════════════════════════════════════════
+    //  Jeu de démonstration
+    // ══════════════════════════════════════════════
+
+    function genererDemo() {
+        const clients = ['ALLIANZ I.A.R.D.', 'SOCIETE GENERALE', 'MFP MICHELIN', 'AEROPORTS DE PARIS', 'SUEZ INTERNATIONAL',
+            'CREDIT AGRICOLE CORPORATE', 'ARTHUR HUNT CONSULTING', 'MISSIONEO', 'ANTARGAZ', 'UNISERV Sarl',
+            'CABINET LACOMBLEZ', 'Marie Dupont', 'Karim Benali', 'Sophie Legrand', 'Thomas Moreau', 'Inès Rossi'];
+        const config = [
+            { board: '1.2. Entreprise - Recouvrement', role: 'recouvrement', source: 'recouvrement', perimetre: 'Corporate', fins: ['B2B', 'ETAT', 'INTERCO'], groupes: ['1.2.1. Relance 1', '1.2.2. Relance 2', '1.2.3. Mise en demeure'], poids: 26 },
+            { board: '1.1. Entreprise - ADV', role: 'adv', source: 'adv', perimetre: 'Corporate', fins: ['BTC_ENTREPRISE', 'B2B'], groupes: ['1.1.1. Factures non conformes', '1.1.2. Factures incomplètes (Mail)', '1.1.5. Factures en cours'], poids: 30 },
+            { board: '1.0. Entreprise - Tampon', role: 'tampon', source: 'adv', perimetre: 'Corporate', fins: ['BTC_ENTREPRISE'], groupes: ['1.0.1. Arrivées'], poids: 8 },
+            { board: '1.3. Entreprise - OPCO', role: 'opco', source: 'opco', perimetre: 'Corporate', fins: ['OPCO'], groupes: ['1.3.1. Dossiers déposés'], poids: 18 },
+            { board: '2.2. Financement CPF', role: 'b2c', source: 'b2c', perimetre: 'B2C', fins: ['CPF'], groupes: ['2.2.1. En cours'], poids: 20 },
+            { board: '2.3. Financement pôle emploi : AIF / POEI', role: 'b2c', source: 'b2c', perimetre: 'B2C', fins: ['AIF', 'POEI'], groupes: ['2.3.1. AIF'], poids: 12 },
+            { board: '2.4. Financement complexe : REGION / TRANSITION / AGEFIPH', role: 'b2c', source: 'b2c', perimetre: 'B2C', fins: ['REGION', 'TRANSITION', 'AGEFIPH'], groupes: ['2.4.1. Instruction'], poids: 10 },
+            { board: '2.1. Financement Personnel', role: 'b2c', source: 'b2c', perimetre: 'B2C', fins: ['BTC_PERSO'], groupes: ['2.1.1. Échéancier'], poids: 8 },
+        ];
+
+        let seed = 20260828;
+        const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+        const pick = a => a[Math.floor(rnd() * a.length)];
+
+        const brutes = [];
+        const aujourdhui = R.stripTime(new Date());
+        let n = 1000;
+
+        for (const cfg of config) {
+            for (let i = 0; i < cfg.poids * 6; i++) {
+                const moisAvant = Math.floor(rnd() * 20);
+                const dateFacture = new Date(aujourdhui.getFullYear(), aujourdhui.getMonth() - moisAvant, 1 + Math.floor(rnd() * 27));
+                const finFormation = R.addDays(dateFacture, -Math.floor(rnd() * 20));
+                const fin = pick(cfg.fins);
+                const montant = Math.round((400 + rnd() * 14000) / 10) * 10;
+
+                // Probabilité de règlement d'autant plus forte que la facture est ancienne
+                const proba = Math.min(0.94, 0.25 + moisAvant * 0.075);
+                const paye = rnd() < proba;
+                const rule = R.getRule(fin);
+                const base = rule.base === 'dateFacture' ? dateFacture : finFormation;
+                const echeance = R.addDays(base, rule.jours);
+
+                let datePaiement = null, dateControle = null;
+                if (paye) {
+                    const derive = Math.round((rnd() - 0.66) * 75);
+                    datePaiement = R.addDays(echeance, derive);
+                    if (datePaiement > aujourdhui) datePaiement = R.addDays(aujourdhui, -Math.floor(rnd() * 10));
+                    // Une part des règlements n'a pas de date réelle : seule la validation existe
+                    if (rnd() < 0.3) { dateControle = R.addDays(datePaiement, 3 + Math.floor(rnd() * 20)); datePaiement = null; }
+                }
+
+                const numero = 'FACT-' + String(dateFacture.getFullYear()).slice(2)
+                    + String(dateFacture.getMonth() + 1).padStart(2, '0') + '-' + String(n++).padStart(5, '0');
+
+                brutes.push(I.buildFacture({
+                    numero, client: pick(clients), montant,
+                    dateFacture, dateFinFormation: finFormation,
+                    dateDebutFormation: R.addDays(finFormation, -35),
+                    datePaiement, dateControlePaiement: dateControle,
+                    financement: R.getRule(fin).label,
+                    proprietaire: pick(['Cédric Ngan', 'David Mamou', 'Zehavit Tordjman', 'M. Cédric Nelhomme']),
+                    statut: paye ? 'Payée' : '',
+                }, {
+                    boardId: 'file:' + cfg.board, boardName: cfg.board, role: cfg.role,
+                    source: cfg.source, perimetre: cfg.perimetre, financementDefaut: fin,
+                    groupTitle: pick(cfg.groupes), itemId: 'demo' + n, itemName: numero,
+                }));
+            }
+        }
+
+        // Tableau « ALL - Factures payées » : reprend les factures réglées
+        const payees = brutes.filter(f => f.datePaiement || f.dateControlePaiement);
+        for (const f of payees) {
+            brutes.push(I.buildFacture({
+                numero: f.numero, client: f.client, montant: f.montant,
+                dateFacture: f.dateFacture, datePaiement: f.datePaiement,
+                dateControlePaiement: f.dateControlePaiement,
+                financement: f.financementBrut, groupeOrigine: f.board, statut: 'Payée',
+            }, {
+                boardId: 'file:0.1. ALL - Factures payées', boardName: '0.1. ALL - Factures payées',
+                role: 'payees', source: 'payees', perimetre: 'Tous', financementDefaut: null,
+                groupTitle: '0.1.1. Factures Payées ADV', itemId: 'pay' + f.itemId, itemName: f.numero,
+            }));
+        }
+
+        state.brutes = brutes;
+        state.boards = [...new Set(brutes.map(f => f.board))].map(name => {
+            const s = brutes.find(f => f.board === name);
+            return { id: 'file:' + name, name, itemsCount: brutes.filter(f => f.board === name).length,
+                workspace: 'Démonstration', role: s.role, perimetre: s.perimetre, source: s.source,
+                financementDefaut: null, actif: true, columns: null, mapping: null,
+                charge: brutes.filter(f => f.board === name).length };
+        });
+        recalculer();
+        montrerEcran('app');
+        U.toast('Jeu de démonstration chargé — les données sont fictives.', 'info', 7000);
+    }
+
+    // ══════════════════════════════════════════════
+    //  Événements
+    // ══════════════════════════════════════════════
+
+    function brancherEvenements() {
+        // ── Écran d'accueil ──
+        $('#btn-token-visible').addEventListener('click', () => basculerVisibilite('#monday-token'));
+        $('#btn-settings-token-visible').addEventListener('click', () => basculerVisibilite('#settings-token'));
+
+        $('#btn-monday-connect').addEventListener('click', async () => {
+            const token = $('#monday-token').value.trim();
+            if (await connecterMonday(token)) {
+                $('#settings-token').value = token;
+                await chargerListeBoards();
+                montrerEcran('app');
+                ouvrirOnglet('donnees');
+                U.toast('Vérifiez les tableaux à suivre puis cliquez sur « Charger les tableaux cochés ».', 'info', 8000);
+            }
+        });
+        $('#monday-token').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btn-monday-connect').click(); });
+
+        $('#btn-open-saved').addEventListener('click', () => {
+            recalculer();
+            montrerEcran('app');
+        });
+        $('#btn-demo').addEventListener('click', genererDemo);
+
+        brancherZoneDepot('#welcome-drop', '#welcome-file-input', files => importerFichiers(files));
+        brancherZoneDepot('#settings-drop', '#settings-file-input', files => importerFichiers(files));
+        brancherZoneDepot('#gl-drop', '#gl-file-input', files => importerGrandLivre(files[0]));
+
+        // ── Navigation ──
+        $$('.nav-tab').forEach(t => t.addEventListener('click', () => ouvrirOnglet(t.dataset.tab)));
+        $('#nav-logo-home').addEventListener('click', () => ouvrirOnglet('dashboard'));
+
+        // ── Filtres ──
+        $('#date-select-all').addEventListener('click', () => { state.filtres.mois = null; state.ui.page = 1; rendreBoutonsMois(); rendreTout(); });
+        $('#date-select-none').addEventListener('click', () => { state.filtres.mois = new Set(); state.ui.page = 1; rendreBoutonsMois(); rendreTout(); });
+        $('#date-select-12').addEventListener('click', () => {
+            state.filtres.mois = new Set(state.moisDispo.slice(-12));
+            state.ui.page = 1; rendreBoutonsMois(); rendreTout();
+        });
+
+        $$('#seg-base-mois .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.filtres.baseMois = b.dataset.base;
+            majSegments();
+            majMoisDisponibles(false);
+            state.ui.page = 1;
+            rendreTout();
+        }));
+
+        $$('#seg-perimetre .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.filtres.perimetre = b.dataset.perimetre;
+            majSegments();
+            state.ui.page = 1;
+            rendreTout();
+        }));
+
+        $$('#seg-unite-mois .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.uniteMois = b.dataset.unite;
+            $$('#seg-unite-mois .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendreTout();
+        }));
+        $$('#seg-unite-heat .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.uniteHeat = b.dataset.unite;
+            $$('#seg-unite-heat .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendreTout();
+        }));
+        $$('#seg-aging-dim .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.agingDim = b.dataset.dim;
+            $$('#seg-aging-dim .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendreTout();
+        }));
+
+        const dateRef = $('#date-ref');
+        dateRef.value = toISO(state.filtres.dateRef);
+        dateRef.addEventListener('change', () => {
+            const d = R.parseDate(dateRef.value);
+            if (!d) return;
+            state.filtres.dateRef = d;
+            recalculer({ conserverPeriode: true });
+        });
+
+        let debounce;
+        $('#search-input').addEventListener('input', e => {
+            clearTimeout(debounce);
+            debounce = setTimeout(() => {
+                state.filtres.recherche = e.target.value;
+                state.ui.page = 1;
+                rendreTout();
+            }, 250);
+        });
+
+        $('#btn-reset-filters').addEventListener('click', reinitialiserFiltres);
+
+        $('#page-size').addEventListener('change', e => {
+            state.ui.pageSize = parseInt(e.target.value, 10) || 50;
+            state.ui.page = 1;
+            rendreTout();
+        });
+
+        // ── Actions de la barre supérieure ──
+        $('#btn-export-xlsx').addEventListener('click', exporterExcel);
+        $('#btn-export-table').addEventListener('click', exporterExcel);
+        $('#btn-export-pdf').addEventListener('click', () => window.print());
+        $('#btn-refresh').addEventListener('click', async () => {
+            if (state.token && state.boards.some(b => b.actif && !String(b.id).startsWith('file:'))) {
+                await chargerBoardsActifs();
+            } else {
+                ouvrirOnglet('donnees');
+                U.toast('Connectez-vous à Monday ou réimportez vos fichiers pour actualiser.', 'info');
+            }
+        });
+
+        // ── Onglet Données ──
+        $('#btn-settings-connect').addEventListener('click', async () => {
+            const token = $('#settings-token').value.trim();
+            if (await connecterMonday(token)) await chargerListeBoards();
+        });
+        $('#btn-settings-forget').addEventListener('click', async () => {
+            state.token = ''; state.compte = null;
+            $('#settings-token').value = ''; $('#monday-token').value = '';
+            await S.set(S.KEYS.settings, { token: '', options: state.options });
+            $('#settings-monday-status').className = 'connect-status';
+            $('#settings-monday-status').textContent = 'Jeton effacé de ce poste.';
+            U.toast('Jeton oublié.', 'info');
+        });
+        $('#btn-boards-refresh').addEventListener('click', chargerListeBoards);
+        $('#btn-boards-load').addEventListener('click', chargerBoardsActifs);
+        $('#mapping-board-select').addEventListener('change', e => {
+            state.ui.mappingBoardId = e.target.value;
+            rendreTableMapping();
+        });
+
+        const opt = (sel, cle, recalc) => $(sel).addEventListener('change', async e => {
+            state.options[cle] = e.target.checked;
+            await sauverReglages();
+            if (recalc) recalculer({ conserverPeriode: true }); else rendreTout();
+        });
+        opt('#opt-prefere-monday', 'prefereEcheanceMonday', true);
+        opt('#opt-masquer-technique', 'masquerTechnique', false);
+        opt('#opt-payees-hors-portefeuille', 'payeesHorsPortefeuille', true);
+
+        $('#btn-clear-data').addEventListener('click', async () => {
+            U.modal('Effacer les factures ?', '<p>Les factures enregistrées sur ce poste seront supprimées. Les tableaux, règles et réglages sont conservés.</p>', [
+                { label: 'Annuler' },
+                {
+                    label: 'Effacer', primary: true, onClick: async () => {
+                        state.brutes = []; state.factures = [];
+                        await S.set(S.KEYS.factures, []);
+                        recalculer();
+                        U.toast('Factures effacées.', 'info');
+                        montrerEcran('welcome');
+                    },
+                },
+            ]);
+        });
+
+        $('#btn-clear-all').addEventListener('click', () => {
+            U.modal('Tout effacer ?', '<p>Factures, tableaux, correspondances de colonnes, règles personnalisées et jeton Monday seront supprimés de ce poste.</p>', [
+                { label: 'Annuler' },
+                {
+                    label: 'Tout effacer', primary: true, onClick: async () => {
+                        await S.clearAll();
+                        location.reload();
+                    },
+                },
+            ]);
+        });
+
+        // ── Règles ──
+        $('#btn-edit-rules').addEventListener('click', ouvrirEditeurRegles);
+
+        // ── Mise en page ──
+        window.addEventListener('resize', mesurerNavbar);
+
+        // ── Modale ──
+        $('#modal-close').addEventListener('click', U.closeModal);
+        $('#modal-overlay').addEventListener('click', e => { if (e.target.id === 'modal-overlay') U.closeModal(); });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') U.closeModal(); });
+    }
+
+    /** La barre de filtres se cale sous la navbar, dont la hauteur varie. */
+    function mesurerNavbar() {
+        const nav = document.querySelector('#app-screen .navbar');
+        if (!nav) return;
+        const h = nav.offsetHeight;
+        if (h) document.documentElement.style.setProperty('--nav-h', h + 'px');
+    }
+
+    function basculerVisibilite(sel) {
+        const el = $(sel);
+        el.type = el.type === 'password' ? 'text' : 'password';
+    }
+
+    function toISO(d) {
+        if (!d) return '';
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    /** Zone de dépôt cliquable + glisser-déposer. */
+    function brancherZoneDepot(zoneSel, inputSel, handler) {
+        const zone = $(zoneSel), input = $(inputSel);
+        if (!zone || !input) return;
+        zone.addEventListener('click', () => input.click());
+        input.addEventListener('change', () => { if (input.files.length) handler([...input.files]); input.value = ''; });
+        ['dragenter', 'dragover'].forEach(ev => zone.addEventListener(ev, e => {
+            e.preventDefault(); e.stopPropagation(); zone.classList.add('dragover');
+        }));
+        ['dragleave', 'drop'].forEach(ev => zone.addEventListener(ev, e => {
+            e.preventDefault(); e.stopPropagation(); zone.classList.remove('dragover');
+        }));
+        zone.addEventListener('drop', e => {
+            const files = [...(e.dataTransfer.files || [])].filter(f => /\.(csv|xlsx|xls)$/i.test(f.name));
+            if (files.length) handler(files);
+            else U.toast('Formats acceptés : .csv, .xlsx, .xls', 'error');
+        });
+    }
+
+    // ── Démarrage ──
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+    else boot();
+
+})();

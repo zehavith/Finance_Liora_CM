@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suivi Recouvrement Liora</title>
+    <link rel="icon" type="image/png" href="../Liora_Logo_Orange_alpha.png">
+    <link rel="apple-touch-icon" href="../Liora_Logo_Orange_alpha.png">
+    <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
+    <script src="../vendor/chart.umd.min.js"></script>
+    <script src="../vendor/papaparse.min.js"></script>
+    <script src="../vendor/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="../styles.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════
+     Écran d'accueil / connexion
+     ══════════════════════════════════════════════ -->
+<div id="welcome-screen" class="screen active">
+    <nav class="navbar">
+        <div class="nav-brand">
+            <div class="logo-icon"><img src="../Liora_Logo_Orange_alpha.png" alt="Liora" style="height: 32px;"></div>
+            <span class="brand-name"><span class="brand-sub">Suivi Recouvrement</span></span>
+        </div>
+        <div class="nav-actions">
+            <a class="btn btn-ghost" href="../index.html" title="Ouvrir l'application Suivi Cash">Suivi Cash ↗</a>
+        </div>
+    </nav>
+
+    <div class="upload-hero">
+        <div class="hero-content">
+            <h1 class="hero-title">Pilotez votre <span class="gradient-text">recouvrement</span></h1>
+            <p class="hero-subtitle">
+                Connectez vos tableaux Monday, l'application calcule les échéances selon vos règles de
+                financement, identifie les factures en retard et mesure le taux de recouvrement par mois
+                et par type de financement.
+            </p>
+
+            <div class="connect-grid">
+                <!-- Connexion Monday -->
+                <div class="connect-card">
+                    <div class="connect-head">
+                        <span class="connect-badge">1</span>
+                        <h3>Connexion Monday</h3>
+                    </div>
+                    <p class="connect-desc">
+                        Collez votre jeton API personnel Monday (Avatar → <em>Développeurs</em> →
+                        <em>Mes jetons d'accès</em>). Il reste stocké sur ce poste uniquement.
+                    </p>
+                    <div class="field-row">
+                        <input type="password" id="monday-token" class="input" placeholder="Jeton API Monday" autocomplete="off">
+                        <button class="btn btn-ghost btn-sm" id="btn-token-visible" title="Afficher / masquer">👁</button>
+                    </div>
+                    <div class="field-row">
+                        <label class="check"><input type="checkbox" id="monday-remember" checked> Mémoriser le jeton sur ce poste</label>
+                    </div>
+                    <button class="btn btn-primary" id="btn-monday-connect">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        Se connecter
+                    </button>
+                    <div id="monday-status" class="connect-status"></div>
+                </div>
+
+                <!-- Import de fichiers -->
+                <div class="connect-card">
+                    <div class="connect-head">
+                        <span class="connect-badge">2</span>
+                        <h3>Ou importer des exports</h3>
+                    </div>
+                    <p class="connect-desc">
+                        Sans jeton API, déposez les exports Excel / CSV de vos tableaux Monday
+                        (un fichier par tableau). Le rôle du tableau est déduit du nom du fichier.
+                    </p>
+                    <div class="upload-zone upload-zone-sm" id="welcome-drop">
+                        <p class="upload-text">Glissez vos exports ici</p>
+                        <p class="upload-hint">ou cliquez pour parcourir — .xlsx, .xls, .csv</p>
+                        <input type="file" id="welcome-file-input" accept=".csv,.xlsx,.xls" multiple hidden>
+                    </div>
+                    <div id="welcome-files" class="welcome-files"></div>
+                </div>
+            </div>
+
+            <div class="welcome-actions">
+                <button class="btn btn-ghost" id="btn-open-saved" hidden>
+                    Reprendre les données enregistrées (<span id="saved-count">0</span> factures)
+                </button>
+                <button class="btn btn-ghost" id="btn-demo">Voir une démonstration</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     Écran de chargement
+     ══════════════════════════════════════════════ -->
+<div id="loading-screen" class="screen">
+    <div class="loader-container">
+        <div class="loader-ring"></div>
+        <p class="loader-text">Récupération des données…</p>
+        <p class="loader-sub" id="loader-status">Connexion à Monday</p>
+        <div class="loader-log" id="loader-log"></div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     Application
+     ══════════════════════════════════════════════ -->
+<div id="app-screen" class="screen">
+    <nav class="navbar navbar-dash">
+        <div class="nav-brand nav-brand-link" id="nav-logo-home" title="Retour au tableau de bord">
+            <div class="logo-icon"><img src="../Liora_Logo_Orange_alpha.png" alt="Liora" style="height: 32px;"></div>
+            <span class="brand-name"><span class="brand-sub">Suivi Recouvrement</span></span>
+        </div>
+        <div class="nav-tabs">
+            <button class="nav-tab active" data-tab="dashboard">Tableau de bord</button>
+            <button class="nav-tab" data-tab="aging">Balance âgée</button>
+            <button class="nav-tab" data-tab="financements">Financements</button>
+            <button class="nav-tab" data-tab="factures">Factures</button>
+            <button class="nav-tab" data-tab="quality">Data Quality</button>
+            <button class="nav-tab" data-tab="donnees">Données</button>
+        </div>
+        <div class="nav-actions">
+            <button class="btn btn-ghost" id="btn-refresh" title="Recharger depuis Monday">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                Actualiser
+            </button>
+            <button class="btn btn-ghost" id="btn-export-xlsx">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+                Exporter Excel
+            </button>
+            <button class="btn btn-ghost" id="btn-export-pdf">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Exporter PDF
+            </button>
+        </div>
+    </nav>
+
+    <!-- ── Barre de filtres commune à tous les onglets ── -->
+    <div class="filters-wrap" id="filters-wrap">
+        <div class="date-filter-bar">
+            <div class="date-filter-label">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <span>Période :</span>
+            </div>
+            <div class="date-filter-months" id="date-filter-months"></div>
+            <button class="btn btn-ghost btn-sm" id="date-select-all">Tout</button>
+            <button class="btn btn-ghost btn-sm" id="date-select-none">Aucun</button>
+            <button class="btn btn-ghost btn-sm" id="date-select-12">12 derniers mois</button>
+        </div>
+
+        <div class="filter-bar">
+            <div class="filter-block">
+                <span class="filter-label">Mois basé sur</span>
+                <div class="seg" id="seg-base-mois">
+                    <button class="seg-btn active" data-base="echeance">Échéance</button>
+                    <button class="seg-btn" data-base="facture">Facture</button>
+                    <button class="seg-btn" data-base="paiement">Paiement</button>
+                </div>
+            </div>
+
+            <div class="filter-block">
+                <span class="filter-label">Périmètre</span>
+                <div class="seg" id="seg-perimetre">
+                    <button class="seg-btn active" data-perimetre="Tous">Tous</button>
+                    <button class="seg-btn" data-perimetre="Corporate">Corporate</button>
+                    <button class="seg-btn" data-perimetre="B2C">B2C</button>
+                </div>
+            </div>
+
+            <div class="filter-block filter-block-grow">
+                <span class="filter-label" title="Périmètre des factures comptées comme en retard">Sources du retard</span>
+                <div class="chips" id="chips-sources"></div>
+            </div>
+
+            <div class="filter-block">
+                <span class="filter-label">Arrêté au</span>
+                <input type="date" id="date-ref" class="input input-sm">
+            </div>
+
+            <div class="filter-block">
+                <span class="filter-label">Recherche</span>
+                <input type="search" id="search-input" class="input input-sm" placeholder="Facture, client, groupe…">
+            </div>
+
+            <button class="btn btn-ghost btn-sm" id="btn-reset-filters">Réinitialiser</button>
+        </div>
+
+        <div id="active-filters" class="active-filters hidden"></div>
+    </div>
+
+    <!-- ══════════ ONGLET : TABLEAU DE BORD ══════════ -->
+    <div class="tab-content active" id="tab-dashboard">
+        <div class="dashboard-content">
+
+            <div class="section-header">
+                <h2>Vue d'ensemble</h2>
+                <div class="period-badge" id="period-badge"></div>
+            </div>
+
+            <div class="kpi-grid kpi-grid-grouped">
+                <div class="kpi-group kpi-group-dec">
+                    <div class="kpi-group-label">En recouvrement</div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-red">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Encours en retard</span>
+                            <span class="kpi-value" id="kpi-euros-retard">—</span>
+                            <span class="kpi-sub" id="kpi-euros-retard-sub"></span>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-red">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Factures en retard</span>
+                            <span class="kpi-value" id="kpi-nb-retard">—</span>
+                            <span class="kpi-sub" id="kpi-nb-retard-sub"></span>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-amber">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="21 3 21 9 15 9"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">% en recouvrement (€)</span>
+                            <span class="kpi-value" id="kpi-taux-euros">—</span>
+                            <span class="kpi-sub" id="kpi-taux-nb-sub"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="kpi-group kpi-group-general">
+                    <div class="kpi-group-label">Portefeuille</div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-blue">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Total facturé</span>
+                            <span class="kpi-value" id="kpi-total-euros">—</span>
+                            <span class="kpi-sub" id="kpi-total-sub"></span>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-purple">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Encaissé</span>
+                            <span class="kpi-value" id="kpi-encaisse">—</span>
+                            <span class="kpi-sub" id="kpi-encaisse-sub"></span>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-blue">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Encours total</span>
+                            <span class="kpi-value" id="kpi-encours">—</span>
+                            <span class="kpi-sub" id="kpi-encours-sub"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="kpi-group kpi-group-enc">
+                    <div class="kpi-group-label">Retards</div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-volatility">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Retard moyen</span>
+                            <span class="kpi-value" id="kpi-retard-moyen">—</span>
+                            <span class="kpi-sub" id="kpi-retard-moyen-sub"></span>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-volatility">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Retard moyen pondéré €</span>
+                            <span class="kpi-value" id="kpi-retard-pondere">—</span>
+                            <span class="kpi-sub">pondéré par l'encours</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-icon kpi-green">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Retard moyen au paiement</span>
+                            <span class="kpi-value" id="kpi-retard-paiement">—</span>
+                            <span class="kpi-sub" id="kpi-delai-paiement-sub"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerte OPCO / ADV -->
+            <div id="scope-note" class="scope-note"></div>
+
+            <!-- Taux de recouvrement par mois -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Taux de recouvrement par mois</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-unite-mois">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Barres = factures arrivées à échéance dans le mois, réparties par issue ·
+                        Ligne = part en retard (payées en retard + impayées) sur les factures échues du mois
+                    </span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-mois"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Comparaison mensuelle -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Évolution du dernier mois</h3>
+                        <span class="fv-hint" id="month-compare-title"></span>
+                    </div>
+                    <div id="month-compare-body"></div>
+                </div>
+            </div>
+
+            <!-- Financement + balance âgée -->
+            <div class="charts-grid charts-2col">
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Encours en retard par financement</h3></div>
+                    <div class="chart-container">
+                        <canvas id="chart-financement"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Balance âgée</h3><span class="fv-hint">encours non réglé</span></div>
+                    <div class="chart-container">
+                        <canvas id="chart-aging"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Taux par mois et financement -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>% en recouvrement par mois et par financement</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-unite-heat">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">Chaque case : part des factures échues du mois qui sont en retard. Cliquez pour filtrer.</span>
+                    <div class="heatmap-wrap" id="heatmap-mois-financement"></div>
+                </div>
+            </div>
+
+            <!-- Top clients -->
+            <div class="charts-grid charts-2col">
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Top clients en retard</h3></div>
+                    <div class="mini-table-wrap" id="top-clients"></div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Répartition par tableau Monday</h3></div>
+                    <div class="mini-table-wrap" id="par-tableau"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════ ONGLET : BALANCE ÂGÉE ══════════ -->
+    <div class="tab-content" id="tab-aging">
+        <div class="dashboard-content">
+            <div class="section-header">
+                <h2>Balance âgée</h2>
+                <div class="period-badge" id="aging-badge"></div>
+            </div>
+
+            <div class="bucket-grid" id="bucket-cards"></div>
+
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Antériorité de l'encours</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-aging-dim">
+                                <button class="seg-btn active" data-dim="financement">Financement</button>
+                                <button class="seg-btn" data-dim="board">Tableau</button>
+                                <button class="seg-btn" data-dim="client">Client</button>
+                                <button class="seg-btn" data-dim="proprietaire">Propriétaire</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="table-wrap" id="aging-table"></div>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Antériorité par mois d'échéance</h3></div>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-aging-mois"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════ ONGLET : FINANCEMENTS ══════════ -->
+    <div class="tab-content" id="tab-financements">
+        <div class="dashboard-content">
+            <div class="section-header">
+                <h2>Par type de financement</h2>
+                <div class="period-badge" id="fin-badge"></div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Synthèse</h3>
+                        <span class="fv-hint">Cliquez sur une ligne pour filtrer l'ensemble de l'application</span>
+                    </div>
+                    <div class="table-wrap" id="fin-table"></div>
+                </div>
+            </div>
+
+            <div class="charts-grid charts-2col">
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Taux en recouvrement (€)</h3></div>
+                    <div class="chart-container"><canvas id="chart-fin-taux"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Retard moyen par financement</h3></div>
+                    <div class="chart-container"><canvas id="chart-fin-retard"></canvas></div>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Règles de date d'échéance</h3>
+                        <button class="btn btn-ghost btn-sm" id="btn-edit-rules">Modifier les règles</button>
+                    </div>
+                    <span class="fv-hint">Règle appliquée pour calculer l'échéance quand Monday ne fournit pas de date.</span>
+                    <div class="table-wrap" id="rules-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════ ONGLET : FACTURES ══════════ -->
+    <div class="tab-content" id="tab-factures">
+        <div class="dashboard-content">
+            <div class="section-header">
+                <h2>Détail des factures</h2>
+                <div class="period-badge" id="factures-badge"></div>
+            </div>
+
+            <div class="table-toolbar">
+                <div class="chips" id="chips-etats"></div>
+                <div class="table-toolbar-right">
+                    <label class="table-pagesize">
+                        Lignes
+                        <select id="page-size" class="input input-sm">
+                            <option>25</option><option selected>50</option><option>100</option><option>200</option>
+                        </select>
+                    </label>
+                    <button class="btn btn-ghost btn-sm" id="btn-export-table">Exporter la vue</button>
+                </div>
+            </div>
+
+            <div class="table-wrap table-wrap-tall" id="factures-table"></div>
+            <div class="pagination" id="factures-pagination"></div>
+        </div>
+    </div>
+
+    <!-- ══════════ ONGLET : DATA QUALITY ══════════ -->
+    <div class="tab-content" id="tab-quality">
+        <div class="dashboard-content">
+            <div class="section-header">
+                <h2>Qualité des données</h2>
+                <div class="period-badge" id="quality-badge"></div>
+            </div>
+            <div class="quality-score" id="quality-score"></div>
+            <div id="quality-list" class="quality-list"></div>
+        </div>
+    </div>
+
+    <!-- ══════════ ONGLET : DONNÉES ══════════ -->
+    <div class="tab-content" id="tab-donnees">
+        <div class="dashboard-content">
+            <div class="section-header"><h2>Sources de données</h2></div>
+
+            <!-- Connexion -->
+            <div class="chart-card chart-wide settings-card">
+                <div class="chart-header"><h3>Connexion Monday</h3></div>
+                <div class="settings-body">
+                    <div class="field-row">
+                        <input type="password" id="settings-token" class="input" placeholder="Jeton API Monday" autocomplete="off">
+                        <button class="btn btn-ghost btn-sm" id="btn-settings-token-visible">👁</button>
+                        <button class="btn btn-primary btn-sm" id="btn-settings-connect">Connecter</button>
+                        <button class="btn btn-ghost btn-sm" id="btn-settings-forget">Oublier le jeton</button>
+                    </div>
+                    <div id="settings-monday-status" class="connect-status"></div>
+                    <p class="fv-hint">
+                        Le jeton est conservé dans le stockage local du navigateur (IndexedDB) et n'est
+                        transmis qu'à <code>api.monday.com</code>.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Tableaux -->
+            <div class="chart-card chart-wide settings-card">
+                <div class="chart-header">
+                    <h3>Tableaux suivis</h3>
+                    <div class="chart-controls">
+                        <button class="btn btn-ghost btn-sm" id="btn-boards-refresh">Rafraîchir la liste</button>
+                        <button class="btn btn-primary btn-sm" id="btn-boards-load">Charger les tableaux cochés</button>
+                    </div>
+                </div>
+                <span class="fv-hint">
+                    Le rôle est déduit du nom du tableau : il détermine le périmètre (Corporate / B2C),
+                    la source de retard et le financement par défaut.
+                </span>
+                <div class="table-wrap" id="boards-table"></div>
+            </div>
+
+            <!-- Mapping des colonnes -->
+            <div class="chart-card chart-wide settings-card">
+                <div class="chart-header">
+                    <h3>Correspondance des colonnes</h3>
+                    <select id="mapping-board-select" class="input input-sm"></select>
+                </div>
+                <span class="fv-hint">Ajustez si une colonne Monday n'a pas été reconnue automatiquement.</span>
+                <div class="table-wrap" id="mapping-table"></div>
+            </div>
+
+            <!-- Options de calcul -->
+            <div class="chart-card chart-wide settings-card">
+                <div class="chart-header"><h3>Options de calcul</h3></div>
+                <div class="settings-body">
+                    <label class="check">
+                        <input type="checkbox" id="opt-prefere-monday" checked>
+                        Utiliser la date d'échéance de Monday quand elle existe (sinon toujours appliquer les règles)
+                    </label>
+                    <label class="check">
+                        <input type="checkbox" id="opt-masquer-technique" checked>
+                        Exclure les tableaux « Technique » des analyses
+                    </label>
+                    <label class="check">
+                        <input type="checkbox" id="opt-payees-hors-portefeuille">
+                        Exclure les factures déjà payées du portefeuille affiché
+                    </label>
+                </div>
+            </div>
+
+            <!-- Import fichiers -->
+            <div class="chart-card chart-wide settings-card">
+                <div class="chart-header"><h3>Import de fichiers</h3></div>
+                <span class="fv-hint">
+                    Exports Monday (un fichier par tableau) ou extrait de grand livre pointé
+                    (numéro de facture + date de règlement) pour compléter les dates de paiement manquantes.
+                </span>
+                <div class="import-grid">
+                    <div class="upload-zone upload-zone-sm" id="settings-drop">
+                        <p class="upload-text">Exports de tableaux</p>
+                        <p class="upload-hint">.xlsx, .xls, .csv — sélection multiple</p>
+                        <input type="file" id="settings-file-input" accept=".csv,.xlsx,.xls" multiple hidden>
+                    </div>
+                    <div class="upload-zone upload-zone-sm" id="gl-drop">
+                        <p class="upload-text">Grand livre pointé</p>
+                        <p class="upload-hint">Numéro de facture, date de règlement, montant</p>
+                        <input type="file" id="gl-file-input" accept=".csv,.xlsx,.xls" hidden>
+                    </div>
+                </div>
+                <div id="import-history" class="import-history"></div>
+            </div>
+
+            <!-- Stockage -->
+            <div class="chart-card chart-wide settings-card">
+                <div class="chart-header"><h3>Stockage local</h3></div>
+                <div class="settings-body">
+                    <div id="storage-info" class="storage-info"></div>
+                    <div class="field-row">
+                        <button class="btn btn-ghost btn-sm" id="btn-clear-data">Effacer les factures</button>
+                        <button class="btn btn-ghost btn-sm" id="btn-clear-all">Tout effacer (données + réglages)</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modale générique -->
+<div class="modal-overlay" id="modal-overlay" hidden>
+    <div class="modal" id="modal">
+        <div class="modal-head">
+            <h3 id="modal-title"></h3>
+            <button class="modal-close" id="modal-close">×</button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+        <div class="modal-foot" id="modal-foot"></div>
+    </div>
+</div>
+
+<div class="toast-stack" id="toast-stack"></div>
+
+<script src="js/rules.js"></script>
+<script src="js/store.js"></script>
+<script src="js/monday.js"></script>
+<script src="js/ingest.js"></script>
+<script src="js/metrics.js"></script>
+<script src="js/ui.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

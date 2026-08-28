@@ -50,6 +50,15 @@ Aucune compilation, aucun serveur nécessaire.
 > (IndexedDB). Pour repartir de zéro, utiliser « Tout effacer » dans l'onglet
 > **Fichiers**.
 
+## Application soeur : Suivi Recouvrement
+
+Le dossier [`recouvrement/`](recouvrement/README.md) contient une seconde
+application, **Suivi Recouvrement**, qui partage le même design system et les
+mêmes librairies (`vendor/`). Elle s'alimente sur les tableaux Monday.com,
+calcule les dates d'échéance selon les règles de financement Liora et suit les
+factures en retard : taux de recouvrement par mois et par type de financement
+(en nombre et en euros), retard moyen, balance âgée.
+
 ## Structure du dépôt
 
 ```
