@@ -1003,8 +1003,14 @@ def construire_html(
             f"« {html.escape(dossier.commentaire)} »</div>"
         )
 
+    # Trois sources indépendantes, cumulables : les pièces extraites des
+    # messages, les documents téléchargés depuis Monday, et à défaut les liens
+    # vers ceux qui n'ont pas pu l'être. Chacune s'ajoute — aucune ne remplace
+    # les autres.
+    bloc_pieces = ""
+
     if pieces:
-        bloc_pieces = "".join(
+        bloc_pieces += "".join(
             f"<p class='groupe'>{html.escape(libelle)}</p><ul class='constats'>"
             + "".join(f"<li>{html.escape(nom)}</li>" for nom in noms)
             + "</ul>"
@@ -1038,7 +1044,8 @@ def construire_html(
             "pas été téléchargés. Rappel : un document produit depuis le tableau "
             "atteste de son existence, pas de sa transmission au débiteur.</p>"
         )
-    else:
+
+    if not bloc_pieces:
         bloc_pieces = (
             "<p>Aucune pièce jointe dans les échanges extraits. Le contrat signé "
             "et les factures devront être joints depuis une autre source.</p>"

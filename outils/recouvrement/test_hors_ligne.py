@@ -1976,6 +1976,74 @@ def test_montants_espace_insecable() -> None:
                  f"au suivi aussi, « {texte} » vaut {attendu}")
 
 
+def test_bloc_pieces() -> None:
+    """Pièces jointes et documents Monday : quatre cas, aucun qui plante."""
+    print("\nBloc « Contrat signé et factures »")
+
+    import synthese as module_synthese  # noqa: PLC0415
+    from dossiers import Dossier  # noqa: PLC0415
+
+    piece = LigneIndex(
+        piece_n=1,
+        date=datetime(2024, 3, 12, 10, 22, tzinfo=timezone(timedelta(hours=1))),
+        sens="envoyé",
+        expediteur="recouvrement@liora.io",
+        destinataires="a@b.fr",
+        copie="",
+        objet="Facture FACT-1",
+        nb_pieces_jointes=1,
+        pieces_jointes="facture.pdf",
+        critere="facture",
+        boites="billing@liora.io",
+        fichier_pdf="",
+        fichier_eml="",
+        dossier_pieces_jointes="",
+        thread_id="t",
+        message_id="<1@liora.io>",
+    )
+
+    def note(lignes, documents, liens):
+        dossier = Dossier(reference="FACT-1", nom="A", emails=["a@b.fr"],
+                          factures=["FACT-1"], liens=liens)
+        return module_synthese.construire_html(
+            dossier=dossier,
+            lignes=lignes,
+            synthese=module_synthese.analyser(lignes, {}),
+            boites=["billing@liora.io"],
+            date_export=datetime(2026, 3, 1, 10, 0,
+                                 tzinfo=timezone(timedelta(hours=1))),
+            documents_monday=documents,
+        )
+
+    # Le cas qui plantait : aucun mail avec pièce jointe, mais un document
+    # téléchargé depuis Monday.
+    html_doc = note([], ["convention.pdf"], [])
+    verifier("convention.pdf" in html_doc,
+             "sans pièce jointe, un document Monday s'affiche quand même")
+    verifier("Aucune pièce jointe" not in html_doc,
+             "et n'est pas annoncé comme une absence de pièce")
+
+    # Le cas symétrique : des pièces jointes, aucun document Monday. Le texte
+    # d'absence effaçait la liste au lieu de s'abstenir.
+    html_pj = note([piece], [], [])
+    verifier("facture.pdf" in html_pj,
+             "les pièces jointes restent listées sans document Monday")
+    verifier("Aucune pièce jointe" not in html_pj,
+             "et ne sont pas remplacées par le texte d'absence")
+
+    html_deux = note([piece], ["convention.pdf"], [])
+    verifier("facture.pdf" in html_deux and "convention.pdf" in html_deux,
+             "les deux sources coexistent, aucune ne remplace l'autre")
+
+    html_rien = note([], [], [])
+    verifier("Aucune pièce jointe" in html_rien,
+             "sans rien du tout, l'absence est dite")
+
+    html_lien = note([], [], ["https://liora.monday.com/r/9/f.pdf"])
+    verifier("liora.monday.com" in html_lien,
+             "un document non téléchargé est cité en lien")
+
+
 def test_execution_formation() -> None:
     """Convention, diplôme et heures suivies : lus, écrits, agrégés."""
     print("\nExécution de la formation")
@@ -3839,6 +3907,7 @@ def main() -> int:
     test_lecture_tableau_monday()
     test_refus_monday()
     test_montants_espace_insecable()
+    test_bloc_pieces()
     test_execution_formation()
     test_suppression_dossiers()
     test_filtre_chez_monday()

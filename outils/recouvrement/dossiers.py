@@ -288,8 +288,9 @@ class Dossier:
             ]
 
         for facture in self.factures:
-            termes.append(f'"{facture}"')
-            termes.append(f"filename:{facture}")
+            for forme in variantes_facture(facture):
+                termes.append(f'"{forme}"')
+                termes.append(f"filename:{forme}")
 
         if not termes:
             raise ErreurDossiers(
@@ -575,6 +576,50 @@ def _fusionner(groupe: list[Dossier]) -> Dossier:
         # ensuite à un sous-dossier par facture, chacun avec son propre montant.
         composants=tries,
     )
+
+
+# « FACT-2405-00409 » au tableau, « FACT2405 00409 » dans le corps du mail,
+# « Facture_2405_00409.pdf » en pièce jointe : le même numéro s'écrit de
+# plusieurs façons, et Gmail cherche à la lettre. Une seule forme cherchée,
+# c'est le dossier entier manqué — alors que la facture a bien été envoyée.
+SEPARATEURS_FACTURE = ("-", "_", ".", " ", "/")
+
+
+def variantes_facture(facture: str) -> list[str]:
+    """Les écritures plausibles d'un même numéro de facture.
+
+    Toutes gardent la totalité des groupes de chiffres : « 2405-00409 » sans
+    son préfixe est retenu, « 00409 » seul ne l'est pas — il ramènerait les
+    factures de tous les autres débiteurs.
+    """
+    brut = (facture or "").strip()
+    if not brut:
+        return []
+
+    # Les morceaux du numéro, quel que soit le séparateur d'origine.
+    morceaux = [m for m in re.split(r"[-_./\s]+", brut) if m]
+    if len(morceaux) < 2:
+        return [brut]
+
+    formes: list[str] = []
+
+    def ajouter(forme: str) -> None:
+        if forme and forme not in formes:
+            formes.append(forme)
+
+    ajouter(brut)
+    for separateur in SEPARATEURS_FACTURE:
+        ajouter(separateur.join(morceaux))
+    ajouter("".join(morceaux))
+
+    # Sans le préfixe alphabétique : « 2405-00409 » suffit à identifier la
+    # facture, et c'est souvent ainsi qu'elle est citée dans un échange.
+    if not morceaux[0].isdigit() and len(morceaux) > 2:
+        sans_prefixe = morceaux[1:]
+        for separateur in SEPARATEURS_FACTURE:
+            ajouter(separateur.join(sans_prefixe))
+
+    return formes
 
 
 def _montant(valeur: str) -> float:
