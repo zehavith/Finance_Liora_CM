@@ -87,8 +87,28 @@ ALIAS_COLONNES = {
         "categorie de dette", "statut",
     ],
     "commentaire": [
-        "commentaire recouvrement", "commentaire general", "commentaire post echeance",
-        "commentaire pre echance", "commentaire pre echeance", "commentaire",
+        "commentaire contentieux", "commentaire recouvrement", "commentaire general",
+        "commentaire post echeance", "commentaire pre echance",
+        "commentaire pre echeance", "nv commentaires", "commentaire",
+    ],
+    # Ce que le suivi sait de l'exécution de la formation. Devant un tribunal,
+    # une convention signée et des heures suivies établissent que la
+    # prestation a bien été fournie : c'est la première chose qu'on oppose à
+    # « je n'ai jamais rien reçu ».
+    "convention_signee": [
+        "convention signe", "convention signee", "convention signe ?",
+        "etat convention", "statut convention",
+    ],
+    "diplome": [
+        "diplome recu", "diplome recu ?", "diplome obtenu", "diplome",
+    ],
+    "heures_theoriques": [
+        "nb d heure theorique", "nb heures theoriques", "heures theoriques",
+        "volume horaire", "duree theorique",
+    ],
+    "heures_log": [
+        "heure de log", "heures de log", "heures loguees", "heures suivies",
+        "heures realisees", "temps de connexion",
     ],
     # Documents stockés dans Monday plutôt que joints aux messages : on n'en
     # retient que l'adresse, pour la citer dans la note. Les télécharger
@@ -218,6 +238,13 @@ class Dossier:
     statut: str = ""
     commentaire: str = ""
     liens: list[str] = field(default_factory=list)
+    # Exécution de la formation, telle que le suivi la connaît. Sert la note
+    # de synthèse et rien d'autre : ces colonnes n'entrent jamais dans la
+    # recherche des messages.
+    convention_signee: str = ""
+    diplome: str = ""
+    heures_theoriques: str = ""
+    heures_log: str = ""
 
     # Toutes les colonnes de la ligne d'origine, intitulés normalisés. Sert au
     # filtrage sur une colonne que l'outil n'exploite pas par ailleurs.
@@ -492,6 +519,13 @@ def _fusionner(groupe: list[Dossier]) -> Dossier:
                     resultat.append(valeur)
         return resultat
 
+    def _premier_renseigne(champ: str) -> str:
+        for dossier in tries:
+            valeur = (getattr(dossier, champ) or "").strip()
+            if valeur:
+                return valeur
+        return ""
+
     def _cumul(champ: str) -> str:
         total = sum(_montant(getattr(dossier, champ)) for dossier in tries)
         return f"{total:.2f}".rstrip("0").rstrip(".") if total else ""
@@ -522,6 +556,12 @@ def _fusionner(groupe: list[Dossier]) -> Dossier:
         formation_fin=_extremum("formation_fin", prendre_min=False),
         statut=" · ".join(_union(lambda d: d.statut.split(" · "))),
         commentaire=" · ".join(_union(lambda d: d.commentaire.split(" · "))),
+        # L'exécution de la formation est la même pour toutes les factures
+        # d'une apprenante : la première renseignée vaut pour le dossier.
+        convention_signee=_premier_renseigne("convention_signee"),
+        diplome=_premier_renseigne("diplome"),
+        heures_theoriques=_premier_renseigne("heures_theoriques"),
+        heures_log=_premier_renseigne("heures_log"),
         liens=_union(lambda d: d.liens),
         # Le parcours du débiteur est celui de ses factures réunies, remis en
         # ordre : sans tri, les étapes de la seconde suivraient celles de la
@@ -938,6 +978,10 @@ def dossiers_depuis_grille(
             formation_fin=_premier("formation_fin"),
             statut=" · ".join(valeurs["statut"]),
             commentaire=" · ".join(valeurs["commentaire"]),
+            convention_signee=_premier("convention_signee"),
+            diplome=_premier("diplome"),
+            heures_theoriques=_premier("heures_theoriques"),
+            heures_log=_premier("heures_log"),
             liens=[v for v in valeurs["liens"] if v.lower().startswith("http")],
             colonnes=brutes,
             origine_tableau=titre_tableau,

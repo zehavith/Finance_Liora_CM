@@ -449,6 +449,92 @@ def rediger_contexte(dossier, synthese: Synthese, reference_temps: datetime) -> 
     return lignes
 
 
+# « oui », « signée », « reçu », « 1 », « x » : un tableau tenu à la main ne
+# répond jamais deux fois de la même façon. Ce qui n'est ni l'un ni l'autre
+# reste inconnu, et un inconnu ne s'affiche pas comme un « non » — devant un
+# tribunal, ce n'est pas la même chose.
+OUI = {"oui", "o", "yes", "y", "1", "x", "vrai", "true", "signe", "signee",
+       "recu", "recue", "obtenu", "obtenue", "fait", "faite", "ok"}
+NON = {"non", "n", "no", "0", "faux", "false", "pas signe", "pas signee",
+       "non signe", "non signee", "pas recu", "non recu", "aucun", "neant"}
+
+
+def _oui_non(valeur: str) -> bool | None:
+    """Vrai, faux, ou rien du tout — jamais faux par défaut."""
+    plat = _aplatir(valeur)
+    if not plat:
+        return None
+    if plat in OUI:
+        return True
+    if plat in NON:
+        return False
+    # « convention signée le 12/03 » vaut oui ; « non signée » vaut non, et se
+    # teste en premier pour ne pas être lu comme le « signé » qu'il contient.
+    if any(marqueur in plat for marqueur in ("non ", "pas ", "sans ")):
+        return False
+    if any(marqueur in plat for marqueur in ("signe", "recu", "obtenu", "oui")):
+        return True
+    return None
+
+
+def _aplatir(valeur: str) -> str:
+    decompose = unicodedata.normalize("NFKD", str(valeur or "").strip().lower())
+    return "".join(c for c in decompose if not unicodedata.combining(c))
+
+
+def _heures(valeur: str) -> float | None:
+    plat = "".join(c for c in str(valeur or "") if not c.isspace()).replace(",", ".")
+    plat = plat.replace("h", "").replace("H", "")
+    try:
+        return float(plat)
+    except ValueError:
+        return None
+
+
+def rediger_execution(dossier) -> list[str]:
+    """Ce que le tableau de suivi sait de l'exécution de la formation.
+
+    Devant un tribunal, une convention signée et des heures effectivement
+    suivies établissent que la prestation a été fournie : c'est la première
+    chose qu'on oppose à « je n'ai rien reçu ». Ce que le tableau ne dit pas
+    est signalé comme tel, jamais présumé.
+    """
+    lignes: list[str] = []
+
+    convention = _oui_non(getattr(dossier, "convention_signee", ""))
+    if convention is True:
+        lignes.append("Convention de formation signée par le débiteur.")
+    elif convention is False:
+        lignes.append(
+            "Convention de formation non signée au tableau de suivi — "
+            "à vérifier impérativement avant transmission."
+        )
+
+    diplome = _oui_non(getattr(dossier, "diplome", ""))
+    if diplome is True:
+        lignes.append("Diplôme délivré au terme de la formation.")
+    elif diplome is False:
+        lignes.append("Diplôme non délivré.")
+
+    theoriques = _heures(getattr(dossier, "heures_theoriques", ""))
+    suivies = _heures(getattr(dossier, "heures_log", ""))
+    if theoriques and suivies is not None:
+        part = round(100 * suivies / theoriques)
+        lignes.append(
+            f"Heures de connexion relevées : {suivies:g} h sur {theoriques:g} h "
+            f"prévues, soit {part} % du volume horaire."
+        )
+    elif suivies is not None:
+        lignes.append(f"Heures de connexion relevées : {suivies:g} h.")
+    elif theoriques:
+        lignes.append(
+            f"Volume horaire prévu : {theoriques:g} h ; "
+            "les heures suivies ne sont pas renseignées."
+        )
+
+    return lignes
+
+
 def resumer_echanges(dossier, synthese: Synthese, reference_temps: datetime) -> list[str]:
     """Ce que les échanges établissent du comportement du débiteur.
 
@@ -899,6 +985,14 @@ def construire_html(
         + "".join(f"<li>{html.escape(ligne)}</li>" for ligne in echanges)
         + "</ul>"
     )
+
+    execution = rediger_execution(dossier)
+    if execution:
+        bloc_contexte += (
+            '<p class="groupe">Exécution de la formation</p><ul class="constats">'
+            + "".join(f"<li>{html.escape(ligne)}</li>" for ligne in execution)
+            + "</ul>"
+        )
 
     bloc_contexte += _bloc_parcours(dossier)
 

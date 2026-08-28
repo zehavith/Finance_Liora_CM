@@ -136,6 +136,37 @@ L'onglet s'ouvre directement sur le mode Monday quand des tableaux ont déjà
 été choisis — c'est le cas courant, et l'onglet « fichier » laissait le bouton
 grisé sans dire pourquoi.
 
+### Ce qui rend un dossier défendable
+
+Devant un tribunal, une convention signée et des heures effectivement suivies
+établissent que la prestation a été fournie : c'est la première chose qu'on
+oppose à « je n'ai rien reçu ». Quatre colonnes du tableau de suivi sont donc
+reconnues et suivies partout :
+
+| Colonne reconnue | Ce qu'elle sert |
+|---|---|
+| `convention signé ?` | la convention est-elle signée |
+| `Diplome reçu ?` | le diplôme a-t-il été délivré |
+| `Nb d'heure Theorique` | volume horaire prévu |
+| `Heure de Log` | heures de connexion relevées |
+
+Elles apparaissent à trois endroits : un groupe **Exécution de la formation**
+dans la note de synthèse, trois colonnes dans l'onglet **Documents**, et un
+bloc **Solidité des dossiers en cours** au tableau de bord.
+
+`Commentaire contentieux` et `nv commentaires` rejoignent les commentaires
+déjà repris dans la note.
+
+**Trois états, jamais deux.** « oui », « signée le 12/03 », « x », « 1 »
+valent vrai ; « non », « pas de convention », « 0 » valent faux ; tout le
+reste — vide, « à vérifier », « en attente » — reste **non renseigné** et
+s'affiche comme tel. Un tableau qui se tait ne dit pas que la convention
+manque, et compter les silences avec les « non » ferait passer pour fragiles
+des dossiers qui ne le sont pas.
+
+L'assiduité est une **médiane**, calculée sur les seuls dossiers dont les deux
+colonnes d'heures sont remplies.
+
 ### L'avancement, étape par étape et daté
 
 Huit étapes, dans l'ordre où un dossier les traverse :

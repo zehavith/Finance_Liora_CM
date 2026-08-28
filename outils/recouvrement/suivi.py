@@ -277,6 +277,14 @@ def tranche_anciennete(jours: int | None) -> dict | None:
     return TRANCHES_ANCIENNETE[-1]
 
 
+def _oui_non(valeur) -> bool | None:
+    """Vrai, faux, ou rien du tout. La lecture est celle de la note de
+    synthèse, pour que les deux ne se contredisent jamais."""
+    import synthese as module_synthese  # noqa: PLC0415 - import tardif, cycle
+
+    return module_synthese._oui_non(valeur)
+
+
 def _lire_recapitulatif(chemin: Path) -> list[dict]:
     texte = chemin.read_text(encoding="utf-8-sig")
     return list(csv.DictReader(texte.splitlines(), delimiter=";"))
@@ -322,6 +330,13 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 "contestation": (rangee.get("contestation") or "").strip(),
                 "jours_sans_echange": (rangee.get("jours_sans_echange") or "").strip(),
                 "statut_export": (rangee.get("statut") or "").strip(),
+                # Exécution de la formation, telle que le tableau la connaît.
+                # Trois états, jamais deux : ce que le tableau ne dit pas ne
+                # doit pas se lire comme un « non ».
+                "convention_signee": _oui_non(rangee.get("convention_signee")),
+                "diplome": _oui_non(rangee.get("diplome")),
+                "heures_theoriques": (rangee.get("heures_theoriques") or "").strip(),
+                "heures_log": (rangee.get("heures_log") or "").strip(),
                 # Un débiteur portant plusieurs factures a un sous-dossier par
                 # facture ; l'état de suivi reste porté par le dossier entier,
                 # puisque c'est lui qui part au contentieux.
@@ -557,6 +572,56 @@ def courbe_par_mois(dossiers: list[dict], mois_max: int = 24) -> dict:
     }
 
 
+def _mediane(valeurs: list[float]) -> float:
+    tries = sorted(valeurs)
+    milieu = len(tries) // 2
+    if len(tries) % 2:
+        return tries[milieu]
+    return (tries[milieu - 1] + tries[milieu]) / 2
+
+
+def solidite(dossiers: list[dict]) -> dict:
+    """Ce qui rend un dossier défendable, compté sur les dossiers en cours.
+
+    Une convention signée et des heures suivies établissent que la prestation
+    a été fournie. Un dossier auquel il manque la convention n'est pas
+    forcément perdu, mais il ne part pas au tribunal dans le même état — d'où
+    ce décompte, séparé de tout le reste.
+
+    Le non renseigné est compté à part, jamais avec les « non » : le tableau
+    qui se tait ne dit pas que la convention manque.
+    """
+    en_cours = [d for d in dossiers if d["statut"] not in CLOTURES]
+
+    def repartir(champ: str) -> dict:
+        return {
+            "oui": sum(1 for d in en_cours if d.get(champ) is True),
+            "non": sum(1 for d in en_cours if d.get(champ) is False),
+            "inconnu": sum(1 for d in en_cours if d.get(champ) is None),
+            "montant_non": sum(
+                d["montant_du"] for d in en_cours if d.get(champ) is False
+            ),
+        }
+
+    assidus = []
+    for dossier in en_cours:
+        prevu = _nombre(dossier.get("heures_theoriques"))
+        fait = _nombre(dossier.get("heures_log"))
+        if prevu > 0 and dossier.get("heures_log"):
+            assidus.append(100 * fait / prevu)
+
+    return {
+        "nb_en_cours": len(en_cours),
+        "convention": repartir("convention_signee"),
+        "diplome": repartir("diplome"),
+        # Vraie médiane : sur un nombre pair de dossiers, la moyenne des deux
+        # valeurs centrales. Prendre la seconde ferait dire « 100 % » à un
+        # portefeuille moitié à 50, moitié à 100.
+        "assiduite_mediane": round(_mediane(assidus)) if assidus else None,
+        "nb_assiduite": len(assidus),
+    }
+
+
 def agreger(dossiers: list[dict]) -> dict:
     """Chiffres du tableau de bord."""
     par_statut = {
@@ -592,6 +657,7 @@ def agreger(dossiers: list[dict]) -> dict:
         "frais_engages": sum(d["frais"] for d in dossiers),
         "montant_gagne": sum(d["montant_du"] for d in gagnes),
         "montant_perdu": sum(d["montant_du"] for d in perdus),
+        "solidite": solidite(dossiers),
         "nb_gagnes": len(gagnes),
         "nb_perdus": len(perdus),
         # Sur les seuls dossiers clos : un taux calculé sur l'ensemble ferait

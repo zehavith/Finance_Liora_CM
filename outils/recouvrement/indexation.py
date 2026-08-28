@@ -63,6 +63,13 @@ COLONNES_RECAP = [
     "adresses_decouvertes",
     "date_echeance",
     "source_echeance",
+    # Ce que le suivi sait de l'execution de la formation : devant un
+    # tribunal, une convention signee et des heures suivies etablissent que la
+    # prestation a bien ete fournie.
+    "convention_signee",
+    "diplome",
+    "heures_theoriques",
+    "heures_log",
     "date_contentieux",
     "date_cloture",
     "issue_process",
@@ -147,6 +154,10 @@ class ResumeDossier:
     adresses_decouvertes: str = ""
     date_echeance: str = ""
     source_echeance: str = ""
+    convention_signee: str = ""
+    diplome: str = ""
+    heures_theoriques: str = ""
+    heures_log: str = ""
     date_contentieux: str = ""
     date_cloture: str = ""
     issue_process: str = ""
@@ -161,6 +172,10 @@ class ResumeDossier:
             "nb_mails": str(self.nb_mails),
             "nb_recus": str(self.nb_recus),
             "nb_envoyes": str(self.nb_envoyes),
+            "convention_signee": self.convention_signee,
+            "diplome": self.diplome,
+            "heures_theoriques": self.heures_theoriques,
+            "heures_log": self.heures_log,
             "premier_mail": min(self.dates).strftime("%d/%m/%Y") if self.dates else "",
             "dernier_mail": max(self.dates).strftime("%d/%m/%Y") if self.dates else "",
             "nb_pieces_jointes": str(self.nb_pieces_jointes),

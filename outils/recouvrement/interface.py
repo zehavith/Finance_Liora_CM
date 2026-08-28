@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "40"
+VERSION = "41"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -898,6 +898,22 @@ table.donnees th.etroite{width:26px}
 .defilable{overflow-x:auto}
 .barre-selection{display:flex;align-items:center;gap:13px;margin-bottom:13px}
 .barre-selection span{font-size:12px;color:var(--texte-3)}
+.etat{white-space:nowrap;font-size:12px}
+.etat.oui{color:#5cc95c}
+.etat.non{color:#ef6a6a}
+.etat.inconnu{color:var(--texte-3)}
+.solide{margin:17px 0}
+.solide-titre{font-size:12.5px;color:var(--texte-2);margin-bottom:7px}
+.solide-barre{display:flex;height:15px;border-radius:5px;overflow:hidden;
+  background:var(--fond-2)}
+.solide-barre span.oui{background:#0ca30c}
+.solide-barre span.non{background:#d03b3b}
+.solide-barre span.inconnu{background:#3a4157}
+.solide-legende{display:flex;gap:19px;margin-top:7px;font-size:11.5px;
+  color:var(--texte-3);flex-wrap:wrap}
+.solide-legende b.oui{color:#5cc95c}
+.solide-legende b.non{color:#ef6a6a}
+.solide-legende b.inconnu{color:var(--texte-3)}
 select,input.frais,input.note{background:var(--champ);border:1px solid var(--bord);
   border-radius:7px;padding:6px 8px;color:var(--texte);font-size:12.5px;font-family:inherit}
 select{min-width:172px} input.frais{width:88px;text-align:right} input.note{width:100%}
@@ -1029,6 +1045,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <div class="graphe" id="grapheBord"></div>
   <div class="graphe" id="anciennete"></div>
   <div class="graphe" id="dormants"></div>
+  <div class="graphe" id="solidite"></div>
 </div>
 
 <div class="vue" id="vueSuivi">
@@ -1843,6 +1860,27 @@ function pastilleStatut(cle) {
 }
 
 // -- onglet Documents
+// Trois etats, jamais deux : ce que le tableau ne dit pas ne doit pas
+// s'afficher comme un « non ». Un pictogramme seul ne suffit pas — le libelle
+// l'accompagne toujours, la couleur ne portant jamais l'information seule.
+function etatOuiNon(valeur, oui, non) {
+  if (valeur === true) return '<span class="etat oui">✓ ' + oui + "</span>";
+  if (valeur === false) return '<span class="etat non">✕ ' + non + "</span>";
+  return '<span class="etat inconnu">— non renseigné</span>';
+}
+
+function heuresSuivies(d) {
+  const prevu = parseFloat(String(d.heures_theoriques || "").replace(",", "."));
+  const fait = parseFloat(String(d.heures_log || "").replace(",", "."));
+  if (!isNaN(fait) && prevu > 0) {
+    return `${fait} / ${prevu} h<br /><span style="color:var(--texte-3)">`
+      + Math.round(100 * fait / prevu) + " %</span>";
+  }
+  if (!isNaN(fait)) return fait + " h";
+  if (prevu > 0) return "— / " + prevu + " h";
+  return "—";
+}
+
 function rendreDocuments() {
   if (!DOSSIERS.length) { $("tableDocuments").innerHTML = messageVide(); return; }
 
@@ -1852,6 +1890,9 @@ function rendreDocuments() {
       <td>${echapper(d.nom)}</td>
       <td class="num">${d.nb_mails}</td>
       <td class="num">${d.nb_pieces_jointes}</td>
+      <td>${etatOuiNon(d.convention_signee, "signée", "non signée")}</td>
+      <td>${etatOuiNon(d.diplome, "reçu", "non reçu")}</td>
+      <td class="num">${heuresSuivies(d)}</td>
       <td>${d.premier_mail || "—"} → ${d.dernier_mail || "—"}</td>
       <td>${[
         d.sous_dossiers > 1
@@ -1869,7 +1910,9 @@ function rendreDocuments() {
 
   $("tableDocuments").innerHTML = `<table class="donnees">
     <tr><th>Référence</th><th>Débiteur</th><th>Mails</th><th>PJ</th>
-        <th>Période</th><th>Sous-dossiers</th><th>Document</th><th></th></tr>${lignes}</table>`;
+        <th>Convention</th><th>Diplôme</th><th class="num">Heures</th>
+        <th>Période</th><th>Sous-dossiers</th><th>Document</th><th></th></tr>
+    ${lignes}</table>`;
 
   $("tableDocuments").querySelectorAll("[data-ouvrir]").forEach((lien) =>
     lien.addEventListener("click", async () => {
@@ -2059,6 +2102,53 @@ function rendreAnciennete() {
         </div>
         <div class="valeur">${t.montant ? euro(t.montant) : "—"}<span> · ${t.nombre} dossier${t.nombre > 1 ? "s" : ""}</span></div>
       </div>`).join("")}</div>`;
+}
+
+// Ce qui rend un dossier defendable, avant meme de parler d'etape : une
+// convention signee et des heures suivies etablissent que la prestation a ete
+// fournie. Le non renseigne est compte a part, jamais avec les « non » — un
+// tableau qui se tait ne dit pas que la convention manque.
+function rendreSolidite() {
+  const zone = $("solidite");
+  if (!zone) return;
+  const s = (AGREGATS || {}).solidite;
+  if (!s || !s.nb_en_cours) {
+    zone.innerHTML = "<h3>Solidité des dossiers</h3>"
+      + '<p class="aide">Aucun dossier en cours.</p>';
+    return;
+  }
+
+  const barre = (titre, r, oui, non) => {
+    const total = r.oui + r.non + r.inconnu || 1;
+    const part = (n) => (100 * n / total).toFixed(1) + "%";
+    return `
+      <div class="solide">
+        <div class="solide-titre">${titre}</div>
+        <div class="solide-barre">
+          <span class="oui" style="width:${part(r.oui)}" title="${r.oui} ${oui}"></span>
+          <span class="non" style="width:${part(r.non)}" title="${r.non} ${non}"></span>
+          <span class="inconnu" style="width:${part(r.inconnu)}"
+                title="${r.inconnu} non renseigné"></span>
+        </div>
+        <div class="solide-legende">
+          <span><b class="oui">✓</b> ${r.oui} ${oui}</span>
+          <span><b class="non">✕</b> ${r.non} ${non}${
+            r.montant_non ? " · " + euro(r.montant_non) : ""}</span>
+          <span><b class="inconnu">—</b> ${r.inconnu} non renseigné</span>
+        </div>
+      </div>`;
+  };
+
+  zone.innerHTML = `
+    <h3>Solidité des dossiers en cours</h3>
+    <p class="aide">Sur ${s.nb_en_cours} dossier(s) non clôturés. Une convention
+       signée et des heures suivies établissent que la prestation a été fournie :
+       c'est ce qu'on oppose à « je n'ai rien reçu ».</p>
+    ${barre("Convention de formation", s.convention, "signée(s)", "non signée(s)")}
+    ${barre("Diplôme", s.diplome, "délivré(s)", "non délivré(s)")}
+    ${s.assiduite_mediane === null ? ""
+      : `<p class="aide">Assiduité médiane : <b>${s.assiduite_mediane} %</b>
+         du volume horaire prévu, sur ${s.nb_assiduite} dossier(s) renseigné(s).</p>`}`;
 }
 
 function rendreDormants() {
@@ -2253,6 +2343,7 @@ function rendreBord() {
   rendreCourbe();
   rendreAnciennete();
   rendreDormants();
+  rendreSolidite();
 
   $("grapheBord").innerHTML = `
     <h3>Montant en contentieux par étape</h3>
@@ -2303,6 +2394,9 @@ function recalculer() {
     seuil_dormance: SERVEUR ? SERVEUR.seuil_dormance : 60,
     nb_jamais_transmis: SERVEUR ? SERVEUR.nb_jamais_transmis : 0,
     cout_par_euro: SERVEUR ? SERVEUR.cout_par_euro : null,
+    // Comme l'ancienneté : calculée sur le poste, et rafraîchie à chaque
+    // changement d'étape puisque celui-ci recharge les dossiers.
+    solidite: SERVEUR ? SERVEUR.solidite : null,
     taux_reussite: (gagnes.length + perdus.length)
       ? Math.round(100 * gagnes.length / (gagnes.length + perdus.length)) : null,
   };

@@ -1974,6 +1974,73 @@ def test_montants_espace_insecable() -> None:
                  f"au suivi aussi, « {texte} » vaut {attendu}")
 
 
+def test_execution_formation() -> None:
+    """Convention, diplôme et heures suivies : lus, écrits, agrégés."""
+    print("\nExécution de la formation")
+
+    import suivi as module_suivi  # noqa: PLC0415
+    import synthese as module_synthese  # noqa: PLC0415
+    from dossiers import dossiers_depuis_grille  # noqa: PLC0415
+
+    for texte, attendu in [
+        ("oui", True), ("Oui", True), ("signé", True), ("signée le 12/03", True),
+        ("x", True), ("1", True), ("reçu", True),
+        ("non", False), ("Non signée", False), ("pas de convention", False),
+        ("0", False), ("sans convention", False),
+        ("", None), ("à vérifier", None), ("en attente", None),
+    ]:
+        obtenu = module_synthese._oui_non(texte)
+        verifier(obtenu is attendu, f"« {texte} » vaut {attendu} (obtenu : {obtenu})")
+
+    grille = [
+        (1, ["Numero", "E-mail", "convention signé ?", "Diplome reçu ?",
+             "Nb d'heure Theorique", "Heure de Log", "Commentaire contentieux"]),
+        (2, ["FACT-1", "a@b.fr", "oui", "non", "60", "42", "relance sans effet"]),
+        (3, ["FACT-2", "c@d.fr", "", "", "", "", ""]),
+    ]
+    dossiers = dossiers_depuis_grille(grille, "tableau Monday 42")
+    premier, second = dossiers[0], dossiers[1]
+
+    verifier(premier.convention_signee == "oui" and premier.diplome == "non",
+             "convention et diplôme sont lus depuis leurs colonnes")
+    verifier(premier.heures_theoriques == "60" and premier.heures_log == "42",
+             "les heures prévues et suivies sont lues")
+    verifier("relance sans effet" in premier.commentaire,
+             "le commentaire contentieux rejoint les autres commentaires")
+
+    lignes = module_synthese.rediger_execution(premier)
+    verifier(any("signée" in l and "non" not in l.lower() for l in lignes),
+             "la convention signée est affirmée")
+    verifier(any("Diplôme non délivré" in l for l in lignes),
+             "le diplôme manquant est dit")
+    verifier(any("42 h sur 60 h" in l and "70 %" in l for l in lignes),
+             f"les heures sont rapportées au volume prévu (obtenu : {lignes})")
+
+    verifier(module_synthese.rediger_execution(second) == [],
+             "un dossier sans ces colonnes ne produit aucune ligne inventée")
+
+    # Une convention non renseignée ne doit jamais compter comme non signée.
+    en_cours = [
+        {"statut": "avocats", "montant_du": 1000.0, "convention_signee": True,
+         "diplome": False, "heures_theoriques": "60", "heures_log": "30"},
+        {"statut": "non-transmis", "montant_du": 500.0, "convention_signee": False,
+         "diplome": None, "heures_theoriques": "40", "heures_log": "40"},
+        {"statut": "non-transmis", "montant_du": 200.0, "convention_signee": None,
+         "diplome": None, "heures_theoriques": "", "heures_log": ""},
+        {"statut": "tribunal-perdu", "montant_du": 900.0, "convention_signee": False,
+         "diplome": False, "heures_theoriques": "10", "heures_log": "0"},
+    ]
+    s = module_suivi.solidite(en_cours)
+    verifier(s["nb_en_cours"] == 3, "les dossiers clôturés sortent du décompte")
+    verifier(s["convention"] == {"oui": 1, "non": 1, "inconnu": 1, "montant_non": 500.0},
+             f"conventions réparties en trois états (obtenu : {s['convention']})")
+    verifier(s["diplome"]["inconnu"] == 2,
+             "un diplôme non renseigné n'est pas compté comme non délivré")
+    verifier(s["assiduite_mediane"] == 75 and s["nb_assiduite"] == 2,
+             f"assiduité médiane sur les seuls dossiers renseignés "
+             f"(obtenu : {s['assiduite_mediane']} sur {s['nb_assiduite']})")
+
+
 def test_suppression_dossiers() -> None:
     """Retirer un dossier de la liste, avec ou sans ses fichiers."""
     print("\nSuppression de dossiers")
@@ -3770,6 +3837,7 @@ def main() -> int:
     test_lecture_tableau_monday()
     test_refus_monday()
     test_montants_espace_insecable()
+    test_execution_formation()
     test_suppression_dossiers()
     test_filtre_chez_monday()
     test_groupes_monday()

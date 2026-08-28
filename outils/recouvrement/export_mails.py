@@ -421,6 +421,10 @@ def traiter_dossier(
         montant_du=dossier.montant_du,
         montant_total=dossier.montant_total,
         date_echeance=dossier.date_echeance,
+        convention_signee=dossier.convention_signee,
+        diplome=dossier.diplome,
+        heures_theoriques=dossier.heures_theoriques,
+        heures_log=dossier.heures_log,
     )
 
     trajet = module_synthese.parcours(dossier)
