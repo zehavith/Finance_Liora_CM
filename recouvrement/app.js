@@ -55,6 +55,8 @@
             uniteHeat: 'euros',
             uniteRecup: 'euros',
             repartitionDims: 'perimetre,financement',
+            fluxUnite: 'euros',
+            treemapDim: 'financement',
             repartitionOuverts: new Set(),
             agingDim: 'financement',
             page: 1,
@@ -410,6 +412,9 @@
         rendreChartMois(rows);
         rendreComparaison(rows);
 
+        rendreChartFlux(data);
+        rendreTreemap(data);
+
         // ── Financement / balance âgée ──
         const fins = X.parFinancement(data, state.rules);
         rendreChartFinancement(fins);
@@ -417,6 +422,9 @@
 
         // ── Heatmap mois × financement ──
         rendreHeatmap(X.croiseMoisFinancement(data, state.filtres.baseMois, state.rules));
+
+        rendreChartProprietaire(data);
+        rendreChartStructure(data);
 
         // ── Classements ──
         rendreTopClients(X.topClients(data, 12));
@@ -560,6 +568,7 @@
         mois:        { key: 'mois',        titre: 'Mois',        fn: f => f.moisEcheance || '—',
                        labelFn: k => (k === '—' ? 'Échéance inconnue' : U.moisLabel(k)) },
         client:      { key: 'client',      titre: 'Client',      fn: f => f.client || '—' },
+        proprietaire:{ key: 'proprietaire', titre: 'Propriétaire', fn: f => f.proprietaire || '—' },
     };
 
     function rendreRepartition(data) {
@@ -738,6 +747,290 @@
                     state.ui.page = 1;
                     rendreBoutonsMois();
                     rendreTout();
+                },
+            },
+        });
+    }
+
+    /**
+     * Flux mensuel : barres entrées / sorties de part et d'autre de zéro,
+     * courbe du stock impayé à la fin de chaque mois. C'est le pendant du
+     * « solde cumulé » de Suivi Cash : gagne-t-on ou perd-on du terrain ?
+     */
+    function rendreChartFlux(data) {
+        const eur = state.ui.fluxUnite === 'euros';
+        const rows = X.fluxRecouvrement(data, state.moisDispo, state.filtres.dateRef);
+        if (!rows.length) { U.chart('chart-flux', videConfig('Aucun mois exploitable')); return; }
+
+        const champ = (base) => eur ? 'eur' + base : 'nb' + base;
+        const fmt = eur ? U.eurosCourt : U.nombre;
+
+        U.chart('chart-flux', {
+            type: 'bar',
+            data: {
+                labels: rows.map(r => U.moisLabel(r.mois, true)),
+                datasets: [
+                    {
+                        label: 'Entrées en retard', order: 2,
+                        data: rows.map(r => r[champ('Entrees')]),
+                        backgroundColor: 'rgba(239, 68, 68, 0.75)', borderRadius: 3,
+                    },
+                    {
+                        label: 'Sorties (encaissées)', order: 2,
+                        data: rows.map(r => -r[champ('Sorties')]),
+                        backgroundColor: 'rgba(132, 204, 22, 0.75)', borderRadius: 3,
+                    },
+                    {
+                        type: 'line', label: 'Encours en retard à fin de mois', order: 0, yAxisID: 'y1',
+                        data: rows.map(r => r[champ('Stock')]),
+                        borderColor: U.couleurs.accent, backgroundColor: 'rgba(244, 116, 88, 0.12)',
+                        borderWidth: 2.5, tension: 0.3, fill: true, pointRadius: 2, pointHoverRadius: 5,
+                    },
+                ],
+            },
+            options: {
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: {
+                        grid: U.grille, title: { display: true, text: 'Flux du mois' },
+                        ticks: { callback: v => fmt(Math.abs(v)) },
+                    },
+                    y1: {
+                        position: 'right', grid: { display: false }, beginAtZero: true,
+                        title: { display: true, text: 'Stock à fin de mois' },
+                        ticks: { callback: v => fmt(v) },
+                    },
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `${ctx.dataset.label} : ${fmt(Math.abs(ctx.parsed.y))}`,
+                            afterBody: items => {
+                                const r = rows[items[0].dataIndex];
+                                if (!r) return '';
+                                const v = eur ? r.variation : r.nbEntrees - r.nbSorties;
+                                return ['', `Variation du mois : ${v > 0 ? '+' : ''}${fmt(v)}`,
+                                    `Retard moyen du stock : ${U.jours(r.retardMoyenStock)}`];
+                            },
+                        },
+                    },
+                },
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    state.filtres.mois = new Set([rows[els[0].index].mois]);
+                    state.ui.page = 1;
+                    rendreBoutonsMois();
+                    rendreTout();
+                },
+            },
+        });
+    }
+
+    /** Palette dense pour les treemaps, reprise de Suivi Cash. */
+    const treemapPalette = [
+        '#1e2a5e', '#2a3a80', '#3b4fa0', '#4f62b8', '#6474cc', '#7c8ae0',
+        '#F47458', '#f59e0b', '#84cc16', '#3b82f6', '#8b5cf6', '#06b6d4',
+        '#ec4899', '#14b8a6', '#ef4444', '#f97316', '#6366f1', '#d946ef',
+    ];
+
+    function rendreTreemap(data) {
+        const dim = DIMENSIONS[state.ui.treemapDim] || DIMENSIONS.financement;
+        const enRetard = data.filter(f => f.etat === 'En retard');
+        const groupes = X.parDimension(enRetard, dim.fn, dim.labelFn, f => f.encours).slice(0, 24);
+
+        if (!groupes.length) { U.chart('chart-treemap', videConfig('Aucune facture en retard')); return; }
+
+        const total = X.sum(groupes, g => g.valeur);
+        const couleurs = {};
+        groupes.forEach((g, i) => { couleurs[g.label] = treemapPalette[i % treemapPalette.length]; });
+
+        const config = {
+            type: 'treemap',
+            data: {
+                datasets: [{
+                    tree: groupes.map(g => ({ label: g.label, value: g.valeur, nb: g.nb, retard: g.retardMoyen })),
+                    key: 'value',
+                    groups: ['label'],
+                    backgroundColor: c => (c.raw && c.raw._data) ? (couleurs[c.raw._data.label] || '#6366f1') : 'transparent',
+                    borderColor: '#0b0e1a',
+                    borderWidth: 3,
+                    spacing: 2,
+                    labels: {
+                        display: true, align: 'center', position: 'middle', overflow: 'fit',
+                        color: '#ffffff', font: { size: 12, weight: '700', family: 'Inter' },
+                        formatter: c => {
+                            const d = c.raw && c.raw._data;
+                            if (!d) return '';
+                            const part = total > 0 ? (c.raw.v / total) * 100 : 0;
+                            return [d.label, U.eurosCourt(c.raw.v), U.pourcent(part, 1)];
+                        },
+                    },
+                }],
+            },
+            options: {
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            title: items => (items[0] && items[0].raw._data && items[0].raw._data.label) || '',
+                            label: item => {
+                                const d = item.raw._data;
+                                const part = total > 0 ? (item.raw.v / total) * 100 : 0;
+                                return [`${U.euros(item.raw.v)} (${U.pourcent(part, 1)})`,
+                                    `${U.nombre(d.nb)} factures · retard moyen ${U.jours(d.retard)}`];
+                            },
+                        },
+                    },
+                },
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    const ctx = els[0].element.$context;
+                    const label = ctx && ctx.raw && ctx.raw._data && ctx.raw._data.label;
+                    if (!label) return;
+                    const g = groupes.find(x => x.label === label);
+                    if (g) filtrerParDimension(state.ui.treemapDim, g.cle);
+                },
+            },
+        };
+
+        // Repli en barres horizontales si le plugin treemap n'est pas chargé.
+        try {
+            U.chart('chart-treemap', config);
+        } catch (e) {
+            console.warn('[Recouvrement] Treemap indisponible, repli en barres', e);
+            U.chart('chart-treemap', {
+                type: 'bar',
+                data: {
+                    labels: groupes.map(g => g.label),
+                    datasets: [{
+                        data: groupes.map(g => g.valeur),
+                        backgroundColor: groupes.map((_, i) => treemapPalette[i % treemapPalette.length]),
+                        borderRadius: 4,
+                    }],
+                },
+                options: {
+                    indexAxis: 'y',
+                    scales: { x: { grid: U.grille, ticks: { callback: v => U.eurosCourt(v) } }, y: { grid: { display: false } } },
+                    plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => U.euros(c.parsed.x) } } },
+                },
+            });
+        }
+    }
+
+    /** Pose le filtre correspondant à une dimension puis rafraîchit. */
+    function filtrerParDimension(dim, cle) {
+        const f = state.filtres;
+        switch (dim) {
+            case 'financement': f.financements = new Set([cle]); break;
+            case 'client':      f.client = cle; break;
+            case 'board':       f.boards = new Set([cle]); break;
+            case 'perimetre':   f.perimetre = cle; majSegments(); break;
+            case 'groupe':
+            case 'proprietaire':
+                f.recherche = cle; $('#search-input').value = cle; break;
+            default: return;
+        }
+        state.ui.page = 1;
+        rendreTout();
+    }
+
+    function rendreChartProprietaire(data) {
+        const enRetard = data.filter(f => f.etat === 'En retard');
+        const rows = X.parDimension(enRetard, f => f.proprietaire, null, f => f.encours).slice(0, 12);
+        if (!rows.length) { U.chart('chart-proprietaire', videConfig('Aucune facture en retard')); return; }
+
+        U.chart('chart-proprietaire', {
+            type: 'bar',
+            data: {
+                labels: rows.map(r => r.label),
+                datasets: [{
+                    data: rows.map(r => r.valeur),
+                    backgroundColor: rows.map((_, i) => U.palette[i % U.palette.length]),
+                    borderRadius: 4,
+                }],
+            },
+            options: {
+                indexAxis: 'y',
+                scales: {
+                    x: { grid: U.grille, ticks: { callback: v => U.eurosCourt(v) } },
+                    y: { grid: { display: false } },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => U.euros(ctx.parsed.x),
+                            afterLabel: ctx => {
+                                const r = rows[ctx.dataIndex];
+                                return `${U.nombre(r.nb)} factures · retard moyen ${U.jours(r.retardMoyen)}`;
+                            },
+                        },
+                    },
+                },
+                onClick: (evt, els) => { if (els.length) filtrerParDimension('proprietaire', rows[els[0].index].cle); },
+            },
+        });
+    }
+
+    /** Anneau : structure du portefeuille par état, puis par périmètre. */
+    function rendreChartStructure(data) {
+        const etats = [
+            { label: 'Payée', couleur: U.couleurs.paye },
+            { label: 'Payée en retard', couleur: U.couleurs.payeRetard },
+            { label: 'Non échue', couleur: U.couleurs.nonEchue },
+            { label: 'En retard', couleur: U.couleurs.retard },
+            { label: 'Échéance inconnue', couleur: U.couleurs.inconnu },
+        ].map(e => ({ ...e, valeur: X.sum(data.filter(f => f.etat === e.label), f => f.montant),
+                      nb: data.filter(f => f.etat === e.label).length }))
+         .filter(e => e.valeur > 0);
+
+        if (!etats.length) { U.chart('chart-structure', videConfig('Aucune facture')); return; }
+
+        const perims = X.parDimension(data, f => f.perimetre);
+        const total = X.sum(etats, e => e.valeur);
+
+        U.chart('chart-structure', {
+            type: 'doughnut',
+            data: {
+                labels: [...etats.map(e => e.label), ...perims.map(p => p.label)],
+                datasets: [
+                    {
+                        label: 'État', data: etats.map(e => e.valeur),
+                        backgroundColor: etats.map(e => e.couleur),
+                        borderColor: 'rgba(11,14,26,0.9)', borderWidth: 2,
+                    },
+                    {
+                        label: 'Périmètre', data: perims.map(p => p.valeur),
+                        backgroundColor: perims.map((_, i) => U.palette[(i + 4) % U.palette.length]),
+                        borderColor: 'rgba(11,14,26,0.9)', borderWidth: 2,
+                    },
+                ],
+            },
+            options: {
+                cutout: '42%',
+                plugins: {
+                    legend: { position: 'right', labels: { filter: item => item.index < etats.length } },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const part = total > 0 ? (ctx.parsed / total) * 100 : 0;
+                                const nb = ctx.datasetIndex === 0 ? etats[ctx.dataIndex].nb : perims[ctx.dataIndex].nb;
+                                return `${ctx.label} : ${U.euros(ctx.parsed)} (${U.pourcent(part, 1)}) · ${U.nombre(nb)} factures`;
+                            },
+                        },
+                    },
+                },
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    const e = els[0];
+                    if (e.datasetIndex === 0) {
+                        state.filtres.etats = new Set([etats[e.index].label]);
+                        state.ui.page = 1;
+                        rendreTout();
+                    } else {
+                        filtrerParDimension('perimetre', perims[e.index].cle);
+                    }
                 },
             },
         });
@@ -2132,6 +2425,16 @@
         $$('#seg-unite-mois .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.uniteMois = b.dataset.unite;
             $$('#seg-unite-mois .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendreTout();
+        }));
+        $$('#seg-flux-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.fluxUnite = b.dataset.unite;
+            $$('#seg-flux-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendreTout();
+        }));
+        $$('#seg-treemap-dim .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.treemapDim = b.dataset.dim;
+            $$('#seg-treemap-dim .seg-btn').forEach(x => x.classList.toggle('active', x === b));
             rendreTout();
         }));
         $$('#seg-repartition .seg-btn').forEach(b => b.addEventListener('click', () => {

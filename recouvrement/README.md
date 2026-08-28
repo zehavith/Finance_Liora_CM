@@ -159,6 +159,28 @@ du bandeau *Récupération* sont également cliquables.
 
 L'export Excel contient un onglet *Répartition* reprenant l'arbre à plat.
 
+### Graphiques du tableau de bord
+
+| Graphique | Lecture |
+|---|---|
+| **Taux de recouvrement par mois** | barres empilées par issue + courbes de taux |
+| **Flux de recouvrement** | entrées et sorties de part et d'autre de zéro, courbe de l'encours en retard à la fin de chaque mois |
+| **Où se concentre l'encours** | treemap, dimension au choix : financement, client, tableau, groupe, propriétaire |
+| **Encours par financement** | barres horizontales |
+| **Balance âgée** | anneau par tranche d'antériorité |
+| **Encours par propriétaire** | barres horizontales — charge de relance |
+| **Structure du portefeuille** | double anneau : état à l'extérieur, périmètre à l'intérieur |
+| **% par mois et financement** | carte thermique |
+| **Antériorité par mois** | barres empilées (onglet *Balance âgée*) |
+
+Tous sont cliquables et posent le filtre correspondant.
+
+Le **flux de recouvrement** répond à « est-ce que je gagne ou perds du terrain » :
+les entrées sont les factures devenues échues sans être réglées, les sorties les
+factures en retard encaissées dans le mois. Le stock de fin de mois est recalculé
+à chaque date plutôt que cumulé, afin de rester juste quand une facture entre et
+sort dans le même mois.
+
 ### Récupération
 
 Le bandeau *Récupération des factures échues* répartit les factures arrivées à

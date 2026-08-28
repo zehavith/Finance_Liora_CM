@@ -8,6 +8,7 @@
     <link rel="apple-touch-icon" href="../Liora_Logo_Orange_alpha.png">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
     <script src="../vendor/chart.umd.min.js"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js"></script>
     <script src="../vendor/papaparse.min.js"></script>
     <script src="../vendor/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="../styles.css">
@@ -374,6 +375,50 @@
                 </div>
             </div>
 
+            <!-- Flux : ce qui entre, ce qui sort, ce qui reste -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Flux de recouvrement</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-flux-unite">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Entrées = factures devenues échues sans être réglées · Sorties = factures en retard
+                        encaissées dans le mois · Courbe = encours en retard restant à la fin du mois
+                    </span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-flux"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Treemap : concentration de l'encours -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Où se concentre l'encours en retard</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-treemap-dim">
+                                <button class="seg-btn active" data-dim="financement">Financement</button>
+                                <button class="seg-btn" data-dim="client">Client</button>
+                                <button class="seg-btn" data-dim="board">Tableau</button>
+                                <button class="seg-btn" data-dim="groupe">Groupe</button>
+                                <button class="seg-btn" data-dim="proprietaire">Propriétaire</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">La surface est proportionnelle à l'encours. Cliquez sur une case pour filtrer.</span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-treemap"></canvas>
+                    </div>
+                </div>
+            </div>
+
             <!-- Financement + balance âgée -->
             <div class="charts-grid charts-2col">
                 <div class="chart-card">
@@ -387,6 +432,24 @@
                     <div class="chart-container">
                         <canvas id="chart-aging"></canvas>
                     </div>
+                </div>
+            </div>
+
+            <!-- Répartitions complémentaires -->
+            <div class="charts-grid charts-2col">
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>Encours en retard par propriétaire</h3>
+                        <span class="fv-hint">charge de relance</span>
+                    </div>
+                    <div class="chart-container"><canvas id="chart-proprietaire"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header">
+                        <h3>Structure du portefeuille</h3>
+                        <span class="fv-hint">anneau extérieur : état · intérieur : périmètre</span>
+                    </div>
+                    <div class="chart-container"><canvas id="chart-structure"></canvas></div>
                 </div>
             </div>
 

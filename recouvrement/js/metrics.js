@@ -481,6 +481,74 @@
     }
 
     // ──────────────────────────────────────────────
+    //  Flux de recouvrement
+    //
+    //  Pour chaque mois :
+    //    · entrées — factures devenues échues sans être réglées
+    //    · sorties — factures en retard encaissées dans le mois
+    //    · stock   — encours en retard constaté à la fin du mois
+    //  Le stock est recalculé à chaque fin de mois plutôt que cumulé, pour
+    //  rester juste même quand une facture entre et sort le même mois.
+    // ──────────────────────────────────────────────
+
+    function finDeMois(mk) {
+        const [y, m] = mk.split('-').map(Number);
+        return new Date(y, m, 0);   // jour 0 du mois suivant = dernier jour de mk
+    }
+
+    function fluxRecouvrement(factures, moisList, dateRef) {
+        const limite = dateRef ? R.monthKey(dateRef) : null;
+        const mois = moisList.filter(m => !limite || m <= limite);
+
+        return mois.map(mk => {
+            const fin = finDeMois(mk);
+
+            const entrees = factures.filter(f =>
+                f.dateEcheance && f.moisEcheance === mk &&
+                (!f.datePaiementEffective || f.datePaiementEffective > f.dateEcheance));
+
+            const sorties = factures.filter(f =>
+                f.datePaiementEffective && R.monthKey(f.datePaiementEffective) === mk &&
+                f.dateEcheance && f.datePaiementEffective > f.dateEcheance);
+
+            // Impayé à la fin du mois : échue au plus tard ce jour-là, et pas
+            // encore réglée à cette date.
+            const stock = factures.filter(f =>
+                f.dateEcheance && f.dateEcheance <= fin &&
+                (!f.datePaiementEffective || f.datePaiementEffective > fin));
+
+            return {
+                mois: mk,
+                nbEntrees: entrees.length,
+                eurEntrees: sum(entrees, f => f.montant),
+                nbSorties: sorties.length,
+                eurSorties: sum(sorties, f => f.montant),
+                nbStock: stock.length,
+                eurStock: sum(stock, f => f.montant),
+                retardMoyenStock: moyenne(stock.map(f => R.diffDays(fin, f.dateEcheance))),
+                variation: sum(entrees, f => f.montant) - sum(sorties, f => f.montant),
+            };
+        });
+    }
+
+    /** Agrégat simple d'une dimension, pour treemap et graphiques de répartition. */
+    function parDimension(factures, fn, labelFn, valeurFn) {
+        const map = new Map();
+        for (const f of factures) {
+            const k = fn(f) || '—';
+            let g = map.get(k);
+            if (!g) { g = { cle: k, label: labelFn ? labelFn(k, f) : k, nb: 0, valeur: 0, retards: [] }; map.set(k, g); }
+            g.nb++;
+            g.valeur += (valeurFn ? valeurFn(f) : f.montant) || 0;
+            if (f.retardJours != null) g.retards.push(f.retardJours);
+        }
+        return [...map.values()]
+            .map(g => ({ ...g, retardMoyen: moyenne(g.retards) }))
+            .filter(g => g.valeur > 0)
+            .sort((a, b) => b.valeur - a.valeur);
+    }
+
+    // ──────────────────────────────────────────────
     //  Classements
     // ──────────────────────────────────────────────
 
@@ -617,7 +685,7 @@
     global.LioraMetrics = {
         sum, pct, moyenne, moyennePonderee, mediane,
         filtrer, sourceDe, origineRecouvrement, vueEnsemble, parMois, parFinancement, croiseMoisFinancement,
-        agreger, repartitionMontants,
+        agreger, repartitionMontants, fluxRecouvrement, parDimension, finDeMois,
         balanceAgee, balanceAgeeParDimension, topClients, parTableau, parGroupe,
         qualite, scoreQualite, comparaisonMensuelle,
     };
