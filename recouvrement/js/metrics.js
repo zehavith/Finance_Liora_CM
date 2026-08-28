@@ -109,6 +109,27 @@
         return null;
     }
 
+    /**
+     * Une facture réglée est-elle passée par le recouvrement ?
+     *
+     * Deux lectures, volontairement distinctes :
+     *  · par la date   — réglée avant l'échéance, elle n'a jamais été en retard
+     *  · par le process — le tableau des factures payées conserve le groupe
+     *    d'où venait la facture au moment du règlement : s'il mentionne le
+     *    recouvrement, elle y est passée, quelle que soit la date.
+     *
+     * @returns {'recouvrement'|'hors'|'inconnu'}
+     */
+    function origineRecouvrement(f) {
+        if (!f.paye) return 'inconnu';
+        if (f.presenceRoles && f.presenceRoles.includes('recouvrement')) return 'recouvrement';
+
+        const g = R.norm([f.groupeOrigine, f.groupePaiement, f.groupe].filter(Boolean).join(' '));
+        if (!g) return 'inconnu';
+        if (/recouv|relance|mise en demeure|contentieux|huissier/.test(g)) return 'recouvrement';
+        return 'hors';
+    }
+
     // ──────────────────────────────────────────────
     //  Vue d'ensemble
     // ──────────────────────────────────────────────
@@ -131,6 +152,14 @@
         const assiette = factures.filter(x => x.dateEcheance && x.etat !== 'Non échue');
         const assietteEuros = sum(assiette, x => x.montant);
         const retardCohorte = assiette.filter(x => x.etat === 'En retard' || x.etat === 'Payée en retard');
+
+        // ── Récupération : ce qui rentre sans passer par le recouvrement ──
+        // Assiette = factures arrivées à échéance. Les trois postes
+        // (réglé à temps · réglé en retard · encore dû) totalisent 100 %.
+        const regleATemps = assiette.filter(x => x.etat === 'Payée');
+        const parOrigine = { recouvrement: [], hors: [], inconnu: [] };
+        for (const x of payees) parOrigine[origineRecouvrement(x)].push(x);
+        const origineConnue = parOrigine.recouvrement.length + parOrigine.hors.length;
 
         return {
             total, totalEuros,
@@ -164,6 +193,31 @@
             retardMoyenPondere: moyennePonderee(enRetard, x => x.retardJours, x => x.encours),
             retardMoyenPaiement: moyenne(payeesRetard.map(x => x.retardJours)),
             delaiPaiementMoyen: moyenne(payees.map(x => x.delaiPaiement).filter(d => d != null && d >= 0)),
+
+            // Réglé sans jamais être en retard
+            nbRegleATemps: regleATemps.length,
+            eurosRegleATemps: sum(regleATemps, x => x.montant),
+            tauxRegleATempsNb: pct(regleATemps.length, assiette.length),
+            tauxRegleATempsEuros: pct(sum(regleATemps, x => x.montant), assietteEuros),
+
+            // Réglé après l'échéance : récupéré, mais au prix d'un retard
+            tauxRegleRetardNb: pct(payeesRetard.length, assiette.length),
+            tauxRegleRetardEuros: pct(sum(payeesRetard, x => x.montant), assietteEuros),
+
+            // Encore à recouvrer
+            tauxResteNb: pct(enRetard.length, assiette.length),
+            tauxResteEuros: pct(sum(enRetard, x => x.encours), assietteEuros),
+
+            // Lecture « process » : d'où venait la facture quand elle a été réglée
+            nbPayeesHorsRecouvrement: parOrigine.hors.length,
+            eurosPayeesHorsRecouvrement: sum(parOrigine.hors, x => x.montant),
+            nbPayeesViaRecouvrement: parOrigine.recouvrement.length,
+            eurosPayeesViaRecouvrement: sum(parOrigine.recouvrement, x => x.montant),
+            nbOrigineInconnue: parOrigine.inconnu.length,
+            tauxHorsRecouvrementNb: pct(parOrigine.hors.length, origineConnue),
+            tauxHorsRecouvrementEuros: pct(
+                sum(parOrigine.hors, x => x.montant),
+                sum(parOrigine.hors, x => x.montant) + sum(parOrigine.recouvrement, x => x.montant)),
 
             // DSO simplifié : encours / CA moyen journalier de la période
             dso: null,
@@ -256,8 +310,13 @@
             const assiette = g.items.filter(x => x.dateEcheance && x.etat !== 'Non échue');
             const eurTotal = sum(g.items, x => x.montant);
             const eurAssiette = sum(assiette, x => x.montant);
+            const regleATemps = assiette.filter(x => x.etat === 'Payée');
             return {
                 ...g,
+                nbRegleATemps: regleATemps.length,
+                eurRegleATemps: sum(regleATemps, x => x.montant),
+                tauxRegleATempsNb: pct(regleATemps.length, assiette.length),
+                tauxRegleATempsEur: pct(sum(regleATemps, x => x.montant), eurAssiette),
                 nbTotal: g.items.length,
                 eurTotal,
                 nbEnRetard: enRetard.length,
@@ -483,7 +542,7 @@
 
     global.LioraMetrics = {
         sum, pct, moyenne, moyennePonderee, mediane,
-        filtrer, sourceDe, vueEnsemble, parMois, parFinancement, croiseMoisFinancement,
+        filtrer, sourceDe, origineRecouvrement, vueEnsemble, parMois, parFinancement, croiseMoisFinancement,
         balanceAgee, balanceAgeeParDimension, topClients, parTableau, parGroupe,
         qualite, scoreQualite, comparaisonMensuelle,
     };

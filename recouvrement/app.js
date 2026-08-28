@@ -53,6 +53,7 @@
         ui: {
             uniteMois: 'euros',
             uniteHeat: 'euros',
+            uniteRecup: 'euros',
             agingDim: 'financement',
             page: 1,
             pageSize: 50,
@@ -397,6 +398,7 @@
         $('#kpi-delai-paiement-sub').textContent = v.delaiPaiementMoyen != null
             ? `délai facture → règlement : ${U.jours(v.delaiPaiementMoyen)}` : '';
 
+        rendreRecuperation(v);
         rendreNoteperimetre(data, v);
 
         // ── Graphique mensuel ──
@@ -415,6 +417,72 @@
         // ── Classements ──
         rendreTopClients(X.topClients(data, 12));
         rendreParTableau(X.parTableau(data));
+    }
+
+    /**
+     * Bandeau « Récupération » : sur les factures arrivées à échéance, la part
+     * rentrée sans jamais être en retard, celle rentrée en retard, et ce qui
+     * reste à recouvrer. Les trois totalisent 100 %.
+     *
+     * La quatrième tuile lit le process plutôt que la date : le tableau des
+     * factures payées conserve le groupe d'origine du règlement, ce qui dit si
+     * la facture est passée ou non par le recouvrement.
+     */
+    function rendreRecuperation(v) {
+        const el = $('#recup-grid');
+        if (!el) return;
+        const eur = state.ui.uniteRecup === 'euros';
+        const val = (e, n) => eur ? U.euros(e) : U.nombre(n);
+
+        const tuile = (o) => `
+            <div class="recup-card${o.muted ? ' recup-muted' : ''}">
+                <span class="recup-bar" style="background:${o.couleur}"></span>
+                <span class="recup-taux">${U.pourcent(o.taux, 0)}</span>
+                <span class="recup-label">${U.escapeHtml(o.label)}</span>
+                <span class="recup-value">${o.valeur}</span>
+                <span class="recup-sub">${U.escapeHtml(o.sub)}</span>
+            </div>`;
+
+        const horsDispo = (v.nbPayeesHorsRecouvrement + v.nbPayeesViaRecouvrement) > 0;
+
+        el.innerHTML = [
+            tuile({
+                couleur: U.couleurs.paye,
+                taux: eur ? v.tauxRegleATempsEuros : v.tauxRegleATempsNb,
+                label: 'Réglé sans recouvrement',
+                valeur: val(v.eurosRegleATemps, v.nbRegleATemps),
+                sub: "encaissé avant l'échéance, jamais en retard",
+            }),
+            tuile({
+                couleur: U.couleurs.payeRetard,
+                taux: eur ? v.tauxRegleRetardEuros : v.tauxRegleRetardNb,
+                label: 'Récupéré en retard',
+                valeur: val(v.eurosPayeesRetard, v.nbPayeesRetard),
+                sub: "encaissé, mais après l'échéance",
+            }),
+            tuile({
+                couleur: U.couleurs.retard,
+                taux: eur ? v.tauxResteEuros : v.tauxResteNb,
+                label: 'Reste à recouvrer',
+                valeur: val(v.eurosEnRetard, v.nbEnRetard),
+                sub: 'échu et toujours impayé',
+            }),
+            horsDispo ? tuile({
+                couleur: U.couleurs.indigo,
+                taux: eur ? v.tauxHorsRecouvrementEuros : v.tauxHorsRecouvrementNb,
+                label: 'Payé hors circuit recouvrement',
+                valeur: val(v.eurosPayeesHorsRecouvrement, v.nbPayeesHorsRecouvrement),
+                sub: v.nbOrigineInconnue
+                    ? `d'après le groupe d'origine · ${U.nombre(v.nbOrigineInconnue)} sans origine connue`
+                    : "d'après le groupe d'origine des factures payées",
+            }) : tuile({
+                couleur: U.couleurs.inconnu, muted: true,
+                taux: null,
+                label: 'Payé hors circuit recouvrement',
+                valeur: '—',
+                sub: 'nécessite la colonne « Groupe » du tableau des factures payées',
+            }),
+        ].join('');
     }
 
     /** Rappels métier contextuels (OPCO sans recouvrement, retards côté ADV). */
@@ -871,6 +939,7 @@
             { key: 'tauxNb', label: '% nb', align: 'right', format: v => U.pourcent(v, 1), title: 'Part des factures actuellement en retard' },
             { key: 'tauxEur', label: '% €', align: 'right', format: v => U.pourcent(v, 1), title: "Part de l'encours en retard sur le total facturé" },
             { key: 'tauxCohorteEur', label: '% cohorte €', align: 'right', format: v => U.pourcent(v, 1), title: 'Sur les factures échues : part payée en retard ou encore impayée' },
+            { key: 'tauxRegleATempsEur', label: '% sans recouv.', align: 'right', format: v => U.pourcent(v, 1), title: "Sur les factures échues : part encaissée avant l'échéance, sans passer par le recouvrement" },
             { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
             { key: 'retardMoyenPaiement', label: 'Retard au paiement', align: 'right', format: U.jours, title: 'Retard constaté sur les factures déjà réglées' },
         ];
@@ -1608,6 +1677,12 @@
             { Indicateur: '% en recouvrement (€)', Valeur: +v.tauxEuros.toFixed(2) },
             { Indicateur: '% cohorte échue en retard (nombre)', Valeur: +v.tauxCohorteNb.toFixed(2) },
             { Indicateur: '% cohorte échue en retard (€)', Valeur: +v.tauxCohorteEuros.toFixed(2) },
+            { Indicateur: 'Réglé sans recouvrement — nombre', Valeur: v.nbRegleATemps },
+            { Indicateur: 'Réglé sans recouvrement — % (nombre)', Valeur: +v.tauxRegleATempsNb.toFixed(2) },
+            { Indicateur: 'Réglé sans recouvrement — % (€)', Valeur: +v.tauxRegleATempsEuros.toFixed(2) },
+            { Indicateur: 'Récupéré en retard — % (€)', Valeur: +v.tauxRegleRetardEuros.toFixed(2) },
+            { Indicateur: 'Reste à recouvrer — % (€)', Valeur: +v.tauxResteEuros.toFixed(2) },
+            { Indicateur: 'Payé hors circuit recouvrement — % (€)', Valeur: +v.tauxHorsRecouvrementEuros.toFixed(2) },
             { Indicateur: 'Retard moyen (jours)', Valeur: v.retardMoyen == null ? '' : Math.round(v.retardMoyen) },
             { Indicateur: 'Retard médian (jours)', Valeur: v.retardMedian == null ? '' : Math.round(v.retardMedian) },
             { Indicateur: 'Retard moyen pondéré € (jours)', Valeur: v.retardMoyenPondere == null ? '' : Math.round(v.retardMoyenPondere) },
@@ -1645,6 +1720,8 @@
             '% en retard (nombre)': +r.tauxNb.toFixed(2),
             '% en retard (€)': +r.tauxEur.toFixed(2),
             '% cohorte échue (€)': +r.tauxCohorteEur.toFixed(2),
+            'Réglé sans recouvrement (nombre)': r.nbRegleATemps,
+            'Réglé sans recouvrement — % (€)': +r.tauxRegleATempsEur.toFixed(2),
             'Retard moyen (j)': r.retardMoyen == null ? '' : Math.round(r.retardMoyen),
             'Retard au paiement (j)': r.retardMoyenPaiement == null ? '' : Math.round(r.retardMoyenPaiement),
         }));
@@ -1896,6 +1973,11 @@
         $$('#seg-unite-mois .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.uniteMois = b.dataset.unite;
             $$('#seg-unite-mois .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendreTout();
+        }));
+        $$('#seg-unite-recup .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.uniteRecup = b.dataset.unite;
+            $$('#seg-unite-recup .seg-btn').forEach(x => x.classList.toggle('active', x === b));
             rendreTout();
         }));
         $$('#seg-unite-heat .seg-btn').forEach(b => b.addEventListener('click', () => {

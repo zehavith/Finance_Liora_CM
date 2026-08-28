@@ -234,6 +234,37 @@ select.input option { background: var(--bg-secondary); color: var(--text-primary
 }
 
 /* ============================
+   Bandeau « Récupération »
+   ============================ */
+
+.section-header-sub { margin-top: 2rem; }
+.section-header-sub h3 { font-size: 1.05rem; font-weight: 600; }
+
+.recup-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+    gap: 0.85rem;
+    margin-bottom: 1.75rem;
+}
+.recup-card {
+    position: relative;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 1.1rem 1.1rem 0.95rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    overflow: hidden;
+}
+.recup-bar { position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+.recup-taux { font-size: 1.75rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.recup-label { font-size: 0.85rem; font-weight: 500; }
+.recup-value { font-size: 0.85rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.recup-sub { font-size: 0.72rem; color: var(--text-muted); line-height: 1.35; margin-top: 0.15rem; }
+.recup-muted .recup-taux { color: var(--text-muted); }
+
+/* ============================
    Notes contextuelles
    ============================ */
 

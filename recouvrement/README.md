@@ -40,6 +40,7 @@ PATH*, puis relancer.
 | Quel est mon encours en retard, en euros et en nombre ? | Tableau de bord — Vue d'ensemble |
 | Quel % de factures est en recouvrement, par mois ? | Tableau de bord — *Taux de recouvrement par mois* |
 | Le même %, croisé par type de financement ? | Tableau de bord — carte thermique *% par mois et par financement* |
+| Quelle part rentre sans passer par le recouvrement ? | Tableau de bord — bandeau *Récupération des factures échues* |
 | Quel est le retard moyen ? | Vue d'ensemble : moyen, médian, max, pondéré par l'encours, et retard moyen constaté au paiement |
 | Combien de factures en retard côté ADV ? Côté OPCO ? | Chips **Sources du retard** — activables séparément |
 | Quelle est l'antériorité de l'encours ? | Onglet *Balance âgée* |
@@ -135,6 +136,27 @@ Deux taux, complémentaires :
   de celles qui ont été payées en retard *ou* restent impayées. Réponse à
   « comment se comporte une génération de factures », indépendamment de
   l'ancienneté du mois.
+
+### Récupération
+
+Le bandeau *Récupération des factures échues* répartit les factures arrivées à
+échéance en trois postes qui totalisent 100 %, en euros ou en nombre :
+
+- **Réglé sans recouvrement** — encaissé avant l'échéance, la facture n'a jamais
+  été en retard.
+- **Récupéré en retard** — encaissé, mais après l'échéance.
+- **Reste à recouvrer** — échu et toujours impayé.
+
+Une quatrième tuile, **Payé hors circuit recouvrement**, lit le processus plutôt
+que la date : le tableau des factures payées conserve le groupe d'où venait la
+facture au moment du règlement. Un groupe mentionnant le recouvrement, une
+relance, une mise en demeure ou un contentieux compte comme passé par le
+recouvrement ; les autres non. Cette tuile n'a de sens que si la colonne
+« Groupe » du tableau 0.1 est renseignée — sinon elle le signale, et le nombre
+de factures sans origine connue est affiché.
+
+Le même taux est décliné par type de financement, colonne *% sans recouv.* de
+l'onglet *Financements*, et repris dans l'export Excel.
 
 Retards : moyen, médian, maximum, **pondéré par l'encours** (un gros impayé
 ancien pèse plus qu'un petit), et **retard moyen au paiement** mesuré sur les
