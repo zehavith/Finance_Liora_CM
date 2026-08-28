@@ -9,6 +9,7 @@ ailleurs. La correspondance se fait sur la référence du dossier.
 from __future__ import annotations
 
 import csv
+import shutil
 import json
 from datetime import datetime
 from pathlib import Path
@@ -93,8 +94,12 @@ def _nombre(valeur) -> float:
     """Lit un montant tel qu'il sort d'un tableur : « 1 280,50 », « 680 », 42.0."""
     if isinstance(valeur, (int, float)):
         return float(valeur)
-    texte = str(valeur or "").strip().replace("€", "").replace(" ", "").replace(" ", "")
-    texte = texte.replace(",", ".")
+    # Toutes les espaces, pas seulement l'ordinaire et l'insécable : Monday
+    # sépare les milliers par une insécable *fine*, et ne retirer que les deux
+    # premières ramenait ces montants-là à zéro.
+    texte = "".join(
+        caractere for caractere in str(valeur or "") if not caractere.isspace()
+    ).replace("€", "").replace(",", ".")
     if not texte:
         return 0.0
     try:
@@ -352,6 +357,68 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
         )
 
     return dossiers
+
+
+def supprimer(
+    racine_sortie: Path,
+    chemin_suivi: Path,
+    references: list[str],
+    avec_fichiers: bool = False,
+) -> dict:
+    """Retire des dossiers de la liste, et de l'état de suivi.
+
+    Les fichiers produits ne sont effacés que si on le demande : un dossier
+    retiré de la liste par erreur se retrouve sur le disque, un répertoire
+    supprimé ne revient pas. La suppression est refusée hors du répertoire
+    d'export — un chemin venu d'un fichier n'a pas à pouvoir désigner
+    n'importe où.
+    """
+    voulues = {reference.strip() for reference in references if reference.strip()}
+    if not voulues:
+        return {"retires": 0, "effaces": 0}
+
+    recapitulatif = racine_sortie / "_recapitulatif.csv"
+    retires: list[dict] = []
+    if recapitulatif.exists():
+        rangees = _lire_recapitulatif(recapitulatif)
+        gardees = []
+        for rangee in rangees:
+            if (rangee.get("reference") or "").strip() in voulues:
+                retires.append(rangee)
+            else:
+                gardees.append(rangee)
+        if retires:
+            entetes = list(rangees[0].keys())
+            with recapitulatif.open("w", encoding="utf-8-sig", newline="") as fichier:
+                redacteur = csv.DictWriter(fichier, entetes, delimiter=";")
+                redacteur.writeheader()
+                redacteur.writerows(gardees)
+
+    suivi = charger(chemin_suivi)
+    oublies = [reference for reference in voulues if reference in suivi]
+    for reference in oublies:
+        del suivi[reference]
+    if oublies:
+        enregistrer(chemin_suivi, suivi)
+
+    effaces = 0
+    if avec_fichiers:
+        racine = racine_sortie.resolve()
+        for rangee in retires:
+            nom = (rangee.get("repertoire") or "").strip()
+            if not nom:
+                continue
+            chemin = (racine_sortie / nom).resolve()
+            # Le nom vient d'un fichier : il ne doit désigner qu'un
+            # sous-répertoire de l'export, jamais l'export lui-même.
+            if chemin == racine or racine not in chemin.parents:
+                continue
+            if chemin.is_dir():
+                shutil.rmtree(chemin, ignore_errors=True)
+                effaces += 1
+
+    return {"retires": len(retires), "effaces": effaces,
+            "oublies": len(oublies)}
 
 
 def tranches_anciennete(dossiers: list[dict]) -> list[dict]:

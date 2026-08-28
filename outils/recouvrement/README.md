@@ -55,7 +55,7 @@ bandeau du PDF, ce qui permet de citer directement « pièce n° 3 ».
 `synthese.pdf` est la page de couverture du dossier, structurée comme un
 dossier contentieux :
 
-- un bandeau **Montant en recouvrement**, repris du tableau de suivi ;
+- un bandeau **Montant en contentieux**, repris du tableau de suivi ;
 - **1. Contexte** — formation suivie, montant facturé et reste dû, ancienneté
   de l'échéance, statut, et la note interne du tableau reproduite telle quelle ;
 - **2. Contrat signé et factures** — les pièces jointes trouvées dans les
@@ -107,7 +107,7 @@ L'application comporte quatre onglets :
 
 | Onglet | Rôle |
 |---|---|
-| **Tableau de bord** | page d'accueil : montants en recouvrement, frais, issues, répartition par étape |
+| **Tableau de bord** | page d'accueil : montants en contentieux, frais, issues, répartition par étape |
 | **État des dossiers** | avancement de la procédure et frais engagés, saisis et conservés |
 | **Documents** | les dossiers produits — ouvrir la note de synthèse ou le répertoire |
 | **Export** | lancer une extraction, depuis un export Monday ou une recherche ponctuelle |
@@ -117,8 +117,9 @@ l'extraction se lance de loin en loin.
 
 ### L'onglet Export tient en deux boutons
 
-Les réglages sont repliés derrière *Réglages — à ne toucher qu'en cas de
-besoin*. Restent visibles une phrase disant ce qui va tourner — les tableaux,
+Les boîtes mail et les options sont repliées derrière un volet ; le choix
+de la source — export Monday, lecture directe, recherche ponctuelle — reste
+visible. Restent visibles une phrase disant ce qui va tourner — les tableaux,
 le groupe, les boîtes — et deux boutons :
 
 | Bouton | |
@@ -171,7 +172,7 @@ version précédente sont repris automatiquement.
 
 ### Les indicateurs du tableau de bord
 
-Neuf tuiles : dossiers suivis, montant en recouvrement, frais engagés,
+Neuf tuiles : dossiers suivis, montant en contentieux, frais engagés,
 recouvré, perdu, taux de réussite, durée médiane, **coût du recouvrement** et
 **dossiers en souffrance**.
 

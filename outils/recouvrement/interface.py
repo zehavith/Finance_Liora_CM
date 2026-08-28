@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "39"
+VERSION = "40"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -536,6 +536,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/etape":
                 self._dater_etape(self._corps_json())
                 return
+            if chemin == "/api/supprimer":
+                self._supprimer_dossiers(self._corps_json())
+                return
         except ValueError as exc:
             self._json(400, {"erreur": str(exc)})
             return
@@ -599,6 +602,25 @@ class Gestionnaire(BaseHTTPRequestHandler):
             os.chmod(JETON_MONDAY, 0o600)
         except OSError:
             pass
+
+    def _supprimer_dossiers(self, demande: dict) -> None:
+        """Retire des dossiers de la liste, et de l'état de suivi.
+
+        Les fichiers ne sont effacés que si la page le demande explicitement :
+        c'est le seul geste de l'application qui ne se rattrape pas.
+        """
+        references = demande.get("references")
+        if not isinstance(references, list) or not references:
+            raise ValueError("Aucun dossier à supprimer.")
+
+        preferences = lire_preferences()
+        sortie = Path(preferences.get("sortie") or sortie_par_defaut())
+        resultat = module_suivi.supprimer(
+            sortie, SUIVI,
+            [str(reference) for reference in references],
+            avec_fichiers=bool(demande.get("fichiers")),
+        )
+        self._json(200, resultat)
 
     def _lister_tableaux(self, demande: dict) -> None:
         """Les tableaux Monday accessibles, pour que le choix se fasse dans
@@ -872,6 +894,10 @@ table.donnees td{padding:9px 8px;border-bottom:1px solid rgba(99,102,241,.07);
   vertical-align:middle}
 table.donnees tr:hover td{background:rgba(255,255,255,.02)}
 table.donnees .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.donnees th.etroite{width:26px}
+.defilable{overflow-x:auto}
+.barre-selection{display:flex;align-items:center;gap:13px;margin-bottom:13px}
+.barre-selection span{font-size:12px;color:var(--texte-3)}
 select,input.frais,input.note{background:var(--champ);border:1px solid var(--bord);
   border-radius:7px;padding:6px 8px;color:var(--texte);font-size:12.5px;font-family:inherit}
 select{min-width:172px} input.frais{width:88px;text-align:right} input.note{width:100%}
@@ -935,6 +961,17 @@ details#avance > summary:hover{color:var(--texte-2);border-color:var(--texte-3)}
 .detail table{width:100%;border-collapse:collapse}
 table.donnees td:first-child b{white-space:nowrap}
 table.donnees td:first-child{min-width:170px}
+/* Au suivi, la premiere colonne est une case a cocher : la largeur reservee
+   a la reference revient a la cellule qui la porte vraiment. */
+#tableSuivi table.donnees td:first-child{min-width:0;width:26px;padding-right:0}
+#tableSuivi table.donnees td.dossier{min-width:170px}
+#tableSuivi table.donnees td.dossier b{white-space:nowrap}
+/* Le libelle d'etape le plus long fait soixante caracteres : laisse libre, la
+   liste deroulante poussait les dernieres colonnes hors de l'ecran. */
+#tableSuivi select{max-width:186px}
+#tableSuivi input.frais{width:48px}
+#tableSuivi input.note{min-width:96px}
+#tableSuivi table.donnees th,#tableSuivi table.donnees td{padding-left:6px;padding-right:6px}
 table.donnees input.note{min-width:170px}
 .detail td{padding:4px 6px;font-size:12.5px}
 .detail input[type=text]{width:110px;padding:4px 6px;font-size:12.5px}
@@ -1019,7 +1056,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <div class="boutons">
     <button class="secondaire" id="tester">Tester d'abord</button>
     <button class="principal" id="lancer" disabled>Lancer l'export</button>
-    <button class="secondaire" id="ouvrir">Ouvrir le dossier de destination</button>
+    <button class="secondaire" id="ouvrir">Ouvrir les dossiers produits</button>
   </div>
   <p class="note"><b>Tester d'abord</b> compte ce qui sera traité sans rien
      écrire sur le disque. <b>Lancer l'export</b> constitue les dossiers.</p>
@@ -1028,10 +1065,8 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <div id="journal" hidden></div>
 </section>
 
-<details id="avance">
-<summary>Réglages — à ne toucher qu'en cas de besoin</summary>
 <section>
-  <h2>1. Les dossiers à traiter</h2>
+  <h2>Où prendre les dossiers</h2>
   <div class="onglets">
     <button class="onglet actif" data-volet="voletFichier">Depuis un export Monday</button>
     <button class="onglet" data-volet="voletMonday">Depuis Monday, en direct</button>
@@ -1129,8 +1164,10 @@ button:disabled{opacity:.45;cursor:not-allowed}
      journal indique ce que chaque source apporte.</p>
 </section>
 
+<details id="avance">
+<summary>Boîtes mail et options — à ne toucher qu'en cas de besoin</summary>
 <section>
-  <h2>2. Les boîtes à interroger</h2>
+  <h2>Les boîtes à interroger</h2>
   <p class="aide">Séparées par des virgules. Un échange présent dans plusieurs
      boîtes n'est retenu qu'une fois.</p>
   <div class="grille">
@@ -1164,7 +1201,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 </section>
 
 <section>
-  <h2>3. Options</h2>
+  <h2>Options</h2>
   <p class="aide">Les valeurs par défaut conviennent dans la plupart des cas.</p>
   <label class="case"><input type="checkbox" id="simulation" checked />
     <span><b>Simulation</b><i>Compte les mails trouvés sans rien écrire. À faire
@@ -1661,7 +1698,7 @@ async function rafraichir() {
     if (etat.code === 0) {
       afficherBandeau(true, simulationDemandee
         ? "Test terminé — rien n'a été écrit. Si les volumes vous conviennent, cliquez sur « Lancer l'export »."
-        : "Export terminé. Le bouton « Ouvrir le dossier de destination » vous y emmène.");
+        : "Export terminé. « Ouvrir les dossiers produits » ouvre le répertoire où ils sont rangés.");
     } else {
       afficherBandeau(false, etat.erreur || "Terminé avec des erreurs — voir le détail ci-dessus.");
     }
@@ -1747,6 +1784,51 @@ function rappelerExportExistant(sortie) {
     "<b>Reprendre</b> pour ne traiter que ce qui manque.";
 }
 
+// Jours ecoules depuis l'echeance. Une echeance a venir n'est pas un retard,
+// et une echeance absente n'en est pas un non plus : ni l'une ni l'autre ne
+// doit s'afficher comme un zero, qui se lirait « a jour ».
+function retard(jours) {
+  if (jours === null || jours === undefined || jours <= 0) return "—";
+  return jours + " j";
+}
+
+function majSelection() {
+  const choisis = Array.from(document.querySelectorAll(".choix"))
+    .filter((c) => c.checked);
+  const bouton = $("supprimer");
+  if (!bouton) return;
+  bouton.disabled = choisis.length === 0;
+  $("compteChoix").textContent = choisis.length
+    ? choisis.length + " dossier(s) sélectionné(s)."
+    : "Cochez les dossiers à retirer de la liste.";
+}
+
+async function supprimerChoisis() {
+  const references = Array.from(document.querySelectorAll(".choix"))
+    .filter((c) => c.checked).map((c) => c.dataset.ref);
+  if (!references.length) return;
+
+  const apercu = references.slice(0, 8).join(", ")
+    + (references.length > 8 ? "…" : "");
+  if (!confirm(references.length + " dossier(s) seront retirés de la liste :\n\n"
+      + apercu + "\n\nLes fichiers déjà produits restent sur le disque.")) return;
+
+  // Effacer les fichiers est demande a part : un dossier retire par erreur se
+  // retrouve sur le disque, un repertoire supprime ne revient pas.
+  const fichiers = confirm("Supprimer aussi les fichiers de ces dossiers "
+    + "(mails, pièces jointes, note de synthèse) ?\n\n"
+    + "Annuler = garder les fichiers, retirer seulement de la liste.");
+
+  try {
+    const reponse = await api("/api/supprimer",
+      { references: references, fichiers: fichiers });
+    afficherBandeau(true, reponse.retires + " dossier(s) retiré(s)"
+      + (reponse.effaces ? ", " + reponse.effaces + " répertoire(s) supprimé(s)" : "")
+      + ".");
+    chargerDossiers();
+  } catch (erreur) { afficherBandeau(false, erreur.message); }
+}
+
 function messageVide() {
   return '<p class="vide">Aucun export trouvé dans le dossier de destination.' +
     "<br />Lancez un export depuis l'onglet « Export » — les dossiers produits " +
@@ -1806,9 +1888,11 @@ function rendreSuivi() {
 
   const lignes = DOSSIERS.map((d) => `
     <tr data-reference="${echapper(d.reference)}">
-      <td><b>${echapper(d.reference)}</b><br />
+      <td><input type="checkbox" class="choix" data-ref="${echapper(d.reference)}" /></td>
+      <td class="dossier"><b>${echapper(d.reference)}</b><br />
           <span style="color:var(--texte-3)">${echapper(d.nom)}</span></td>
       <td class="num">${euro(d.montant_du)}</td>
+      <td class="num">${retard(d.anciennete_jours)}</td>
       <td><select data-champ="statut">${options(d.statut)}</select></td>
       <td class="num"><input class="frais" data-champ="frais" type="text"
           value="${d.frais ? d.frais : ""}" placeholder="0" /> €</td>
@@ -1820,11 +1904,22 @@ function rendreSuivi() {
       <td style="color:var(--texte-3);font-size:11px">${echapper(d.maj)}</td>
     </tr>`).join("");
 
-  $("tableSuivi").innerHTML = `<table class="donnees">
-    <tr><th>Dossier</th><th class="num">Montant dû</th><th>État</th>
+  $("tableSuivi").innerHTML = `
+    <div class="barre-selection">
+      <button class="secondaire" id="supprimer" disabled>Supprimer</button>
+      <span id="compteChoix">Cochez les dossiers à retirer de la liste.</span>
+    </div>
+    <div class="defilable"><table class="donnees">
+    <tr><th class="etroite"></th><th>Dossier</th><th class="num">Montant dû</th>
+        <th class="num">Retard</th><th>État</th>
         <th class="num">Frais engagés</th><th>Note</th>
         <th class="num">Durée</th><th></th><th>Modifié</th></tr>
-    ${lignes}</table><div id="detailDossier"></div>`;
+    ${lignes}</table></div><div id="detailDossier"></div>`;
+
+  $("tableSuivi").querySelectorAll(".choix").forEach((coche) =>
+    coche.addEventListener("change", majSelection));
+  $("supprimer").addEventListener("click", supprimerChoisis);
+  majSelection();
 
   $("tableSuivi").querySelectorAll("[data-detail]").forEach((lien) =>
     lien.addEventListener("click", () => rendreDetail(lien.dataset.detail)));
@@ -2115,7 +2210,7 @@ function rendreBord() {
 
   const tuiles = [
     ["Dossiers suivis", a.nb_dossiers, `dont ${a.nb_en_cours} en cours`, ""],
-    ["Montant en recouvrement", euro(a.montant_en_cours), "dossiers non clôturés", ""],
+    ["Montant en contentieux", euro(a.montant_en_cours), "dossiers non clôturés", ""],
     ["Frais engagés", euro(a.frais_engages), "avocat, huissier, greffe", ""],
     ["Recouvré", euro(a.montant_gagne),
      `${a.nb_sans_tribunal} sans tribunal · ${a.nb_au_tribunal} au tribunal`,
@@ -2160,7 +2255,7 @@ function rendreBord() {
   rendreDormants();
 
   $("grapheBord").innerHTML = `
-    <h3>Montant en recouvrement par étape</h3>
+    <h3>Montant en contentieux par étape</h3>
     <p class="aide">La longueur des barres représente le montant dû ; le nombre de
        dossiers est indiqué à côté. Les cinq étapes en cours partagent une même
        teinte, de la plus soutenue à la plus claire ; les trois issues portent une

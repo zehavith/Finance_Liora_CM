@@ -1952,6 +1952,93 @@ def test_refus_monday() -> None:
         module_monday._appeler_api = vrai_appel
 
 
+def test_montants_espace_insecable() -> None:
+    """Monday sépare les milliers par une insécable, pas par une espace."""
+    print("\nMontants venus de Monday")
+
+    import suivi as module_suivi  # noqa: PLC0415
+    from dossiers import _montant  # noqa: PLC0415
+
+    cas = [
+        ("2 500 €", 2500.0),   # insécable
+        ("2 500 €", 2500.0),   # insécable fine, celle de Monday
+        ("23 250 €", 23250.0),
+        ("1 280,50", 1280.5),
+        ("", 0.0),
+        ("néant", 0.0),
+    ]
+    for texte, attendu in cas:
+        verifier(_montant(texte) == attendu,
+                 f"« {texte} » vaut {attendu} (obtenu : {_montant(texte)})")
+        verifier(module_suivi._nombre(texte) == attendu,
+                 f"au suivi aussi, « {texte} » vaut {attendu}")
+
+
+def test_suppression_dossiers() -> None:
+    """Retirer un dossier de la liste, avec ou sans ses fichiers."""
+    print("\nSuppression de dossiers")
+
+    import suivi as module_suivi  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "export"
+        sortie.mkdir()
+        for nom in ("2024-118_a", "2024-119_b", "2024-120_c"):
+            (sortie / nom).mkdir()
+            (sortie / nom / "index.csv").write_text("x", encoding="utf-8")
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du\n"
+            "FACT-1;A;2024-118_a;2 500 €\n"
+            "FACT-2;B;2024-119_b;800\n"
+            "FACT-3;C;2024-120_c;100\n",
+            encoding="utf-8-sig",
+        )
+        chemin_suivi = Path(repertoire) / "suivi.json"
+        module_suivi.enregistrer(chemin_suivi, {
+            "FACT-1": {"statut": "avocats", "frais": 300},
+            "FACT-3": {"statut": "non-transmis"},
+        })
+
+        # Le montant lu depuis le récapitulatif doit survivre à l'insécable.
+        avant = module_suivi.inventaire(sortie, chemin_suivi)
+        verifier([d["montant_du"] for d in avant] == [2500.0, 800.0, 100.0],
+                 f"les montants sont lus (obtenu : {[d['montant_du'] for d in avant]})")
+
+        resultat = module_suivi.supprimer(sortie, chemin_suivi, ["FACT-1"])
+        verifier(resultat["retires"] == 1 and resultat["effaces"] == 0,
+                 "un dossier retiré, aucun fichier effacé par défaut")
+        verifier((sortie / "2024-118_a" / "index.csv").exists(),
+                 "les fichiers restent sur le disque")
+        verifier("FACT-1" not in module_suivi.charger(chemin_suivi),
+                 "son état de suivi est oublié")
+        restants = module_suivi.inventaire(sortie, chemin_suivi)
+        verifier([d["reference"] for d in restants] == ["FACT-2", "FACT-3"],
+                 "il ne figure plus dans la liste")
+        verifier(module_suivi.charger(chemin_suivi).get("FACT-3", {}).get("statut")
+                 == "non-transmis", "les autres états sont intacts")
+
+        resultat = module_suivi.supprimer(
+            sortie, chemin_suivi, ["FACT-2"], avec_fichiers=True)
+        verifier(resultat["effaces"] == 1, "sur demande, le répertoire est supprimé")
+        verifier(not (sortie / "2024-119_b").exists(), "le répertoire a disparu")
+        verifier((sortie / "2024-120_c").exists(), "les autres répertoires sont intacts")
+
+        # Un chemin venu du fichier ne doit pas pouvoir désigner hors de l'export.
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du\n"
+            "FACT-9;X;../../dehors;0\n",
+            encoding="utf-8-sig",
+        )
+        dehors = Path(repertoire) / "dehors"
+        dehors.mkdir()
+        module_suivi.supprimer(sortie, chemin_suivi, ["FACT-9"], avec_fichiers=True)
+        verifier(dehors.exists(),
+                 "un répertoire hors de l'export n'est jamais supprimé")
+
+        verifier(module_suivi.supprimer(sortie, chemin_suivi, [])["retires"] == 0,
+                 "une demande vide ne fait rien")
+
+
 def test_filtre_chez_monday() -> None:
     """Le tri se fait chez Monday, pas après avoir tout rapatrié."""
     print("\nFiltre appliqué par Monday")
@@ -3682,6 +3769,8 @@ def main() -> int:
     test_echeance_facture()
     test_lecture_tableau_monday()
     test_refus_monday()
+    test_montants_espace_insecable()
+    test_suppression_dossiers()
     test_filtre_chez_monday()
     test_groupes_monday()
     test_sous_elements_monday()

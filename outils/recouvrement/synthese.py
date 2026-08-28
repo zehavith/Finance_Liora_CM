@@ -424,10 +424,10 @@ def rediger_contexte(dossier, synthese: Synthese, reference_temps: datetime) -> 
     if total and du and total != du:
         lignes.append(
             f"Facture de {total}, dont {du} restent dus à ce jour "
-            "— c'est le montant en recouvrement."
+            "— c'est le montant en contentieux."
         )
     elif du:
-        lignes.append(f"Montant en recouvrement : {du}, aucun règlement enregistré.")
+        lignes.append(f"Montant en contentieux : {du}, aucun règlement enregistré.")
     elif total:
         lignes.append(f"Montant facturé : {total}.")
 
@@ -875,10 +875,10 @@ def construire_html(
 
     montant = montant_lisible(dossier.montant_du) or montant_lisible(dossier.montant_total)
     bandeau_montant = (
-        f'<div class="montant"><span>Montant en recouvrement</span>'
+        f'<div class="montant"><span>Montant en contentieux</span>'
         f"<b>{html.escape(montant)}</b></div>"
         if montant
-        else '<div class="montant manquant"><span>Montant en recouvrement</span>'
+        else '<div class="montant manquant"><span>Montant en contentieux</span>'
         "<b>non renseigné au tableau de suivi</b></div>"
     )
 

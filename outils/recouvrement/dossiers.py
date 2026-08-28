@@ -538,7 +538,21 @@ def _fusionner(groupe: list[Dossier]) -> Dossier:
 
 
 def _montant(valeur: str) -> float:
-    texte = str(valeur or "").strip().replace("€", "").replace(" ", "").replace(",", ".")
+    """Lit un montant tel qu'il sort d'un tableau : « 2 500 € », « 1 280,50 ».
+
+    Monday sépare les milliers par une espace insécable — fine ou non — et non
+    par l'espace ordinaire. N'en retirer qu'une variante faisait échouer la
+    lecture en silence, et tous les montants s'affichaient à zéro.
+    """
+    texte = "".join(
+        caractere for caractere in str(valeur or "")
+        if not caractere.isspace()
+    ).replace("€", "").replace("\u00a0", "").replace(",", ".")
+    # Un montant peut arriver avec son séparateur de milliers en apostrophe
+    # (« 2'500 ») ; le point reste la virgule décimale déjà convertie.
+    texte = texte.replace("'", "").replace("\u2019", "")
+    if not texte:
+        return 0.0
     try:
         return float(texte)
     except ValueError:
