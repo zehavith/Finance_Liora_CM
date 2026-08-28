@@ -35,10 +35,16 @@
                     body: JSON.stringify({ query, variables: variables || {} }),
                 });
             } catch (netErr) {
+                const local = location.protocol === 'file:';
                 throw new Error(
-                    "Impossible de joindre l'API Monday. Vérifiez la connexion Internet, " +
-                    "et si la page est ouverte depuis un fichier local (file://), servez-la " +
-                    "via un petit serveur web (voir l'onglet Données). Détail : " + netErr.message
+                    local
+                        ? "L'API Monday n'est pas joignable parce que la page a été ouverte "
+                          + "directement depuis un fichier. Fermez cet onglet et lancez "
+                          + "« Lancer Suivi Recouvrement » (le fichier .bat sous Windows, "
+                          + ".command sur Mac) : la connexion Monday fonctionnera. "
+                          + "L'import des exports Excel / CSV, lui, marche déjà ici."
+                        : "Impossible de joindre l'API Monday. Vérifiez la connexion Internet "
+                          + "et le jeton. Détail : " + netErr.message
                 );
             }
 

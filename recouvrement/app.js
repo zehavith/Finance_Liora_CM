@@ -98,12 +98,30 @@
         }
         appliquerOptionsAuxCases();
 
+        avertirProtocoleFichier();
+
         const brutes = (factures || []).map(revivre);
         if (brutes.length) {
             state.brutes = brutes;
             $('#saved-count').textContent = U.nombre(brutes.length);
             $('#btn-open-saved').hidden = false;
         }
+    }
+
+    /**
+     * Ouverte en double-clic (file://), la page fonctionne entièrement — sauf
+     * l'appel à l'API Monday, que le navigateur refuse depuis une origine
+     * locale. On le dit avant que l'utilisatrice ne bute sur l'erreur.
+     */
+    function avertirProtocoleFichier() {
+        if (location.protocol !== 'file:') return;
+        const message = 'Page ouverte depuis un fichier : l\'import Excel / CSV '
+            + 'fonctionne, mais la connexion à Monday sera refusée par le navigateur. '
+            + 'Pour l\'activer, lancez « Lancer Suivi Recouvrement » '
+            + '(.bat sous Windows, .command sur Mac) au lieu d\'ouvrir index.html.';
+        [$('#monday-status'), $('#settings-monday-status')].forEach(el => {
+            if (el) { el.className = 'connect-status pending'; el.textContent = message; }
+        });
     }
 
     /** Les dates perdent leur type au passage par IndexedDB → reconstruction. */

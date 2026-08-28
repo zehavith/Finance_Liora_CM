@@ -10,17 +10,28 @@ table détaillée et exports.
 
 ## Lancer l'application
 
-Ouvrir `recouvrement/index.html` dans un navigateur moderne.
+**Double-cliquer sur `Lancer Suivi Recouvrement.bat`** (Windows) ou
+`Lancer Suivi Recouvrement.command` (Mac). Le navigateur s'ouvre sur
+l'application ; laisser la fenêtre noire ouverte pendant l'utilisation, la
+fermer pour quitter.
 
-Pour utiliser le connecteur Monday, il faut servir la page depuis un serveur
-web plutôt que par double-clic : les navigateurs bloquent les appels réseau
-depuis une page ouverte en `file://`. Depuis le dossier du dépôt :
+Le lanceur démarre un petit serveur web local, uniquement sur le poste — rien
+n'est publié sur Internet. C'est ce qui permet à la **connexion Monday** de
+fonctionner : les navigateurs refusent les appels réseau depuis une page
+ouverte en `file://`.
 
-```
-npx http-server -p 8080      # puis http://localhost:8080/recouvrement/
-```
+Le serveur sert aussi Suivi Cash, sur <http://localhost:8777/>.
 
-L'import de fichiers Excel / CSV fonctionne, lui, en `file://`.
+### Sans le lanceur
+
+Ouvrir `recouvrement/index.html` en double-clic fonctionne également : tous
+les calculs, l'import Excel / CSV, les graphiques et les exports marchent. Seule
+la connexion à l'API Monday est refusée ; l'application le signale dès l'accueil.
+
+Si le lanceur annonce que Python et Node.js sont introuvables, il bascule
+automatiquement en ouverture directe. Pour retrouver la connexion Monday,
+installer [Python](https://www.python.org/downloads/) en cochant *Add Python to
+PATH*, puis relancer.
 
 ## Ce que l'application répond
 
@@ -132,6 +143,8 @@ factures déjà réglées.
 ## Structure
 
 ```
+Lancer Suivi Recouvrement.bat      Lanceur Windows (serveur local + navigateur)
+Lancer Suivi Recouvrement.command  Lanceur macOS / Linux
 index.html          Écrans, onglets et barre de filtres
 app.js              État, chargement, filtres, rendu, exports
 styles.css          Compléments au design system de Suivi Cash
