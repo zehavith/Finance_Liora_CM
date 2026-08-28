@@ -46,7 +46,9 @@ PATH*, puis relancer.
 | Combien de factures en retard côté ADV ? Côté OPCO ? | Chips **Sources du retard** — activables séparément |
 | Quelle est l'antériorité de l'encours ? | Onglet *Balance âgée* |
 | Quels clients relancer en priorité ? | Tableau de bord — *Top clients en retard* |
-| Mes données sont-elles fiables ? | Onglet *Data Quality* |
+| Combien d'abonnements GoCardless vont au bout sans incident ? | Onglet *Prélèvements* |
+| Au bout de combien de temps un apprenant décroche ? | Onglet *Prélèvements* — courbe de survie |
+| Mes données sont-elles fiables ? | Onglets *Data Quality* et *Prélèvements* |
 
 ## Règles de date d'échéance
 
@@ -246,6 +248,65 @@ Retards : moyen, médian, maximum, **pondéré par l'encours** (un gros impayé
 ancien pèse plus qu'un petit), et **retard moyen au paiement** mesuré sur les
 factures déjà réglées.
 
+## Prélèvements GoCardless
+
+Onglet indépendant du suivi des factures : il analyse les échéanciers de
+prélèvement des apprenants B2C.
+
+### Exports à fournir
+
+Déposer les exports du tableau de bord GoCardless — ils sont reconnus à leurs
+colonnes, l'ordre n'importe pas.
+
+| Export | Rôle |
+|---|---|
+| **Payments** | indispensable — une ligne par prélèvement : échéance, montant, statut, motif de rejet |
+| **Customers** | indispensable — e-mail, prénom, nom |
+| **Subscriptions** | utile — date de début, périodicité, nombre d'échéances |
+| **Mandates** | utile — relie prélèvement et apprenant si Payments ne le fait pas |
+
+Sans *Customers*, les apprenants sont regroupés sur l'identifiant GoCardless et
+une même personne inscrite deux fois compte double ; l'application le signale.
+
+### Identité de l'apprenant
+
+L'**e-mail normalisé** fait foi. À défaut, repli sur **prénom + nom** normalisés,
+sans accents ni casse. Ce repli peut confondre deux homonymes : les apprenants
+concernés sont comptés et listés dans *Fiabilité de l'analyse*, avec les noms
+portés par plusieurs apprenants.
+
+### Statuts
+
+Un prélèvement `confirmed` ou `paid_out` est encaissé, `failed` ou
+`charged_back` est un **rejet**, `cancelled` est retiré avant présentation et
+n'entre donc pas dans le taux de rejet.
+
+### Indicateurs
+
+- **Abonnements sans incident** — apprenants n'ayant jamais eu de rejet.
+- **Délai avant le premier incident** — médiane et moyenne, en jours, plus le
+  rang du prélèvement concerné.
+- **Taux de rejet** — rejets rapportés aux prélèvements présentés.
+- **Incidents rattrapés** — apprenants repartis durablement, c'est-à-dire sans
+  aucun rejet sur leurs trois derniers prélèvements présentés. Un simple
+  encaissement après l'incident ne suffit pas à le dire.
+- **Montant à risque** — rejets non rattrapés et prélèvements encore en vol.
+
+### Courbe de survie
+
+La courbe donne la part d'apprenants n'ayant encore connu aucun rejet, mois
+après mois depuis leur premier prélèvement, par **estimateur de Kaplan-Meier**.
+Un apprenant entré il y a deux mois est observé deux mois puis « censuré » :
+il ne compte pas comme survivant à douze mois. Sans cette correction, les
+inscriptions récentes gonfleraient artificiellement le taux de tenue.
+
+### Montants
+
+Les exports du tableau de bord GoCardless sont libellés en euros décimaux.
+Si un fichier présente des montants tous entiers et anormalement élevés, ils
+sont lus comme des centimes et l'hypothèse est affichée en clair — jamais
+appliquée en silence.
+
 ## Structure
 
 ```
@@ -259,6 +320,7 @@ js/store.js         Persistance IndexedDB
 js/monday.js        Client GraphQL Monday (API v2, pagination par curseur)
 js/ingest.js        Détection des colonnes, normalisation, dédoublonnage
 js/metrics.js       Calculs : taux, retards, balance âgée, qualité
+js/prelevements.js  Analyse GoCardless : apprenants, survie, incidents
 js/ui.js            Formatage, tables, graphiques, modale, notifications
 ```
 

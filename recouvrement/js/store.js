@@ -18,7 +18,8 @@
         rules:      'rec_rules',         // règles d'échéance personnalisées
         settings:   'rec_settings',      // préférences (token, options)
         imports:    'rec_imports',       // historique des imports
-        grandLivre: 'rec_grand_livre',   // extrait de grand livre pointé
+        grandLivre: 'rec_grand_livre',   // extrait de grand livre lettré
+        gocardless: 'rec_gocardless',    // exports GoCardless (prélèvements)
     };
 
     function openDB() {

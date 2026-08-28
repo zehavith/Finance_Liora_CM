@@ -9,6 +9,7 @@
     'use strict';
 
     const R = window.LioraRules;
+    const PR = window.LioraPrelevements;
     const S = window.LioraStore;
     const M = window.LioraMonday;
     const I = window.LioraIngest;
@@ -27,6 +28,11 @@
         rules: R.DEFAULT_ECHEANCE_RULES.map(r => ({ ...r })),
         grandLivre: [],
         imports: [],
+
+        // Prélèvements GoCardless
+        gcl: { paiements: [], clients: [], mandats: [], abonnements: [], fichiers: [], unite: null },
+        apprenants: [],
+        gclOrphelins: 0,
         token: '',
         compte: null,
 
@@ -69,6 +75,10 @@
             triFin: { key: 'eurEnRetard', sens: 'desc' },
             mappingBoardId: null,
             onglet: 'dashboard',
+            rangUnite: 'nb',
+            prlvEtat: '',
+            prlvRecherche: '',
+            triPrlv: { key: 'montantEchoue', sens: 'desc' },
         },
 
         moisDispo: [],
@@ -108,6 +118,18 @@
         appliquerOptionsAuxCases();
 
         avertirProtocoleFichier();
+
+        try {
+            const gcl = await S.get(S.KEYS.gocardless, null);
+            if (gcl && gcl.paiements && gcl.paiements.length) {
+                state.gcl.paiements = gcl.paiements.map(revivreGcl);
+                state.gcl.clients = (gcl.clients || []).map(revivreGcl);
+                state.gcl.mandats = (gcl.mandats || []).map(revivreGcl);
+                state.gcl.abonnements = (gcl.abonnements || []).map(revivreGcl);
+                state.gcl.fichiers = gcl.fichiers || [];
+                recalculerPrelevements();
+            }
+        } catch (e) { console.warn('[Recouvrement] Rechargement GoCardless impossible', e); }
 
         const brutes = (factures || []).map(revivre);
         if (brutes.length) {
@@ -360,6 +382,7 @@
             case 'aging':        rendreAging(data); break;
             case 'financements': rendreFinancements(data); break;
             case 'factures':     rendreFactures(data); break;
+            case 'prelevements': rendrePrelevements(); break;
             case 'quality':      rendreQualite(data); break;
             case 'donnees':      rendreDonnees(); break;
         }
@@ -1766,6 +1789,382 @@
     }
 
     // ══════════════════════════════════════════════
+    //  Onglet : Prélèvements (GoCardless)
+    // ══════════════════════════════════════════════
+
+    /** Recalcule les apprenants à partir des exports chargés. */
+    function recalculerPrelevements() {
+        const g = state.gcl;
+        if (!g.paiements.length) { state.apprenants = []; state.gclOrphelins = 0; return; }
+
+        if (!g.unite) g.unite = PR.detecterUniteMontant(g.paiements);
+        PR.appliquerUnite(g.paiements, g.unite.unite);
+
+        const r = PR.construireApprenants(g);
+        state.apprenants = r.apprenants;
+        state.gclOrphelins = r.orphelins;
+    }
+
+    function rendrePrelevements() {
+        const charge = state.apprenants.length > 0;
+        $('#prlv-vide').hidden = charge;
+        $('#prlv-contenu').hidden = !charge;
+        if (!charge) { $('#prlv-badge').textContent = ''; return; }
+
+        const st = PR.statistiques(state.apprenants, state.gcl.paiements);
+        $('#prlv-badge').textContent =
+            `${U.nombre(st.nbApprenants)} apprenants · ${U.nombre(st.nbPrelevements)} prélèvements`;
+
+        rendreKpiPrelevements(st);
+        rendreNotesPrelevements(st);
+        rendreChartSurvie();
+        rendreChartRang();
+        rendreChartMotifs();
+        rendreChartEchecsMois();
+        rendreTableApprenants();
+        rendreQualitePrelevements();
+    }
+
+    function rendreKpiPrelevements(st) {
+        const tuile = (o) => `
+            <div class="recup-card">
+                <span class="recup-bar" style="background:${o.couleur}"></span>
+                <span class="recup-taux">${o.valeur}</span>
+                <span class="recup-label">${U.escapeHtml(o.label)}</span>
+                <span class="recup-value">${o.detail}</span>
+                <span class="recup-sub">${U.escapeHtml(o.sub)}</span>
+            </div>`;
+
+        $('#prlv-kpi').innerHTML = [
+            tuile({
+                couleur: U.couleurs.paye,
+                valeur: U.pourcent(st.partSansIncident, 0),
+                label: 'Abonnements sans incident',
+                detail: `${U.nombre(st.nbSansIncident)} sur ${U.nombre(st.nbApprenants)} apprenants`,
+                sub: 'aucun prélèvement rejeté',
+            }),
+            tuile({
+                couleur: U.couleurs.retard,
+                valeur: U.jours(st.delaiMedianPremierEchec),
+                label: 'Avant le premier incident',
+                detail: `moyenne ${U.jours(st.delaiMoyenPremierEchec)}`,
+                sub: st.rangMedianPremierEchec
+                    ? `soit le ${Math.round(st.rangMedianPremierEchec)}ᵉ prélèvement en médiane`
+                    : 'délai médian depuis le premier prélèvement',
+            }),
+            tuile({
+                couleur: U.couleurs.payeRetard,
+                valeur: U.pourcent(st.tauxEchecPrelevements, 1),
+                label: 'Taux de rejet',
+                detail: `${U.nombre(st.nbEchecsPrelevements)} rejets sur ${U.nombre(st.nbPresentes)} présentés`,
+                sub: `${U.euros(st.montantEchoue)} rejetés`,
+            }),
+            tuile({
+                couleur: U.couleurs.indigo,
+                valeur: U.pourcent(st.partRattrapes, 0),
+                label: 'Incidents rattrapés',
+                detail: `${U.nombre(st.nbRattrapes)} sur ${U.nombre(st.nbAvecIncident)} apprenants touchés`,
+                sub: 'repartis sans rejet sur leurs 3 derniers prélèvements',
+            }),
+            tuile({
+                couleur: '#f97316',
+                valeur: U.eurosCourt(st.montantARisque),
+                label: 'Montant à risque',
+                detail: `${U.nombre(st.nbEnDifficulte)} apprenants en difficulté`,
+                sub: 'rejets non rattrapés et prélèvements en cours',
+            }),
+        ].join('');
+    }
+
+    function rendreNotesPrelevements(st) {
+        const el = $('#prlv-notes');
+        const notes = [];
+        const u = state.gcl.unite;
+
+        if (u && !u.sur) notes.push({
+            ton: 'warn',
+            titre: 'Montants interprétés en centimes',
+            texte: `Les montants sont tous entiers et la médiane atteint ${U.nombre(u.mediane)} : ils ont été divisés par 100. `
+                + `Si c'était une erreur, les chiffres en euros sont cent fois trop petits.`,
+        });
+
+        if (!state.gcl.clients.length) notes.push({
+            ton: 'danger',
+            titre: "Export Customers absent",
+            texte: "Les apprenants sont regroupés sur l'identifiant GoCardless, sans e-mail ni nom : "
+                + "une même personne inscrite deux fois compte double.",
+        });
+
+        if (!state.gcl.abonnements.length) notes.push({
+            ton: 'info',
+            titre: "Export Subscriptions absent",
+            texte: "Les abonnements sont déduits des prélèvements. Le nombre d'échéances prévues et "
+                + "les dates de début officielles manquent.",
+        });
+
+        if (!notes.length) { el.innerHTML = ''; el.classList.add('hidden'); return; }
+        el.classList.remove('hidden');
+        el.innerHTML = notes.map(n => `
+            <div class="note note-${n.ton}">
+                <div class="note-body"><strong>${U.escapeHtml(n.titre)}</strong><span>${U.escapeHtml(n.texte)}</span></div>
+            </div>`).join('');
+    }
+
+    function rendreChartSurvie() {
+        const points = PR.survie(state.apprenants, 24);
+        U.chart('chart-survie', {
+            type: 'line',
+            data: {
+                labels: points.map(p => 'M+' + p.mois),
+                datasets: [{
+                    label: 'Apprenants sans aucun incident',
+                    data: points.map(p => p.survie),
+                    borderColor: U.couleurs.paye,
+                    backgroundColor: 'rgba(132, 204, 22, 0.12)',
+                    borderWidth: 2.5, tension: 0.25, fill: true,
+                    pointRadius: 2, pointHoverRadius: 5,
+                }],
+            },
+            options: {
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { grid: { display: false }, title: { display: true, text: 'Mois depuis le premier prélèvement' } },
+                    y: { grid: U.grille, min: 0, max: 100, ticks: { callback: v => v + ' %' } },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `${U.pourcent(ctx.parsed.y)} sans incident`,
+                            afterBody: items => {
+                                const p = points[items[0].dataIndex];
+                                return p ? ['', `${U.nombre(p.aRisque)} apprenants encore observés`,
+                                    p.evenements ? `${U.nombre(p.evenements)} premiers rejets ce mois-là` : 'aucun nouveau rejet'] : '';
+                            },
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    function rendreChartRang() {
+        const eur = state.ui.rangUnite === 'euros';
+        const rows = PR.distributionRang(state.apprenants, 12);
+        U.chart('chart-rang', {
+            type: 'bar',
+            data: {
+                labels: rows.map(r => r.rang),
+                datasets: [{
+                    data: rows.map(r => eur ? r.euros : r.nb),
+                    backgroundColor: rows.map((_, i) => i < 3 ? U.couleurs.retard : U.couleurs.payeRetard),
+                    borderRadius: 3,
+                }],
+            },
+            options: {
+                scales: {
+                    x: { grid: { display: false }, title: { display: true, text: 'Rang du prélèvement rejeté' } },
+                    y: { grid: U.grille, ticks: { callback: v => eur ? U.eurosCourt(v) : U.nombre(v) } },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const r = rows[ctx.dataIndex];
+                                return eur ? U.euros(r.euros) : `${U.nombre(r.nb)} apprenants`;
+                            },
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    function rendreChartMotifs() {
+        const rows = PR.motifsEchec(state.gcl.paiements);
+        if (!rows.length) { U.chart('chart-motifs', videConfig('Aucun rejet')); return; }
+        const libelle = {
+            insufficient_funds: 'Provision insuffisante',
+            mandate_cancelled: 'Mandat annulé',
+            account_closed: 'Compte clos',
+            bank_account_closed: 'Compte clos',
+            refer_to_payer: 'Contacter le payeur',
+            invalid_account_number: 'Coordonnées invalides',
+            authorisation_disputed: 'Autorisation contestée',
+            payment_stopped: 'Paiement bloqué',
+        };
+        U.chart('chart-motifs', {
+            type: 'doughnut',
+            data: {
+                labels: rows.map(r => libelle[r.motif] || r.motif),
+                datasets: [{
+                    data: rows.map(r => r.nb),
+                    backgroundColor: rows.map((_, i) => U.palette[i % U.palette.length]),
+                    borderColor: 'rgba(11,14,26,0.9)', borderWidth: 2,
+                }],
+            },
+            options: {
+                cutout: '58%',
+                plugins: {
+                    legend: { position: 'right' },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const r = rows[ctx.dataIndex];
+                                return `${U.nombre(r.nb)} rejets · ${U.euros(r.euros)}`;
+                            },
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    function rendreChartEchecsMois() {
+        const rows = PR.echecsParMois(state.gcl.paiements);
+        if (!rows.length) { U.chart('chart-echecs-mois', videConfig('Aucun prélèvement daté')); return; }
+        U.chart('chart-echecs-mois', {
+            type: 'bar',
+            data: {
+                labels: rows.map(r => U.moisLabel(r.mois, true)),
+                datasets: [
+                    {
+                        label: 'Encaissés', order: 2, stack: 'a',
+                        data: rows.map(r => r.nb - r.nbEchecs),
+                        backgroundColor: U.couleurs.paye, borderRadius: 3,
+                    },
+                    {
+                        label: 'Rejetés', order: 2, stack: 'a',
+                        data: rows.map(r => r.nbEchecs),
+                        backgroundColor: U.couleurs.retard, borderRadius: 3,
+                    },
+                    {
+                        type: 'line', label: 'Taux de rejet', yAxisID: 'y1', order: 0,
+                        data: rows.map(r => r.taux),
+                        borderColor: U.couleurs.accent, borderWidth: 2.5,
+                        tension: 0.3, pointRadius: 2, pointHoverRadius: 5,
+                    },
+                ],
+            },
+            options: {
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { stacked: true, grid: { display: false } },
+                    y: { stacked: true, grid: U.grille, ticks: { callback: v => U.nombre(v) } },
+                    y1: { position: 'right', min: 0, grid: { display: false }, ticks: { callback: v => v + ' %' } },
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ctx.dataset.yAxisID === 'y1'
+                                ? `Taux de rejet : ${U.pourcent(ctx.parsed.y)}`
+                                : `${ctx.dataset.label} : ${U.nombre(ctx.parsed.y)}`,
+                            afterBody: items => {
+                                const r = rows[items[0].dataIndex];
+                                return r ? ['', `${U.euros(r.eurEchecs)} rejetés sur ${U.euros(r.euros)} présentés`] : '';
+                            },
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    function rendreTableApprenants() {
+        const q = R.norm(state.ui.prlvRecherche);
+        let rows = state.apprenants.filter(a => {
+            if (state.ui.prlvEtat && a.etat !== state.ui.prlvEtat) return false;
+            if (q && !R.norm(a.nom + ' ' + a.email).includes(q)) return false;
+            return true;
+        });
+
+        const t = state.ui.triPrlv;
+        rows = rows.slice().sort((a, b) => {
+            const va = a[t.key], vb = b[t.key];
+            const cmp = (typeof va === 'string' || typeof vb === 'string')
+                ? String(va || '').localeCompare(String(vb || ''), 'fr')
+                : ((va == null ? -Infinity : va) - (vb == null ? -Infinity : vb));
+            return t.sens === 'asc' ? cmp : -cmp;
+        }).slice(0, 300);
+
+        const classeEtat = e => e === 'Sans incident' ? 'st-paye'
+            : e === 'Incident rattrapé' ? 'st-paye-retard'
+            : e === 'En difficulté' ? 'st-retard' : 'st-inconnu';
+
+        const el = $('#prlv-table');
+        el.innerHTML = U.table([
+            { key: 'nom', label: 'Apprenant', format: (v, r) => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(r.email || v)}">${U.escapeHtml(v)}</span>${r.identifieParNom ? ' <span class="pill pill-muted" title="Sans e-mail : identifié par son nom">?</span>' : ''}` },
+            { key: 'etat', label: 'État', format: v => `<span class="pill ${classeEtat(v)}">${U.escapeHtml(v)}</span>` },
+            { key: 'nbPresentes', label: 'Prélèvements', align: 'right', format: U.nombre },
+            { key: 'nbEchecs', label: 'Rejets', align: 'right', format: (v) => v ? `<span class="cell-danger">${U.nombre(v)}</span>` : '—' },
+            { key: 'tauxEchec', label: '% rejet', align: 'right', format: v => U.pourcent(v, 0) },
+            { key: 'rangPremierEchec', label: '1er rejet au n°', align: 'right', format: v => v == null ? '—' : U.nombre(v) },
+            { key: 'delaiPremierEchec', label: 'Après', align: 'right', format: v => v == null ? '—' : U.jours(v) },
+            { key: 'montantEncaisse', label: 'Encaissé', align: 'right', format: v => U.euros(v) },
+            { key: 'montantEchoue', label: 'Rejeté', align: 'right', format: v => v ? `<span class="cell-danger">${U.euros(v)}</span>` : '—' },
+            { key: 'datePremier', label: 'Depuis', align: 'center', format: U.dateFR },
+        ], rows, {
+            vide: 'Aucun apprenant pour ce filtre.',
+            tri: t, onSort: true, onRowClick: true,
+        });
+        U.bindTable(el, rows, {
+            onSort: k => { t.sens = (t.key === k && t.sens === 'desc') ? 'asc' : 'desc'; t.key = k; rendrePrelevements(); },
+            onRowClick: ouvrirFicheApprenant,
+        });
+    }
+
+    /** Échéancier complet d'un apprenant, prélèvement par prélèvement. */
+    function ouvrirFicheApprenant(a) {
+        const lignes = a.echeancier.map(p => `
+            <tr>
+                <td>${U.dateFR(p.dateEcheance)}</td>
+                <td class="ta-r">${U.euros(p.montant, true)}</td>
+                <td><span class="pill ${p.statut === 'succes' ? 'st-paye' : p.statut === 'echec' ? 'st-retard' : 'st-non-echue'}">${U.escapeHtml(PR.LIBELLE_STATUT[p.statut])}</span></td>
+                <td class="cell-note">${U.escapeHtml(p.motifEchec || '')}</td>
+            </tr>`).join('');
+
+        U.modal(a.nom + (a.email ? ` — ${a.email}` : ''), `
+            <div class="fiche">
+                <div class="fiche-head">
+                    <span class="pill ${a.etat === 'Sans incident' ? 'st-paye' : a.etat === 'En difficulté' ? 'st-retard' : 'st-paye-retard'}">${U.escapeHtml(a.etat)}</span>
+                    <span class="pill pill-muted">${U.nombre(a.nbPresentes)} prélèvements présentés</span>
+                    ${a.nbEchecs ? `<span class="pill pill-danger">${U.nombre(a.nbEchecs)} rejets</span>` : ''}
+                </div>
+                <div class="fiche-grid">
+                    <div class="fiche-row"><span>Encaissé</span><strong>${U.euros(a.montantEncaisse, true)}</strong></div>
+                    <div class="fiche-row"><span>Rejeté</span><strong>${U.euros(a.montantEchoue, true)}</strong></div>
+                    <div class="fiche-row"><span>Premier prélèvement</span><strong>${U.dateFR(a.datePremier)}</strong></div>
+                    <div class="fiche-row"><span>Dernier prélèvement</span><strong>${U.dateFR(a.dateDernier)}</strong></div>
+                    ${a.datePremierEchec ? `<div class="fiche-row"><span>Premier rejet</span><strong>${U.dateFR(a.datePremierEchec)} — ${U.nombre(a.rangPremierEchec)}ᵉ prélèvement</strong></div>` : ''}
+                    ${a.delaiPremierEchec != null ? `<div class="fiche-row"><span>Délai avant le premier rejet</span><strong>${U.jours(a.delaiPremierEchec)}</strong></div>` : ''}
+                    ${a.motifs.length ? `<div class="fiche-row"><span>Motifs</span><strong>${U.escapeHtml(a.motifs.join(', '))}</strong></div>` : ''}
+                </div>
+                <h4 class="fiche-soustitre">Échéancier</h4>
+                <table class="data-table"><thead><tr><th>Échéance</th><th class="ta-r">Montant</th><th>Statut</th><th>Motif</th></tr></thead>
+                <tbody>${lignes}</tbody></table>
+            </div>`, [{ label: 'Fermer', primary: true }]);
+    }
+
+    function rendreQualitePrelevements() {
+        const anomalies = PR.qualite(state.apprenants, state.gclOrphelins);
+        const el = $('#prlv-qualite');
+        if (!anomalies.length) {
+            el.innerHTML = '<div class="note note-ok"><div class="note-body"><strong>Rien à signaler</strong>'
+                + '<span>Chaque prélèvement est rattaché à un apprenant identifié par son e-mail.</span></div></div>';
+            return;
+        }
+        el.innerHTML = anomalies.map(a => `
+            <div class="quality-item quality-${a.gravite}">
+                <div class="quality-head">
+                    <span class="quality-dot"></span>
+                    <div class="quality-title"><strong>${U.escapeHtml(a.titre)}</strong><span>${U.nombre(a.nb)}</span></div>
+                </div>
+                <p class="quality-advice">${U.escapeHtml(a.conseil)}</p>
+            </div>`).join('');
+    }
+
+    // ══════════════════════════════════════════════
     //  Onglet : Data Quality
     // ══════════════════════════════════════════════
 
@@ -2213,6 +2612,79 @@
         }
     }
 
+    /**
+     * Import des exports GoCardless. Chaque fichier est reconnu à ses colonnes,
+     * l'ordre de dépôt n'a donc pas d'importance ; un même type déposé deux
+     * fois remplace le précédent.
+     */
+    async function importerGoCardless(files) {
+        if (!files || !files.length) return;
+        const journal = [];
+        const recus = {};
+
+        try {
+            for (const file of files) {
+                const rows = await lireFichier(file);
+                if (!rows.length) { journal.push(`${file.name} : fichier vide`); continue; }
+
+                const type = PR.detecterType(Object.keys(rows[0]));
+                if (!type) { journal.push(`${file.name} : type non reconnu, ignoré`); continue; }
+
+                switch (type) {
+                    case 'paiements':   recus.paiements = PR.normaliserPaiements(rows); break;
+                    case 'clients':     recus.clients = PR.normaliserClients(rows); break;
+                    case 'mandats':     recus.mandats = PR.normaliserMandats(rows); break;
+                    case 'abonnements': recus.abonnements = PR.normaliserAbonnements(rows); break;
+                }
+                journal.push(`${file.name} : ${type} — ${U.nombre(rows.length)} lignes`);
+            }
+
+            if (!Object.keys(recus).length) {
+                U.toast("Aucun export GoCardless reconnu. Attendus : Payments, Customers, Subscriptions, Mandates.", 'error', 9000);
+                return;
+            }
+
+            const g = state.gcl;
+            Object.assign(g, recus);
+            g.fichiers = [...new Set([...(g.fichiers || []), ...journal])];
+            if (recus.paiements) g.unite = null;   // ré-évaluer l'unité sur les nouveaux montants
+
+            recalculerPrelevements();
+            await sauverGoCardless();
+
+            if (!g.paiements.length) {
+                U.toast("Aucun prélèvement chargé : l'export Payments est indispensable.", 'error', 9000);
+            } else {
+                U.toast(`${U.nombre(state.apprenants.length)} apprenants reconstitués sur `
+                    + `${U.nombre(g.paiements.length)} prélèvements.`, 'success', 7000);
+            }
+            ouvrirOnglet('prelevements');
+        } catch (e) {
+            U.toast(e.message, 'error', 9000);
+        }
+    }
+
+    async function sauverGoCardless() {
+        try {
+            const g = state.gcl;
+            await S.set(S.KEYS.gocardless, {
+                paiements: g.paiements.map(serialiser),
+                clients: g.clients.map(serialiser),
+                mandats: g.mandats.map(serialiser),
+                abonnements: g.abonnements.map(serialiser),
+                fichiers: g.fichiers,
+            });
+        } catch (e) { console.warn('[Recouvrement] Sauvegarde GoCardless impossible', e); }
+    }
+
+    const CHAMPS_DATE_GCL = ['dateEcheance', 'dateCreation', 'dateDebut', 'dateFin'];
+
+    function revivreGcl(o) {
+        const r = { ...o };
+        for (const c of CHAMPS_DATE_GCL) r[c] = r[c] ? R.parseDate(r[c]) : null;
+        return r;
+    }
+
     /** Import du grand livre pointé : numéro de facture → date de règlement. */
     async function importerGrandLivre(file) {
         try {
@@ -2402,6 +2874,58 @@
         U.toast('Export Excel généré.', 'success');
     }
 
+    function exporterApprenants() {
+        if (!state.apprenants.length) { U.toast('Aucun apprenant à exporter.', 'error'); return; }
+        const rows = state.apprenants.map(a => ({
+            'Apprenant': a.nom,
+            'E-mail': a.email,
+            'Identifié par': a.email ? 'E-mail' : (a.identifieParNom ? 'Nom' : 'Identifiant GoCardless'),
+            'État': a.etat,
+            'Prélèvements présentés': a.nbPresentes,
+            'Encaissés': a.nbSucces,
+            'Rejets': a.nbEchecs,
+            '% de rejet': +a.tauxEchec.toFixed(2),
+            'Rang du 1er rejet': a.rangPremierEchec || '',
+            'Délai avant 1er rejet (j)': a.delaiPremierEchec == null ? '' : a.delaiPremierEchec,
+            'Montant encaissé (€)': Math.round(a.montantEncaisse),
+            'Montant rejeté (€)': Math.round(a.montantEchoue),
+            'Premier prélèvement': a.datePremier ? U.dateFR(a.datePremier) : '',
+            'Dernier prélèvement': a.dateDernier ? U.dateFR(a.dateDernier) : '',
+            'Motifs de rejet': a.motifs.join(' · '),
+        }));
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Apprenants');
+
+        const st = PR.statistiques(state.apprenants, state.gcl.paiements);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+            { Indicateur: 'Apprenants', Valeur: st.nbApprenants },
+            { Indicateur: 'Abonnements', Valeur: st.nbAbonnements },
+            { Indicateur: 'Sans incident', Valeur: st.nbSansIncident },
+            { Indicateur: 'Sans incident — %', Valeur: +st.partSansIncident.toFixed(2) },
+            { Indicateur: 'Avec incident', Valeur: st.nbAvecIncident },
+            { Indicateur: 'En difficulté', Valeur: st.nbEnDifficulte },
+            { Indicateur: 'Incidents rattrapés — %', Valeur: +st.partRattrapes.toFixed(2) },
+            { Indicateur: 'Taux de rejet des prélèvements — %', Valeur: +st.tauxEchecPrelevements.toFixed(2) },
+            { Indicateur: 'Délai médian avant 1er rejet (j)', Valeur: st.delaiMedianPremierEchec == null ? '' : Math.round(st.delaiMedianPremierEchec) },
+            { Indicateur: 'Rang médian du 1er rejet', Valeur: st.rangMedianPremierEchec || '' },
+            { Indicateur: 'Montant encaissé (€)', Valeur: Math.round(st.montantEncaisse) },
+            { Indicateur: 'Montant rejeté (€)', Valeur: Math.round(st.montantEchoue) },
+            { Indicateur: 'Montant à risque (€)', Valeur: Math.round(st.montantARisque) },
+        ]), 'Synthèse');
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            PR.survie(state.apprenants, 24).map(p => ({
+                'Mois depuis le 1er prélèvement': p.mois,
+                'Sans incident (%)': +p.survie.toFixed(2),
+                'Apprenants observés': p.aRisque,
+                'Premiers rejets': p.evenements,
+            }))), 'Survie');
+
+        XLSX.writeFile(wb, `Prelevements_Liora_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        U.toast('Export généré.', 'success');
+    }
+
     function exporterListe(factures, titre) {
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lignesExport(factures)), 'Factures');
@@ -2425,7 +2949,7 @@
         $$('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === nom));
         $$('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + nom));
         // La barre de filtres n'a pas de sens sur l'onglet Données
-        $('#filters-wrap').classList.toggle('hidden', nom === 'donnees');
+        $('#filters-wrap').classList.toggle('hidden', nom === 'donnees' || nom === 'prelevements');
         rendreTout();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -2605,6 +3129,31 @@
         brancherZoneDepot('#welcome-drop', '#welcome-file-input', files => importerFichiers(files));
         brancherZoneDepot('#settings-drop', '#settings-file-input', files => importerFichiers(files));
         brancherZoneDepot('#gl-drop', '#gl-file-input', files => importerGrandLivre(files[0]));
+        brancherZoneDepot('#prlv-drop', '#prlv-file-input', files => importerGoCardless(files));
+        brancherZoneDepot('#gcl-drop', '#gcl-file-input', files => importerGoCardless(files));
+
+        $('#btn-prlv-remplacer').addEventListener('click', () => $('#prlv-file-input-2').click());
+        $('#prlv-file-input-2').addEventListener('change', e => {
+            if (e.target.files.length) importerGoCardless([...e.target.files]);
+            e.target.value = '';
+        });
+
+        $$('#seg-rang-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.rangUnite = b.dataset.unite;
+            $$('#seg-rang-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendrePrelevements();
+        }));
+        $$('#seg-prlv-etat .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.prlvEtat = b.dataset.etat;
+            $$('#seg-prlv-etat .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendrePrelevements();
+        }));
+        let debPrlv;
+        $('#prlv-recherche').addEventListener('input', e => {
+            clearTimeout(debPrlv);
+            debPrlv = setTimeout(() => { state.ui.prlvRecherche = e.target.value; rendrePrelevements(); }, 250);
+        });
+        $('#btn-prlv-export').addEventListener('click', exporterApprenants);
 
         // ── Navigation ──
         $$('.nav-tab').forEach(t => t.addEventListener('click', () => ouvrirOnglet(t.dataset.tab)));

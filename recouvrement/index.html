@@ -119,6 +119,7 @@
             <button class="nav-tab" data-tab="aging">Balance âgée</button>
             <button class="nav-tab" data-tab="financements">Financements</button>
             <button class="nav-tab" data-tab="factures">Factures</button>
+            <button class="nav-tab" data-tab="prelevements">Prélèvements</button>
             <button class="nav-tab" data-tab="quality">Data Quality</button>
             <button class="nav-tab" data-tab="donnees">Données</button>
         </div>
@@ -650,6 +651,127 @@
         </div>
     </div>
 
+    <!-- ══════════ ONGLET : PRÉLÈVEMENTS ══════════ -->
+    <div class="tab-content" id="tab-prelevements">
+        <div class="dashboard-content">
+            <div class="section-header">
+                <h2>Prélèvements GoCardless</h2>
+                <div class="period-badge" id="prlv-badge"></div>
+            </div>
+
+            <div id="prlv-vide" class="empty-state">
+                <h3>Aucun export GoCardless chargé</h3>
+                <p>
+                    Déposez ci-dessous les exports du tableau de bord GoCardless. Les fichiers sont
+                    reconnus automatiquement à leurs colonnes — l'ordre et le nombre n'importent pas.
+                </p>
+                <div class="besoin-grid">
+                    <div class="besoin besoin-requis">
+                        <strong>Payments</strong><span>indispensable</span>
+                        <p>Une ligne par prélèvement : date d'échéance, montant, statut, motif de rejet.</p>
+                    </div>
+                    <div class="besoin besoin-requis">
+                        <strong>Customers</strong><span>indispensable</span>
+                        <p>L'identité de l'apprenant : e-mail, prénom, nom.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>Subscriptions</strong><span>utile</span>
+                        <p>Date de début, périodicité et nombre d'échéances de chaque abonnement.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>Mandates</strong><span>utile</span>
+                        <p>Fait le lien entre prélèvement et apprenant si Payments ne le porte pas.</p>
+                    </div>
+                </div>
+                <div class="upload-zone upload-zone-sm" id="prlv-drop">
+                    <p class="upload-text">Glissez vos exports GoCardless ici</p>
+                    <p class="upload-hint">.csv, .xlsx — sélection multiple</p>
+                    <input type="file" id="prlv-file-input" accept=".csv,.xlsx,.xls" multiple hidden>
+                </div>
+            </div>
+
+            <div id="prlv-contenu" hidden>
+                <div class="recup-grid" id="prlv-kpi"></div>
+                <div id="prlv-notes" class="scope-note"></div>
+
+                <div class="charts-grid">
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header">
+                            <h3>Combien de temps un apprenant tient-il sans incident ?</h3>
+                        </div>
+                        <span class="fv-hint">
+                            Part des apprenants n'ayant encore connu aucun rejet, mois après mois depuis
+                            leur premier prélèvement. Estimateur de Kaplan-Meier : les apprenants récents,
+                            observés moins longtemps, ne faussent pas la courbe.
+                        </span>
+                        <div class="chart-container chart-tall">
+                            <canvas id="chart-survie"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-grid charts-2col">
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3>À quel prélèvement ça casse</h3>
+                            <div class="chart-controls">
+                                <div class="seg seg-sm" id="seg-rang-unite">
+                                    <button class="seg-btn active" data-unite="nb">Nombre</button>
+                                    <button class="seg-btn" data-unite="euros">€</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="chart-container"><canvas id="chart-rang"></canvas></div>
+                    </div>
+                    <div class="chart-card">
+                        <div class="chart-header"><h3>Motifs de rejet</h3></div>
+                        <div class="chart-container"><canvas id="chart-motifs"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header"><h3>Taux de rejet par mois</h3></div>
+                        <span class="fv-hint">Sur les prélèvements présentés à la banque, hors annulations</span>
+                        <div class="chart-container chart-tall">
+                            <canvas id="chart-echecs-mois"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header">
+                            <h3>Apprenants</h3>
+                            <div class="chart-controls">
+                                <div class="seg seg-sm" id="seg-prlv-etat">
+                                    <button class="seg-btn active" data-etat="">Tous</button>
+                                    <button class="seg-btn" data-etat="En difficulté">En difficulté</button>
+                                    <button class="seg-btn" data-etat="Incident rattrapé">Rattrapés</button>
+                                    <button class="seg-btn" data-etat="Sans incident">Sans incident</button>
+                                </div>
+                                <input type="search" id="prlv-recherche" class="input input-sm" placeholder="Nom, e-mail…">
+                                <button class="btn btn-ghost btn-sm" id="btn-prlv-export">Exporter</button>
+                            </div>
+                        </div>
+                        <div class="table-wrap table-wrap-tall" id="prlv-table"></div>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header">
+                            <h3>Fiabilité de l'analyse</h3>
+                            <button class="btn btn-ghost btn-sm" id="btn-prlv-remplacer">Remplacer les exports</button>
+                        </div>
+                        <div id="prlv-qualite" class="quality-list"></div>
+                        <input type="file" id="prlv-file-input-2" accept=".csv,.xlsx,.xls" multiple hidden>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ══════════ ONGLET : DATA QUALITY ══════════ -->
     <div class="tab-content" id="tab-quality">
         <div class="dashboard-content">
@@ -751,6 +873,11 @@
                         <p class="upload-hint">Numéro de facture, date de règlement, montant</p>
                         <input type="file" id="gl-file-input" accept=".csv,.xlsx,.xls" hidden>
                     </div>
+                    <div class="upload-zone upload-zone-sm" id="gcl-drop">
+                        <p class="upload-text">Exports GoCardless</p>
+                        <p class="upload-hint">Payments, Customers, Subscriptions, Mandates</p>
+                        <input type="file" id="gcl-file-input" accept=".csv,.xlsx,.xls" multiple hidden>
+                    </div>
                 </div>
                 <div id="import-history" class="import-history"></div>
             </div>
@@ -789,6 +916,7 @@
 <script src="js/monday.js"></script>
 <script src="js/ingest.js"></script>
 <script src="js/metrics.js"></script>
+<script src="js/prelevements.js"></script>
 <script src="js/ui.js"></script>
 <script src="app.js"></script>
 </body>

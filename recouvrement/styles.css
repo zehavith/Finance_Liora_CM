@@ -596,6 +596,54 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
 .pagination button[disabled] { opacity: 0.3; cursor: not-allowed; }
 
 /* ============================
+   Onglet Prélèvements
+   ============================ */
+
+.empty-state {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: 2rem;
+    max-width: 900px;
+}
+.empty-state h3 { font-size: 1.1rem; margin-bottom: 0.5rem; }
+.empty-state > p { color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 1.5rem; }
+
+.besoin-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.85rem;
+    margin-bottom: 1.5rem;
+}
+.besoin {
+    background: rgba(99, 102, 241, 0.05);
+    border: 1px solid var(--border-color);
+    border-left-width: 3px;
+    border-left-color: var(--text-muted);
+    border-radius: var(--radius-md);
+    padding: 0.85rem 1rem;
+}
+.besoin-requis { border-left-color: var(--accent); }
+.besoin strong { display: block; font-size: 0.9rem; }
+.besoin > span {
+    display: inline-block;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin-bottom: 0.4rem;
+}
+.besoin-requis > span { color: var(--accent); }
+.besoin p { font-size: 0.76rem; color: var(--text-secondary); line-height: 1.45; }
+
+.fiche-soustitre {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 1.4rem 0 0.6rem;
+}
+
+/* ============================
    Data Quality
    ============================ */
 
@@ -812,10 +860,11 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
    Adaptatif
    ============================ */
 
-/* Six onglets + trois actions ne tiennent pas sur une seule ligne en dessous
-   de ~1450 px : les onglets passent sur une seconde rangée. */
-@media (max-width: 1450px) {
+/* Sept onglets et trois actions ne tiennent pas sur une seule ligne en dessous
+   de ~1700 px : les onglets passent sur une seconde rangée. */
+@media (max-width: 1700px) {
     .navbar-dash { flex-wrap: wrap; row-gap: 0.6rem; }
+    .navbar-dash .brand-name { white-space: nowrap; }
     .navbar-dash .nav-tabs {
         order: 3;
         width: 100%;
