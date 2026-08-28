@@ -165,6 +165,25 @@ La **requête Gmail est écrite au journal** pour chaque dossier. C'est la seule
 chose qui explique un « aucun message trouvé » : sans elle, il n'y a rien à
 diagnostiquer.
 
+### Tout effacer, en trois degrés séparés
+
+Le bouton **Tout effacer…** de l'onglet *État des dossiers* pose trois
+questions, dans cet ordre, parce que les trois choses ne se valent pas :
+
+| Degré | Ce que ça coûte de se tromper |
+|---|---|
+| la **liste** des dossiers | rien : elle se reconstitue en relançant un export |
+| les **fichiers** produits | une heure d'export |
+| le **suivi** saisi à la main | tout : étapes, dates, frais et notes n'existent nulle part ailleurs |
+
+Le suivi n'est jamais emporté par l'effacement des fichiers : il faut le
+demander pour lui-même, et la question le dit franchement. Une quatrième
+fenêtre récapitule ce qui va partir avant d'agir.
+
+Côté serveur, la confirmation est portée dans la requête plutôt que déduite
+d'un appel bien formé — une remise à zéro déclenchée par accident serait
+irrattrapable.
+
 ### Ce qui rend un dossier défendable
 
 Devant un tribunal, une convention signée et des heures effectivement suivies

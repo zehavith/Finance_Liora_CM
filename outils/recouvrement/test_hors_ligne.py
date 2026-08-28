@@ -2210,6 +2210,50 @@ def test_suppression_dossiers() -> None:
         verifier(module_suivi.supprimer(sortie, chemin_suivi, [])["retires"] == 0,
                  "une demande vide ne fait rien")
 
+        print("  -- tout effacer, en trois degrés séparés --")
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du\n"
+            "FACT-A;A;2024-120_c;10\n"
+            "FACT-B;B;dossier-b;20\n",
+            encoding="utf-8-sig",
+        )
+        (sortie / "dossier-b").mkdir(exist_ok=True)
+        module_suivi.enregistrer(chemin_suivi, {
+            "FACT-A": {"statut": "avocats", "frais": 900, "note": "audience 12/04"},
+        })
+
+        # Degré 1 : la liste seule. Fichiers et suivi restent.
+        r = module_suivi.tout_effacer(sortie, chemin_suivi)
+        verifier(r["retires"] == 2, "les deux dossiers sont retirés de la liste")
+        verifier(not (sortie / "_recapitulatif.csv").exists(),
+                 "le récapitulatif vidé est supprimé")
+        verifier((sortie / "dossier-b").exists(),
+                 "les fichiers restent : ils n'étaient pas demandés")
+        verifier(module_suivi.inventaire(sortie, chemin_suivi) == [],
+                 "plus rien n'est listé")
+        # Le suivi d'un dossier retiré part avec lui ; celui des autres reste.
+        module_suivi.enregistrer(chemin_suivi, {
+            "FACT-Z": {"statut": "tribunal-en-cours", "frais": 120},
+        })
+
+        # Degré 3 : le suivi, jamais emporté par les deux premiers.
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du\nFACT-C;C;dossier-b;5\n",
+            encoding="utf-8-sig",
+        )
+        r = module_suivi.tout_effacer(sortie, chemin_suivi, avec_fichiers=True)
+        verifier(r["effaces"] == 1 and not (sortie / "dossier-b").exists(),
+                 "sur demande, les répertoires sont supprimés")
+        verifier(module_suivi.charger(chemin_suivi).get("FACT-Z"),
+                 "effacer les fichiers n'emporte pas le suivi")
+
+        r = module_suivi.tout_effacer(sortie, chemin_suivi, avec_suivi=True)
+        verifier(r["suivi_efface"] == 1 and module_suivi.charger(chemin_suivi) == {},
+                 "le suivi n'est effacé que lorsqu'il est demandé")
+
+        verifier(module_suivi.tout_effacer(sortie, chemin_suivi)["retires"] == 0,
+                 "une remise à zéro sur un export déjà vide ne casse rien")
+
 
 def test_filtre_chez_monday() -> None:
     """Le tri se fait chez Monday, pas après avoir tout rapatrié."""
@@ -3318,6 +3362,15 @@ def test_interface() -> None:
                      "rien n'est marqué quand il n'y a rien à migrer")
         finally:
             interface.ecrire_preferences(avant_migration)
+
+        print("  -- une remise à zéro non confirmée est refusée --")
+        # Elle est irrattrapable : la confirmation est portée dans la requête
+        # plutôt que déduite d'un appel bien formé.
+        try:
+            appeler("/api/tout-effacer", {"fichiers": True, "suivi": True})
+            verifier(False, "effacement sans confirmation refusé")
+        except urllib.error.HTTPError as exc:
+            verifier(exc.code == 400, f"effacement sans confirmation refusé ({exc.code})")
 
         print("  -- les options de la page arrivent bien à l'outil --")
         # Une case ajoutée à la page mais oubliée dans la ligne de commande ne

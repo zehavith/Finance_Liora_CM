@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "44"
+VERSION = "45"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -554,6 +554,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/supprimer":
                 self._supprimer_dossiers(self._corps_json())
                 return
+            if chemin == "/api/tout-effacer":
+                self._tout_effacer(self._corps_json())
+                return
         except ValueError as exc:
             self._json(400, {"erreur": str(exc)})
             return
@@ -634,6 +637,24 @@ class Gestionnaire(BaseHTTPRequestHandler):
             sortie, SUIVI,
             [str(reference) for reference in references],
             avec_fichiers=bool(demande.get("fichiers")),
+        )
+        self._json(200, resultat)
+
+    def _tout_effacer(self, demande: dict) -> None:
+        """Remise à zéro, en trois degrés que la page demande séparément.
+
+        La confirmation est portée dans la requête plutôt que déduite : une
+        remise à zéro déclenchée par un appel malformé serait irrattrapable.
+        """
+        if demande.get("confirme") != "EFFACER":
+            raise ValueError("Effacement non confirmé.")
+
+        preferences = lire_preferences()
+        sortie = Path(preferences.get("sortie") or sortie_par_defaut())
+        resultat = module_suivi.tout_effacer(
+            sortie, SUIVI,
+            avec_fichiers=bool(demande.get("fichiers")),
+            avec_suivi=bool(demande.get("suivi")),
         )
         self._json(200, resultat)
 
@@ -913,6 +934,8 @@ table.donnees th.etroite{width:26px}
 .defilable{overflow-x:auto}
 .barre-selection{display:flex;align-items:center;gap:13px;margin-bottom:13px}
 .barre-selection span{font-size:12px;color:var(--texte-3)}
+.secondaire.danger{border-color:rgba(239,68,68,.4);color:#ef6a6a}
+.secondaire.danger:hover{border-color:#ef6a6a;background:rgba(239,68,68,.08)}
 .etat{white-space:nowrap;font-size:12px}
 .etat.oui{color:#5cc95c}
 .etat.non{color:#ef6a6a}
@@ -1862,6 +1885,44 @@ async function supprimerChoisis() {
   } catch (erreur) { afficherBandeau(false, erreur.message); }
 }
 
+// Trois choses de nature differente, demandees separement : la liste se
+// reconstitue en relancant un export, les fichiers aussi mais l'export dure
+// une heure, et le suivi saisi a la main ne se refait pas du tout.
+async function toutEffacer() {
+  const total = DOSSIERS.length;
+  if (!total) { afficherBandeau(false, "Il n'y a rien à effacer."); return; }
+
+  if (!confirm(`Retirer les ${total} dossiers de la liste ?\n\n`
+      + "Elle se reconstitue en relançant un export.")) return;
+
+  const fichiers = confirm(
+    "Supprimer aussi les fichiers produits — mails, pièces jointes, notes de "
+    + "synthèse ?\n\nIls se refont, mais l'export dure environ une heure.\n\n"
+    + "Annuler = garder les fichiers sur le disque.");
+
+  const suivi = confirm(
+    "Effacer aussi votre suivi : étapes, dates de passage, frais engagés, "
+    + "notes ?\n\n⚠ Celui-ci ne se refait pas — il n'existe nulle part "
+    + "ailleurs, et aucun export ne le reconstituera.\n\n"
+    + "Annuler = garder votre suivi (recommandé).");
+
+  const recap = ["la liste"];
+  if (fichiers) recap.push("les fichiers");
+  if (suivi) recap.push("VOTRE SUIVI");
+  if (!confirm("Dernière vérification.\n\nSeront effacés : "
+      + recap.join(", ") + ".\n\nConfirmer ?")) return;
+
+  try {
+    const r = await api("/api/tout-effacer",
+      { confirme: "EFFACER", fichiers: fichiers, suivi: suivi });
+    afficherBandeau(true, `${r.retires} dossier(s) retiré(s)`
+      + (r.effaces ? `, ${r.effaces} répertoire(s) supprimé(s)` : "")
+      + (r.suivi_efface ? `, ${r.suivi_efface} suivi(s) effacé(s)` : "")
+      + ".");
+    chargerDossiers();
+  } catch (erreur) { afficherBandeau(false, erreur.message); }
+}
+
 function messageVide() {
   return '<p class="vide">Aucun export trouvé dans le dossier de destination.' +
     "<br />Lancez un export depuis l'onglet « Export » — les dossiers produits " +
@@ -1966,6 +2027,7 @@ function rendreSuivi() {
   $("tableSuivi").innerHTML = `
     <div class="barre-selection">
       <button class="secondaire" id="supprimer" disabled>Supprimer</button>
+      <button class="secondaire danger" id="toutEffacer">Tout effacer…</button>
       <span id="compteChoix">Cochez les dossiers à retirer de la liste.</span>
     </div>
     <div class="defilable"><table class="donnees">
@@ -1978,6 +2040,7 @@ function rendreSuivi() {
   $("tableSuivi").querySelectorAll(".choix").forEach((coche) =>
     coche.addEventListener("change", majSelection));
   $("supprimer").addEventListener("click", supprimerChoisis);
+  $("toutEffacer").addEventListener("click", toutEffacer);
   majSelection();
 
   $("tableSuivi").querySelectorAll("[data-detail]").forEach((lien) =>

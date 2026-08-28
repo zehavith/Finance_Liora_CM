@@ -572,6 +572,50 @@ def courbe_par_mois(dossiers: list[dict], mois_max: int = 24) -> dict:
     }
 
 
+def tout_effacer(
+    racine_sortie: Path,
+    chemin_suivi: Path,
+    avec_fichiers: bool = False,
+    avec_suivi: bool = False,
+) -> dict:
+    """Remet l'application à zéro, en trois degrés séparés.
+
+    Trois choses de nature différente, qu'on n'efface pas d'un même geste :
+
+    - la **liste** des dossiers, toujours retirée. Elle se reconstitue en
+      relançant un export ;
+    - les **fichiers** produits — mails, pièces jointes, notes. Ils se
+      refont aussi, mais l'export dure une heure ;
+    - le **suivi** saisi à la main — étapes, dates, frais, notes. Celui-là
+      ne se refait pas : il n'existe nulle part ailleurs.
+
+    Chaque degré se demande à part, et le suivi n'est jamais emporté par
+    l'effacement des fichiers.
+    """
+    references = [
+        (rangee.get("reference") or "").strip()
+        for rangee in _lire_recapitulatif(racine_sortie / "_recapitulatif.csv")
+    ] if (racine_sortie / "_recapitulatif.csv").exists() else []
+
+    resultat = supprimer(
+        racine_sortie, chemin_suivi, references,
+        avec_fichiers=avec_fichiers,
+    ) if references else {"retires": 0, "effaces": 0, "oublies": 0}
+
+    # Le récapitulatif vidé de ses lignes n'a plus lieu d'être.
+    recapitulatif = racine_sortie / "_recapitulatif.csv"
+    if recapitulatif.exists():
+        recapitulatif.unlink()
+
+    resultat["suivi_efface"] = 0
+    if avec_suivi:
+        restant = charger(chemin_suivi)
+        resultat["suivi_efface"] = len(restant)
+        enregistrer(chemin_suivi, {})
+
+    return resultat
+
+
 def _mediane(valeurs: list[float]) -> float:
     tries = sorted(valeurs)
     milieu = len(tries) // 2
