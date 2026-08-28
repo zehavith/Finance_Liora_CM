@@ -2639,6 +2639,8 @@ def test_interface() -> None:
 
         restants = [m for m in ("__JETON__", "__SORTIE__", "__BOITES__",
                                 "__MOTEUR_PDF__", "__ETAT_MONDAY__", "__VERSION__",
+                                "__INVITE_TABLEAUX__", "__CHANTIERS__",
+                                "__CHANTIERS_PROPOSES__",
                                 "__IMPORT__", "__DOMAINES__", "__OPTIONS__",
                                 "__SEULEMENT__", "__TABLEAU__", "__REGIMES__",
                                 "__FILTRE_COLONNE__", "__FILTRE_VALEUR__") if m in page]
@@ -2661,6 +2663,48 @@ def test_interface() -> None:
             verifier(False, "extension non prise en charge refusée")
         except urllib.error.HTTPError as exc:
             verifier(exc.code == 400, f"extension non prise en charge refusée ({exc.code})")
+
+        print("  -- les tableaux du travail courant sont proposés --")
+        # Ils ne le sont qu'une fois : la trace enregistrée doit revenir dans
+        # la page, sans quoi un tableau décoché serait recoché au listage
+        # suivant.
+        avant = interface.lire_preferences()
+        try:
+            verifier("__CHANTIERS__" not in page and '"1.2."' in page and '"2.1."' in page,
+                     "la page porte les deux tableaux à cocher d'office")
+            verifier("let chantiersProposes = false" in page,
+                     "au premier lancement, la proposition reste à faire")
+            appeler("/api/reglages", {"chantiers_proposes": True})
+            verifier(interface.lire_preferences().get("chantiers_proposes") is True,
+                     "la proposition faite est mémorisée")
+            rendue = urllib.request.urlopen(f"{base}/", timeout=10).read().decode("utf-8")
+            verifier("let chantiersProposes = true" in rendue,
+                     "une fois proposés, les tableaux ne sont plus recochés d'office")
+        finally:
+            interface.ecrire_preferences(avant)
+
+        print("  -- sans jeton Monday, le bouton s'explique --")
+        # Le bandeau d'erreur vit en section 4 : un echec sur « Lister mes
+        # tableaux », en section 1, y reste hors de l'ecran. Le motif doit
+        # donc etre annonce des l'ouverture, sous le bouton lui-meme.
+        jeton_range = None
+        if interface.JETON_MONDAY.exists():
+            jeton_range = interface.JETON_MONDAY.read_text(encoding="utf-8")
+            interface.JETON_MONDAY.unlink()
+        try:
+            sans = urllib.request.urlopen(f"{base}/", timeout=10).read().decode("utf-8")
+            verifier("jeton Monday n'est pas encore enregistré" in sans,
+                     "sans jeton, la zone des tableaux dit pourquoi avant le clic")
+            try:
+                appeler("/api/tableaux", {"jeton_monday": ""})
+                verifier(False, "listage refusé sans jeton")
+            except urllib.error.HTTPError as exc:
+                motif = json.loads(exc.read().decode("utf-8")).get("erreur", "")
+                verifier(exc.code == 400 and "jeton Monday" in motif,
+                         f"listage refusé sans jeton, avec le motif ({exc.code})")
+        finally:
+            if jeton_range is not None:
+                interface.JETON_MONDAY.write_text(jeton_range, encoding="utf-8")
 
         print("  -- export complet piloté par l'interface --")
         contenu = (

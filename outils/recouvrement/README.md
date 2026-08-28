@@ -432,6 +432,13 @@ la même référence pour deux débiteurs différents : le second dossier est al
 renommé, et le renommage est annoncé. Sans cela, il écraserait le premier en
 silence.
 
+Au tout premier listage, les deux tableaux du travail courant — ceux dont le
+nom commence par `1.2.` et `2.1.` — se cochent seuls : « Lister mes tableaux »
+suffit à être prêt à lancer. Le repérage se fait sur le numéro, qui ne bouge
+pas, et non sur le nom complet qu'un renommage ferait glisser. Cela n'arrive
+qu'une fois : ensuite le choix enregistré fait foi, et un tableau décoché le
+reste. En ajouter d'autres, ou en retirer, se fait dans la même liste.
+
 ### Ne traiter que les dossiers qualifiés
 
 Deux champs en bas de la section 1 : **une colonne** et **la valeur

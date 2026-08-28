@@ -63,6 +63,12 @@ FILTRE_VALEUR_PAR_DEFAUT = (
     "Dossier à faire passer en contentieux,"
     "Dossier à transmettre au service contentieux"
 )
+# Ces deux tableaux sont le travail courant du service : ils se cochent seuls
+# au premier listage, pour que « Lister mes tableaux » suffise à être prêt.
+# Le repérage se fait sur le numéro, qui ne bouge pas, plutôt que sur le nom
+# complet, qu'un renommage ferait glisser. Une fois le choix enregistré, il
+# fait foi : décocher l'un des deux tient, et rien n'est recoché de force.
+CHANTIERS_PAR_DEFAUT = ("1.2.", "2.1.")
 # Cases de l'onglet Export mémorisées d'une session à l'autre, avec leur
 # valeur au tout premier lancement. La simulation est cochée au départ : on
 # ne lance pas un premier export réel sans avoir compté ce qu'il ramènera.
@@ -363,6 +369,16 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 if JETON_MONDAY.exists()
                 else "collez le jeton ici (facultatif)",
             )
+            # Sans jeton, « Lister mes tableaux » ne peut qu'échouer. Le dire
+            # à l'ouverture épargne un clic qui a tout l'air d'un bouton mort.
+            page = page.replace(
+                "__INVITE_TABLEAUX__",
+                "Cliquez sur « Lister mes tableaux »."
+                if JETON_MONDAY.exists()
+                else "Le jeton Monday n'est pas encore enregistré : "
+                     "renseignez-le en section 2 ci-dessous, puis cliquez sur "
+                     "« Lister mes tableaux ».",
+            )
             # Ces valeurs atterrissent dans des attributs HTML : elles
             # viennent du poste, mais un guillemet suffirait à casser la page.
             page = page.replace(
@@ -394,6 +410,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
                            ensure_ascii=False).replace("<", "\\u003c"),
             ).replace(
                 "__TABLEAU__", _attribut(preferences.get("tableau", ""))
+            ).replace(
+                "__CHANTIERS__",
+                json.dumps(CHANTIERS_PAR_DEFAUT, ensure_ascii=False),
+            ).replace(
+                "__CHANTIERS_PROPOSES__",
+                "true" if preferences.get("chantiers_proposes") else "false",
             ).replace("__OPTIONS__", _cases_json(preferences))
             self._repondre(200, page.encode("utf-8"), "text/html; charset=utf-8")
             return
@@ -479,6 +501,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
                         "filtre_colonne", "filtre_valeur", "tableau")
             if cle in demande
         }
+
+        # Une fois les tableaux courants proposés, ils ne le sont plus jamais :
+        # sans cette trace, décocher l'un des deux serait défait au listage
+        # suivant.
+        if demande.get("chantiers_proposes"):
+            valeurs["chantiers_proposes"] = True
 
         regimes = demande.get("regimes_echeance")
         if isinstance(regimes, str) and regimes:
@@ -821,6 +849,8 @@ select:focus,input.frais:focus,input.note:focus{outline:none;border-color:var(--
 .liste-tableaux .case i{display:block;font-size:11px;opacity:.6;font-style:normal}
 .liste-tableaux .case{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}
 .liste-tableaux select.regime{font-size:11.5px;padding:3px 6px}
+.echec-liste{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.35);
+  border-radius:8px;padding:11px 13px;font-size:13px}
 .courbe svg{width:100%;height:auto;aspect-ratio:760/240;display:block;overflow:visible}
 .courbe .grille{stroke:rgba(255,255,255,.10);stroke-width:1}
 .courbe .axe{fill:var(--doux);font-size:10px}
@@ -946,7 +976,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
         <button class="secondaire" id="listerTableaux">Lister mes tableaux</button>
       </div>
     </div>
-    <div id="tableau" class="liste-tableaux">Cliquez sur « Lister mes tableaux ».</div>
+    <div id="tableau" class="liste-tableaux">__INVITE_TABLEAUX__</div>
     <p class="note">Cochez-en plusieurs : les lignes de tous les tableaux
        cochés sont réunies en un seul lot, et le filtre ci-dessous s'y applique
        de la même façon.</p>
@@ -1102,6 +1132,8 @@ const TABLEAU_MEMORISE = "__TABLEAU__";
 let TABLEAUX = [];
 const TABLEAUX_COCHES = new Set(TABLEAU_MEMORISE.split(",").filter(Boolean));
 const REGIMES_ECHEANCE = __REGIMES__;
+const CHANTIERS = __CHANTIERS__;
+let chantiersProposes = __CHANTIERS_PROPOSES__;
 let fichierChoisi = null, position = 0, sondage = null, mode = "fichier";
 // Le fichier importé est conservé à côté de l'outil, mais aucun navigateur
 // ne peut repeupler un champ de fichier : on le rappelle, et on permet de
@@ -1155,12 +1187,20 @@ $("listerTableaux").addEventListener("click", async () => {
   const ancien = bouton.textContent;
   bouton.textContent = "Interrogation de Monday…";
   try {
+    $("tableau").textContent = "Interrogation de Monday…";
     const reponse = await api("/api/tableaux",
       { jeton_monday: $("jetonMonday").value });
     TABLEAUX = reponse.tableaux;
+    const proposes = proposerChantiers();
     rendreTableaux();
-    afficherBandeau(true, TABLEAUX.length + " tableau(x) trouvé(s).");
+    afficherBandeau(true, TABLEAUX.length + " tableau(x) trouvé(s)." +
+      (proposes ? " Les " + proposes + " tableaux de recouvrement sont cochés." : ""));
   } catch (erreur) {
+    // Le bandeau vit en section 4, hors de l'écran quand on clique ici : un
+    // échec y resterait invisible, et le bouton passerait pour inerte. Le
+    // motif s'écrit donc aussi sous le bouton, là où le regard se trouve.
+    $("tableau").innerHTML = '<div class="echec-liste">' +
+      echapper(erreur.message) + "</div>";
     afficherBandeau(false, erreur.message);
   } finally {
     bouton.disabled = false;
@@ -1168,6 +1208,19 @@ $("listerTableaux").addEventListener("click", async () => {
     majBouton();
   }
 });
+// Au tout premier listage, les tableaux du travail courant se cochent seuls :
+// il n'y a plus qu'à lancer. Une seule fois — ensuite le choix enregistré
+// fait foi, sans quoi un tableau écarté reviendrait à chaque listage.
+function proposerChantiers() {
+  if (chantiersProposes) return 0;
+  const retenus = TABLEAUX.filter((tab) =>
+    CHANTIERS.some((prefixe) => (tab.nom || "").trim().startsWith(prefixe)));
+  retenus.forEach((tab) => TABLEAUX_COCHES.add(tab.id));
+  chantiersProposes = true;
+  enregistrerReglages();
+  return retenus.length;
+}
+
 // Mêmes mots-clés que côté outil : les tableaux B2C financent la formation par
 // l'apprenant, l'échéance y tombe au début de la formation.
 function regimeDeduit(nom) {
@@ -1266,6 +1319,7 @@ function reglages() {
     filtre_valeur: $("filtreValeur").value,
     tableau: tableauxCoches(),
     regimes_echeance: reglesEcheance(),
+    chantiers_proposes: chantiersProposes,
     jeton_monday: $("jetonMonday").value, options: options,
   };
 }
