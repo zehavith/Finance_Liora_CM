@@ -54,6 +54,8 @@
             uniteMois: 'euros',
             uniteHeat: 'euros',
             uniteRecup: 'euros',
+            repartitionDims: 'perimetre,financement',
+            repartitionOuverts: new Set(),
             agingDim: 'financement',
             page: 1,
             pageSize: 50,
@@ -401,6 +403,8 @@
         rendreRecuperation(v);
         rendreNoteperimetre(data, v);
 
+        rendreRepartition(data);
+
         // ── Graphique mensuel ──
         const rows = X.parMois(data, state.filtres.baseMois);
         rendreChartMois(rows);
@@ -435,13 +439,14 @@
         const val = (e, n) => eur ? U.euros(e) : U.nombre(n);
 
         const tuile = (o) => `
-            <div class="recup-card${o.muted ? ' recup-muted' : ''}">
+            <${o.etats ? 'button' : 'div'} class="recup-card${o.muted ? ' recup-muted' : ''}"
+                ${o.etats ? `data-etats="${U.escapeHtml(o.etats.join('|'))}" title="Voir ces factures"` : ''}>
                 <span class="recup-bar" style="background:${o.couleur}"></span>
                 <span class="recup-taux">${U.pourcent(o.taux, 0)}</span>
                 <span class="recup-label">${U.escapeHtml(o.label)}</span>
                 <span class="recup-value">${o.valeur}</span>
                 <span class="recup-sub">${U.escapeHtml(o.sub)}</span>
-            </div>`;
+            </${o.etats ? 'button' : 'div'}>`;
 
         const horsDispo = (v.nbPayeesHorsRecouvrement + v.nbPayeesViaRecouvrement) > 0;
 
@@ -449,6 +454,7 @@
             tuile({
                 couleur: U.couleurs.paye,
                 taux: eur ? v.tauxRegleATempsEuros : v.tauxRegleATempsNb,
+                etats: ['Payée'],
                 label: 'Réglé sans recouvrement',
                 valeur: val(v.eurosRegleATemps, v.nbRegleATemps),
                 sub: "encaissé avant l'échéance, jamais en retard",
@@ -456,6 +462,7 @@
             tuile({
                 couleur: U.couleurs.payeRetard,
                 taux: eur ? v.tauxRegleRetardEuros : v.tauxRegleRetardNb,
+                etats: ['Payée en retard'],
                 label: 'Récupéré en retard',
                 valeur: val(v.eurosPayeesRetard, v.nbPayeesRetard),
                 sub: "encaissé, mais après l'échéance",
@@ -463,6 +470,7 @@
             tuile({
                 couleur: U.couleurs.retard,
                 taux: eur ? v.tauxResteEuros : v.tauxResteNb,
+                etats: ['En retard'],
                 label: 'Reste à recouvrer',
                 valeur: val(v.eurosEnRetard, v.nbEnRetard),
                 sub: 'échu et toujours impayé',
@@ -477,12 +485,19 @@
                     : "d'après le groupe d'origine des factures payées",
             }) : tuile({
                 couleur: U.couleurs.inconnu, muted: true,
+                etats: null,
                 taux: null,
                 label: 'Payé hors circuit recouvrement',
                 valeur: '—',
                 sub: 'nécessite la colonne « Groupe » du tableau des factures payées',
             }),
         ].join('');
+
+        $$('[data-etats]', el).forEach(b => b.addEventListener('click', () => {
+            state.filtres.etats = new Set(b.dataset.etats.split('|'));
+            state.ui.page = 1;
+            ouvrirOnglet('factures');
+        }));
     }
 
     /** Rappels métier contextuels (OPCO sans recouvrement, retards côté ADV). */
@@ -531,6 +546,127 @@
                 ${n.action ? `<button class="btn btn-ghost btn-sm" data-note="${i}">${U.escapeHtml(n.action.label)}</button>` : ''}
             </div>`).join('');
         $$('[data-note]', el).forEach(b => b.addEventListener('click', () => notes[+b.dataset.note].action.fn()));
+    }
+
+    // ── Répartition des montants (arbre dépliable) ──
+
+    /** Dimensions disponibles pour l'arbre de répartition. */
+    const DIMENSIONS = {
+        perimetre:   { key: 'perimetre',   titre: 'Périmètre',   fn: f => f.perimetre || '—' },
+        financement: { key: 'financement', titre: 'Financement', fn: f => f.financement || 'INCONNU',
+                       labelFn: k => R.getRule(k, state.rules).label },
+        board:       { key: 'board',       titre: 'Tableau',     fn: f => f.board || '—' },
+        groupe:      { key: 'groupe',      titre: 'Groupe',      fn: f => f.groupe || f.groupeOrigine || '—' },
+        mois:        { key: 'mois',        titre: 'Mois',        fn: f => f.moisEcheance || '—',
+                       labelFn: k => (k === '—' ? 'Échéance inconnue' : U.moisLabel(k)) },
+        client:      { key: 'client',      titre: 'Client',      fn: f => f.client || '—' },
+    };
+
+    function rendreRepartition(data) {
+        const el = $('#repartition-table');
+        if (!el) return;
+
+        const dims = state.ui.repartitionDims.split(',').map(k => DIMENSIONS[k]).filter(Boolean);
+        const arbre = X.repartitionMontants(data, dims);
+        const totalGeneral = X.agreger(data);
+
+        // Aplatit l'arbre en lignes, en respectant les nœuds dépliés
+        const lignes = [];
+        (function parcourir(noeuds, niveau) {
+            for (const n of noeuds) {
+                const ouvert = state.ui.repartitionOuverts.has(n.chemin);
+                lignes.push({ ...n, niveau, ouvert, feuille: !n.enfants.length });
+                if (ouvert && n.enfants.length) parcourir(n.enfants, niveau + 1);
+            }
+        })(arbre, 0);
+
+        const maxTotal = Math.max(1, ...arbre.map(n => n.total));
+
+        const detailHors = n => `Réglé ${U.euros(n.eurRegle)} (${U.nombre(n.nbRegle)}) · `
+            + `Non échu ${U.euros(n.eurNonEchu)} (${U.nombre(n.nbNonEchu)})`
+            + (n.eurSansEcheance ? ` · Échéance inconnue ${U.euros(n.eurSansEcheance)} (${U.nombre(n.nbSansEcheance)})` : '');
+
+        const cols = [
+            {
+                key: 'label', label: dims.map(d => d.titre).join(' › '), sortable: false,
+                format: (v, r) => {
+                    const fleche = r.feuille
+                        ? '<span class="tree-spacer"></span>'
+                        : `<button class="tree-toggle" data-chemin="${U.escapeHtml(r.chemin)}" title="${r.ouvert ? 'Replier' : 'Déplier'}">${r.ouvert ? '▾' : '▸'}</button>`;
+                    return `<span class="tree-cell tree-n${r.niveau}">${fleche}`
+                        + `<span class="tree-label" title="${U.escapeHtml(v)}">${U.escapeHtml(v)}</span></span>`;
+                },
+            },
+            { key: 'nb', label: 'Factures', align: 'right', format: U.nombre },
+            {
+                key: 'total', label: 'Montant total', align: 'right',
+                format: (v, r) => `${U.euros(v)} ${U.barre(v, maxTotal, 'rgba(99,102,241,0.5)')}`,
+            },
+            {
+                key: 'eurHorsRecouvrement', label: 'Hors recouvrement', align: 'right',
+                title: 'Réglé, non échu, ou échéance non calculable',
+                format: (v, r) => `<span title="${U.escapeHtml(detailHors(r))}">${U.euros(v)}<span class="cell-mini">${U.nombre(r.nbHorsRecouvrement)} fact.</span></span>`,
+            },
+            {
+                key: 'eurEnRecouvrement', label: 'En recouvrement', align: 'right',
+                title: 'Factures échues et impayées',
+                format: (v, r) => v
+                    ? `<span class="cell-danger" title="Encours restant dû : ${U.euros(r.encoursEnRecouvrement)}">${U.euros(v)}<span class="cell-mini">${U.nombre(r.nbEnRecouvrement)} fact.</span></span>`
+                    : '<span class="ag-zero">—</span>',
+            },
+            {
+                key: 'tauxEur', label: '% en recouv.', align: 'right',
+                format: (v, r) => `<span class="taux-cell">${U.pourcent(v, 1)}${U.barre(v, 100, U.couleurs.retard)}</span>`,
+            },
+            { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
+        ];
+
+        const total = {
+            label: '<strong>Total général</strong>',
+            nb: U.nombre(totalGeneral.nb),
+            total: U.euros(totalGeneral.total),
+            eurHorsRecouvrement: U.euros(totalGeneral.eurHorsRecouvrement),
+            eurEnRecouvrement: U.euros(totalGeneral.eurEnRecouvrement),
+            tauxEur: U.pourcent(totalGeneral.tauxEur, 1),
+            retardMoyen: U.jours(totalGeneral.retardMoyen),
+        };
+
+        el.innerHTML = U.table(cols, lignes, {
+            vide: 'Aucune facture sur ce périmètre.', total, onRowClick: true,
+            rowClass: r => 'tree-row tree-row-n' + r.niveau,
+        });
+
+        // Le clic sur la flèche déplie ; le clic sur la ligne ouvre les factures.
+        $$('.tree-toggle', el).forEach(btn => btn.addEventListener('click', ev => {
+            ev.stopPropagation();
+            const c = btn.dataset.chemin;
+            const set = state.ui.repartitionOuverts;
+            if (set.has(c)) set.delete(c); else set.add(c);
+            rendreRepartition(facturesFiltrees());
+        }));
+
+        U.bindTable(el, lignes, { onRowClick: n => appliquerFiltreNoeud(n) });
+    }
+
+    /** Traduit un nœud de l'arbre en filtres, puis bascule sur les factures. */
+    function appliquerFiltreNoeud(noeud) {
+        const f = state.filtres;
+        // Le chemin porte toutes les dimensions du nœud et de ses parents
+        for (const segment of noeud.chemin.split('›')) {
+            const i = segment.indexOf(':');
+            const dim = segment.slice(0, i), cle = segment.slice(i + 1);
+            switch (dim) {
+                case 'perimetre':   f.perimetre = cle; break;
+                case 'financement': f.financements = new Set([cle]); break;
+                case 'board':       f.boards = new Set([cle]); break;
+                case 'client':      f.client = cle; break;
+                case 'mois':        if (cle !== '—') { f.mois = new Set([cle]); rendreBoutonsMois(); } break;
+                case 'groupe':      f.recherche = cle; $('#search-input').value = cle; break;
+            }
+        }
+        majSegments();
+        state.ui.page = 1;
+        ouvrirOnglet('factures');
     }
 
     function rendreChartMois(rows) {
@@ -1727,6 +1863,29 @@
         }));
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(fins), 'Par financement');
 
+        // Répartition hors / en recouvrement, à plat
+        const dims = state.ui.repartitionDims.split(',').map(k => DIMENSIONS[k]).filter(Boolean);
+        const repartition = [];
+        (function aplatir(noeuds) {
+            for (const n of noeuds) {
+                repartition.push({
+                    'Niveau': DIMENSIONS[n.dimension] ? DIMENSIONS[n.dimension].titre : n.dimension,
+                    'Libellé': n.label,
+                    'Factures': n.nb,
+                    'Montant total (€)': Math.round(n.total),
+                    'Hors recouvrement (€)': Math.round(n.eurHorsRecouvrement),
+                    'dont réglé (€)': Math.round(n.eurRegle),
+                    'dont non échu (€)': Math.round(n.eurNonEchu),
+                    'En recouvrement (€)': Math.round(n.eurEnRecouvrement),
+                    'Encours restant dû (€)': Math.round(n.encoursEnRecouvrement),
+                    '% en recouvrement (€)': +n.tauxEur.toFixed(2),
+                    'Retard moyen (j)': n.retardMoyen == null ? '' : Math.round(n.retardMoyen),
+                });
+                if (n.enfants.length) aplatir(n.enfants);
+            }
+        })(X.repartitionMontants(data, dims));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(repartition), 'Répartition');
+
         // Balance âgée
         const aging = X.balanceAgee(data).map(b => ({
             'Antériorité': b.label, 'Factures': b.nb, 'Encours (€)': Math.round(b.euros),
@@ -1975,6 +2134,24 @@
             $$('#seg-unite-mois .seg-btn').forEach(x => x.classList.toggle('active', x === b));
             rendreTout();
         }));
+        $$('#seg-repartition .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.repartitionDims = b.dataset.dims;
+            state.ui.repartitionOuverts = new Set();
+            $$('#seg-repartition .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendreTout();
+        }));
+        $('#btn-repartition-toggle').addEventListener('click', () => {
+            const s = state.ui.repartitionOuverts;
+            if (s.size) { s.clear(); $('#btn-repartition-toggle').textContent = 'Tout déplier'; }
+            else {
+                const dims = state.ui.repartitionDims.split(',').map(k => DIMENSIONS[k]).filter(Boolean);
+                (function collecter(noeuds) {
+                    for (const n of noeuds) { if (n.enfants.length) { s.add(n.chemin); collecter(n.enfants); } }
+                })(X.repartitionMontants(facturesFiltrees(), dims));
+                $('#btn-repartition-toggle').textContent = 'Tout replier';
+            }
+            rendreTout();
+        });
         $$('#seg-unite-recup .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.uniteRecup = b.dataset.unite;
             $$('#seg-unite-recup .seg-btn').forEach(x => x.classList.toggle('active', x === b));

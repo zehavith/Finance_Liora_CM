@@ -369,6 +369,80 @@
     }
 
     // ──────────────────────────────────────────────
+    //  Répartition des montants
+    //
+    //  Montant total = hors recouvrement + en recouvrement, à l'euro près.
+    //    · en recouvrement  : échu et impayé
+    //    · hors recouvrement : réglé, non échu, ou échéance non calculable
+    //  Les montants sont ceux des factures (et non l'encours), afin que les
+    //  colonnes s'additionnent ; l'encours restant dû est fourni à part.
+    // ──────────────────────────────────────────────
+
+    function agreger(items) {
+        const enRec = items.filter(x => x.etat === 'En retard');
+        const regle = items.filter(x => x.paye);
+        const nonEchu = items.filter(x => x.etat === 'Non échue');
+        const sansEch = items.filter(x => x.etat === 'Échéance inconnue');
+
+        const total = sum(items, x => x.montant);
+        const eurEnRec = sum(enRec, x => x.montant);
+
+        return {
+            nb: items.length,
+            total,
+            eurRegle: sum(regle, x => x.montant),
+            nbRegle: regle.length,
+            eurNonEchu: sum(nonEchu, x => x.montant),
+            nbNonEchu: nonEchu.length,
+            eurSansEcheance: sum(sansEch, x => x.montant),
+            nbSansEcheance: sansEch.length,
+            eurEnRecouvrement: eurEnRec,
+            nbEnRecouvrement: enRec.length,
+            eurHorsRecouvrement: total - eurEnRec,
+            nbHorsRecouvrement: items.length - enRec.length,
+            encoursEnRecouvrement: sum(enRec, x => x.encours),
+            tauxEur: pct(eurEnRec, total),
+            tauxNb: pct(enRec.length, items.length),
+            retardMoyen: moyenne(enRec.map(x => x.retardJours)),
+        };
+    }
+
+    /**
+     * Construit l'arbre de répartition selon une pile de dimensions.
+     * @param {Array} factures
+     * @param {Array<{key,fn,labelFn}>} dims  du plus général au plus fin
+     * @param {string} cheminParent  identifiant du nœud parent
+     */
+    function repartitionMontants(factures, dims, cheminParent) {
+        if (!dims.length) return [];
+        const [dim, ...reste] = dims;
+
+        const groupes = new Map();
+        for (const f of factures) {
+            const cle = dim.fn(f) || '—';
+            let g = groupes.get(cle);
+            if (!g) { g = []; groupes.set(cle, g); }
+            g.push(f);
+        }
+
+        const noeuds = [...groupes.entries()].map(([cle, items]) => {
+            const chemin = (cheminParent ? cheminParent + '›' : '') + dim.key + ':' + cle;
+            return {
+                chemin,
+                dimension: dim.key,
+                cle,
+                label: dim.labelFn ? dim.labelFn(cle, items[0]) : cle,
+                items,
+                ...agreger(items),
+                enfants: repartitionMontants(items, reste, chemin),
+            };
+        });
+
+        noeuds.sort((a, b) => b.eurEnRecouvrement - a.eurEnRecouvrement || b.total - a.total);
+        return noeuds;
+    }
+
+    // ──────────────────────────────────────────────
     //  Balance âgée
     // ──────────────────────────────────────────────
 
@@ -543,6 +617,7 @@
     global.LioraMetrics = {
         sum, pct, moyenne, moyennePonderee, mediane,
         filtrer, sourceDe, origineRecouvrement, vueEnsemble, parMois, parFinancement, croiseMoisFinancement,
+        agreger, repartitionMontants,
         balanceAgee, balanceAgeeParDimension, topClients, parTableau, parGroupe,
         qualite, scoreQualite, comparaisonMensuelle,
     };

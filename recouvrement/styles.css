@@ -264,6 +264,55 @@ select.input option { background: var(--bg-secondary); color: var(--text-primary
 .recup-sub { font-size: 0.72rem; color: var(--text-muted); line-height: 1.35; margin-top: 0.15rem; }
 .recup-muted .recup-taux { color: var(--text-muted); }
 
+button.recup-card {
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color var(--transition), transform var(--transition);
+}
+button.recup-card:hover { border-color: var(--border-hover); transform: translateY(-2px); }
+
+/* ============================
+   Répartition des montants (arbre)
+   ============================ */
+
+.tree-cell { display: inline-flex; align-items: center; gap: 0.4rem; }
+.tree-n1 { padding-left: 1.4rem; }
+.tree-n2 { padding-left: 2.8rem; }
+.tree-n3 { padding-left: 4.2rem; }
+.tree-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* La colonne de libellés porte l'indentation de l'arbre : elle a besoin de
+   plus que les 280 px par défaut des cellules. */
+#repartition-table td:first-child { max-width: 430px; }
+
+.tree-toggle {
+    background: rgba(99, 102, 241, 0.12);
+    border: none;
+    color: var(--text-secondary);
+    width: 18px;
+    height: 18px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.7rem;
+    line-height: 1;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    padding: 0;
+}
+.tree-toggle:hover { background: var(--accent-bg); color: var(--accent); }
+.tree-spacer { width: 18px; flex-shrink: 0; }
+
+.tree-row-n0 td { font-weight: 600; }
+.tree-row-n1 td { color: var(--text-secondary); }
+.tree-row-n1 .tree-label { font-weight: 400; }
+.tree-row-n2 td { color: var(--text-muted); font-size: 0.8rem; }
+
+.cell-mini { display: block; font-size: 0.68rem; color: var(--text-muted); font-weight: 400; }
+.cell-danger { color: #f87171; }
+.taux-cell { display: inline-flex; align-items: center; gap: 0.3rem; justify-content: flex-end; }
+
 /* ============================
    Notes contextuelles
    ============================ */

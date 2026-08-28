@@ -318,6 +318,29 @@
             <!-- Alerte OPCO / ADV -->
             <div id="scope-note" class="scope-note"></div>
 
+            <!-- Répartition des montants : hors / en recouvrement -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Montants — hors recouvrement / en recouvrement</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-repartition">
+                                <button class="seg-btn active" data-dims="perimetre,financement">Périmètre › Financement</button>
+                                <button class="seg-btn" data-dims="financement,board">Financement › Tableau</button>
+                                <button class="seg-btn" data-dims="board,groupe">Tableau › Groupe</button>
+                                <button class="seg-btn" data-dims="mois,financement">Mois › Financement</button>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" id="btn-repartition-toggle">Tout déplier</button>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Montant total = hors recouvrement + en recouvrement. Cliquez sur une flèche pour
+                        déplier, sur une ligne pour ouvrir les factures correspondantes.
+                    </span>
+                    <div class="table-wrap" id="repartition-table"></div>
+                </div>
+            </div>
+
             <!-- Taux de recouvrement par mois -->
             <div class="charts-grid">
                 <div class="chart-card chart-wide">

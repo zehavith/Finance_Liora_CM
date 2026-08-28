@@ -40,6 +40,7 @@ PATH*, puis relancer.
 | Quel est mon encours en retard, en euros et en nombre ? | Tableau de bord — Vue d'ensemble |
 | Quel % de factures est en recouvrement, par mois ? | Tableau de bord — *Taux de recouvrement par mois* |
 | Le même %, croisé par type de financement ? | Tableau de bord — carte thermique *% par mois et par financement* |
+| Combien y a-t-il en tout, dont combien en recouvrement ? | Tableau de bord — *Montants : hors recouvrement / en recouvrement* |
 | Quelle part rentre sans passer par le recouvrement ? | Tableau de bord — bandeau *Récupération des factures échues* |
 | Quel est le retard moyen ? | Vue d'ensemble : moyen, médian, max, pondéré par l'encours, et retard moyen constaté au paiement |
 | Combien de factures en retard côté ADV ? Côté OPCO ? | Chips **Sources du retard** — activables séparément |
@@ -136,6 +137,27 @@ Deux taux, complémentaires :
   de celles qui ont été payées en retard *ou* restent impayées. Réponse à
   « comment se comporte une génération de factures », indépendamment de
   l'ancienneté du mois.
+
+### Répartition des montants
+
+Le tableau *Montants — hors recouvrement / en recouvrement* décompose le
+portefeuille en deux blocs qui s'additionnent exactement :
+
+- **En recouvrement** — factures échues et impayées ;
+- **Hors recouvrement** — tout le reste : réglé, non échu, ou échéance non
+  calculable. Le détail apparaît en info-bulle.
+
+Les colonnes portent le **montant facturé** afin qu'elles s'additionnent ;
+l'encours restant dû, utile pour les factures partiellement réglées, est en
+info-bulle de la colonne *En recouvrement*.
+
+L'arbre se déplie sur deux niveaux, au choix : *Périmètre › Financement*,
+*Financement › Tableau*, *Tableau › Groupe* ou *Mois › Financement*. Un clic sur
+la flèche déplie, un clic sur la ligne bascule vers l'onglet *Factures* avec les
+filtres correspondants déjà posés — y compris ceux du niveau parent. Les tuiles
+du bandeau *Récupération* sont également cliquables.
+
+L'export Excel contient un onglet *Répartition* reprenant l'arbre à plat.
 
 ### Récupération
 
