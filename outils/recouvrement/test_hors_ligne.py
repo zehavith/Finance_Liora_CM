@@ -1324,7 +1324,7 @@ def test_decouverte_adresses() -> None:
             code = export_mails.executer(
                 export_mails.analyser_arguments([
                     "--dossiers", str(fichier), "--sortie", str(sortie),
-                    "--decouvrir-adresses", "--max-mails", "5",
+                    "--max-mails", "5",
                 ]),
                 relais=journal.append,
             )
@@ -1369,12 +1369,14 @@ def test_decouverte_adresses() -> None:
                 "récapitulatif : la requête reflète la recherche réellement menée",
             )
 
-            # Sans l'option, la réponse sans numéro reste introuvable.
+            # La découverte est active par défaut : c'est en la coupant que
+            # la réponse sans numéro redevient introuvable.
             sortie2 = racine / "export-sans"
             export_mails.executer(
-                export_mails.analyser_arguments(
-                    ["--dossiers", str(fichier), "--sortie", str(sortie2)]
-                )
+                export_mails.analyser_arguments([
+                    "--dossiers", str(fichier), "--sortie", str(sortie2),
+                    "--sans-decouverte-adresses",
+                ])
             )
             verifier(
                 len(_lire_index(sortie2 / "2024-118_marie-dupont" / "index.csv")) == 2,

@@ -334,14 +334,18 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     analyseur.add_argument(
-        "--decouvrir-adresses",
-        action="store_true",
+        "--sans-decouverte-adresses",
+        dest="decouvrir_adresses",
+        action="store_false",
+        default=True,
         help=(
-            "Après la recherche par numéro de facture, relève les adresses du "
-            "débiteur dans les messages qui citent ce numéro, et relance la "
-            "recherche sur chacune. Les adresses internes et les robots sont "
-            "écartés, et toute adresse ramenant plus de --max-mails messages "
-            "l'est aussi. Chaque adresse retenue est annoncée."
+            "Désactive la recherche des adresses depuis le numéro de facture. "
+            "Par défaut, les adresses du débiteur relevées dans les messages "
+            "citant le numéro servent à relancer la recherche : l'adresse "
+            "manque souvent au tableau, et la chercher n'est pas facultatif. "
+            "Les adresses internes et les robots sont écartés, ainsi que toute "
+            "adresse ramenant plus de --max-mails messages. Chaque adresse "
+            "retenue est annoncée."
         ),
     )
     analyseur.add_argument(
@@ -411,6 +415,7 @@ def traiter_dossier(
     journal: Journal,
 ) -> ResumeDossier:
     requete = dossier.requete_gmail()
+    journal(f"    requête : {requete}")
     resume = ResumeDossier(
         reference=dossier.reference,
         nom=dossier.nom,
@@ -1422,8 +1427,8 @@ def executer(
             ) + (" …" if len(sans_adresse) > 40 else ""))
             if not options.decouvrir_adresses:
                 journal(
-                    "    l'option « Retrouver les adresses depuis le numéro de "
-                    "facture » (--decouvrir-adresses) relève l'adresse du débiteur "
+                    "    la recherche des adresses depuis le numéro de facture "
+                    "est désactivée. Réactivée, elle relève l'adresse du débiteur "
                     "dans les messages trouvés et relance la recherche dessus."
                 )
 

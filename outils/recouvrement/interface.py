@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "41"
+VERSION = "42"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -94,7 +94,7 @@ CASES_MEMORISEES = {
     "regrouper": True,
     "sousdossiers": True,
     "sousdossiersadresse": False,
-    "decouvrir": False,
+    "decouvrir": True,
     "souselements": False,
     "sansnav": False,
     "reprendre": False,
@@ -131,6 +131,21 @@ def _migrer_preferences(valeurs: dict) -> dict:
     l'utilisateur a modifiée n'est pas touchée, et la migration n'a lieu
     qu'une fois.
     """
+    modifie = None
+    # Retrouver l'adresse depuis le numéro de facture était une option ; elle
+    # est devenue le comportement normal. Une case laissée décochée l'avait
+    # été par défaut, pas par choix : on l'active une fois.
+    if not valeurs.get("decouverte_activee"):
+        options = dict(valeurs.get("options") or {})
+        if not options.get("decouvrir"):
+            options["decouvrir"] = True
+            modifie = dict(valeurs)
+            modifie["options"] = options
+        modifie = modifie or dict(valeurs)
+        modifie["decouverte_activee"] = True
+        ecrire_preferences(modifie)
+        valeurs = modifie
+
     if valeurs.get("filtres_migres"):
         return valeurs
     if not any(
@@ -331,8 +346,8 @@ def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str
         arguments.append("--sans-sous-dossiers")
     if demande.get("sous_dossiers_par_adresse"):
         arguments.append("--sous-dossiers-par-adresse")
-    if demande.get("decouvrir_adresses"):
-        arguments.append("--decouvrir-adresses")
+    if not demande.get("decouvrir_adresses", True):
+        arguments.append("--sans-decouverte-adresses")
     if demande.get("sous_elements"):
         arguments.append("--avec-sous-elements")
 
@@ -1238,10 +1253,11 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <span><b>Un sous-dossier par adresse mail</b><i>Même principe quand les
     échanges passent par plusieurs adresses. Le rattachement se fait sur les
     en-têtes du message, pas sur son corps. Les montants n'y sont pas répartis.</i></span></label>
-  <label class="case"><input type="checkbox" id="decouvrir" />
-    <span><b>Retrouver les adresses depuis le numéro de facture</b><i>Relève
-    les adresses du débiteur dans les messages citant la facture, puis relance
-    la recherche sur chacune. Ramène les échanges qui ne citent aucun numéro.
+  <label class="case"><input type="checkbox" id="decouvrir" checked />
+    <span><b>Retrouver les adresses depuis le numéro de facture</b><i>Active par
+    défaut, et à laisser ainsi : l'adresse manque souvent au tableau. Relève les
+    adresses du débiteur dans les messages citant la facture, puis relance la
+    recherche sur chacune — ce qui ramène les échanges ne citant aucun numéro.
     Les adresses internes et les robots sont écartés ; chaque adresse retenue
     est annoncée dans le journal.</i></span></label>
   <label class="case"><input type="checkbox" id="souselements" />

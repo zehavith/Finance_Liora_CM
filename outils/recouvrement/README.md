@@ -136,6 +136,23 @@ L'onglet s'ouvre directement sur le mode Monday quand des tableaux ont déjà
 été choisis — c'est le cas courant, et l'onglet « fichier » laissait le bouton
 grisé sans dire pourquoi.
 
+### Retrouver l'adresse depuis le numéro de facture
+
+L'adresse manque au tableau une fois sur trois. La chercher n'est donc pas une
+option : les adresses du débiteur relevées dans les messages citant le numéro
+de facture servent à relancer la recherche, **par défaut**. Cela ramène aussi
+les échanges qui ne citent aucun numéro — la plupart des réponses.
+
+Les adresses internes et les robots sont écartés, ainsi que toute adresse
+ramenant plus de `--max-mails` messages. Chaque adresse retenue est annoncée au
+journal, et figure au récapitulatif.
+
+`--sans-decouverte-adresses` revient à l'ancien comportement.
+
+La **requête Gmail est écrite au journal** pour chaque dossier. C'est la seule
+chose qui explique un « aucun message trouvé » : sans elle, il n'y a rien à
+diagnostiquer.
+
 ### Ce qui rend un dossier défendable
 
 Devant un tribunal, une convention signée et des heures effectivement suivies
