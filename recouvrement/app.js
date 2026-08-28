@@ -132,11 +132,28 @@
         } catch (e) { console.warn('[Recouvrement] Rechargement GoCardless impossible', e); }
 
         const brutes = (factures || []).map(revivre);
-        if (brutes.length) {
-            state.brutes = brutes;
-            $('#saved-count').textContent = U.nombre(brutes.length);
-            $('#btn-open-saved').hidden = false;
-        }
+        if (brutes.length) state.brutes = brutes;
+
+        proposerReprise();
+    }
+
+    /**
+     * Le bouton de reprise doit apparaître dès qu'une donnée est enregistrée,
+     * factures ou prélèvements : n'avoir chargé que des exports GoCardless ne
+     * doit pas laisser bloqué sur l'écran d'accueil.
+     */
+    function proposerReprise() {
+        const btn = $('#btn-open-saved');
+        if (!btn) return;
+        const nbF = state.brutes.length;
+        const nbA = state.apprenants.length;
+        if (!nbF && !nbA) { btn.hidden = true; return; }
+
+        const morceaux = [];
+        if (nbF) morceaux.push(`${U.nombre(nbF)} factures`);
+        if (nbA) morceaux.push(`${U.nombre(nbA)} apprenants`);
+        btn.innerHTML = `Reprendre les données enregistrées (${morceaux.join(' · ')})`;
+        btn.hidden = false;
     }
 
     /**
@@ -2651,6 +2668,7 @@
 
             recalculerPrelevements();
             await sauverGoCardless();
+            proposerReprise();
 
             if (!g.paiements.length) {
                 U.toast("Aucun prélèvement chargé : l'export Payments est indispensable.", 'error', 9000);
@@ -3123,6 +3141,8 @@
         $('#btn-open-saved').addEventListener('click', () => {
             recalculer();
             montrerEcran('app');
+            // Sans facture enregistrée, l'onglet utile est celui des prélèvements
+            if (!state.brutes.length && state.apprenants.length) ouvrirOnglet('prelevements');
         });
         $('#btn-demo').addEventListener('click', genererDemo);
 
