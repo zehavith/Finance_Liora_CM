@@ -129,17 +129,12 @@ aucun calcul.
 
 ### Grand livre lettré
 
-Deux modes, réglables dans *Données → Options de calcul* :
+**Le grand livre fait foi.** La comptabilité étant plus fiable que la saisie
+manuelle, une date lettrée est toujours retenue : elle comble les dates absentes
+de Monday et remplace celles qui divergent. La date Monday d'origine reste
+consultable dans la fiche de la facture, mais n'entre plus dans les calculs.
 
-- **par défaut** — le grand livre ne comble que les dates absentes de Monday.
-  Ce qui est déjà saisi est respecté ; les factures sans date réelle passent de
-  la date de contrôle paiement à la date comptable, ce qui corrige le retard
-  surestimé.
-- **le grand livre fait foi** — les dates comptables remplacent aussi celles de
-  Monday lorsqu'elles diffèrent. La date Monday d'origine reste visible dans la
-  fiche de la facture.
-
-Dans les deux cas, l'origine de chaque date est traçable : marqueur **GL** dans
+L'origine de chaque date est traçable : marqueur **GL** dans
 la colonne *Paiement*, ligne « Date retenue pour le retard » dans la fiche, et
 compte-rendu du rapprochement dans l'historique des imports.
 

@@ -727,11 +727,7 @@
                         <input type="checkbox" id="opt-payees-hors-portefeuille">
                         Exclure les factures déjà payées du portefeuille affiché
                     </label>
-                    <label class="check">
-                        <input type="checkbox" id="opt-gl-prioritaire">
-                        Le grand livre lettré fait foi sur les dates de paiement
-                        <span class="fv-hint">(sinon il ne comble que les dates absentes de Monday)</span>
-                    </label>
+
                 </div>
             </div>
 
@@ -739,8 +735,10 @@
             <div class="chart-card chart-wide settings-card">
                 <div class="chart-header"><h3>Import de fichiers</h3></div>
                 <span class="fv-hint">
-                    Exports Monday (un fichier par tableau) ou extrait de grand livre pointé
-                    (numéro de facture + date de règlement) pour compléter les dates de paiement manquantes.
+                    Exports Monday (un fichier par tableau), ou extrait de grand livre lettré
+                    (numéro de facture + date de règlement). <strong>Le grand livre fait foi</strong> :
+                    ses dates remplacent celles de Monday, la date d'origine restant consultable
+                    dans la fiche de chaque facture.
                 </span>
                 <div class="import-grid">
                     <div class="upload-zone upload-zone-sm" id="settings-drop">

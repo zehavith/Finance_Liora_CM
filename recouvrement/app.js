@@ -34,7 +34,6 @@
             prefereEcheanceMonday: true,
             masquerTechnique: true,
             payeesHorsPortefeuille: false,
-            grandLivrePrioritaire: false,
         },
 
         filtres: {
@@ -166,8 +165,7 @@
         const o = options || {};
         let consolidees = I.consolider(state.brutes);
         state.glStats = state.grandLivre.length
-            ? I.appliquerGrandLivre(consolidees, state.grandLivre,
-                { prioritaire: state.options.grandLivrePrioritaire })
+            ? I.appliquerGrandLivre(consolidees, state.grandLivre)
             : null;
 
         I.enrichir(consolidees, {
@@ -344,7 +342,6 @@
         $('#opt-prefere-monday').checked = state.options.prefereEcheanceMonday;
         $('#opt-masquer-technique').checked = state.options.masquerTechnique;
         $('#opt-payees-hors-portefeuille').checked = state.options.payeesHorsPortefeuille;
-        $('#opt-gl-prioritaire').checked = state.options.grandLivrePrioritaire;
     }
 
     // ══════════════════════════════════════════════
@@ -2763,7 +2760,6 @@
         opt('#opt-prefere-monday', 'prefereEcheanceMonday', true);
         opt('#opt-masquer-technique', 'masquerTechnique', false);
         opt('#opt-payees-hors-portefeuille', 'payeesHorsPortefeuille', true);
-        opt('#opt-gl-prioritaire', 'grandLivrePrioritaire', true);
 
         $('#btn-clear-data').addEventListener('click', async () => {
             U.modal('Effacer les factures ?', '<p>Les factures enregistrées sur ce poste seront supprimées. Les tableaux, règles et réglages sont conservés.</p>', [

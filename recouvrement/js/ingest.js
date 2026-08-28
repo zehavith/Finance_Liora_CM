@@ -347,15 +347,13 @@
     /**
      * Applique un extrait de grand livre lettré (numéro → date de règlement).
      *
-     * Par défaut le grand livre ne fait que combler les dates absentes : ce qui
-     * est déjà saisi dans Monday est respecté. L'option `prioritaire` inverse
-     * la règle et fait du grand livre la source de vérité, la comptabilité
-     * étant plus fiable que la saisie manuelle.
+     * Le grand livre fait foi : la comptabilité est plus fiable que la saisie
+     * Monday. Une date lettrée remplace donc toujours celle du tableau, et la
+     * date Monday d'origine est conservée pour référence dans la fiche.
      *
      * @returns {{completees:number, remplacees:number, rapprochees:number}}
      */
-    function appliquerGrandLivre(factures, gl, opts) {
-        const prioritaire = !!(opts && opts.prioritaire);
+    function appliquerGrandLivre(factures, gl) {
         if (!gl || !gl.length) return { completees: 0, remplacees: 0, rapprochees: 0 };
         const index = new Map();
         for (const l of gl) {
@@ -380,7 +378,7 @@
 
             if (hit.date) {
                 if (!f.datePaiement) { f.datePaiement = hit.date; completees++; f.dateVientDuGL = true; }
-                else if (prioritaire && +hit.date !== +f.datePaiement) {
+                else if (+hit.date !== +f.datePaiement) {
                     f.datePaiementMonday = f.datePaiement;
                     f.datePaiement = hit.date;
                     remplacees++;
