@@ -294,7 +294,11 @@ def _valeur_colonne(colonne: dict) -> str:
     except ValueError:
         return ""
 
-    fichiers = charge.get("files") if isinstance(charge, dict) else None
+    if not isinstance(charge, dict):
+        # Une colonne texte simple stocke sa valeur en chaîne JSON nue.
+        return str(charge).strip() if charge is not None else ""
+
+    fichiers = charge.get("files")
     if isinstance(fichiers, list):
         adresses = [
             fichier.get("public_url") or fichier.get("url") or ""
@@ -302,6 +306,19 @@ def _valeur_colonne(colonne: dict) -> str:
             if isinstance(fichier, dict)
         ]
         return ", ".join(adresse for adresse in adresses if adresse)
+
+    # Une colonne « E-mail » range l'adresse sous `email`, et son libellé
+    # d'affichage sous `text`. Quand personne n'a saisi de libellé, `text` est
+    # vide — la colonne paraissait donc vide alors que l'adresse était là.
+    # Même chose pour un lien (`url`) et un téléphone (`phone`).
+    for cle in ("email", "url", "phone", "text", "name", "label"):
+        valeur = charge.get(cle)
+        if isinstance(valeur, str) and valeur.strip():
+            return valeur.strip()
+        if isinstance(valeur, dict):
+            for interne in ("text", "email", "url"):
+                if isinstance(valeur.get(interne), str) and valeur[interne].strip():
+                    return valeur[interne].strip()
     return ""
 
 

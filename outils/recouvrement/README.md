@@ -136,6 +136,18 @@ L'onglet s'ouvre directement sur le mode Monday quand des tableaux ont déjà
 été choisis — c'est le cas courant, et l'onglet « fichier » laissait le bouton
 grisé sans dire pourquoi.
 
+### Une colonne « E-mail » ne range pas l'adresse où on croit
+
+Une colonne typée de Monday — e-mail, lien, téléphone — stocke sa valeur dans
+`value`, et garde `text` pour le **libellé d'affichage**. Quand personne n'a
+saisi de libellé, `text` est vide : la colonne paraît vide alors que l'adresse
+est là, visible à l'écran dans Monday. Vingt-deux dossiers sur cinquante-quatre
+étaient dans ce cas.
+
+La lecture d'une cellule essaie donc, dans l'ordre : le texte affiché, puis les
+fichiers, puis `email`, `url`, `phone`, et les libellés imbriqués des colonnes
+de statut.
+
 ### Retrouver l'adresse depuis le numéro de facture
 
 L'adresse manque au tableau une fois sur trois. La chercher n'est donc pas une

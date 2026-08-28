@@ -1976,6 +1976,41 @@ def test_montants_espace_insecable() -> None:
                  f"au suivi aussi, « {texte} » vaut {attendu}")
 
 
+def test_colonnes_typees_monday() -> None:
+    """Une colonne « E-mail » range l'adresse ailleurs que dans son texte."""
+    print("\nColonnes typées Monday")
+
+    import monday as module_monday  # noqa: PLC0415
+
+    cas = [
+        # Le cas qui vidait vingt-deux dossiers : adresse saisie, aucun
+        # libellé d'affichage, donc `text` vide.
+        ({"text": "", "value": json.dumps({"email": "sufyen.b@gmail.com",
+                                           "text": ""})},
+         "sufyen.b@gmail.com", "une adresse sans libellé est lue"),
+        ({"text": "", "value": json.dumps({"email": "a@b.fr", "text": "Sufyen B"})},
+         "a@b.fr", "l'adresse l'emporte sur le libellé"),
+        ({"text": "direct@c.fr", "value": None},
+         "direct@c.fr", "un texte renseigné reste prioritaire"),
+        ({"text": "", "value": json.dumps({"url": "https://x.fr", "text": ""})},
+         "https://x.fr", "un lien sans libellé est lu"),
+        ({"text": "", "value": json.dumps({"phone": "0601020304"})},
+         "0601020304", "un téléphone est lu"),
+        ({"text": "", "value": json.dumps(
+            {"files": [{"public_url": "https://m.monday.com/f.pdf"}]})},
+         "https://m.monday.com/f.pdf", "un fichier reste lu comme avant"),
+        ({"text": "", "value": json.dumps({"label": {"text": "En retard"}})},
+         "En retard", "un statut imbriqué est lu"),
+        ({"text": "", "value": '"texte nu"'},
+         "texte nu", "une valeur JSON nue est lue"),
+        ({"text": "", "value": None}, "", "une cellule vide reste vide"),
+        ({"text": "", "value": "{pas du json"}, "", "un JSON illisible ne casse rien"),
+    ]
+    for colonne, attendu, libelle in cas:
+        obtenu = module_monday._valeur_colonne(colonne)
+        verifier(obtenu == attendu, f"{libelle} (obtenu : « {obtenu} »)")
+
+
 def test_bloc_pieces() -> None:
     """Pièces jointes et documents Monday : quatre cas, aucun qui plante."""
     print("\nBloc « Contrat signé et factures »")
@@ -3907,6 +3942,7 @@ def main() -> int:
     test_lecture_tableau_monday()
     test_refus_monday()
     test_montants_espace_insecable()
+    test_colonnes_typees_monday()
     test_bloc_pieces()
     test_execution_formation()
     test_suppression_dossiers()
