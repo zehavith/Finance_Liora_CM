@@ -83,6 +83,13 @@
             if (f.bucket && (!x.bucket || x.bucket.key !== f.bucket)) return false;
             if (f.client && x.client !== f.client) return false;
 
+            // Tranche de retard (histogramme)
+            if (f.retardMin != null || f.retardMax != null) {
+                if (x.retardJours == null) return false;
+                if (f.retardMin != null && x.retardJours < f.retardMin) return false;
+                if (f.retardMax != null && x.retardJours > f.retardMax) return false;
+            }
+
             if (f.mois) {
                 const mk = x[champMois];
                 if (!mk || !f.mois.has(mk)) return false;
@@ -526,7 +533,116 @@
                 nbStock: stock.length,
                 eurStock: sum(stock, f => f.montant),
                 retardMoyenStock: moyenne(stock.map(f => R.diffDays(fin, f.dateEcheance))),
+                retardMedianStock: mediane(stock.map(f => R.diffDays(fin, f.dateEcheance))),
+                // Écart signé entre règlement et échéance sur les factures
+                // encaissées dans le mois : négatif = payé en avance.
+                retardMoyenReglement: moyenne(factures
+                    .filter(f => f.datePaiementEffective && f.dateEcheance
+                        && R.monthKey(f.datePaiementEffective) === mk)
+                    .map(f => R.diffDays(f.datePaiementEffective, f.dateEcheance))),
                 variation: sum(entrees, f => f.montant) - sum(sorties, f => f.montant),
+            };
+        });
+    }
+
+    /** Nombre de jours d'un mois 'YYYY-MM'. */
+    function joursDuMois(mk) { return finDeMois(mk).getDate(); }
+
+    /**
+     * DSO — délai moyen de règlement client, en jours, mois par mois.
+     *
+     * Deux méthodes, volontairement affichées ensemble :
+     *  · simple    : encours de fin de mois ÷ chiffre d'affaires du mois,
+     *                ramené au nombre de jours du mois. Lisible, mais très
+     *                sensible à la saisonnalité de la facturation.
+     *  · count-back : on épuise l'encours de fin de mois contre le chiffre
+     *                d'affaires des mois précédents, en comptant les jours.
+     *                C'est la méthode retenue en credit management, plus
+     *                stable quand la facturation est irrégulière.
+     *
+     * L'encours retenu est l'ensemble des factures émises et non réglées à la
+     * date considérée — y compris les non échues, comme le veut la définition.
+     */
+    function dsoParMois(factures, moisList, dateRef) {
+        const limite = dateRef ? R.monthKey(dateRef) : null;
+        const mois = [...new Set([
+            ...moisList,
+            ...factures.map(f => f.moisFacture).filter(Boolean),
+        ])].sort().filter(m => !limite || m <= limite);
+
+        // Chiffre d'affaires facturé par mois
+        const ca = {};
+        for (const f of factures) {
+            if (!f.moisFacture || f.montant == null) continue;
+            ca[f.moisFacture] = (ca[f.moisFacture] || 0) + f.montant;
+        }
+
+        return mois.map((mk, idx) => {
+            const fin = finDeMois(mk);
+            const encours = factures.filter(f =>
+                f.dateFacture && f.dateFacture <= fin && f.montant != null &&
+                (!f.datePaiementEffective || f.datePaiementEffective > fin));
+            const soldeFin = sum(encours, f => f.montant);
+            const caMois = ca[mk] || 0;
+
+            // Méthode simple
+            const dsoSimple = caMois > 0 ? (soldeFin / caMois) * joursDuMois(mk) : null;
+
+            // Méthode count-back : on remonte les mois jusqu'à épuiser l'encours
+            let reste = soldeFin, jours = 0, k = idx, epuise = false;
+            while (k >= 0) {
+                const m = mois[k], c = ca[m] || 0, nj = joursDuMois(m);
+                if (c <= 0) { k--; continue; }
+                if (reste > c) { jours += nj; reste -= c; k--; }
+                else { jours += (reste / c) * nj; epuise = true; break; }
+            }
+            // Encours non épuisé : plus ancien que l'historique disponible
+            const dsoCountBack = soldeFin > 0 ? (epuise ? jours : null) : 0;
+
+            return {
+                mois: mk,
+                ca: caMois,
+                encours: soldeFin,
+                nbEncours: encours.length,
+                dsoSimple,
+                dsoCountBack,
+                tronque: soldeFin > 0 && !epuise,
+            };
+        });
+    }
+
+    /** Tranches de l'histogramme de répartition des retards. */
+    const TRANCHES_RETARD = [
+        { label: '1 → 15 j',    min: 1,   max: 15 },
+        { label: '16 → 30 j',   min: 16,  max: 30 },
+        { label: '31 → 45 j',   min: 31,  max: 45 },
+        { label: '46 → 60 j',   min: 46,  max: 60 },
+        { label: '61 → 90 j',   min: 61,  max: 90 },
+        { label: '91 → 120 j',  min: 91,  max: 120 },
+        { label: '121 → 180 j', min: 121, max: 180 },
+        { label: '181 → 365 j', min: 181, max: 365 },
+        { label: '> 365 j',     min: 366, max: Infinity },
+    ];
+
+    /**
+     * Distribution des retards, séparant ce qui est encore dû de ce qui a
+     * fini par rentrer : la forme des deux courbes dit si les créances
+     * anciennes finissent par être recouvrées ou s'enkystent.
+     */
+    function histogrammeRetards(factures) {
+        const impayees = factures.filter(f => f.etat === 'En retard' && f.retardJours > 0);
+        const payeesRetard = factures.filter(f => f.etat === 'Payée en retard' && f.retardJours > 0);
+
+        const dans = (arr, t) => arr.filter(f => f.retardJours >= t.min && f.retardJours <= t.max);
+
+        return TRANCHES_RETARD.map(t => {
+            const i = dans(impayees, t), p = dans(payeesRetard, t);
+            return {
+                ...t,
+                nbImpayees: i.length,
+                eurImpayees: sum(i, f => f.encours || f.montant),
+                nbPayees: p.length,
+                eurPayees: sum(p, f => f.montant),
             };
         });
     }
@@ -686,6 +802,7 @@
         sum, pct, moyenne, moyennePonderee, mediane,
         filtrer, sourceDe, origineRecouvrement, vueEnsemble, parMois, parFinancement, croiseMoisFinancement,
         agreger, repartitionMontants, fluxRecouvrement, parDimension, finDeMois,
+        dsoParMois, histogrammeRetards, TRANCHES_RETARD, joursDuMois,
         balanceAgee, balanceAgeeParDimension, topClients, parTableau, parGroupe,
         qualite, scoreQualite, comparaisonMensuelle,
     };

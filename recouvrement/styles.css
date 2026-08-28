@@ -419,6 +419,7 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
 .cell-board { font-size: 0.78rem; color: var(--text-secondary); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
 .calc-flag { color: var(--accent); font-size: 0.7rem; margin-left: 0.25rem; cursor: help; }
+.calc-gl { color: var(--green); font-weight: 600; font-size: 0.62rem; }
 
 .ag-col { color: var(--text-secondary); }
 .ag-total { font-weight: 600; color: var(--text-primary); }

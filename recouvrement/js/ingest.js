@@ -345,11 +345,18 @@
     }
 
     /**
-     * Applique un extrait de grand livre pointé (numéro → date de règlement)
-     * pour compléter les dates de paiement manquantes.
+     * Applique un extrait de grand livre lettré (numéro → date de règlement).
+     *
+     * Par défaut le grand livre ne fait que combler les dates absentes : ce qui
+     * est déjà saisi dans Monday est respecté. L'option `prioritaire` inverse
+     * la règle et fait du grand livre la source de vérité, la comptabilité
+     * étant plus fiable que la saisie manuelle.
+     *
+     * @returns {{completees:number, remplacees:number, rapprochees:number}}
      */
-    function appliquerGrandLivre(factures, gl) {
-        if (!gl || !gl.length) return 0;
+    function appliquerGrandLivre(factures, gl, opts) {
+        const prioritaire = !!(opts && opts.prioritaire);
+        if (!gl || !gl.length) return { completees: 0, remplacees: 0, rapprochees: 0 };
         const index = new Map();
         for (const l of gl) {
             const k = factureKey(l.numero);
@@ -361,18 +368,29 @@
                 index.set(k, { date: d, montant: parseMontant(l.montant) });
             }
         }
-        let n = 0;
+        let completees = 0, remplacees = 0, rapprochees = 0;
         for (const f of factures) {
             if (!f.cle) continue;
             const hit = index.get(f.cle);
             if (!hit) continue;
+
+            rapprochees++;
             f.paye = true;
             f.grandLivre = true;
-            if (hit.date && !f.datePaiement) { f.datePaiement = hit.date; n++; }
+
+            if (hit.date) {
+                if (!f.datePaiement) { f.datePaiement = hit.date; completees++; f.dateVientDuGL = true; }
+                else if (prioritaire && +hit.date !== +f.datePaiement) {
+                    f.datePaiementMonday = f.datePaiement;
+                    f.datePaiement = hit.date;
+                    remplacees++;
+                    f.dateVientDuGL = true;
+                }
+            }
             if (hit.montant != null && f.montantRegle == null) f.montantRegle = hit.montant;
-            if (!f.originePaiement) f.originePaiement = 'Grand livre pointé';
+            f.originePaiement = 'Grand livre lettré';
         }
-        return n;
+        return { completees, remplacees, rapprochees };
     }
 
     /**
@@ -401,9 +419,19 @@
                 || (f.resteDu != null && f.montant != null && f.resteDu <= 0.01 && f.montant > 0);
             f.paye = paye;
 
-            if (f.datePaiement) { f.datePaiementEffective = f.datePaiement; f.paiementEstime = false; }
-            else if (f.dateControlePaiement) { f.datePaiementEffective = f.dateControlePaiement; f.paiementEstime = true; }
-            else { f.datePaiementEffective = null; f.paiementEstime = paye; }
+            if (f.datePaiement) {
+                f.datePaiementEffective = f.datePaiement;
+                f.paiementEstime = false;
+                f.origineDatePaiement = f.dateVientDuGL ? 'Grand livre lettré' : 'Monday — date de paiement';
+            } else if (f.dateControlePaiement) {
+                f.datePaiementEffective = f.dateControlePaiement;
+                f.paiementEstime = true;
+                f.origineDatePaiement = 'Monday — date de contrôle paiement';
+            } else {
+                f.datePaiementEffective = null;
+                f.paiementEstime = paye;
+                f.origineDatePaiement = null;
+            }
 
             // Montant restant dû
             if (f.resteDu != null) f.encours = Math.max(0, f.resteDu);

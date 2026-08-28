@@ -34,6 +34,7 @@
             prefereEcheanceMonday: true,
             masquerTechnique: true,
             payeesHorsPortefeuille: false,
+            grandLivrePrioritaire: false,
         },
 
         filtres: {
@@ -47,6 +48,8 @@
             bucket: null,
             client: null,
             recherche: '',
+            retardMin: null,
+            retardMax: null,
             dateRef: R.stripTime(new Date()),
         },
 
@@ -57,6 +60,8 @@
             repartitionDims: 'perimetre,financement',
             fluxUnite: 'euros',
             treemapDim: 'financement',
+            dsoMethode: 'countback',
+            histoUnite: 'euros',
             repartitionOuverts: new Set(),
             agingDim: 'financement',
             page: 1,
@@ -160,7 +165,10 @@
     function recalculer(options) {
         const o = options || {};
         let consolidees = I.consolider(state.brutes);
-        if (state.grandLivre.length) I.appliquerGrandLivre(consolidees, state.grandLivre);
+        state.glStats = state.grandLivre.length
+            ? I.appliquerGrandLivre(consolidees, state.grandLivre,
+                { prioritaire: state.options.grandLivrePrioritaire })
+            : null;
 
         I.enrichir(consolidees, {
             dateRef: state.filtres.dateRef,
@@ -287,6 +295,11 @@
         if (f.financements && f.financements.size)
             add('Financement : ' + [...f.financements].map(k => R.getRule(k, state.rules).label).join(', '), () => { f.financements = null; });
         if (f.bucket) add('Antériorité : ' + (R.AGING_BUCKETS.find(b => b.key === f.bucket) || {}).label, () => { f.bucket = null; });
+        if (f.retardMin != null || f.retardMax != null) {
+            const t = X.TRANCHES_RETARD.find(x => x.min === f.retardMin && x.max === f.retardMax);
+            add('Retard : ' + (t ? t.label : `${f.retardMin ?? 0} → ${f.retardMax ?? '∞'} j`),
+                () => { f.retardMin = null; f.retardMax = null; });
+        }
         if (f.client) add('Client : ' + f.client, () => { f.client = null; });
         if (f.boards && f.boards.size) add('Tableau : ' + [...f.boards].join(', '), () => { f.boards = null; });
         if (f.etats && f.etats.size) add('État : ' + [...f.etats].join(', '), () => { f.etats = null; rendreChipsEtats(); });
@@ -311,6 +324,7 @@
         const f = state.filtres;
         f.mois = null; f.perimetre = 'Tous'; f.financements = null; f.etats = null;
         f.boards = null; f.bucket = null; f.client = null; f.recherche = '';
+        f.retardMin = null; f.retardMax = null;
         f.sources = new Set(['recouvrement', 'adv', 'opco', 'b2c']);
         $('#search-input').value = '';
         state.ui.page = 1;
@@ -330,6 +344,7 @@
         $('#opt-prefere-monday').checked = state.options.prefereEcheanceMonday;
         $('#opt-masquer-technique').checked = state.options.masquerTechnique;
         $('#opt-payees-hors-portefeuille').checked = state.options.payeesHorsPortefeuille;
+        $('#opt-gl-prioritaire').checked = state.options.grandLivrePrioritaire;
     }
 
     // ══════════════════════════════════════════════
@@ -413,6 +428,9 @@
         rendreComparaison(rows);
 
         rendreChartFlux(data);
+        rendreChartRetardEvolution(data);
+        rendreChartDSO(data);
+        rendreChartHistoRetards(data);
         rendreTreemap(data);
 
         // ── Financement / balance âgée ──
@@ -822,6 +840,182 @@
                     state.ui.page = 1;
                     rendreBoutonsMois();
                     rendreTout();
+                },
+            },
+        });
+    }
+
+    /** Trois lectures du retard, toutes en jours, sur un axe commun. */
+    function rendreChartRetardEvolution(data) {
+        const rows = X.fluxRecouvrement(data, state.moisDispo, state.filtres.dateRef);
+        if (!rows.length) { U.chart('chart-retard-evolution', videConfig('Aucun mois exploitable')); return; }
+
+        const ligne = (label, cle, couleur, dash) => ({
+            label,
+            data: rows.map(r => r[cle]),
+            borderColor: couleur,
+            backgroundColor: couleur,
+            borderWidth: 2.5,
+            borderDash: dash || [],
+            tension: 0.3,
+            pointRadius: 2,
+            pointHoverRadius: 5,
+            spanGaps: true,
+        });
+
+        U.chart('chart-retard-evolution', {
+            type: 'line',
+            data: {
+                labels: rows.map(r => U.moisLabel(r.mois, true)),
+                datasets: [
+                    ligne("Retard moyen de l'encours", 'retardMoyenStock', U.couleurs.retard),
+                    ligne("Retard médian de l'encours", 'retardMedianStock', U.couleurs.payeRetard, [5, 4]),
+                    ligne('Écart au règlement', 'retardMoyenReglement', U.couleurs.paye),
+                ],
+            },
+            options: {
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { grid: U.grille, ticks: { callback: v => v + ' j' } },
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `${ctx.dataset.label} : ${ctx.parsed.y == null ? '—' : U.jours(ctx.parsed.y)}`,
+                            afterBody: items => {
+                                const r = rows[items[0].dataIndex];
+                                return r ? ['', `${U.nombre(r.nbStock)} factures impayées · ${U.eurosCourt(r.eurStock)}`] : '';
+                            },
+                        },
+                    },
+                },
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    state.filtres.mois = new Set([rows[els[0].index].mois]);
+                    state.ui.page = 1;
+                    rendreBoutonsMois();
+                    rendreTout();
+                },
+            },
+        });
+    }
+
+    function rendreChartDSO(data) {
+        const rows = X.dsoParMois(data, state.moisDispo, state.filtres.dateRef);
+        if (!rows.length) { U.chart('chart-dso', videConfig('Aucun mois exploitable')); return; }
+
+        const methode = state.ui.dsoMethode;
+        const courbes = [];
+        if (methode !== 'simple') courbes.push({
+            type: 'line', label: 'DSO count-back', yAxisID: 'y1', order: 0,
+            data: rows.map(r => r.dsoCountBack),
+            borderColor: U.couleurs.accent, backgroundColor: U.couleurs.accent,
+            borderWidth: 2.5, tension: 0.3, pointRadius: 2, pointHoverRadius: 5, spanGaps: true,
+        });
+        if (methode !== 'countback') courbes.push({
+            type: 'line', label: 'DSO simple', yAxisID: 'y1', order: 0,
+            data: rows.map(r => r.dsoSimple),
+            borderColor: U.couleurs.indigo, borderDash: [5, 4],
+            borderWidth: 2, tension: 0.3, pointRadius: 0, spanGaps: true,
+        });
+
+        U.chart('chart-dso', {
+            type: 'bar',
+            data: {
+                labels: rows.map(r => U.moisLabel(r.mois, true)),
+                datasets: [
+                    {
+                        label: 'Encours client à fin de mois', order: 2,
+                        data: rows.map(r => r.encours),
+                        backgroundColor: 'rgba(99, 102, 241, 0.45)', borderRadius: 3,
+                    },
+                    ...courbes,
+                ],
+            },
+            options: {
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { grid: U.grille, ticks: { callback: v => U.eurosCourt(v) } },
+                    y1: {
+                        position: 'right', beginAtZero: true, grid: { display: false },
+                        title: { display: true, text: 'Jours' },
+                        ticks: { callback: v => v + ' j' },
+                    },
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ctx.dataset.yAxisID === 'y1'
+                                ? `${ctx.dataset.label} : ${ctx.parsed.y == null ? 'non calculable' : U.jours(ctx.parsed.y)}`
+                                : `${ctx.dataset.label} : ${U.euros(ctx.parsed.y)}`,
+                            afterBody: items => {
+                                const r = rows[items[0].dataIndex];
+                                if (!r) return '';
+                                const l = [`CA facturé du mois : ${U.euros(r.ca)}`,
+                                    `${U.nombre(r.nbEncours)} factures non réglées`];
+                                if (r.tronque) l.push("⚠ encours plus ancien que l'historique chargé");
+                                return ['', ...l];
+                            },
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    function rendreChartHistoRetards(data) {
+        const eur = state.ui.histoUnite === 'euros';
+        const rows = X.histogrammeRetards(data);
+        const total = X.sum(rows, r => (eur ? r.eurImpayees + r.eurPayees : r.nbImpayees + r.nbPayees));
+        if (!total) { U.chart('chart-histo-retards', videConfig('Aucun retard sur ce périmètre')); return; }
+
+        const fmt = eur ? U.eurosCourt : U.nombre;
+
+        U.chart('chart-histo-retards', {
+            type: 'bar',
+            data: {
+                labels: rows.map(r => r.label),
+                datasets: [
+                    {
+                        label: 'Encore impayées',
+                        data: rows.map(r => eur ? r.eurImpayees : r.nbImpayees),
+                        backgroundColor: U.couleurs.retard, borderRadius: 3,
+                    },
+                    {
+                        label: 'Finalement encaissées',
+                        data: rows.map(r => eur ? r.eurPayees : r.nbPayees),
+                        backgroundColor: U.couleurs.payeRetard, borderRadius: 3,
+                    },
+                ],
+            },
+            options: {
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { grid: { display: false }, title: { display: true, text: "Retard constaté" } },
+                    y: { grid: U.grille, ticks: { callback: v => fmt(v) } },
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `${ctx.dataset.label} : ${eur ? U.euros(ctx.parsed.y) : U.nombre(ctx.parsed.y) + ' factures'}`,
+                            afterBody: items => {
+                                const r = rows[items[0].dataIndex];
+                                if (!r) return '';
+                                const t = eur ? r.eurImpayees + r.eurPayees : r.nbImpayees + r.nbPayees;
+                                return ['', `${U.pourcent((t / total) * 100)} de l'ensemble des retards`];
+                            },
+                        },
+                    },
+                },
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    const t = rows[els[0].index];
+                    state.filtres.retardMin = t.min;
+                    state.filtres.retardMax = t.max;
+                    state.ui.page = 1;
+                    ouvrirOnglet('factures');
                 },
             },
         });
@@ -1483,7 +1677,16 @@
             },
             { key: 'dateFacture', label: 'Facture', align: 'center', format: U.dateFR },
             { key: 'dateEcheance', label: 'Échéance', align: 'center', format: (v, r) => `${U.dateFR(v)}${r.echeanceOrigine === 'Règle' ? `<span class="calc-flag" title="Calculée par la règle ${U.escapeHtml(r.regleLabel)}">ƒ</span>` : ''}` },
-            { key: 'datePaiementEffective', label: 'Paiement', align: 'center', format: (v, r) => v ? `${U.dateFR(v)}${r.paiementEstime ? '<span class="calc-flag" title="Date de contrôle paiement — le règlement réel est antérieur">≈</span>' : ''}` : '—' },
+            {
+                key: 'datePaiementEffective', label: 'Paiement', align: 'center',
+                format: (v, r) => {
+                    if (!v) return '—';
+                    let marque = '';
+                    if (r.paiementEstime) marque = '<span class="calc-flag" title="Date de contrôle paiement — le règlement réel est antérieur">≈</span>';
+                    else if (r.dateVientDuGL) marque = '<span class="calc-flag calc-gl" title="Date issue du grand livre lettré">GL</span>';
+                    return U.dateFR(v) + marque;
+                },
+            },
             { key: 'board', label: 'Tableau', format: (v, r) => `<span class="cell-clip cell-board" title="${U.escapeHtml((v || '') + (r.groupe ? ' — ' + r.groupe : ''))}">${U.escapeHtml(v || '—')}</span>` },
         ];
 
@@ -1547,6 +1750,8 @@
                     ${ligne('Échéance retenue', U.dateFR(f.dateEcheance) + ` <span class="fv-hint">(${f.echeanceOrigine || 'non calculée'})</span>`)}
                     ${ligne('Date de paiement', U.dateFR(f.datePaiement))}
                     ${ligne('Date contrôle paiement', U.dateFR(f.dateControlePaiement))}
+                    ${f.origineDatePaiement ? ligne('Date retenue pour le retard', U.dateFR(f.datePaiementEffective) + ` <span class="fv-hint">(${U.escapeHtml(f.origineDatePaiement)})</span>`) : ''}
+                    ${f.datePaiementMonday ? ligne('Date Monday remplacée', U.dateFR(f.datePaiementMonday)) : ''}
                     ${ligne('Tableau', U.escapeHtml(f.board || '—'))}
                     ${ligne('Groupe', U.escapeHtml(f.groupe || '—'))}
                     ${ligne("Groupe d'origine (payées)", U.escapeHtml(f.groupeOrigine || '—'))}
@@ -1757,9 +1962,15 @@
         }
         let h = '';
         if (state.grandLivre.length) {
+            const st = state.glStats;
+            const detail = st
+                ? `${U.nombre(st.rapprochees)} factures rapprochées · ${U.nombre(st.completees)} dates complétées`
+                  + (st.remplacees ? ` · ${U.nombre(st.remplacees)} dates remplacées` : '')
+                : '';
             h += `<div class="import-row">
-                <span class="pill pill-role">Grand livre</span>
-                <span>${U.nombre(state.grandLivre.length)} lignes pointées</span>
+                <span class="pill pill-role">Grand livre lettré</span>
+                <span>${U.nombre(state.grandLivre.length)} lignes</span>
+                <span class="fv-hint">${U.escapeHtml(detail)}</span>
                 <button class="btn btn-ghost btn-sm" id="btn-clear-gl">Retirer</button>
             </div>`;
         }
@@ -2027,7 +2238,10 @@
             await S.set(S.KEYS.grandLivre, state.grandLivre);
             recalculer({ conserverPeriode: true });
             rendreHistoriqueImports();
-            U.toast(`Grand livre intégré : ${U.nombre(state.grandLivre.length)} lignes pointées.`, 'success');
+            const st = state.glStats || {};
+            U.toast(`Grand livre intégré : ${U.nombre(st.rapprochees || 0)} factures rapprochées, `
+                + `${U.nombre(st.completees || 0)} dates de paiement complétées`
+                + (st.remplacees ? `, ${U.nombre(st.remplacees)} remplacées` : '') + '.', 'success', 8000);
         } catch (e) {
             U.toast(e.message, 'error', 9000);
         }
@@ -2432,6 +2646,16 @@
             $$('#seg-flux-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));
             rendreTout();
         }));
+        $$('#seg-dso-methode .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.dsoMethode = b.dataset.methode;
+            $$('#seg-dso-methode .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendreTout();
+        }));
+        $$('#seg-histo-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.histoUnite = b.dataset.unite;
+            $$('#seg-histo-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendreTout();
+        }));
         $$('#seg-treemap-dim .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.treemapDim = b.dataset.dim;
             $$('#seg-treemap-dim .seg-btn').forEach(x => x.classList.toggle('active', x === b));
@@ -2539,6 +2763,7 @@
         opt('#opt-prefere-monday', 'prefereEcheanceMonday', true);
         opt('#opt-masquer-technique', 'masquerTechnique', false);
         opt('#opt-payees-hors-portefeuille', 'payeesHorsPortefeuille', true);
+        opt('#opt-gl-prioritaire', 'grandLivrePrioritaire', true);
 
         $('#btn-clear-data').addEventListener('click', async () => {
             U.modal('Effacer les factures ?', '<p>Les factures enregistrées sur ce poste seront supprimées. Les tableaux, règles et réglages sont conservés.</p>', [

@@ -397,6 +397,66 @@
                 </div>
             </div>
 
+            <!-- Évolution du retard moyen -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Évolution du retard moyen</h3></div>
+                    <span class="fv-hint">
+                        Retard de l'encours impayé constaté à la fin de chaque mois, et écart entre
+                        règlement et échéance sur les factures encaissées dans le mois
+                        (négatif = payé en avance)
+                    </span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-retard-evolution"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DSO -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>DSO — délai moyen de règlement client</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-dso-methode">
+                                <button class="seg-btn active" data-methode="countback">Count-back</button>
+                                <button class="seg-btn" data-methode="simple">Simple</button>
+                                <button class="seg-btn" data-methode="deux">Les deux</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Barres = encours client à la fin du mois (factures émises non réglées, échues ou non) ·
+                        Courbe = nombre de jours de chiffre d'affaires que cet encours représente
+                    </span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-dso"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Histogramme des retards -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Répartition des retards</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-histo-unite">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Comparer les deux séries montre si les créances anciennes finissent par rentrer
+                        ou si elles s'enkystent. Cliquez sur une tranche pour filtrer.
+                    </span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-histo-retards"></canvas>
+                    </div>
+                </div>
+            </div>
+
             <!-- Treemap : concentration de l'encours -->
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
@@ -667,6 +727,11 @@
                         <input type="checkbox" id="opt-payees-hors-portefeuille">
                         Exclure les factures déjà payées du portefeuille affiché
                     </label>
+                    <label class="check">
+                        <input type="checkbox" id="opt-gl-prioritaire">
+                        Le grand livre lettré fait foi sur les dates de paiement
+                        <span class="fv-hint">(sinon il ne comble que les dates absentes de Monday)</span>
+                    </label>
                 </div>
             </div>
 
@@ -684,7 +749,7 @@
                         <input type="file" id="settings-file-input" accept=".csv,.xlsx,.xls" multiple hidden>
                     </div>
                     <div class="upload-zone upload-zone-sm" id="gl-drop">
-                        <p class="upload-text">Grand livre pointé</p>
+                        <p class="upload-text">Grand livre lettré</p>
                         <p class="upload-hint">Numéro de facture, date de règlement, montant</p>
                         <input type="file" id="gl-file-input" accept=".csv,.xlsx,.xls" hidden>
                     </div>

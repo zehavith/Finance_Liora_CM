@@ -124,8 +124,24 @@ aucun calcul.
    **Date contrôle paiement** sert de repli : la facture porte alors le symbole
    **≈** et l'anomalie est listée en Data Quality, car cette date de validation
    est postérieure au règlement — le retard mesuré est donc majoré.
-4. L'import d'un **extrait de grand livre pointé** (onglet *Données*) comble
-   les dates de paiement manquantes par rapprochement sur le numéro de facture.
+4. L'import d'un **extrait de grand livre lettré** (onglet *Données*) apporte
+   les dates de règlement réelles, rapprochées sur le numéro de facture.
+
+### Grand livre lettré
+
+Deux modes, réglables dans *Données → Options de calcul* :
+
+- **par défaut** — le grand livre ne comble que les dates absentes de Monday.
+  Ce qui est déjà saisi est respecté ; les factures sans date réelle passent de
+  la date de contrôle paiement à la date comptable, ce qui corrige le retard
+  surestimé.
+- **le grand livre fait foi** — les dates comptables remplacent aussi celles de
+  Monday lorsqu'elles diffèrent. La date Monday d'origine reste visible dans la
+  fiche de la facture.
+
+Dans les deux cas, l'origine de chaque date est traçable : marqueur **GL** dans
+la colonne *Paiement*, ligne « Date retenue pour le retard » dans la fiche, et
+compte-rendu du rapprochement dans l'historique des imports.
 
 ## Indicateurs de recouvrement
 
@@ -171,6 +187,9 @@ L'export Excel contient un onglet *Répartition* reprenant l'arbre à plat.
 | **Encours par propriétaire** | barres horizontales — charge de relance |
 | **Structure du portefeuille** | double anneau : état à l'extérieur, périmètre à l'intérieur |
 | **% par mois et financement** | carte thermique |
+| **Évolution du retard moyen** | trois courbes en jours : retard moyen et médian de l'encours, écart au règlement |
+| **DSO** | barres d'encours client + courbe du délai de règlement en jours (count-back ou simple) |
+| **Répartition des retards** | histogramme par tranche, impayées contre finalement encaissées |
 | **Antériorité par mois** | barres empilées (onglet *Balance âgée*) |
 
 Tous sont cliquables et posent le filtre correspondant.
@@ -180,6 +199,32 @@ les entrées sont les factures devenues échues sans être réglées, les sortie
 factures en retard encaissées dans le mois. Le stock de fin de mois est recalculé
 à chaque date plutôt que cumulé, afin de rester juste quand une facture entre et
 sort dans le même mois.
+
+### DSO
+
+Le DSO est calculé mois par mois, sur l'encours client complet — factures
+émises et non réglées à la fin du mois, échues ou non, comme le veut la
+définition. Deux méthodes sont proposées :
+
+- **count-back** (par défaut) — l'encours de fin de mois est épuisé contre le
+  chiffre d'affaires des mois précédents, en comptant les jours. C'est la
+  méthode du credit management, stable même quand la facturation est
+  irrégulière. Quand l'encours est plus ancien que l'historique chargé, le
+  calcul est marqué non concluant plutôt qu'approximé.
+- **simple** — encours de fin de mois ÷ chiffre d'affaires du mois, ramené au
+  nombre de jours du mois. Plus lisible, mais très sensible à un mois de
+  facturation creux.
+
+Afficher les deux ensemble rend visible l'écart, qui signale précisément les
+mois où la méthode simple est trompeuse.
+
+### Répartition des retards
+
+L'histogramme sépare, pour chaque tranche de retard, ce qui est **encore
+impayé** de ce qui a **fini par rentrer**. La comparaison des deux séries dit si
+les créances anciennes finissent par être recouvrées ou si elles s'enkystent :
+une seconde série qui s'éteint au-delà de 60 jours signifie qu'au-delà de ce
+seuil, plus rien ne rentre. Un clic sur une tranche filtre les factures.
 
 ### Récupération
 
