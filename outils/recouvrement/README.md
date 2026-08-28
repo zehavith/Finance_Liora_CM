@@ -480,7 +480,9 @@ d'accès Monday**, les fichiers sont téléchargés dans le sous-répertoire
 lien dans la note.
 
 Le jeton se crée depuis Monday : avatar en haut à droite → *Développeurs* →
-*Mes jetons d'accès*. Collez-le dans le champ prévu de l'interface : il est
+*Centre de développeurs*, puis **Clé API** dans le menu de gauche. Monday a
+renommé cette page — l'ancien libellé *Mes jetons d'accès* ne s'y trouve
+plus. Collez le jeton dans le champ prévu de l'interface : il est
 enregistré dans `monday-token.txt`, exclu du dépôt au même titre que les
 identifiants Gmail.
 

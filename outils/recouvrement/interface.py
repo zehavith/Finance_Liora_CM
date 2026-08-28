@@ -1056,7 +1056,8 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <p class="note">Le jeton Monday est facultatif : sans lui, les factures et
      conventions du tableau sont seulement citées en lien dans la note, au lieu
      d'être téléchargées. Il s'obtient dans Monday, profil en haut à droite →
-     Développeurs → Mes jetons d'accès.</p>
+     Développeurs → Centre de développeurs, puis <b>Clé API</b> dans le menu
+     de gauche.</p>
   <p class="note">La destination est volontairement hors de OneDrive : l'export
      contient les données personnelles des apprenantes, et la synchronisation
      d'un dossier volumineux provoque des erreurs d'écriture en cours de route.</p>
