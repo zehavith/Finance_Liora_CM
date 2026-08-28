@@ -61,6 +61,40 @@ def lire_jeton(chemin: Path) -> str:
     return chemin.read_text(encoding="utf-8").strip()
 
 
+def _motif_http(exc: urllib.error.HTTPError) -> str:
+    """Le motif que Monday place dans le corps d'une réponse en erreur.
+
+    Le corps n'est lisible qu'une fois, et son format varie : `errors`,
+    `error_message`, parfois du texte brut. Rien de tout cela ne doit faire
+    échouer la lecture du motif — on cherche à expliquer une erreur, pas à en
+    provoquer une seconde.
+    """
+    try:
+        brut = exc.read().decode("utf-8", "replace").strip()
+    except Exception:  # noqa: BLE001 - un motif absent n'est pas une panne
+        return ""
+    if not brut:
+        return ""
+
+    try:
+        charge = json.loads(brut)
+    except ValueError:
+        return brut[:300]
+
+    if isinstance(charge, dict):
+        erreurs = charge.get("errors")
+        if isinstance(erreurs, list) and erreurs:
+            messages = [
+                (e.get("message") if isinstance(e, dict) else str(e)) or ""
+                for e in erreurs
+            ]
+            return "; ".join(m for m in messages if m)[:300]
+        for cle in ("error_message", "message", "error"):
+            if charge.get(cle):
+                return str(charge[cle])[:300]
+    return brut[:300]
+
+
 def _appeler_api(requete: str, jeton: str) -> dict:
     corps = json.dumps({"query": requete}).encode("utf-8")
     demande = urllib.request.Request(
@@ -76,8 +110,15 @@ def _appeler_api(requete: str, jeton: str) -> dict:
         with urllib.request.urlopen(demande, timeout=DELAI) as reponse:  # noqa: S310
             charge = json.loads(reponse.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
+        # Monday explique le refus dans le corps de la réponse, pas dans le
+        # code : un 400 nu ne dit ni quelle colonne pose problème, ni que le
+        # budget de complexité est épuisé. Sans ce détail, il n'y a rien à
+        # diagnostiquer.
         detail = "jeton refusé" if exc.code in (401, 403) else f"HTTP {exc.code}"
-        raise ErreurMonday(f"Monday a refusé la requête ({detail}).") from exc
+        motif = _motif_http(exc)
+        raise ErreurMonday(
+            f"Monday a refusé la requête ({detail})." + (f" {motif}" if motif else "")
+        ) from exc
     except (urllib.error.URLError, TimeoutError, ValueError) as exc:
         raise ErreurMonday(f"Monday injoignable : {exc}") from exc
 
@@ -114,6 +155,19 @@ def adresses_signees(identifiants: list[str], jeton: str) -> dict[str, dict]:
 # boucler indéfiniment si l'API se mettait à répondre toujours la même page.
 TABLEAUX_PAR_PAGE = 100
 PLAFOND_TABLEAUX = 1000
+
+
+# En dessous, la lecture d'un gros tableau demanderait trop d'allers-retours.
+MINIMUM_PAR_PAGE = 5
+
+# Monday formule le dépassement de plusieurs façons selon la version d'API.
+BUDGET_EPUISE = ("complexity", "complexité", "budget", "depth limit", "too large")
+
+
+def _budget_epuise(exc: Exception) -> bool:
+    """Le refus tient-il à la taille de la requête, et non à son contenu ?"""
+    texte = str(exc).lower()
+    return any(marqueur in texte for marqueur in BUDGET_EPUISE)
 
 
 def _est_sous_elements(tableau: dict) -> bool:
@@ -214,7 +268,31 @@ def _valeur_colonne(colonne: dict) -> str:
     return ""
 
 
-def lire_tableau(identifiant: str, jeton: str, par_page: int = 100) -> list[tuple[int, list[str]]]:
+def _ligne_element(element: dict, nom_tableau: str) -> dict[str, str]:
+    """Un élément Monday, sous forme de colonnes nommées.
+
+    « Monday ID » n'est reconnu comme aucun champ : il voyage avec la ligne
+    sans rien perturber, et c'est lui qui relie ensuite le dossier à son
+    historique d'étapes.
+    """
+    ligne = {
+        "Name": element.get("name") or "",
+        "Monday ID": str(element.get("id") or ""),
+        "Monday tableau": nom_tableau,
+    }
+    for colonne in element.get("column_values") or []:
+        titre = ((colonne.get("column") or {}).get("title") or "").strip()
+        if titre:
+            ligne[titre] = _valeur_colonne(colonne)
+    return ligne
+
+
+def lire_tableau(
+    identifiant: str,
+    jeton: str,
+    par_page: int = 100,
+    avec_sous_elements: bool = False,
+) -> list[tuple[int, list[str]]]:
     """Le contenu d'un tableau Monday, sous la forme d'une grille.
 
     Même forme qu'un export Excel lu depuis le disque — ligne d'en-tête puis
@@ -224,10 +302,20 @@ def lire_tableau(identifiant: str, jeton: str, par_page: int = 100) -> list[tupl
     La pagination est suivie jusqu'au bout : un tableau de recouvrement
     dépasse largement une page, et s'arrêter à la première produirait
     silencieusement un lot incomplet.
+
+    Avec `avec_sous_elements`, chaque sous-élément donne une ligne de plus,
+    qui hérite des colonnes de son parent partout où elle n'a rien à dire :
+    une facture rangée en sous-élément porte son numéro et son montant, mais
+    c'est l'élément parent qui porte le nom et l'adresse de l'apprenante.
     """
     entetes: list[str] = []
-    lignes: list[list[str]] = []
+    lignes: list[dict[str, str]] = []
     curseur: str | None = None
+    sous = (
+        " subitems { id name column_values { column { title } text value } }"
+        if avec_sous_elements
+        else ""
+    )
 
     while True:
         page = (
@@ -235,12 +323,22 @@ def lire_tableau(identifiant: str, jeton: str, par_page: int = 100) -> list[tupl
             if curseur
             else f"items_page (limit: {int(par_page)})"
         )
-        donnees = _appeler_api(
-            f"query {{ boards (ids: [{int(identifiant)}]) {{ name "
-            f"{page} {{ cursor items {{ id name column_values {{ "
-            "column { title } text value } } } } } }",
-            jeton,
-        )
+        try:
+            donnees = _appeler_api(
+                f"query {{ boards (ids: [{int(identifiant)}]) {{ name "
+                f"{page} {{ cursor items {{ id name column_values {{ "
+                f"column {{ title }} text value }}{sous} }} }} }} }}",
+                jeton,
+            )
+        except ErreurMonday as exc:
+            # Un tableau large épuise le budget de complexité de l'API : la
+            # même requête, demandée par plus petits paquets, passe. Un curseur
+            # reste valable après un changement de taille de page, la lecture
+            # reprend donc où elle s'était arrêtée.
+            if not _budget_epuise(exc) or par_page <= MINIMUM_PAR_PAGE:
+                raise
+            par_page = max(MINIMUM_PAR_PAGE, int(par_page) // 4)
+            continue
 
         tableaux = donnees.get("boards") or []
         if not tableaux:
@@ -251,29 +349,39 @@ def lire_tableau(identifiant: str, jeton: str, par_page: int = 100) -> list[tupl
         nom_tableau = (tableaux[0].get("name") or "").strip()
         contenu = tableaux[0].get("items_page") or {}
         for element in contenu.get("items") or []:
-            colonnes = element.get("column_values") or []
-            if not entetes:
-                # « Monday ID » n'est reconnu comme aucun champ : il voyage
-                # avec la ligne sans rien perturber, et c'est lui qui relie
-                # ensuite le dossier à son historique d'étapes.
-                entetes = ["Name", "Monday ID", "Monday tableau"] + [
-                    ((colonne.get("column") or {}).get("title") or "").strip()
-                    for colonne in colonnes
-                ]
-            lignes.append(
-                [element.get("name") or "", str(element.get("id") or ""), nom_tableau]
-                + [_valeur_colonne(colonne) for colonne in colonnes]
-            )
+            ligne = _ligne_element(element, nom_tableau)
+            lignes.append(ligne)
+            for sous_element in (element.get("subitems") or []) if avec_sous_elements else []:
+                # Le parent d'abord, le sous-élément par-dessus : ce que le
+                # sous-élément renseigne l'emporte, le reste est hérité. Une
+                # valeur vide n'écrase rien — elle n'apprend rien.
+                fille = dict(ligne)
+                fille["Monday parent"] = ligne["Monday ID"]
+                for cle, valeur in _ligne_element(sous_element, nom_tableau).items():
+                    if valeur or cle not in fille:
+                        fille[cle] = valeur
+                lignes.append(fille)
 
         curseur = contenu.get("cursor")
         if not curseur:
             break
 
+    # Union ordonnée des colonnes : un sous-élément n'a pas les mêmes que son
+    # parent, et une colonne vue seulement à la centième ligne doit exister
+    # dans l'en-tête, sinon sa valeur serait perdue sans un mot.
+    for ligne in lignes:
+        for cle in ligne:
+            if cle not in entetes:
+                entetes.append(cle)
+
     if not entetes:
         raise ErreurMonday(f"Le tableau {identifiant} ne contient aucun élément.")
 
     grille = [(1, entetes)]
-    grille += [(numero, ligne) for numero, ligne in enumerate(lignes, start=2)]
+    grille += [
+        (numero, [ligne.get(cle, "") for cle in entetes])
+        for numero, ligne in enumerate(lignes, start=2)
+    ]
     return grille
 
 

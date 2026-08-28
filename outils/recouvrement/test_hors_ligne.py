@@ -10,6 +10,7 @@ installation pour vérifier que le poste est correctement équipé :
 
 from __future__ import annotations
 
+import io
 import json
 import sys
 import tempfile
@@ -1877,6 +1878,155 @@ def test_lecture_tableau_monday() -> None:
         )
 
 
+def test_refus_monday() -> None:
+    """Un refus de l'API doit dire pourquoi, et un tableau large doit passer."""
+    print("\nRefus et gros tableaux Monday")
+
+    import urllib.error  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+
+    import monday as module_monday  # noqa: PLC0415
+
+    class FauxRefus(urllib.error.HTTPError):
+        def __init__(self, code, corps):
+            super().__init__("https://api.monday.com/v2", code, "Bad Request",
+                             {}, io.BytesIO(corps.encode("utf-8")))
+
+    # Monday explique le refus dans le corps ; le code seul ne dit rien.
+    def refus(requete, jeton):
+        raise FauxRefus(400, json.dumps({"errors": [
+            {"message": "Complexity budget exhausted, query cost 5000000"}
+        ]}))
+
+    vrai_urlopen = module_monday.urllib.request.urlopen
+    module_monday.urllib.request.urlopen = lambda *a, **k: (_ for _ in ()).throw(
+        FauxRefus(400, json.dumps({"errors": [{"message": "Field 'typo' doesn't exist"}]}))
+    )
+    try:
+        module_monday._appeler_api("query { boards { id } }", "jeton")
+        verifier(False, "le motif du refus est rapporté")
+    except module_monday.ErreurMonday as exc:
+        verifier("Field 'typo' doesn't exist" in str(exc),
+                 "le motif écrit par Monday accompagne le code HTTP")
+        verifier("HTTP 400" in str(exc), "le code HTTP reste indiqué")
+    finally:
+        module_monday.urllib.request.urlopen = vrai_urlopen
+
+    # Un budget de complexité épuisé se rattrape en demandant moins à la fois.
+    tailles: list[int] = []
+
+    def parfois(requete, jeton):
+        taille = int(requete.split("limit: ")[1].split(",")[0].split(")")[0])
+        tailles.append(taille)
+        if taille > 25:
+            raise module_monday.ErreurMonday(
+                "Monday a refusé la requête (HTTP 400). Complexity budget exhausted"
+            )
+        return {"boards": [{"name": "Recouvrement", "items_page": {
+            "cursor": None,
+            "items": [{"id": 1, "name": "FACT-1", "column_values": [
+                {"column": {"title": "E-mail"}, "text": "a@b.fr"}]}],
+        }}]}
+
+    vrai_appel = module_monday._appeler_api
+    module_monday._appeler_api = parfois
+    try:
+        grille = module_monday.lire_tableau("42", "jeton")
+    finally:
+        module_monday._appeler_api = vrai_appel
+
+    verifier(tailles == [100, 25], f"la page est réduite puis relue (obtenu : {tailles})")
+    verifier(len(grille) == 2, "le tableau est lu malgré le premier refus")
+
+    # En dessous du plancher, l'erreur remonte : mieux vaut la dire que
+    # multiplier indéfiniment les allers-retours.
+    module_monday._appeler_api = lambda requete, jeton: (_ for _ in ()).throw(
+        module_monday.ErreurMonday("HTTP 400. Complexity budget exhausted")
+    )
+    try:
+        module_monday.lire_tableau("42", "jeton")
+        verifier(False, "un refus persistant finit par être signalé")
+    except module_monday.ErreurMonday as exc:
+        verifier("Complexity" in str(exc), "un refus persistant finit par être signalé")
+    finally:
+        module_monday._appeler_api = vrai_appel
+
+
+def test_sous_elements_monday() -> None:
+    """Les sous-éléments donnent des lignes, héritées de leur parent."""
+    print("\nSous-éléments Monday")
+
+    import monday as module_monday  # noqa: PLC0415
+    from dossiers import dossiers_depuis_grille  # noqa: PLC0415
+
+    parent = {
+        "id": 10, "name": "Aissata Diallo",
+        "column_values": [
+            {"column": {"title": "E-mail"}, "text": "aissata@exemple.fr"},
+            {"column": {"title": "Etape process recouvrement"},
+             "text": "Dossier à faire passer en contentieux"},
+            {"column": {"title": "Reste à payer"}, "text": "2000"},
+        ],
+        "subitems": [
+            {"id": 11, "name": "FACT-2405-00030", "column_values": [
+                {"column": {"title": "Numéro de facture"}, "text": "FACT-2405-00030"},
+                {"column": {"title": "Reste à payer"}, "text": "1200"},
+                # Vide : ne doit pas effacer l'adresse héritée du parent.
+                {"column": {"title": "E-mail"}, "text": ""},
+            ]},
+            {"id": 12, "name": "FACT-2405-00031", "column_values": [
+                {"column": {"title": "Numéro de facture"}, "text": "FACT-2405-00031"},
+                {"column": {"title": "Reste à payer"}, "text": "800"},
+            ]},
+        ],
+    }
+
+    requetes: list[str] = []
+
+    def faux_appel(requete, jeton):
+        requetes.append(requete)
+        return {"boards": [{"name": "1.2. Entreprise - Recouvrement",
+                            "items_page": {"cursor": None, "items": [parent]}}]}
+
+    vrai_appel = module_monday._appeler_api
+    module_monday._appeler_api = faux_appel
+    try:
+        sans = module_monday.lire_tableau("42", "jeton")
+        requete_sans = requetes[-1]
+        avec = module_monday.lire_tableau("42", "jeton", avec_sous_elements=True)
+        requete_avec = requetes[-1]
+    finally:
+        module_monday._appeler_api = vrai_appel
+
+    # L'API peut renvoyer des sous-éléments sans qu'on les ait demandés : sans
+    # l'option, ils ne doivent pas se glisser dans le lot pour autant.
+    verifier(len(sans) == 2, "sans l'option, seul l'élément parent est lu")
+    verifier("subitems" not in requete_sans and "subitems {" in requete_avec,
+             "l'option seule ajoute les sous-éléments à la requête")
+    verifier(len(avec) == 4, f"le parent et ses deux sous-éléments (obtenu : {len(avec) - 1})")
+
+    entetes = avec[0][1]
+    lignes = {ligne[entetes.index("Monday ID")]: dict(zip(entetes, ligne))
+              for _, ligne in avec[1:]}
+    verifier("Numéro de facture" in entetes,
+             "une colonne propre au sous-élément figure dans l'en-tête")
+    verifier(lignes["11"]["E-mail"] == "aissata@exemple.fr",
+             "le sous-élément hérite de l'adresse du parent")
+    verifier(lignes["11"]["Reste à payer"] == "1200",
+             "ce que le sous-élément renseigne l'emporte sur le parent")
+    verifier(lignes["10"]["Reste à payer"] == "2000",
+             "le parent garde sa propre valeur")
+    verifier(lignes["11"]["Monday parent"] == "10",
+             "le sous-élément garde le lien vers son parent")
+    verifier(lignes["11"]["Etape process recouvrement"].endswith("contentieux"),
+             "la qualification portée par le parent vaut pour ses sous-éléments")
+    verifier(lignes["10"].get("Monday parent", "") == "",
+             "un élément parent n'a pas de parent")
+
+    dossiers = dossiers_depuis_grille(avec, "tableau Monday 42")
+    verifier(len(dossiers) == 3, "les trois lignes deviennent des dossiers")
+
+
 def test_historique_etapes() -> None:
     """Dates de passage d'étape en étape, relevées dans le journal Monday."""
     print("\nHistorique des étapes")
@@ -2690,6 +2840,25 @@ def test_interface() -> None:
         except urllib.error.HTTPError as exc:
             verifier(exc.code == 400, f"extension non prise en charge refusée ({exc.code})")
 
+        print("  -- les options de la page arrivent bien à l'outil --")
+        # Une case ajoutée à la page mais oubliée dans la ligne de commande ne
+        # se voit pas : elle se coche, et ne change rien.
+        args, _ = interface.construire_arguments(
+            {"tableau": "42", "sous_elements": True,
+             "filtre_colonne": "Etape process recouvrement",
+             "filtre_valeur": "contentieux"},
+            Path("dossiers.csv"),
+        )
+        verifier("--avec-sous-elements" in args,
+                 "la case des sous-éléments atteint la ligne de commande")
+        verifier("--tableau-monday" in args and "--filtre-colonne" in args,
+                 "le tableau et son filtre l'atteignent aussi")
+        sans, _ = interface.construire_arguments({"tableau": "42"}, Path("d.csv"))
+        verifier("--avec-sous-elements" not in sans,
+                 "décochée, elle n'ajoute rien")
+        verifier("souselements" in interface.CASES_MEMORISEES,
+                 "la case est mémorisée d'une session à l'autre")
+
         print("  -- les tableaux du travail courant sont proposés --")
         # Ils ne le sont qu'une fois : la trace enregistrée doit revenir dans
         # la page, sans quoi un tableau décoché serait recoché au listage
@@ -3292,6 +3461,8 @@ def main() -> int:
     test_sens_et_faux_positifs()
     test_echeance_facture()
     test_lecture_tableau_monday()
+    test_refus_monday()
+    test_sous_elements_monday()
     test_historique_etapes()
     test_liste_complete_tableaux()
     test_deux_tableaux()

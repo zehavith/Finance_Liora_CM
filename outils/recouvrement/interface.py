@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "34"
+VERSION = "35"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -79,6 +79,7 @@ CASES_MEMORISEES = {
     "sousdossiers": True,
     "sousdossiersadresse": False,
     "decouvrir": False,
+    "souselements": False,
     "sansnav": False,
     "reprendre": False,
     "majdossiers": False,
@@ -288,6 +289,8 @@ def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str
         arguments.append("--sous-dossiers-par-adresse")
     if demande.get("decouvrir_adresses"):
         arguments.append("--decouvrir-adresses")
+    if demande.get("sous_elements"):
+        arguments.append("--avec-sous-elements")
 
     domaines = (demande.get("domaines") or "").strip()
     if domaines:
@@ -1090,6 +1093,13 @@ button:disabled{opacity:.45;cursor:not-allowed}
     la recherche sur chacune. Ramène les échanges qui ne citent aucun numéro.
     Les adresses internes et les robots sont écartés ; chaque adresse retenue
     est annoncée dans le journal.</i></span></label>
+  <label class="case"><input type="checkbox" id="souselements" />
+    <span><b>Traiter aussi les sous-éléments Monday</b><i>Quand une facture est
+    rangée en sous-élément sous l'apprenante, chaque sous-élément devient une
+    ligne à part. Il hérite des colonnes de son parent — nom, adresse mail,
+    qualification — partout où il n'en porte pas lui-même. À laisser décoché si
+    vos factures sont des éléments à part entière : sinon chaque dossier
+    reviendrait deux fois.</i></span></label>
   <label class="case"><input type="checkbox" id="sansnav" />
     <span><b>Ne pas ouvrir le navigateur pour autoriser</b><i>Si une boîte est
     connectée dans une autre fenêtre : l'adresse s'affiche, à coller vous-même.</i></span></label>
@@ -1214,8 +1224,17 @@ $("listerTableaux").addEventListener("click", async () => {
 // fait foi, sans quoi un tableau écarté reviendrait à chaque listage.
 function proposerChantiers() {
   if (chantiersProposes) return 0;
-  const retenus = TABLEAUX.filter((tab) =>
-    CHANTIERS.some((prefixe) => (tab.nom || "").trim().startsWith(prefixe)));
+  // Le point final n'est pas garanti : « 2.1. Financement Personnel » et
+  // « 2.1 Financement Personnel » désignent le même tableau, et exiger la
+  // forme exacte ferait echouer la reconnaissance sans rien dire.
+  const retenus = TABLEAUX.filter((tab) => {
+    const nom = (tab.nom || "").trim();
+    return CHANTIERS.some((prefixe) => {
+      const nu = prefixe.replace(/\.$/, "");
+      return nom.startsWith(prefixe) ||
+        (nom.startsWith(nu) && !/[0-9.]/.test(nom.slice(nu.length, nu.length + 1)));
+    });
+  });
   retenus.forEach((tab) => TABLEAUX_COCHES.add(tab.id));
   chantiersProposes = true;
   enregistrerReglages();
@@ -1423,6 +1442,7 @@ $("lancer").addEventListener("click", async () => {
       sans_sous_dossiers: !$("sousdossiers").checked,
       sous_dossiers_par_adresse: $("sousdossiersadresse").checked,
       decouvrir_adresses: $("decouvrir").checked,
+      sous_elements: $("souselements").checked,
       sans_navigateur: $("sansnav").checked,
       reprendre: $("reprendre").checked,
       mettre_a_jour: $("majdossiers").checked,

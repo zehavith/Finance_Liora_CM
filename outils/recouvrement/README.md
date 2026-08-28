@@ -432,6 +432,27 @@ la même référence pour deux débiteurs différents : le second dossier est al
 renommé, et le renommage est annoncé. Sans cela, il écraserait le premier en
 silence.
 
+### Sous-éléments
+
+Une facture est parfois rangée en **sous-élément** sous l'apprenante, plutôt
+qu'en élément à part entière. L'option *Traiter aussi les sous-éléments Monday*
+(`--avec-sous-elements`) en fait alors des lignes à part : chacune hérite des
+colonnes de son parent — nom, adresse mail, qualification — partout où elle
+n'en porte pas elle-même, et garde le lien vers lui dans la colonne
+`Monday parent`.
+
+Elle est décochée par défaut. Si vos factures sont déjà des éléments, la
+cocher ferait remonter chaque dossier deux fois. Elle alourdit aussi la
+requête, ce qui compte sur un gros tableau.
+
+### Un tableau trop gros pour une seule requête
+
+L'API Monday facture chaque requête en « complexité ». Un tableau large peut
+dépasser le budget, et la réponse est alors un refus sec — un HTTP 400 dont le
+code seul n'apprend rien. Le motif écrit par Monday dans le corps de la
+réponse est désormais rapporté, et la lecture se reprend d'elle-même par
+paquets plus petits (100, puis 25, puis 6) avant d'abandonner.
+
 Monday crée en coulisses un tableau technique par colonne de sous-éléments,
 nommé « Sous-éléments de … ». Il n'est pas proposé dans la liste : il double
 l'affichage de doublons apparents dont il faut deviner qu'ils ne servent à

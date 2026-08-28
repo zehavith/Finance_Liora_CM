@@ -230,6 +230,16 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     analyseur.add_argument(
+        "--avec-sous-elements",
+        action="store_true",
+        help=(
+            "Traiter aussi les sous-éléments des tableaux Monday, chacun comme "
+            "une ligne à part. Un sous-élément hérite des colonnes de son "
+            "parent partout où il n'en porte pas : utile quand une facture est "
+            "un sous-élément de l'apprenante."
+        ),
+    )
+    analyseur.add_argument(
         "--colonne-etapes",
         default="",
         help=(
@@ -1273,7 +1283,10 @@ def executer(
             for identifiant in identifiants:
                 journal(f"Lecture du tableau Monday {identifiant}…")
                 try:
-                    grille = module_monday.lire_tableau(identifiant, jeton)
+                    grille = module_monday.lire_tableau(
+                        identifiant, jeton,
+                        avec_sous_elements=options.avec_sous_elements,
+                    )
                 except module_monday.ErreurMonday as exc:
                     raise ErreurDossiers(str(exc)) from exc
                 lignes_tableau = dossiers_depuis_grille(
