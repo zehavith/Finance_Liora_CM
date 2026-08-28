@@ -2043,6 +2043,105 @@ def test_filtre_chez_monday() -> None:
              "le filtre n'accompagne que la première page, jamais le curseur")
 
 
+def test_groupes_monday() -> None:
+    """Une facture qualifiée par son groupe, non par sa colonne d'étape."""
+    print("\nGroupes Monday")
+
+    import monday as module_monday  # noqa: PLC0415
+    from dossiers import dossiers_depuis_grille, filtrer_par_colonne  # noqa: PLC0415
+
+    def element(identifiant, nom, groupe, etape):
+        return {
+            "id": identifiant, "name": nom, "group": {"title": groupe},
+            "column_values": [
+                {"column": {"title": "Numéro de facture"}, "text": nom},
+                {"column": {"title": "E-mail"}, "text": f"{identifiant}@exemple.fr"},
+                {"column": {"title": "Etape process recouvrement"}, "text": etape},
+            ],
+        }
+
+    # Dans le groupe contentieux, mais la colonne d'étape ne dit rien : c'est
+    # le cas que le filtre par colonne seul laissait passer.
+    au_groupe = element(1, "FACT-2405-00409", "1.2.5 Service contentieux", "")
+    a_la_colonne = element(2, "FACT-2409-05275", "1.2.1 Relances",
+                           "🔴 Dossier à faire passer en contentieux")
+    aux_deux = element(3, "FACT-2601-13302", "1.2.5 Service contentieux",
+                       "Dossier à faire passer en contentieux")
+    ailleurs = element(4, "FACT-2404-00001", "1.2.1 Relances", "Relance 2")
+
+    requetes: list[str] = []
+
+    def faux_appel(requete, jeton):
+        requetes.append(requete)
+        if "groups { id title }" in requete:
+            return {"boards": [{"groups": [
+                {"id": "grp_relances", "title": "1.2.1 Relances"},
+                {"id": "grp_cont", "title": "1.2.5 Service contentieux"},
+            ]}]}
+        if "columns {" in requete:
+            return {"boards": [{"columns": [
+                {"id": "status_1", "title": "Etape process recouvrement"}]}]}
+        if "grp_cont" in requete:
+            return {"boards": [{"name": "1.2. Entreprise - Recouvrement", "groups": [
+                {"id": "grp_cont", "title": "1.2.5 Service contentieux",
+                 "items_page": {"cursor": None, "items": [au_groupe, aux_deux]}}]}]}
+        return {"boards": [{"name": "1.2. Entreprise - Recouvrement", "items_page": {
+            "cursor": None, "items": [a_la_colonne, aux_deux]}}]}
+
+    vrai_appel = module_monday._appeler_api
+    module_monday._appeler_api = faux_appel
+    dits: list[str] = []
+    try:
+        grille = module_monday.lire_tableau(
+            "42", "jeton",
+            filtre=("Etape process recouvrement", ["contentieux"]),
+            groupes=["contentieux"],
+            signaler=dits.append,
+        )
+    finally:
+        module_monday._appeler_api = vrai_appel
+
+    verifier(any("1.2.5 Service contentieux" in ligne for ligne in dits),
+             "le groupe retenu est annoncé, pour qu'on puisse le vérifier")
+    verifier(any('groups (ids: ["grp_cont"]' in r for r in requetes),
+             "le groupe contentieux est lu pour lui-même")
+    verifier(not any('grp_relances' in r for r in requetes),
+             "le groupe des relances n'est jamais demandé")
+
+    entetes = grille[0][1]
+    references = [ligne[entetes.index("Name")] for _, ligne in grille[1:]]
+    verifier(sorted(references) == ["FACT-2405-00409", "FACT-2409-05275",
+                                    "FACT-2601-13302"],
+             f"les trois factures qualifiées, sans doublon (obtenu : {sorted(references)})")
+    verifier(references.count("FACT-2601-13302") == 1,
+             "une facture retenue par son groupe et par sa colonne ne compte qu'une fois")
+    verifier("Monday groupe" in entetes, "le groupe voyage avec la ligne")
+
+    # Le filtre local ne doit pas défaire la lecture par groupe.
+    dossiers = dossiers_depuis_grille(grille, "tableau Monday 42")
+    retenus = filtrer_par_colonne(
+        dossiers, "Etape process recouvrement", "contentieux", groupes="contentieux",
+    )
+    verifier(len(retenus) == 3,
+             f"le tri local garde aussi les lignes qualifiées par leur groupe "
+             f"(obtenu : {len(retenus)})")
+    sans_groupe = filtrer_par_colonne(
+        dossiers, "Etape process recouvrement", "contentieux",
+    )
+    verifier(len(sans_groupe) == 2,
+             "sans mention de groupe, seul le filtre par colonne s'applique")
+
+    # Sans groupe demandé, rien ne change : le tableau entier est lu.
+    module_monday._appeler_api = faux_appel
+    requetes.clear()
+    try:
+        module_monday.lire_tableau("42", "jeton", groupes=[])
+    finally:
+        module_monday._appeler_api = vrai_appel
+    verifier(not any("groups (ids:" in r for r in requetes),
+             "sans groupe demandé, aucune lecture par groupe n'est tentée")
+
+
 def test_sous_elements_monday() -> None:
     """Les sous-éléments donnent des lignes, héritées de leur parent."""
     print("\nSous-éléments Monday")
@@ -3554,6 +3653,7 @@ def main() -> int:
     test_lecture_tableau_monday()
     test_refus_monday()
     test_filtre_chez_monday()
+    test_groupes_monday()
     test_sous_elements_monday()
     test_historique_etapes()
     test_liste_complete_tableaux()

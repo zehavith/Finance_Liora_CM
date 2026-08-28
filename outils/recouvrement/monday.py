@@ -25,6 +25,7 @@ import re
 import unicodedata
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -315,6 +316,7 @@ def _ligne_element(element: dict, nom_tableau: str) -> dict[str, str]:
         "Name": element.get("name") or "",
         "Monday ID": str(element.get("id") or ""),
         "Monday tableau": nom_tableau,
+        "Monday groupe": ((element.get("group") or {}).get("title") or "").strip(),
     }
     for colonne in element.get("column_values") or []:
         titre = ((colonne.get("column") or {}).get("title") or "").strip()
@@ -343,12 +345,51 @@ def _echapper_graphql(texte: str) -> str:
     return (texte or "").replace("\\", "\\\\").replace('"', '\\"')
 
 
+def groupes_du_tableau(identifiant: str, jeton: str) -> list[dict]:
+    """Les groupes d'un tableau, avec leur identifiant et leur intitulé."""
+    donnees = _appeler_api(
+        f"query {{ boards (ids: [{int(identifiant)}]) "
+        "{ groups { id title } } }",
+        jeton,
+    )
+    tableaux = donnees.get("boards") or []
+    if not tableaux:
+        return []
+    return [
+        {"id": str(groupe.get("id")), "titre": (groupe.get("title") or "").strip()}
+        for groupe in (tableaux[0].get("groups") or [])
+        if groupe.get("id")
+    ]
+
+
+def _groupes_retenus(identifiant: str, jeton: str, motifs: list[str]) -> list[dict]:
+    """Les groupes dont l'intitulé contient l'un des motifs demandés.
+
+    Par inclusion, sans accent ni casse : le groupe s'appelle « 1.2.5 Service
+    contentieux » ici et « 2.1.6. Facture en Contentieux » là, et c'est le mot
+    « contentieux » qui les désigne tous les deux.
+    """
+    voulus = [_sans_accent(motif) for motif in motifs if motif and motif.strip()]
+    if not voulus:
+        return []
+    try:
+        groupes = groupes_du_tableau(identifiant, jeton)
+    except ErreurMonday:
+        return []
+    return [
+        groupe for groupe in groupes
+        if any(motif in _sans_accent(groupe["titre"]) for motif in voulus)
+    ]
+
+
 def lire_tableau(
     identifiant: str,
     jeton: str,
     par_page: int = 100,
     avec_sous_elements: bool = False,
     filtre: tuple[str, list[str]] | None = None,
+    groupes: list[str] | None = None,
+    signaler: Callable[[str], None] | None = None,
 ) -> list[tuple[int, list[str]]]:
     """Le contenu d'un tableau Monday, sous la forme d'une grille.
 
@@ -360,14 +401,22 @@ def lire_tableau(
     dépasse largement une page, et s'arrêter à la première produirait
     silencieusement un lot incomplet.
 
+    Deux façons de désigner ce qui est à traiter, cumulables :
+
+    - `filtre` — une colonne et les valeurs attendues, appliquées par Monday ;
+    - `groupes` — des mots présents dans l'intitulé d'un groupe. Une facture
+      est souvent qualifiée en la glissant dans le groupe « Service
+      contentieux », sans que la colonne d'étape en dise rien.
+
+    Une ligne retenue par l'un ou l'autre est gardée, et une ligne retenue
+    deux fois ne compte qu'une.
+
     Avec `avec_sous_elements`, chaque sous-élément donne une ligne de plus,
     qui hérite des colonnes de son parent partout où elle n'a rien à dire :
     une facture rangée en sous-élément porte son numéro et son montant, mais
     c'est l'élément parent qui porte le nom et l'adresse de l'apprenante.
     """
-    entetes: list[str] = []
-    lignes: list[dict[str, str]] = []
-    curseur: str | None = None
+    dire = signaler or (lambda _message: None)
     sous = (
         " subitems { id name column_values { column { title } text value } }"
         if avec_sous_elements
@@ -388,64 +437,27 @@ def lire_tableau(
             if colonne_id:
                 regles = _regles_filtre(colonne_id, valeurs)
 
-    while True:
-        arguments = [f"limit: {int(par_page)}"]
-        if curseur:
-            # Un curseur porte déjà le filtre de la requête qui l'a produit :
-            # le répéter est refusé par l'API.
-            arguments.append(f'cursor: "{curseur}"')
-        elif regles:
-            arguments.append(regles)
-        page = f"items_page ({', '.join(arguments)})"
-        try:
-            donnees = _appeler_api(
-                f"query {{ boards (ids: [{int(identifiant)}]) {{ name "
-                f"{page} {{ cursor items {{ id name column_values {{ "
-                f"column {{ title }} text value }}{sous} }} }} }} }}",
-                jeton,
-            )
-        except ErreurMonday as exc:
-            # Un tableau large épuise le budget de complexité de l'API : la
-            # même requête, demandée par plus petits paquets, passe. Un curseur
-            # reste valable après un changement de taille de page, la lecture
-            # reprend donc où elle s'était arrêtée.
-            # Le filtre côté Monday est un gain de temps, pas une nécessité :
-            # si l'API le refuse, on relit sans lui et le filtre local fait le
-            # tri. Un tableau lu lentement vaut mieux qu'un tableau non lu.
-            if regles and _filtre_refuse(exc):
-                regles = ""
-                continue
-            if not _budget_epuise(exc) or par_page <= MINIMUM_PAR_PAGE:
-                raise
-            par_page = max(MINIMUM_PAR_PAGE, int(par_page) // 4)
-            continue
+    retenus = _groupes_retenus(identifiant, jeton, groupes or [])
+    for groupe in retenus:
+        dire(f"    groupe « {groupe['titre']} »")
 
-        tableaux = donnees.get("boards") or []
-        if not tableaux:
-            raise ErreurMonday(
-                f"Tableau {identifiant} introuvable, ou inaccessible avec ce jeton."
-            )
+    lignes: list[dict[str, str]] = []
+    vus: set[str] = set()
 
-        nom_tableau = (tableaux[0].get("name") or "").strip()
-        contenu = tableaux[0].get("items_page") or {}
-        for element in contenu.get("items") or []:
-            ligne = _ligne_element(element, nom_tableau)
-            lignes.append(ligne)
-            for sous_element in (element.get("subitems") or []) if avec_sous_elements else []:
-                # Le parent d'abord, le sous-élément par-dessus : ce que le
-                # sous-élément renseigne l'emporte, le reste est hérité. Une
-                # valeur vide n'écrase rien — elle n'apprend rien.
-                fille = dict(ligne)
-                fille["Monday parent"] = ligne["Monday ID"]
-                for cle, valeur in _ligne_element(sous_element, nom_tableau).items():
-                    if valeur or cle not in fille:
-                        fille[cle] = valeur
-                lignes.append(fille)
+    # Chaque groupe désigné est lu pour lui-même ; le filtre par colonne
+    # balaie ensuite tout le tableau. Une ligne prise deux fois ne compte
+    # qu'une : c'est son identifiant Monday qui en décide.
+    lots = [{"groupe": groupe["id"], "regles": ""} for groupe in retenus]
+    if regles or not retenus:
+        lots.append({"groupe": "", "regles": regles})
 
-        curseur = contenu.get("cursor")
-        if not curseur:
-            break
+    for lot in lots:
+        _lire_lot(
+            identifiant, jeton, par_page, sous, avec_sous_elements,
+            lot["groupe"], lot["regles"], lignes, vus,
+        )
 
+    entetes: list[str] = []
     # Union ordonnée des colonnes : un sous-élément n'a pas les mêmes que son
     # parent, et une colonne vue seulement à la centième ligne doit exister
     # dans l'en-tête, sinon sa valeur serait perdue sans un mot.
@@ -463,6 +475,100 @@ def lire_tableau(
         for numero, ligne in enumerate(lignes, start=2)
     ]
     return grille
+
+
+def _lire_lot(
+    identifiant: str,
+    jeton: str,
+    par_page: int,
+    sous: str,
+    avec_sous_elements: bool,
+    groupe_id: str,
+    regles: str,
+    lignes: list[dict[str, str]],
+    vus: set[str],
+) -> None:
+    """Une passe de lecture paginée, sur un groupe ou sur tout le tableau."""
+    curseur: str | None = None
+
+    while True:
+        arguments = [f"limit: {int(par_page)}"]
+        if curseur:
+            # Un curseur porte déjà le filtre de la requête qui l'a produit :
+            # le répéter est refusé par l'API.
+            arguments.append(f'cursor: "{curseur}"')
+        elif regles:
+            arguments.append(regles)
+        page = f"items_page ({', '.join(arguments)})"
+        # Un groupe se lit par lui-même : l'API ne sait pas filtrer sur le
+        # groupe dans `query_params`, mais elle sait ne servir que celui-là.
+        corps = (
+            f'groups (ids: ["{_echapper_graphql(groupe_id)}"]) '
+            f"{{ id title {page} {{ cursor items {{ id name group {{ title }} "
+            f"column_values {{ column {{ title }} text value }}{sous} }} }} }}"
+            if groupe_id
+            else f"{page} {{ cursor items {{ id name group {{ title }} "
+            f"column_values {{ column {{ title }} text value }}{sous} }} }}"
+        )
+
+        try:
+            donnees = _appeler_api(
+                f"query {{ boards (ids: [{int(identifiant)}]) {{ name {corps} }} }}",
+                jeton,
+            )
+        except ErreurMonday as exc:
+            # Le filtre côté Monday est un gain de temps, pas une nécessité :
+            # si l'API le refuse, on relit sans lui et le filtre local fait le
+            # tri. Un tableau lu lentement vaut mieux qu'un tableau non lu.
+            if regles and _filtre_refuse(exc):
+                regles = ""
+                continue
+            # Un tableau large épuise le budget de complexité de l'API : la
+            # même requête, demandée par plus petits paquets, passe. Un curseur
+            # reste valable après un changement de taille de page, la lecture
+            # reprend donc où elle s'était arrêtée.
+            if not _budget_epuise(exc) or par_page <= MINIMUM_PAR_PAGE:
+                raise
+            par_page = max(MINIMUM_PAR_PAGE, int(par_page) // 4)
+            continue
+
+        tableaux = donnees.get("boards") or []
+        if not tableaux:
+            raise ErreurMonday(
+                f"Tableau {identifiant} introuvable, ou inaccessible avec ce jeton."
+            )
+
+        nom_tableau = (tableaux[0].get("name") or "").strip()
+        if groupe_id:
+            groupes_lus = tableaux[0].get("groups") or []
+            contenu = (groupes_lus[0].get("items_page") or {}) if groupes_lus else {}
+        else:
+            contenu = tableaux[0].get("items_page") or {}
+
+        for element in contenu.get("items") or []:
+            identifiant_element = str(element.get("id") or "")
+            if identifiant_element and identifiant_element in vus:
+                continue
+            vus.add(identifiant_element)
+
+            ligne = _ligne_element(element, nom_tableau)
+            lignes.append(ligne)
+            for sous_element in (
+                (element.get("subitems") or []) if avec_sous_elements else []
+            ):
+                # Le parent d'abord, le sous-élément par-dessus : ce que le
+                # sous-élément renseigne l'emporte, le reste est hérité. Une
+                # valeur vide n'écrase rien — elle n'apprend rien.
+                fille = dict(ligne)
+                fille["Monday parent"] = ligne["Monday ID"]
+                for cle, valeur in _ligne_element(sous_element, nom_tableau).items():
+                    if valeur or cle not in fille:
+                        fille[cle] = valeur
+                lignes.append(fille)
+
+        curseur = contenu.get("cursor")
+        if not curseur:
+            return
 
 
 def _horodatage(valeur) -> datetime | None:

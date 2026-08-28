@@ -231,6 +231,16 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     analyseur.add_argument(
+        "--groupes-monday",
+        default="",
+        help=(
+            "Mots cherchés dans l'intitulé des groupes Monday, séparés par des "
+            "virgules. Les éléments de tout groupe correspondant sont traités, "
+            "quelle que soit leur colonne d'étape : une facture est souvent "
+            "qualifiée en la glissant dans le groupe « Service contentieux »."
+        ),
+    )
+    analyseur.add_argument(
         "--avec-sous-elements",
         action="store_true",
         help=(
@@ -1297,6 +1307,10 @@ def executer(
                             if options.filtre_colonne and options.filtre_valeur
                             else None
                         ),
+                        groupes=SEPARATEURS_MULTIVALEUR.split(
+                            options.groupes_monday or ""
+                        ),
+                        signaler=journal,
                     )
                 except module_monday.ErreurMonday as exc:
                     raise ErreurDossiers(str(exc)) from exc
@@ -1356,7 +1370,8 @@ def executer(
 
         if options.filtre_colonne and options.filtre_valeur:
             liste = filtrer_par_colonne(
-                liste, options.filtre_colonne, options.filtre_valeur, signaler=journal
+                liste, options.filtre_colonne, options.filtre_valeur,
+                signaler=journal, groupes=options.groupes_monday,
             )
 
         if options.seulement:
@@ -1394,6 +1409,13 @@ def executer(
                 "texte des PDF joints, un numéro qui n'apparaît que dans la pièce "
                 "jointe ne remontera pas."
             )
+            # Un décompte qui ne dit pas de qui il parle ne se vérifie pas :
+            # « 20 dossiers sans adresse » alors qu'on en compte six à l'écran
+            # reste sans explication tant que les références ne sont pas là.
+            journal("    " + ", ".join(
+                dossier.reference or dossier.nom or "(sans référence)"
+                for dossier in sans_adresse[:40]
+            ) + (" …" if len(sans_adresse) > 40 else ""))
             if not options.decouvrir_adresses:
                 journal(
                     "    l'option « Retrouver les adresses depuis le numéro de "

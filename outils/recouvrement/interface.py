@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "36"
+VERSION = "37"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -69,6 +69,10 @@ FILTRE_VALEUR_PAR_DEFAUT = (
 # complet, qu'un renommage ferait glisser. Une fois le choix enregistré, il
 # fait foi : décocher l'un des deux tient, et rien n'est recoché de force.
 CHANTIERS_PAR_DEFAUT = ("1.2.", "2.1.")
+# Une facture est aussi qualifiée en la glissant dans un groupe : « 1.2.5
+# Service contentieux » côté entreprises, « 2.1.6. Facture en Contentieux »
+# côté financement personnel. Le mot commun suffit à désigner les deux.
+GROUPES_PAR_DEFAUT = "contentieux"
 # Cases de l'onglet Export mémorisées d'une session à l'autre, avec leur
 # valeur au tout premier lancement. La simulation est cochée au départ : on
 # ne lance pas un premier export réel sans avoir compté ce qu'il ramènera.
@@ -300,6 +304,10 @@ def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str
     if tableau:
         arguments += ["--tableau-monday", tableau]
 
+    groupes = (demande.get("groupes") or "").strip()
+    if groupes:
+        arguments += ["--groupes-monday", groupes]
+
     regles = (demande.get("regimes_echeance") or "").strip()
     if regles:
         arguments += ["--regles-echeance", regles]
@@ -406,6 +414,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 "__FILTRE_VALEUR__",
                 _attribut(preferences.get("filtre_valeur", FILTRE_VALEUR_PAR_DEFAUT)),
             ).replace(
+                "__GROUPES__",
+                _attribut(preferences.get("groupes", GROUPES_PAR_DEFAUT)),
+            ).replace(
                 # Objet JSON inséré tel quel dans le script : `<` échappé,
                 # le nom d'un tableau n'a rien à faire dans une balise.
                 "__REGIMES__",
@@ -501,7 +512,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
         valeurs = {
             cle: str(demande.get(cle) or "").strip()
             for cle in ("boites", "sortie", "domaines", "seulement",
-                        "filtre_colonne", "filtre_valeur", "tableau")
+                        "filtre_colonne", "filtre_valeur", "tableau",
+                        "groupes")
             if cle in demande
         }
 
@@ -1026,10 +1038,20 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <input type="text" id="filtreValeur" value="__FILTRE_VALEUR__"
              placeholder="Dossier a faire passer en contentieux" />
     </div>
+    <div>
+      <label for="groupes">Ou situés dans un groupe dont le nom contient</label>
+      <input type="text" id="groupes" value="__GROUPES__"
+             placeholder="contentieux" />
+    </div>
   </div>
-  <p class="note">Laissez les deux vides pour traiter tout le tableau. La
+  <p class="note">Laissez les trois vides pour traiter tout le tableau. La
      comparaison ignore accents, casse et emojis, et se fait par inclusion :
      « contentieux » retient « 🔴 Dossier à faire passer en contentieux ».</p>
+  <p class="note">Une facture est souvent qualifiée en la glissant dans un
+     groupe — « 1.2.5 Service contentieux », « 2.1.6. Facture en Contentieux » —
+     sans que la colonne d'étape en dise rien. Un élément retenu par son groupe
+     <b>ou</b> par sa colonne est traité ; retenu par les deux, il ne compte
+     qu'une fois.</p>
 </section>
 
 <section>
@@ -1326,7 +1348,8 @@ Object.keys(CASES).forEach((id) => { if ($(id)) $(id).checked = CASES[id]; });
 // Enregistrement automatique : à la saisie (différé) et à la fermeture de la
 // page. Une page fermée sans avoir lancé d'export ne perd plus rien.
 const CHAMPS_REGLAGES = ["boites", "sortie", "domaines", "seulement",
-                         "filtreColonne", "filtreValeur", "jetonMonday"];
+                         "filtreColonne", "filtreValeur", "groupes",
+                         "jetonMonday"];
 let minuterieReglages = null;
 
 function reglages() {
@@ -1337,6 +1360,7 @@ function reglages() {
     domaines: $("domaines").value, seulement: $("seulement").value,
     filtre_colonne: $("filtreColonne").value,
     filtre_valeur: $("filtreValeur").value,
+    groupes: $("groupes").value,
     tableau: tableauxCoches(),
     regimes_echeance: reglesEcheance(),
     chantiers_proposes: chantiersProposes,
@@ -1434,6 +1458,7 @@ $("lancer").addEventListener("click", async () => {
       domaines: $("domaines").value,
       filtre_colonne: $("filtreColonne").value,
       filtre_valeur: $("filtreValeur").value,
+      groupes: $("groupes").value,
       tableau: tableauxCoches(),
       regimes_echeance: reglesEcheance(),
       simulation: $("simulation").checked,

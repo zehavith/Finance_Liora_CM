@@ -445,6 +445,24 @@ Elle est décochée par défaut. Si vos factures sont déjà des éléments, la
 cocher ferait remonter chaque dossier deux fois. Elle alourdit aussi la
 requête, ce qui compte sur un gros tableau.
 
+### Qualifier par le groupe
+
+Une facture est souvent qualifiée en la glissant dans un groupe — « 1.2.5
+Service contentieux » côté entreprises, « 2.1.6. Facture en Contentieux » côté
+financement personnel — sans que la colonne d'étape en dise quoi que ce soit.
+Le filtre par colonne seul les manquait toutes.
+
+Un troisième champ, *Ou situés dans un groupe dont le nom contient*
+(`--groupes-monday`), pré-rempli avec `contentieux`, désigne ces groupes par un
+mot de leur intitulé. Chaque groupe correspondant est lu **pour lui-même** :
+l'API ne sait pas filtrer sur le groupe dans `query_params`, mais elle sait ne
+servir que celui-là.
+
+Un élément retenu par son groupe **ou** par sa colonne est traité ; retenu par
+les deux, il ne compte qu'une fois — c'est son identifiant Monday qui en
+décide. Le groupe voyage ensuite avec la ligne, dans la colonne
+`Monday groupe`.
+
 ### Le filtre est appliqué par Monday
 
 Le filtre de la section 1 ne sert pas qu'à trier ce qui est arrivé : il est

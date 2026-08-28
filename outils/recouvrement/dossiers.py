@@ -657,6 +657,7 @@ def filtrer_par_colonne(
     colonne: str,
     valeur: str,
     signaler: Callable[[str], None] | None = None,
+    groupes: str = "",
 ) -> list[Dossier]:
     """Ne retient que les lignes dont une colonne porte la valeur voulue.
 
@@ -686,10 +687,24 @@ def filtrer_par_colonne(
             "Corrigez l'intitulé, ou videz le filtre pour traiter tout le tableau."
         )
 
+    # Une facture est souvent qualifiée en la glissant dans le groupe
+    # « Service contentieux », sans que la colonne d'étape en dise rien. Un
+    # dossier retenu par son groupe l'est donc aussi, sans quoi la lecture par
+    # groupe serait défaite juste après par ce filtre.
+    motifs_groupe = [
+        _normaliser_entete(morceau)
+        for morceau in SEPARATEURS_MULTIVALEUR.split(groupes or "")
+        if morceau.strip()
+    ]
+
+    def dans_un_groupe_voulu(dossier: Dossier) -> bool:
+        groupe = _normaliser_entete(dossier.colonnes.get("monday groupe", ""))
+        return bool(groupe) and any(motif in groupe for motif in motifs_groupe)
+
     retenus = [
         dossier
         for dossier in dossiers
-        if any(
+        if dans_un_groupe_voulu(dossier) or any(
             attendue and attendue in _normaliser_entete(dossier.colonnes.get(cible, ""))
             for attendue in voulues
         )
