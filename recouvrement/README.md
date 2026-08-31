@@ -85,7 +85,7 @@ du type de financement, selon le référentiel Liora :
 
 | Type de financement | Règle |
 |---|---|
-| BTC-Entreprise / Corporate Alternance | Date de facture **+30 j** (repli : début de formation +30 j) |
+| B2C-Entreprise / Corporate Alternance | Date de facture **+30 j** (repli : début de formation +30 j) |
 | B2B | Fin de formation +30 j |
 | Alternance | Fin de formation +30 j |
 | Transition pro | Fin de formation +60 j |
@@ -97,8 +97,23 @@ du type de financement, selon le référentiel Liora :
 | Interco | Fin de formation +60 j |
 | Interne - DST Allemagne | Fin de formation +60 j |
 | OPCO | Fin de formation +30 j — *pas de recouvrement, suivi du retard uniquement* |
-| BTC-Perso / Perso-Alternance | Début / fin de formation (aucun délai) |
+| B2C-Perso / Perso-Alternance | Début / fin de formation (aucun délai) |
 | CPF | Fin de formation +45 j |
+
+Le référentiel écrit *BTC-Entreprise* là où Monday écrit *B2C - Entreprise* :
+les deux graphies sont reconnues et désignent la même chose, un particulier dont
+la formation est facturée à une entreprise.
+
+### D'où vient le type de financement
+
+Du plus fiable au plus approximatif, la première source renseignée l'emporte :
+
+1. la colonne **Type de financement** ;
+2. la colonne **Type de client** — « B2C - Entreprise » y désigne bien un
+   financement ;
+3. le libellé du **groupe** ;
+4. le nom du **tableau** ;
+5. la valeur par défaut attachée au rôle du tableau.
 
 Ces règles sont **modifiables dans l'application** (onglet *Financements* →
 « Modifier les règles ») et conservées sur le poste. Quand Monday fournit
