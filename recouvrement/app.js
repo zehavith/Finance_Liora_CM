@@ -457,25 +457,37 @@
         const v = X.vueEnsemble(data);
 
         // ── KPIs ──
+        // Le sous-titre disait « X déjà réglés en retard » juste sous le montant
+        // en retard, ce qui laissait croire que ce montant en faisait partie.
+        // Il n'en fait pas partie : ce KPI ne compte que l'échu impayé.
         $('#kpi-euros-retard').textContent = U.euros(v.eurosEnRetard);
-        $('#kpi-euros-retard-sub').textContent = v.eurosPayeesRetard
-            ? `${U.eurosCourt(v.eurosPayeesRetard)} déjà réglés en retard` : '';
+        $('#kpi-euros-retard-sub').textContent = 'échues et toujours impayées';
 
         $('#kpi-nb-retard').textContent = U.nombre(v.nbEnRetard);
         $('#kpi-nb-retard-sub').textContent = `sur ${U.nombre(v.total)} factures · ${U.pourcent(v.tauxNb)}`;
 
+        // Un pourcentage sans son dénominateur ne veut rien dire : celui-ci se
+        // calcule sur le total facturé, pas sur le reste à encaisser, et les
+        // deux lectures donnent des chiffres très différents.
         $('#kpi-taux-euros').textContent = U.pourcent(v.tauxEuros);
         $('#kpi-taux-nb-sub').textContent =
-            `cohorte échue : ${U.pourcent(v.tauxCohorteEuros)} en € · ${U.pourcent(v.tauxCohorteNb)} en nombre`;
+            `${U.eurosCourt(v.eurosEnRetard)} sur ${U.eurosCourt(v.totalEuros)} facturés`;
 
         $('#kpi-total-euros').textContent = U.euros(v.totalEuros);
         $('#kpi-total-sub').textContent = `${U.nombre(v.total)} factures`;
 
         $('#kpi-encaisse').textContent = U.euros(v.eurosPayees);
-        $('#kpi-encaisse-sub').textContent = `${U.nombre(v.nbPayees)} factures réglées`;
+        $('#kpi-encaisse-sub').textContent =
+            `${U.nombre(v.nbPayees)} factures réglées · ${U.pourcent(X.pct(v.eurosPayees, v.totalEuros))} du facturé`;
 
         $('#kpi-encours').textContent = U.euros(v.encoursTotal);
-        $('#kpi-encours-sub').textContent = `dont ${U.eurosCourt(v.eurosNonEchues)} pas encore échus`;
+        // La lecture trésorerie : de ce qu'il reste à rentrer, quelle part est
+        // déjà en retard. C'est le pourcentage auquel on s'attend spontanément
+        // en lisant « Reste à encaisser », et il n'est pas le même que le taux
+        // de recouvrement, calculé lui sur le total facturé.
+        $('#kpi-encours-sub').textContent =
+            `${U.eurosCourt(v.eurosNonEchues)} pas encore échus · `
+            + `${U.pourcent(X.pct(v.eurosEnRetard, v.encoursTotal))} déjà en retard`;
 
         $('#kpi-retard-moyen').textContent = U.jours(v.retardMoyen);
         $('#kpi-retard-moyen-sub').textContent = v.retardMedian != null
