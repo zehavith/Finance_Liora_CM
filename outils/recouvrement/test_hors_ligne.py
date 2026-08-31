@@ -2284,6 +2284,56 @@ def test_colonnes_miroir_monday() -> None:
              "l'adresse d'une colonne miroir atteint la grille")
 
 
+def test_reponses_du_debiteur() -> None:
+    """Ce que le débiteur a répondu, cité tel quel et daté."""
+    print("\nRéponses du débiteur dans la note")
+
+    import synthese as module_synthese  # noqa: PLC0415
+
+    # L'historique cité en fin de réponse ne doit pas être repris : il ferait
+    # citer nos propres relances comme si le débiteur les avait écrites.
+    extrait = module_synthese._extrait_lisible(
+        "Bonjour,\nJe conteste le montant reclame.\n\nCordialement\n\n"
+        "Le 03/03/2025, recouvrement@liora.io a ecrit :\n"
+        "> Votre facture est echue depuis trois mois"
+    )
+    verifier("conteste le montant" in extrait, "le propos du débiteur est repris")
+    verifier("facture est echue" not in extrait,
+             "l'historique cité en réponse ne l'est pas")
+    verifier("Cordialement" not in extrait, "ni la formule de politesse")
+
+    verifier(module_synthese._extrait_lisible("") == "",
+             "un message sans texte ne produit aucun extrait")
+    long = module_synthese._extrait_lisible("mot " * 400)
+    verifier(len(long) <= module_synthese.LONGUEUR_EXTRAIT + 1 and long.endswith("…"),
+             f"un long message est coupé et le signale (obtenu : {len(long)})")
+
+    def ligne(n, sens, exp):
+        return LigneIndex(
+            piece_n=n, date=datetime(2025, 3, n, 10, 0, tzinfo=timezone(timedelta(hours=1))),
+            sens=sens, expediteur=exp, destinataires="x@y.fr", copie="",
+            objet=f"Message {n}", nb_pieces_jointes=0, pieces_jointes="",
+            critere="adresse", boites="recouvrement@liora.io", fichier_pdf="",
+            fichier_eml="", dossier_pieces_jointes="", thread_id="t",
+            message_id=f"<m{n}>")
+
+    bloc = module_synthese._bloc_reponses(
+        [ligne(1, "envoyé", "recouvrement@liora.io"),
+         ligne(2, "reçu", "debiteur@exemple.fr")],
+        {2: "Je conteste le montant."},
+    )
+    verifier("1 réponse(s)" in bloc, "seules les réponses reçues sont comptées")
+    verifier("debiteur@exemple.fr" in bloc and "Je conteste le montant." in bloc,
+             "l'auteur et son propos figurent")
+    verifier("recouvrement@liora.io" not in bloc,
+             "nos propres envois ne figurent pas parmi les réponses")
+
+    muet = module_synthese._bloc_reponses(
+        [ligne(1, "envoyé", "recouvrement@liora.io")], {})
+    verifier("Aucune réponse du débiteur" in muet,
+             "l'absence de réponse est dite, et non passée sous silence")
+
+
 def test_bloc_pieces() -> None:
     """Pièces jointes et documents Monday : quatre cas, aucun qui plante."""
     print("\nBloc « Contrat signé et factures »")
@@ -4336,6 +4386,7 @@ def main() -> int:
     test_recapitulatif_atomique()
     test_colonnes_vides_signalees()
     test_colonnes_miroir_monday()
+    test_reponses_du_debiteur()
     test_bloc_pieces()
     test_execution_formation()
     test_suppression_dossiers()

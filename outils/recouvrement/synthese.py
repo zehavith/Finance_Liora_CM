@@ -317,26 +317,74 @@ def rediger_constats(synthese: Synthese, reference_temps: datetime) -> list[str]
 
 
 FEUILLE_DE_STYLE = """
-@page { size: A4; margin: 16mm 14mm; }
-body { font-family: Helvetica, Arial, sans-serif; font-size: 10pt; color: #111; }
-h1 { font-size: 15pt; margin: 0 0 2px 0; }
-h2 { font-size: 11.5pt; margin: 18px 0 6px 0; border-bottom: 1px solid #999;
-     padding-bottom: 3px; }
-.sous-titre { color: #555; font-size: 9pt; margin-bottom: 14px; }
-table { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
-td, th { padding: 3px 5px; font-size: 8.5pt; text-align: left; vertical-align: top;
-         border-bottom: 1px solid #ddd; }
-th { background: #eee; font-size: 8.5pt; }
-.identite td.cle { width: 130px; color: #444; font-weight: bold; border-bottom: none; }
-.identite td { border-bottom: none; }
-.chiffres td { text-align: center; border: 1px solid #ccc; }
-.chiffres .valeur { font-size: 14pt; font-weight: bold; }
-.chiffres .libelle { font-size: 7.5pt; color: #555; }
-ul.constats { margin: 4px 0 0 0; padding-left: 16px; }
-ul.constats li { margin-bottom: 5px; font-size: 9.5pt; }
-.piece-num { color: #555; white-space: nowrap; }
-.avertissement { margin-top: 20px; border: 1px solid #999; padding: 8px;
-                 font-size: 8pt; color: #444; }
+/* Un dossier contentieux se lit sur papier, devant quelqu'un. D'où le
+   caractère à empattements, les filets fins plutôt que les aplats gris, et
+   les intitulés de section en petites capitales : ce sont les codes du
+   document juridique, et ils font la différence entre une pièce qu'on dépose
+   et un rapport qu'on a manifestement laissé produire par un outil.
+   Le style reste volontairement sobre : deux moteurs PDF le rendent, et
+   xhtml2pdf n'accepte qu'un sous-ensemble restreint de CSS. */
+@page { size: A4; margin: 18mm 16mm 16mm 16mm; }
+
+body { font-family: Georgia, "Times New Roman", Times, serif;
+       font-size: 10.5pt; line-height: 1.45; color: #1a1a1a; }
+
+h1 { font-size: 16pt; font-weight: normal; letter-spacing: 0.3pt;
+     margin: 0 0 3px 0; }
+.sous-titre { font-size: 11pt; color: #333; margin: 0 0 3px 0; }
+.entete { border-bottom: 2px solid #1a1a1a; padding-bottom: 8px;
+          margin-bottom: 14px; }
+
+h2 { font-size: 9.5pt; font-weight: bold; text-transform: uppercase;
+     letter-spacing: 1.1pt; color: #1a1a1a; margin: 22px 0 8px 0;
+     border-bottom: 1px solid #1a1a1a; padding-bottom: 4px; }
+h3 { font-size: 10pt; font-weight: bold; margin: 16px 0 6px 0; color: #1a1a1a; }
+
+p.groupe { font-size: 9pt; font-weight: bold; text-transform: uppercase;
+           letter-spacing: 0.6pt; color: #444; margin: 13px 0 4px 0; }
+
+table { width: 100%; border-collapse: collapse; margin: 6px 0 4px 0; }
+td, th { padding: 4px 6px; font-size: 9pt; text-align: left;
+         vertical-align: top; border-bottom: 1px solid #ccc; }
+th { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.5pt;
+     color: #333; border-bottom: 1px solid #1a1a1a; font-weight: bold; }
+
+.identite td { border-bottom: 1px solid #e6e6e6; font-size: 9.5pt; }
+.identite td.cle { width: 150px; color: #444; }
+
+/* Le montant en litige se lit avant tout le reste : c'est lui qui décide
+   si le dossier vaut une procédure. */
+.montant { border: 1px solid #1a1a1a; padding: 9px 12px; margin: 0 0 14px 0; }
+.montant span { font-size: 8.5pt; text-transform: uppercase;
+                letter-spacing: 0.8pt; color: #444; }
+.montant b { display: block; font-size: 17pt; font-weight: normal;
+             margin-top: 2px; }
+.montant.manquant b { font-size: 10.5pt; font-style: italic; color: #666; }
+
+.chiffres td { text-align: center; border: none;
+               border-right: 1px solid #ccc; }
+.chiffres .valeur { font-size: 15pt; }
+.chiffres .libelle { font-size: 7.5pt; text-transform: uppercase;
+                     letter-spacing: 0.5pt; color: #555; }
+
+ul.constats { margin: 4px 0 0 0; padding-left: 15px; }
+ul.constats li { margin-bottom: 6px; font-size: 10pt; }
+
+.piece-num { color: #444; white-space: nowrap; font-size: 8.5pt; }
+.chemin { font-size: 8.5pt; color: #555; font-style: italic; margin: 5px 0; }
+
+/* Reproduite telle quelle : le liseré la distingue de ce que la note
+   établit elle-même. */
+.interne { border-left: 3px solid #999; padding: 7px 11px; margin: 12px 0;
+           font-size: 9.5pt; color: #333; }
+
+blockquote.propos { margin: 5px 0 9px 14px; padding-left: 11px;
+                    border-left: 2px solid #bbb; font-size: 9.5pt;
+                    color: #333; font-style: italic; }
+
+.avertissement { margin-top: 22px; border-top: 1px solid #1a1a1a;
+                 padding-top: 8px; font-size: 8pt; color: #444;
+                 line-height: 1.4; }
 """
 
 
@@ -533,6 +581,79 @@ def rediger_execution(dossier) -> list[str]:
         )
 
     return lignes
+
+
+def _bloc_reponses(lignes_index: list[LigneIndex], textes: dict[int, str]) -> str:
+    """Les réponses du débiteur, une par une, datées et citées.
+
+    Le décompte des relances ne dit pas ce que le débiteur a répondu, ni
+    quand. Or c'est cela qu'on oppose à « je n'ai jamais eu connaissance de
+    cette facture » : une réponse de sa main, à une date, sur une pièce
+    numérotée. Chaque extrait est cité tel quel — jamais reformulé, sans quoi
+    il ne prouverait plus rien.
+    """
+    recues = [ligne for ligne in lignes_index if ligne.sens == "reçu"]
+    if not recues:
+        return (
+            "<p>Aucune réponse du débiteur ne figure dans les échanges "
+            "extraits. Les relances sont restées sans retour.</p>"
+        )
+
+    rangees = []
+    for ligne in recues:
+        extrait = _extrait_lisible(textes.get(ligne.piece_n, ""))
+        citation = (
+            f'<blockquote class="propos">« {html.escape(extrait)} »</blockquote>'
+            if extrait else ""
+        )
+        rangees.append(
+            "<tr>"
+            f'<td class="piece-num">n° {ligne.piece_n}</td>'
+            f"<td>{ligne.date:%d/%m/%Y}</td>"
+            f"<td>{html.escape(ligne.expediteur)}</td>"
+            f"<td>{html.escape(ligne.objet or '(sans objet)')}{citation}</td>"
+            "</tr>"
+        )
+
+    return (
+        f"<p>{len(recues)} réponse(s) du débiteur figurent au dossier. "
+        "Les extraits sont reproduits tels quels.</p>"
+        "<table><tr><th>Pièce</th><th>Date</th><th>De</th>"
+        f"<th>Objet et extrait</th></tr>{''.join(rangees)}</table>"
+    )
+
+
+# Assez pour situer le propos, pas assez pour remplacer la lecture de la pièce.
+LONGUEUR_EXTRAIT = 320
+
+
+def _extrait_lisible(texte: str) -> str:
+    """Les premières phrases utiles d'un message, citations et signature ôtées.
+
+    Un message de réponse commence souvent par l'historique cité du fil : le
+    reprendre ferait citer nos propres relances comme si le débiteur les avait
+    écrites.
+    """
+    utiles: list[str] = []
+    for ligne in (texte or "").splitlines():
+        propre = ligne.strip()
+        if not propre or propre.startswith(">"):
+            continue
+        plat = _aplatir(propre)
+        if plat.startswith(("le ", "de :", "a :", "envoye :", "objet :",
+                            "--", "__", "cordialement", "bien a vous",
+                            "bonne journee", "bonne reception")):
+            continue
+        if "a ecrit :" in plat or "wrote:" in plat:
+            break
+        utiles.append(propre)
+        if sum(len(m) for m in utiles) >= LONGUEUR_EXTRAIT:
+            break
+
+    extrait = " ".join(utiles).strip()
+    if len(extrait) > LONGUEUR_EXTRAIT:
+        extrait = extrait[:LONGUEUR_EXTRAIT].rsplit(" ", 1)[0] + "…"
+    return extrait
 
 
 def resumer_echanges(dossier, synthese: Synthese, reference_temps: datetime) -> list[str]:
@@ -885,6 +1006,7 @@ def construire_html(
     rattachement: str = "",
     note_vue: str = "",
     vues: set[str] | None = None,
+    textes: dict[int, str] | None = None,
 ) -> str:
     constats = rediger_constats(synthese, date_export)
     contexte = rediger_contexte(dossier, synthese, date_export)
@@ -1056,8 +1178,11 @@ def construire_html(
 <title>Dossier de recouvrement — {html.escape(dossier.reference)}</title>
 <style>{FEUILLE_DE_STYLE}</style></head>
 <body>
-<h1>Dossier de recouvrement — {html.escape(dossier.reference)}</h1>
-<div class="sous-titre">{html.escape(dossier.nom or 'Débiteur non renseigné')}</div>
+<div class="entete">
+<h1>Dossier de recouvrement</h1>
+<div class="sous-titre">{html.escape(dossier.nom or 'Débiteur non renseigné')}
+ &nbsp;·&nbsp; {html.escape(dossier.reference)}</div>
+</div>
 
 {bandeau_montant}
 <table class="identite">{rangees_identite}</table>
@@ -1078,6 +1203,9 @@ def construire_html(
 <ul class="constats">
 {''.join(f'<li>{html.escape(constat)}</li>' for constat in constats)}
 </ul>
+
+<h3>Réponses du débiteur</h3>
+{_bloc_reponses(lignes, textes or {})}
 
 <h3>Événements repérés</h3>
 {bloc_evenements}

@@ -710,6 +710,10 @@ def traiter_dossier(
             synthese=analyse,
             date_export=date_export,
             documents_monday=documents_monday,
+            # La note cite les réponses du débiteur telles qu'il les a
+            # écrites : il lui faut donc le texte des pièces, pas seulement
+            # leur index.
+            textes=textes_par_piece,
             # La note annonce les sous-dossiers réellement écrits, et eux
             # seuls : elle est le seul document lu, et un chemin qu'elle cite
             # doit exister.
@@ -1069,6 +1073,10 @@ def _ecrire_sous_dossiers(
                 documents_monday=documents,
                 rattachement=f"{dossier.reference} — {dossier.nom}".strip(" —"),
                 note_vue=note_vue,
+                textes={
+                    ligne.piece_n: textes_par_piece.get(ligne.piece_n, "")
+                    for ligne in pieces
+                },
                 # Un sous-dossier ne se redécoupe pas : il annoncerait des
                 # répertoires qui n'existent pas à son niveau.
                 vues=set(),
