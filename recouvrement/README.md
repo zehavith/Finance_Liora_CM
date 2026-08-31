@@ -425,14 +425,22 @@ quels montants ?* Chaque ligne porte, pour un type de financement :
 | **En retard** | échues et impayées — nombre et montant, en rouge |
 | **Pas encore échu** | échéance à venir — nombre et montant |
 | **Réglé** | nombre et montant des factures payées |
-| **Échéance inconnue** | ni règle applicable, ni date exploitable |
-| **% en retard** | part du nombre de factures |
+| **Sans échéance** | non réglées, sans échéance calculable — ni en retard, ni à venir |
+| **% en retard** | part du nombre de factures, avec la part en euros en dessous |
 | **Retard moyen** | en jours, sur les seules factures en retard |
 
 Chaque case porte le nombre en gros et le montant associé en dessous, de sorte
-qu'une ligne se lit d'un seul coup d'œil. Les quatre états s'additionnent
-exactement au nombre total de factures de la ligne : c'est la vérification à
-faire quand un chiffre surprend.
+qu'une ligne se lit d'un seul coup d'œil.
+
+Les quatre états s'excluent : une facture réglée dont l'échéance n'est pas
+calculable compte comme réglée, et nulle part ailleurs. Leur somme redonne donc
+exactement le nombre total de factures de la ligne, et une phrase sous le tableau
+le vérifie à l'écran plutôt que de laisser refaire l'addition à la main.
+
+Le pourcentage porte sur le **nombre** de factures, la part en euros étant
+donnée en dessous. Les deux diffèrent parfois beaucoup, et sur un financement
+dont les montants sont absents de Monday, seul le nombre a un sens — le tableau
+le signale alors au lieu d'afficher un trompeur 0 %.
 
 La ligne *Total* reprend l'ensemble du portefeuille filtré. Un clic sur une
 ligne bascule vers l'onglet *Factures* avec le financement déjà filtré.

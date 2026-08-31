@@ -1620,13 +1620,20 @@
               title: "Facturé, échéance à venir",
               format: (v, r) => cellule(v, r.eurNonEchues) },
             { key: 'nbPayees', label: 'Réglé', align: 'right',
+              title: 'Factures réglées, y compris celles dont l\'échéance n\'est pas calculable',
               format: (v, r) => cellule(v, r.eurPayees) },
-            { key: 'nbSansEcheance', label: 'Échéance inconnue', align: 'right',
-              title: 'Dates manquantes dans Monday — hors de tous les taux',
+            { key: 'nbSansEcheance', label: 'Sans échéance', align: 'right',
+              title: 'Non réglées et sans échéance calculable — ni en retard, ni à venir : elles sortent de tous les taux',
               format: (v, r) => cellule(v, r.eurSansEcheance) },
-            { key: 'tauxEur', label: '% en retard', align: 'right',
-              title: 'Montant en retard rapporté au montant total facturé',
-              format: (v, r) => `<span class="taux-cell">${U.pourcent(v, 1)}${U.barre(v, 100, U.couleurs.retard)}</span>` },
+            // Le taux était calculé en euros alors que la colonne annonçait
+            // « % en retard » à côté de colonnes en nombre : sur un financement
+            // dont les montants sont absents, il tombait à 0 % en face de
+            // centaines de factures en retard. Le nombre fait foi, les euros
+            // sont donnés en dessous.
+            { key: 'tauxNb', label: '% en retard', align: 'right',
+              title: 'Part des factures en retard, en nombre — le pourcentage en euros est indiqué en dessous',
+              format: (v, r) => `<span class="taux-cell">${U.pourcent(v, 1)}${U.barre(v, 100, U.couleurs.retard)}</span>`
+                  + `<span class="cell-mini">${r.eurTotal ? U.pourcent(r.tauxEur, 1) + ' en €' : 'montants absents'}</span>` },
             { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
         ];
 
@@ -1641,6 +1648,23 @@
             nbPayees: tot('nbPayees', 'eurPayees'),
             nbSansEcheance: tot('nbSansEcheance', 'eurSansEcheance'),
         };
+
+        // Les quatre états doivent redonner le nombre total de factures. Le
+        // dire, et le vérifier à l'écran, évite d'avoir à refaire l'addition
+        // à la main pour savoir si le tableau est juste.
+        const ecart = X.sum(rows, r =>
+            r.nbTotal - r.nbEnRetard - r.nbNonEchues - r.nbPayees - r.nbSansEcheance);
+        const sansMontant = X.sum(rows, r => r.nbSansMontant);
+        const note = $('#fin-coherence');
+        if (note) {
+            const bouts = [];
+            bouts.push(ecart === 0
+                ? '✓ En retard + Pas encore échu + Réglé + Sans échéance = nombre total de factures, sur chaque ligne.'
+                : `⚠ Écart de ${U.nombre(Math.abs(ecart))} factures entre le total et la somme des états — signalez-le.`);
+            if (sansMontant) bouts.push(`${U.nombre(sansMontant)} factures sans montant exploitable : elles comptent dans les nombres, pas dans les euros.`);
+            note.innerHTML = bouts.join(' ');
+            note.className = 'fv-hint' + (ecart === 0 ? '' : ' cell-danger');
+        }
 
         const el = $('#fin-table');
         el.innerHTML = U.table(cols, rows, {

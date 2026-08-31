@@ -336,7 +336,13 @@
             const regleATemps = assiette.filter(x => x.etat === 'Payée');
             const nonEchues = g.items.filter(x => x.etat === 'Non échue');
             const payees = g.items.filter(x => x.paye);
-            const sansEcheance = g.items.filter(x => x.etat === 'Échéance inconnue');
+            // Une facture réglée dont l'échéance n'est pas calculable porte
+            // l'état « Échéance inconnue » tout en étant réglée : la compter
+            // dans les deux colonnes faisait un total supérieur au nombre de
+            // factures de la ligne. Les quatre colonnes doivent s'exclure,
+            // sinon elles ne se vérifient pas. Le règlement prime.
+            const sansEcheance = g.items.filter(x => x.etat === 'Échéance inconnue' && !x.paye);
+            const sansEcheanceReglees = g.items.filter(x => x.etat === 'Échéance inconnue' && x.paye);
             return {
                 ...g,
                 nbNonEchues: nonEchues.length,
@@ -345,6 +351,11 @@
                 eurPayees: sum(payees, x => x.montant),
                 nbSansEcheance: sansEcheance.length,
                 eurSansEcheance: sum(sansEcheance, x => x.montant),
+                nbSansEcheanceReglees: sansEcheanceReglees.length,
+                // Factures sans montant exploitable : un « % en retard » calculé
+                // en euros y vaut zéro quel que soit le nombre de retards, ce
+                // qui ne se comprend pas sans le dire.
+                nbSansMontant: g.items.filter(x => !x.montant).length,
                 nbRegleATemps: regleATemps.length,
                 eurRegleATemps: sum(regleATemps, x => x.montant),
                 tauxRegleATempsNb: pct(regleATemps.length, assiette.length),
