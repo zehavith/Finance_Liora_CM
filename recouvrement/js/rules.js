@@ -232,6 +232,41 @@
         return null;
     }
 
+    /**
+     * Étape du traitement, lue dans le libellé du groupe Monday.
+     *
+     * Le rôle du tableau ne suffit pas : « recouvrement » est chez Liora un
+     * groupe autant qu'un tableau. Le CPF a son groupe « Factures CPF
+     * recouvrement », le Financement Personnel ses groupes « Recouvrement -
+     * En cours de traitement » et « Facture en Contentieux ». S'en tenir au
+     * tableau revenait à ne compter que le seul 1.2.
+     *
+     * L'ordre compte : le premier motif rencontré gagne, du plus spécifique au
+     * plus général.
+     */
+    const ETAPES = [
+        { key: 'CONTENTIEUX',  label: 'Contentieux',        match: ['contentieux', 'huissier', 'judiciaire'] },
+        { key: 'PERTE',        label: 'Perdu / partiel',    match: ['perdu', 'partiellement', 'perte', 'irrecouvrable'] },
+        { key: 'ANNULER',      label: 'À annuler',          match: ['a annuler', 'annuler', 'annulation', 'avoir'] },
+        { key: 'RECOUVREMENT', label: 'Recouvrement',       match: ['recouvrement', 'relance', 'mise en demeure', 'a relancer', 'retraiter'] },
+        { key: 'COMPTA',       label: 'Comptabilité',       match: ['comptabilit', 'pennylane', 'non pointe', 'non remonte', 'sellsy'] },
+        { key: 'PAIEMENT',     label: 'Paiement prévu',     match: ['paiement prevu', 'paiement attendu', 'echeancier'] },
+        { key: 'DEPOT',        label: 'Dépôt / déposée',    match: ['a deposer', 'deposee', 'depose', 'depot'] },
+        { key: 'ADV',          label: 'ADV à traiter',      match: ['non conforme', 'incomplete', 'incomplet', 'a qualifier',
+                                                                   'a reclasser', 'action a faire', 'action fin de formation',
+                                                                   'a traiter', 'tampon'] },
+        { key: 'EN_COURS',     label: 'En cours',           match: ['en cours', 'en traitement'] },
+    ];
+
+    /** @returns {{key:string,label:string}} étape déduite du libellé du groupe. */
+    function etapeDepuisGroupe(nom) {
+        const n = ' ' + norm(nom) + ' ';
+        for (const e of ETAPES) {
+            if (e.match.some(m => n.includes(m))) return { key: e.key, label: e.label };
+        }
+        return { key: 'AUTRE', label: 'Non qualifié' };
+    }
+
     /** Sources de retard, utilisées pour les chips de filtrage du dashboard. */
     const SOURCES = [
         { key: 'recouvrement', label: 'Recouvrement',  hint: 'Tableau 1.2 — recouvrement Corporate' },
@@ -381,6 +416,7 @@
         BOARD_ROLE_PATTERNS, ROLE_LABELS, SOURCES,
         detectBoardRole, detectFinancement, getRule, computeEcheance,
         GROUPES_EXCLUS, estGroupeTechnique, perimetreDepuisTexte,
+        ETAPES, etapeDepuisGroupe,
         AGING_BUCKETS, bucketFor, MS_DAY,
     };
 })(window);

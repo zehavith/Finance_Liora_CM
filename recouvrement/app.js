@@ -56,6 +56,7 @@
             boards: null,
             bucket: null,
             client: null,
+            etapes: null,
             recherche: '',
             retardMin: null,
             retardMax: null,
@@ -358,6 +359,10 @@
                 () => { f.retardMin = null; f.retardMax = null; });
         }
         if (f.client) add('Client : ' + f.client, () => { f.client = null; });
+        if (f.etapes && f.etapes.size) {
+            const noms = [...f.etapes].map(k => (R.ETAPES.find(e => e.key === k) || {}).label || k);
+            add('Étape : ' + noms.join(', '), () => { f.etapes = null; });
+        }
         if (f.boards && f.boards.size) add('Tableau : ' + [...f.boards].join(', '), () => { f.boards = null; });
         if (f.etats && f.etats.size) add('État : ' + [...f.etats].join(', '), () => { f.etats = null; rendreChipsEtats(); });
         if (f.recherche) add('Recherche : ' + f.recherche, () => { f.recherche = ''; $('#search-input').value = ''; });
@@ -381,7 +386,7 @@
         const f = state.filtres;
         f.mois = null; f.perimetre = 'Tous'; f.financements = null; f.etats = null;
         f.boards = null; f.bucket = null; f.client = null; f.recherche = '';
-        f.retardMin = null; f.retardMax = null;
+        f.retardMin = null; f.retardMax = null; f.etapes = null;
         f.sources = new Set(['recouvrement', 'adv', 'opco', 'b2c']);
         $('#search-input').value = '';
         state.ui.page = 1;
@@ -647,6 +652,8 @@
                        labelFn: k => (k === '—' ? 'Échéance inconnue' : U.moisLabel(k)) },
         client:      { key: 'client',      titre: 'Client',      fn: f => f.client || '—' },
         proprietaire:{ key: 'proprietaire', titre: 'Propriétaire', fn: f => f.proprietaire || '—' },
+        etape:       { key: 'etape',       titre: 'Étape',       fn: f => f.etape || 'AUTRE',
+                       labelFn: (k, f) => (f && f.etapeLabel) || k },
     };
 
     function rendreRepartition(data) {
@@ -748,6 +755,7 @@
                 case 'board':       f.boards = new Set([cle]); break;
                 case 'client':      f.client = cle; break;
                 case 'mois':        if (cle !== '—') { f.mois = new Set([cle]); rendreBoutonsMois(); } break;
+                case 'etape':       f.etapes = new Set([cle]); break;
                 case 'groupe':      f.recherche = cle; $('#search-input').value = cle; break;
             }
         }
@@ -1180,6 +1188,7 @@
             case 'client':      f.client = cle; break;
             case 'board':       f.boards = new Set([cle]); break;
             case 'perimetre':   f.perimetre = cle; majSegments(); break;
+            case 'etape':       f.etapes = new Set([cle]); break;
             case 'groupe':
             case 'proprietaire':
                 f.recherche = cle; $('#search-input').value = cle; break;
@@ -1776,6 +1785,7 @@
                     ${f.datePaiementMonday ? ligne('Date Monday remplacée', U.dateFR(f.datePaiementMonday)) : ''}
                     ${ligne('Tableau', U.escapeHtml(f.board || '—'))}
                     ${ligne('Groupe', U.escapeHtml(f.groupe || '—'))}
+                    ${ligne('Étape', U.escapeHtml(f.etapeLabel || '—'))}
                     ${ligne("Groupe d'origine (payées)", U.escapeHtml(f.groupeOrigine || '—'))}
                     ${ligne('Propriétaire', U.escapeHtml(f.proprietaire || '—'))}
                     ${ligne('Statut Monday', U.escapeHtml(f.statut || '—'))}

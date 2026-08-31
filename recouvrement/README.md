@@ -196,6 +196,24 @@ Monday crée automatiquement un tableau « Sous-éléments de … » pour chaque
 tableau utilisant des sous-éléments. Ses lignes ne sont pas des factures : ces
 tableaux reçoivent le rôle *Ignoré* et ne sont pas proposés au chargement.
 
+### Étape de traitement
+
+Chez Liora, « recouvrement » désigne un **groupe** autant qu'un tableau : le CPF
+a son groupe *Factures CPF recouvrement*, le Financement Personnel ses groupes
+*Recouvrement - En cours de traitement* et *Facture en Contentieux*, la
+plateforme pôle emploi son *Factures en recouvrement*. S'en tenir au rôle du
+tableau revenait à ne compter que le seul 1.2.
+
+Chaque facture porte donc une **étape**, déduite du libellé de son groupe :
+Contentieux, Perdu / partiel, À annuler, Recouvrement, Comptabilité, Paiement
+prévu, Dépôt / déposée, ADV à traiter, En cours, ou Non qualifié. Le premier
+motif reconnu l'emporte, du plus spécifique au plus général — un groupe
+« Recouvrement - Contentieux » relève du contentieux.
+
+L'étape est disponible comme dimension de la répartition des montants
+(*Étape › Financement*) et du treemap, sert de filtre, et figure sur la fiche
+de chaque facture.
+
 ### Groupes de service
 
 Un tableau opérationnel héberge souvent des groupes qui ne sont pas du suivi :
@@ -293,7 +311,7 @@ L'export Excel contient un onglet *Répartition* reprenant l'arbre à plat.
 |---|---|
 | **Taux de recouvrement par mois** | barres empilées par issue + courbes de taux |
 | **Flux de recouvrement** | entrées et sorties de part et d'autre de zéro, courbe de l'encours en retard à la fin de chaque mois |
-| **Où se concentre l'encours** | treemap, dimension au choix : financement, client, tableau, groupe, propriétaire |
+| **Où se concentre l'encours** | treemap, dimension au choix : financement, client, tableau, étape, groupe, propriétaire |
 | **Encours par financement** | barres horizontales |
 | **Balance âgée** | anneau par tranche d'antériorité |
 | **Structure du portefeuille** | double anneau : état à l'extérieur, périmètre à l'intérieur |

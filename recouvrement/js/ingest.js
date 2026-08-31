@@ -190,6 +190,8 @@
             perimetre: perimetreDe(ctx, v),
             groupe: ctx.groupTitle || '',
             groupeTechnique: R.estGroupeTechnique(ctx.groupTitle),
+            etape: R.etapeDepuisGroupe(ctx.groupTitle).key,
+            etapeLabel: R.etapeDepuisGroupe(ctx.groupTitle).label,
             groupeOrigine: String(v.groupeOrigine || '').trim(),
 
             numero,
@@ -343,7 +345,10 @@
 
             // Le groupe d'origine du tableau « Factures payées » indique d'où
             // venait la facture au moment de son règlement.
-            const p = payees[0];
+            // Le tableau des factures payées héberge aussi un groupe
+            // « Factures non payées : Perte / Contentieux ». Son intitulé
+            // dit l'inverse du rôle du tableau, et c'est lui qui fait foi.
+            const p = payees.find(x => !/non pay/.test(R.norm(x.groupe || '')));
             if (p) {
                 f.paye = true;
                 f.originePaiement = 'Tableau factures payées';
@@ -357,7 +362,9 @@
             f.presenceTableaux = [f.board];
             f.presenceRoles = [f.role];
             f.doublon = false;
-            if (f.role === 'payees') { f.paye = true; f.originePaiement = 'Tableau factures payées'; }
+            if (f.role === 'payees' && !/non pay/.test(R.norm(f.groupe || ''))) {
+                f.paye = true; f.originePaiement = 'Tableau factures payées';
+            }
             resultat.push(f);
         }
 
@@ -423,6 +430,8 @@
             // Recalculé à chaque passe : les factures déjà en cache bénéficient
             // ainsi de toute évolution de la liste des groupes écartés.
             f.groupeTechnique = R.estGroupeTechnique(f.groupe);
+            const et = R.etapeDepuisGroupe(f.groupe);
+            f.etape = et.key; f.etapeLabel = et.label;
 
             const ech = R.computeEcheance(f, { rules: o.rules, prefereEcheanceMonday: o.prefereEcheanceMonday });
             f.dateEcheance = ech.date;

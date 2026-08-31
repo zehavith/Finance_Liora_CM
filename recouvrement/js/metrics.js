@@ -84,6 +84,7 @@
             if (f.boards && f.boards.size && !f.boards.has(x.board)) return false;
             if (f.bucket && (!x.bucket || x.bucket.key !== f.bucket)) return false;
             if (f.client && x.client !== f.client) return false;
+            if (f.etapes && f.etapes.size && !f.etapes.has(x.etape)) return false;
 
             // Tranche de retard (histogramme)
             if (f.retardMin != null || f.retardMax != null) {
