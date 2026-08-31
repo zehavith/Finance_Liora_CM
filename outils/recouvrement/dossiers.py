@@ -77,7 +77,8 @@ ALIAS_COLONNES = {
     ],
     "date_echeance": [
         "date d echeance facture", "date echeance facture",
-        "date echeance calculee negociee", "date echeance", "echeance",
+        "date echeance calculee negociee", "date d echeance", "date echeance",
+        "date de l echeance", "date limite de paiement", "echeance",
     ],
     "formation_debut": ["debut de formation", "debut de service", "date de debut de formation"],
     "formation_fin": ["fin de formation", "fin de service", "date de fin de formation"],
@@ -131,7 +132,9 @@ CHAMPS_MULTICOLONNES = {"email", "facture", "statut", "commentaire", "liens"}
 # Intitulés qui ne disent rien de leur contenu. Chez Monday, la première
 # colonne s'appelle « Name » et porte selon les tableaux le nom du débiteur ou
 # le numéro de facture : on tranche sur les valeurs, pas sur l'intitulé.
-INTITULES_AMBIGUS = {"name", "item", "element", "titre"}
+# « Numero » en fait partie : sur un tableau de suivi il porte le numéro de
+# facture, ailleurs un rang ou un identifiant interne. La valeur tranche.
+INTITULES_AMBIGUS = {"name", "item", "element", "titre", "numero", "num", "n"}
 
 # « FACT-2405-02142 », « 2024-118 », « INV0093 » : au moins trois chiffres
 # d'affilée, et pas une suite de mots comme le serait un nom de personne.
@@ -622,6 +625,20 @@ def variantes_facture(facture: str) -> list[str]:
     return formes
 
 
+def _normaliser_date_lisible(valeur: str) -> str:
+    """« 2024-03-01 » devient « 01/03/2024 ». Ce qui n'est pas une date est
+    rendu tel quel : mieux vaut une valeur inattendue visible qu'effacée."""
+    texte = str(valeur or "").strip()
+    if not texte:
+        return ""
+    for format_ in FORMATS_DATE + ("%Y/%m/%d",):
+        try:
+            return datetime.strptime(texte[:10], format_).strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+    return texte
+
+
 def _montant(valeur: str) -> float:
     """Lit un montant tel qu'il sort d'un tableau : « 2 500 € », « 1 280,50 ».
 
@@ -1018,7 +1035,9 @@ def dossiers_depuis_grille(
             ligne=numero,
             montant_du=_premier("montant_du"),
             montant_total=_premier("montant_total"),
-            date_echeance=_premier("date_echeance"),
+            # Normalisée dès la lecture : Monday date en ISO, un tableur en
+            # français, et la suite ne doit pas avoir à connaître les deux.
+            date_echeance=_normaliser_date_lisible(_premier("date_echeance")),
             formation_debut=_premier("formation_debut"),
             formation_fin=_premier("formation_fin"),
             statut=" · ".join(valeurs["statut"]),

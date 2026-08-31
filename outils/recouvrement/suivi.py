@@ -242,11 +242,23 @@ def dater_etape(
     return entree
 
 
+# Monday date ses colonnes en ISO (« 2024-03-01 »), un tableur en français
+# (« 01/03/2024 »). N'accepter que la seconde forme rendait illisible toute
+# echeance venue de Monday : cinquante-deux dossiers etaient annonces « sans
+# echeance » alors qu'ils en avaient une.
+FORMATS_DATE = ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%y", "%Y/%m/%d")
+
+
 def _date_lisible(valeur) -> datetime | None:
-    try:
-        return datetime.strptime(str(valeur or "")[:10], "%d/%m/%Y")
-    except ValueError:
+    texte = str(valeur or "").strip()[:10]
+    if not texte:
         return None
+    for format_ in FORMATS_DATE:
+        try:
+            return datetime.strptime(texte, format_)
+        except ValueError:
+            continue
+    return None
 
 
 def parcours_dossier(entree: dict) -> dict:
@@ -361,8 +373,11 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 "diplome": _oui_non(etat.get("diplome") or rangee.get("diplome")),
                 "convention_saisie": bool(etat.get("convention")),
                 "diplome_saisi": bool(etat.get("diplome")),
-                "heures_theoriques": (rangee.get("heures_theoriques") or "").strip(),
-                "heures_log": (rangee.get("heures_log") or "").strip(),
+                "heures_theoriques": (
+                    etat.get("heures_theoriques")
+                    or rangee.get("heures_theoriques") or "").strip(),
+                "heures_log": (
+                    etat.get("heures_log") or rangee.get("heures_log") or "").strip(),
                 # Un débiteur portant plusieurs factures a un sous-dossier par
                 # facture ; l'état de suivi reste porté par le dossier entier,
                 # puisque c'est lui qui part au contentieux.
@@ -600,6 +615,91 @@ def courbe_par_mois(dossiers: list[dict], mois_max: int = 24) -> dict:
             if any(comptes[bande["cle"]])
         ],
     }
+
+
+# Ce qu'un fichier de suivi apporte a un dossier deja exporte. La colonne
+# d'origine n'a pas a etre nommee ici : les intitules sont reconnus par le
+# meme mecanisme que pour l'export.
+CHAMPS_COMPLETABLES = ("convention_signee", "diplome", "heures_theoriques",
+                       "heures_log", "date_echeance")
+
+
+def completer_depuis_grille(
+    grille: list[tuple[int, list[str]]],
+    references_connues: list[dict],
+    chemin_suivi: Path,
+) -> dict:
+    """Complète les dossiers déjà exportés avec un fichier de suivi.
+
+    Le rapprochement se fait sur le numéro de facture, jamais sur le nom : deux
+    apprenantes peuvent être homonymes, deux factures non. Une ligne du fichier
+    qui ne correspond à aucun dossier est comptée à part plutôt qu'ignorée —
+    c'est souvent le signe d'un fichier qui n'est pas le bon.
+
+    Seules les valeurs renseignées dans le fichier sont écrites : une colonne
+    vide ne vient jamais effacer ce qui est déjà là.
+    """
+    from dossiers import dossiers_depuis_grille  # noqa: PLC0415 - cycle
+
+    lignes = dossiers_depuis_grille(
+        grille, "fichier de suivi", ignorer_lignes_incompletes=True)
+
+    # Un dossier porte plusieurs factures ; chacune doit pouvoir le retrouver.
+    par_facture: dict[str, str] = {}
+    for dossier in references_connues:
+        cles = [dossier["reference"]] + [
+            f.strip() for f in (dossier.get("factures") or "").split("|")
+        ]
+        for cle in cles:
+            if cle.strip():
+                par_facture.setdefault(_cle_facture(cle), dossier["reference"])
+
+    suivi = charger(chemin_suivi)
+    completes, inconnues, touchees = 0, 0, 0
+
+    for ligne in lignes:
+        candidats = [ligne.reference] + list(ligne.factures)
+        reference = next(
+            (par_facture[_cle_facture(c)] for c in candidats
+             if _cle_facture(c) in par_facture),
+            "",
+        )
+        if not reference:
+            inconnues += 1
+            continue
+
+        apports = {
+            "convention": (ligne.convention_signee or "").strip(),
+            "diplome": (ligne.diplome or "").strip(),
+            "heures_theoriques": (ligne.heures_theoriques or "").strip(),
+            "heures_log": (ligne.heures_log or "").strip(),
+            "echeance": _date_courte(ligne.date_echeance),
+        }
+        apports = {cle: valeur for cle, valeur in apports.items() if valeur}
+        if not apports:
+            continue
+
+        entree = dict(suivi.get(reference) or {})
+        entree.update(apports)
+        entree["maj"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+        suivi[reference] = entree
+        touchees += 1
+        completes += len(apports)
+
+    if touchees:
+        enregistrer(chemin_suivi, suivi)
+
+    return {"dossiers": touchees, "valeurs": completes,
+            "lignes": len(lignes), "sans_correspondance": inconnues}
+
+
+def _cle_facture(valeur: str) -> str:
+    """Un numéro de facture, réduit à ce qui l'identifie.
+
+    Le fichier écrit « FACT-2405-00409 », le tableau « FACT2405 00409 » : le
+    rapprochement ne doit pas échouer sur un tiret.
+    """
+    return "".join(c for c in str(valeur or "").lower() if c.isalnum())
 
 
 def tout_effacer(

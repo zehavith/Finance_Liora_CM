@@ -2074,6 +2074,79 @@ def test_saisie_convention_diplome_echeance() -> None:
                  f"la solidité compte les saisies (obtenu : {s['convention']})")
 
 
+def test_completer_depuis_fichier() -> None:
+    """Le fichier de suivi complète les dossiers déjà exportés."""
+    print("\nComplément depuis un fichier de suivi")
+
+    import suivi as module_suivi  # noqa: PLC0415
+    from dossiers import charger_grille  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "export"
+        sortie.mkdir()
+        (sortie / "d").mkdir()
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures;date_echeance\n"
+            "FACT-2405-00409;SAS EDEN;d;5 990 €;FACT-2405-00409;\n"
+            "SIJO;Sijo;d;23 250 €;FACT-2409-05275 | FACT-2409-05431;\n"
+            "FACT-2601-13302;JAADI;d;2 500 €;FACT-2601-13302;\n",
+            encoding="utf-8-sig",
+        )
+        chemin_suivi = Path(repertoire) / "suivi.json"
+
+        # Le fichier de Liora : ses intitulés, tels quels.
+        fichier = Path(repertoire) / "suivi_btc.csv"
+        fichier.write_text(
+            "Numero;convention signé ?;Diplome reçu ?;Nb d'heure Theorique;"
+            "Heure de Log;Date d'échéance\n"
+            # Écrit sans tirets : le rapprochement ne doit pas s'y perdre.
+            "FACT2405 00409;oui;non;60;42;2024-06-15\n"
+            # Rattachée par l'une des deux factures du dossier groupé.
+            "FACT-2409-05431;non;;120;;01/03/2025\n"
+            "FACT-9999-99999;oui;oui;10;10;\n",
+            encoding="utf-8-sig",
+        )
+
+        resultat = module_suivi.completer_depuis_grille(
+            charger_grille(fichier),
+            module_suivi.inventaire(sortie, chemin_suivi),
+            chemin_suivi,
+        )
+        verifier(resultat["dossiers"] == 2,
+                 f"deux dossiers complétés (obtenu : {resultat['dossiers']})")
+        verifier(resultat["sans_correspondance"] == 1,
+                 "la ligne sans dossier est comptée, non ignorée en silence")
+
+        apres = {d["reference"]: d for d in
+                 module_suivi.inventaire(sortie, chemin_suivi)}
+        eden = apres["FACT-2405-00409"]
+        verifier(eden["convention_signee"] is True and eden["diplome"] is False,
+                 "convention et diplôme sont repris")
+        verifier(eden["heures_theoriques"] == "60" and eden["heures_log"] == "42",
+                 "les heures aussi")
+        verifier(eden["date_echeance"] == "15/06/2024",
+                 f"l'échéance ISO devient lisible (obtenu : {eden['date_echeance']})")
+        verifier(eden["anciennete_jours"] and eden["anciennete_jours"] > 0,
+                 "et sert au calcul du retard")
+
+        sijo = apres["SIJO"]
+        verifier(sijo["convention_signee"] is False,
+                 "un dossier groupé se retrouve par l'une de ses factures")
+        verifier(sijo["diplome"] is None,
+                 "une colonne vide dans le fichier n'écrase rien")
+
+        verifier(apres["FACT-2601-13302"]["convention_signee"] is None,
+                 "un dossier absent du fichier reste tel quel")
+
+        # Repasser le même fichier ne doit rien casser ni rien dupliquer.
+        deux = module_suivi.completer_depuis_grille(
+            charger_grille(fichier),
+            module_suivi.inventaire(sortie, chemin_suivi),
+            chemin_suivi,
+        )
+        verifier(deux["dossiers"] == 2, "un second passage est sans effet de bord")
+
+
 def test_recapitulatif_atomique() -> None:
     """Le récapitulatif ne doit jamais être lu à moitié écrit."""
     print("\nÉcriture atomique du récapitulatif")
@@ -4203,6 +4276,7 @@ def main() -> int:
     test_montants_espace_insecable()
     test_colonnes_typees_monday()
     test_saisie_convention_diplome_echeance()
+    test_completer_depuis_fichier()
     test_recapitulatif_atomique()
     test_colonnes_vides_signalees()
     test_colonnes_miroir_monday()

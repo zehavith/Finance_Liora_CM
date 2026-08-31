@@ -233,6 +233,28 @@ Côté serveur, la confirmation est portée dans la requête plutôt que déduit
 d'un appel bien formé — une remise à zéro déclenchée par accident serait
 irrattrapable.
 
+### Compléter les dossiers depuis un fichier de suivi
+
+Le tableau Monday ne porte pas tout : la convention, le diplôme et les heures
+vivent souvent dans un classeur tenu à part. Le bouton **Compléter depuis un
+fichier**, dans l'onglet *État des dossiers*, reprend ces colonnes sans rien
+réexporter.
+
+Le rapprochement se fait sur le **numéro de facture**, jamais sur le nom : deux
+apprenantes peuvent être homonymes, deux factures non. Les tirets et les
+espaces sont ignorés — `FACT2405 00409` retrouve `FACT-2405-00409` — et un
+dossier groupé se retrouve par n'importe laquelle de ses factures.
+
+Seules les valeurs renseignées sont écrites : une colonne vide dans le fichier
+n'efface jamais ce qui est déjà là. Les lignes sans dossier correspondant sont
+comptées et annoncées, plutôt qu'ignorées en silence — c'est souvent le signe
+d'un fichier qui n'est pas le bon.
+
+Les intitulés sont reconnus comme à l'export : `convention signé ?`,
+`Diplome reçu ?`, `Nb d'heure Theorique`, `Heure de Log`, `Date d'échéance`, et
+`Numero` pour la facture — cet intitulé étant tranché sur les valeurs, comme
+`Name`, puisqu'il désigne ailleurs un rang ou un identifiant interne.
+
 ### Ce que le tableau tait, le service le saisit
 
 Trois colonnes de l'onglet *État des dossiers* se remplissent à la main :

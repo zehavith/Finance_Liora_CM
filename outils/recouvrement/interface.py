@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "50"
+VERSION = "51"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -557,6 +557,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/tout-effacer":
                 self._tout_effacer(self._corps_json())
                 return
+            if chemin == "/api/completer":
+                self._completer_depuis_fichier(self._corps_json())
+                return
         except ValueError as exc:
             self._json(400, {"erreur": str(exc)})
             return
@@ -638,6 +641,45 @@ class Gestionnaire(BaseHTTPRequestHandler):
             [str(reference) for reference in references],
             avec_fichiers=bool(demande.get("fichiers")),
         )
+        self._json(200, resultat)
+
+    def _completer_depuis_fichier(self, demande: dict) -> None:
+        """Complète les dossiers déjà exportés avec un fichier de suivi.
+
+        Rien n'est réexporté : seules les colonnes que le tableau Monday ne
+        porte pas — convention, diplôme, heures, échéance — sont reprises et
+        rattachées par numéro de facture.
+        """
+        nom = (demande.get("nom") or "").strip()
+        contenu = demande.get("contenu") or ""
+        extension = Path(nom).suffix.lower()
+        if extension not in {".csv", ".xlsx", ".xlsm", ".xltx", ".tsv", ".txt"}:
+            raise ValueError(
+                f"Format non pris en charge : {extension or 'inconnu'}. "
+                "Déposez un fichier Excel ou CSV."
+            )
+
+        depot = RACINE / f"complement{extension}"
+        try:
+            depot.write_bytes(base64.b64decode(contenu))
+        except (ValueError, OSError) as exc:
+            raise ValueError(f"Fichier illisible : {exc}") from exc
+
+        preferences = lire_preferences()
+        sortie = Path(preferences.get("sortie") or sortie_par_defaut())
+        try:
+            from dossiers import charger_grille  # noqa: PLC0415
+
+            resultat = module_suivi.completer_depuis_grille(
+                charger_grille(depot),
+                module_suivi.inventaire(sortie, SUIVI),
+                SUIVI,
+            )
+        except ErreurDossiers as exc:
+            raise ValueError(str(exc)) from exc
+        finally:
+            depot.unlink(missing_ok=True)
+
         self._json(200, resultat)
 
     def _tout_effacer(self, demande: dict) -> None:
@@ -937,6 +979,10 @@ table.donnees th.etroite{width:26px}
 .defilable{overflow-x:auto}
 .barre-selection{display:flex;align-items:center;gap:13px;margin-bottom:13px}
 .barre-selection span{font-size:12px;color:var(--texte-3)}
+.depot-complement{border:1px solid var(--bord);border-radius:9px;padding:9px 14px;
+  font-size:13px;color:var(--texte-2);cursor:pointer;white-space:nowrap}
+.depot-complement:hover{border-color:var(--texte-3);color:var(--texte)}
+.depot-complement input{display:none}
 .secondaire.danger{border-color:rgba(239,68,68,.4);color:#ef6a6a}
 .secondaire.danger:hover{border-color:#ef6a6a;background:rgba(239,68,68,.08)}
 .etat{white-space:nowrap;font-size:12px}
@@ -1948,6 +1994,34 @@ async function supprimerChoisis() {
 // Trois choses de nature differente, demandees separement : la liste se
 // reconstitue en relancant un export, les fichiers aussi mais l'export dure
 // une heure, et le suivi saisi a la main ne se refait pas du tout.
+// Le tableau Monday ne porte pas tout : la convention, le diplome et les
+// heures vivent souvent dans un fichier de suivi tenu a part. Les reprendre
+// vaut mieux que de les ressaisir cinquante fois.
+async function completerDepuisFichier(evenement) {
+  const fichier = evenement.target.files[0];
+  if (!fichier) return;
+  evenement.target.value = "";
+
+  try {
+    const contenu = await new Promise((resoudre, rejeter) => {
+      const lecteur = new FileReader();
+      lecteur.onload = () => resoudre(lecteur.result.split(",")[1]);
+      lecteur.onerror = () => rejeter(new Error("Fichier illisible."));
+      lecteur.readAsDataURL(fichier);
+    });
+    const r = await api("/api/completer", { nom: fichier.name, contenu: contenu });
+    afficherBandeau(
+      r.dossiers > 0,
+      `${r.lignes} ligne(s) lue(s) : ${r.valeurs} valeur(s) reprise(s) sur `
+      + `${r.dossiers} dossier(s).`
+      + (r.sans_correspondance
+         ? ` ${r.sans_correspondance} ligne(s) sans dossier correspondant.`
+         : "")
+      + (r.dossiers ? "" : " Vérifiez que les numéros de facture concordent."));
+    chargerDossiers();
+  } catch (erreur) { afficherBandeau(false, erreur.message); }
+}
+
 async function toutEffacer() {
   const total = DOSSIERS.length;
   if (!total) { afficherBandeau(false, "Il n'y a rien à effacer."); return; }
@@ -2092,6 +2166,9 @@ function rendreSuivi() {
   $("tableSuivi").innerHTML = `
     <div class="barre-selection">
       <button class="secondaire" id="supprimer" disabled>Supprimer</button>
+      <label class="depot-complement">Compléter depuis un fichier
+        <input type="file" id="complement" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xltx" />
+      </label>
       <button class="secondaire danger" id="toutEffacer">Tout effacer…</button>
       <span id="compteChoix">Cochez les dossiers à retirer de la liste.</span>
     </div>
@@ -2107,6 +2184,7 @@ function rendreSuivi() {
     coche.addEventListener("change", majSelection));
   $("supprimer").addEventListener("click", supprimerChoisis);
   $("toutEffacer").addEventListener("click", toutEffacer);
+  $("complement").addEventListener("change", completerDepuisFichier);
   majSelection();
 
   $("tableSuivi").querySelectorAll("[data-detail]").forEach((lien) =>
