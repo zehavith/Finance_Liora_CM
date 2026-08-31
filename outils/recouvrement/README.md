@@ -293,6 +293,16 @@ dont chaque point est nommé — société cessée, créance de plus d'un an, au
 salarié déclaré, montant élevé. Un score qu'on ne peut pas justifier ne sert à
 rien.
 
+**La consultation est automatique** : à l'ouverture de l'application pour les
+débiteurs encore inconnus, et à la fin de chaque export pour les dossiers qui
+viennent d'être créés. Un débiteur déjà interrogé sans résultat est mémorisé
+comme tel — sans quoi il serait redemandé indéfiniment. Le bouton ne sert qu'à
+reprendre la main si le service était injoignable.
+
+Rien de tout cela n'est bloquant : une créance ne dépend pas d'un service
+tiers, et un annuaire injoignable ne doit pas faire échouer un export d'une
+heure. L'échec est signalé au journal, et la prochaine ouverture réessaiera.
+
 **Ce qui n'est pas envoyé** : tout, sauf la raison sociale du débiteur. Ni
 montant, ni facture, ni adresse. Les fiches obtenues sont conservées sur le
 poste, et le service n'est réinterrogé que pour les débiteurs qu'il ne connaît

@@ -3777,6 +3777,20 @@ def test_interface() -> None:
         finally:
             interface.ecrire_preferences(avant_migration)
 
+        print("  -- l'annuaire se consulte tout seul --")
+        # Interroge sans resultat, un debiteur doit etre memorise comme tel :
+        # sans quoi il serait redemande a chaque ouverture, indefiniment.
+        verifier("consulterAnnuaireSiBesoin()" in page,
+                 "la page consulte l'annuaire pour les débiteurs inconnus")
+        verifier("annuaire_manquants" in page,
+                 "et sait lesquels n'ont jamais été interrogés")
+        verifier("_consulter_annuaire" in Path(interface.__file__).read_text(
+                     encoding="utf-8"),
+                 "la fin d'un export le consulte aussi")
+        statut, dossiers = appeler("/api/dossiers")
+        verifier("annuaire_manquants" in dossiers and "entreprises" in dossiers,
+                 "la liste porte le décompte et la répartition par forme")
+
         print("  -- le fichier de suivi est retenu, puis réappliqué --")
         # Deposé une fois, il doit servir aux exports suivants sans qu'on ait
         # à le redéposer : c'est la seule façon qu'il serve vraiment.

@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "56"
+VERSION = "57"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -306,6 +306,9 @@ class Execution:
                                if bilan["sans_correspondance"] else "")
                         )
 
+                if code == 0:
+                    self._consulter_annuaire()
+
             with self._verrou:
                 self.en_cours = False
                 self.termine = True
@@ -313,6 +316,26 @@ class Execution:
                 self.erreur = message
 
         threading.Thread(target=travail, daemon=True).start()
+
+    def _consulter_annuaire(self) -> None:
+        """L'annuaire public, interrogé pour les dossiers qui viennent d'être
+        créés. Jamais bloquant : une créance ne dépend pas d'un service tiers,
+        et un annuaire injoignable ne doit pas faire échouer un export."""
+        try:
+            bilan = completer_annuaire()
+        except Exception as exc:  # noqa: BLE001 - jamais bloquant
+            self.ajouter(f"⚠ annuaire des entreprises non consulté : {exc}")
+            return
+        if bilan["trouvees"] or bilan["sans_fiche"]:
+            self.ajouter(
+                f"Annuaire des entreprises : {bilan['trouvees']} fiche(s) "
+                f"trouvée(s), {bilan['sans_fiche']} sans correspondance."
+            )
+        if bilan["echecs"]:
+            self.ajouter(
+                f"⚠ annuaire des entreprises : {bilan['echecs']} échec(s) — "
+                f"{bilan['motif']}"
+            )
 
 
 EXECUTION = Execution()
@@ -367,6 +390,48 @@ def appliquer_complement(chemin: Path) -> dict:
         module_suivi.inventaire(sortie, SUIVI),
         SUIVI,
     )
+
+
+def completer_annuaire(tout_refaire: bool = False) -> dict:
+    """Complète les fiches publiques des débiteurs entreprises.
+
+    Seulement celles qui manquent : le service est gratuit et ouvert, ce
+    n'est pas une raison pour le solliciter deux fois pour la même société.
+    Un débiteur déjà interrogé sans résultat est mémorisé comme tel — sans
+    quoi il serait redemandé à chaque ouverture.
+    """
+    import entreprises as module_entreprises  # noqa: PLC0415
+
+    sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+    dossiers = module_suivi.inventaire(sortie, SUIVI)
+    connues = module_entreprises.charger_annuaire(ANNUAIRE)
+
+    trouvees, sans_fiche, echecs = 0, 0, 0
+    motif_echec = ""
+    for dossier in dossiers:
+        reference = dossier["reference"]
+        if reference in connues and not tout_refaire:
+            continue
+        try:
+            fiche = module_entreprises.chercher(dossier.get("nom") or "")
+        except module_entreprises.ErreurAnnuaire as exc:
+            echecs += 1
+            motif_echec = motif_echec or str(exc)
+            # Le service est peut-être injoignable : insister sur cinquante
+            # dossiers ne ferait qu'allonger l'attente pour rien.
+            if echecs >= 3:
+                break
+            continue
+        connues[reference] = fiche
+        if fiche:
+            trouvees += 1
+        else:
+            sans_fiche += 1
+
+    if trouvees or sans_fiche:
+        module_entreprises.enregistrer_annuaire(ANNUAIRE, connues)
+    return {"trouvees": trouvees, "sans_fiche": sans_fiche,
+            "echecs": echecs, "motif": motif_echec}
 
 
 def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str], str]:
@@ -573,6 +638,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 "agregats": module_suivi.agreger(dossiers),
                 "entreprises": module_entreprises.repartition(dossiers, annuaire),
                 "annuaire_connu": bool(annuaire),
+                # Les debiteurs que l'annuaire n'a jamais ete interroge sur.
+                # Un debiteur interroge sans resultat est memorise comme tel :
+                # il ne figure pas ici, et n'est donc pas redemande.
+                "annuaire_manquants": sum(
+                    1 for d in dossiers if d["reference"] not in annuaire
+                ),
                 "statuts": module_suivi.STATUTS,
                 "sortie": str(racine),
             })
@@ -754,47 +825,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
         self._json(200, resultat)
 
     def _interroger_annuaire(self, demande: dict) -> None:
-        """Complète les fiches publiques des débiteurs entreprises.
-
-        Une par une, et seulement celles qui manquent : le service est
-        gratuit et ouvert, ce n'est pas une raison pour le solliciter pour
-        des fiches déjà connues. Un débiteur particulier n'est pas interrogé
-        — il n'a pas de fiche, et la première société homonyme serait pire
-        que rien.
-        """
-        import entreprises as module_entreprises  # noqa: PLC0415
-
-        sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
-        dossiers = module_suivi.inventaire(sortie, SUIVI)
-        connues = module_entreprises.charger_annuaire(ANNUAIRE)
-
-        trouvees, sans_fiche, echecs = 0, 0, 0
-        motif_echec = ""
-        for dossier in dossiers:
-            reference = dossier["reference"]
-            if reference in connues and not demande.get("tout_refaire"):
-                continue
-            try:
-                fiche = module_entreprises.chercher(dossier.get("nom") or "")
-            except module_entreprises.ErreurAnnuaire as exc:
-                echecs += 1
-                motif_echec = motif_echec or str(exc)
-                # Le service est peut-être injoignable : insister sur
-                # cinquante dossiers ne ferait qu'allonger l'attente.
-                if echecs >= 3:
-                    break
-                continue
-            connues[reference] = fiche
-            if fiche:
-                trouvees += 1
-            else:
-                sans_fiche += 1
-
-        module_entreprises.enregistrer_annuaire(ANNUAIRE, connues)
-        self._json(200, {
-            "trouvees": trouvees, "sans_fiche": sans_fiche,
-            "echecs": echecs, "motif": motif_echec,
-        })
+        self._json(200, completer_annuaire(
+            tout_refaire=bool(demande.get("tout_refaire"))))
 
     def _tout_effacer(self, demande: dict) -> None:
         """Remise à zéro, en trois degrés que la page demande séparément.
@@ -2019,7 +2051,10 @@ document.querySelectorAll("nav.principal button").forEach((bouton) => {
 // ============================================================
 let DOSSIERS = [], STATUTS = [], AGREGATS = null, COURBE = null, SERVEUR = null;
 const LIGNES_A_L_ECRAN = 600;
-let ENTREPRISES = null, ANNUAIRE_CONNU = false;
+let ENTREPRISES = null, ANNUAIRE_CONNU = false, ANNUAIRE_MANQUANTS = 0;
+// Une seule tentative par ouverture : si le service est injoignable, insister
+// a chaque rechargement de la liste ne le rendrait pas joignable.
+let annuaireTente = false;
 // Un export en cours reecrit la liste depuis le debut : le compte repart de
 // zero et remonte. Sans le dire, cela se lit comme des dossiers qui
 // disparaissent.
@@ -2043,10 +2078,12 @@ async function chargerDossiers() {
   // premier recalcul cote page.
   ENTREPRISES = donnees.entreprises || null;
   ANNUAIRE_CONNU = Boolean(donnees.annuaire_connu);
+  ANNUAIRE_MANQUANTS = donnees.annuaire_manquants || 0;
   $("cheminSortie").textContent = donnees.sortie;
   rendreDocuments();
   rendreSuivi();
   rendreBord();
+  consulterAnnuaireSiBesoin();
   rappelerExportExistant(donnees.sortie);
 }
 
@@ -2529,10 +2566,26 @@ function rendreEntreprises() {
         ${ANNUAIRE_CONNU
           ? "Actualiser depuis l'annuaire" : "Interroger l'annuaire public"}</button>
     </div>
+    <p class="note">Consultation automatique : à l'ouverture pour les
+       débiteurs encore inconnus, et à la fin de chaque export. Le bouton ne
+       sert qu'à reprendre la main si le service était injoignable.</p>
     <p class="note">Seule la raison sociale du débiteur part en requête, vers
-       le service ouvert de l'État. Les fiches sont conservées sur ce poste.</p>`;
+       le service ouvert de l'État. Les fiches sont conservées sur ce poste,
+       et une société déjà interrogée ne l'est pas deux fois.</p>`;
 
   $("majAnnuaire").addEventListener("click", interrogerAnnuaire);
+}
+
+// Les debiteurs arrives depuis la derniere consultation recoivent leur fiche
+// sans qu'on la demande. Ceux deja interroges sans resultat sont memorises
+// comme tels : ils ne reviennent pas ici a chaque ouverture.
+async function consulterAnnuaireSiBesoin() {
+  if (annuaireTente || !ANNUAIRE_MANQUANTS) return;
+  annuaireTente = true;
+  try {
+    const r = await api("/api/annuaire", {});
+    if (r.trouvees || r.sans_fiche) chargerDossiers();
+  } catch { /* hors ligne : le bouton reste, il réessaiera */ }
 }
 
 async function interrogerAnnuaire() {
