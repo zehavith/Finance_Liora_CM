@@ -307,21 +307,20 @@ Le bandeau *Récupération des factures échues* répartit les factures arrivée
 
 - **Réglé avant l'échéance** — rentré tout seul, la facture n'est jamais tombée
   en recouvrement.
-- **Récupéré en recouvrement** — tombée en recouvrement, puis finalement
-  encaissée.
+- **Réglé en recouvrement** — tombée en recouvrement, puis finalement encaissée.
 - **Reste à recouvrer** — en recouvrement à ce jour, toujours impayée.
 
-Une quatrième tuile, **Jamais passé par le recouvrement**, lit le processus
-plutôt que la date. Elle ne s'ajoute pas aux trois premières et ne partage pas
-leur base : elle porte sur les factures **payées**, quand les autres portent sur
-les factures **échues**. Son principe : le tableau des factures payées conserve le groupe d'où venait la
+Une quatrième mesure, **Jamais passé par le recouvrement**, lit le processus
+plutôt que la date. Elle n'est pas affichée sur le tableau de bord — sa base
+diffère de celle des trois tuiles, ce qui prêtait à confusion — mais reste
+calculée et figure dans l'onglet *Synthèse* de l'export Excel. Son principe : le tableau des factures payées conserve le groupe d'où venait la
 facture au moment du règlement. Un groupe mentionnant le recouvrement, une
 relance, une mise en demeure ou un contentieux compte comme passé par le
 recouvrement ; les autres non. Cette tuile n'a de sens que si la colonne
 « Groupe » du tableau 0.1 est renseignée — sinon elle le signale, et le nombre
 de factures sans origine connue est affiché.
 
-Le même taux est décliné par type de financement, colonne *% sans recouv.* de
+Le même taux est décliné par type de financement, colonne *% avant échéance* de
 l'onglet *Financements*, et repris dans l'export Excel.
 
 Retards : moyen, médian, maximum, **pondéré par l'encours** (un gros impayé

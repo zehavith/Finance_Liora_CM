@@ -496,12 +496,12 @@
 
     /**
      * Bandeau « Récupération » : sur les factures arrivées à échéance, la part
-     * rentrée sans jamais être en retard, celle rentrée en retard, et ce qui
-     * reste à recouvrer. Les trois totalisent 100 %.
+     * rentrée avant l'échéance, celle rentrée après être tombée en recouvrement,
+     * et ce qui reste dû. Les trois totalisent 100 %.
      *
-     * La quatrième tuile lit le process plutôt que la date : le tableau des
-     * factures payées conserve le groupe d'origine du règlement, ce qui dit si
-     * la facture est passée ou non par le recouvrement.
+     * La lecture « par le processus » — d'après le groupe Monday d'origine du
+     * règlement — reste calculée et figure dans l'export Excel, mais n'est plus
+     * affichée ici : deux bases différentes côte à côte prêtaient à confusion.
      */
     function rendreRecuperation(v) {
         const el = $('#recup-grid');
@@ -519,8 +519,6 @@
                 <span class="recup-sub">${U.escapeHtml(o.sub)}</span>
             </${o.etats ? 'button' : 'div'}>`;
 
-        const horsDispo = (v.nbPayeesHorsRecouvrement + v.nbPayeesViaRecouvrement) > 0;
-
         el.innerHTML = [
             tuile({
                 couleur: U.couleurs.paye,
@@ -534,7 +532,7 @@
                 couleur: U.couleurs.payeRetard,
                 taux: eur ? v.tauxRegleRetardEuros : v.tauxRegleRetardNb,
                 etats: ['Payée en retard'],
-                label: 'Récupéré en recouvrement',
+                label: 'Réglé en recouvrement',
                 valeur: val(v.eurosPayeesRetard, v.nbPayeesRetard),
                 sub: "tombé en recouvrement, puis finalement encaissé",
             }),
@@ -545,22 +543,6 @@
                 label: 'Reste à recouvrer',
                 valeur: val(v.eurosEnRetard, v.nbEnRetard),
                 sub: 'en recouvrement à ce jour, toujours impayé',
-            }),
-            horsDispo ? tuile({
-                couleur: U.couleurs.indigo,
-                taux: eur ? v.tauxHorsRecouvrementEuros : v.tauxHorsRecouvrementNb,
-                label: 'Jamais passé par le recouvrement',
-                valeur: val(v.eurosPayeesHorsRecouvrement, v.nbPayeesHorsRecouvrement),
-                sub: "autre lecture : d'après le groupe Monday d'où venait la facture "
-                    + 'quand elle a été payée, et non d\'après les dates'
-                    + (v.nbOrigineInconnue ? ` · ${U.nombre(v.nbOrigineInconnue)} sans groupe renseigné` : ''),
-            }) : tuile({
-                couleur: U.couleurs.inconnu, muted: true,
-                etats: null,
-                taux: null,
-                label: 'Jamais passé par le recouvrement',
-                valeur: '—',
-                sub: 'nécessite la colonne « Groupe » du tableau des factures payées',
             }),
         ].join('');
 
@@ -1607,7 +1589,7 @@
             { key: 'tauxNb', label: '% nb', align: 'right', format: v => U.pourcent(v, 1), title: 'Part des factures actuellement en retard' },
             { key: 'tauxEur', label: '% €', align: 'right', format: v => U.pourcent(v, 1), title: "Part de l'encours en retard sur le total facturé" },
             { key: 'tauxCohorteEur', label: '% cohorte €', align: 'right', format: v => U.pourcent(v, 1), title: 'Sur les factures échues : part payée en retard ou encore impayée' },
-            { key: 'tauxRegleATempsEur', label: '% sans recouv.', align: 'right', format: v => U.pourcent(v, 1), title: "Sur les factures échues : part encaissée avant l'échéance, sans passer par le recouvrement" },
+            { key: 'tauxRegleATempsEur', label: '% avant échéance', align: 'right', format: v => U.pourcent(v, 1), title: "Sur les factures échues : part encaissée avant l'échéance, sans jamais tomber en recouvrement" },
             { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
             { key: 'retardMoyenPaiement', label: 'Retard au paiement', align: 'right', format: U.jours, title: 'Retard constaté sur les factures déjà réglées' },
         ];
@@ -2881,12 +2863,12 @@
             { Indicateur: '% en recouvrement (€)', Valeur: +v.tauxEuros.toFixed(2) },
             { Indicateur: '% cohorte échue en retard (nombre)', Valeur: +v.tauxCohorteNb.toFixed(2) },
             { Indicateur: '% cohorte échue en retard (€)', Valeur: +v.tauxCohorteEuros.toFixed(2) },
-            { Indicateur: 'Réglé sans recouvrement — nombre', Valeur: v.nbRegleATemps },
-            { Indicateur: 'Réglé sans recouvrement — % (nombre)', Valeur: +v.tauxRegleATempsNb.toFixed(2) },
-            { Indicateur: 'Réglé sans recouvrement — % (€)', Valeur: +v.tauxRegleATempsEuros.toFixed(2) },
-            { Indicateur: 'Récupéré en retard — % (€)', Valeur: +v.tauxRegleRetardEuros.toFixed(2) },
+            { Indicateur: "Réglé avant l'échéance — nombre", Valeur: v.nbRegleATemps },
+            { Indicateur: "Réglé avant l'échéance — % (nombre)", Valeur: +v.tauxRegleATempsNb.toFixed(2) },
+            { Indicateur: "Réglé avant l'échéance — % (€)", Valeur: +v.tauxRegleATempsEuros.toFixed(2) },
+            { Indicateur: 'Réglé en recouvrement — % (€)', Valeur: +v.tauxRegleRetardEuros.toFixed(2) },
             { Indicateur: 'Reste à recouvrer — % (€)', Valeur: +v.tauxResteEuros.toFixed(2) },
-            { Indicateur: 'Payé hors circuit recouvrement — % (€)', Valeur: +v.tauxHorsRecouvrementEuros.toFixed(2) },
+            { Indicateur: 'Jamais passé par le recouvrement — % (€)', Valeur: +v.tauxHorsRecouvrementEuros.toFixed(2) },
             { Indicateur: 'Retard moyen (jours)', Valeur: v.retardMoyen == null ? '' : Math.round(v.retardMoyen) },
             { Indicateur: 'Retard médian (jours)', Valeur: v.retardMedian == null ? '' : Math.round(v.retardMedian) },
             { Indicateur: 'Retard moyen pondéré € (jours)', Valeur: v.retardMoyenPondere == null ? '' : Math.round(v.retardMoyenPondere) },
@@ -2924,8 +2906,8 @@
             '% en retard (nombre)': +r.tauxNb.toFixed(2),
             '% en retard (€)': +r.tauxEur.toFixed(2),
             '% cohorte échue (€)': +r.tauxCohorteEur.toFixed(2),
-            'Réglé sans recouvrement (nombre)': r.nbRegleATemps,
-            'Réglé sans recouvrement — % (€)': +r.tauxRegleATempsEur.toFixed(2),
+            "Réglé avant l'échéance (nombre)": r.nbRegleATemps,
+            "Réglé avant l'échéance — % (€)": +r.tauxRegleATempsEur.toFixed(2),
             'Retard moyen (j)': r.retardMoyen == null ? '' : Math.round(r.retardMoyen),
             'Retard au paiement (j)': r.retardMoyenPaiement == null ? '' : Math.round(r.retardMoyenPaiement),
         }));
