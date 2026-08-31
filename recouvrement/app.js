@@ -2518,7 +2518,7 @@
         const analysees = consolidees - ecartees;
 
         const ligne = (o) => `
-            <div class="chaine-ligne${o.fort ? ' chaine-fort' : ''}${o.retrait ? ' chaine-retrait' : ''}">
+            <div class="chaine-ligne${o.fort ? ' chaine-fort' : ''}${o.retrait ? ' chaine-retrait' : ''}${o.action ? ' chaine-cliquable' : ''}"${o.action ? ` data-chaine="${o.action}"` : ''}>
                 <span class="chaine-signe">${o.signe || ''}</span>
                 <span class="chaine-label">${U.escapeHtml(o.label)}</span>
                 <span class="chaine-nb">${U.nombre(o.nb)}</span>
@@ -2528,12 +2528,56 @@
         el.innerHTML =
             ligne({ label: 'Lignes récupérées depuis Monday et des fichiers', nb: brutes, fort: true,
                     note: 'à comparer au nombre d\'éléments affiché dans Monday' })
-            + ligne({ signe: '−', retrait: true, label: 'Doublons fusionnés', nb: fusionnees,
-                      note: 'même numéro de facture sur plusieurs tableaux — notamment entre un tableau opérationnel et le tableau des factures payées' })
+            + ligne({ signe: '−', retrait: true, label: 'Doublons fusionnés', nb: fusionnees, action: 'doublons',
+                      note: 'même numéro de facture sur plusieurs tableaux — cliquez pour voir lesquels' })
             + ligne({ signe: '−', retrait: true, label: 'Groupes et tableaux de service', nb: ecartees,
                       note: 'technique, archive, corbeille' })
             + ligne({ signe: '=', label: 'Factures analysées', nb: analysees, fort: true,
                       note: 'ce que comptent les indicateurs, avant filtres de période et de source' });
+    }
+
+    /**
+     * Détail des doublons fusionnés.
+     *
+     * Quand le total analysé est plus bas que le nombre de lignes de Monday, la
+     * question est toujours la même : est-ce que ce sont de vrais doublons ? Le
+     * chiffre seul ne permet pas d'en juger — il faut voir les numéros et les
+     * tableaux d'où ils viennent, pour aller vérifier dans Monday.
+     */
+    function montrerDoublons() {
+        const doublons = state.factures.filter(f => f.doublon);
+        if (!doublons.length) {
+            U.modal('Doublons fusionnés', '<p>Aucune facture n\'apparaît sur plusieurs tableaux.</p>');
+            return;
+        }
+
+        const lignes = doublons.map(f => ({
+            numero: f.numero || '—',
+            client: f.client || '—',
+            montant: f.montant,
+            nb: (f.presenceTableaux || []).length,
+            tableaux: (f.presenceTableaux || []).join(' + '),
+        })).sort((a, b) => b.nb - a.nb || String(a.numero).localeCompare(String(b.numero)));
+
+        const retirees = X.sum(lignes, l => l.nb - 1);
+
+        U.modal(`Doublons fusionnés — ${U.nombre(doublons.length)} factures`, `
+            <p class="fv-hint">
+                Ces ${U.nombre(doublons.length)} factures portent le même numéro sur plusieurs
+                tableaux : elles sont comptées une seule fois, ce qui retire
+                ${U.nombre(retirees)} lignes du total. Le cas normal est une facture
+                présente à la fois sur son tableau opérationnel et sur
+                « 0.1. ALL - Factures payées ».
+                Si un numéro ci-dessous désigne en réalité deux factures différentes,
+                dites-le : la règle de rapprochement doit alors être revue.
+            </p>
+            <div class="table-scroll" style="max-height:52vh">` + U.table([
+                { key: 'numero', label: 'Facture', format: v => `<span class="mono">${U.escapeHtml(v)}</span>` },
+                { key: 'client', label: 'Client', format: v => `<span class="cell-clip" title="${U.escapeHtml(v)}">${U.escapeHtml(v)}</span>` },
+                { key: 'montant', label: 'Montant', align: 'right', format: v => v != null ? U.euros(v) : '—' },
+                { key: 'nb', label: 'Lignes', align: 'right', format: U.nombre },
+                { key: 'tableaux', label: 'Vue sur' },
+            ], lignes, { vide: '—' }) + '</div>');
     }
 
     /**
@@ -2590,7 +2634,15 @@
         }
 
         const vide = { retenues: 0, ecartees: 0, sansEcheance: 0, enRetard: 0, payees: 0, nonEchues: 0 };
-        const rows = state.boards.map(b => ({ ...b, ...(parBoard.get(b.name) || vide) }));
+        const rows = state.boards.map(b => {
+            const r = { ...b, ...(parBoard.get(b.name) || vide) };
+            // Écart entre ce que Monday annonce et ce qui est arrivé : c'est la
+            // seule perte réelle. Les doublons fusionnés et les groupes de
+            // service, eux, sont des retraits voulus.
+            r.manquantes = (b.itemsCount != null && b.charge != null)
+                ? Math.max(0, b.itemsCount - b.charge) : null;
+            return r;
+        });
         el.innerHTML = U.table([
             {
                 key: 'actif', label: '', align: 'center', width: '40px', sortable: false,
@@ -2607,6 +2659,9 @@
               title: "Nombre d'éléments annoncé par Monday" },
             { key: 'charge', label: 'Chargées', align: 'right', format: v => v == null ? '—' : U.nombre(v),
               title: 'Factures effectivement récupérées' },
+            { key: 'manquantes', label: 'Manquantes', align: 'right',
+              title: "Annoncées par Monday mais jamais récupérées — la seule perte réelle",
+              format: v => v == null ? '—' : (v ? `<span class="cell-danger">${U.nombre(v)}</span>` : '0') },
             { key: 'ecartees', label: 'Écartées', align: 'right', format: v => v ? U.nombre(v) : '—',
               title: 'Groupes de service : archives, technique, corbeille' },
             { key: 'retenues', label: 'Analysées', align: 'right', format: v => `<strong>${U.nombre(v)}</strong>`,
@@ -2620,6 +2675,7 @@
         ], rows, { vide: '—', total: {
             name: 'Total',
             charge: U.nombre(X.sum(rows, r => r.charge || 0)),
+            manquantes: U.nombre(X.sum(rows, r => r.manquantes || 0)),
             ecartees: U.nombre(X.sum(rows, r => r.ecartees)),
             retenues: U.nombre(X.sum(rows, r => r.retenues)),
             sansEcheance: U.nombre(X.sum(rows, r => r.sansEcheance)),
@@ -3836,6 +3892,11 @@
         });
         $('#btn-boards-refresh').addEventListener('click', chargerListeBoards);
         $('#btn-boards-load').addEventListener('click', chargerBoardsActifs);
+
+        $('#chaine-traitement').addEventListener('click', (e) => {
+            const l = e.target.closest('[data-chaine]');
+            if (l && l.dataset.chaine === 'doublons') montrerDoublons();
+        });
         $('#mapping-board-select').addEventListener('change', e => {
             state.ui.mappingBoardId = e.target.value;
             rendreTableMapping();

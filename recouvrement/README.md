@@ -226,10 +226,29 @@ récupérées, combien sont écartées comme groupes de service, combien entrent
 dans les indicateurs, et comment elles se répartissent entre sans échéance, en
 retard, non échues et payées.
 
+La colonne **Manquantes** isole la seule perte réelle : *Sur Monday* moins
+*Chargées*. Un zéro partout signifie que rien n'a été perdu à la récupération —
+si le total analysé reste plus bas que prévu, l'écart vient des doublons
+fusionnés ou des groupes de service, deux retraits volontaires, et non d'un
+défaut de chargement.
+
 C'est le premier endroit à regarder quand un chiffre paraît trop bas. Une
 colonne *Sans échéance* élevée signale des colonnes de dates non reconnues sur
 ce tableau : la correspondance se corrige juste en dessous. Un écart entre
 *Sur Monday* et *Chargées* signale un chargement incomplet.
+
+### Vérifier les doublons fusionnés
+
+Le nombre de doublons fusionnés ne suffit pas à juger s'ils sont légitimes. La
+ligne *Doublons fusionnés* de la chaîne de traitement est donc cliquable : elle
+ouvre la liste des factures concernées, avec leur numéro, leur client, leur
+montant et les tableaux d'où viennent les lignes — de quoi aller vérifier dans
+Monday.
+
+Le cas normal est une facture présente à la fois sur son tableau opérationnel et
+sur *0.1. ALL - Factures payées*. Deux factures réellement distinctes portant le
+même numéro seraient en revanche fusionnées à tort, et la règle de rapprochement
+devrait alors être revue.
 
 ### Contrôle des colonnes associées
 

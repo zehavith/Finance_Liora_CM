@@ -995,3 +995,9 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
     .cmp-row { grid-template-columns: 1fr 1fr; }
     .cmp-arrow, .cmp-prev { display: none; }
 }
+
+
+/* Ligne de la chaîne de traitement qui ouvre son détail */
+.chaine-ligne.chaine-cliquable { cursor: pointer; border-radius: 6px; }
+.chaine-ligne.chaine-cliquable:hover { background: rgba(255, 255, 255, .05); }
+.chaine-ligne.chaine-cliquable .chaine-nb { text-decoration: underline dotted; text-underline-offset: 3px; }
