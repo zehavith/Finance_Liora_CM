@@ -37,12 +37,18 @@
     const DEFAULT_ECHEANCE_RULES = [
         {
             key: 'BTC_ENTREPRISE',
-            label: 'BTC-Entreprise / Corporate Alternance',
+            label: 'B2C-Entreprise / Corporate Alternance',
             base: 'dateFacture', jours: 30,
             fallback: 'dateDebutFormation', fallbackJours: 30,
             note: "Date de facture +30 jours (si facture modifiée : début de formation +30 jours)",
             perimetre: 'Corporate',
-            match: ['btc entreprise', 'btc corporate', 'corporate alternance', 'btc ent'],
+            // Monday écrit « B2C - Entreprise », le référentiel « BTC-Entreprise ».
+            // Les deux graphies désignent la même chose : un particulier dont la
+            // formation est facturée à une entreprise. Sans le libellé « b2c
+            // entreprise », il était capté par « entreprise » et traité en B2B,
+            // donc calculé sur la fin de formation au lieu de la date de facture.
+            match: ['b2c entreprise', 'b2c ent', 'btc entreprise', 'btc ent',
+                    'b2c corporate', 'btc corporate', 'corporate alternance'],
         },
         {
             key: 'B2B', label: 'B2B',
@@ -123,12 +129,13 @@
             match: ['opco', 'akto', 'atlas', 'uniformation', 'ocapiat', 'constructys', 'afdas', 'opcommerce', 'l opcommerce', 'opco ep', 'opco 2i', 'opco mobilites', 'opco sante'],
         },
         {
-            key: 'BTC_PERSO', label: 'BTC-Perso / Perso-Alternance',
+            key: 'BTC_PERSO', label: 'B2C-Perso / Perso-Alternance',
             base: 'dateFinFormation', jours: 0,
             fallback: 'dateDebutFormation', fallbackJours: 0,
             note: 'Début de formation / fin de formation (aucun délai supplémentaire)',
             perimetre: 'B2C',
-            match: ['btc perso', 'perso alternance', 'financement personnel', 'perso', 'personnel', 'fonds propres', 'auto financement', 'autofinancement'],
+            match: ['b2c perso', 'btc perso', 'perso alternance', 'financement personnel',
+                    'perso', 'personnel', 'fonds propres', 'auto financement', 'autofinancement'],
         },
         {
             key: 'CPF', label: 'CPF',

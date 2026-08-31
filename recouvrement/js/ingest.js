@@ -36,6 +36,7 @@
         { field: 'datePaiement',         label: 'Date de paiement',       aliases: ['date de paiement', 'date paiement', 'date de reglement', 'date reglement', 'date encaissement', 'date d encaissement'] },
         { field: 'dateControlePaiement', label: 'Date contrôle paiement', aliases: ['date controle paiement', 'date de controle paiement', 'controle paiement', 'date de controle', 'date validation paiement', 'validation paiement', 'date pointage'] },
         { field: 'financement',          label: 'Type de financement',    aliases: ['type de financement', 'financement', 'type financement', 'mode de financement', 'dispositif', 'financeur', 'type de financeur', 'source de financement'] },
+        { field: 'typeClient',           label: 'Type de client',         aliases: ['type de client', 'type client', 'typologie client', 'typologie', 'segment client', 'segment', 'categorie client'] },
         { field: 'statut',               label: 'Statut',                 aliases: ['statut', 'status', 'etat', 'statut facture', 'statut de la facture'] },
         { field: 'proprietaire',         label: 'Propriétaire',           aliases: ['proprietaire', 'owner', 'responsable', 'charge de recouvrement', 'charge d affaire', 'gestionnaire', 'personne'] },
         { field: 'groupeOrigine',        label: 'Groupe d’origine',  aliases: ['groupe', 'grp', 'group', 'groupe d origine', 'tableau d origine', 'origine'] },
@@ -152,9 +153,12 @@
         const montantRegle = parseMontant(v.montantRegle);
         const resteDu = parseMontant(v.resteDu);
 
-        // Type de financement : colonne dédiée, sinon libellé du groupe,
-        // sinon nom du tableau, sinon valeur par défaut du tableau.
+        // Type de financement, du plus fiable au plus approximatif : colonne
+        // dédiée, puis type de client — « B2C - Entreprise » y désigne un
+        // financement —, puis libellé du groupe, puis nom du tableau, puis
+        // valeur par défaut du tableau.
         let finKey = R.detectFinancement(v.financement);
+        if (!finKey) finKey = R.detectFinancement(v.typeClient);
         if (!finKey) finKey = R.detectFinancement(ctx.groupTitle);
         if (!finKey) finKey = R.detectFinancement(ctx.boardName);
         if (!finKey) finKey = ctx.financementDefaut || null;
@@ -178,7 +182,8 @@
             cle: factureKey(numero),
             client: String(v.client || '').trim() || '—',
             financement: finKey,
-            financementBrut: String(v.financement || '').trim(),
+            financementBrut: String(v.financement || v.typeClient || '').trim(),
+            typeClient: String(v.typeClient || '').trim(),
 
             montant: montant,
             montantHT: parseMontant(v.montantHT),
