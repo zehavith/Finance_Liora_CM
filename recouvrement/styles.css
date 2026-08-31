@@ -222,6 +222,40 @@ select.input option { background: var(--bg-secondary); color: var(--text-primary
 .filter-chip button:hover { background: rgba(255, 255, 255, 0.42); }
 
 /* ============================
+   Mode « Aide »
+   Les explications sont dans le HTML mais masquées : le bouton Aide
+   de la barre les révèle toutes d'un coup.
+   ============================ */
+
+.aide-ligne, .aide-bloc { display: none; }
+
+body.aide .aide-ligne {
+    display: block;
+    font-size: 0.72rem;
+    line-height: 1.4;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+    max-width: 34ch;
+}
+body.aide .filter-block .aide-ligne { max-width: 30ch; }
+
+body.aide .aide-bloc {
+    display: block;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    background: rgba(99, 102, 241, 0.06);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-md);
+    padding: 0.85rem 1.1rem;
+    margin: -0.5rem 0 1.75rem;
+    max-width: 90ch;
+}
+body.aide .aide-bloc strong { color: var(--text-primary); }
+
+#btn-aide.actif { background: var(--accent-bg); border-color: var(--accent); color: var(--text-primary); }
+
+/* ============================
    KPIs — complément
    ============================ */
 

@@ -1,0 +1,17 @@
+{
+  "name": "Liora — Suivi Recouvrement",
+  "short_name": "Suivi Recouvrement",
+  "description": "Pilotage du recouvrement Liora : échéances, retards, taux de recouvrement par mois et par financement.",
+  "lang": "fr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b0e1a",
+  "theme_color": "#0b0e1a",
+  "orientation": "any",
+  "icons": [
+    { "src": "icones/liora-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icones/liora-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icones/liora-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

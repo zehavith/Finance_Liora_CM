@@ -4,8 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Suivi Recouvrement Liora</title>
-    <link rel="icon" type="image/png" href="../Liora_Logo_Orange_alpha.png">
-    <link rel="apple-touch-icon" href="../Liora_Logo_Orange_alpha.png">
+    <link rel="icon" href="icones/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" href="icones/liora-192.png">
+    <link rel="apple-touch-icon" href="icones/liora-192.png">
+    <!-- Permet l'installation en application de bureau (Edge / Chrome) -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0b0e1a">
+    <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
     <script src="../vendor/chart.umd.min.js"></script>
     <script src="../vendor/chartjs-chart-treemap.min.js"></script>
@@ -122,6 +127,10 @@
             <button class="nav-tab" data-tab="donnees">Données</button>
         </div>
         <div class="nav-actions">
+            <button class="btn btn-ghost" id="btn-aide" title="Afficher les explications sur chaque indicateur">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Aide
+            </button>
             <button class="btn btn-ghost" id="btn-refresh" title="Recharger depuis Monday">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                 Actualiser
@@ -153,6 +162,7 @@
         <div class="filter-bar">
             <div class="filter-block">
                 <span class="filter-label">Mois basé sur</span>
+                <span class="aide-ligne">Sur quelle date les mois sont découpés. En recouvrement, l'échéance est la bonne.</span>
                 <div class="seg" id="seg-base-mois">
                     <button class="seg-btn active" data-base="echeance">Échéance</button>
                     <button class="seg-btn" data-base="facture">Facture</button>
@@ -162,6 +172,7 @@
 
             <div class="filter-block">
                 <span class="filter-label">Périmètre</span>
+                <span class="aide-ligne">Corporate = vos clients entreprises. B2C = les apprenants en direct.</span>
                 <div class="seg" id="seg-perimetre">
                     <button class="seg-btn active" data-perimetre="Tous">Tous</button>
                     <button class="seg-btn" data-perimetre="Corporate">Corporate</button>
@@ -171,11 +182,13 @@
 
             <div class="filter-block filter-block-grow">
                 <span class="filter-label" title="Périmètre des factures comptées comme en retard">Sources du retard</span>
+                <span class="aide-ligne">D'où viennent les factures comptées comme en retard. Éteignez-en une pour l'exclure de tous les chiffres — l'OPCO par exemple, où il n'y a pas de recouvrement.</span>
                 <div class="chips" id="chips-sources"></div>
             </div>
 
             <div class="filter-block">
                 <span class="filter-label">Arrêté au</span>
+                <span class="aide-ligne">Date de référence. Reculez-la pour revoir la situation telle qu'elle était.</span>
                 <input type="date" id="date-ref" class="input input-sm">
             </div>
 
@@ -198,6 +211,13 @@
                 <h2>Vue d'ensemble</h2>
                 <div class="period-badge" id="period-badge"></div>
             </div>
+            <p class="aide-bloc">
+                Une facture est dite <strong>en recouvrement</strong> dès que sa date d'échéance est
+                dépassée et qu'elle n'est pas réglée — peu importe le tableau Monday où elle se trouve.
+                L'<strong>encours en retard</strong> est le montant que ces factures représentent.
+                Les trois colonnes ci-dessous répondent à : combien ça pèse, combien j'ai facturé en tout,
+                et depuis combien de temps ça traîne.
+            </p>
 
             <div class="kpi-grid kpi-grid-grouped">
                 <div class="kpi-group kpi-group-dec">
@@ -210,6 +230,7 @@
                             <span class="kpi-label">Encours en retard</span>
                             <span class="kpi-value" id="kpi-euros-retard">—</span>
                             <span class="kpi-sub" id="kpi-euros-retard-sub"></span>
+                            <span class="aide-ligne">Montant total encore dû sur les factures dont l'échéance est dépassée. C'est l'argent que vous devez aller chercher.</span>
                         </div>
                     </div>
                     <div class="kpi-card">
@@ -220,6 +241,7 @@
                             <span class="kpi-label">Factures en retard</span>
                             <span class="kpi-value" id="kpi-nb-retard">—</span>
                             <span class="kpi-sub" id="kpi-nb-retard-sub"></span>
+                            <span class="aide-ligne">Nombre de factures échues et impayées, tous tableaux confondus — recouvrement, ADV, OPCO et B2C selon les sources activées.</span>
                         </div>
                     </div>
                     <div class="kpi-card">
@@ -230,6 +252,7 @@
                             <span class="kpi-label">% en recouvrement (€)</span>
                             <span class="kpi-value" id="kpi-taux-euros">—</span>
                             <span class="kpi-sub" id="kpi-taux-nb-sub"></span>
+                            <span class="aide-ligne">Part de votre portefeuille actuellement en retard, en euros. La ligne dessous donne le taux « cohorte » : sur les seules factures déjà arrivées à échéance, la part qui a été payée en retard ou reste impayée.</span>
                         </div>
                     </div>
                 </div>
@@ -244,6 +267,7 @@
                             <span class="kpi-label">Total facturé</span>
                             <span class="kpi-value" id="kpi-total-euros">—</span>
                             <span class="kpi-sub" id="kpi-total-sub"></span>
+                            <span class="aide-ligne">Somme de toutes les factures de la période filtrée, réglées ou non.</span>
                         </div>
                     </div>
                     <div class="kpi-card">
@@ -254,6 +278,7 @@
                             <span class="kpi-label">Encaissé</span>
                             <span class="kpi-value" id="kpi-encaisse">—</span>
                             <span class="kpi-sub" id="kpi-encaisse-sub"></span>
+                            <span class="aide-ligne">Montant déjà encaissé. Une facture est considérée réglée si elle figure dans le tableau des factures payées, si elle porte une date de paiement, ou si le grand livre la lettre.</span>
                         </div>
                     </div>
                     <div class="kpi-card">
@@ -264,6 +289,7 @@
                             <span class="kpi-label">Encours total</span>
                             <span class="kpi-value" id="kpi-encours">—</span>
                             <span class="kpi-sub" id="kpi-encours-sub"></span>
+                            <span class="aide-ligne">Tout ce qui reste à encaisser : les factures en retard, plus celles qui ne sont pas encore arrivées à échéance.</span>
                         </div>
                     </div>
                 </div>
@@ -278,6 +304,7 @@
                             <span class="kpi-label">Retard moyen</span>
                             <span class="kpi-value" id="kpi-retard-moyen">—</span>
                             <span class="kpi-sub" id="kpi-retard-moyen-sub"></span>
+                            <span class="aide-ligne">Nombre de jours écoulés depuis l'échéance, en moyenne, sur les factures encore impayées. La médiane est souvent plus parlante : la moyenne est tirée vers le haut par quelques créances très anciennes.</span>
                         </div>
                     </div>
                     <div class="kpi-card">
@@ -288,6 +315,7 @@
                             <span class="kpi-label">Retard moyen pondéré €</span>
                             <span class="kpi-value" id="kpi-retard-pondere">—</span>
                             <span class="kpi-sub">pondéré par l'encours</span>
+                            <span class="aide-ligne">Même retard moyen, mais où chaque facture pèse à hauteur de son montant. Un gros impayé ancien compte plus qu'un petit. Si ce chiffre dépasse nettement le retard moyen, ce sont vos grosses factures qui traînent.</span>
                         </div>
                     </div>
                     <div class="kpi-card">
@@ -298,6 +326,7 @@
                             <span class="kpi-label">Retard moyen au paiement</span>
                             <span class="kpi-value" id="kpi-retard-paiement">—</span>
                             <span class="kpi-sub" id="kpi-delai-paiement-sub"></span>
+                            <span class="aide-ligne">Sur les factures déjà réglées, combien de jours après l'échéance le paiement est réellement tombé. Mesure le comportement de paiement de vos clients, une fois l'affaire close.</span>
                         </div>
                     </div>
                 </div>
@@ -550,6 +579,7 @@
                 <h2>Balance âgée</h2>
                 <div class="period-badge" id="aging-badge"></div>
             </div>
+            <p class="aide-bloc">Répartit ce qui reste dû selon l'ancienneté du retard. Plus une créance glisse vers la droite, plus elle devient difficile à récupérer.</p>
 
             <div class="bucket-grid" id="bucket-cards"></div>
 
@@ -588,6 +618,7 @@
                 <h2>Par type de financement</h2>
                 <div class="period-badge" id="fin-badge"></div>
             </div>
+            <p class="aide-bloc">Le même suivi, dispositif par dispositif. La règle d'échéance n'est pas la même partout : le CPF paie à fin de formation +45 jours, le B2B à +30, l'OPCO à +30.</p>
 
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
@@ -630,6 +661,7 @@
                 <h2>Détail des factures</h2>
                 <div class="period-badge" id="factures-badge"></div>
             </div>
+            <p class="aide-bloc">La liste de toutes les factures du périmètre filtré. Cliquez sur une ligne pour voir le détail d'une facture et comprendre comment son échéance a été calculée.</p>
 
             <div class="table-toolbar">
                 <div class="chips" id="chips-etats"></div>
@@ -656,6 +688,7 @@
                 <h2>Prélèvements GoCardless</h2>
                 <div class="period-badge" id="prlv-badge"></div>
             </div>
+            <p class="aide-bloc">Le suivi des apprenants qui paient par prélèvement automatique : combien vont au bout sans incident, et au bout de combien de temps les premiers décrochent.</p>
 
             <div id="prlv-vide" class="empty-state">
                 <h3>Aucun export GoCardless chargé</h3>
@@ -777,6 +810,7 @@
                 <h2>Qualité des données</h2>
                 <div class="period-badge" id="quality-badge"></div>
             </div>
+            <p class="aide-bloc">Ce qui manque dans Monday et fausse les calculs. Une facture sans date de fin de formation, par exemple, n'a pas d'échéance calculable et sort des taux.</p>
             <div class="quality-score" id="quality-score"></div>
             <div id="quality-list" class="quality-list"></div>
         </div>

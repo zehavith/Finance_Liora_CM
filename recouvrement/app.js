@@ -117,6 +117,14 @@
         }
         appliquerOptionsAuxCases();
 
+        // L'aide reste activée d'une session à l'autre
+        try {
+            if (await S.get('rec_aide', false)) {
+                document.body.classList.add('aide');
+                $('#btn-aide').classList.add('actif');
+            }
+        } catch { /* ignore */ }
+
         avertirProtocoleFichier();
 
         try {
@@ -3355,6 +3363,13 @@
                     },
                 },
             ]);
+        });
+
+        // ── Aide ──
+        $('#btn-aide').addEventListener('click', () => {
+            const actif = document.body.classList.toggle('aide');
+            $('#btn-aide').classList.toggle('actif', actif);
+            S.set('rec_aide', actif).catch(() => {});
         });
 
         // ── Règles ──
