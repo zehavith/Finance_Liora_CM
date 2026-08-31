@@ -2011,6 +2011,69 @@ def test_colonnes_typees_monday() -> None:
         verifier(obtenu == attendu, f"{libelle} (obtenu : « {obtenu} »)")
 
 
+def test_colonnes_miroir_monday() -> None:
+    """Une colonne miroir ne dit sa valeur que dans `display_value`."""
+    print("\nColonnes miroir Monday")
+
+    import monday as module_monday  # noqa: PLC0415
+
+    verifier(module_monday._valeur_colonne(
+        {"text": "", "value": None, "display_value": "sufyen.b@gmail.com"}
+    ) == "sufyen.b@gmail.com", "la valeur affichée d'un miroir est lue")
+    verifier(module_monday._valeur_colonne(
+        {"text": "direct@c.fr", "display_value": "autre@c.fr"}
+    ) == "direct@c.fr", "un texte propre reste prioritaire sur le miroir")
+    verifier(module_monday._valeur_colonne(
+        {"text": "", "value": None, "display_value": ""}
+    ) == "", "un miroir vide reste vide")
+
+    requetes: list[str] = []
+    refus = {"reste": 1}
+
+    def faux_appel(requete, jeton):
+        requetes.append(requete)
+        if "groups { id title }" in requete or "columns {" in requete:
+            return {"boards": [{"groups": [], "columns": []}]}
+        # La première requête est refusée comme le ferait une API qui ignore
+        # le type MirrorValue.
+        if "MirrorValue" in requete and refus["reste"]:
+            refus["reste"] -= 1
+            raise module_monday.ErreurMonday(
+                "Monday a répondu par une erreur : "
+                "Cannot query field 'display_value' on type 'MirrorValue'"
+            )
+        return {"boards": [{"name": "T", "items_page": {"cursor": None, "items": [
+            {"id": 1, "name": "FACT-1", "column_values": [
+                {"column": {"title": "Email"}, "text": "",
+                 "display_value": "a@b.fr"}]}]}}]}
+
+    vrai_appel = module_monday._appeler_api
+    module_monday._appeler_api = faux_appel
+    try:
+        grille = module_monday.lire_tableau("42", "jeton")
+    finally:
+        module_monday._appeler_api = vrai_appel
+
+    pages = [r for r in requetes if "items_page" in r]
+    verifier("MirrorValue" in pages[0],
+             "les colonnes miroir sont demandées d'emblée")
+    verifier(len(pages) == 2 and "MirrorValue" not in pages[1],
+             "un refus fait relire sans les fragments, pas échouer la lecture")
+    verifier(len(grille) == 2, "le tableau est lu malgré le refus")
+
+    # Sans refus, la valeur affichée arrive bien jusqu'à la grille.
+    refus["reste"] = 0
+    requetes.clear()
+    module_monday._appeler_api = faux_appel
+    try:
+        grille = module_monday.lire_tableau("42", "jeton")
+    finally:
+        module_monday._appeler_api = vrai_appel
+    entetes = grille[0][1]
+    verifier(grille[1][1][entetes.index("Email")] == "a@b.fr",
+             "l'adresse d'une colonne miroir atteint la grille")
+
+
 def test_bloc_pieces() -> None:
     """Pièces jointes et documents Monday : quatre cas, aucun qui plante."""
     print("\nBloc « Contrat signé et factures »")
@@ -3996,6 +4059,7 @@ def main() -> int:
     test_refus_monday()
     test_montants_espace_insecable()
     test_colonnes_typees_monday()
+    test_colonnes_miroir_monday()
     test_bloc_pieces()
     test_execution_formation()
     test_suppression_dossiers()

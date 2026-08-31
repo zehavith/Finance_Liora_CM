@@ -136,6 +136,30 @@ L'onglet s'ouvre directement sur le mode Monday quand des tableaux ont déjà
 été choisis — c'est le cas courant, et l'onglet « fichier » laissait le bouton
 grisé sans dire pourquoi.
 
+### Une colonne miroir ne dit rien sans qu'on le lui demande
+
+Sur le tableau des entreprises, `Entreprise`, `Email` et les montants sont des
+**colonnes miroir** : elles reflètent un autre tableau. L'API ne renvoie alors
+ni `text` ni `value` — la valeur n'existe que sous `display_value`, accessible
+par fragment sur le type de la colonne :
+
+```graphql
+column_values {
+  column { title } text value
+  ... on MirrorValue { display_value }
+  ... on FormulaValue { display_value }
+  ... on BoardRelationValue { display_value }
+  ... on DependencyValue { display_value }
+}
+```
+
+Les seize dossiers de ce tableau arrivaient donc sans nom, sans adresse et
+sans montant, alors que Monday les affiche à l'écran.
+
+Si une version d'API ignorait l'un de ces types, la requête entière
+échouerait : la lecture reprend alors sans les fragments — mieux vaut des
+colonnes miroir vides qu'un tableau illisible.
+
 ### Une colonne « E-mail » ne range pas l'adresse où on croit
 
 Une colonne typée de Monday — e-mail, lien, téléphone — stocke sa valeur dans

@@ -207,6 +207,37 @@ def _sans_accent(texte: str) -> str:
     ).strip().lower()
 
 
+# Une colonne miroir ou une formule ne renvoie rien dans `text` ni dans
+# `value` : sa valeur n'existe que sous `display_value`, accessible par
+# fragment sur le type de la colonne. Sur le tableau des entreprises, le nom,
+# l'adresse mail et les montants sont tous des miroirs — la lecture les
+# rendait donc tous vides, sans le dire.
+FRAGMENTS_AFFICHAGE = (
+    " ... on MirrorValue { display_value }"
+    " ... on FormulaValue { display_value }"
+    " ... on BoardRelationValue { display_value }"
+    " ... on DependencyValue { display_value }"
+)
+
+# Une version d'API qui ignorerait l'un de ces types ferait echouer la requete
+# entiere. On relit alors sans les fragments : mieux vaut des colonnes miroir
+# vides qu'un tableau illisible.
+FRAGMENT_REFUSE = ("mirrorvalue", "formulavalue", "boardrelationvalue",
+                   "dependencyvalue", "display_value", "fragment",
+                   "cannot query field")
+
+
+def _fragment_refuse(exc: Exception) -> bool:
+    texte = str(exc).lower()
+    return any(marqueur in texte for marqueur in FRAGMENT_REFUSE)
+
+
+def _selection_colonnes(avec_affichage: bool) -> str:
+    """La sélection GraphQL d'une cellule, avec ou sans les colonnes miroir."""
+    return ("column_values { column { title } text value"
+            + (FRAGMENTS_AFFICHAGE if avec_affichage else "") + " }")
+
+
 def _est_sous_elements(tableau: dict) -> bool:
     """Le tableau technique que Monday crée pour les sous-éléments.
 
@@ -285,6 +316,11 @@ def _valeur_colonne(colonne: dict) -> str:
     texte = (colonne.get("text") or "").strip()
     if texte:
         return texte
+
+    # Colonne miroir ou formule : sa valeur n'existe que là.
+    affiche = (colonne.get("display_value") or "").strip()
+    if affiche:
+        return affiche
 
     brut = colonne.get("value")
     if not brut:
@@ -434,11 +470,6 @@ def lire_tableau(
     c'est l'élément parent qui porte le nom et l'adresse de l'apprenante.
     """
     dire = signaler or (lambda _message: None)
-    sous = (
-        " subitems { id name column_values { column { title } text value } }"
-        if avec_sous_elements
-        else ""
-    )
 
     # Filtrer chez Monday plutôt qu'ici : sur un tableau de plusieurs milliers
     # de lignes dont une poignée sont au contentieux, tout rapatrier pour en
@@ -478,7 +509,7 @@ def lire_tableau(
     for lot in lots:
         avant = len(vus)
         _lire_lot(
-            identifiant, jeton, par_page, sous, avec_sous_elements,
+            identifiant, jeton, par_page, avec_sous_elements,
             lot["groupe"], lot["regles"], lignes, vus,
         )
         dire(f"    {len(vus) - avant} élément(s) — {lot['libelle']}")
@@ -507,7 +538,6 @@ def _lire_lot(
     identifiant: str,
     jeton: str,
     par_page: int,
-    sous: str,
     avec_sous_elements: bool,
     groupe_id: str,
     regles: str,
@@ -516,8 +546,17 @@ def _lire_lot(
 ) -> None:
     """Une passe de lecture paginée, sur un groupe ou sur tout le tableau."""
     curseur: str | None = None
+    # Les colonnes miroir sont demandées d'emblée, et abandonnées si l'API les
+    # refuse : mieux vaut des miroirs vides qu'un tableau illisible.
+    avec_affichage = True
 
     while True:
+        colonnes_lues = _selection_colonnes(avec_affichage)
+        sous = (
+            f" subitems {{ id name {colonnes_lues} }}"
+            if avec_sous_elements
+            else ""
+        )
         arguments = [f"limit: {int(par_page)}"]
         if curseur:
             # Un curseur porte déjà le filtre de la requête qui l'a produit :
@@ -531,10 +570,10 @@ def _lire_lot(
         corps = (
             f'groups (ids: ["{_echapper_graphql(groupe_id)}"]) '
             f"{{ id title {page} {{ cursor items {{ id name group {{ title }} "
-            f"column_values {{ column {{ title }} text value }}{sous} }} }} }}"
+            f"{colonnes_lues}{sous} }} }} }}"
             if groupe_id
             else f"{page} {{ cursor items {{ id name group {{ title }} "
-            f"column_values {{ column {{ title }} text value }}{sous} }} }}"
+            f"{colonnes_lues}{sous} }} }}"
         )
 
         try:
@@ -546,6 +585,11 @@ def _lire_lot(
             # Le filtre côté Monday est un gain de temps, pas une nécessité :
             # si l'API le refuse, on relit sans lui et le filtre local fait le
             # tri. Un tableau lu lentement vaut mieux qu'un tableau non lu.
+            # Une version d'API qui ignorerait l'un de ces types ferait
+            # échouer la requête entière : on relit sans les fragments.
+            if avec_affichage and _fragment_refuse(exc):
+                avec_affichage = False
+                continue
             if regles and _filtre_refuse(exc):
                 regles = ""
                 continue
