@@ -418,6 +418,31 @@ Si un fichier présente des montants tous entiers et anormalement élevés, ils
 sont lus comme des centimes et l'hypothèse est affichée en clair — jamais
 appliquée en silence.
 
+## Data Quality
+
+L'onglet distingue deux familles.
+
+**Ce qui n'est pas arrivé jusqu'à l'application** — le plus dangereux, puisque
+ces factures ne se voient nulle part ailleurs :
+
+- *Tableaux dont le chargement a échoué*, avec le message d'erreur de chacun.
+  Un tableau en échec n'interrompt plus les autres : le chargement se poursuit
+  et l'échec est signalé, plutôt que de laisser un écran vide sans explication.
+- *Factures annoncées par Monday mais non importées*, quand le nombre récupéré
+  est inférieur au nombre annoncé par le tableau.
+- *Tableaux cochés mais jamais chargés*.
+- *Lignes importées sans aucune donnée exploitable* — ni numéro, ni montant, ni
+  date.
+
+**Ce qui est arrivé mais reste incomplet** — échéance non calculable, type de
+financement absent, montant nul, paiement sans date, doublons entre tableaux,
+retards de plus d'un an, factures échues restées côté ADV.
+
+Chaque anomalie porte le nombre concerné, le détail quand il s'agit de
+tableaux, et l'accès aux factures quand il s'agit de factures. Le score de
+fiabilité ne tient compte que des secondes : un tableau non chargé n'est pas un
+défaut de qualité mais un incident de récupération, et il se corrige d'un clic.
+
 ## Structure
 
 ```

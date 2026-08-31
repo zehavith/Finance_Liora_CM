@@ -2209,9 +2209,68 @@
     //  Onglet : Data Quality
     // ══════════════════════════════════════════════
 
+    /**
+     * Anomalies de récupération, distinctes des anomalies de contenu : elles
+     * portent sur ce qui n'est pas arrivé jusqu'à l'application. Une facture
+     * absente ne se voit nulle part ailleurs — c'est précisément le danger.
+     */
+    function anomaliesImport() {
+        const out = [];
+        const monday = state.boards.filter(b => !String(b.id).startsWith('file:'));
+
+        // Tableaux dont le chargement a échoué
+        const enEchec = monday.filter(b => b.actif && b.erreurChargement);
+        if (enEchec.length) out.push({
+            code: 'IMPORT_ECHEC', unite: 'tableau', gravite: 'haute',
+            titre: 'Tableaux dont le chargement a échoué',
+            nb: enEchec.length, euros: 0,
+            conseil: "Aucune facture de ces tableaux n'est présente dans les indicateurs. "
+                + 'Relancez « Charger les tableaux cochés » dans l\'onglet Données.',
+            detail: enEchec.map(b => `${b.name} — ${b.erreurChargement}`),
+        });
+
+        // Écart entre ce que Monday annonce et ce qui est arrivé
+        const partiels = monday
+            .filter(b => b.actif && !b.erreurChargement && b.itemsCount != null
+                && b.charge != null && b.charge < b.itemsCount)
+            .map(b => ({ nom: b.name, manquantes: b.itemsCount - b.charge, attendues: b.itemsCount }));
+        if (partiels.length) out.push({
+            code: 'IMPORT_PARTIEL', gravite: 'haute',
+            titre: "Factures annoncées par Monday mais non importées",
+            nb: partiels.reduce((n, p) => n + p.manquantes, 0), euros: 0,
+            conseil: 'Chargement incomplet : relancez le chargement. Si l\'écart persiste, '
+                + 'il peut s\'agir d\'éléments supprimés ou de sous-éléments non repris.',
+            detail: partiels.map(p => `${p.nom} — ${U.nombre(p.manquantes)} manquantes sur ${U.nombre(p.attendues)}`),
+        });
+
+        // Tableaux cochés mais jamais chargés
+        const jamais = monday.filter(b => b.actif && b.role !== 'ignore' && b.charge == null);
+        if (jamais.length) out.push({
+            code: 'IMPORT_JAMAIS', unite: 'tableau', gravite: 'moyenne',
+            titre: 'Tableaux cochés mais jamais chargés',
+            nb: jamais.length, euros: 0,
+            conseil: 'Cliquez sur « Charger les tableaux cochés » dans l\'onglet Données.',
+            detail: jamais.map(b => b.name),
+        });
+
+        // Lignes importées mais vides de toute information exploitable
+        const creuses = state.factures.filter(f =>
+            f.montant == null && !f.dateFacture && !f.dateFinFormation
+            && !f.dateEcheanceSource && !f.cle);
+        if (creuses.length) out.push({
+            code: 'LIGNE_CREUSE', gravite: 'moyenne',
+            titre: 'Lignes importées sans aucune donnée exploitable',
+            nb: creuses.length, euros: 0, items: creuses,
+            conseil: 'Ni numéro, ni montant, ni date : ces lignes gonflent les compteurs sans rien '
+                + 'apporter. Souvent des lignes de séparation ou des brouillons dans Monday.',
+        });
+
+        return out;
+    }
+
     function rendreQualite(data) {
-        const anomalies = X.qualite(data);
-        const score = X.scoreQualite(data, anomalies);
+        const anomalies = [...anomaliesImport(), ...X.qualite(data)];
+        const score = X.scoreQualite(data, anomalies.filter(a => a.items));
         const couleur = score >= 85 ? 'var(--green)' : score >= 65 ? 'var(--amber)' : 'var(--red)';
 
         $('#quality-score').innerHTML = `
@@ -2237,15 +2296,17 @@
                     <span class="quality-dot"></span>
                     <div class="quality-title">
                         <strong>${U.escapeHtml(a.titre)}</strong>
-                        <span>${U.nombre(a.nb)} facture${a.nb > 1 ? 's' : ''}${a.euros ? ' · ' + U.euros(a.euros) : ''}</span>
+                        <span>${U.nombre(a.nb)} ${a.unite || 'facture'}${a.nb > 1 ? 's' : ''}${a.euros ? ' · ' + U.euros(a.euros) : ''}</span>
                     </div>
-                    <button class="btn btn-ghost btn-sm" data-q="${i}">Voir les factures</button>
+                    ${a.items ? `<button class="btn btn-ghost btn-sm" data-q="${i}">Voir les factures</button>` : ''}
                 </div>
+                ${a.detail ? `<ul class="quality-detail">${a.detail.map(d => `<li>${U.escapeHtml(d)}</li>`).join('')}</ul>` : ''}
                 <p class="quality-advice">${U.escapeHtml(a.conseil)}</p>
             </div>`).join('');
 
         $$('[data-q]', el).forEach(b => b.addEventListener('click', () => {
             const a = anomalies[+b.dataset.q];
+            if (!a.items) return;
             const rows = a.items.slice(0, 300);
             U.modal(a.titre + ` — ${U.nombre(a.nb)} factures`, U.table([
                 { key: 'numero', label: 'Facture' },
@@ -2607,38 +2668,56 @@
         // Les factures issues de fichiers sont conservées, celles de Monday remplacées
         const conserve = state.brutes.filter(f => String(f.boardId).startsWith('file:'));
         const collecte = [...conserve];
+        const echecs = [];
 
         try {
             for (let i = 0; i < actifs.length; i++) {
                 const b = actifs[i];
                 statut(`(${i + 1}/${actifs.length}) ${b.name}`);
                 log(`→ ${b.name}`);
+                b.erreurChargement = null;
 
-                // Colonnes + mapping
-                if (!b.columns) {
-                    const meta = await M.boardColumns(state.token, b.id);
-                    b.columns = meta ? meta.columns : [];
+                // L'échec d'un tableau ne doit pas emporter les suivants :
+                // mieux vaut un chargement partiel, signalé, qu'un écran vide.
+                try {
+                    if (!b.columns) {
+                        const meta = await M.boardColumns(state.token, b.id);
+                        b.columns = meta ? meta.columns : [];
+                    }
+                    if (!b.mapping || !Object.keys(b.mapping).length) {
+                        b.mapping = I.autoMapColumns(b.columns || []);
+                        const manquants = ['numero', 'montant'].filter(k => !b.mapping[k]);
+                        if (manquants.length) log(`   ⚠ colonnes non reconnues : ${manquants.join(', ')}`);
+                    }
+
+                    const { board, items } = await M.fetchBoardItems(state.token, b.id, log);
+                    if (!board) throw new Error('Tableau inaccessible');
+
+                    const factures = I.facturesFromMondayBoard(board, items, b.mapping, b);
+                    // Conserver les valeurs brutes pour l'aperçu du mapping
+                    items.forEach((it, idx) => {
+                        const brut = {};
+                        for (const cv of (it.column_values || [])) { const v = M.columnValue(cv); if (v) brut[cv.id] = v; }
+                        if (factures[idx]) factures[idx].__brut = brut;
+                    });
+
+                    collecte.push(...factures);
+                    b.charge = factures.length;
+                    log(`   ✓ ${factures.length} factures`);
+
+                    if (b.itemsCount != null && factures.length < b.itemsCount) {
+                        log(`   ⚠ ${b.itemsCount - factures.length} éléments manquants sur ${b.itemsCount}`);
+                    }
+                } catch (e) {
+                    b.erreurChargement = e.message;
+                    b.charge = 0;
+                    echecs.push(b.name);
+                    log(`   ✗ ${e.message}`);
                 }
-                if (!b.mapping || !Object.keys(b.mapping).length) {
-                    b.mapping = I.autoMapColumns(b.columns || []);
-                    const manquants = ['numero', 'montant'].filter(k => !b.mapping[k]);
-                    if (manquants.length) log(`   ⚠ colonnes non reconnues : ${manquants.join(', ')}`);
-                }
+            }
 
-                const { board, items } = await M.fetchBoardItems(state.token, b.id, log);
-                if (!board) { log(`   ✗ tableau inaccessible`); continue; }
-
-                const factures = I.facturesFromMondayBoard(board, items, b.mapping, b);
-                // Conserver les valeurs brutes pour l'aperçu du mapping
-                items.forEach((it, idx) => {
-                    const brut = {};
-                    for (const cv of (it.column_values || [])) { const v = M.columnValue(cv); if (v) brut[cv.id] = v; }
-                    if (factures[idx]) factures[idx].__brut = brut;
-                });
-
-                collecte.push(...factures);
-                b.charge = factures.length;
-                log(`   ✓ ${factures.length} factures`);
+            if (echecs.length) {
+                U.toast(`${echecs.length} tableau(x) non chargé(s) — voir Data Quality.`, 'error', 10000);
             }
 
             state.brutes = collecte;
