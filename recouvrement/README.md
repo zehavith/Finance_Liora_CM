@@ -190,6 +190,12 @@ ses lignes se rapprochent des factures des tableaux opérationnels et sont
 comptées là-bas. Un chiffre non nul y désigne des factures réglées qui
 n'existent nulle part ailleurs.
 
+### Tableaux de sous-éléments
+
+Monday crée automatiquement un tableau « Sous-éléments de … » pour chaque
+tableau utilisant des sous-éléments. Ses lignes ne sont pas des factures : ces
+tableaux reçoivent le rôle *Ignoré* et ne sont pas proposés au chargement.
+
 ### Groupes de service
 
 Un tableau opérationnel héberge souvent des groupes qui ne sont pas du suivi :
@@ -290,7 +296,6 @@ L'export Excel contient un onglet *Répartition* reprenant l'arbre à plat.
 | **Où se concentre l'encours** | treemap, dimension au choix : financement, client, tableau, groupe, propriétaire |
 | **Encours par financement** | barres horizontales |
 | **Balance âgée** | anneau par tranche d'antériorité |
-| **Encours par propriétaire** | barres horizontales — charge de relance |
 | **Structure du portefeuille** | double anneau : état à l'extérieur, périmètre à l'intérieur |
 | **% par mois et financement** | carte thermique |
 | **Évolution du retard moyen** | trois courbes en jours : retard moyen et médian de l'encours, écart au règlement |
@@ -442,6 +447,13 @@ ces factures ne se voient nulle part ailleurs :
 - *Tableaux cochés mais jamais chargés*.
 - *Lignes importées sans aucune donnée exploitable* — ni numéro, ni montant, ni
   date.
+
+**Pourquoi les factures sont considérées comme réglées** — le récapitulatif des
+critères ayant conclu au règlement, du plus fréquent au moins fréquent :
+présence dans le tableau des factures payées, date de paiement, date de
+contrôle paiement, statut Monday, reste dû nul. Au-delà de 95 % de factures
+réglées, l'anomalie passe en gravité haute : un tel taux est rarement réel, et
+le motif majoritaire désigne alors la colonne mal associée.
 
 **Ce qui est arrivé mais reste incomplet** — échéance non calculable, type de
 financement absent, montant nul, paiement sans date, doublons entre tableaux,

@@ -167,6 +167,9 @@
     // ──────────────────────────────────────────────
 
     const BOARD_ROLE_PATTERNS = [
+        // Monday crée un tableau « Sous-éléments de … » pour chaque tableau
+        // utilisant des sous-éléments. Ses lignes ne sont pas des factures.
+        { role: 'ignore',       perimetre: 'Inconnu',   source: null,            financementDefaut: null,          match: ['sous elements de', 'sous element de', 'subitems of', 'subelements of'] },
         { role: 'payees',       perimetre: 'Tous',      source: 'payees',        financementDefaut: null,          match: ['all factures payees', 'factures payees', '0 1 all', 'factures paye'] },
         { role: 'technique',    perimetre: 'Tous',      source: 'technique',     financementDefaut: null,          match: ['technique', 'zone kairos', 'rib recus', 'transactions technique', 'dossier aif en cours'] },
         { role: 'opco',         perimetre: 'Corporate', source: 'opco',          financementDefaut: 'OPCO',        match: ['entreprise opco', 'opco et plateforme', ' opco'] },

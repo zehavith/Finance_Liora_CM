@@ -500,7 +500,6 @@
         // ── Heatmap mois × financement ──
         rendreHeatmap(X.croiseMoisFinancement(data, state.filtres.baseMois, state.rules));
 
-        rendreChartProprietaire(data);
         rendreChartStructure(data);
 
         // ── Classements ──
@@ -1188,44 +1187,6 @@
         }
         state.ui.page = 1;
         rendreTout();
-    }
-
-    function rendreChartProprietaire(data) {
-        const enRetard = data.filter(f => f.etat === 'En retard');
-        const rows = X.parDimension(enRetard, f => f.proprietaire, null, f => f.encours).slice(0, 12);
-        if (!rows.length) { U.chart('chart-proprietaire', videConfig('Aucune facture en retard')); return; }
-
-        U.chart('chart-proprietaire', {
-            type: 'bar',
-            data: {
-                labels: rows.map(r => r.label),
-                datasets: [{
-                    data: rows.map(r => r.valeur),
-                    backgroundColor: rows.map((_, i) => U.palette[i % U.palette.length]),
-                    borderRadius: 4,
-                }],
-            },
-            options: {
-                indexAxis: 'y',
-                scales: {
-                    x: { grid: U.grille, ticks: { callback: v => U.eurosCourt(v) } },
-                    y: { grid: { display: false } },
-                },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: ctx => U.euros(ctx.parsed.x),
-                            afterLabel: ctx => {
-                                const r = rows[ctx.dataIndex];
-                                return `${U.nombre(r.nb)} factures · retard moyen ${U.jours(r.retardMoyen)}`;
-                            },
-                        },
-                    },
-                },
-                onClick: (evt, els) => { if (els.length) filtrerParDimension('proprietaire', rows[els[0].index].cle); },
-            },
-        });
     }
 
     /** Anneau : structure du portefeuille par état, puis par périmètre. */
@@ -2264,6 +2225,33 @@
             conseil: 'Ni numéro, ni montant, ni date : ces lignes gonflent les compteurs sans rien '
                 + 'apporter. Souvent des lignes de séparation ou des brouillons dans Monday.',
         });
+
+        // Répartition des motifs de règlement. Quand tout le portefeuille bascule
+        // en « payée », un motif écrase les autres et désigne la colonne fautive.
+        const payees = state.factures.filter(f => f.paye);
+        if (payees.length) {
+            const parMotif = new Map();
+            for (const f of payees) parMotif.set(f.motifPaye || 'Motif inconnu',
+                (parMotif.get(f.motifPaye || 'Motif inconnu') || 0) + 1);
+            const lignes = [...parMotif.entries()].sort((a, b) => b[1] - a[1]);
+            const part = payees.length / Math.max(1, state.factures.length);
+
+            out.push({
+                code: 'MOTIF_PAYE',
+                gravite: part > 0.95 ? 'haute' : 'basse',
+                unite: 'facture',
+                titre: part > 0.95
+                    ? `Quasiment tout le portefeuille est considéré comme réglé (${U.pourcent(part * 100, 0)})`
+                    : 'Pourquoi les factures sont considérées comme réglées',
+                nb: payees.length, euros: 0,
+                conseil: part > 0.95
+                    ? "Un tel taux est rarement réel. Le motif majoritaire ci-dessus désigne la colonne "
+                      + "en cause : si c'est « Date de contrôle paiement » ou « Statut Monday », vérifiez "
+                      + "dans l'onglet Données que cette colonne est bien celle que vous croyez."
+                    : "Récapitulatif des critères ayant conclu au règlement, du plus fréquent au moins fréquent.",
+                detail: lignes.map(([m, n]) => `${m} — ${U.nombre(n)} factures`),
+            });
+        }
 
         return out;
     }

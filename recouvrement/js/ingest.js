@@ -433,13 +433,20 @@
             f.sansRecouvrement = !!ech.regle.sansRecouvrement;
             if (!f.financement) f.financement = ech.regle.key === 'INCONNU' ? null : ech.regle.key;
 
-            // Paiement : date réelle si connue, sinon date de contrôle (validation)
-            const paye = f.paye === true
-                || !!f.datePaiement
-                || !!f.dateControlePaiement
-                || statutIndiquePaye(f.statut)
-                || (f.resteDu != null && f.montant != null && f.resteDu <= 0.01 && f.montant > 0);
+            // Paiement : date réelle si connue, sinon date de contrôle (validation).
+            // Le motif retenu est conservé : quand une facture est classée réglée
+            // à tort, c'est la seule façon de remonter à la colonne fautive.
+            let motif = null;
+            if (f.paye === true) motif = 'Présente dans le tableau des factures payées';
+            else if (f.datePaiement) motif = 'Date de paiement renseignée';
+            else if (f.dateControlePaiement) motif = 'Date de contrôle paiement renseignée';
+            else if (statutIndiquePaye(f.statut)) motif = `Statut Monday « ${f.statut} »`;
+            else if (f.resteDu != null && f.montant != null && f.resteDu <= 0.01 && f.montant > 0)
+                motif = 'Reste dû nul';
+
+            const paye = motif != null;
             f.paye = paye;
+            f.motifPaye = motif;
 
             if (f.datePaiement) {
                 f.datePaiementEffective = f.datePaiement;
