@@ -785,6 +785,26 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
     background: rgba(99, 102, 241, 0.04);
     border-radius: var(--radius-sm);
 }
+.chaine { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.75rem; }
+.chaine-ligne {
+    display: grid;
+    grid-template-columns: 1.2rem minmax(200px, 1fr) 6rem 2fr;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.45rem 0.6rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+}
+.chaine-fort { background: rgba(99, 102, 241, 0.07); font-weight: 600; }
+.chaine-retrait .chaine-label, .chaine-retrait .chaine-nb { color: var(--text-secondary); }
+.chaine-signe { color: var(--text-muted); text-align: center; }
+.chaine-nb { text-align: right; font-variant-numeric: tabular-nums; }
+.chaine-note { font-size: 0.74rem; color: var(--text-muted); line-height: 1.4; }
+@media (max-width: 900px) {
+    .chaine-ligne { grid-template-columns: 1.2rem 1fr 5rem; }
+    .chaine-note { display: none; }
+}
+
 .exclusions-info { margin: 0.25rem 0 0.5rem 1.9rem; }
 .exclusions-liste {
     list-style: none;

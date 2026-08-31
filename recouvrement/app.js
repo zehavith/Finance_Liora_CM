@@ -2328,6 +2328,7 @@
     // ══════════════════════════════════════════════
 
     async function rendreDonnees() {
+        rendreChaineTraitement();
         rendreExclusions();
         rendreTableBoards();
         rendreSelectMapping();
@@ -2340,6 +2341,43 @@
             st.className = 'connect-status ok';
             st.textContent = `Connecté : ${state.compte.name} — compte ${state.compte.account ? state.compte.account.name : ''}`;
         }
+    }
+
+    /**
+     * Chaîne de traitement, de la ligne Monday à la facture comptée.
+     *
+     * Le total affiché sur le tableau de bord est inférieur au nombre de lignes
+     * de Monday, pour deux raisons légitimes — les groupes de service écartés et
+     * les doublons fusionnés. Sans ce détail, l'écart passe pour une perte de
+     * données.
+     */
+    function rendreChaineTraitement() {
+        const el = $('#chaine-traitement');
+        if (!el) return;
+
+        const brutes = state.brutes.length;
+        const consolidees = state.factures.length;
+        const fusionnees = Math.max(0, brutes - consolidees);
+        const ecartees = state.factures.filter(f => f.role === 'technique' || f.groupeTechnique).length;
+        const analysees = consolidees - ecartees;
+
+        const ligne = (o) => `
+            <div class="chaine-ligne${o.fort ? ' chaine-fort' : ''}${o.retrait ? ' chaine-retrait' : ''}">
+                <span class="chaine-signe">${o.signe || ''}</span>
+                <span class="chaine-label">${U.escapeHtml(o.label)}</span>
+                <span class="chaine-nb">${U.nombre(o.nb)}</span>
+                <span class="chaine-note">${U.escapeHtml(o.note || '')}</span>
+            </div>`;
+
+        el.innerHTML =
+            ligne({ label: 'Lignes récupérées depuis Monday et des fichiers', nb: brutes, fort: true,
+                    note: 'à comparer au nombre d\'éléments affiché dans Monday' })
+            + ligne({ signe: '−', retrait: true, label: 'Doublons fusionnés', nb: fusionnees,
+                      note: 'même numéro de facture sur plusieurs tableaux — notamment entre un tableau opérationnel et le tableau des factures payées' })
+            + ligne({ signe: '−', retrait: true, label: 'Groupes et tableaux de service', nb: ecartees,
+                      note: 'technique, archive, corbeille' })
+            + ligne({ signe: '=', label: 'Factures analysées', nb: analysees, fort: true,
+                      note: 'ce que comptent les indicateurs, avant filtres de période et de source' });
     }
 
     /**

@@ -172,6 +172,27 @@ par défaut des factures dont la colonne est vide.
 | `b2c` | 2.1 à 2.4 | B2C, financement déduit du tableau (CPF, AIF, Personnel…) |
 | `technique` | 1.9, 2.9 | Exclu des analyses |
 
+### De Monday au tableau de bord
+
+Le nombre de factures affiché est inférieur au nombre de lignes présentes dans
+Monday, pour deux raisons légitimes. Le bloc *De Monday au tableau de bord*,
+en tête de l'onglet *Données*, rend la soustraction visible :
+
+```
+    Lignes récupérées depuis Monday et des fichiers
+  − Doublons fusionnés          même numéro sur plusieurs tableaux
+  − Groupes et tableaux de service
+  = Factures analysées
+```
+
+Les **doublons fusionnés** sont le poste le plus important et le plus mal
+compris : une facture présente à la fois sur un tableau opérationnel et sur le
+tableau des factures payées est une seule facture, pas deux. C'est précisément
+ce rapprochement qui permet de savoir qu'elle a été réglée.
+
+Comparer la première ligne au nombre d'éléments qu'affiche Monday dit
+immédiatement si des factures manquent réellement.
+
 ### Inventaire par tableau
 
 Le bloc *Tableaux suivis* de l'onglet *Données* montre, pour chaque tableau, ce
