@@ -125,6 +125,24 @@ par défaut des factures dont la colonne est vide.
 | `b2c` | 2.1 à 2.4 | B2C, financement déduit du tableau (CPF, AIF, Personnel…) |
 | `technique` | 1.9, 2.9 | Exclu des analyses |
 
+### Inventaire par tableau
+
+Le bloc *Tableaux suivis* de l'onglet *Données* montre, pour chaque tableau, ce
+que deviennent ses factures : combien Monday en annonce, combien ont été
+récupérées, combien sont écartées comme groupes de service, combien entrent
+dans les indicateurs, et comment elles se répartissent entre sans échéance, en
+retard, non échues et payées.
+
+C'est le premier endroit à regarder quand un chiffre paraît trop bas. Une
+colonne *Sans échéance* élevée signale des colonnes de dates non reconnues sur
+ce tableau : la correspondance se corrige juste en dessous. Un écart entre
+*Sur Monday* et *Chargées* signale un chargement incomplet.
+
+Sur le tableau des factures payées, une valeur *Analysées* à zéro est normale :
+ses lignes se rapprochent des factures des tableaux opérationnels et sont
+comptées là-bas. Un chiffre non nul y désigne des factures réglées qui
+n'existent nulle part ailleurs.
+
 ### Groupes de service
 
 Un tableau opérationnel héberge souvent des groupes qui ne sont pas du suivi :

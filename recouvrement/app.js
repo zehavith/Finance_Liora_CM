@@ -2304,7 +2304,24 @@
         }
 
         const roles = Object.keys(R.ROLE_LABELS);
-        const rows = state.boards;
+
+        // Inventaire par tableau, calculé sur TOUTES les factures et non sur
+        // la vue filtrée : c'est ce qui permet de comprendre où elles passent.
+        const parBoard = new Map();
+        for (const f of state.factures) {
+            const k = f.board || '—';
+            let d = parBoard.get(k);
+            if (!d) { d = { retenues: 0, ecartees: 0, sansEcheance: 0, enRetard: 0, payees: 0, nonEchues: 0 }; parBoard.set(k, d); }
+            if (f.role === 'technique' || f.groupeTechnique) { d.ecartees++; continue; }
+            d.retenues++;
+            if (f.etat === 'Échéance inconnue') d.sansEcheance++;
+            else if (f.etat === 'En retard') d.enRetard++;
+            else if (f.etat === 'Non échue') d.nonEchues++;
+            else d.payees++;
+        }
+
+        const vide = { retenues: 0, ecartees: 0, sansEcheance: 0, enRetard: 0, payees: 0, nonEchues: 0 };
+        const rows = state.boards.map(b => ({ ...b, ...(parBoard.get(b.name) || vide) }));
         el.innerHTML = U.table([
             {
                 key: 'actif', label: '', align: 'center', width: '40px', sortable: false,
@@ -2317,11 +2334,30 @@
                     + roles.map(k => `<option value="${k}"${k === v ? ' selected' : ''}>${U.escapeHtml(R.ROLE_LABELS[k])}</option>`).join('')
                     + '</select>',
             },
-            { key: 'perimetre', label: 'Périmètre' },
-            { key: 'itemsCount', label: 'Éléments', align: 'right', format: v => v == null ? '—' : U.nombre(v) },
-            { key: 'charge', label: 'Chargé', align: 'right', format: v => v == null ? '—' : U.nombre(v) },
-            { key: 'workspace', label: 'Espace de travail', format: v => U.escapeHtml(v || '—') },
-        ], rows, { vide: '—' });
+            { key: 'itemsCount', label: 'Sur Monday', align: 'right', format: v => v == null ? '—' : U.nombre(v),
+              title: "Nombre d'éléments annoncé par Monday" },
+            { key: 'charge', label: 'Chargées', align: 'right', format: v => v == null ? '—' : U.nombre(v),
+              title: 'Factures effectivement récupérées' },
+            { key: 'ecartees', label: 'Écartées', align: 'right', format: v => v ? U.nombre(v) : '—',
+              title: 'Groupes de service : archives, technique, corbeille' },
+            { key: 'retenues', label: 'Analysées', align: 'right', format: v => `<strong>${U.nombre(v)}</strong>`,
+              title: 'Factures qui entrent dans les indicateurs' },
+            { key: 'sansEcheance', label: 'Sans échéance', align: 'right',
+              title: "Échéance non calculable : ces factures sortent de tous les taux",
+              format: v => v ? `<span class="cell-danger">${U.nombre(v)}</span>` : '—' },
+            { key: 'enRetard', label: 'En retard', align: 'right', format: v => v ? U.nombre(v) : '—' },
+            { key: 'nonEchues', label: 'Non échues', align: 'right', format: v => v ? U.nombre(v) : '—' },
+            { key: 'payees', label: 'Payées', align: 'right', format: v => v ? U.nombre(v) : '—' },
+        ], rows, { vide: '—', total: {
+            name: 'Total',
+            charge: U.nombre(X.sum(rows, r => r.charge || 0)),
+            ecartees: U.nombre(X.sum(rows, r => r.ecartees)),
+            retenues: U.nombre(X.sum(rows, r => r.retenues)),
+            sansEcheance: U.nombre(X.sum(rows, r => r.sansEcheance)),
+            enRetard: U.nombre(X.sum(rows, r => r.enRetard)),
+            nonEchues: U.nombre(X.sum(rows, r => r.nonEchues)),
+            payees: U.nombre(X.sum(rows, r => r.payees)),
+        } });
 
         $$('.board-actif', el).forEach(c => c.addEventListener('change', () => {
             const b = state.boards.find(x => String(x.id) === c.dataset.id);
