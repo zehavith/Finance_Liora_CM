@@ -2834,6 +2834,49 @@
      *   chargement n'est pas affiché et les données en place restent visibles
      *   jusqu'au remplacement. Les erreurs ne s'imposent pas non plus.
      */
+    // ══════════════════════════════════════════════
+    //  Veille de l'ordinateur
+    //
+    //  Un chargement complet depuis Monday dure plusieurs minutes. Si le poste
+    //  se met en veille entre-temps, le navigateur est suspendu et le
+    //  chargement s'interrompt au milieu — sans erreur visible, ce qui laisse
+    //  des tableaux à moitié récupérés. Plutôt que de demander à l'utilisatrice
+    //  de modifier les réglages d'alimentation de Windows, l'application
+    //  demande elle-même à rester éveillée pendant qu'elle travaille, et rend
+    //  la main dès qu'elle a fini.
+    // ══════════════════════════════════════════════
+
+    let verrouVeille = null;
+
+    async function empecherVeille() {
+        if (verrouVeille) return true;
+        if (!('wakeLock' in navigator)) return false;
+        try {
+            verrouVeille = await navigator.wakeLock.request('screen');
+            // Le verrou est perdu si l'onglet passe en arrière-plan ou si
+            // l'écran s'éteint : on le reprend au retour, tant que le
+            // chargement n'est pas terminé.
+            verrouVeille.addEventListener('release', () => { verrouVeille = null; });
+            return true;
+        } catch (e) {
+            // Navigateur trop ancien, page non sécurisée, ou refus système :
+            // le chargement se poursuit, sans garantie contre la veille.
+            console.warn('[Recouvrement] Veille non bloquée :', e.message);
+            verrouVeille = null;
+            return false;
+        }
+    }
+
+    async function autoriserVeille() {
+        if (!verrouVeille) return;
+        try { await verrouVeille.release(); } catch (e) { /* déjà relâché */ }
+        verrouVeille = null;
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && state.chargementEnCours) empecherVeille();
+    });
+
     async function chargerBoardsActifs(opts) {
         const silencieux = !!(opts && opts.silencieux);
         if (state.chargementEnCours) return;
@@ -2850,6 +2893,15 @@
 
         state.chargementEnCours = true;
         majIndicateurActualisation();
+
+        // Le poste doit rester éveillé le temps du chargement, sous peine
+        // d'interrompre la pagination Monday au milieu.
+        const veilleBloquee = await empecherVeille();
+        if (!silencieux) {
+            log(veilleBloquee
+                ? 'ⓘ Mise en veille suspendue pendant le chargement.'
+                : 'ⓘ La mise en veille ne peut pas être suspendue par l\'application — laissez l\'écran allumé.');
+        }
 
         if (!silencieux) {
             montrerEcran('loading');
@@ -2948,6 +3000,7 @@
             }
         } finally {
             state.chargementEnCours = false;
+            await autoriserVeille();
             majIndicateurActualisation();
         }
     }

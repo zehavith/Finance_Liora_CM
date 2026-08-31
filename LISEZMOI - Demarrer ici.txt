@@ -39,6 +39,12 @@ SUIVI RECOUVREMENT LIORA - DEMARRAGE
    Le jeton reste sur cet ordinateur. Il n'est envoye qu'a
    Monday.
 
+   Le chargement dure plusieurs minutes. Pas besoin de
+   toucher aux reglages de veille de Windows : l'application
+   empeche elle-meme l'ordinateur de s'endormir pendant
+   qu'elle charge, et le laisse s'endormir des qu'elle a
+   fini. Laissez simplement la fenetre au premier plan.
+
 
 4. METTRE L'APPLI SUR VOTRE BUREAU (facultatif)
 

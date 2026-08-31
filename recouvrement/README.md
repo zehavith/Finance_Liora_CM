@@ -71,6 +71,21 @@ La barre supérieure indique l'ancienneté des données — « Données de il y 
 Il ne s'agit pas d'une notification en temps réel : Monday ne pousse rien vers
 l'application, c'est elle qui interroge.
 
+### Mise en veille pendant le chargement
+
+Un chargement complet dure plusieurs minutes. Si le poste se met en veille
+entre-temps, le navigateur est suspendu et la récupération s'arrête au milieu,
+sans erreur visible — des tableaux restent à moitié chargés.
+
+L'application demande donc elle-même au système de rester éveillé tant qu'elle
+charge, et rend la main dès qu'elle a fini : il n'y a aucun réglage
+d'alimentation à modifier. Le journal de chargement l'indique (« *Mise en veille
+suspendue pendant le chargement* »).
+
+Quand le navigateur ne le permet pas — page ouverte en `file://` plutôt que par
+le lanceur, ou navigateur trop ancien — le journal le dit également, et il faut
+alors laisser l'écran allumé le temps du chargement.
+
 ## Aide intégrée
 
 Le bouton **Aide** de la barre supérieure affiche une phrase d'explication sous
