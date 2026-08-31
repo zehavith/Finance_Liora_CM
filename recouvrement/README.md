@@ -305,13 +305,16 @@ seuil, plus rien ne rentre. Un clic sur une tranche filtre les factures.
 Le bandeau *Récupération des factures échues* répartit les factures arrivées à
 échéance en trois postes qui totalisent 100 %, en euros ou en nombre :
 
-- **Réglé sans recouvrement** — encaissé avant l'échéance, la facture n'a jamais
-  été en retard.
-- **Récupéré en retard** — encaissé, mais après l'échéance.
-- **Reste à recouvrer** — échu et toujours impayé.
+- **Réglé avant l'échéance** — rentré tout seul, la facture n'est jamais tombée
+  en recouvrement.
+- **Récupéré en recouvrement** — tombée en recouvrement, puis finalement
+  encaissée.
+- **Reste à recouvrer** — en recouvrement à ce jour, toujours impayée.
 
-Une quatrième tuile, **Payé hors circuit recouvrement**, lit le processus plutôt
-que la date : le tableau des factures payées conserve le groupe d'où venait la
+Une quatrième tuile, **Jamais passé par le recouvrement**, lit le processus
+plutôt que la date. Elle ne s'ajoute pas aux trois premières et ne partage pas
+leur base : elle porte sur les factures **payées**, quand les autres portent sur
+les factures **échues**. Son principe : le tableau des factures payées conserve le groupe d'où venait la
 facture au moment du règlement. Un groupe mentionnant le recouvrement, une
 relance, une mise en demeure ou un contentieux compte comme passé par le
 recouvrement ; les autres non. Cette tuile n'a de sens que si la colonne

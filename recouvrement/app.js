@@ -526,17 +526,17 @@
                 couleur: U.couleurs.paye,
                 taux: eur ? v.tauxRegleATempsEuros : v.tauxRegleATempsNb,
                 etats: ['Payée'],
-                label: 'Réglé sans recouvrement',
+                label: "Réglé avant l'échéance",
                 valeur: val(v.eurosRegleATemps, v.nbRegleATemps),
-                sub: "encaissé avant l'échéance, jamais en retard",
+                sub: "rentré tout seul, sans jamais tomber en recouvrement",
             }),
             tuile({
                 couleur: U.couleurs.payeRetard,
                 taux: eur ? v.tauxRegleRetardEuros : v.tauxRegleRetardNb,
                 etats: ['Payée en retard'],
-                label: 'Récupéré en retard',
+                label: 'Récupéré en recouvrement',
                 valeur: val(v.eurosPayeesRetard, v.nbPayeesRetard),
-                sub: "encaissé, mais après l'échéance",
+                sub: "tombé en recouvrement, puis finalement encaissé",
             }),
             tuile({
                 couleur: U.couleurs.retard,
@@ -544,21 +544,21 @@
                 etats: ['En retard'],
                 label: 'Reste à recouvrer',
                 valeur: val(v.eurosEnRetard, v.nbEnRetard),
-                sub: 'échu et toujours impayé',
+                sub: 'en recouvrement à ce jour, toujours impayé',
             }),
             horsDispo ? tuile({
                 couleur: U.couleurs.indigo,
                 taux: eur ? v.tauxHorsRecouvrementEuros : v.tauxHorsRecouvrementNb,
-                label: 'Payé hors circuit recouvrement',
+                label: 'Jamais passé par le recouvrement',
                 valeur: val(v.eurosPayeesHorsRecouvrement, v.nbPayeesHorsRecouvrement),
-                sub: v.nbOrigineInconnue
-                    ? `d'après le groupe d'origine · ${U.nombre(v.nbOrigineInconnue)} sans origine connue`
-                    : "d'après le groupe d'origine des factures payées",
+                sub: "autre lecture : d'après le groupe Monday d'où venait la facture "
+                    + 'quand elle a été payée, et non d\'après les dates'
+                    + (v.nbOrigineInconnue ? ` · ${U.nombre(v.nbOrigineInconnue)} sans groupe renseigné` : ''),
             }) : tuile({
                 couleur: U.couleurs.inconnu, muted: true,
                 etats: null,
                 taux: null,
-                label: 'Payé hors circuit recouvrement',
+                label: 'Jamais passé par le recouvrement',
                 valeur: '—',
                 sub: 'nécessite la colonne « Groupe » du tableau des factures payées',
             }),
