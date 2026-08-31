@@ -213,8 +213,11 @@
                 <div class="period-badge" id="period-badge"></div>
             </div>
             <p class="aide-bloc">
-                Une facture est dite <strong>en recouvrement</strong> dès que sa date d'échéance est
-                dépassée et qu'elle n'est pas réglée — peu importe le tableau Monday où elle se trouve.
+                Une facture est dite <strong>en recouvrement</strong> dès que sa <strong>date d'échéance
+                calculée selon les règles de financement</strong> est dépassée à la date d'arrêté, et
+                qu'elle n'est pas réglée — peu importe le tableau ou le groupe Monday où elle se trouve.
+                La date d'échéance éventuellement saisie dans Monday n'est pas utilisée, sauf à cocher
+                l'option correspondante dans l'onglet Données.
                 L'<strong>encours en retard</strong> est le montant que ces factures représentent.
                 Les trois colonnes ci-dessous répondent à : combien ça pèse, combien j'ai facturé en tout,
                 et depuis combien de temps ça traîne.
@@ -231,7 +234,7 @@
                             <span class="kpi-label">Encours en retard</span>
                             <span class="kpi-value" id="kpi-euros-retard">—</span>
                             <span class="kpi-sub" id="kpi-euros-retard-sub"></span>
-                            <span class="aide-ligne">Montant total encore dû sur les factures dont l'échéance est dépassée. C'est l'argent que vous devez aller chercher.</span>
+                            <span class="aide-ligne">Montant total encore dû sur les factures dont la date d'échéance, calculée selon les règles de financement, est dépassée à la date d'arrêté. C'est l'argent que vous devez aller chercher.</span>
                         </div>
                     </div>
                     <div class="kpi-card">
@@ -242,7 +245,7 @@
                             <span class="kpi-label">Factures en retard</span>
                             <span class="kpi-value" id="kpi-nb-retard">—</span>
                             <span class="kpi-sub" id="kpi-nb-retard-sub"></span>
-                            <span class="aide-ligne">Nombre de factures échues et impayées, tous tableaux confondus — recouvrement, ADV, OPCO et B2C selon les sources activées.</span>
+                            <span class="aide-ligne">Nombre de factures dont l'échéance calculée est dépassée et qui ne sont pas réglées, tous tableaux confondus — recouvrement, ADV, OPCO et B2C selon les sources activées.</span>
                         </div>
                     </div>
                     <div class="kpi-card">

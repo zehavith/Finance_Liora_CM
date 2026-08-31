@@ -1786,6 +1786,7 @@
                     ${ligne('Tableau', U.escapeHtml(f.board || '—'))}
                     ${ligne('Groupe', U.escapeHtml(f.groupe || '—'))}
                     ${ligne('Étape', U.escapeHtml(f.etapeLabel || '—'))}
+                    ${f.boardOperationnel ? ligne('Encore présente sur', U.escapeHtml(f.boardOperationnel + (f.groupeOperationnel ? ' › ' + f.groupeOperationnel : ''))) : ''}
                     ${ligne("Groupe d'origine (payées)", U.escapeHtml(f.groupeOrigine || '—'))}
                     ${ligne('Propriétaire', U.escapeHtml(f.proprietaire || '—'))}
                     ${ligne('Statut Monday', U.escapeHtml(f.statut || '—'))}

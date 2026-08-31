@@ -768,6 +768,14 @@
             factures.filter(f => f.delaiPaiement != null && f.delaiPaiement < 0),
             "Vérifier les dates : un règlement daté avant l'émission fausse les délais moyens.");
 
+        push('ECHUE_REPUTEE_REGLEE', "Échues mais exclues du retard car réputées réglées", 'moyenne',
+            factures.filter(f => f.dateEcheance && f.paye && !f.datePaiement
+                && f.motifPaye && f.motifPaye !== 'Présente dans le tableau des factures payées'),
+            "Leur échéance est dépassée, mais elles ne comptent pas comme en recouvrement parce "
+            + "qu'un critère les dit réglées — sans date de paiement pour le confirmer. Si le motif "
+            + "affiché en tête de cet onglet paraît douteux, la colonne correspondante est mal "
+            + "associée : corrigez-la dans l'onglet Données.");
+
         push('ECHEANCE_DIVERGENTE', "Échéance Monday très éloignée de l'échéance calculée", 'haute',
             factures.filter(f => f.dateEcheance && f.dateEcheanceSource
                 && Math.abs(R.diffDays(f.dateEcheanceSource, f.dateEcheance)) > 60),

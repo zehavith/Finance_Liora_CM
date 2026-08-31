@@ -102,8 +102,11 @@ nombre et en euros.
 
 ## Règles de date d'échéance
 
-Une facture est **en recouvrement** lorsque sa date d'échéance est dépassée à
-la date d'arrêté et qu'elle n'est pas réglée. L'échéance est calculée à partir
+Une facture est **en recouvrement** lorsque sa date d'échéance, **calculée
+selon les règles de financement**, est dépassée à la date d'arrêté, et qu'elle
+n'est pas réglée. Ni le tableau ni le groupe Monday où elle se trouve n'entrent
+dans cette définition : seules comptent la date calculée et l'absence de
+règlement. L'échéance est calculée à partir
 du type de financement, selon le référentiel Liora :
 
 | Type de financement | Règle |
@@ -273,6 +276,11 @@ aucun calcul.
 
 1. Une facture présente sur plusieurs tableaux est **dédoublonnée par numéro
    de facture** ; les champs vides d'une source sont complétés par les autres.
+   Quand elle figure à la fois sur le tableau des factures payées et sur un
+   tableau opérationnel, **c'est la ligne de règlement qui fait référence** :
+   une facture réglée qui traîne encore côté opérationnel reste une facture
+   réglée, et un « reste dû » hérité de là-bas est une valeur périmée, donc
+   ignorée. Le tableau d'origine reste indiqué sur la fiche de la facture.
 2. Sa présence dans *0.1. ALL - Factures payées* la marque réglée. La colonne
    **Groupe** de ce tableau est conservée comme groupe d'origine, ce qui permet
    de rattacher la facture à l'étape d'où elle venait au moment du règlement.

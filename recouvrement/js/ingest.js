@@ -290,8 +290,15 @@
     //  de formation et le contexte. Les deux sont fusionnés par numéro.
     // ──────────────────────────────────────────────
 
-    /** Priorité de rétention quand une même facture existe sur plusieurs tableaux. */
-    const ROLE_PRIORITE = { recouvrement: 5, opco: 4, adv: 3, tampon: 2, b2c: 4, payees: 1, technique: 0, ignore: 0 };
+    /**
+     * Priorité de rétention quand une même facture existe sur plusieurs tableaux.
+     *
+     * Le tableau des factures payées l'emporte : une facture réglée qui traîne
+     * encore sur un tableau opérationnel est une facture réglée, et c'est sa
+     * ligne de règlement qui fait référence. Sans cette priorité, une colonne
+     * « reste dû » périmée côté opérationnel pouvait contredire le paiement.
+     */
+    const ROLE_PRIORITE = { payees: 9, recouvrement: 5, opco: 4, b2c: 4, adv: 3, tampon: 2, technique: 0, ignore: 0 };
 
     function mergeFacture(base, extra) {
         const out = { ...base };
@@ -327,16 +334,31 @@
         const resultat = [];
 
         for (const [cle, groupe] of parCle) {
-            const payees = groupe.filter(f => f.role === 'payees');
+            // Le groupe « Factures non payées » du tableau des payées dit
+            // l'inverse de son tableau : il ne vaut pas règlement.
+            const payees = groupe.filter(f => f.role === 'payees' && !/non pay/.test(R.norm(f.groupe || '')));
             const operationnelles = groupe.filter(f => f.role !== 'payees');
 
-            // Facture porteuse : la plus prioritaire côté opérationnel, sinon la payée
-            const pool = operationnelles.length ? operationnelles : payees;
-            const porteuse = pool.slice().sort((a, b) =>
+            // Facture porteuse : la ligne de règlement si elle existe, sinon la
+            // plus avancée dans le circuit opérationnel.
+            const porteuse = groupe.slice().sort((a, b) =>
                 (ROLE_PRIORITE[b.role] || 0) - (ROLE_PRIORITE[a.role] || 0))[0];
 
             let f = { ...porteuse };
             for (const autre of groupe) if (autre !== porteuse) f = mergeFacture(f, autre);
+
+            // Le contexte métier reste celui du tableau opérationnel : la ligne
+            // de règlement ne dit pas d'où venait la facture ni ses dates de
+            // formation, indispensables au calcul de l'échéance.
+            if (payees.length && operationnelles.length) {
+                const op = operationnelles.slice().sort((a, b) =>
+                    (ROLE_PRIORITE[b.role] || 0) - (ROLE_PRIORITE[a.role] || 0))[0];
+                f.boardOperationnel = op.board;
+                f.groupeOperationnel = op.groupe;
+                // Un reste dû hérité de l'opérationnel ne peut pas survivre au
+                // règlement : c'est une valeur périmée.
+                f.resteDu = null;
+            }
 
             f.cle = cle;
             f.presenceTableaux = [...new Set(groupe.map(g => g.board))];

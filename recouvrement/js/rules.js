@@ -245,6 +245,7 @@
      * plus général.
      */
     const ETAPES = [
+        { key: 'PAYEE',        label: 'Réglée',             match: ['payee', 'payees', 'paye'] },
         { key: 'CONTENTIEUX',  label: 'Contentieux',        match: ['contentieux', 'huissier', 'judiciaire'] },
         { key: 'PERTE',        label: 'Perdu / partiel',    match: ['perdu', 'partiellement', 'perte', 'irrecouvrable'] },
         { key: 'ANNULER',      label: 'À annuler',          match: ['a annuler', 'annuler', 'annulation', 'avoir'] },
