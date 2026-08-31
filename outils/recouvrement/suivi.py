@@ -249,6 +249,15 @@ def dater_etape(
 FORMATS_DATE = ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%y", "%Y/%m/%d")
 
 
+def _date_francaise(valeur) -> str:
+    """« 2024-07-14 » devient « 14/07/2024 ». Ce qui n'est pas une date est
+    rendu tel quel : une valeur inattendue doit rester visible."""
+    date = _date_lisible(valeur)
+    if date is not None:
+        return date.strftime("%d/%m/%Y")
+    return str(valeur or "").strip()
+
+
 def _date_lisible(valeur) -> datetime | None:
     texte = str(valeur or "").strip()[:10]
     if not texte:
@@ -397,9 +406,11 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 # Monday figurent à part, au récapitulatif : celles-ci sont
                 # celles du service, et lui seul les corrige.
                 **parcours_dossier(etat),
-                "date_echeance": (
-                    etat.get("echeance") or rangee.get("date_echeance") or ""
-                ).strip(),
+                # Normalisée à l'affichage, et pas seulement à l'export : un
+                # récapitulatif déjà produit garde la forme ISO de Monday, et
+                # rien ne justifie de le refaire pour cela.
+                "date_echeance": _date_francaise(
+                    etat.get("echeance") or rangee.get("date_echeance")),
                 "echeance_saisie": bool(etat.get("echeance")),
                 "anciennete_jours": _jours_depuis(
                     etat.get("echeance") or rangee.get("date_echeance")),

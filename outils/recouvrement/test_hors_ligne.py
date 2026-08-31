@@ -2024,7 +2024,7 @@ def test_saisie_convention_diplome_echeance() -> None:
         (sortie / "_recapitulatif.csv").write_text(
             "reference;nom;repertoire;montant_du;date_echeance;convention_signee;diplome\n"
             "FACT-1;A;d;1 000 €;;;\n"
-            "FACT-2;B;d;500;01/03/2024;oui;non\n",
+            "FACT-2;B;d;500;2024-03-01;oui;non\n",
             encoding="utf-8-sig",
         )
         chemin = Path(repertoire) / "suivi.json"
@@ -2034,6 +2034,11 @@ def test_saisie_convention_diplome_echeance() -> None:
         verifier(avant[0]["convention_signee"] is None
                  and avant[0]["date_echeance"] == "",
                  "sans rien, le dossier est non renseigné")
+        # Un récapitulatif déjà produit garde la forme ISO de Monday : elle
+        # doit devenir lisible sans qu'on refasse l'export.
+        verifier(avant[1]["date_echeance"] == "01/03/2024",
+                 f"une échéance du tableau s'affiche en français "
+                 f"(obtenu : {avant[1]['date_echeance']})")
 
         module_suivi.mettre_a_jour(
             donnees, "FACT-1", convention="oui", diplome="non",

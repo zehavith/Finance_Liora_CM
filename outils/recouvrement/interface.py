@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "51"
+VERSION = "52"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -1074,7 +1074,10 @@ table.donnees td:first-child{min-width:170px}
 #tableSuivi select{max-width:186px}
 #tableSuivi input.frais{width:48px}
 #tableSuivi input.note{min-width:96px}
-#tableSuivi input.echeance{width:86px;text-align:right}
+/* « 14/07/2024 » a 13,5 px et 12 px de marge interne de chaque cote : en
+   dessous de 112 px, l'annee est coupee sans que rien ne le signale. */
+#tableSuivi input.echeance{width:112px;text-align:center;padding-left:6px;
+  padding-right:6px}
 #tableSuivi table.donnees th,#tableSuivi table.donnees td{padding-left:6px;padding-right:6px}
 table.donnees input.note{min-width:170px}
 .detail td{padding:4px 6px;font-size:12.5px}
