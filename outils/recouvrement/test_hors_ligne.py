@@ -2011,6 +2011,69 @@ def test_colonnes_typees_monday() -> None:
         verifier(obtenu == attendu, f"{libelle} (obtenu : « {obtenu} »)")
 
 
+def test_saisie_convention_diplome_echeance() -> None:
+    """Ce que le tableau tait, le service le saisit — et cela l'emporte."""
+    print("\nSaisie de la convention, du diplôme et de l'échéance")
+
+    import suivi as module_suivi  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "export"
+        sortie.mkdir()
+        (sortie / "d").mkdir()
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;date_echeance;convention_signee;diplome\n"
+            "FACT-1;A;d;1 000 €;;;\n"
+            "FACT-2;B;d;500;01/03/2024;oui;non\n",
+            encoding="utf-8-sig",
+        )
+        chemin = Path(repertoire) / "suivi.json"
+        donnees: dict[str, dict] = {}
+
+        avant = module_suivi.inventaire(sortie, chemin)
+        verifier(avant[0]["convention_signee"] is None
+                 and avant[0]["date_echeance"] == "",
+                 "sans rien, le dossier est non renseigné")
+
+        module_suivi.mettre_a_jour(
+            donnees, "FACT-1", convention="oui", diplome="non",
+            echeance="15/06/2024")
+        module_suivi.enregistrer(chemin, donnees)
+
+        apres = module_suivi.inventaire(sortie, chemin)
+        verifier(apres[0]["convention_signee"] is True,
+                 "la convention saisie est prise en compte")
+        verifier(apres[0]["diplome"] is False, "le diplôme saisi aussi")
+        verifier(apres[0]["date_echeance"] == "15/06/2024",
+                 f"l'échéance saisie aussi (obtenu : {apres[0]['date_echeance']})")
+        verifier(apres[0]["anciennete_jours"] is not None
+                 and apres[0]["anciennete_jours"] > 0,
+                 "le retard se calcule sur l'échéance saisie")
+        verifier(apres[0]["convention_saisie"] and apres[0]["echeance_saisie"],
+                 "la page peut distinguer une saisie d'une valeur lue")
+
+        # La saisie l'emporte sur ce que l'export a lu.
+        module_suivi.mettre_a_jour(donnees, "FACT-2", convention="non")
+        module_suivi.enregistrer(chemin, donnees)
+        apres = module_suivi.inventaire(sortie, chemin)
+        verifier(apres[1]["convention_signee"] is False,
+                 "une saisie contraire l'emporte sur le tableau")
+
+        # Vider la saisie rend la main au tableau : ce n'est pas un « non ».
+        module_suivi.mettre_a_jour(donnees, "FACT-2", convention="")
+        module_suivi.enregistrer(chemin, donnees)
+        apres = module_suivi.inventaire(sortie, chemin)
+        verifier(apres[1]["convention_signee"] is True,
+                 "vidée, la saisie rend la main à ce qu'a lu l'export")
+        verifier("convention" not in module_suivi.charger(chemin)["FACT-2"],
+                 "et ne laisse pas de valeur vide derrière elle")
+
+        # Le décompte du tableau de bord suit la saisie.
+        s = module_suivi.solidite(module_suivi.inventaire(sortie, chemin))
+        verifier(s["convention"]["oui"] == 2,
+                 f"la solidité compte les saisies (obtenu : {s['convention']})")
+
+
 def test_recapitulatif_atomique() -> None:
     """Le récapitulatif ne doit jamais être lu à moitié écrit."""
     print("\nÉcriture atomique du récapitulatif")
@@ -4139,6 +4202,7 @@ def main() -> int:
     test_refus_monday()
     test_montants_espace_insecable()
     test_colonnes_typees_monday()
+    test_saisie_convention_diplome_echeance()
     test_recapitulatif_atomique()
     test_colonnes_vides_signalees()
     test_colonnes_miroir_monday()

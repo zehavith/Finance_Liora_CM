@@ -167,6 +167,9 @@ def mettre_a_jour(
     note: str | None = None,
     horodatage: str | None = None,
     date_etape: str | None = None,
+    convention: str | None = None,
+    diplome: str | None = None,
+    echeance: str | None = None,
 ) -> dict:
     if statut is not None and statut not in CLES_STATUTS:
         raise ValueError(f"Statut inconnu : {statut}")
@@ -189,6 +192,24 @@ def mettre_a_jour(
         entree["frais"] = _nombre(frais)
     if note is not None:
         entree["note"] = note.strip()
+
+    # Ce que le tableau ne dit pas, le service le sait souvent. Ces trois
+    # valeurs se saisissent donc à la main, et l'emportent ensuite sur ce que
+    # l'export a lu : une chaîne vide efface la saisie et rend la main au
+    # tableau, elle ne vaut pas « non ».
+    for champ, valeur in (("convention", convention), ("diplome", diplome)):
+        if valeur is not None:
+            texte = str(valeur).strip()
+            if texte:
+                entree[champ] = texte
+            else:
+                entree.pop(champ, None)
+    if echeance is not None:
+        texte = _date_courte(echeance)
+        if texte:
+            entree["echeance"] = texte
+        else:
+            entree.pop("echeance", None)
     entree["maj"] = horodatage or datetime.now().strftime("%d/%m/%Y %H:%M")
 
     donnees[reference] = entree
@@ -333,8 +354,13 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 # Exécution de la formation, telle que le tableau la connaît.
                 # Trois états, jamais deux : ce que le tableau ne dit pas ne
                 # doit pas se lire comme un « non ».
-                "convention_signee": _oui_non(rangee.get("convention_signee")),
-                "diplome": _oui_non(rangee.get("diplome")),
+                # La saisie du service l'emporte sur ce que l'export a lu :
+                # le tableau se tait souvent, le service sait.
+                "convention_signee": _oui_non(
+                    etat.get("convention") or rangee.get("convention_signee")),
+                "diplome": _oui_non(etat.get("diplome") or rangee.get("diplome")),
+                "convention_saisie": bool(etat.get("convention")),
+                "diplome_saisi": bool(etat.get("diplome")),
                 "heures_theoriques": (rangee.get("heures_theoriques") or "").strip(),
                 "heures_log": (rangee.get("heures_log") or "").strip(),
                 # Un débiteur portant plusieurs factures a un sous-dossier par
@@ -356,8 +382,12 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 # Monday figurent à part, au récapitulatif : celles-ci sont
                 # celles du service, et lui seul les corrige.
                 **parcours_dossier(etat),
-                "date_echeance": (rangee.get("date_echeance") or "").strip(),
-                "anciennete_jours": _jours_depuis(rangee.get("date_echeance")),
+                "date_echeance": (
+                    etat.get("echeance") or rangee.get("date_echeance") or ""
+                ).strip(),
+                "echeance_saisie": bool(etat.get("echeance")),
+                "anciennete_jours": _jours_depuis(
+                    etat.get("echeance") or rangee.get("date_echeance")),
                 # Jours écoulés depuis le dernier changement d'étape. None quand
                 # le dossier n'a jamais bougé : ce n'est pas un dossier qui
                 # dort, c'est un dossier qui n'est pas encore parti.

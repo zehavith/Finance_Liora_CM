@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "49"
+VERSION = "50"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -816,6 +816,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 frais=demande.get("frais"),
                 note=demande.get("note"),
                 date_etape=demande.get("date_etape"),
+                convention=demande.get("convention"),
+                diplome=demande.get("diplome"),
+                echeance=demande.get("echeance"),
             )
             module_suivi.enregistrer(SUIVI, donnees)
         except ValueError as exc:
@@ -1025,6 +1028,7 @@ table.donnees td:first-child{min-width:170px}
 #tableSuivi select{max-width:186px}
 #tableSuivi input.frais{width:48px}
 #tableSuivi input.note{min-width:96px}
+#tableSuivi input.echeance{width:86px;text-align:right}
 #tableSuivi table.donnees th,#tableSuivi table.donnees td{padding-left:6px;padding-right:6px}
 table.donnees input.note{min-width:170px}
 .detail td{padding:4px 6px;font-size:12.5px}
@@ -1894,6 +1898,16 @@ function retard(jours) {
   return jours + " j";
 }
 
+// Trois etats et non deux : « non renseigne » n'est pas « non ». Vider la
+// saisie rend la main au tableau, elle ne repond pas a la place du service.
+function troisEtats(valeur) {
+  const choix = [["", "— non renseigné"], ["oui", "✓ oui"], ["non", "✕ non"]];
+  const courant = valeur === true ? "oui" : valeur === false ? "non" : "";
+  return choix.map(([cle, libelle]) =>
+    `<option value="${cle}"${cle === courant ? " selected" : ""}>${libelle}</option>`
+  ).join("");
+}
+
 function majSelection() {
   const choisis = Array.from(document.querySelectorAll(".choix"))
     .filter((c) => c.checked);
@@ -2058,7 +2072,12 @@ function rendreSuivi() {
       <td class="dossier"><b>${echapper(d.reference)}</b><br />
           <span style="color:var(--texte-3)">${echapper(d.nom)}</span></td>
       <td class="num">${euro(d.montant_du)}</td>
+      <td class="num"><input class="echeance" data-champ="echeance" type="text"
+          value="${echapper(d.date_echeance || "")}" placeholder="JJ/MM/AAAA"
+          title="Échéance de la facture. Saisie ici, elle l'emporte sur le tableau." /></td>
       <td class="num">${retard(d.anciennete_jours)}</td>
+      <td><select data-champ="convention">${troisEtats(d.convention_signee)}</select></td>
+      <td><select data-champ="diplome">${troisEtats(d.diplome)}</select></td>
       <td><select data-champ="statut">${options(d.statut)}</select></td>
       <td class="num"><input class="frais" data-champ="frais" type="text"
           value="${d.frais ? d.frais : ""}" placeholder="0" /> €</td>
@@ -2078,7 +2097,8 @@ function rendreSuivi() {
     </div>
     <div class="defilable"><table class="donnees">
     <tr><th class="etroite"></th><th>Dossier</th><th class="num">Montant dû</th>
-        <th class="num">Retard</th><th>État</th>
+        <th class="num">Échéance</th><th class="num">Retard</th>
+        <th>Convention</th><th>Diplôme</th><th>État</th>
         <th class="num">Frais engagés</th><th>Note</th>
         <th class="num">Durée</th><th></th><th>Modifié</th></tr>
     ${lignes}</table></div><div id="detailDossier"></div>`;
@@ -2107,9 +2127,11 @@ function rendreSuivi() {
           dossier.maj = reponse.dossier.maj || "";
         }
         champ.closest("tr").lastElementChild.textContent = reponse.dossier.maj || "";
-        // Le changement d'étape vient d'être daté : la courbe et les durées se
-        // recalculent sur le poste, on recharge plutôt que de les deviner ici.
-        if (champ.dataset.champ === "statut") { chargerDossiers(); return; }
+        // Ces quatre-là changent des valeurs calculees sur le poste — les
+        // durees, le retard, la solidite du portefeuille. On recharge plutot
+        // que de les rederiver ici, ou les deux finiraient par diverger.
+        if (["statut", "convention", "diplome", "echeance"].includes(
+            champ.dataset.champ)) { chargerDossiers(); return; }
         rendreBord();
       } catch (erreur) { afficherBandeau(false, erreur.message); }
     });

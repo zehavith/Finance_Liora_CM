@@ -233,6 +233,18 @@ Côté serveur, la confirmation est portée dans la requête plutôt que déduit
 d'un appel bien formé — une remise à zéro déclenchée par accident serait
 irrattrapable.
 
+### Ce que le tableau tait, le service le saisit
+
+Trois colonnes de l'onglet *État des dossiers* se remplissent à la main :
+**Échéance**, **Convention** et **Diplôme**. Elles l'emportent sur ce que
+l'export a lu — le tableau se tait souvent, le service sait.
+
+Vider une saisie **rend la main au tableau** : ce n'est pas répondre « non » à
+sa place. Les trois états restent donc distincts de bout en bout, du fichier de
+suivi jusqu'au décompte de solidité.
+
+L'échéance saisie sert aussi au calcul du retard et aux tranches d'ancienneté.
+
 ### Ce qui rend un dossier défendable
 
 Devant un tribunal, une convention signée et des heures effectivement suivies
