@@ -31,6 +31,8 @@
 
         // Prélèvements GoCardless
         gcl: { paiements: [], clients: [], mandats: [], abonnements: [], fichiers: [], unite: null },
+        derniereActualisation: null,
+        chargementEnCours: false,
         apprenants: [],
         gclOrphelins: 0,
         token: '',
@@ -40,6 +42,8 @@
             prefereEcheanceMonday: true,
             masquerTechnique: true,
             payeesHorsPortefeuille: false,
+            actualisationAuto: 30,        // minutes, 0 = désactivée
+            actualiserAuDemarrage: true,
         },
 
         filtres: {
@@ -142,7 +146,15 @@
         const brutes = (factures || []).map(revivre);
         if (brutes.length) state.brutes = brutes;
 
+        try {
+            const iso = await S.get('rec_derniere_actualisation', null);
+            if (iso) state.derniereActualisation = new Date(iso);
+        } catch { /* ignore */ }
+
         proposerReprise();
+        programmerActualisation();
+        // Rafraîchit l'ancienneté affichée sans solliciter Monday
+        setInterval(majIndicateurActualisation, 60000);
     }
 
     /**
@@ -389,6 +401,8 @@
         $('#opt-prefere-monday').checked = state.options.prefereEcheanceMonday;
         $('#opt-masquer-technique').checked = state.options.masquerTechnique;
         $('#opt-payees-hors-portefeuille').checked = state.options.payeesHorsPortefeuille;
+        $('#opt-actualisation-auto').value = String(state.options.actualisationAuto);
+        $('#opt-actualiser-demarrage').checked = state.options.actualiserAuDemarrage;
     }
 
     // ══════════════════════════════════════════════
@@ -2541,13 +2555,33 @@
         }
     }
 
-    async function chargerBoardsActifs() {
-        const actifs = state.boards.filter(b => b.actif && b.role !== 'ignore');
-        if (!actifs.length) { U.toast('Cochez au moins un tableau à charger.', 'error'); return; }
-        if (!state.token) { U.toast('Connectez-vous à Monday d\'abord.', 'error'); return; }
+    /**
+     * @param {Object} [opts]
+     * @param {boolean} [opts.silencieux] Actualisation de fond : l'écran de
+     *   chargement n'est pas affiché et les données en place restent visibles
+     *   jusqu'au remplacement. Les erreurs ne s'imposent pas non plus.
+     */
+    async function chargerBoardsActifs(opts) {
+        const silencieux = !!(opts && opts.silencieux);
+        if (state.chargementEnCours) return;
 
-        montrerEcran('loading');
-        $('#loader-log').innerHTML = '';
+        const actifs = state.boards.filter(b => b.actif && b.role !== 'ignore');
+        if (!actifs.length) {
+            if (!silencieux) U.toast('Cochez au moins un tableau à charger.', 'error');
+            return;
+        }
+        if (!state.token) {
+            if (!silencieux) U.toast('Connectez-vous à Monday d\'abord.', 'error');
+            return;
+        }
+
+        state.chargementEnCours = true;
+        majIndicateurActualisation();
+
+        if (!silencieux) {
+            montrerEcran('loading');
+            $('#loader-log').innerHTML = '';
+        }
         statut(`Chargement de ${actifs.length} tableaux`);
 
         // Les factures issues de fichiers sont conservées, celles de Monday remplacées
@@ -2588,18 +2622,79 @@
             }
 
             state.brutes = collecte;
+            state.derniereActualisation = new Date();
             await sauverFactures();
             await sauverBoards();
+            await S.set('rec_derniere_actualisation', state.derniereActualisation.toISOString());
             statut('Calcul des indicateurs');
-            recalculer();
-            montrerEcran('app');
+            recalculer({ conserverPeriode: silencieux });
+            if (!silencieux) montrerEcran('app');
             U.toast(`${U.nombre(collecte.length)} factures chargées depuis Monday.`, 'success');
         } catch (e) {
             log('✗ ' + e.message);
-            statut('Échec du chargement');
-            U.toast(e.message, 'error', 12000);
-            setTimeout(() => montrerEcran(state.factures.length ? 'app' : 'welcome'), 1500);
+            state.derniereErreur = e.message;
+            if (silencieux) {
+                console.warn('[Recouvrement] Actualisation automatique échouée', e);
+            } else {
+                statut('Échec du chargement');
+                U.toast(e.message, 'error', 12000);
+                setTimeout(() => montrerEcran(state.factures.length ? 'app' : 'welcome'), 1500);
+            }
+        } finally {
+            state.chargementEnCours = false;
+            majIndicateurActualisation();
         }
+    }
+
+    // ══════════════════════════════════════════════
+    //  Actualisation automatique
+    // ══════════════════════════════════════════════
+
+    let minuteurActualisation = null;
+
+    /**
+     * Relance périodiquement la récupération Monday tant que l'application est
+     * ouverte. Une facture ajoutée dans Monday apparaît donc sans intervention,
+     * au prochain passage.
+     */
+    function programmerActualisation() {
+        if (minuteurActualisation) { clearInterval(minuteurActualisation); minuteurActualisation = null; }
+        const minutes = parseInt(state.options.actualisationAuto, 10) || 0;
+        if (!minutes) { majIndicateurActualisation(); return; }
+
+        minuteurActualisation = setInterval(() => {
+            if (document.hidden) return;                 // inutile hors écran
+            if (!state.token || state.chargementEnCours) return;
+            chargerBoardsActifs({ silencieux: true });
+        }, minutes * 60 * 1000);
+
+        majIndicateurActualisation();
+    }
+
+    /** Horodatage discret dans la barre supérieure. */
+    function majIndicateurActualisation() {
+        const el = $('#indicateur-actualisation');
+        if (!el) return;
+
+        if (state.chargementEnCours) {
+            el.className = 'maj-indic en-cours';
+            el.textContent = 'Actualisation…';
+            return;
+        }
+        if (!state.derniereActualisation) { el.textContent = ''; el.className = 'maj-indic'; return; }
+
+        const minutes = Math.round((Date.now() - state.derniereActualisation.getTime()) / 60000);
+        const quand = minutes < 1 ? "à l'instant"
+            : minutes < 60 ? `il y a ${minutes} min`
+            : minutes < 1440 ? `il y a ${Math.round(minutes / 60)} h`
+            : 'le ' + U.dateFR(state.derniereActualisation);
+
+        const auto = parseInt(state.options.actualisationAuto, 10) || 0;
+        el.className = 'maj-indic';
+        el.textContent = 'Données de ' + quand;
+        el.title = auto
+            ? `Actualisation automatique toutes les ${auto} minutes`
+            : "Actualisation automatique désactivée — cliquez sur Actualiser, ou activez-la dans l'onglet Données";
     }
 
     // ══════════════════════════════════════════════
@@ -3199,6 +3294,7 @@
             montrerEcran('app');
             // Sans facture enregistrée, l'onglet utile est celui des prélèvements
             if (!state.brutes.length && state.apprenants.length) ouvrirOnglet('prelevements');
+            actualiserAuDemarrageSiUtile();
         });
         $('#btn-demo').addEventListener('click', genererDemo);
 
@@ -3386,6 +3482,15 @@
         opt('#opt-masquer-technique', 'masquerTechnique', false);
         $('#opt-masquer-technique').addEventListener('change', rendreExclusions);
         opt('#opt-payees-hors-portefeuille', 'payeesHorsPortefeuille', true);
+        $('#opt-actualisation-auto').addEventListener('change', async e => {
+            state.options.actualisationAuto = parseInt(e.target.value, 10) || 0;
+            await sauverReglages();
+            programmerActualisation();
+        });
+        $('#opt-actualiser-demarrage').addEventListener('change', async e => {
+            state.options.actualiserAuDemarrage = e.target.checked;
+            await sauverReglages();
+        });
 
         $('#btn-clear-data').addEventListener('click', async () => {
             U.modal('Effacer les factures ?', '<p>Les factures enregistrées sur ce poste seront supprimées. Les tableaux, règles et réglages sont conservés.</p>', [
@@ -3439,6 +3544,23 @@
         if (!nav) return;
         const h = nav.offsetHeight;
         if (h) document.documentElement.style.setProperty('--nav-h', h + 'px');
+    }
+
+    /**
+     * Au retour sur des données enregistrées, une actualisation de fond évite
+     * de travailler sur une photo de la veille. Elle est sautée si les données
+     * datent de moins d'un quart d'heure, pour ne pas solliciter Monday à
+     * chaque ouverture d'onglet.
+     */
+    function actualiserAuDemarrageSiUtile() {
+        if (!state.options.actualiserAuDemarrage) return;
+        if (!state.token || !state.boards.some(b => b.actif && !String(b.id).startsWith('file:'))) return;
+
+        const recent = state.derniereActualisation
+            && (Date.now() - state.derniereActualisation.getTime()) < 15 * 60 * 1000;
+        if (recent) return;
+
+        chargerBoardsActifs({ silencieux: true });
     }
 
     function basculerVisibilite(sel) {

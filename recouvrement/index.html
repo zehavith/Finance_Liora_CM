@@ -127,6 +127,7 @@
             <button class="nav-tab" data-tab="donnees">Données</button>
         </div>
         <div class="nav-actions">
+            <span class="maj-indic" id="indicateur-actualisation"></span>
             <button class="btn btn-ghost" id="btn-aide" title="Afficher les explications sur chaque indicateur">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                 Aide
@@ -885,6 +886,27 @@
                         <input type="checkbox" id="opt-payees-hors-portefeuille">
                         Exclure les factures déjà payées du portefeuille affiché
                     </label>
+                    <label class="check">
+                        <input type="checkbox" id="opt-actualiser-demarrage" checked>
+                        Actualiser depuis Monday à l'ouverture de l'application
+                        <span class="fv-hint">(sauté si les données ont moins d'un quart d'heure)</span>
+                    </label>
+                    <label class="check">
+                        <span>Actualisation automatique pendant l'utilisation :</span>
+                        <select id="opt-actualisation-auto" class="input input-sm">
+                            <option value="0">désactivée</option>
+                            <option value="15">toutes les 15 minutes</option>
+                            <option value="30">toutes les 30 minutes</option>
+                            <option value="60">toutes les heures</option>
+                            <option value="180">toutes les 3 heures</option>
+                        </select>
+                    </label>
+                    <p class="fv-hint">
+                        L'application interroge Monday à intervalle régulier tant qu'elle est ouverte :
+                        une facture ajoutée dans Monday apparaît au passage suivant, sans rien cliquer.
+                        L'actualisation se fait en arrière-plan, sans interrompre votre travail, et est
+                        suspendue quand l'onglet n'est pas affiché.
+                    </p>
 
                 </div>
             </div>

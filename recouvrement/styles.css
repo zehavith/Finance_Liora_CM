@@ -255,6 +255,28 @@ body.aide .aide-bloc strong { color: var(--text-primary); }
 
 #btn-aide.actif { background: var(--accent-bg); border-color: var(--accent); color: var(--text-primary); }
 
+/* Ancienneté des données, dans la barre supérieure */
+.maj-indic {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    margin-right: 0.25rem;
+    cursor: default;
+}
+.maj-indic.en-cours { color: var(--accent); }
+.maj-indic.en-cours::before {
+    content: '';
+    display: inline-block;
+    width: 8px; height: 8px;
+    margin-right: 0.35rem;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    animation: majTourne 0.8s linear infinite;
+    vertical-align: -1px;
+}
+@keyframes majTourne { to { transform: rotate(360deg); } }
+
 /* ============================
    KPIs — complément
    ============================ */

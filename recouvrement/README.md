@@ -48,6 +48,29 @@ dans sa propre fenêtre, sans barre de navigateur, avec son icône, et peut êtr
 épinglée à la barre des tâches. Le serveur local doit tourner : garder le
 lanceur ouvert.
 
+## Actualisation depuis Monday
+
+Trois moments, réglables dans *Données → Options de calcul* :
+
+- **au clic** sur *Actualiser*, à tout moment ;
+- **à l'ouverture** de l'application, en arrière-plan — sauté si les données ont
+  moins d'un quart d'heure, pour ne pas solliciter Monday inutilement ;
+- **à intervalle régulier** tant que l'application reste ouverte : 15 minutes,
+  30 minutes, une heure, trois heures, ou jamais. Par défaut 30 minutes.
+
+Une facture ajoutée dans Monday apparaît donc au passage suivant, sans rien
+cliquer. L'actualisation périodique se fait en arrière-plan sans interrompre le
+travail en cours : les données affichées restent en place jusqu'au
+remplacement, les filtres et la période sont conservés, et un échec reste
+silencieux plutôt que de bloquer l'écran. Elle est suspendue quand l'onglet
+n'est pas affiché.
+
+La barre supérieure indique l'ancienneté des données — « Données de il y a
+12 min » — et affiche un rouet pendant la récupération.
+
+Il ne s'agit pas d'une notification en temps réel : Monday ne pousse rien vers
+l'application, c'est elle qui interroge.
+
 ## Aide intégrée
 
 Le bouton **Aide** de la barre supérieure affiche une phrase d'explication sous
