@@ -407,6 +407,33 @@ def _sens_du_message(message: MessageMail, domaines: set[str]) -> str:
     return "reçu"
 
 
+# Reconnue mais vide sur toutes les lignes : l'intitule a ete trouve, la
+# valeur non. C'est le symptome d'une colonne miroir ou d'une formule, dont
+# l'API ne rend rien sans qu'on le lui demande — et il n'y a aucune raison de
+# le decouvrir dossier par dossier, une heure plus tard.
+CHAMPS_SURVEILLES = (
+    ("nom", "nom du debiteur"),
+    ("emails", "adresse mail"),
+    ("montant_du", "montant du"),
+)
+
+
+def _signaler_colonnes_vides(lignes: list[Dossier], journal: Journal) -> None:
+    if not lignes:
+        return
+
+    muettes = [
+        libelle for champ, libelle in CHAMPS_SURVEILLES
+        if not any(getattr(dossier, champ, None) for dossier in lignes)
+    ]
+    if muettes:
+        journal(
+            f"    ⚠ colonne(s) reconnue(s) mais vide(s) sur les "
+            f"{len(lignes)} lignes : {', '.join(muettes)}. Colonne miroir ou "
+            "formule côté Monday, ou colonne réellement vide."
+        )
+
+
 def traiter_dossier(
     dossier: Dossier,
     sources: SourcesGmail,
@@ -1347,6 +1374,8 @@ def executer(
                 )
                 for ligne_dossier in lignes_tableau:
                     ligne_dossier.colonnes["regle echeance"] = cle
+
+                _signaler_colonnes_vides(lignes_tableau, journal)
 
                 journal(
                     f"    {len(lignes_tableau)} ligne(s) exploitable(s) — "

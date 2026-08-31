@@ -8,6 +8,7 @@ d'importation.
 from __future__ import annotations
 
 import csv
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -204,11 +205,23 @@ class ResumeDossier:
 
 
 def _ecrire_csv(chemin: Path, colonnes: list[str], rangees: list[dict[str, str]]) -> None:
+    """Écriture atomique : un fichier temporaire, puis un remplacement.
+
+    Le récapitulatif est réécrit en entier après chaque dossier, et
+    l'application le relit pendant ce temps pour son tableau de bord. Écrit en
+    place, il est vu tronqué une fraction de seconde — et le compte des
+    dossiers passait d'une dizaine à une quarantaine d'un rafraîchissement à
+    l'autre. `os.replace` est atomique, y compris sous Windows.
+    """
     chemin.parent.mkdir(parents=True, exist_ok=True)
-    with chemin.open("w", encoding="utf-8-sig", newline="") as fichier:
+    provisoire = chemin.with_name(chemin.name + ".en-cours")
+    with provisoire.open("w", encoding="utf-8-sig", newline="") as fichier:
         redacteur = csv.DictWriter(fichier, fieldnames=colonnes, delimiter=";")
         redacteur.writeheader()
         redacteur.writerows(rangees)
+        fichier.flush()
+        os.fsync(fichier.fileno())
+    os.replace(provisoire, chemin)
 
 
 def ecrire_index_dossier(chemin: Path, lignes: list[LigneIndex]) -> None:

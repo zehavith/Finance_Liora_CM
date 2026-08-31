@@ -2011,6 +2011,72 @@ def test_colonnes_typees_monday() -> None:
         verifier(obtenu == attendu, f"{libelle} (obtenu : « {obtenu} »)")
 
 
+def test_recapitulatif_atomique() -> None:
+    """Le récapitulatif ne doit jamais être lu à moitié écrit."""
+    print("\nÉcriture atomique du récapitulatif")
+
+    import indexation as module_indexation  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        chemin = Path(repertoire) / "_recapitulatif.csv"
+
+        def resume(rang):
+            return module_indexation.ResumeDossier(
+                reference=f"FACT-{rang}", nom=f"Debiteur {rang}",
+                emails="a@b.fr", factures=f"FACT-{rang}", requete="q",
+                repertoire=f"d{rang}",
+            )
+
+        module_indexation.ecrire_recapitulatif(chemin, [resume(i) for i in range(40)])
+        lues = chemin.read_text(encoding="utf-8-sig").strip().split("\n")
+        verifier(len(lues) == 41, f"quarante lignes plus l'en-tête (obtenu : {len(lues)})")
+
+        # Aucun fichier provisoire ne doit survivre à l'écriture.
+        restes = [f.name for f in Path(repertoire).iterdir() if "en-cours" in f.name]
+        verifier(not restes, f"aucun fichier provisoire ne reste ({restes})")
+
+        # Une réécriture plus courte remplace l'ancienne, sans en garder la fin.
+        module_indexation.ecrire_recapitulatif(chemin, [resume(i) for i in range(3)])
+        lues = chemin.read_text(encoding="utf-8-sig").strip().split("\n")
+        verifier(len(lues) == 4,
+                 f"la réécriture remplace tout le fichier (obtenu : {len(lues)})")
+
+
+def test_colonnes_vides_signalees() -> None:
+    """Reconnue mais vide sur toutes les lignes : le journal le dit."""
+    print("\nColonnes reconnues mais vides")
+
+    import export_mails  # noqa: PLC0415
+    from dossiers import dossiers_depuis_grille  # noqa: PLC0415
+
+    # Le cas des colonnes miroir : les intitulés sont là, les valeurs non.
+    grille = [
+        (1, ["N° Facture", "Entreprise", "Email", "Reste à devoir TTC"]),
+        (2, ["FACT-1", "", "", ""]),
+        (3, ["FACT-2", "", "", ""]),
+    ]
+    dits: list[str] = []
+    export_mails._signaler_colonnes_vides(
+        dossiers_depuis_grille(grille, "tableau Monday 42"), dits.append)
+    verifier(any("vide(s) sur les 2 lignes" in ligne for ligne in dits),
+             "les colonnes muettes sont signalées d'emblée")
+    for attendu in ("nom du debiteur", "adresse mail", "montant du"):
+        verifier(any(attendu in ligne for ligne in dits),
+                 f"« {attendu} » est nommée")
+
+    # Une seule ligne renseignée suffit : la colonne n'est pas muette, elle
+    # est incomplète, et c'est une autre affaire.
+    grille[1] = (2, ["FACT-1", "Sijo", "a@b.fr", "2 500 €"])
+    dits.clear()
+    export_mails._signaler_colonnes_vides(
+        dossiers_depuis_grille(grille, "tableau Monday 42"), dits.append)
+    verifier(not dits, "une colonne partiellement remplie n'est pas signalée")
+
+    dits.clear()
+    export_mails._signaler_colonnes_vides([], dits.append)
+    verifier(not dits, "un tableau sans ligne ne dit rien")
+
+
 def test_colonnes_miroir_monday() -> None:
     """Une colonne miroir ne dit sa valeur que dans `display_value`."""
     print("\nColonnes miroir Monday")
@@ -4071,6 +4137,8 @@ def main() -> int:
     test_refus_monday()
     test_montants_espace_insecable()
     test_colonnes_typees_monday()
+    test_recapitulatif_atomique()
+    test_colonnes_vides_signalees()
     test_colonnes_miroir_monday()
     test_bloc_pieces()
     test_execution_formation()
