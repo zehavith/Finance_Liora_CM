@@ -2121,6 +2121,9 @@ def test_completer_depuis_fichier() -> None:
                  f"deux dossiers complétés (obtenu : {resultat['dossiers']})")
         verifier(resultat["sans_correspondance"] == 1,
                  "la ligne sans dossier est comptée, non ignorée en silence")
+        verifier(resultat["exemples"] == ["FACT-9999-99999"],
+                 f"et nommée : un compte seul ne dit pas si le fichier est le "
+                 f"bon (obtenu : {resultat['exemples']})")
 
         apres = {d["reference"]: d for d in
                  module_suivi.inventaire(sortie, chemin_suivi)}

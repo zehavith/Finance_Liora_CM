@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "53"
+VERSION = "54"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -2077,7 +2077,9 @@ async function completerDepuisFichier(evenement) {
       `${r.lignes} ligne(s) lue(s) : ${r.valeurs} valeur(s) reprise(s) sur `
       + `${r.dossiers} dossier(s).`
       + (r.sans_correspondance
-         ? ` ${r.sans_correspondance} ligne(s) sans dossier correspondant.`
+         ? ` ${r.sans_correspondance} ligne(s) sans dossier correspondant`
+           + ((r.exemples || []).length
+              ? ` (${r.exemples.join(", ")}…).` : ".")
          : "")
       + (r.dossiers ? "" : " Vérifiez que les numéros de facture concordent."));
     chargerDossiers();

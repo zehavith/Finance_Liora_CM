@@ -666,7 +666,11 @@ def completer_depuis_grille(
                 par_facture.setdefault(_cle_facture(cle), dossier["reference"])
 
     suivi = charger(chemin_suivi)
-    completes, inconnues, touchees = 0, 0, 0
+    completes, touchees = 0, 0
+    # Les references non rapprochees sont nommees, pas seulement comptees :
+    # « 164 lignes sans correspondance » ne dit pas si le fichier est le
+    # mauvais ou si les numeros s'ecrivent autrement.
+    sans_suite: list[str] = []
 
     for ligne in lignes:
         candidats = [ligne.reference] + list(ligne.factures)
@@ -676,7 +680,7 @@ def completer_depuis_grille(
             "",
         )
         if not reference:
-            inconnues += 1
+            sans_suite.append(ligne.reference or (ligne.factures or [""])[0])
             continue
 
         apports = {
@@ -701,7 +705,8 @@ def completer_depuis_grille(
         enregistrer(chemin_suivi, suivi)
 
     return {"dossiers": touchees, "valeurs": completes,
-            "lignes": len(lignes), "sans_correspondance": inconnues}
+            "lignes": len(lignes), "sans_correspondance": len(sans_suite),
+            "exemples": [r for r in sans_suite[:8] if r]}
 
 
 def _cle_facture(valeur: str) -> str:
