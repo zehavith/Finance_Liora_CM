@@ -464,20 +464,25 @@
             f.sansRecouvrement = !!ech.regle.sansRecouvrement;
             if (!f.financement) f.financement = ech.regle.key === 'INCONNU' ? null : ech.regle.key;
 
-            // Paiement : date réelle si connue, sinon date de contrôle (validation).
-            // Le motif retenu est conservé : quand une facture est classée réglée
-            // à tort, c'est la seule façon de remonter à la colonne fautive.
+            // Une facture n'est réglée que si un document de règlement le dit :
+            // sa présence dans le tableau « Factures payées », ou son lettrage
+            // dans le grand livre. Une date de paiement isolée, un statut ou un
+            // reste dû nul saisis sur un tableau opérationnel ne suffisent pas —
+            // ces colonnes se sont révélées trop peu fiables, au point de faire
+            // basculer la quasi-totalité du portefeuille en « payée ».
             let motif = null;
             if (f.paye === true) motif = 'Présente dans le tableau des factures payées';
-            else if (f.datePaiement) motif = 'Date de paiement renseignée';
-            else if (f.dateControlePaiement) motif = 'Date de contrôle paiement renseignée';
-            else if (statutIndiquePaye(f.statut)) motif = `Statut Monday « ${f.statut} »`;
-            else if (f.resteDu != null && f.montant != null && f.resteDu <= 0.01 && f.montant > 0)
-                motif = 'Reste dû nul';
+            else if (f.grandLivre === true) motif = 'Lettrée dans le grand livre';
 
             const paye = motif != null;
             f.paye = paye;
             f.motifPaye = motif;
+
+            // Signaux de règlement portés par un tableau opérationnel : ils ne
+            // valent pas paiement, mais méritent d'être signalés.
+            f.signalPaiementHorsTableau = !paye && !!(
+                f.datePaiement || f.dateControlePaiement || statutIndiquePaye(f.statut)
+                || (f.resteDu != null && f.montant != null && f.resteDu <= 0.01 && f.montant > 0));
 
             if (f.datePaiement) {
                 f.datePaiementEffective = f.datePaiement;
@@ -493,9 +498,14 @@
                 f.origineDatePaiement = null;
             }
 
-            // Montant restant dû
-            if (f.resteDu != null) f.encours = Math.max(0, f.resteDu);
-            else if (paye) f.encours = 0;
+            // Montant restant dû. Un « reste dû » nul saisi sur un tableau
+            // opérationnel contredirait le fait que la facture est comptée
+            // comme due : seul le tableau des règlements peut solder une
+            // facture, donc cette valeur est ignorée. Un reste dû positif,
+            // lui, décrit un règlement partiel et fait foi.
+            if (paye) f.encours = 0;
+            else if (f.resteDu != null && f.resteDu > 0)
+                f.encours = f.montant != null ? Math.min(f.resteDu, f.montant) : f.resteDu;
             else if (f.montant != null) f.encours = Math.max(0, f.montant - (f.montantRegle || 0));
             else f.encours = 0;
 

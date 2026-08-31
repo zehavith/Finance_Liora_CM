@@ -281,13 +281,26 @@ aucun calcul.
    une facture réglée qui traîne encore côté opérationnel reste une facture
    réglée, et un « reste dû » hérité de là-bas est une valeur périmée, donc
    ignorée. Le tableau d'origine reste indiqué sur la fiche de la facture.
-2. Sa présence dans *0.1. ALL - Factures payées* la marque réglée. La colonne
+2. **Seul le tableau des factures payées vaut règlement** — avec le grand livre
+   lettré s'il est importé. Une date de paiement, une date de contrôle, un
+   statut « payée » ou un reste dû nul saisis sur un tableau opérationnel ne
+   suffisent pas : ces colonnes se sont révélées trop peu fiables, au point de
+   faire basculer la quasi-totalité du portefeuille en « payée ». Elles sont
+   néanmoins relevées en Data Quality sous *Signes de règlement hors du tableau
+   des factures payées* — si ces factures sont bel et bien encaissées, il manque
+   leur ligne dans le 0.1.
+
+   Sa présence dans *0.1. ALL - Factures payées* la marque réglée. La colonne
    **Groupe** de ce tableau est conservée comme groupe d'origine, ce qui permet
    de rattacher la facture à l'étape d'où elle venait au moment du règlement.
 3. La date retenue est **Date paiement** (règlement réel). À défaut,
    **Date contrôle paiement** sert de repli : la facture porte alors le symbole
    **≈** et l'anomalie est listée en Data Quality, car cette date de validation
    est postérieure au règlement — le retard mesuré est donc majoré.
+Un « reste dû » nul saisi sur un tableau opérationnel est ignoré de même : il
+contredirait le fait que la facture est comptée comme due. Un reste dû positif,
+lui, décrit un règlement partiel et fait foi.
+
 4. L'import d'un **extrait de grand livre lettré** (onglet *Données*) apporte
    les dates de règlement réelles, rapprochées sur le numéro de facture.
 
