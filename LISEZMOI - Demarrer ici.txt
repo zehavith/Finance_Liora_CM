@@ -40,7 +40,27 @@ SUIVI RECOUVREMENT LIORA - DEMARRAGE
    Monday.
 
 
-4. PLUS TARD, SI VOUS VOULEZ
+4. METTRE L'APPLI SUR VOTRE BUREAU (facultatif)
+
+   Dans le sous-dossier "recouvrement", double-cliquez une
+   fois sur "Creer le raccourci bureau.bat".
+   Une icone Liora apparait sur votre Bureau.
+
+   Pour une vraie fenetre d'application, sans barre de
+   navigateur : une fois l'appli ouverte dans Edge, cliquez
+   sur l'icone d'installation dans la barre d'adresse, ou
+   menu "..." -> Applications -> Installer ce site en tant
+   qu'application. Vous pourrez ensuite l'epingler a la
+   barre des taches.
+
+
+5. COMPRENDRE LES CHIFFRES
+
+   Le bouton "Aide" en haut a droite affiche une phrase
+   d'explication sous chaque indicateur et chaque filtre.
+
+
+6. PLUS TARD, SI VOUS VOULEZ
 
    Toujours dans l'onglet "Donnees" :
    - le grand livre lettre, pour les vraies dates de paiement

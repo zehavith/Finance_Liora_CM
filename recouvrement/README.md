@@ -33,6 +33,33 @@ automatiquement en ouverture directe. Pour retrouver la connexion Monday,
 installer [Python](https://www.python.org/downloads/) en cochant *Add Python to
 PATH*, puis relancer.
 
+## Installer en application de bureau
+
+Deux façons, cumulables.
+
+**Raccourci sur le Bureau** — double-cliquer une fois sur
+`Creer le raccourci bureau.bat`. Une icône Liora « Suivi Recouvrement »
+apparaît sur le Bureau et lance l'application.
+
+**Application installée** — une fois l'application ouverte dans Edge ou Chrome,
+cliquer sur l'icône d'installation dans la barre d'adresse (ou menu ⋯ →
+*Applications* → *Installer ce site en tant qu'application*). Elle s'ouvre alors
+dans sa propre fenêtre, sans barre de navigateur, avec son icône, et peut être
+épinglée à la barre des tâches. Le serveur local doit tourner : garder le
+lanceur ouvert.
+
+## Aide intégrée
+
+Le bouton **Aide** de la barre supérieure affiche une phrase d'explication sous
+chaque indicateur, chaque filtre et en tête de chaque onglet. Le réglage est
+mémorisé d'une session à l'autre.
+
+Le point de vocabulaire le plus souvent posé y est traité d'emblée : **en
+recouvrement** qualifie une facture échue et impayée, où qu'elle se trouve dans
+Monday — y compris côté ADV ou OPCO — et l'**encours en retard** en est le
+montant. Ce ne sont pas deux populations différentes, mais la même mesurée en
+nombre et en euros.
+
 ## Ce que l'application répond
 
 | Question | Où |
