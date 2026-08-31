@@ -57,6 +57,7 @@
             bucket: null,
             client: null,
             etapes: null,
+            qualif: null,
             recherche: '',
             retardMin: null,
             retardMax: null,
@@ -84,6 +85,8 @@
             prlvEtat: '',
             prlvRecherche: '',
             triPrlv: { key: 'montantEchoue', sens: 'desc' },
+            qualifColonne: null,
+            qualifUnite: 'nb',
         },
 
         moisDispo: [],
@@ -359,6 +362,7 @@
                 () => { f.retardMin = null; f.retardMax = null; });
         }
         if (f.client) add('Client : ' + f.client, () => { f.client = null; });
+        if (f.qualif) add(`${f.qualif.nom} : ${f.qualif.valeur}`, () => { f.qualif = null; });
         if (f.etapes && f.etapes.size) {
             const noms = [...f.etapes].map(k => (R.ETAPES.find(e => e.key === k) || {}).label || k);
             add('Étape : ' + noms.join(', '), () => { f.etapes = null; });
@@ -386,7 +390,7 @@
         const f = state.filtres;
         f.mois = null; f.perimetre = 'Tous'; f.financements = null; f.etats = null;
         f.boards = null; f.bucket = null; f.client = null; f.recherche = '';
-        f.retardMin = null; f.retardMax = null; f.etapes = null;
+        f.retardMin = null; f.retardMax = null; f.etapes = null; f.qualif = null;
         f.sources = new Set(['recouvrement', 'adv', 'opco', 'b2c']);
         $('#search-input').value = '';
         state.ui.page = 1;
@@ -426,6 +430,7 @@
             case 'aging':        rendreAging(data); break;
             case 'financements': rendreFinancements(data); break;
             case 'factures':     rendreFactures(data); break;
+            case 'qualifications': rendreQualifications(data); break;
             case 'prelevements': rendrePrelevements(); break;
             case 'quality':      rendreQualite(data); break;
             case 'donnees':      rendreDonnees(); break;
@@ -438,7 +443,8 @@
             ? (mois.length === 1 ? U.moisLabel(mois[0]) : U.moisLabel(mois[0]) + ' → ' + U.moisLabel(mois[mois.length - 1]))
             : 'Aucune période';
         const compl = ` · ${U.nombre(data.length)} factures · arrêté au ${U.dateFR(state.filtres.dateRef)}`;
-        ['#period-badge', '#aging-badge', '#fin-badge', '#factures-badge', '#quality-badge'].forEach(sel => {
+        ['#period-badge', '#aging-badge', '#fin-badge', '#factures-badge', '#quality-badge',
+         '#qualif-badge'].forEach(sel => {
             const el = $(sel); if (el) el.textContent = txt + compl;
         });
     }
@@ -469,7 +475,7 @@
         $('#kpi-encaisse-sub').textContent = `${U.nombre(v.nbPayees)} factures réglées`;
 
         $('#kpi-encours').textContent = U.euros(v.encoursTotal);
-        $('#kpi-encours-sub').textContent = `dont ${U.eurosCourt(v.eurosNonEchues)} non échus`;
+        $('#kpi-encours-sub').textContent = `dont ${U.eurosCourt(v.eurosNonEchues)} pas encore échus`;
 
         $('#kpi-retard-moyen').textContent = U.jours(v.retardMoyen);
         $('#kpi-retard-moyen-sub').textContent = v.retardMedian != null
@@ -602,7 +608,7 @@
             notes.push({
                 ton: 'warn',
                 titre: `${U.nombre(advRetard.length)} factures en retard encore côté ADV / Tampon`,
-                texte: `${U.euros(X.sum(advRetard, x => x.encours))} d'encours. Elles dépassent l'échéance sans être passées en recouvrement.`,
+                texte: `${U.euros(X.sum(advRetard, x => x.montant))} de factures. Elles dépassent l'échéance sans être passées en recouvrement.`,
                 action: { label: 'Voir ces factures', fn: () => { state.filtres.sources = new Set(['adv']); state.filtres.etats = new Set(['En retard']); ouvrirOnglet('factures'); } },
             });
         }
@@ -612,7 +618,7 @@
             notes.push({
                 ton: 'info',
                 titre: `${U.nombre(opcoRetard.length)} factures OPCO en retard`,
-                texte: `${U.euros(X.sum(opcoRetard, x => x.encours))} d'encours. Pas de recouvrement OPCO : suivi du retard uniquement — décochez « OPCO » pour les exclure des indicateurs.`,
+                texte: `${U.euros(X.sum(opcoRetard, x => x.montant))} de factures. Pas de recouvrement OPCO : suivi du retard uniquement — décochez « OPCO » pour les exclure des indicateurs.`,
                 action: { label: 'Exclure les OPCO', fn: () => { state.filtres.sources.delete('opco'); rendreTout(); } },
             });
         }
@@ -705,7 +711,7 @@
                 key: 'eurEnRecouvrement', label: 'En recouvrement', align: 'right',
                 title: 'Factures échues et impayées',
                 format: (v, r) => v
-                    ? `<span class="cell-danger" title="Encours restant dû : ${U.euros(r.encoursEnRecouvrement)}">${U.euros(v)}<span class="cell-mini">${U.nombre(r.nbEnRecouvrement)} fact.</span></span>`
+                    ? `<span class="cell-danger" title="Reste dû : ${U.euros(r.encoursEnRecouvrement)}">${U.euros(v)}<span class="cell-mini">${U.nombre(r.nbEnRecouvrement)} fact.</span></span>`
                     : '<span class="ag-zero">—</span>',
             },
             {
@@ -867,7 +873,7 @@
                         backgroundColor: 'rgba(132, 204, 22, 0.75)', borderRadius: 3,
                     },
                     {
-                        type: 'line', label: 'Encours en retard à fin de mois', order: 0, yAxisID: 'y1',
+                        type: 'line', label: 'Montant en retard à fin de mois', order: 0, yAxisID: 'y1',
                         data: rows.map(r => r[champ('Stock')]),
                         borderColor: U.couleurs.accent, backgroundColor: 'rgba(244, 116, 88, 0.12)',
                         borderWidth: 2.5, tension: 0.3, fill: true, pointRadius: 2, pointHoverRadius: 5,
@@ -994,7 +1000,7 @@
                 labels: rows.map(r => U.moisLabel(r.mois, true)),
                 datasets: [
                     {
-                        label: 'Encours client à fin de mois', order: 2,
+                        label: 'Reste à encaisser à fin de mois', order: 2,
                         data: rows.map(r => r.encours),
                         backgroundColor: 'rgba(99, 102, 241, 0.45)', borderRadius: 3,
                     },
@@ -1099,7 +1105,7 @@
     function rendreTreemap(data) {
         const dim = DIMENSIONS[state.ui.treemapDim] || DIMENSIONS.financement;
         const enRetard = data.filter(f => f.etat === 'En retard');
-        const groupes = X.parDimension(enRetard, dim.fn, dim.labelFn, f => f.encours).slice(0, 24);
+        const groupes = X.parDimension(enRetard, dim.fn, dim.labelFn, f => f.montant).slice(0, 24);
 
         if (!groupes.length) { U.chart('chart-treemap', videConfig('Aucune facture en retard')); return; }
 
@@ -1284,7 +1290,7 @@
 
         el.innerHTML = `<div class="cmp-table">
             <div class="cmp-row cmp-head"><span>Indicateur</span><span>${U.moisLabel(cmp.moisPrec, true)}</span><span></span><span>${U.moisLabel(cmp.mois, true)}</span><span>Écart</span></div>
-            ${ligne('Encours en retard', cmp.eurEnRetard, U.eurosCourt, true)}
+            ${ligne('Montant en retard', cmp.eurEnRetard, U.eurosCourt, true)}
             ${ligne('Factures en retard', cmp.nbEnRetard, U.nombre, true)}
             ${ligne('% en retard (€)', cmp.tauxEur, v => U.pourcent(v), true)}
             ${ligne('% en retard (nb)', cmp.tauxNb, v => U.pourcent(v), true)}
@@ -1301,7 +1307,7 @@
             data: {
                 labels: top.map(f => f.label),
                 datasets: [{
-                    label: 'Encours en retard',
+                    label: 'Montant en retard',
                     data: top.map(f => f.eurEnRetard),
                     backgroundColor: top.map((_, i) => U.palette[i % U.palette.length]),
                     borderRadius: 4,
@@ -1446,7 +1452,7 @@
         const max = rows.length ? rows[0].euros : 0;
         const html = U.table([
             { key: 'client', label: 'Client' },
-            { key: 'euros', label: 'Encours', align: 'right', format: (v) => `${U.euros(v)} ${U.barre(v, max, U.couleurs.retard)}` },
+            { key: 'euros', label: 'Montant en retard', align: 'right', format: (v) => `${U.euros(v)} ${U.barre(v, max, U.couleurs.retard)}` },
             { key: 'nb', label: 'Nb', align: 'right', format: U.nombre },
             { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
             { key: 'plusVieille', label: 'Plus ancien', align: 'right', format: v => U.pastilleRetard(v) },
@@ -1484,7 +1490,7 @@
                 <span class="bucket-sub">${U.nombre(b.nb)} factures · ${U.pourcent(b.partEuros, 0)}</span>
             </button>`).join('')
             + `<div class="bucket-card bucket-total">
-                 <span class="bucket-label">Encours total</span>
+                 <span class="bucket-label">Reste à encaisser</span>
                  <span class="bucket-value">${U.euros(totalEuros)}</span>
                  <span class="bucket-sub">${U.nombre(X.sum(buckets, b => b.nb))} factures non réglées</span>
                </div>`;
@@ -1548,7 +1554,7 @@
             label: b.label,
             backgroundColor: b.couleur,
             borderRadius: 3,
-            data: mois.map(m => X.sum(nonPayees.filter(f => f.moisEcheance === m && f.bucket && f.bucket.key === b.key), f => f.encours)),
+            data: mois.map(m => X.sum(nonPayees.filter(f => f.moisEcheance === m && f.bucket && f.bucket.key === b.key), f => f.montant)),
         }));
 
         U.chart('chart-aging-mois', {
@@ -1583,26 +1589,45 @@
         });
 
         const maxEur = Math.max(1, ...rows.map(r => r.eurEnRetard));
+
+        // Chaque colonne d'état porte le nombre de factures en gros et le
+        // montant en dessous : c'est la question posée — combien, et pour quel
+        // montant — et elle se lit sans passer par une info-bulle.
+        const cellule = (nb, euros, danger) => nb
+            ? `<span class="${danger ? 'cell-danger' : ''}">${U.nombre(nb)}<span class="cell-mini">${U.eurosCourt(euros)}</span></span>`
+            : '<span class="ag-zero">—</span>';
+
         const cols = [
             { key: 'label', label: 'Type de financement', format: (v, r) => `${U.escapeHtml(v)}${r.sansRecouvrement ? ' <span class="pill pill-muted" title="Pas de recouvrement OPCO">hors recouvrement</span>' : ''}` },
-            { key: 'perimetre', label: 'Périmètre', format: v => `<span class="pill pill-role">${U.escapeHtml(v)}</span>` },
-            { key: 'nbTotal', label: 'Factures', align: 'right', format: U.nombre },
-            { key: 'eurTotal', label: 'Total facturé', align: 'right', format: U.euros },
-            { key: 'nbEnRetard', label: 'En retard', align: 'right', format: U.nombre },
-            { key: 'eurEnRetard', label: 'Encours en retard', align: 'right', format: v => `${U.euros(v)} ${U.barre(v, maxEur, U.couleurs.retard)}` },
-            { key: 'tauxNb', label: '% nb', align: 'right', format: v => U.pourcent(v, 1), title: 'Part des factures actuellement en retard' },
-            { key: 'tauxEur', label: '% €', align: 'right', format: v => U.pourcent(v, 1), title: "Part de l'encours en retard sur le total facturé" },
-            { key: 'tauxCohorteEur', label: '% cohorte €', align: 'right', format: v => U.pourcent(v, 1), title: 'Sur les factures échues : part payée en retard ou encore impayée' },
-            { key: 'tauxRegleATempsEur', label: '% avant échéance', align: 'right', format: v => U.pourcent(v, 1), title: "Sur les factures échues : part encaissée avant l'échéance, sans jamais tomber en recouvrement" },
+            { key: 'nbTotal', label: 'Factures', align: 'right',
+              format: (v, r) => `<strong>${U.nombre(v)}</strong><span class="cell-mini">${U.eurosCourt(r.eurTotal)}</span>` },
+            { key: 'nbEnRetard', label: 'En retard', align: 'right',
+              title: 'Échéance dépassée et facture non réglée',
+              format: (v, r) => cellule(v, r.eurEnRetard, true) },
+            { key: 'nbNonEchues', label: 'Pas encore échu', align: 'right',
+              title: "Facturé, échéance à venir",
+              format: (v, r) => cellule(v, r.eurNonEchues) },
+            { key: 'nbPayees', label: 'Réglé', align: 'right',
+              format: (v, r) => cellule(v, r.eurPayees) },
+            { key: 'nbSansEcheance', label: 'Échéance inconnue', align: 'right',
+              title: 'Dates manquantes dans Monday — hors de tous les taux',
+              format: (v, r) => cellule(v, r.eurSansEcheance) },
+            { key: 'tauxEur', label: '% en retard', align: 'right',
+              title: 'Montant en retard rapporté au montant total facturé',
+              format: (v, r) => `<span class="taux-cell">${U.pourcent(v, 1)}${U.barre(v, 100, U.couleurs.retard)}</span>` },
             { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
-            { key: 'retardMoyenPaiement', label: 'Retard au paiement', align: 'right', format: U.jours, title: 'Retard constaté sur les factures déjà réglées' },
         ];
 
+        const tot = (cle, cleEur) =>
+            `<strong>${U.nombre(X.sum(rows, r => r[cle]))}</strong>`
+            + `<span class="cell-mini">${U.eurosCourt(X.sum(rows, r => r[cleEur]))}</span>`;
         const total = {
-            label: 'Total', nbTotal: U.nombre(X.sum(rows, r => r.nbTotal)),
-            eurTotal: U.euros(X.sum(rows, r => r.eurTotal)),
-            nbEnRetard: U.nombre(X.sum(rows, r => r.nbEnRetard)),
-            eurEnRetard: U.euros(X.sum(rows, r => r.eurEnRetard)),
+            label: 'Total',
+            nbTotal: tot('nbTotal', 'eurTotal'),
+            nbEnRetard: tot('nbEnRetard', 'eurEnRetard'),
+            nbNonEchues: tot('nbNonEchues', 'eurNonEchues'),
+            nbPayees: tot('nbPayees', 'eurPayees'),
+            nbSansEcheance: tot('nbSansEcheance', 'eurSansEcheance'),
         };
 
         const el = $('#fin-table');
@@ -1700,7 +1725,7 @@
             { key: 'client', label: 'Client', format: (v) => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v)}">${U.escapeHtml(v)}</span>` },
             { key: 'etat', label: 'État', format: v => `<span class="pill ${U.etatClass(v)}">${U.escapeHtml(v)}</span>` },
             { key: 'retardJours', label: 'Retard', align: 'right', format: v => U.pastilleRetard(v) },
-            { key: 'encours', label: 'Encours', align: 'right', format: v => v ? U.euros(v) : '—' },
+            { key: 'encours', label: 'Reste dû', align: 'right', format: v => v ? U.euros(v) : '—' },
             { key: 'montant', label: 'Montant', align: 'right', format: v => U.euros(v) },
             {
                 key: 'financement', label: 'Financement',
@@ -1738,7 +1763,7 @@
         const totalEncours = X.sum(rows, r => r.encours);
         p.innerHTML = `
             <div class="pagination-info">
-                ${U.nombre(rows.length)} factures · ${U.euros(totalEuros)} facturés · ${U.euros(totalEncours)} d'encours
+                ${U.nombre(rows.length)} factures · ${U.euros(totalEuros)} facturés · ${U.euros(totalEncours)} restant dû
             </div>
             <div class="pagination-controls">
                 <button class="btn btn-ghost btn-sm" data-page="1" ${state.ui.page === 1 ? 'disabled' : ''}>«</button>
@@ -1774,7 +1799,7 @@
                     ${ligne('Client', U.escapeHtml(f.client))}
                     ${ligne('Type de financement', U.escapeHtml(R.getRule(f.financement, state.rules).label) + (f.financementBrut ? ` <span class="fv-hint">(« ${U.escapeHtml(f.financementBrut)} »)</span>` : ''))}
                     ${ligne('Montant', U.euros(f.montant, true))}
-                    ${ligne('Encours restant dû', U.euros(f.encours, true))}
+                    ${(!f.paye && f.encours !== f.montant) ? ligne('Reste dû', U.euros(f.encours, true)) : ''}
                     ${ligne('Date de facture', U.dateFR(f.dateFacture))}
                     ${ligne('Début de formation', U.dateFR(f.dateDebutFormation))}
                     ${ligne('Fin de formation', U.dateFR(f.dateFinFormation))}
@@ -1799,6 +1824,136 @@
                     <p>${U.escapeHtml(explication)}</p>
                 </div>
             </div>`, [{ label: 'Fermer', primary: true }]);
+    }
+
+    // ══════════════════════════════════════════════
+    //  Onglet : Qualifications métier
+    // ══════════════════════════════════════════════
+
+    function rendreQualifications(data) {
+        const inventaire = X.inventaireQualifications(data);
+
+        // Créances douteuses : contentieux et pertes
+        const d = X.creancesDouteuses(data);
+        const tuile = (o) => `
+            <div class="recup-card">
+                <span class="recup-bar" style="background:${o.couleur}"></span>
+                <span class="recup-taux">${o.valeur}</span>
+                <span class="recup-label">${U.escapeHtml(o.label)}</span>
+                <span class="recup-value">${o.detail}</span>
+                <span class="recup-sub">${U.escapeHtml(o.sub)}</span>
+            </div>`;
+        $('#douteuses-kpi').innerHTML = [
+            tuile({ couleur: U.couleurs.retard, valeur: U.nombre(d.nb), label: 'Créances douteuses',
+                    detail: U.euros(d.euros), sub: 'contentieux et pertes réunis' }),
+            tuile({ couleur: '#f97316', valeur: U.nombre(d.nbContentieux), label: 'En contentieux',
+                    detail: U.euros(d.eurContentieux), sub: 'transmises au service contentieux' }),
+            tuile({ couleur: U.couleurs.inconnu, valeur: U.nombre(d.nbPerte), label: 'Perdues ou partielles',
+                    detail: U.euros(d.eurPerte), sub: 'qualifiées perdues ou partiellement recouvrées' }),
+            tuile({ couleur: U.couleurs.payeRetard, valeur: U.pourcent(d.partEur, 1), label: 'Part du portefeuille',
+                    detail: U.pourcent(d.partNb, 1) + ' des factures', sub: 'en euros facturés' }),
+        ].join('');
+
+        // Sélecteur de colonne
+        const sel = $('#qualif-colonne');
+        if (!inventaire.length) {
+            sel.innerHTML = '<option value="">Aucune colonne de qualification détectée</option>';
+            $('#qualif-portee').textContent = "Vos tableaux ne portent aucune colonne à choix, ou elles ont toutes été affectées à un champ de l'application.";
+            U.chart('chart-qualif', videConfig('Aucune qualification'));
+            $('#qualif-table').innerHTML = '';
+            $('#qualif-inventaire').innerHTML = '';
+            return;
+        }
+        if (!state.ui.qualifColonne || !inventaire.some(q => q.nom === state.ui.qualifColonne)) {
+            state.ui.qualifColonne = inventaire[0].nom;
+        }
+        sel.innerHTML = inventaire.map(q =>
+            `<option value="${U.escapeHtml(q.nom)}"${q.nom === state.ui.qualifColonne ? ' selected' : ''}>`
+            + `${U.escapeHtml(q.nom)} (${U.nombre(q.nb)})</option>`).join('');
+
+        rendreRepartitionQualif(data);
+
+        // Inventaire
+        $('#qualif-inventaire').innerHTML = U.table([
+            { key: 'nom', label: 'Colonne' },
+            { key: 'nb', label: 'Factures renseignées', align: 'right', format: U.nombre },
+            { key: 'nbValeurs', label: 'Valeurs distinctes', align: 'right', format: U.nombre },
+            { key: 'tableaux', label: 'Tableaux', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v.join(', '))}">${U.escapeHtml(v.join(', '))}</span>` },
+        ], inventaire, { vide: '—' });
+    }
+
+    function rendreRepartitionQualif(data) {
+        const nom = state.ui.qualifColonne;
+        const eur = state.ui.qualifUnite === 'euros';
+        const r = X.repartitionQualification(data, nom);
+
+        $('#qualif-portee').textContent =
+            `${U.nombre(r.totalNb)} factures renseignées sur cette colonne · ${U.euros(r.totalEur)}`
+            + (r.nonQualifiees ? ` · ${U.nombre(r.nonQualifiees)} factures ne la portent pas` : '');
+
+        if (!r.lignes.length) {
+            U.chart('chart-qualif', videConfig('Aucune valeur'));
+            $('#qualif-table').innerHTML = '';
+            return;
+        }
+
+        U.chart('chart-qualif', {
+            type: 'bar',
+            data: {
+                labels: r.lignes.map(l => l.valeur),
+                datasets: [{
+                    data: r.lignes.map(l => eur ? l.euros : l.nb),
+                    backgroundColor: r.lignes.map((_, i) => U.palette[i % U.palette.length]),
+                    borderRadius: 4,
+                }],
+            },
+            options: {
+                indexAxis: 'y',
+                scales: {
+                    x: { grid: U.grille, ticks: { callback: v => eur ? U.eurosCourt(v) : U.nombre(v) } },
+                    y: { grid: { display: false } },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const l = r.lignes[ctx.dataIndex];
+                                return `${U.nombre(l.nb)} factures · ${U.euros(l.euros)} · ${U.pourcent(l.partNb)}`;
+                            },
+                        },
+                    },
+                },
+                onClick: (evt, els) => { if (els.length) filtrerParQualification(nom, r.lignes[els[0].index].valeur); },
+            },
+        });
+
+        const el = $('#qualif-table');
+        el.innerHTML = U.table([
+            { key: 'valeur', label: 'Qualification' },
+            { key: 'nb', label: 'Factures', align: 'right', format: U.nombre },
+            { key: 'partNb', label: '% du nombre', align: 'right', format: v => U.pourcent(v, 1) },
+            { key: 'euros', label: 'Montant', align: 'right', format: v => U.euros(v) },
+            { key: 'partEur', label: '% des euros', align: 'right', format: v => U.pourcent(v, 1) },
+            { key: 'nbEnRetard', label: 'En retard', align: 'right', format: v => v ? U.nombre(v) : '—' },
+            { key: 'eurEnRetard', label: 'Montant en retard', align: 'right', format: v => v ? U.euros(v) : '—' },
+            { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
+        ], r.lignes, {
+            vide: '—', onRowClick: true,
+            total: {
+                valeur: 'Total', nb: U.nombre(r.totalNb), euros: U.euros(r.totalEur),
+                nbEnRetard: U.nombre(X.sum(r.lignes, l => l.nbEnRetard)),
+                eurEnRetard: U.euros(X.sum(r.lignes, l => l.eurEnRetard)),
+            },
+        });
+        U.bindTable(el, r.lignes, { onRowClick: l => filtrerParQualification(nom, l.valeur) });
+    }
+
+    /** Filtre sur une valeur de qualification, via la recherche plein texte. */
+    function filtrerParQualification(nom, valeur) {
+        state.filtres.qualif = { nom, valeur };
+        state.ui.page = 1;
+        ouvrirOnglet('factures');
     }
 
     // ══════════════════════════════════════════════
@@ -2730,6 +2885,21 @@
                     const { board, items } = await M.fetchBoardItems(state.token, b.id, log);
                     if (!board) throw new Error('Tableau inaccessible');
 
+                    // Le mapping déduit des noms de colonnes est confronté aux
+                    // valeurs réellement présentes : « Problématique
+                    // Pré-échéance » ne doit pas passer pour une date.
+                    const echantillon = items.slice(0, 200);
+                    const contr = I.validerMapping(b.mapping, colId =>
+                        echantillon.map(it => {
+                            const cv = (it.column_values || []).find(c => c.id === colId);
+                            return cv ? M.columnValue(cv) : '';
+                        }));
+                    if (contr.rejets.length) {
+                        b.mapping = contr.mapping;
+                        b.rejetsMapping = contr.rejets;
+                        contr.rejets.forEach(r => log(`   ⚠ « ${r.colonne} » écartée du champ ${r.champ} : ${r.raison}`));
+                    }
+
                     const factures = I.facturesFromMondayBoard(board, items, b.mapping, b);
                     // Conserver les valeurs brutes pour l'aperçu du mapping
                     items.forEach((it, idx) => {
@@ -3055,7 +3225,7 @@
             'Client': f.client,
             'Type de financement': R.getRule(f.financement, state.rules).label,
             'Montant': f.montant,
-            'Encours': f.encours,
+            'Reste dû': f.encours,
             'Date de facture': f.dateFacture ? U.dateFR(f.dateFacture) : '',
             'Début de formation': f.dateDebutFormation ? U.dateFR(f.dateDebutFormation) : '',
             'Fin de formation': f.dateFinFormation ? U.dateFR(f.dateFinFormation) : '',
@@ -3089,7 +3259,7 @@
             { Indicateur: 'Factures analysées', Valeur: v.total },
             { Indicateur: 'Total facturé (€)', Valeur: Math.round(v.totalEuros) },
             { Indicateur: 'Factures en retard', Valeur: v.nbEnRetard },
-            { Indicateur: 'Encours en retard (€)', Valeur: Math.round(v.eurosEnRetard) },
+            { Indicateur: 'Montant en retard (€)', Valeur: Math.round(v.eurosEnRetard) },
             { Indicateur: '% en recouvrement (nombre)', Valeur: +v.tauxNb.toFixed(2) },
             { Indicateur: '% en recouvrement (€)', Valeur: +v.tauxEuros.toFixed(2) },
             { Indicateur: '% cohorte échue en retard (nombre)', Valeur: +v.tauxCohorteNb.toFixed(2) },
@@ -3105,7 +3275,7 @@
             { Indicateur: 'Retard moyen pondéré € (jours)', Valeur: v.retardMoyenPondere == null ? '' : Math.round(v.retardMoyenPondere) },
             { Indicateur: 'Retard moyen au paiement (jours)', Valeur: v.retardMoyenPaiement == null ? '' : Math.round(v.retardMoyenPaiement) },
             { Indicateur: 'Délai moyen facture → règlement (jours)', Valeur: v.delaiPaiementMoyen == null ? '' : Math.round(v.delaiPaiementMoyen) },
-            { Indicateur: 'Encours total (€)', Valeur: Math.round(v.encoursTotal) },
+            { Indicateur: 'Reste à encaisser (€)', Valeur: Math.round(v.encoursTotal) },
             { Indicateur: 'Arrêté au', Valeur: U.dateFR(state.filtres.dateRef) },
         ];
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(synthese), 'Synthèse');
@@ -3118,7 +3288,7 @@
             'Payées à temps': m.nbPayeeATemps,
             'Payées en retard': m.nbPayeeRetard,
             'Encore en retard': m.nbEnRetard,
-            'Encours en retard (€)': Math.round(m.eurEnRetard),
+            'Montant en retard (€)': Math.round(m.eurEnRetard),
             '% en retard (nombre)': +m.tauxNb.toFixed(2),
             '% en retard (€)': +m.tauxEur.toFixed(2),
             '% encore impayé (€)': +m.tauxImpayeEur.toFixed(2),
@@ -3133,7 +3303,7 @@
             'Factures': r.nbTotal,
             'Total facturé (€)': Math.round(r.eurTotal),
             'En retard (nombre)': r.nbEnRetard,
-            'Encours en retard (€)': Math.round(r.eurEnRetard),
+            'Montant en retard (€)': Math.round(r.eurEnRetard),
             '% en retard (nombre)': +r.tauxNb.toFixed(2),
             '% en retard (€)': +r.tauxEur.toFixed(2),
             '% cohorte échue (€)': +r.tauxCohorteEur.toFixed(2),
@@ -3158,7 +3328,7 @@
                     'dont réglé (€)': Math.round(n.eurRegle),
                     'dont non échu (€)': Math.round(n.eurNonEchu),
                     'En recouvrement (€)': Math.round(n.eurEnRecouvrement),
-                    'Encours restant dû (€)': Math.round(n.encoursEnRecouvrement),
+                    'Reste dû (€)': Math.round(n.encoursEnRecouvrement),
                     '% en recouvrement (€)': +n.tauxEur.toFixed(2),
                     'Retard moyen (j)': n.retardMoyen == null ? '' : Math.round(n.retardMoyen),
                 });
@@ -3169,7 +3339,7 @@
 
         // Balance âgée
         const aging = X.balanceAgee(data).map(b => ({
-            'Antériorité': b.label, 'Factures': b.nb, 'Encours (€)': Math.round(b.euros),
+            'Antériorité': b.label, 'Factures': b.nb, 'Montant en retard (€)': Math.round(b.euros),
             '% de l\'encours': +b.partEuros.toFixed(2),
         }));
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(aging), 'Balance âgée');
@@ -3446,6 +3616,15 @@
             e.target.value = '';
         });
 
+        $('#qualif-colonne').addEventListener('change', e => {
+            state.ui.qualifColonne = e.target.value;
+            rendreQualifications(facturesFiltrees());
+        });
+        $$('#seg-qualif-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.qualifUnite = b.dataset.unite;
+            $$('#seg-qualif-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendreQualifications(facturesFiltrees());
+        }));
         $$('#seg-rang-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.rangUnite = b.dataset.unite;
             $$('#seg-rang-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));

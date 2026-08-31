@@ -79,22 +79,29 @@ mémorisé d'une session à l'autre.
 
 Le point de vocabulaire le plus souvent posé y est traité d'emblée : **en
 recouvrement** qualifie une facture échue et impayée, où qu'elle se trouve dans
-Monday — y compris côté ADV ou OPCO — et l'**encours en retard** en est le
-montant. Ce ne sont pas deux populations différentes, mais la même mesurée en
-nombre et en euros.
+Monday — y compris côté ADV ou OPCO — et le **montant en retard** en est la
+contrepartie en euros. Ce ne sont pas deux populations différentes, mais la même
+mesurée en nombre et en euros.
+
+Le vocabulaire a été simplifié : les indicateurs portent désormais le **montant
+facturé**, et non l'encours restant dû. Deux chiffres pour une même facture
+prêtaient à confusion ; le reste dû n'apparaît plus que dans la fiche d'une
+facture partiellement réglée, et dans l'export Excel.
 
 ## Ce que l'application répond
 
 | Question | Où |
 |---|---|
-| Quel est mon encours en retard, en euros et en nombre ? | Tableau de bord — Vue d'ensemble |
+| Quel est mon montant en retard, en euros et en nombre ? | Tableau de bord — Vue d'ensemble |
 | Quel % de factures est en recouvrement, par mois ? | Tableau de bord — *Taux de recouvrement par mois* |
 | Le même %, croisé par type de financement ? | Tableau de bord — carte thermique *% par mois et par financement* |
 | Combien y a-t-il en tout, dont combien en recouvrement ? | Tableau de bord — *Montants : hors recouvrement / en recouvrement* |
 | Quelle part rentre sans passer par le recouvrement ? | Tableau de bord — bandeau *Récupération des factures échues* |
-| Quel est le retard moyen ? | Vue d'ensemble : moyen, médian, max, pondéré par l'encours, et retard moyen constaté au paiement |
+| Quel est le retard moyen ? | Vue d'ensemble : moyen, médian, max, pondéré par le montant, et retard moyen constaté au paiement |
 | Combien de factures en retard côté ADV ? Côté OPCO ? | Chips **Sources du retard** — activables séparément |
-| Quelle est l'antériorité de l'encours ? | Onglet *Balance âgée* |
+| Quelle est l'antériorité du reste à encaisser ? | Onglet *Balance âgée* |
+| Par catégorie, combien de factures en retard, combien pas encore échues, et pour quels montants ? | Onglet *Financements* |
+| Combien de doublons, de créances douteuses, de problématiques pré-échéance ? | Onglet *Qualifications* |
 | Quels clients relancer en priorité ? | Tableau de bord — *Top clients en retard* |
 | Combien d'abonnements GoCardless vont au bout sans incident ? | Onglet *Prélèvements* |
 | Au bout de combien de temps un apprenant décroche ? | Onglet *Prélèvements* — courbe de survie |
@@ -208,6 +215,21 @@ C'est le premier endroit à regarder quand un chiffre paraît trop bas. Une
 colonne *Sans échéance* élevée signale des colonnes de dates non reconnues sur
 ce tableau : la correspondance se corrige juste en dessous. Un écart entre
 *Sur Monday* et *Chargées* signale un chargement incomplet.
+
+### Contrôle des colonnes associées
+
+La reconnaissance automatique des colonnes se fait sur le nom, ce qui suffit la
+plupart du temps mais peut se tromper : la colonne *Problématique Pré-échéance*
+du tableau 1.1 contient le mot « échéance » sans être une date, et se retrouvait
+associée à la date d'échéance — d'où des échéances et des retards aberrants.
+
+Chaque association est désormais **vérifiée sur les valeurs réelles** avant
+d'être retenue : une colonne candidate à un champ de date dont moins de la
+moitié des valeurs se lisent comme des dates est rejetée, de même pour un champ
+de montant dont les valeurs ne sont pas numériques. Le rejet est écrit dans le
+journal de chargement (« *« Problématique Pré-échéance » écartée du champ date
+d'échéance : ne contient pas de dates* ») et la colonne reste disponible dans la
+liste déroulante si l'association était en réalité correcte.
 
 Sur le tableau des factures payées, une valeur *Analysées* à zéro est normale :
 ses lignes se rapprochent des factures des tableaux opérationnels et sont
@@ -345,9 +367,9 @@ portefeuille en deux blocs qui s'additionnent exactement :
 - **Hors recouvrement** — tout le reste : réglé, non échu, ou échéance non
   calculable. Le détail apparaît en info-bulle.
 
-Les colonnes portent le **montant facturé** afin qu'elles s'additionnent ;
-l'encours restant dû, utile pour les factures partiellement réglées, est en
-info-bulle de la colonne *En recouvrement*.
+Les colonnes portent le **montant facturé** afin qu'elles s'additionnent ; le
+reste dû, utile pour les factures partiellement réglées, est en info-bulle de la
+colonne *En recouvrement*.
 
 L'arbre se déplie sur deux niveaux, au choix : *Périmètre › Financement*,
 *Financement › Tableau*, *Tableau › Groupe* ou *Mois › Financement*. Un clic sur
@@ -357,19 +379,43 @@ du bandeau *Récupération* sont également cliquables.
 
 L'export Excel contient un onglet *Répartition* reprenant l'arbre à plat.
 
+### Le tableau par catégorie
+
+L'onglet *Financements* répond à la question la plus fréquente — *par catégorie,
+combien de factures sont en retard, combien ne sont pas encore échues, et pour
+quels montants ?* Chaque ligne porte, pour un type de financement :
+
+| Colonne | Contenu |
+|---|---|
+| **Factures** | nombre total, montant facturé en dessous |
+| **En retard** | échues et impayées — nombre et montant, en rouge |
+| **Pas encore échu** | échéance à venir — nombre et montant |
+| **Réglé** | nombre et montant des factures payées |
+| **Échéance inconnue** | ni règle applicable, ni date exploitable |
+| **% en retard** | part du nombre de factures |
+| **Retard moyen** | en jours, sur les seules factures en retard |
+
+Chaque case porte le nombre en gros et le montant associé en dessous, de sorte
+qu'une ligne se lit d'un seul coup d'œil. Les quatre états s'additionnent
+exactement au nombre total de factures de la ligne : c'est la vérification à
+faire quand un chiffre surprend.
+
+La ligne *Total* reprend l'ensemble du portefeuille filtré. Un clic sur une
+ligne bascule vers l'onglet *Factures* avec le financement déjà filtré.
+
 ### Graphiques du tableau de bord
 
 | Graphique | Lecture |
 |---|---|
 | **Taux de recouvrement par mois** | barres empilées par issue + courbes de taux |
-| **Flux de recouvrement** | entrées et sorties de part et d'autre de zéro, courbe de l'encours en retard à la fin de chaque mois |
-| **Où se concentre l'encours** | treemap, dimension au choix : financement, client, tableau, étape, groupe, propriétaire |
-| **Encours par financement** | barres horizontales |
+| **Flux de recouvrement** | entrées et sorties de part et d'autre de zéro, courbe du montant en retard à la fin de chaque mois |
+| **Où se concentre le retard** | treemap, dimension au choix : financement, client, tableau, étape, groupe |
+| **Montant en retard par financement** | barres horizontales |
 | **Balance âgée** | anneau par tranche d'antériorité |
 | **Structure du portefeuille** | double anneau : état à l'extérieur, périmètre à l'intérieur |
 | **% par mois et financement** | carte thermique |
-| **Évolution du retard moyen** | trois courbes en jours : retard moyen et médian de l'encours, écart au règlement |
-| **DSO** | barres d'encours client + courbe du délai de règlement en jours (count-back ou simple) |
+| **Évolution du retard moyen** | trois courbes en jours : retard moyen et médian des factures en retard, écart au règlement |
+| **DSO** | barres du reste à encaisser + courbe du délai de règlement en jours (count-back ou simple) |
 | **Répartition des retards** | histogramme par tranche, impayées contre finalement encaissées |
 | **Antériorité par mois** | barres empilées (onglet *Balance âgée*) |
 
@@ -383,7 +429,7 @@ sort dans le même mois.
 
 ### DSO
 
-Le DSO est calculé mois par mois, sur l'encours client complet — factures
+Le DSO est calculé mois par mois, sur le reste à encaisser complet — factures
 émises et non réglées à la fin du mois, échues ou non, comme le veut la
 définition. Deux méthodes sont proposées :
 
@@ -439,9 +485,33 @@ de factures sans origine connue est affiché.
 Le même taux est décliné par type de financement, colonne *% avant échéance* de
 l'onglet *Financements*, et repris dans l'export Excel.
 
-Retards : moyen, médian, maximum, **pondéré par l'encours** (un gros impayé
+Retards : moyen, médian, maximum, **pondéré par le montant** (un gros impayé
 ancien pèse plus qu'un petit), et **retard moyen au paiement** mesuré sur les
 factures déjà réglées.
+
+## Qualifications
+
+Les tableaux Monday portent, en plus des dates et des montants, des colonnes de
+qualification propres à chaque périmètre : *qualification recouvrement* sur le
+tableau 1.2, *problématique pré-échéance* sur le 1.1, une qualification
+spécifique sur le 2.1 B2C - Financement personnel, et ainsi de suite. Ces
+colonnes ne servent pas au calcul du retard — l'échéance seule en décide — mais
+elles disent *pourquoi* une facture est là.
+
+L'onglet *Qualifications* les inventorie sans les avoir configurées : toute
+colonne de type statut, couleur ou liste déroulante non déjà utilisée pour un
+autre usage est capturée telle quelle, avec ses valeurs.
+
+- L'**inventaire** liste, tableau par tableau, chaque colonne de qualification,
+  le nombre de factures renseignées et le nombre de valeurs distinctes.
+- Le **détail d'une colonne** donne la répartition en nombre, en pourcentage et
+  en euros : combien de *doublon*, combien de *litige*, combien de *relance
+  envoyée*. Un clic sur une valeur ouvre les factures concernées.
+- Les **créances douteuses** sont comptées à part : factures des étapes
+  *Contentieux* et *Perte*, en nombre et en montant.
+
+Ces statistiques suivent les filtres de la barre supérieure — période, périmètre,
+tableau — comme le reste de l'application.
 
 ## Prélèvements GoCardless
 
@@ -546,7 +616,7 @@ js/rules.js         Règles d'échéance, financements, rôles des tableaux
 js/store.js         Persistance IndexedDB
 js/monday.js        Client GraphQL Monday (API v2, pagination par curseur)
 js/ingest.js        Détection des colonnes, normalisation, dédoublonnage
-js/metrics.js       Calculs : taux, retards, balance âgée, qualité
+js/metrics.js       Calculs : taux, retards, balance âgée, qualifications, qualité
 js/prelevements.js  Analyse GoCardless : apprenants, survie, incidents
 js/ui.js            Formatage, tables, graphiques, modale, notifications
 ```

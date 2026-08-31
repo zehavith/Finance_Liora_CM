@@ -85,6 +85,7 @@
             if (f.bucket && (!x.bucket || x.bucket.key !== f.bucket)) return false;
             if (f.client && x.client !== f.client) return false;
             if (f.etapes && f.etapes.size && !f.etapes.has(x.etape)) return false;
+            if (f.qualif && (!x.qualifs || x.qualifs[f.qualif.nom] !== f.qualif.valeur)) return false;
 
             // Tranche de retard (histogramme)
             if (f.retardMin != null || f.retardMax != null) {
@@ -155,8 +156,10 @@
         const echues = factures.filter(x => x.retardJours != null && x.retardJours > 0 || (x.dateEcheance && x.etat !== 'Non échue'));
         const sansEcheance = factures.filter(x => x.etat === 'Échéance inconnue');
 
-        const encoursRetard = sum(enRetard, x => x.encours);
-        const encoursTotal = sum(factures.filter(x => !x.paye), x => x.encours);
+        // Le montant de la facture, et non son encours : c'est le chiffre que
+        // l'on retrouve dans Monday, donc le seul qui se vérifie d'un coup d'œil.
+        const montantRetard = sum(enRetard, x => x.montant);
+        const resteAEncaisser = sum(factures.filter(x => !x.paye), x => x.montant);
 
         // Assiette du taux : factures dont l'échéance est connue et dépassée
         const assiette = factures.filter(x => x.dateEcheance && x.etat !== 'Non échue');
@@ -174,20 +177,20 @@
         return {
             total, totalEuros,
             nbEnRetard: enRetard.length,
-            eurosEnRetard: encoursRetard,
+            eurosEnRetard: sum(enRetard, x => x.montant),
             nbNonEchues: nonEchues.length,
-            eurosNonEchues: sum(nonEchues, x => x.encours),
+            eurosNonEchues: sum(nonEchues, x => x.montant),
             nbPayees: payees.length,
             eurosPayees: sum(payees, x => x.montant),
             nbPayeesRetard: payeesRetard.length,
             eurosPayeesRetard: sum(payeesRetard, x => x.montant),
             nbSansEcheance: sansEcheance.length,
             eurosSansEcheance: sum(sansEcheance, x => x.montant),
-            encoursTotal,
+            encoursTotal: resteAEncaisser,
 
             // Taux « à date » : part de l'encours actuellement en retard
             tauxNb: pct(enRetard.length, total),
-            tauxEuros: pct(encoursRetard, totalEuros),
+            tauxEuros: pct(montantRetard, totalEuros),
 
             // Taux « cohorte » : sur les factures arrivées à échéance,
             // part de celles qui ont été payées en retard ou restent impayées
@@ -200,7 +203,7 @@
             retardMoyen: moyenne(enRetard.map(x => x.retardJours)),
             retardMedian: mediane(enRetard.map(x => x.retardJours)),
             retardMax: enRetard.length ? Math.max(...enRetard.map(x => x.retardJours)) : null,
-            retardMoyenPondere: moyennePonderee(enRetard, x => x.retardJours, x => x.encours),
+            retardMoyenPondere: moyennePonderee(enRetard, x => x.retardJours, x => x.montant),
             retardMoyenPaiement: moyenne(payeesRetard.map(x => x.retardJours)),
             delaiPaiementMoyen: moyenne(payees.map(x => x.delaiPaiement).filter(d => d != null && d >= 0)),
 
@@ -226,7 +229,7 @@
 
             // Encore à recouvrer
             tauxResteNb: pct(enRetard.length, assiette.length),
-            tauxResteEuros: pct(sum(enRetard, x => x.encours), assietteEuros),
+            tauxResteEuros: pct(sum(enRetard, x => x.montant), assietteEuros),
 
             // Lecture « process » : d'où venait la facture quand elle a été réglée
             nbPayeesHorsRecouvrement: parOrigine.hors.length,
@@ -282,7 +285,7 @@
             switch (f.etat) {
                 case 'Payée':          m.nbPayeeATemps++; m.eurPayeeATemps += eur; break;
                 case 'Payée en retard': m.nbPayeeRetard++; m.eurPayeeRetard += eur; m.retards.push(f.retardJours); break;
-                case 'En retard':      m.nbEnRetard++;    m.eurEnRetard += f.encours || eur; m.retards.push(f.retardJours); break;
+                case 'En retard':      m.nbEnRetard++;    m.eurEnRetard += f.montant || eur; m.retards.push(f.retardJours); break;
                 case 'Non échue':      m.nbNonEchue++;    m.eurNonEchue += eur; break;
                 default:               m.nbSansEcheance++; m.eurSansEcheance += eur;
             }
@@ -331,8 +334,17 @@
             const eurTotal = sum(g.items, x => x.montant);
             const eurAssiette = sum(assiette, x => x.montant);
             const regleATemps = assiette.filter(x => x.etat === 'Payée');
+            const nonEchues = g.items.filter(x => x.etat === 'Non échue');
+            const payees = g.items.filter(x => x.paye);
+            const sansEcheance = g.items.filter(x => x.etat === 'Échéance inconnue');
             return {
                 ...g,
+                nbNonEchues: nonEchues.length,
+                eurNonEchues: sum(nonEchues, x => x.montant),
+                nbPayees: payees.length,
+                eurPayees: sum(payees, x => x.montant),
+                nbSansEcheance: sansEcheance.length,
+                eurSansEcheance: sum(sansEcheance, x => x.montant),
                 nbRegleATemps: regleATemps.length,
                 eurRegleATemps: sum(regleATemps, x => x.montant),
                 tauxRegleATempsNb: pct(regleATemps.length, assiette.length),
@@ -340,16 +352,16 @@
                 nbTotal: g.items.length,
                 eurTotal,
                 nbEnRetard: enRetard.length,
-                eurEnRetard: sum(enRetard, x => x.encours),
+                eurEnRetard: sum(enRetard, x => x.montant),
                 nbPayeeRetard: payeeRetard.length,
                 nbAssiette: assiette.length,
                 eurAssiette,
                 tauxNb: pct(enRetard.length, g.items.length),
-                tauxEur: pct(sum(enRetard, x => x.encours), eurTotal),
+                tauxEur: pct(sum(enRetard, x => x.montant), eurTotal),
                 tauxCohorteNb: pct(enRetard.length + payeeRetard.length, assiette.length),
                 tauxCohorteEur: pct(sum(enRetard, x => x.montant) + sum(payeeRetard, x => x.montant), eurAssiette),
                 retardMoyen: moyenne(enRetard.map(x => x.retardJours)),
-                retardMoyenPondere: moyennePonderee(enRetard, x => x.retardJours, x => x.encours),
+                retardMoyenPondere: moyennePonderee(enRetard, x => x.retardJours, x => x.montant),
                 retardMoyenPaiement: moyenne(payeeRetard.map(x => x.retardJours)),
             };
         });
@@ -372,7 +384,7 @@
             const c = cell[k] || (cell[k] = { nbTotal: 0, eurTotal: 0, nbRetard: 0, eurRetard: 0, nbAssiette: 0, eurAssiette: 0 });
             c.nbTotal++; c.eurTotal += f.montant || 0;
             if (f.dateEcheance && f.etat !== 'Non échue') { c.nbAssiette++; c.eurAssiette += f.montant || 0; }
-            if (f.etat === 'En retard') { c.nbRetard++; c.eurRetard += f.encours || 0; }
+            if (f.etat === 'En retard') { c.nbRetard++; c.eurRetard += f.montant || 0; }
         }
 
         fins.sort((a, b) => {
@@ -420,7 +432,7 @@
             nbEnRecouvrement: enRec.length,
             eurHorsRecouvrement: total - eurEnRec,
             nbHorsRecouvrement: items.length - enRec.length,
-            encoursEnRecouvrement: sum(enRec, x => x.encours),
+            encoursEnRecouvrement: sum(enRec, x => x.montant),
             tauxEur: pct(eurEnRec, total),
             tauxNb: pct(enRec.length, items.length),
             retardMoyen: moyenne(enRec.map(x => x.retardJours)),
@@ -473,9 +485,9 @@
             return {
                 ...b,
                 nb: items.length,
-                euros: sum(items, x => x.encours),
+                euros: sum(items, x => x.montant),
                 partNb: pct(items.length, nonPayees.length),
-                partEuros: pct(sum(items, x => x.encours), sum(nonPayees, x => x.encours)),
+                partEuros: pct(sum(items, x => x.montant), sum(nonPayees, x => x.montant)),
             };
         });
     }
@@ -493,8 +505,8 @@
                 map.set(k, row);
             }
             const b = f.bucket;
-            if (b) { row[b.key] += f.encours || 0; row[b.key + '_nb']++; }
-            row.total += f.encours || 0;
+            if (b) { row[b.key] += f.montant || 0; row[b.key + '_nb']++; }
+            row.total += f.montant || 0;
             row.nb++;
         }
         return [...map.values()].sort((a, b) => b.total - a.total);
@@ -653,7 +665,7 @@
             return {
                 ...t,
                 nbImpayees: i.length,
-                eurImpayees: sum(i, f => f.encours || f.montant),
+                eurImpayees: sum(i, f => f.montant),
                 nbPayees: p.length,
                 eurPayees: sum(p, f => f.montant),
             };
@@ -687,7 +699,7 @@
             const k = f.client || '—';
             let g = map.get(k);
             if (!g) { g = { client: k, nb: 0, euros: 0, retards: [], plusVieille: null, financements: new Set() }; map.set(k, g); }
-            g.nb++; g.euros += f.encours || 0;
+            g.nb++; g.euros += f.montant || 0;
             g.retards.push(f.retardJours);
             if (f.financement) g.financements.add(f.financement);
             if (g.plusVieille == null || f.retardJours > g.plusVieille) g.plusVieille = f.retardJours;
@@ -705,7 +717,7 @@
             let g = map.get(k);
             if (!g) { g = { board: k, role: f.role, nb: 0, euros: 0, nbRetard: 0, eurRetard: 0, retards: [] }; map.set(k, g); }
             g.nb++; g.euros += f.montant || 0;
-            if (f.etat === 'En retard') { g.nbRetard++; g.eurRetard += f.encours || 0; g.retards.push(f.retardJours); }
+            if (f.etat === 'En retard') { g.nbRetard++; g.eurRetard += f.montant || 0; g.retards.push(f.retardJours); }
         }
         return [...map.values()]
             .map(g => ({ ...g, tauxNb: pct(g.nbRetard, g.nb), retardMoyen: moyenne(g.retards) }))
@@ -719,11 +731,98 @@
             let g = map.get(k);
             if (!g) { g = { cle: k, groupe: f.groupe || f.groupeOrigine || '—', board: f.board, nb: 0, euros: 0, nbRetard: 0, eurRetard: 0, retards: [] }; map.set(k, g); }
             g.nb++; g.euros += f.montant || 0;
-            if (f.etat === 'En retard') { g.nbRetard++; g.eurRetard += f.encours || 0; g.retards.push(f.retardJours); }
+            if (f.etat === 'En retard') { g.nbRetard++; g.eurRetard += f.montant || 0; g.retards.push(f.retardJours); }
         }
         return [...map.values()]
             .map(g => ({ ...g, tauxNb: pct(g.nbRetard, g.nb), retardMoyen: moyenne(g.retards) }))
             .sort((a, b) => b.eurRetard - a.eurRetard);
+    }
+
+    // ──────────────────────────────────────────────
+    //  Qualifications métier
+    //
+    //  Les colonnes à choix des tableaux Monday portent le vocabulaire du
+    //  métier — problématique pré-échéance, qualification recouvrement, type
+    //  de paiement. Elles diffèrent d'un tableau à l'autre : on les inventorie
+    //  plutôt que de les coder en dur.
+    // ──────────────────────────────────────────────
+
+    /** Colonnes de qualification présentes, avec le tableau qui les porte. */
+    function inventaireQualifications(factures) {
+        const map = new Map();
+        for (const f of factures) {
+            for (const nom of Object.keys(f.qualifs || {})) {
+                let q = map.get(nom);
+                if (!q) { q = { nom, nb: 0, tableaux: new Set(), valeurs: new Set() }; map.set(nom, q); }
+                q.nb++;
+                q.tableaux.add(f.board);
+                q.valeurs.add(f.qualifs[nom]);
+            }
+        }
+        return [...map.values()]
+            .map(q => ({ ...q, tableaux: [...q.tableaux], nbValeurs: q.valeurs.size }))
+            .sort((a, b) => b.nb - a.nb);
+    }
+
+    /** Répartition d'une colonne de qualification, valeur par valeur. */
+    function repartitionQualification(factures, nomColonne) {
+        const concernees = factures.filter(f => f.qualifs && f.qualifs[nomColonne]);
+        const map = new Map();
+
+        for (const f of concernees) {
+            const v = f.qualifs[nomColonne];
+            let g = map.get(v);
+            if (!g) { g = { valeur: v, items: [] }; map.set(v, g); }
+            g.items.push(f);
+        }
+
+        const totalNb = concernees.length;
+        const totalEur = sum(concernees, f => f.montant);
+
+        const lignes = [...map.values()].map(g => {
+            const enRetard = g.items.filter(x => x.etat === 'En retard');
+            return {
+                valeur: g.valeur,
+                nb: g.items.length,
+                euros: sum(g.items, x => x.montant),
+                partNb: pct(g.items.length, totalNb),
+                partEur: pct(sum(g.items, x => x.montant), totalEur),
+                nbEnRetard: enRetard.length,
+                eurEnRetard: sum(enRetard, x => x.montant),
+                retardMoyen: moyenne(enRetard.map(x => x.retardJours)),
+                items: g.items,
+            };
+        }).sort((a, b) => b.nb - a.nb);
+
+        return {
+            nom: nomColonne,
+            lignes,
+            totalNb,
+            totalEur,
+            nonQualifiees: factures.length - totalNb,
+        };
+    }
+
+    /**
+     * Créances douteuses : contentieux et pertes, au sens des groupes Monday.
+     * Ce sont les créances dont le recouvrement ordinaire a échoué.
+     */
+    function creancesDouteuses(factures) {
+        const items = factures.filter(f => f.etape === 'CONTENTIEUX' || f.etape === 'PERTE');
+        const contentieux = items.filter(f => f.etape === 'CONTENTIEUX');
+        const perte = items.filter(f => f.etape === 'PERTE');
+        return {
+            nb: items.length,
+            euros: sum(items, f => f.montant),
+            encours: sum(items.filter(f => !f.paye), f => f.montant),
+            nbContentieux: contentieux.length,
+            eurContentieux: sum(contentieux, f => f.montant),
+            nbPerte: perte.length,
+            eurPerte: sum(perte, f => f.montant),
+            partNb: pct(items.length, factures.length),
+            partEur: pct(sum(items, f => f.montant), sum(factures, f => f.montant)),
+            items,
+        };
     }
 
     // ──────────────────────────────────────────────
@@ -839,5 +938,6 @@
         dsoParMois, histogrammeRetards, TRANCHES_RETARD, joursDuMois,
         balanceAgee, balanceAgeeParDimension, topClients, parTableau, parGroupe,
         qualite, scoreQualite, comparaisonMensuelle,
+        inventaireQualifications, repartitionQualification, creancesDouteuses,
     };
 })(window);

@@ -91,6 +91,51 @@
         return mapping;
     }
 
+    /**
+     * Confronte le mapping aux valeurs réelles et retire les associations que
+     * les données démentent.
+     *
+     * Le nom d'une colonne ne suffit pas : « Problématique Pré-échéance »
+     * contient le mot échéance et se faisait prendre pour la date d'échéance,
+     * alors qu'elle contient « Demande d'avoir / Doublon - A contrôler ». Une
+     * colonne de dates doit contenir des dates, une colonne de montants des
+     * nombres — sinon l'association est fausse, et une échéance fausse fausse
+     * tout le reste.
+     *
+     * @param {Object} mapping            field -> colId
+     * @param {Function} valeurs          colId -> tableau de valeurs brutes
+     * @returns {{mapping:Object, rejets:Array<{champ,colonne,raison}>}}
+     */
+    function validerMapping(mapping, valeurs) {
+        const propre = {}, rejets = [];
+        const SEUIL = 0.5;   // la moitié des valeurs renseignées doit convenir
+
+        for (const [champ, colId] of Object.entries(mapping)) {
+            const brutes = (valeurs(colId) || [])
+                .map(v => (v == null ? '' : String(v).trim()))
+                .filter(Boolean)
+                .slice(0, 200);
+
+            // Sans valeur pour trancher, on garde l'association du nom
+            if (!brutes.length) { propre[champ] = colId; continue; }
+
+            let ok = true, raison = '';
+            if (champ.startsWith('date')) {
+                const n = brutes.filter(v => R.parseDate(v)).length;
+                ok = n / brutes.length >= SEUIL;
+                raison = 'ne contient pas de dates';
+            } else if (champ.startsWith('montant') || champ === 'resteDu') {
+                const n = brutes.filter(v => parseMontant(v) != null).length;
+                ok = n / brutes.length >= SEUIL;
+                raison = 'ne contient pas de nombres';
+            }
+
+            if (ok) propre[champ] = colId;
+            else rejets.push({ champ, colonne: colId, raison });
+        }
+        return { mapping: propre, rejets };
+    }
+
     // ──────────────────────────────────────────────
     //  2. Nettoyage des valeurs
     // ──────────────────────────────────────────────
@@ -177,6 +222,7 @@
         if (!finKey) finKey = R.detectFinancement(ctx.boardName);
         if (!finKey) finKey = ctx.financementDefaut || null;
 
+        const qualifRecouvrement = String(v.qualifRecouvrement || '').trim();
         const datePaiement = R.parseDate(v.datePaiement);
         const dateControlePaiement = R.parseDate(v.dateControlePaiement);
 
@@ -213,18 +259,40 @@
             datePaiement,
             dateControlePaiement,
 
+            // La qualification recouvrement est un champ canonique — elle sert
+            // au filtrage — mais elle reste une colonne de vocabulaire métier :
+            // on la verse aussi dans les qualifications pour qu'elle apparaisse
+            // dans l'inventaire et dans les statistiques de répartition.
+            qualifs: qualifRecouvrement
+                ? { 'Qualification recouvrement': qualifRecouvrement, ...(v.__qualifs || {}) }
+                : (v.__qualifs || {}),
             statut: String(v.statut || '').trim(),
             proprietaire: String(v.proprietaire || '').trim() || '—',
-            qualifRecouvrement: String(v.qualifRecouvrement || '').trim(),
+            qualifRecouvrement,
             relance: String(v.relance || '').trim(),
             commentaire: String(v.commentaire || '').trim(),
             litige: String(v.litige || '').trim(),
         };
     }
 
+    /**
+     * Colonnes de qualification d'un tableau : les listes de choix qui portent
+     * le vocabulaire métier — « Problématique pré-échéance », « Qualification
+     * recouvrement », « Type de paiement ». Elles varient d'un tableau à
+     * l'autre et ne peuvent pas être codées en dur ; on retient donc toute
+     * colonne à choix qui n'a pas déjà été affectée à un champ canonique.
+     */
+    function colonnesQualification(colonnes, mapping) {
+        const utilisees = new Set(Object.values(mapping || {}));
+        return (colonnes || []).filter(c =>
+            ['status', 'color', 'dropdown'].includes(c.type) && !utilisees.has(c.id));
+    }
+
     /** Transforme les items Monday d'un tableau en factures canoniques. */
     function facturesFromMondayBoard(board, items, mapping, boardCfg) {
         const out = [];
+        const qualifCols = colonnesQualification(boardCfg.columns, mapping);
+
         for (const item of items) {
             const byId = {};
             for (const cv of (item.column_values || [])) byId[cv.id] = M.columnValue(cv);
@@ -234,6 +302,14 @@
                 const colId = mapping[field];
                 if (colId && byId[colId] !== undefined) rowValues[field] = byId[colId];
             }
+
+            const qualifs = {};
+            for (const c of qualifCols) {
+                const v = byId[c.id];
+                if (v) qualifs[c.title] = v;
+            }
+            rowValues.__qualifs = qualifs;
+
             out.push(buildFacture(rowValues, {
                 boardId: board.id,
                 boardName: board.name,
@@ -254,9 +330,28 @@
         if (!rows.length) return { factures: [], mapping: {}, columns: [] };
         const headers = Object.keys(rows[0]);
         const columns = headers.map(h => ({ id: h, title: h }));
-        const mapping = boardCfg.mapping && Object.keys(boardCfg.mapping).length
+        let mapping = boardCfg.mapping && Object.keys(boardCfg.mapping).length
             ? boardCfg.mapping
             : autoMapColumns(columns);
+
+        // Le mapping déduit des noms est confronté aux valeurs du fichier
+        const contr = validerMapping(mapping, col => rows.map(r => r[col]));
+        mapping = contr.mapping;
+
+        // Sans type de colonne, une colonne de fichier est tenue pour une
+        // qualification si elle prend peu de valeurs distinctes sur l'ensemble
+        // des lignes — signature d'une liste de choix.
+        const utilisees = new Set(Object.values(mapping));
+        const qualifHeaders = headers.filter(h => {
+            if (utilisees.has(h)) return false;
+            const vals = new Set();
+            for (const r of rows) {
+                const v = String(r[h] == null ? '' : r[h]).trim();
+                if (v) vals.add(v);
+                if (vals.size > 25) return false;
+            }
+            return vals.size >= 2;
+        });
 
         const factures = rows.map((row, i) => {
             const rowValues = {};
@@ -264,6 +359,13 @@
                 const col = mapping[field];
                 if (col && row[col] !== undefined) rowValues[field] = row[col];
             }
+            const qualifs = {};
+            for (const h of qualifHeaders) {
+                const v = String(row[h] == null ? '' : row[h]).trim();
+                if (v) qualifs[h] = v;
+            }
+            rowValues.__qualifs = qualifs;
+
             // Le groupe peut venir d'une colonne « Groupe » du fichier
             const groupTitle = rowValues.groupeOrigine || row['Groupe'] || row['Group'] || '';
             return buildFacture(rowValues, {
@@ -278,7 +380,7 @@
                 itemName: rowValues.numero || '',
             });
         });
-        return { factures, mapping, columns };
+        return { factures, mapping, columns, rejets: contr.rejets };
     }
 
     // ──────────────────────────────────────────────
@@ -307,6 +409,9 @@
             'resteDu', 'dateFacture', 'dateDebutFormation', 'dateFinFormation', 'dateEcheanceSource',
             'datePaiement', 'dateControlePaiement', 'statut', 'proprietaire', 'qualifRecouvrement',
             'relance', 'commentaire', 'litige', 'groupeOrigine'];
+        // Les qualifications de chaque source se cumulent : une facture vue sur
+        // deux tableaux porte les colonnes de qualification des deux.
+        out.qualifs = { ...(extra.qualifs || {}), ...(base.qualifs || {}) };
         for (const c of champs) {
             const cur = out[c], nxt = extra[c];
             const vide = cur == null || cur === '' || cur === '—';
@@ -541,7 +646,8 @@
 
     global.LioraIngest = {
         FIELD_DEFS, FIELD_BY_NAME, autoMapColumns, parseMontant, factureKey,
-        buildFacture, facturesFromMondayBoard, facturesFromRows,
+        buildFacture, facturesFromMondayBoard, facturesFromRows, colonnesQualification,
+        validerMapping,
         consolider, appliquerGrandLivre, enrichir, statutIndiquePaye,
     };
 })(window);
