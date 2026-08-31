@@ -189,6 +189,22 @@ La **requête Gmail est écrite au journal** pour chaque dossier. C'est la seule
 chose qui explique un « aucun message trouvé » : sans elle, il n'y a rien à
 diagnostiquer.
 
+### L'export ne vit pas dans la page
+
+Il tourne dans l'outil. Fermer l'onglet, le recharger, ou laisser le navigateur
+mettre la page en veille ne l'interrompt pas — chaque dossier terminé est écrit
+sur le disque et ajouté au récapitulatif dans la foulée.
+
+Ce qui s'arrêtait, c'était **l'affichage** : une page rechargée ne reprenait pas
+le suivi, et l'écran muet donnait à croire que l'export s'était arrêté. La page
+interroge désormais l'outil à son ouverture, et reprend le fil s'il travaille
+encore.
+
+Le journal à l'écran ne garde que les six cents dernières lignes : un export
+d'une heure en écrit des milliers, et les conserver toutes finissait par rendre
+la page poussive — ce qui, là encore, se lisait comme un arrêt. `journal.log`
+garde tout.
+
 ### Tout effacer, en trois degrés séparés
 
 Le bouton **Tout effacer…** de l'onglet *État des dossiers* pose trois

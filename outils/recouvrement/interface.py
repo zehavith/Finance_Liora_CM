@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "46"
+VERSION = "47"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -1538,6 +1538,8 @@ function reglesEcheance() {
 // une fois n'a pas à être redécidé à chaque ouverture.
 Object.keys(CASES).forEach((id) => { if ($(id)) $(id).checked = CASES[id]; });
 
+reprendreSuiviEnCours();
+
 if (TABLEAUX_COCHES.size) {
   const onglet = document.querySelector('.onglet[data-volet="voletMonday"]');
   if (onglet) onglet.click();
@@ -1722,11 +1724,34 @@ async function demarrer(simulation) {
     return;
   }
 
-  $("texteEtat").textContent = $("simulation").checked
-    ? "Simulation en cours…" : "Export en cours…";
+  suivreExport(simulation);
+}
+
+function suivreExport(simulation) {
+  $("texteEtat").textContent = simulation
+    ? "Test en cours…" : "Export en cours…";
   $("etat").classList.add("visible");
+  $("lancer").disabled = true;
+  $("tester").disabled = true;
+  $("journal").hidden = false;
+  clearInterval(sondage);
   sondage = setInterval(rafraichir, 700);
   rafraichir();
+}
+
+// Un export tourne dans l'outil, pas dans la page : recharger celle-ci — ou
+// la laisser mettre en veille par le navigateur — ne l'interrompt pas. Sans
+// ce rattrapage, l'ecran restait muet et l'export passait pour arrete.
+async function reprendreSuiviEnCours() {
+  let etat;
+  try { etat = await api("/api/journal?depuis=0"); }
+  catch { return; }
+  if (!etat.en_cours) return;
+
+  position = 0;
+  simulationDemandee = etat.lignes.some((l) => l.includes("simulation"));
+  suivreExport(simulationDemandee);
+  afficherBandeau(true, "Un export est en cours : la page a repris son suivi.");
 }
 
 $("ouvrir").addEventListener("click", async () => {
@@ -1744,6 +1769,12 @@ async function rafraichir() {
     position = etat.total;
     const journal = $("journal");
     for (const ligne of etat.lignes) journal.appendChild(elementLigne(ligne));
+    // Un export d'une heure ecrit des milliers de lignes : les garder toutes
+    // dans la page finit par la rendre poussive, et c'est alors l'export qui
+    // parait s'etre arrete. Le journal complet reste dans journal.log.
+    while (journal.childElementCount > LIGNES_A_L_ECRAN) {
+      journal.removeChild(journal.firstElementChild);
+    }
     journal.scrollTop = journal.scrollHeight;
   }
 
@@ -1805,6 +1836,7 @@ document.querySelectorAll("nav.principal button").forEach((bouton) => {
 //  Suivi des dossiers
 // ============================================================
 let DOSSIERS = [], STATUTS = [], AGREGATS = null, COURBE = null, SERVEUR = null;
+const LIGNES_A_L_ECRAN = 600;
 
 const euro = (v) => new Intl.NumberFormat("fr-FR",
   { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v || 0);

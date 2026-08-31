@@ -3426,6 +3426,18 @@ def test_interface() -> None:
         finally:
             interface.ecrire_preferences(avant_migration)
 
+        print("  -- la page sait reprendre un export en cours --")
+        # Un export tourne dans l'outil, pas dans la page : recharger celle-ci
+        # ne l'interrompt pas, mais l'écran restait muet et l'export passait
+        # pour arrêté.
+        verifier("reprendreSuiviEnCours()" in page,
+                 "la page interroge l'outil au chargement")
+        verifier("en_cours" in page,
+                 "et sait distinguer un export en cours d'un export fini")
+        statut, journal_vide = appeler("/api/journal?depuis=0")
+        verifier("en_cours" in journal_vide,
+                 "le journal annonce si un export tourne")
+
         print("  -- une remise à zéro non confirmée est refusée --")
         # Elle est irrattrapable : la confirmation est portée dans la requête
         # plutôt que déduite d'un appel bien formé.

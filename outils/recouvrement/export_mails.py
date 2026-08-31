@@ -415,7 +415,11 @@ def traiter_dossier(
     journal: Journal,
 ) -> ResumeDossier:
     requete = dossier.requete_gmail()
-    journal(f"    requête : {requete}")
+    # Tronquée : depuis qu'elle essaie toutes les écritures du numéro, elle
+    # fait deux mille caractères et noie le reste du journal. Elle figure en
+    # entier au récapitulatif, colonne « requete_gmail ».
+    apercu = requete if len(requete) <= 220 else requete[:217] + "…"
+    journal(f"    requête : {apercu}")
     resume = ResumeDossier(
         reference=dossier.reference,
         nom=dossier.nom,
