@@ -186,6 +186,26 @@
         ignore:       'Ignoré',
     };
 
+    /**
+     * Groupes à écarter des analyses.
+     *
+     * Un tableau opérationnel peut contenir des groupes de service — archives,
+     * zones techniques, corbeilles — qui gonflent les volumes sans rien devoir.
+     * Le tableau ADV, par exemple, héberge « 1.1.9. Technique - Archive » avec
+     * plusieurs milliers de lignes closes.
+     */
+    const GROUPES_EXCLUS = [
+        'technique', 'archive', 'archives', 'archivee', 'archivees',
+        'corbeille', 'poubelle', 'obsolete', 'a supprimer', 'ne pas utiliser',
+        'test', 'brouillon', 'doublon',
+    ];
+
+    /** Le libellé de ce groupe le désigne-t-il comme groupe de service ? */
+    function estGroupeTechnique(nom) {
+        const n = ' ' + norm(nom) + ' ';
+        return GROUPES_EXCLUS.some(m => n.includes(' ' + m + ' ') || n.includes(m + ' '));
+    }
+
     /** Sources de retard, utilisées pour les chips de filtrage du dashboard. */
     const SOURCES = [
         { key: 'recouvrement', label: 'Recouvrement',  hint: 'Tableau 1.2 — recouvrement Corporate' },
@@ -334,6 +354,7 @@
         DEFAULT_ECHEANCE_RULES, DEFAULT_FALLBACK_RULE,
         BOARD_ROLE_PATTERNS, ROLE_LABELS, SOURCES,
         detectBoardRole, detectFinancement, getRule, computeEcheance,
+        GROUPES_EXCLUS, estGroupeTechnique,
         AGING_BUCKETS, bucketFor, MS_DAY,
     };
 })(window);

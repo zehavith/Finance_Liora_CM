@@ -125,6 +125,23 @@ par défaut des factures dont la colonne est vide.
 | `b2c` | 2.1 à 2.4 | B2C, financement déduit du tableau (CPF, AIF, Personnel…) |
 | `technique` | 1.9, 2.9 | Exclu des analyses |
 
+### Groupes de service
+
+Un tableau opérationnel héberge souvent des groupes qui ne sont pas du suivi :
+le tableau ADV contient par exemple `1.1.9. Technique - Archive`,
+`1.1.9. Technique - Tampon` et `1.1.9. Technique - Service recouvrement`,
+soit plusieurs milliers de lignes closes. Les compter multiplierait les volumes
+par dix et fausserait tous les taux.
+
+Sont donc écartés les groupes dont le libellé contient *technique*, *archive*,
+*corbeille*, *poubelle*, *obsolète*, *à supprimer*, *ne pas utiliser*, *test*,
+*brouillon* ou *doublon* — en plus des tableaux dont le rôle est *Technique*.
+
+L'onglet *Données* liste précisément ce qui est écarté, groupe par groupe, avec
+le nombre de factures concernées : retirer des milliers de lignes sans le dire
+serait aussi trompeur que de les compter. La case *Exclure les tableaux et les
+groupes de service* permet de tout réintégrer pour vérifier.
+
 ### Circuit Tampon → ADV → Recouvrement
 
 Une facture transite par le tampon, bascule en ADV, puis en recouvrement une

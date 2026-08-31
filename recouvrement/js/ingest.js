@@ -171,6 +171,7 @@
             source: ctx.source,
             perimetre: ctx.perimetre,
             groupe: ctx.groupTitle || '',
+            groupeTechnique: R.estGroupeTechnique(ctx.groupTitle),
             groupeOrigine: String(v.groupeOrigine || '').trim(),
 
             numero,
@@ -400,6 +401,10 @@
         const dateRef = o.dateRef || R.stripTime(new Date());
 
         for (const f of factures) {
+            // Recalculé à chaque passe : les factures déjà en cache bénéficient
+            // ainsi de toute évolution de la liste des groupes écartés.
+            f.groupeTechnique = R.estGroupeTechnique(f.groupe);
+
             const ech = R.computeEcheance(f, { rules: o.rules, prefereEcheanceMonday: o.prefereEcheanceMonday });
             f.dateEcheance = ech.date;
             f.echeanceOrigine = ech.origine;

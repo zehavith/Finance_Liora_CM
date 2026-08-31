@@ -2253,6 +2253,7 @@
     // ══════════════════════════════════════════════
 
     async function rendreDonnees() {
+        rendreExclusions();
         rendreTableBoards();
         rendreSelectMapping();
         rendreTableMapping();
@@ -2264,6 +2265,35 @@
             st.className = 'connect-status ok';
             st.textContent = `Connecté : ${state.compte.name} — compte ${state.compte.account ? state.compte.account.name : ''}`;
         }
+    }
+
+    /**
+     * Détail de ce que l'exclusion écarte. Retirer plusieurs milliers de lignes
+     * des indicateurs sans le dire serait aussi trompeur que de les compter.
+     */
+    function rendreExclusions() {
+        const el = $('#exclusions-info');
+        if (!el) return;
+
+        const ecartees = state.factures.filter(f => f.role === 'technique' || f.groupeTechnique);
+        if (!ecartees.length) {
+            el.innerHTML = '<span class="fv-hint">Aucun groupe ni tableau de service détecté.</span>';
+            return;
+        }
+
+        const parOrigine = new Map();
+        for (const f of ecartees) {
+            const cle = f.groupeTechnique ? `${f.board} › ${f.groupe}` : `${f.board} (tableau technique)`;
+            parOrigine.set(cle, (parOrigine.get(cle) || 0) + 1);
+        }
+        const lignes = [...parOrigine.entries()].sort((a, b) => b[1] - a[1]);
+
+        el.innerHTML = `
+            <span class="fv-hint">${U.nombre(ecartees.length)} factures écartées des indicateurs :</span>
+            <ul class="exclusions-liste">
+                ${lignes.map(([nom, n]) =>
+                    `<li><span>${U.escapeHtml(nom)}</span><strong>${U.nombre(n)}</strong></li>`).join('')}
+            </ul>`;
     }
 
     function rendreTableBoards() {
@@ -3336,6 +3366,7 @@
         });
         opt('#opt-prefere-monday', 'prefereEcheanceMonday', true);
         opt('#opt-masquer-technique', 'masquerTechnique', false);
+        $('#opt-masquer-technique').addEventListener('change', rendreExclusions);
         opt('#opt-payees-hors-portefeuille', 'payeesHorsPortefeuille', true);
 
         $('#btn-clear-data').addEventListener('click', async () => {

@@ -65,7 +65,9 @@
         const q = R.norm(f.recherche || '');
 
         return factures.filter(x => {
-            if (f.masquerTechnique !== false && x.role === 'technique') return false;
+            // Écarte les tableaux techniques ET les groupes de service
+            // (archives, corbeilles) hébergés dans un tableau opérationnel.
+            if (f.masquerTechnique !== false && (x.role === 'technique' || x.groupeTechnique)) return false;
             if (x.role === 'ignore') return false;
 
             if (f.perimetre && f.perimetre !== 'Tous' && x.perimetre !== f.perimetre) return false;
