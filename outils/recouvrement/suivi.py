@@ -372,6 +372,10 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 "contestation": (rangee.get("contestation") or "").strip(),
                 "jours_sans_echange": (rangee.get("jours_sans_echange") or "").strip(),
                 "statut_export": (rangee.get("statut") or "").strip(),
+                # Un dossier clos n'est plus a recouvrer : les repartitions
+                # qui portent sur le reste a faire doivent pouvoir l'ecarter
+                # sans redecouvrir quelles etapes sont des issues.
+                "clos": statut in CLOTURES,
                 # Exécution de la formation, telle que le tableau la connaît.
                 # Trois états, jamais deux : ce que le tableau ne dit pas ne
                 # doit pas se lire comme un « non ».

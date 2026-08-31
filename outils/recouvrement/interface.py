@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "55"
+VERSION = "56"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -51,6 +51,9 @@ SUIVI = RACINE / "suivi-dossiers.json"
 # Le fichier de suivi tenu a part — convention, diplome, heures — depose une
 # fois puis reapplique apres chaque export.
 COMPLEMENT = RACINE / "complement-suivi"
+# Fiches publiques des debiteurs entreprises, conservees pour ne pas
+# reinterroger le service de l'Etat a chaque ouverture.
+ANNUAIRE = RACINE / "annuaire-entreprises.json"
 # Secret au même titre que les identifiants Gmail : fichier dédié,
 # jamais renvoyé à la page, jamais mêlé aux préférences.
 JETON_MONDAY = RACINE / "monday-token.txt"
@@ -555,10 +558,21 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 self._json(403, {"erreur": "Jeton invalide."})
                 return
             racine = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+            import entreprises as module_entreprises  # noqa: PLC0415
+
             dossiers = module_suivi.inventaire(racine, SUIVI)
+            annuaire = module_entreprises.charger_annuaire(ANNUAIRE)
+            # La fiche publique voyage avec le dossier : la page en a besoin
+            # pour la ligne du débiteur comme pour le tableau des formes.
+            for dossier in dossiers:
+                fiche = annuaire.get(dossier["reference"])
+                dossier["fiche_entreprise"] = fiche
+                dossier["risque"] = module_entreprises.evaluer(dossier, fiche)
             self._json(200, {
                 "dossiers": dossiers,
                 "agregats": module_suivi.agreger(dossiers),
+                "entreprises": module_entreprises.repartition(dossiers, annuaire),
+                "annuaire_connu": bool(annuaire),
                 "statuts": module_suivi.STATUTS,
                 "sortie": str(racine),
             })
@@ -611,6 +625,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 return
             if chemin == "/api/completer":
                 self._completer_depuis_fichier(self._corps_json())
+                return
+            if chemin == "/api/annuaire":
+                self._interroger_annuaire(self._corps_json())
                 return
         except ValueError as exc:
             self._json(400, {"erreur": str(exc)})
@@ -735,6 +752,49 @@ class Gestionnaire(BaseHTTPRequestHandler):
 
         resultat["memorise"] = nom
         self._json(200, resultat)
+
+    def _interroger_annuaire(self, demande: dict) -> None:
+        """Complète les fiches publiques des débiteurs entreprises.
+
+        Une par une, et seulement celles qui manquent : le service est
+        gratuit et ouvert, ce n'est pas une raison pour le solliciter pour
+        des fiches déjà connues. Un débiteur particulier n'est pas interrogé
+        — il n'a pas de fiche, et la première société homonyme serait pire
+        que rien.
+        """
+        import entreprises as module_entreprises  # noqa: PLC0415
+
+        sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+        dossiers = module_suivi.inventaire(sortie, SUIVI)
+        connues = module_entreprises.charger_annuaire(ANNUAIRE)
+
+        trouvees, sans_fiche, echecs = 0, 0, 0
+        motif_echec = ""
+        for dossier in dossiers:
+            reference = dossier["reference"]
+            if reference in connues and not demande.get("tout_refaire"):
+                continue
+            try:
+                fiche = module_entreprises.chercher(dossier.get("nom") or "")
+            except module_entreprises.ErreurAnnuaire as exc:
+                echecs += 1
+                motif_echec = motif_echec or str(exc)
+                # Le service est peut-être injoignable : insister sur
+                # cinquante dossiers ne ferait qu'allonger l'attente.
+                if echecs >= 3:
+                    break
+                continue
+            connues[reference] = fiche
+            if fiche:
+                trouvees += 1
+            else:
+                sans_fiche += 1
+
+        module_entreprises.enregistrer_annuaire(ANNUAIRE, connues)
+        self._json(200, {
+            "trouvees": trouvees, "sans_fiche": sans_fiche,
+            "echecs": echecs, "motif": motif_echec,
+        })
 
     def _tout_effacer(self, demande: dict) -> None:
         """Remise à zéro, en trois degrés que la page demande séparément.
@@ -1056,6 +1116,9 @@ table.donnees th.etroite{width:26px}
 .solide-legende b.oui{color:#5cc95c}
 .solide-legende b.non{color:#ef6a6a}
 .solide-legende b.inconnu{color:var(--texte-3)}
+ul.cessees{margin:9px 0 0;padding-left:19px;font-size:12px;color:var(--texte-2)}
+ul.cessees li{margin-bottom:5px}
+ul.cessees a{margin-left:7px}
 select,input.frais,input.note{background:var(--champ);border:1px solid var(--bord);
   border-radius:7px;padding:6px 8px;color:var(--texte);font-size:12.5px;font-family:inherit}
 select{min-width:172px} input.frais{width:88px;text-align:right} input.note{width:100%}
@@ -1195,6 +1258,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <div class="graphe" id="anciennete"></div>
   <div class="graphe" id="dormants"></div>
   <div class="graphe" id="solidite"></div>
+  <div class="graphe" id="entreprises"></div>
 </div>
 
 <div class="vue" id="vueSuivi">
@@ -1955,6 +2019,7 @@ document.querySelectorAll("nav.principal button").forEach((bouton) => {
 // ============================================================
 let DOSSIERS = [], STATUTS = [], AGREGATS = null, COURBE = null, SERVEUR = null;
 const LIGNES_A_L_ECRAN = 600;
+let ENTREPRISES = null, ANNUAIRE_CONNU = false;
 // Un export en cours reecrit la liste depuis le debut : le compte repart de
 // zero et remonte. Sans le dire, cela se lit comme des dossiers qui
 // disparaissent.
@@ -1973,6 +2038,11 @@ async function chargerDossiers() {
   AGREGATS = donnees.agregats;
   COURBE = donnees.agregats ? donnees.agregats.courbe : null;
   SERVEUR = donnees.agregats || null;
+  // La repartition par forme juridique vient de l'annuaire, pas des
+  // agregats : elle a son propre porteur, sans quoi elle disparaitrait au
+  // premier recalcul cote page.
+  ENTREPRISES = donnees.entreprises || null;
+  ANNUAIRE_CONNU = Boolean(donnees.annuaire_connu);
   $("cheminSortie").textContent = donnees.sortie;
   rendreDocuments();
   rendreSuivi();
@@ -2409,6 +2479,81 @@ function majBandeauExport() {
   }
 }
 
+// Ce que l'annuaire public de l'Etat dit des debiteurs. Ce n'est pas une note
+// de solvabilite — les comptes n'y sont pas — mais une societe radiee ne
+// paiera pas, et cela se sait avant d'engager des frais d'avocat.
+function rendreEntreprises() {
+  const zone = $("entreprises");
+  if (!zone) return;
+  const e = ENTREPRISES;
+
+  if (!e || !e.nb_debiteurs) {
+    zone.innerHTML = "<h3>Débiteurs entreprises</h3>"
+      + '<p class="aide">Aucun dossier en cours.</p>';
+    return;
+  }
+
+  const rangees = e.formes.map((f) => `
+    <tr>
+      <td><b>${echapper(f.forme)}</b></td>
+      <td class="num">${f.nombre}</td>
+      <td class="num">${euro(f.montant)}</td>
+      <td class="num">${f.cessees ? '<span class="etat non">✕ ' + f.cessees
+        + "</span>" : '<span class="etat inconnu">—</span>'}</td>
+    </tr>`).join("");
+
+  const alerte = e.cessees.length ? `
+    <p class="aide" style="margin-top:15px"><b class="etat non">
+      ✕ ${e.cessees.length} société(s) cessée(s) au répertoire</b> —
+      ${euro(e.montant_cesse)} en jeu. Un recouvrement y est compromis :
+      à vérifier avant d'engager des frais.</p>
+    <ul class="cessees">${e.cessees.map((c) => `
+      <li>${echapper(c.reference)} · ${echapper(c.nom)} · ${euro(c.montant)}
+        ${c.fiche ? `<a class="lien" href="${echapper(c.fiche)}"
+          target="_blank" rel="noopener">fiche publique</a>` : ""}</li>`).join("")}
+    </ul>` : "";
+
+  zone.innerHTML = `
+    <h3>Débiteurs entreprises, par forme juridique</h3>
+    <p class="aide">D'après l'annuaire public des entreprises
+       (annuaire-entreprises.data.gouv.fr), sur ${e.nb_debiteurs} dossier(s)
+       en cours. ${e.sans_fiche} sans fiche trouvée — débiteur particulier,
+       ou raison sociale différente de celle du tableau.</p>
+    <div class="defilable"><table class="donnees">
+      <tr><th>Forme</th><th class="num">Dossiers</th>
+          <th class="num">Montant dû</th><th class="num">dont cessées</th></tr>
+      ${rangees}</table></div>
+    ${alerte}
+    <div class="boutons" style="margin-top:16px">
+      <button class="secondaire" id="majAnnuaire">
+        ${ANNUAIRE_CONNU
+          ? "Actualiser depuis l'annuaire" : "Interroger l'annuaire public"}</button>
+    </div>
+    <p class="note">Seule la raison sociale du débiteur part en requête, vers
+       le service ouvert de l'État. Les fiches sont conservées sur ce poste.</p>`;
+
+  $("majAnnuaire").addEventListener("click", interrogerAnnuaire);
+}
+
+async function interrogerAnnuaire() {
+  const bouton = $("majAnnuaire");
+  bouton.disabled = true;
+  const ancien = bouton.textContent;
+  bouton.textContent = "Interrogation de l'annuaire…";
+  try {
+    const r = await api("/api/annuaire", {});
+    afficherBandeau(r.echecs === 0,
+      `${r.trouvees} fiche(s) trouvée(s), ${r.sans_fiche} sans correspondance.`
+      + (r.echecs ? ` ${r.echecs} échec(s) : ${r.motif}` : ""));
+    chargerDossiers();
+  } catch (erreur) {
+    afficherBandeau(false, erreur.message);
+  } finally {
+    bouton.disabled = false;
+    bouton.textContent = ancien;
+  }
+}
+
 function rendreSolidite() {
   const zone = $("solidite");
   if (!zone) return;
@@ -2646,6 +2791,7 @@ function rendreBord() {
   rendreAnciennete();
   rendreDormants();
   rendreSolidite();
+  rendreEntreprises();
 
   $("grapheBord").innerHTML = `
     <h3>Montant en contentieux par étape</h3>

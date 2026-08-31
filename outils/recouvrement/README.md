@@ -273,6 +273,37 @@ suivi jusqu'au décompte de solidité.
 
 L'échéance saisie sert aussi au calcul du retard et aux tranches d'ancienneté.
 
+### Les débiteurs entreprises, d'après l'annuaire public
+
+`recherche-entreprises.api.gouv.fr` est le service ouvert de l'État qui sert
+l'Annuaire des Entreprises. Gratuit, sans compte ni clé, il rend les données
+publiques du répertoire Sirene : forme juridique, date de création, effectif —
+et surtout **l'état administratif**.
+
+Une société radiée ne paiera pas. C'est la première chose à savoir avant
+d'engager des frais d'avocat, et le tableau de bord la signale nommément, avec
+le montant en jeu et le lien vers la fiche publique.
+
+Un tableau range les débiteurs en cours **par forme juridique** — combien de
+SARL, de SAS, de SASU, pour quel montant, dont combien de cessées.
+
+**Ce que ce n'est pas** : une note de solvabilité. Les comptes ne sont pas dans
+ces données. Le score qui accompagne chaque dossier est un ordre de priorité,
+dont chaque point est nommé — société cessée, créance de plus d'un an, aucun
+salarié déclaré, montant élevé. Un score qu'on ne peut pas justifier ne sert à
+rien.
+
+**Ce qui n'est pas envoyé** : tout, sauf la raison sociale du débiteur. Ni
+montant, ni facture, ni adresse. Les fiches obtenues sont conservées sur le
+poste, et le service n'est réinterrogé que pour les débiteurs qu'il ne connaît
+pas encore.
+
+L'annuaire répond toujours quelque chose : une réponse dont le nom ne
+correspond pas à celui du débiteur est **écartée**, une fiche fausse valant
+moins que pas de fiche. Une correspondance obtenue sur un nom sans mention
+commerciale — « JAADI PERFORM » — est retenue mais marquée à vérifier, et la
+fiche publique est toujours citée en lien : c'est elle qui tranche.
+
 ### Ce qui rend un dossier défendable
 
 Devant un tribunal, une convention signée et des heures effectivement suivies

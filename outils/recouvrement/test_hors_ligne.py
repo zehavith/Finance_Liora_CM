@@ -2284,6 +2284,97 @@ def test_colonnes_miroir_monday() -> None:
              "l'adresse d'une colonne miroir atteint la grille")
 
 
+def test_annuaire_entreprises() -> None:
+    """Fiches publiques des débiteurs, et répartition par forme juridique."""
+    print("\nAnnuaire des entreprises")
+
+    import entreprises as module_entreprises  # noqa: PLC0415
+
+    for code, attendu in [("5710", "SAS"), ("5720", "SASU"), ("5499", "SARL"),
+                          ("5410", "SARL"), ("5599", "SA"), ("6540", "SCI"),
+                          ("1000", "Entrepreneur individuel"),
+                          ("9220", "Association"), ("", "")]:
+        obtenu = module_entreprises.forme_lisible(code)
+        verifier(obtenu == attendu, f"{code or '(vide)'} → {attendu} (obtenu : {obtenu})")
+    verifier(module_entreprises.forme_lisible("8888").startswith("Forme"),
+             "un code inconnu est rendu tel quel, non deviné")
+
+    # L'annuaire répond toujours quelque chose : une réponse sans rapport
+    # avec le débiteur ne doit pas devenir sa fiche.
+    reponses = {}
+
+    def faux_appel(nom):
+        return reponses.get(nom, {"results": []})
+
+    vrai = module_entreprises._appeler
+    module_entreprises._appeler = faux_appel
+    try:
+        reponses["SAS EDEN"] = {"results": [{
+            "siren": "123456789", "nom_complet": "SAS EDEN",
+            "nature_juridique": "5710", "etat_administratif": "A",
+            "date_creation": "2015-04-02", "tranche_effectif_salarie": "11",
+            "siege": {"libelle_commune": "PARIS"},
+        }]}
+        fiche = module_entreprises.chercher("SAS EDEN")
+        verifier(fiche["forme"] == "SAS" and fiche["etat"] == "en activité",
+                 "la fiche est lue et traduite")
+        verifier(fiche["fiche"].endswith("123456789"),
+                 "la fiche publique est citée en lien, pour vérification")
+        verifier(fiche["a_verifier"] is False,
+                 "un nom portant une mention commerciale est tenu pour sûr")
+
+        reponses["JAADI PERFORM"] = {"results": [{
+            "siren": "987654321", "nom_complet": "JAADI PERFORM",
+            "nature_juridique": "5499", "etat_administratif": "C",
+            "date_creation": "2023-01-10", "tranche_effectif_salarie": "NN",
+        }]}
+        cessee = module_entreprises.chercher("JAADI PERFORM")
+        verifier(cessee["etat"] == "cessée" and cessee["forme"] == "SARL",
+                 "une société cessée est reconnue comme telle")
+        verifier(cessee["a_verifier"] is True,
+                 "sans mention commerciale, la correspondance est à vérifier")
+
+        # Réponse sans rapport : rien vaut mieux qu'une fiche fausse.
+        reponses["MCAPI"] = {"results": [{
+            "siren": "111", "nom_complet": "BOULANGERIE DU CENTRE",
+            "nature_juridique": "5499", "etat_administratif": "A",
+        }]}
+        verifier(module_entreprises.chercher("MCAPI") is None,
+                 "une réponse sans rapport n'est pas retenue")
+        verifier(module_entreprises.chercher("XX") is None,
+                 "un nom trop court n'est pas même interrogé")
+    finally:
+        module_entreprises._appeler = vrai
+
+    # Le score se relit ligne à ligne : chaque point compté est nommé.
+    risque = module_entreprises.evaluer(
+        {"anciennete_jours": 900, "montant_du": 23250.0}, cessee)
+    verifier(risque["score"] >= 60, f"une société cessée pèse lourd ({risque['score']})")
+    verifier(any("cessée" in m for m in risque["motifs"])
+             and any("900 jours" in m for m in risque["motifs"]),
+             f"et les motifs sont nommés ({risque['motifs']})")
+    verifier(module_entreprises.evaluer({"anciennete_jours": 10,
+                                         "montant_du": 500.0}, fiche)["score"] == 0,
+             "un dossier récent sur une société active ne pèse rien")
+    verifier(module_entreprises.evaluer({}, None)["score"] > 0,
+             "l'absence de fiche compte, sans être décisive")
+
+    dossiers = [
+        {"reference": "A", "nom": "SAS EDEN", "montant_du": 5990.0, "clos": False},
+        {"reference": "B", "nom": "JAADI", "montant_du": 2500.0, "clos": False},
+        {"reference": "C", "nom": "MCAPI", "montant_du": 3730.0, "clos": False},
+        {"reference": "D", "nom": "X", "montant_du": 9999.0, "clos": True},
+    ]
+    annuaire = {"A": fiche, "B": cessee, "C": None}
+    r = module_entreprises.repartition(dossiers, annuaire)
+    verifier(r["nb_debiteurs"] == 3, "les dossiers clôturés sortent du décompte")
+    verifier(r["sans_fiche"] == 1, "les débiteurs sans fiche sont comptés")
+    verifier([f["forme"] for f in r["formes"]][0] == "SAS",
+             "les formes sont classées par montant en jeu")
+    verifier(len(r["cessees"]) == 1 and r["montant_cesse"] == 2500.0,
+             "les sociétés cessées sont listées, avec le montant en jeu")
+
+
 def test_reponses_du_debiteur() -> None:
     """Ce que le débiteur a répondu, cité tel quel et daté."""
     print("\nRéponses du débiteur dans la note")
@@ -4386,6 +4477,7 @@ def main() -> int:
     test_recapitulatif_atomique()
     test_colonnes_vides_signalees()
     test_colonnes_miroir_monday()
+    test_annuaire_entreprises()
     test_reponses_du_debiteur()
     test_bloc_pieces()
     test_execution_formation()
