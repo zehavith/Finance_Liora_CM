@@ -768,6 +768,13 @@
             factures.filter(f => f.delaiPaiement != null && f.delaiPaiement < 0),
             "Vérifier les dates : un règlement daté avant l'émission fausse les délais moyens.");
 
+        push('A_RAPPROCHER', "Règlements en attente de rapprochement comptable", 'basse',
+            factures.filter(f => f.enAttenteRapprochement),
+            "Factures des groupes de comptabilité — Pennylane non pointé, paiement non remonté sur "
+            + "Sellsy, en traitement comptabilité. Elles sont comptées comme encaissées et sortent du "
+            + "recouvrement, mais sans date de règlement : elles ne pèsent donc pas dans les délais de "
+            + "paiement. Importer le grand livre lettré leur donne leur vraie date.");
+
         push('SIGNAL_PAIEMENT_ORPHELIN', "Signes de règlement hors du tableau des factures payées", 'moyenne',
             factures.filter(f => f.signalPaiementHorsTableau),
             "Ces factures portent une date de paiement, une date de contrôle, un statut « payée » ou "

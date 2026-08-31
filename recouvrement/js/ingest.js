@@ -473,6 +473,11 @@
             let motif = null;
             if (f.paye === true) motif = 'Présente dans le tableau des factures payées';
             else if (f.grandLivre === true) motif = 'Lettrée dans le grand livre';
+            // Les groupes de comptabilité — « En traitement Comptabilité »,
+            // « Pennylane non pointé », « Paiement non remonté sur Sellsy » —
+            // désignent des factures encaissées dont le règlement n'est pas
+            // encore rapproché. Elles ne sont donc plus à recouvrer.
+            else if (f.etape === 'COMPTA') motif = 'Groupe de comptabilité — règlement à rapprocher';
 
             const paye = motif != null;
             f.paye = paye;
@@ -480,6 +485,7 @@
 
             // Signaux de règlement portés par un tableau opérationnel : ils ne
             // valent pas paiement, mais méritent d'être signalés.
+            f.enAttenteRapprochement = motif === 'Groupe de comptabilité — règlement à rapprocher';
             f.signalPaiementHorsTableau = !paye && !!(
                 f.datePaiement || f.dateControlePaiement || statutIndiquePaye(f.statut)
                 || (f.resteDu != null && f.montant != null && f.resteDu <= 0.01 && f.montant > 0));

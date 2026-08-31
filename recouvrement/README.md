@@ -281,9 +281,19 @@ aucun calcul.
    une facture réglée qui traîne encore côté opérationnel reste une facture
    réglée, et un « reste dû » hérité de là-bas est une valeur périmée, donc
    ignorée. Le tableau d'origine reste indiqué sur la fiche de la facture.
-2. **Seul le tableau des factures payées vaut règlement** — avec le grand livre
-   lettré s'il est importé. Une date de paiement, une date de contrôle, un
-   statut « payée » ou un reste dû nul saisis sur un tableau opérationnel ne
+2. **Trois sources font règlement**, et elles seules : la présence dans le
+   tableau *0.1. ALL - Factures payées*, le lettrage dans le grand livre
+   importé, et l'appartenance à un **groupe de comptabilité** — *En traitement
+   Comptabilité*, *Pennylane non pointé*, *Paiement non remonté sur Sellsy* —
+   quel que soit le tableau qui l'héberge. Ces derniers désignent des factures
+   encaissées dont le règlement n'est pas encore rapproché : elles ne sont plus
+   à recouvrer, mais n'ont pas de date de paiement et ne pèsent donc pas dans
+   les délais. Data Quality les liste sous *Règlements en attente de
+   rapprochement comptable* ; importer le grand livre leur donne leur vraie
+   date.
+
+   En revanche, une date de paiement, une date de contrôle, un statut
+   « payée » ou un reste dû nul saisis sur un tableau opérationnel ne
    suffisent pas : ces colonnes se sont révélées trop peu fiables, au point de
    faire basculer la quasi-totalité du portefeuille en « payée ». Elles sont
    néanmoins relevées en Data Quality sous *Signes de règlement hors du tableau
