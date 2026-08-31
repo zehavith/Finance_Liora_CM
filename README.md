@@ -50,6 +50,11 @@ Aucune compilation, aucun serveur nécessaire.
 > (IndexedDB). Pour repartir de zéro, utiliser « Tout effacer » dans l'onglet
 > **Fichiers**.
 
+## Démarrage rapide — Suivi Recouvrement
+
+Double-cliquer sur **`DEMARRER - Suivi Recouvrement.bat`**, à la racine de ce
+dossier. Le pas-à-pas est dans `LISEZMOI - Demarrer ici.txt`.
+
 ## Application soeur : Suivi Recouvrement
 
 Le dossier [`recouvrement/`](recouvrement/README.md) contient une seconde

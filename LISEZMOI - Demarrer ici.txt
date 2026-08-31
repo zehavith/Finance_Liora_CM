@@ -1,0 +1,60 @@
+SUIVI RECOUVREMENT LIORA - DEMARRAGE
+=====================================
+
+1. DOUBLE-CLIQUEZ SUR  "DEMARRER - Suivi Recouvrement.bat"
+
+   Une fenetre noire s'ouvre, puis le navigateur.
+   Laissez la fenetre noire ouverte tant que vous utilisez
+   l'application. Fermez-la pour quitter.
+
+   Si Windows affiche "Windows a protege votre ordinateur" :
+   cliquez sur "Informations complementaires", puis sur
+   "Executer quand meme". C'est normal pour un fichier
+   telecharge depuis Internet.
+
+
+2. VERIFIEZ QUE TOUT S'AFFICHE
+
+   Dans l'application, cliquez sur "Voir une demonstration".
+   Vous devez voir un tableau de bord avec des chiffres et
+   des graphiques colores. Promenez-vous dans les onglets.
+
+   Ces donnees sont fictives : elles servent uniquement a
+   verifier que l'affichage fonctionne.
+
+
+3. BRANCHEZ VOS DONNEES
+
+   Dans Monday : votre avatar en bas a gauche
+                 -> Developpeurs
+                 -> Mes jetons d'acces
+                 -> copier le jeton
+
+   Dans l'application : onglet "Donnees"
+                 -> coller le jeton
+                 -> "Connecter"
+                 -> verifier les tableaux coches
+                 -> "Charger les tableaux coches"
+
+   Le jeton reste sur cet ordinateur. Il n'est envoye qu'a
+   Monday.
+
+
+4. PLUS TARD, SI VOUS VOULEZ
+
+   Toujours dans l'onglet "Donnees" :
+   - le grand livre lettre, pour les vraies dates de paiement
+   - les exports GoCardless (Payments et Customers), pour
+     l'onglet Prelevements
+
+
+EN CAS DE PROBLEME
+------------------
+Le dossier doit rester complet : ne deplacez pas le
+sous-dossier "recouvrement" tout seul, il a besoin des
+fichiers voisins.
+
+Ne lancez pas l'application depuis l'interieur du fichier ZIP :
+extrayez-le d'abord.
+
+La documentation complete est dans recouvrement/README.md
