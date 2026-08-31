@@ -3633,6 +3633,54 @@ def test_interface() -> None:
         finally:
             interface.ecrire_preferences(avant_migration)
 
+        print("  -- le fichier de suivi est retenu, puis réappliqué --")
+        # Deposé une fois, il doit servir aux exports suivants sans qu'on ait
+        # à le redéposer : c'est la seule façon qu'il serve vraiment.
+        avant_complement = interface.lire_preferences()
+        temoins = list(interface.RACINE.glob("complement-suivi.*"))
+        try:
+            contenu = (
+                "Numero;convention signé ?;Diplome reçu ?\n"
+                "FACT-9999-99999;oui;non\n"
+            ).encode("utf-8")
+            statut, reponse = appeler("/api/completer", {
+                "nom": "suivi_btc.csv",
+                "contenu": base64.b64encode(contenu).decode("ascii"),
+            })
+            verifier(reponse.get("memorise") == "suivi_btc.csv",
+                     "le dépôt annonce que le fichier est retenu")
+            retenu = interface.complement_memorise()
+            verifier(retenu is not None and retenu.exists(),
+                     "le fichier est conservé à côté de l'outil")
+            verifier(interface.lire_preferences().get("complement") == retenu.name,
+                     "et son nom est mémorisé")
+
+            page_retenue = urllib.request.urlopen(
+                f"{base}/", timeout=10).read().decode("utf-8")
+            verifier("réappliqué après chaque export" in page_retenue,
+                     "la page le dit, plutôt que de laisser redéposer à l'aveugle")
+
+            # Un second dépôt remplace le premier : deux versions du même
+            # suivi se contrediraient.
+            appeler("/api/completer", {
+                "nom": "suivi_btc.xlsx" if False else "suivi_btc.tsv",
+                "contenu": base64.b64encode(contenu).decode("ascii"),
+            })
+            gardes = sorted(p.name for p in interface.RACINE.glob("complement-suivi.*"))
+            verifier(len(gardes) == 1, f"un seul fichier est retenu ({gardes})")
+        finally:
+            for reste in interface.RACINE.glob("complement-suivi.*"):
+                if reste not in temoins:
+                    reste.unlink(missing_ok=True)
+            interface.ecrire_preferences(avant_complement)
+
+        # Un format non pris en charge est refusé, sans rien retenir.
+        try:
+            appeler("/api/completer", {"nom": "suivi.docx", "contenu": "eA=="})
+            verifier(False, "format non pris en charge refusé")
+        except urllib.error.HTTPError as exc:
+            verifier(exc.code == 400, f"format non pris en charge refusé ({exc.code})")
+
         print("  -- la page sait reprendre un export en cours --")
         # Un export tourne dans l'outil, pas dans la page : recharger celle-ci
         # ne l'interrompt pas, mais l'écran restait muet et l'export passait

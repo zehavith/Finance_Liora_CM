@@ -240,6 +240,12 @@ vivent souvent dans un classeur tenu à part. Le bouton **Compléter depuis un
 fichier**, dans l'onglet *État des dossiers*, reprend ces colonnes sans rien
 réexporter.
 
+**Une seule fois.** Le fichier est conservé à côté de l'outil et réappliqué
+après chaque export, sans quoi il faudrait le redéposer à chaque fois et il ne
+servirait à personne. En déposer un autre remplace le premier — deux versions
+du même suivi se contrediraient sans qu'on sache laquelle a parlé. C'est aussi
+ainsi qu'on met le fichier à jour : le redéposer.
+
 Le rapprochement se fait sur le **numéro de facture**, jamais sur le nom : deux
 apprenantes peuvent être homonymes, deux factures non. Les tirets et les
 espaces sont ignorés — `FACT2405 00409` retrouve `FACT-2405-00409` — et un

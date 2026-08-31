@@ -43,11 +43,14 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "52"
+VERSION = "53"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
 SUIVI = RACINE / "suivi-dossiers.json"
+# Le fichier de suivi tenu a part — convention, diplome, heures — depose une
+# fois puis reapplique apres chaque export.
+COMPLEMENT = RACINE / "complement-suivi"
 # Secret au même titre que les identifiants Gmail : fichier dédié,
 # jamais renvoyé à la page, jamais mêlé aux préférences.
 JETON_MONDAY = RACINE / "monday-token.txt"
@@ -284,6 +287,21 @@ class Execution:
                 code, message = 3, str(exc)
             else:
                 message = None
+                complement = complement_memorise()
+                if complement is not None and code == 0:
+                    try:
+                        bilan = appliquer_complement(complement)
+                    except Exception as exc:  # noqa: BLE001 - jamais bloquant
+                        self.ajouter(
+                            f"⚠ fichier de suivi non appliqué : {exc}")
+                    else:
+                        self.ajouter(
+                            f"Fichier de suivi appliqué : {bilan['valeurs']} "
+                            f"valeur(s) sur {bilan['dossiers']} dossier(s)."
+                            + (f" {bilan['sans_correspondance']} ligne(s) sans "
+                               "dossier correspondant."
+                               if bilan["sans_correspondance"] else "")
+                        )
 
             with self._verrou:
                 self.en_cours = False
@@ -325,6 +343,27 @@ def _veiller(serveur) -> None:
         if time.monotonic() - _dernier_contact > DELAI_INACTIVITE:
             threading.Thread(target=serveur.shutdown, daemon=True).start()
             return
+
+
+def complement_memorise() -> Path | None:
+    """Le fichier de suivi déposé une fois, s'il est toujours là."""
+    nom = (lire_preferences().get("complement") or "").strip()
+    if not nom:
+        return None
+    chemin = RACINE / nom
+    return chemin if chemin.exists() else None
+
+
+def appliquer_complement(chemin: Path) -> dict:
+    """Reprend convention, diplôme, heures et échéance d'un fichier de suivi."""
+    from dossiers import charger_grille  # noqa: PLC0415
+
+    sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+    return module_suivi.completer_depuis_grille(
+        charger_grille(chemin),
+        module_suivi.inventaire(sortie, SUIVI),
+        SUIVI,
+    )
 
 
 def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str], str]:
@@ -428,6 +467,19 @@ class Gestionnaire(BaseHTTPRequestHandler):
             page = PAGE.replace("__JETON__", JETON)
             page = page.replace("__MOTEUR_PDF__", moteur_pdf_disponible())
             page = page.replace("__VERSION__", VERSION)
+            # Déposé une fois, réappliqué ensuite : le dire évite de le
+            # redéposer à chaque export « au cas où ».
+            retenu = complement_memorise()
+            page = page.replace(
+                "__COMPLEMENT__",
+                _attribut(
+                    "Fichier de suivi retenu — réappliqué après chaque export. "
+                    "Déposez-en un autre pour le remplacer."
+                    if retenu is not None
+                    else "Convention, diplôme, heures : déposé une fois, "
+                         "réappliqué après chaque export."
+                ),
+            )
             preferences = lire_preferences()
             page = page.replace(
                 "__ETAT_MONDAY__",
@@ -659,27 +711,29 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 "Déposez un fichier Excel ou CSV."
             )
 
-        depot = RACINE / f"complement{extension}"
+        # Le fichier est conservé à côté de l'outil, et réappliqué tout seul
+        # après chaque export : il n'y a aucune raison de le redéposer à
+        # chaque fois. Le redéposer reste le moyen de le mettre à jour.
+        depot = COMPLEMENT.with_suffix(extension)
         try:
             depot.write_bytes(base64.b64decode(contenu))
         except (ValueError, OSError) as exc:
             raise ValueError(f"Fichier illisible : {exc}") from exc
 
-        preferences = lire_preferences()
-        sortie = Path(preferences.get("sortie") or sortie_par_defaut())
         try:
-            from dossiers import charger_grille  # noqa: PLC0415
-
-            resultat = module_suivi.completer_depuis_grille(
-                charger_grille(depot),
-                module_suivi.inventaire(sortie, SUIVI),
-                SUIVI,
-            )
+            resultat = appliquer_complement(depot)
         except ErreurDossiers as exc:
-            raise ValueError(str(exc)) from exc
-        finally:
             depot.unlink(missing_ok=True)
+            raise ValueError(str(exc)) from exc
 
+        # Un fichier retenu en remplace un autre : deux versions du même
+        # suivi se contrediraient sans qu'on sache laquelle a parlé.
+        for ancien in RACINE.glob(f"{COMPLEMENT.name}.*"):
+            if ancien != depot:
+                ancien.unlink(missing_ok=True)
+        memoriser_preferences({"complement": depot.name})
+
+        resultat["memorise"] = nom
         self._json(200, resultat)
 
     def _tout_effacer(self, demande: dict) -> None:
@@ -983,6 +1037,7 @@ table.donnees th.etroite{width:26px}
   font-size:13px;color:var(--texte-2);cursor:pointer;white-space:nowrap}
 .depot-complement:hover{border-color:var(--texte-3);color:var(--texte)}
 .depot-complement input{display:none}
+.retenu{font-size:11.5px;color:var(--texte-3);max-width:230px}
 .secondaire.danger{border-color:rgba(239,68,68,.4);color:#ef6a6a}
 .secondaire.danger:hover{border-color:#ef6a6a;background:rgba(239,68,68,.08)}
 .etat{white-space:nowrap;font-size:12px}
@@ -2013,6 +2068,10 @@ async function completerDepuisFichier(evenement) {
       lecteur.readAsDataURL(fichier);
     });
     const r = await api("/api/completer", { nom: fichier.name, contenu: contenu });
+    if (r.memorise) {
+      $("etatComplement").textContent = "Fichier retenu : " + r.memorise
+        + " — réappliqué après chaque export.";
+    }
     afficherBandeau(
       r.dossiers > 0,
       `${r.lignes} ligne(s) lue(s) : ${r.valeurs} valeur(s) reprise(s) sur `
@@ -2169,9 +2228,10 @@ function rendreSuivi() {
   $("tableSuivi").innerHTML = `
     <div class="barre-selection">
       <button class="secondaire" id="supprimer" disabled>Supprimer</button>
-      <label class="depot-complement">Compléter depuis un fichier
+      <label class="depot-complement" title="__COMPLEMENT__">Compléter depuis un fichier
         <input type="file" id="complement" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xltx" />
       </label>
+      <span id="etatComplement" class="retenu">__COMPLEMENT__</span>
       <button class="secondaire danger" id="toutEffacer">Tout effacer…</button>
       <span id="compteChoix">Cochez les dossiers à retirer de la liste.</span>
     </div>
