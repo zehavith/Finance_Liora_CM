@@ -3498,6 +3498,8 @@ def test_interface() -> None:
         # pour arrêté.
         verifier("reprendreSuiviEnCours()" in page,
                  "la page interroge l'outil au chargement")
+        verifier('id="exportEnCours"' in page and "majBandeauExport" in page,
+                 "le tableau de bord annonce qu'un export reconstruit la liste")
         verifier("en_cours" in page,
                  "et sait distinguer un export en cours d'un export fini")
         statut, journal_vide = appeler("/api/journal?depuis=0")

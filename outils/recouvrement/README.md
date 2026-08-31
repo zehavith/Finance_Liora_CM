@@ -189,6 +189,15 @@ La **requête Gmail est écrite au journal** pour chaque dossier. C'est la seule
 chose qui explique un « aucun message trouvé » : sans elle, il n'y a rien à
 diagnostiquer.
 
+### Pendant un export, les chiffres montent
+
+Un export réécrit le récapitulatif depuis le début : le compte des dossiers
+repart de zéro et remonte au fil du traitement. Vu du tableau de bord, cela se
+lit comme des dossiers qui disparaissent — quarante-cinq, puis trente.
+
+Un bandeau le dit désormais tant que l'export tourne, et les chiffres se
+complètent d'eux-mêmes à la fin, sans qu'il faille rouvrir la page.
+
 ### L'export ne vit pas dans la page
 
 Il tourne dans l'outil. Fermer l'onglet, le recharger, ou laisser le navigateur

@@ -43,7 +43,7 @@ import suivi as module_suivi  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "48"
+VERSION = "49"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -1060,6 +1060,8 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .bandeau.visible{display:block}
 .bandeau.reussi{background:rgba(132,204,22,.1);border:1px solid rgba(132,204,22,.35)}
 .bandeau.rate{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.35)}
+.bandeau.attente{background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.35);
+  margin:0 0 18px}
 .note{font-size:12px;color:var(--texte-3);margin-top:14px;padding-top:14px;
   border-top:1px solid var(--bord)}
 </style></head>
@@ -1078,6 +1080,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <main>
 
 <div class="vue actif" id="vueBord">
+  <div class="bandeau visible attente" id="exportEnCours" hidden></div>
   <div id="tuilesBord" class="tuiles"></div>
   <div class="graphe" id="courbeBord"></div>
   <div class="graphe" id="grapheBord"></div>
@@ -1746,6 +1749,8 @@ async function reprendreSuiviEnCours() {
   let etat;
   try { etat = await api("/api/journal?depuis=0"); }
   catch { return; }
+  EXPORT_EN_COURS = Boolean(etat.en_cours);
+  majBandeauExport();
   if (!etat.en_cours) return;
 
   position = 0;
@@ -1765,6 +1770,9 @@ async function rafraichir() {
   try { etat = await api("/api/journal?depuis=" + position); }
   catch { return; }
 
+  EXPORT_EN_COURS = Boolean(etat.en_cours);
+  majBandeauExport();
+
   if (etat.lignes.length) {
     position = etat.total;
     const journal = $("journal");
@@ -1780,6 +1788,8 @@ async function rafraichir() {
 
   if (etat.termine) {
     clearInterval(sondage);
+    EXPORT_EN_COURS = false;
+    chargerDossiers();
     $("etat").classList.remove("visible");
     majBouton();
     if (etat.code === 0) {
@@ -1837,6 +1847,10 @@ document.querySelectorAll("nav.principal button").forEach((bouton) => {
 // ============================================================
 let DOSSIERS = [], STATUTS = [], AGREGATS = null, COURBE = null, SERVEUR = null;
 const LIGNES_A_L_ECRAN = 600;
+// Un export en cours reecrit la liste depuis le debut : le compte repart de
+// zero et remonte. Sans le dire, cela se lit comme des dossiers qui
+// disparaissent.
+let EXPORT_EN_COURS = false;
 
 const euro = (v) => new Intl.NumberFormat("fr-FR",
   { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v || 0);
@@ -2219,6 +2233,17 @@ function rendreAnciennete() {
 // convention signee et des heures suivies etablissent que la prestation a ete
 // fournie. Le non renseigne est compte a part, jamais avec les « non » — un
 // tableau qui se tait ne dit pas que la convention manque.
+function majBandeauExport() {
+  const zone = $("exportEnCours");
+  if (!zone) return;
+  zone.hidden = !EXPORT_EN_COURS;
+  if (EXPORT_EN_COURS) {
+    zone.textContent = "Un export est en cours : la liste se reconstitue "
+      + "dossier par dossier, et les chiffres ci-dessous montent au fur et à "
+      + "mesure. Ils ne seront complets qu'à la fin.";
+  }
+}
+
 function rendreSolidite() {
   const zone = $("solidite");
   if (!zone) return;
@@ -2402,6 +2427,7 @@ function rendreCourbe() {
 }
 
 function rendreBord() {
+  majBandeauExport();
   if (!DOSSIERS.length) {
     $("tuilesBord").innerHTML = "";
     $("grapheBord").innerHTML = messageVide();
