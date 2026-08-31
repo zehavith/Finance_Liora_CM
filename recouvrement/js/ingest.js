@@ -25,14 +25,14 @@
     const FIELD_DEFS = [
         { field: 'numero',               label: 'Numéro de facture',      aliases: ['numero de facture', 'numero facture', 'n facture', 'no facture', 'num facture', 'reference facture', 'numero de piece', 'invoice number', 'facture'] },
         { field: 'client',               label: 'Client / Entreprise',    aliases: ['entreprise', 'client', 'societe', 'raison sociale', 'nom du client', 'compte', 'apprenant', 'stagiaire', 'beneficiaire', 'nom prenom'] },
-        { field: 'montant',              label: 'Montant TTC',            aliases: ['montant ttc', 'total ttc', 'montant de la facture', 'montant facture', 'montant', 'total', 'prix ttc', 'ca ttc'] },
+        { field: 'montant',              label: 'Montant TTC',            aliases: ['montant ttc', 'total ttc', 'montant de la facture', 'montant facture', 'montant', 'total', 'prix ttc', 'ca ttc', 'montant total', 'montant tct', 'prix', 'cout', 'cout total', 'cout formation', 'cout de la formation', 'tarif', 'somme', 'montant a payer', 'montant du', 'valeur'] },
         { field: 'montantHT',            label: 'Montant HT',             aliases: ['montant ht', 'total ht', 'ca ht', 'prix ht'] },
         { field: 'montantRegle',         label: 'Montant réglé',          aliases: ['montant regle', 'montant paye', 'deja regle', 'encaisse', 'montant encaisse', 'total regle'] },
         { field: 'resteDu',              label: 'Reste dû',               aliases: ['reste du', 'restant du', 'solde du', 'solde restant', 'solde', 'reliquat'] },
-        { field: 'dateFacture',          label: 'Date de facture',        aliases: ['date de facture', 'date facture', 'date d emission', 'date emission', 'date de la facture', 'date piece'] },
+        { field: 'dateFacture',          label: 'Date de facture',        aliases: ['date de facture', 'date facture', 'date d emission', 'date emission', 'date de la facture', 'date piece', 'date facturation', 'date de facturation', 'facturation', 'date creation facture', 'date edition'] },
         { field: 'dateEcheanceSource',   label: 'Date d’échéance',   aliases: ['date d echeance', 'date echeance', 'echeance', 'date limite de paiement', 'date limite', 'date de reglement prevue', 'date calculee', 'date negociee', 'date calcule negocie'] },
-        { field: 'dateDebutFormation',   label: 'Début de formation',     aliases: ['debut de formation', 'date de debut de formation', 'date debut formation', 'debut formation', 'date de debut', 'date debut'] },
-        { field: 'dateFinFormation',     label: 'Fin de formation',       aliases: ['fin de formation', 'date de fin de formation', 'date fin formation', 'fin formation', 'date de fin', 'date fin'] },
+        { field: 'dateDebutFormation',   label: 'Début de formation',     aliases: ['debut de formation', 'date de debut de formation', 'date debut formation', 'debut formation', 'date de debut', 'date debut', 'debut de session', 'date debut session', 'debut parcours', 'date d entree', 'entree en formation'] },
+        { field: 'dateFinFormation',     label: 'Fin de formation',       aliases: ['fin de formation', 'date de fin de formation', 'date fin formation', 'fin formation', 'date de fin', 'date fin', 'fin de session', 'date fin session', 'fin parcours', 'date de fin de parcours', 'fin de cursus', 'date de sortie', 'sortie de formation'] },
         { field: 'datePaiement',         label: 'Date de paiement',       aliases: ['date de paiement', 'date paiement', 'date de reglement', 'date reglement', 'date encaissement', 'date d encaissement'] },
         { field: 'dateControlePaiement', label: 'Date contrôle paiement', aliases: ['date controle paiement', 'date de controle paiement', 'controle paiement', 'date de controle', 'date validation paiement', 'validation paiement', 'date pointage'] },
         { field: 'financement',          label: 'Type de financement',    aliases: ['type de financement', 'financement', 'type financement', 'mode de financement', 'dispositif', 'financeur', 'type de financeur', 'source de financement'] },
@@ -276,6 +276,37 @@
     }
 
     /**
+     * Taux de remplissage de chaque champ mappé, mesuré sur les valeurs réelles.
+     *
+     * Une correspondance peut être correcte au nom et vide en pratique — colonne
+     * jamais renseignée dans Monday, ou mauvaise colonne parmi plusieurs
+     * homonymes. Sans cette mesure, un montant absent ou une date de fin de
+     * formation manquante ne se voient qu'à l'arrivée, sous la forme de zéros
+     * inexplicables dans les indicateurs.
+     *
+     * @param {Object} mapping    champ → id de colonne
+     * @param {Function} valeurs  id de colonne → tableau des valeurs
+     * @param {number} nbLignes   nombre de lignes examinées
+     * @returns {Object} champ → { colId, remplies, total, taux }
+     */
+    function couvertureMapping(mapping, valeurs, nbLignes) {
+        const out = {};
+        for (const def of FIELD_DEFS) {
+            const colId = (mapping || {})[def.field];
+            if (!colId) { out[def.field] = { colId: null, remplies: 0, total: nbLignes, taux: 0 }; continue; }
+            const vals = valeurs(colId) || [];
+            const remplies = vals.filter(v => String(v == null ? '' : v).trim() !== '').length;
+            out[def.field] = {
+                colId,
+                remplies,
+                total: vals.length || nbLignes,
+                taux: (vals.length || nbLignes) ? (remplies / (vals.length || nbLignes)) * 100 : 0,
+            };
+        }
+        return out;
+    }
+
+    /**
      * Colonnes de qualification d'un tableau : les listes de choix qui portent
      * le vocabulaire métier — « Problématique pré-échéance », « Qualification
      * recouvrement », « Type de paiement ». Elles varient d'un tableau à
@@ -380,7 +411,8 @@
                 itemName: rowValues.numero || '',
             });
         });
-        return { factures, mapping, columns, rejets: contr.rejets };
+        const couverture = couvertureMapping(mapping, col => rows.map(r => r[col]), rows.length);
+        return { factures, mapping, columns, rejets: contr.rejets, couverture };
     }
 
     // ──────────────────────────────────────────────
@@ -647,7 +679,7 @@
     global.LioraIngest = {
         FIELD_DEFS, FIELD_BY_NAME, autoMapColumns, parseMontant, factureKey,
         buildFacture, facturesFromMondayBoard, facturesFromRows, colonnesQualification,
-        validerMapping,
+        validerMapping, couvertureMapping,
         consolider, appliquerGrandLivre, enrichir, statutIndiquePaye,
     };
 })(window);

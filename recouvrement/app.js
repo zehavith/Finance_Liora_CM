@@ -2406,6 +2406,38 @@
             detail: partiels.map(p => `${p.nom} — ${U.nombre(p.manquantes)} manquantes sur ${U.nombre(p.attendues)}`),
         });
 
+        // Champs essentiels vides ou non reconnus, tableau par tableau.
+        //
+        // C'est la cause la plus fréquente de chiffres à zéro : la colonne
+        // existe dans Monday, elle est renseignée, mais l'application ne l'a pas
+        // reconnue sous ce nom. Sans ce contrôle, l'erreur ne se voit qu'à
+        // l'arrivée, sous la forme d'un financement entier à 0 € ou de factures
+        // sans échéance calculable.
+        const ESSENTIELS = [
+            { champ: 'montant', nom: 'Montant', effet: 'ces factures pèsent 0 € dans tous les montants' },
+            { champ: 'dateFacture', nom: 'Date de facture', effet: "l'échéance ne peut pas être calculée" },
+            { champ: 'dateFinFormation', nom: 'Fin de formation', effet: "l'échéance ne peut pas être calculée" },
+        ];
+        const trous = [];
+        for (const b of monday) {
+            if (!b.actif || b.role === 'ignore' || b.role === 'technique' || !b.charge) continue;
+            for (const e of ESSENTIELS) {
+                const c = (b.couverture || {})[e.champ];
+                if (!c) continue;                       // tableau chargé avant cette mesure
+                if (!c.colId) trous.push({ b, e, txt: 'aucune colonne reconnue', nb: b.charge });
+                else if (c.taux < 50) trous.push({ b, e, txt: `renseignée sur ${Math.round(c.taux)} % des lignes`, nb: b.charge });
+            }
+        }
+        if (trous.length) out.push({
+            code: 'CHAMP_ESSENTIEL', unite: 'tableau', gravite: 'haute',
+            titre: 'Colonnes essentielles non reconnues',
+            nb: trous.length, euros: 0,
+            conseil: 'La colonne existe peut-être dans Monday sous un autre nom. '
+                + 'Ouvrez « Correspondance des colonnes » dans l\'onglet Données, choisissez le tableau '
+                + 'concerné et associez la bonne colonne, puis rechargez ce tableau.',
+            detail: trous.map(t => `${t.b.name} — ${t.e.nom} : ${t.txt} (${t.e.effet})`),
+        });
+
         // Tableaux cochés mais jamais chargés
         const jamais = monday.filter(b => b.actif && b.role !== 'ignore' && b.charge == null);
         if (jamais.length) out.push({
@@ -2769,14 +2801,30 @@
             return;
         }
         const mapping = board.mapping || {};
-        const rows = I.FIELD_DEFS.map(def => ({
-            field: def.field, label: def.label,
-            colId: mapping[def.field] || '',
-            exemple: exempleValeur(board, mapping[def.field]),
-        }));
+
+        // Les champs qui font tourner le calcul passent en tête : c'est là que
+        // se joue un montant à zéro ou une échéance introuvable.
+        const ESSENTIELS = ['numero', 'montant', 'dateFacture', 'dateFinFormation', 'dateDebutFormation', 'financement', 'typeClient'];
+        const defs = I.FIELD_DEFS.slice().sort((a, b2) => {
+            const ia = ESSENTIELS.indexOf(a.field), ib = ESSENTIELS.indexOf(b2.field);
+            return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+        });
+
+        const couv = board.couverture || {};
+        const rows = defs.map(def => {
+            const c = couv[def.field];
+            return {
+                field: def.field, label: def.label,
+                essentiel: ESSENTIELS.includes(def.field),
+                colId: mapping[def.field] || '',
+                taux: mapping[def.field] ? (c ? c.taux : null) : null,
+                exemple: exempleValeur(board, mapping[def.field]),
+            };
+        });
 
         el.innerHTML = U.table([
-            { key: 'label', label: 'Champ de l\'application' },
+            { key: 'label', label: 'Champ de l\'application',
+              format: (v, r) => U.escapeHtml(v) + (r.essentiel ? ' <span class="pill pill-muted" title="Sert au calcul de l\'échéance ou des montants">essentiel</span>' : '') },
             {
                 key: 'colId', label: 'Colonne Monday', sortable: false,
                 format: (v, r) => `<select class="input input-sm map-sel" data-field="${r.field}">`
@@ -2784,6 +2832,17 @@
                     + board.columns.map(c => `<option value="${U.escapeHtml(c.id)}"${c.id === v ? ' selected' : ''}>${U.escapeHtml(c.title)}${c.type ? ' (' + c.type + ')' : ''}</option>`).join('')
                     + '</select>',
             },
+            // Une colonne bien nommée mais jamais renseignée produit exactement
+            // les mêmes zéros qu'une colonne absente : le taux le dit.
+            { key: 'taux', label: 'Renseignée', align: 'right',
+              title: 'Part des lignes de ce tableau où la colonne porte une valeur',
+              format: (v, r) => {
+                  if (!r.colId) return r.essentiel
+                      ? '<span class="cell-danger">aucune colonne</span>' : '<span class="ag-zero">—</span>';
+                  if (v == null) return '<span class="ag-zero">à recharger</span>';
+                  const txt = U.pourcent(v, 0);
+                  return (v < 50 && r.essentiel) ? `<span class="cell-danger">${txt}</span>` : txt;
+              } },
             { key: 'exemple', label: 'Exemple de valeur', cls: () => 'cell-note' },
         ], rows, { vide: '—' });
 
@@ -3044,6 +3103,24 @@
                         contr.rejets.forEach(r => log(`   ⚠ « ${r.colonne} » écartée du champ ${r.champ} : ${r.raison}`));
                     }
 
+                    // Une colonne correctement nommée peut n'être jamais
+                    // renseignée. Le taux de remplissage est mesuré ici, sur les
+                    // valeurs réelles, et conservé pour l'écran de
+                    // correspondance : un montant absent doit se voir avant de
+                    // ressortir en zéros dans les indicateurs.
+                    b.couverture = I.couvertureMapping(b.mapping, colId =>
+                        echantillon.map(it => {
+                            const cv = (it.column_values || []).find(c => c.id === colId);
+                            return cv ? M.columnValue(cv) : '';
+                        }), echantillon.length);
+
+                    for (const champ of ['montant', 'dateFacture', 'dateFinFormation']) {
+                        const c = b.couverture[champ];
+                        const nom = (I.FIELD_BY_NAME[champ] || {}).label || champ;
+                        if (!c || !c.colId) log(`   ⚠ ${nom} : aucune colonne reconnue sur ce tableau`);
+                        else if (c.taux < 50) log(`   ⚠ ${nom} : colonne renseignée sur ${Math.round(c.taux)} % des lignes seulement`);
+                    }
+
                     const factures = I.facturesFromMondayBoard(board, items, b.mapping, b);
                     // Conserver les valeurs brutes pour l'aperçu du mapping
                     items.forEach((it, idx) => {
@@ -3199,7 +3276,7 @@
                     financementDefaut: detect.financementDefaut,
                     mapping: null,
                 };
-                const { factures, mapping, columns } = I.facturesFromRows(rows, cfg, nom);
+                const { factures, mapping, columns, couverture } = I.facturesFromRows(rows, cfg, nom);
 
                 // Le fichier devient un « tableau » de la configuration
                 const id = 'file:' + nom;
@@ -3208,7 +3285,7 @@
                     id, name: nom, itemsCount: rows.length, workspace: 'Import fichier',
                     role: cfg.role, perimetre: cfg.perimetre, source: cfg.source,
                     financementDefaut: cfg.financementDefaut, actif: true,
-                    columns, mapping, charge: factures.length,
+                    columns, mapping, couverture, charge: factures.length,
                 };
                 if (existant) Object.assign(existant, entree); else state.boards.push(entree);
 

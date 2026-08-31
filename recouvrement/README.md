@@ -250,6 +250,25 @@ sur *0.1. ALL - Factures payées*. Deux factures réellement distinctes portant 
 même numéro seraient en revanche fusionnées à tort, et la règle de rapprochement
 devrait alors être revue.
 
+### Taux de remplissage des colonnes
+
+Une colonne peut être correctement associée et pourtant vide : nom reconnu,
+mais colonne jamais renseignée dans Monday, ou bonne colonne choisie parmi
+plusieurs homonymes. Le résultat est le même qu'une colonne absente — des
+montants à zéro et des échéances non calculables — sans que rien ne l'explique.
+
+L'écran *Correspondance des colonnes* porte donc, pour chaque champ, la **part
+des lignes du tableau où la colonne est effectivement renseignée**, mesurée sur
+les valeurs réelles. Les champs qui font tourner le calcul — numéro, montant,
+date de facture, dates de formation, type de financement, type de client — sont
+marqués *essentiel* et remontés en tête ; en dessous de 50 %, ou sans colonne
+associée, ils passent en rouge.
+
+La même mesure alimente une anomalie *Data Quality*, « Colonnes essentielles non
+reconnues », qui nomme le tableau, le champ, le taux constaté et l'effet sur les
+indicateurs. Il n'est donc pas nécessaire d'ouvrir les tableaux un par un pour
+s'en apercevoir.
+
 ### Contrôle des colonnes associées
 
 La reconnaissance automatique des colonnes se fait sur le nom, ce qui suffit la
