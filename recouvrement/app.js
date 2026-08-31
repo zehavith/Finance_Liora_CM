@@ -39,7 +39,7 @@
         compte: null,
 
         options: {
-            prefereEcheanceMonday: true,
+            prefereEcheanceMonday: false,   // les règles font foi
             masquerTechnique: true,
             payeesHorsPortefeuille: false,
             actualisationAuto: 30,        // minutes, 0 = désactivée

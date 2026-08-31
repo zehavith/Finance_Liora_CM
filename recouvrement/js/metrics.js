@@ -767,6 +767,13 @@
             factures.filter(f => f.delaiPaiement != null && f.delaiPaiement < 0),
             "Vérifier les dates : un règlement daté avant l'émission fausse les délais moyens.");
 
+        push('ECHEANCE_DIVERGENTE', "Échéance Monday très éloignée de l'échéance calculée", 'haute',
+            factures.filter(f => f.dateEcheance && f.dateEcheanceSource
+                && Math.abs(R.diffDays(f.dateEcheanceSource, f.dateEcheance)) > 60),
+            "Plus de 60 jours d'écart entre la date saisie dans Monday et celle qu'imposent les règles. "
+            + "Le plus souvent, la colonne d'échéance reconnue n'est pas la bonne : vérifiez la "
+            + "correspondance des colonnes dans l'onglet Données.");
+
         push('RETARD_EXTREME', "Retard supérieur à 1 an", 'haute',
             factures.filter(f => f.etat === 'En retard' && f.retardJours > 365),
             "Créances anciennes : passage en contentieux ou en perte à arbitrer.");

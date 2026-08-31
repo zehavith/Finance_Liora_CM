@@ -142,6 +142,20 @@
     // ──────────────────────────────────────────────
 
     /**
+     * Périmètre de la facture. Les tableaux opérationnels le portent dans leur
+     * rôle ; le tableau des factures payées, non — il faut le déduire du groupe
+     * d'origine, faute de quoi toutes ses factures se retrouveraient dans un
+     * « Tous » qui ne veut rien dire dans une répartition.
+     */
+    function perimetreDe(ctx, v) {
+        if (ctx.perimetre && ctx.perimetre !== 'Tous' && ctx.perimetre !== 'Inconnu') return ctx.perimetre;
+        const devine = R.perimetreDepuisTexte(v.groupeOrigine)
+            || R.perimetreDepuisTexte(ctx.groupTitle)
+            || R.perimetreDepuisTexte(ctx.boardName);
+        return devine || 'Non déterminé';
+    }
+
+    /**
      * @param {Object} rowValues  { field: valeurBrute }
      * @param {Object} ctx        { boardId, boardName, role, perimetre, source, financementDefaut, groupTitle, itemId, itemName }
      */
@@ -173,7 +187,7 @@
             board: ctx.boardName,
             role: ctx.role,
             source: ctx.source,
-            perimetre: ctx.perimetre,
+            perimetre: perimetreDe(ctx, v),
             groupe: ctx.groupTitle || '',
             groupeTechnique: R.estGroupeTechnique(ctx.groupTitle),
             groupeOrigine: String(v.groupeOrigine || '').trim(),

@@ -213,6 +213,22 @@
         return GROUPES_EXCLUS.some(m => n.includes(' ' + m + ' ') || n.includes(m + ' '));
     }
 
+    /**
+     * Devine le périmètre à partir d'un libellé de groupe ou de tableau.
+     *
+     * Le tableau des factures payées mélange tous les périmètres : ses factures
+     * ne peuvent pas rester étiquetées « Tous », qui n'est pas un périmètre mais
+     * une absence de réponse. Le groupe d'origine, conservé au moment du
+     * règlement, permet le plus souvent de trancher.
+     */
+    function perimetreDepuisTexte(txt) {
+        const n = ' ' + norm(txt) + ' ';
+        if (!n.trim()) return null;
+        if (/cpf|aif|poei|agefiph|transition|region|perso|personnel|apprenant|kairos|b2c/.test(n)) return 'B2C';
+        if (/adv|recouv|opco|tampon|entreprise|corporate|b2b|interco|etat|alternance/.test(n)) return 'Corporate';
+        return null;
+    }
+
     /** Sources de retard, utilisées pour les chips de filtrage du dashboard. */
     const SOURCES = [
         { key: 'recouvrement', label: 'Recouvrement',  hint: 'Tableau 1.2 — recouvrement Corporate' },
@@ -361,7 +377,7 @@
         DEFAULT_ECHEANCE_RULES, DEFAULT_FALLBACK_RULE,
         BOARD_ROLE_PATTERNS, ROLE_LABELS, SOURCES,
         detectBoardRole, detectFinancement, getRule, computeEcheance,
-        GROUPES_EXCLUS, estGroupeTechnique,
+        GROUPES_EXCLUS, estGroupeTechnique, perimetreDepuisTexte,
         AGING_BUCKETS, bucketFor, MS_DAY,
     };
 })(window);

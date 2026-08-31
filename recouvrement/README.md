@@ -123,6 +123,15 @@ du type de financement, selon le référentiel Liora :
 | B2C-Perso / Perso-Alternance | Début / fin de formation (aucun délai) |
 | CPF | Fin de formation +45 j |
 
+**Les règles font foi.** L'échéance est toujours recalculée à partir du type de
+financement, même quand Monday porte une date d'échéance : la date saisie est
+parfois vide, parfois issue d'une colonne voisine, et une échéance fausse fausse
+tout le reste. La case *Faire primer la date d'échéance saisie dans Monday*, dans
+*Données → Options de calcul*, permet l'inverse si besoin.
+
+Un écart de plus de 60 jours entre la date Monday et la date calculée est
+signalé en Data Quality : c'est la signature d'une colonne mal reconnue.
+
 Le référentiel écrit *BTC-Entreprise* là où Monday écrit *B2C - Entreprise* :
 les deux graphies sont reconnues et désignent la même chose, un particulier dont
 la formation est facturée à une entreprise.
