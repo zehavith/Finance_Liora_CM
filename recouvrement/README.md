@@ -323,15 +323,24 @@ les créances anciennes finissent par être recouvrées ou si elles s'enkystent 
 une seconde série qui s'éteint au-delà de 60 jours signifie qu'au-delà de ce
 seuil, plus rien ne rentre. Un clic sur une tranche filtre les factures.
 
-### Récupération
+### Où en est le portefeuille
 
-Le bandeau *Récupération des factures échues* répartit les factures arrivées à
-échéance en trois postes qui totalisent 100 %, en euros ou en nombre :
+Le bandeau répartit **toutes** les factures — échues ou non — en postes qui
+totalisent 100 %, en euros ou en nombre :
 
 - **Réglé avant l'échéance** — rentré tout seul, la facture n'est jamais tombée
   en recouvrement.
 - **Réglé en recouvrement** — tombée en recouvrement, puis finalement encaissée.
 - **Reste à recouvrer** — en recouvrement à ce jour, toujours impayée.
+- **Pas encore échu** — facturé, échéance à venir : les encaissements attendus.
+- **Échéance inconnue**, si le cas se présente — dates manquantes dans Monday,
+  hors de tous les taux.
+
+Le non-échu figure ici pour la lecture trésorerie : sans lui, le bandeau ne
+montrait que le passé et taisait ce qui doit rentrer. La somme des montants des
+tuiles égale exactement le total facturé.
+
+Chaque tuile est cliquable et ouvre les factures correspondantes.
 
 Une quatrième mesure, **Jamais passé par le recouvrement**, lit le processus
 plutôt que la date. Elle n'est pas affichée sur le tableau de bord — sa base

@@ -509,19 +509,23 @@
     }
 
     /**
-     * Bandeau « Récupération » : sur les factures arrivées à échéance, la part
-     * rentrée avant l'échéance, celle rentrée après être tombée en recouvrement,
-     * et ce qui reste dû. Les trois totalisent 100 %.
+     * Répartition du portefeuille entier, factures échues et non échues
+     * confondues : ce qui est rentré seul, ce qui est rentré après relance, ce
+     * qui est bloqué, et ce qui reste à venir. Les tuiles totalisent 100 %.
+     *
+     * La quatrième tuile sert la lecture trésorerie : sans elle, on ne voyait
+     * pas les encaissements attendus.
      *
      * La lecture « par le processus » — d'après le groupe Monday d'origine du
-     * règlement — reste calculée et figure dans l'export Excel, mais n'est plus
-     * affichée ici : deux bases différentes côte à côte prêtaient à confusion.
+     * règlement — reste calculée et figure dans l'export Excel, mais n'est pas
+     * affichée ici : sa base diffère et prêtait à confusion.
      */
     function rendreRecuperation(v) {
         const el = $('#recup-grid');
         if (!el) return;
         const eur = state.ui.uniteRecup === 'euros';
         const val = (e, n) => eur ? U.euros(e) : U.nombre(n);
+        const pct = (a, b) => (b > 0 ? (a / b) * 100 : 0);
 
         const tuile = (o) => `
             <${o.etats ? 'button' : 'div'} class="recup-card${o.muted ? ' recup-muted' : ''}"
@@ -536,7 +540,7 @@
         el.innerHTML = [
             tuile({
                 couleur: U.couleurs.paye,
-                taux: eur ? v.tauxRegleATempsEuros : v.tauxRegleATempsNb,
+                taux: eur ? v.tauxPortefeuilleRegleATemps : pct(v.nbRegleATemps, v.total),
                 etats: ['Payée'],
                 label: "Réglé avant l'échéance",
                 valeur: val(v.eurosRegleATemps, v.nbRegleATemps),
@@ -544,7 +548,7 @@
             }),
             tuile({
                 couleur: U.couleurs.payeRetard,
-                taux: eur ? v.tauxRegleRetardEuros : v.tauxRegleRetardNb,
+                taux: eur ? v.tauxPortefeuilleRegleRetard : pct(v.nbPayeesRetard, v.total),
                 etats: ['Payée en retard'],
                 label: 'Réglé en recouvrement',
                 valeur: val(v.eurosPayeesRetard, v.nbPayeesRetard),
@@ -552,12 +556,28 @@
             }),
             tuile({
                 couleur: U.couleurs.retard,
-                taux: eur ? v.tauxResteEuros : v.tauxResteNb,
+                taux: eur ? v.tauxPortefeuilleEnRetard : pct(v.nbEnRetard, v.total),
                 etats: ['En retard'],
                 label: 'Reste à recouvrer',
                 valeur: val(v.eurosEnRetard, v.nbEnRetard),
                 sub: 'en recouvrement à ce jour, toujours impayé',
             }),
+            tuile({
+                couleur: U.couleurs.nonEchue,
+                taux: eur ? v.tauxPortefeuilleNonEchu : pct(v.nbNonEchues, v.total),
+                etats: ['Non échue'],
+                label: 'Pas encore échu',
+                valeur: val(v.eurosNonEchuesFacture, v.nbNonEchues),
+                sub: 'facturé, échéance à venir — encaissements attendus',
+            }),
+            v.nbSansEcheance ? tuile({
+                couleur: U.couleurs.inconnu, muted: true,
+                taux: eur ? v.tauxPortefeuilleSansEcheance : pct(v.nbSansEcheance, v.total),
+                etats: ['Échéance inconnue'],
+                label: 'Échéance inconnue',
+                valeur: val(v.eurosSansEcheance, v.nbSansEcheance),
+                sub: 'dates manquantes dans Monday — hors de tous les taux',
+            }) : '',
         ].join('');
 
         $$('[data-etats]', el).forEach(b => b.addEventListener('click', () => {

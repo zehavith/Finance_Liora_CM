@@ -203,6 +203,16 @@
             retardMoyenPaiement: moyenne(payeesRetard.map(x => x.retardJours)),
             delaiPaiementMoyen: moyenne(payees.map(x => x.delaiPaiement).filter(d => d != null && d >= 0)),
 
+            // ── Répartition du portefeuille entier ──
+            // Base : toutes les factures, échues ou non. C'est la lecture
+            // trésorerie : ce qui est rentré, ce qui est bloqué, ce qui arrive.
+            tauxPortefeuilleRegleATemps: pct(sum(regleATemps, x => x.montant), totalEuros),
+            tauxPortefeuilleRegleRetard: pct(sum(payeesRetard, x => x.montant), totalEuros),
+            tauxPortefeuilleEnRetard: pct(sum(enRetard, x => x.montant), totalEuros),
+            tauxPortefeuilleNonEchu: pct(sum(nonEchues, x => x.montant), totalEuros),
+            tauxPortefeuilleSansEcheance: pct(sum(sansEcheance, x => x.montant), totalEuros),
+            eurosNonEchuesFacture: sum(nonEchues, x => x.montant),
+
             // Réglé sans jamais être en retard
             nbRegleATemps: regleATemps.length,
             eurosRegleATemps: sum(regleATemps, x => x.montant),
