@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 1.5.0** — 1er septembre 2026
+**Version 1.6.0** — 1er septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -210,6 +210,32 @@ Ces groupes se répartissent en deux familles :
 Le groupe *Factures non payées : Perte / Contentieux* contient le mot « payées »
 sans rien devoir au règlement : la négation est vérifiée avant tout, et ces
 factures sont classées en contentieux, non en réglées.
+
+### Corriger un financement à la main
+
+Une facture réglée avant l'entrée dans le circuit ne porte parfois que son
+groupe pour toute indication, et ressort en *Corporate — financement à
+préciser*. Le financement se corrige alors dans l'application, sans toucher à
+Monday :
+
+- **une facture** — la ligne *Type de financement* de sa fiche est une liste
+  déroulante ;
+- **plusieurs d'un coup** — chaque ligne du tableau *Factures* porte une case à
+  cocher. Dès qu'une case est cochée, une barre apparaît : nombre de factures
+  retenues, choix du financement, *Appliquer*. Un bouton *Tout sélectionner*
+  prend l'ensemble des factures affichées, filtres compris — filtrer sur
+  *Corporate — financement à préciser* puis tout sélectionner traite la
+  catégorie entière en trois clics.
+
+La correction l'emporte sur toute déduction et précède le calcul de l'échéance :
+c'est la règle du financement choisi qui s'applique. Elle est retenue **sur le
+numéro de facture**, donc elle survit à un rechargement complet de Monday. Les
+factures ainsi corrigées portent une coche dans la colonne *Financement* ;
+*Rendre au calcul automatique* les rend à la déduction.
+
+Une facture sans numéro ne peut pas porter de correction durable : elle serait
+perdue au rechargement, et l'application le dit plutôt que de laisser croire le
+contraire.
 
 ### D'où vient le type de financement
 

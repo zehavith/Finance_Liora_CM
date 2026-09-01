@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v1.5.0 — 1er septembre 2026
+   v1.6.0 — 1er septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '1.5.0';
+    const VERSION = '1.6.0';
     const VERSION_DATE = '1er septembre 2026';
 
     const R = window.LioraRules;
@@ -32,6 +32,8 @@
         brutes: [],            // factures avant consolidation (pour ré-enrichir)
         boards: [],            // [{ id, name, role, perimetre, source, financementDefaut, actif, itemsCount, columns, mapping }]
         rules: R.DEFAULT_ECHEANCE_RULES.map(r => ({ ...r })),
+        // Financements corrigés à la main, par numéro de facture : { cle: 'B2B' }
+        financementsManuels: {},
         grandLivre: [],
         imports: [],
 
@@ -114,7 +116,7 @@
         });
         brancherEvenements();
 
-        const [token, boards, rules, options, imports, gl, factures] = await Promise.all([
+        const [token, boards, rules, options, imports, gl, factures, finManuels] = await Promise.all([
             S.get(S.KEYS.settings, {}).then(s => (s && s.token) || ''),
             S.get(S.KEYS.boards, []),
             S.get(S.KEYS.rules, null),
@@ -122,7 +124,9 @@
             S.get(S.KEYS.imports, []),
             S.get(S.KEYS.grandLivre, []),
             S.get(S.KEYS.factures, []),
+            S.get(S.KEYS.finManuels, {}),
         ]);
+        state.financementsManuels = finManuels || {};
 
         state.token = token || '';
         state.boards = boards || [];
@@ -259,6 +263,7 @@
             dateRef: state.filtres.dateRef,
             rules: state.rules,
             prefereEcheanceMonday: state.options.prefereEcheanceMonday,
+            financementsManuels: state.financementsManuels,
         });
 
         if (state.options.payeesHorsPortefeuille) consolidees = consolidees.filter(f => !f.paye);
@@ -1780,7 +1785,12 @@
 
         // L'état et le retard viennent juste après le client : ce sont les deux
         // signaux que la responsable recouvrement lit en premier.
+        const sel = state.ui.selection || (state.ui.selection = new Set());
         const cols = [
+            // Case de sélection : elle sert à corriger le financement de
+            // plusieurs factures d'un coup, sans les ouvrir une par une.
+            { key: '__sel', label: '', align: 'center', width: '34px', sortable: false,
+              format: (v, r) => `<input type="checkbox" class="fact-sel" data-cle="${U.escapeHtml(r.cleManuelle || '')}"${sel.has(r.cleManuelle) ? ' checked' : ''}>` },
             { key: 'numero', label: 'Facture', format: (v, r) => `<span class="mono">${U.escapeHtml(v || '—')}</span>${r.doublon ? ' <span class="pill pill-muted" title="Présente sur plusieurs tableaux : ' + U.escapeHtml(r.presenceTableaux.join(', ')) + '">×' + r.presenceTableaux.length + '</span>' : ''}` },
             { key: 'client', label: 'Client', format: (v) => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v)}">${U.escapeHtml(v)}</span>` },
             { key: 'etat', label: 'État', format: v => `<span class="pill ${U.etatClass(v)}">${U.escapeHtml(v)}</span>` },
@@ -1789,7 +1799,12 @@
             { key: 'montant', label: 'Montant', align: 'right', format: v => U.euros(v) },
             {
                 key: 'financement', label: 'Financement',
-                format: v => { const l = R.getRule(v, state.rules).label; return `<span class="cell-clip" title="${U.escapeHtml(l)}">${U.escapeHtml(l)}</span>`; },
+                format: (v, r) => {
+                    const l = R.getRule(v, state.rules).label;
+                    const marque = r.financementManuel
+                        ? ' <span class="pill pill-muted" title="Financement corrigé à la main">✔</span>' : '';
+                    return `<span class="cell-clip" title="${U.escapeHtml(l)}">${U.escapeHtml(l)}</span>${marque}`;
+                },
             },
             { key: 'dateFacture', label: 'Facture', align: 'center', format: U.dateFR },
             { key: 'dateEcheance', label: 'Échéance', align: 'center', format: (v, r) => `${U.dateFR(v)}${r.echeanceOrigine === 'Règle' ? `<span class="calc-flag" title="Calculée par la règle ${U.escapeHtml(r.regleLabel)}">ƒ</span>` : ''}` },
@@ -1814,8 +1829,20 @@
         });
         U.bindTable(el, page, {
             onSort: k => { t.sens = (t.key === k && t.sens === 'desc') ? 'asc' : 'desc'; t.key = k; rendreTout(); },
-            onRowClick: ouvrirFiche,
+            onRowClick: (f, ev) => {
+                if (ev && ev.target && ev.target.classList.contains('fact-sel')) return;
+                ouvrirFiche(f);
+            },
         });
+
+        $$('.fact-sel', el).forEach(c => c.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const cle = c.dataset.cle;
+            if (!cle) return;
+            if (c.checked) sel.add(cle); else sel.delete(cle);
+            rendreBarreSelection(rows);
+        }));
+        rendreBarreSelection(rows);
 
         // Pagination
         const p = $('#factures-pagination');
@@ -1838,6 +1865,65 @@
         }));
     }
 
+    /**
+     * Barre d'action de la sélection.
+     *
+     * Corriger le financement facture par facture n'est pas tenable quand
+     * plusieurs centaines sortent en « Corporate — financement à préciser » :
+     * on en coche autant qu'on veut, on choisit une fois, et tout est appliqué.
+     * La correction est retenue sur le numéro de facture et survit donc au
+     * rechargement de Monday.
+     */
+    function rendreBarreSelection(rowsVisibles) {
+        const el = $('#barre-selection');
+        if (!el) return;
+        const sel = state.ui.selection || new Set();
+        if (!sel.size) { el.hidden = true; el.innerHTML = ''; return; }
+
+        const options = state.rules
+            .filter(r => r.key !== 'CORPORATE')
+            .map(r => `<option value="${U.escapeHtml(r.key)}">${U.escapeHtml(r.label)}</option>`).join('');
+
+        el.hidden = false;
+        el.innerHTML = `
+            <span class="sel-nb">${U.nombre(sel.size)} facture${sel.size > 1 ? 's' : ''} sélectionnée${sel.size > 1 ? 's' : ''}</span>
+            <label class="sel-champ">Financement
+                <select class="input input-sm" id="sel-financement">
+                    <option value="">— choisir —</option>${options}
+                </select>
+            </label>
+            <button class="btn btn-primary btn-sm" id="sel-appliquer">Appliquer</button>
+            <button class="btn btn-ghost btn-sm" id="sel-retirer">Rendre au calcul automatique</button>
+            <button class="btn btn-ghost btn-sm" id="sel-tout">Tout sélectionner (${U.nombre(rowsVisibles.length)})</button>
+            <button class="btn btn-ghost btn-sm" id="sel-aucun">Désélectionner</button>`;
+
+        $('#sel-appliquer').addEventListener('click', async () => {
+            const v = $('#sel-financement').value;
+            if (!v) { U.toast('Choisissez un type de financement.', 'error'); return; }
+            for (const cle of sel) state.financementsManuels[cle] = v;
+            await appliquerFinancementsManuels(sel.size, R.getRule(v, state.rules).label);
+        });
+        $('#sel-retirer').addEventListener('click', async () => {
+            for (const cle of sel) delete state.financementsManuels[cle];
+            await appliquerFinancementsManuels(sel.size, null);
+        });
+        $('#sel-tout').addEventListener('click', () => {
+            rowsVisibles.forEach(r => { if (r.cleManuelle) sel.add(r.cleManuelle); });
+            rendreTout();
+        });
+        $('#sel-aucun').addEventListener('click', () => { sel.clear(); rendreTout(); });
+    }
+
+    async function appliquerFinancementsManuels(nb, label) {
+        await S.set(S.KEYS.finManuels, state.financementsManuels);
+        state.ui.selection.clear();
+        recalculer({ conserverPeriode: true });
+        rendreTout();
+        U.toast(label
+            ? `${U.nombre(nb)} factures passées en « ${label} ».`
+            : `${U.nombre(nb)} factures rendues au calcul automatique.`, 'success');
+    }
+
     /** Fiche détaillée d'une facture, avec la traçabilité du calcul d'échéance. */
     function ouvrirFiche(f) {
         const baseLabel = { dateFacture: 'date de facture', dateFinFormation: 'fin de formation', dateDebutFormation: 'début de formation', 'colonne Monday': 'colonne Monday' };
@@ -1857,7 +1943,14 @@
                 </div>
                 <div class="fiche-grid">
                     ${ligne('Client', U.escapeHtml(f.client))}
-                    ${ligne('Type de financement', U.escapeHtml(R.getRule(f.financement, state.rules).label) + (f.financementBrut ? ` <span class="fv-hint">(« ${U.escapeHtml(f.financementBrut)} »)</span>` : ''))}
+                    ${ligne('Type de financement',
+                        `<select class="input input-sm" id="fiche-financement">`
+                        + `<option value="">— calcul automatique —</option>`
+                        + state.rules.filter(r => r.key !== 'CORPORATE')
+                            .map(r => `<option value="${U.escapeHtml(r.key)}"${f.financementManuel && r.key === f.financement ? ' selected' : ''}>${U.escapeHtml(r.label)}</option>`).join('')
+                        + '</select>'
+                        + (f.financementManuel ? '' : ` <span class="fv-hint">déduit : ${U.escapeHtml(R.getRule(f.financement, state.rules).label)}</span>`)
+                        + (f.financementBrut ? ` <span class="fv-hint">(« ${U.escapeHtml(f.financementBrut)} »)</span>` : ''))}
                     ${ligne('Montant', U.euros(f.montant, true))}
                     ${(!f.paye && f.encours !== f.montant) ? ligne('Reste dû', U.euros(f.encours, true)) : ''}
                     ${ligne('Date de facture', U.dateFR(f.dateFacture))}
@@ -1884,6 +1977,23 @@
                     <p>${U.escapeHtml(explication)}</p>
                 </div>
             </div>`, [{ label: 'Fermer', primary: true }]);
+
+        // Le financement se corrige ici pour une facture isolée ; la sélection
+        // multiple du tableau sert quand il y en a des centaines.
+        const selFin = $('#fiche-financement');
+        if (selFin) selFin.addEventListener('change', async () => {
+            const cle = f.cleManuelle;
+            if (!cle) { U.toast('Cette facture n\'a pas de numéro : la correction ne peut pas être retenue.', 'error'); return; }
+            if (selFin.value) state.financementsManuels[cle] = selFin.value;
+            else delete state.financementsManuels[cle];
+            await S.set(S.KEYS.finManuels, state.financementsManuels);
+            recalculer({ conserverPeriode: true });
+            rendreTout();
+            U.closeModal();
+            U.toast(selFin.value
+                ? `Facture ${f.numero || ''} passée en « ${R.getRule(selFin.value, state.rules).label} ».`
+                : `Facture ${f.numero || ''} rendue au calcul automatique.`, 'success');
+        });
     }
 
     // ══════════════════════════════════════════════

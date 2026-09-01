@@ -1030,3 +1030,16 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
 .cause-bloc { margin-bottom: 22px; }
 .cause-titre { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .cause-nb { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+
+
+/* Barre d'action de la sélection de factures */
+.barre-selection {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 10px 14px; margin-bottom: 10px; border-radius: 8px;
+    background: var(--surface-2, rgba(255,255,255,.04));
+    border: 1px solid var(--border);
+}
+.barre-selection .sel-nb { font-weight: 600; }
+.barre-selection .sel-champ { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
+/* display:flex l'emporterait sur la règle par défaut de l'attribut hidden */
+.barre-selection[hidden] { display: none; }

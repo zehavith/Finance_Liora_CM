@@ -682,6 +682,16 @@
                 || R.detectFinancement(f.board, o.rules);
             if (finRededuit) f.financement = finRededuit;
 
+            // Une correction saisie à la main l'emporte sur toute déduction, et
+            // précède le calcul de l'échéance : c'est la règle du financement
+            // choisi qui doit s'appliquer. La correction est retenue sur le
+            // numéro de facture, donc elle survit à un rechargement de Monday ;
+            // sans numéro, elle ne vaut que pour cette ligne-là.
+            f.cleManuelle = f.cle || (f.boardId + '#' + f.itemId);
+            const manuel = o.financementsManuels && o.financementsManuels[f.cleManuelle];
+            if (manuel) { f.financement = manuel; f.financementManuel = true; }
+            else f.financementManuel = false;
+
             const ech = R.computeEcheance(f, { rules: o.rules, prefereEcheanceMonday: o.prefereEcheanceMonday });
             f.dateEcheance = ech.date;
             f.echeanceOrigine = ech.origine;

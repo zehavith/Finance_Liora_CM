@@ -20,6 +20,7 @@
         imports:    'rec_imports',       // historique des imports
         grandLivre: 'rec_grand_livre',   // extrait de grand livre lettré
         gocardless: 'rec_gocardless',    // exports GoCardless (prélèvements)
+        finManuels: 'rec_fin_manuels',   // financements corrigés à la main
     };
 
     function openDB() {

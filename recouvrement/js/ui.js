@@ -173,7 +173,7 @@
         if (o.onRowClick) {
             $$('tbody tr[data-row]', container).forEach(tr => {
                 tr.classList.add('row-clickable');
-                tr.addEventListener('click', () => o.onRowClick(rows[+tr.dataset.row]));
+                tr.addEventListener('click', (ev) => o.onRowClick(rows[+tr.dataset.row], ev));
             });
         }
     }
