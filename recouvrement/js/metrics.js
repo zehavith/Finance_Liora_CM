@@ -1025,6 +1025,13 @@
             + "être active que sur un seul tableau. Supprimer dans Monday l'exemplaire resté sur le "
             + "tableau quitté. Les indicateurs ne sont pas faussés — l'application n'en compte qu'une.");
 
+        push('DOUBLON_PAYEES', "Facture saisie deux fois dans les factures payées", 'moyenne',
+            factures.filter(f => f.doublonPayees),
+            "Une facture n'a qu'un règlement. Deux lignes dans « 0.1. ALL - Factures payées » — "
+            + "le plus souvent dans deux groupes différents — surévaluent le nombre de factures "
+            + "réglées par groupe et rendent ambiguë l'origine retenue pour la facture. "
+            + "Supprimer le doublon dans Monday ; les indicateurs, eux, n'en comptent qu'une.");
+
         push('SANS_NUMERO', "Numéro de facture absent", 'moyenne',
             factures.filter(f => !f.cle),
             "Le rapprochement avec le tableau « Factures payées » est impossible sans numéro.");

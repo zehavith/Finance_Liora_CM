@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 1.3.0** — 1er septembre 2026
+**Version 1.4.0** — 1er septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -287,10 +287,10 @@ colonne *Sans échéance* élevée signale des colonnes de dates non reconnues s
 ce tableau : la correspondance se corrige juste en dessous. Un écart entre
 *Sur Monday* et *Chargées* signale un chargement incomplet.
 
-### Deux familles de doublons
+### Trois familles de doublons
 
-Tous les doublons ne se valent pas, et les additionner masquait les seuls qui
-demandent une correction. La chaîne de traitement les sépare donc en deux
+Tous les doublons ne se valent pas, et les additionner masquait ceux qui
+demandent une correction. La chaîne de traitement les sépare donc en trois
 lignes, chacune cliquable :
 
 - **Doublons attendus** — une facture vue à la fois sur son tableau opérationnel
@@ -299,10 +299,17 @@ lignes, chacune cliquable :
 - **Doublons entre tableaux opérationnels** — la même facture active sur deux
   tableaux à la fois. Dans un circuit Tampon → ADV → Recouvrement une facture se
   déplace, elle ne se duplique pas : l'exemplaire resté sur le tableau quitté est
-  à supprimer dans Monday. Les indicateurs, eux, ne sont pas faussés —
-  l'application ne compte la facture qu'une fois. Le nombre passe en rouge dès
-  qu'il n'est pas nul, et l'anomalie *Facture présente sur deux tableaux
-  opérationnels* reprend la liste en Data Quality.
+  à supprimer dans Monday.
+- **Doublons dans les factures payées** — la même facture saisie plusieurs fois
+  dans *0.1. ALL - Factures payées*, le plus souvent dans deux groupes. Une
+  facture n'a qu'un règlement : tant que le doublon subsiste, le nombre de
+  factures réglées par groupe est surévalué et l'origine retenue pour la facture
+  est ambiguë.
+
+Les deux dernières passent en rouge dès qu'elles ne sont pas nulles, et chacune
+a son anomalie en Data Quality. Les indicateurs, eux, ne sont pas faussés :
+l'application ne compte la facture qu'une fois — c'est Monday qui porte la ligne
+en trop.
 
 Chaque liste donne le numéro, le client, le montant et les tableaux d'où
 viennent les lignes, de quoi aller vérifier dans Monday. Deux factures réellement

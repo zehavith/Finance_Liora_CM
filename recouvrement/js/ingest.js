@@ -515,13 +515,28 @@
                 g.role !== 'payees' && g.role !== 'technique' && g.role !== 'ignore'
                 && !R.estGroupeTechnique(g.groupe);
             const lignesOp = groupe.filter(estOperationnelle);
+            const lignesPayees = groupe.filter(g => g.role === 'payees');
+
             f.nbLignes = groupe.length;
             f.nbLignesOperationnelles = lignesOp.length;
             f.boardsOperationnels = [...new Set(lignesOp.map(g => g.board))];
             f.doublonOperationnel = lignesOp.length > 1;
-            // Lignes retirées du total, réparties entre les deux familles.
+
+            // Une facture réglée n'a qu'un règlement : deux lignes dans le
+            // tableau des factures payées — deux groupes, ou deux fois le même —
+            // sont un doublon de saisie, pas un fonctionnement du circuit.
+            f.nbLignesPayees = lignesPayees.length;
+            f.groupesPayees = [...new Set(lignesPayees.map(g => g.groupe || '(sans groupe)'))];
+            f.doublonPayees = lignesPayees.length > 1;
+
+            // Lignes retirées du total, réparties entre les trois familles.
+            // Les excédents se comptent famille par famille ; ce qui reste est
+            // le rapprochement attendu entre un tableau opérationnel et le
+            // tableau des règlements.
             f.doublonsRetiresOp = Math.max(0, lignesOp.length - 1);
-            f.doublonsRetiresAttendus = (groupe.length - 1) - f.doublonsRetiresOp;
+            f.doublonsRetiresPayees = Math.max(0, lignesPayees.length - 1);
+            f.doublonsRetiresAttendus =
+                (groupe.length - 1) - f.doublonsRetiresOp - f.doublonsRetiresPayees;
 
             // Le groupe d'origine du tableau « Factures payées » indique d'où
             // venait la facture au moment de son règlement.
