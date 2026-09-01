@@ -502,6 +502,27 @@
             f.presenceRoles = [...new Set(groupe.map(g => g.role))];
             f.doublon = groupe.length > 1;
 
+            // Deux familles de doublons, qui ne se corrigent pas pareil.
+            //
+            // Une facture vue sur son tableau opérationnel et sur le tableau des
+            // factures payées, ou dans un groupe d'archive, est attendue : c'est
+            // le fonctionnement même du circuit. Une facture présente sur deux
+            // tableaux opérationnels à la fois ne l'est pas — dans un circuit
+            // Tampon → ADV → Recouvrement, elle se déplace, elle ne se duplique
+            // pas. Les mélanger dans un chiffre unique masquait les secondes,
+            // les seules à corriger dans Monday.
+            const estOperationnelle = g =>
+                g.role !== 'payees' && g.role !== 'technique' && g.role !== 'ignore'
+                && !R.estGroupeTechnique(g.groupe);
+            const lignesOp = groupe.filter(estOperationnelle);
+            f.nbLignes = groupe.length;
+            f.nbLignesOperationnelles = lignesOp.length;
+            f.boardsOperationnels = [...new Set(lignesOp.map(g => g.board))];
+            f.doublonOperationnel = lignesOp.length > 1;
+            // Lignes retirées du total, réparties entre les deux familles.
+            f.doublonsRetiresOp = Math.max(0, lignesOp.length - 1);
+            f.doublonsRetiresAttendus = (groupe.length - 1) - f.doublonsRetiresOp;
+
             // Le groupe d'origine du tableau « Factures payées » indique d'où
             // venait la facture au moment de son règlement.
             // Le tableau des factures payées héberge aussi un groupe

@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 1.2.0** — 1er septembre 2026
+**Version 1.3.0** — 1er septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -287,18 +287,27 @@ colonne *Sans échéance* élevée signale des colonnes de dates non reconnues s
 ce tableau : la correspondance se corrige juste en dessous. Un écart entre
 *Sur Monday* et *Chargées* signale un chargement incomplet.
 
-### Vérifier les doublons fusionnés
+### Deux familles de doublons
 
-Le nombre de doublons fusionnés ne suffit pas à juger s'ils sont légitimes. La
-ligne *Doublons fusionnés* de la chaîne de traitement est donc cliquable : elle
-ouvre la liste des factures concernées, avec leur numéro, leur client, leur
-montant et les tableaux d'où viennent les lignes — de quoi aller vérifier dans
-Monday.
+Tous les doublons ne se valent pas, et les additionner masquait les seuls qui
+demandent une correction. La chaîne de traitement les sépare donc en deux
+lignes, chacune cliquable :
 
-Le cas normal est une facture présente à la fois sur son tableau opérationnel et
-sur *0.1. ALL - Factures payées*. Deux factures réellement distinctes portant le
-même numéro seraient en revanche fusionnées à tort, et la règle de rapprochement
-devrait alors être revue.
+- **Doublons attendus** — une facture vue à la fois sur son tableau opérationnel
+  et sur *0.1. ALL - Factures payées*, ou rangée dans un groupe d'archive. C'est
+  le fonctionnement même du circuit ; rien à corriger.
+- **Doublons entre tableaux opérationnels** — la même facture active sur deux
+  tableaux à la fois. Dans un circuit Tampon → ADV → Recouvrement une facture se
+  déplace, elle ne se duplique pas : l'exemplaire resté sur le tableau quitté est
+  à supprimer dans Monday. Les indicateurs, eux, ne sont pas faussés —
+  l'application ne compte la facture qu'une fois. Le nombre passe en rouge dès
+  qu'il n'est pas nul, et l'anomalie *Facture présente sur deux tableaux
+  opérationnels* reprend la liste en Data Quality.
+
+Chaque liste donne le numéro, le client, le montant et les tableaux d'où
+viennent les lignes, de quoi aller vérifier dans Monday. Deux factures réellement
+distinctes portant le même numéro seraient fusionnées à tort : le signaler, la
+règle de rapprochement devrait alors être revue.
 
 ### Taux de remplissage des colonnes
 

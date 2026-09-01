@@ -1016,9 +1016,14 @@
             factures.filter(f => f.paye && f.paiementEstime && f.datePaiementEffective),
             "La date de contrôle paiement sert de repli ; elle est postérieure au règlement réel, le retard est donc majoré.");
 
-        push('DOUBLON', "Facture présente sur plusieurs tableaux", 'moyenne',
-            factures.filter(f => f.doublon && !f.presenceRoles.includes('payees')),
-            "Une facture ne devrait être active que sur un seul tableau opérationnel (Tampon → ADV → Recouvrement).");
+        // Seuls les doublons entre tableaux opérationnels sont anormaux : une
+        // facture vue sur son tableau et sur celui des factures payées, ou
+        // rangée dans un groupe d'archive, relève du fonctionnement normal.
+        push('DOUBLON', "Facture présente sur deux tableaux opérationnels", 'moyenne',
+            factures.filter(f => f.doublonOperationnel),
+            "Dans le circuit Tampon → ADV → Recouvrement, une facture se déplace : elle ne devrait "
+            + "être active que sur un seul tableau. Supprimer dans Monday l'exemplaire resté sur le "
+            + "tableau quitté. Les indicateurs ne sont pas faussés — l'application n'en compte qu'une.");
 
         push('SANS_NUMERO', "Numéro de facture absent", 'moyenne',
             factures.filter(f => !f.cle),

@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v1.2.0 — 1er septembre 2026
+   v1.3.0 — 1er septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '1.2.0';
+    const VERSION = '1.3.0';
     const VERSION_DATE = '1er septembre 2026';
 
     const R = window.LioraRules;
@@ -2606,19 +2606,32 @@
         const ecartees = state.factures.filter(f => f.role === 'technique' || f.groupeTechnique).length;
         const analysees = consolidees - ecartees;
 
+        // Les doublons attendus — tableau des factures payées, groupes
+        // d'archive — se distinguent de ceux entre tableaux opérationnels, qui
+        // signalent une facture à ranger dans Monday. Le total reste le même,
+        // la lecture change : seule la seconde ligne appelle une correction.
+        const dblOp = X.sum(state.factures, f => f.doublonsRetiresOp || 0);
+        const dblAttendus = Math.max(0, fusionnees - dblOp);
+        const nbFacturesDblOp = state.factures.filter(f => f.doublonOperationnel).length;
+
         const ligne = (o) => `
             <div class="chaine-ligne${o.fort ? ' chaine-fort' : ''}${o.retrait ? ' chaine-retrait' : ''}${o.action ? ' chaine-cliquable' : ''}"${o.action ? ` data-chaine="${o.action}"` : ''}>
                 <span class="chaine-signe">${o.signe || ''}</span>
                 <span class="chaine-label">${U.escapeHtml(o.label)}</span>
-                <span class="chaine-nb">${U.nombre(o.nb)}</span>
+                <span class="chaine-nb${o.danger ? ' cell-danger' : ''}">${U.nombre(o.nb)}</span>
                 <span class="chaine-note">${U.escapeHtml(o.note || '')}</span>
             </div>`;
 
         el.innerHTML =
             ligne({ label: 'Lignes récupérées depuis Monday et des fichiers', nb: brutes, fort: true,
                     note: 'à comparer au nombre d\'éléments affiché dans Monday' })
-            + ligne({ signe: '−', retrait: true, label: 'Doublons fusionnés', nb: fusionnees, action: 'doublons',
-                      note: 'même numéro de facture sur plusieurs tableaux — cliquez pour voir lesquels' })
+            + ligne({ signe: '−', retrait: true, label: 'Doublons attendus', nb: dblAttendus, action: 'doublons',
+                      note: 'tableau des factures payées et groupes de service : le circuit fonctionne ainsi' })
+            + ligne({ signe: '−', retrait: true, label: 'Doublons entre tableaux opérationnels',
+                      nb: dblOp, action: 'doublons-op', danger: dblOp > 0,
+                      note: dblOp
+                          ? `${U.nombre(nbFacturesDblOp)} factures présentes sur deux tableaux opérationnels à la fois — cliquez pour les voir`
+                          : 'aucune facture présente sur deux tableaux opérationnels à la fois' })
             + ligne({ signe: '−', retrait: true, label: 'Groupes et tableaux de service', nb: ecartees,
                       note: 'technique, archive, corbeille' })
             + ligne({ signe: '=', label: 'Factures analysées', nb: analysees, fort: true,
@@ -2633,10 +2646,16 @@
      * chiffre seul ne permet pas d'en juger — il faut voir les numéros et les
      * tableaux d'où ils viennent, pour aller vérifier dans Monday.
      */
-    function montrerDoublons() {
-        const doublons = state.factures.filter(f => f.doublon);
+    function montrerDoublons(operationnelsSeuls) {
+        // Les deux listes s'excluent, comme les deux lignes de la chaîne.
+        const doublons = state.factures.filter(f =>
+            operationnelsSeuls ? f.doublonOperationnel : (f.doublon && !f.doublonOperationnel));
         if (!doublons.length) {
-            U.modal('Doublons fusionnés', '<p>Aucune facture n\'apparaît sur plusieurs tableaux.</p>');
+            U.modal(operationnelsSeuls ? 'Doublons entre tableaux opérationnels' : 'Doublons attendus',
+                operationnelsSeuls
+                    ? "<p>Aucune facture n'est présente sur deux tableaux opérationnels à la fois. "
+                      + 'Le circuit Tampon → ADV → Recouvrement déplace bien les factures au lieu de les dupliquer.</p>'
+                    : "<p>Aucune facture n'apparaît sur plusieurs tableaux.</p>");
             return;
         }
 
@@ -2645,21 +2664,32 @@
             client: f.client || '—',
             montant: f.montant,
             nb: (f.presenceTableaux || []).length,
-            tableaux: (f.presenceTableaux || []).join(' + '),
+            tableaux: (operationnelsSeuls
+                ? (f.boardsOperationnels || [])
+                : (f.presenceTableaux || [])).join(' + '),
         })).sort((a, b) => b.nb - a.nb || String(a.numero).localeCompare(String(b.numero)));
 
         const retirees = X.sum(lignes, l => l.nb - 1);
 
-        U.modal(`Doublons fusionnés — ${U.nombre(doublons.length)} factures`, `
-            <p class="fv-hint">
-                Ces ${U.nombre(doublons.length)} factures portent le même numéro sur plusieurs
-                tableaux : elles sont comptées une seule fois, ce qui retire
-                ${U.nombre(retirees)} lignes du total. Le cas normal est une facture
-                présente à la fois sur son tableau opérationnel et sur
-                « 0.1. ALL - Factures payées ».
-                Si un numéro ci-dessous désigne en réalité deux factures différentes,
-                dites-le : la règle de rapprochement doit alors être revue.
-            </p>
+        const intro = operationnelsSeuls
+            ? `Ces ${U.nombre(doublons.length)} factures portent le même numéro sur
+               <strong>deux tableaux opérationnels à la fois</strong>. Le circuit
+               Tampon → ADV → Recouvrement déplace une facture, il ne la duplique pas :
+               chacune de ces lignes est à ranger dans Monday, en supprimant l'exemplaire
+               resté sur le tableau qu'elle a quitté. L'application n'en compte qu'une,
+               les indicateurs ne sont donc pas faussés — mais Monday, lui, l'est.`
+            : `Ces ${U.nombre(doublons.length)} factures portent le même numéro sur plusieurs
+               tableaux : elles sont comptées une seule fois, ce qui retire
+               ${U.nombre(retirees)} lignes du total. C'est le fonctionnement attendu —
+               une facture présente à la fois sur son tableau opérationnel et sur
+               « 0.1. ALL - Factures payées », ou rangée dans un groupe d'archive.
+               Si un numéro ci-dessous désigne en réalité deux factures différentes,
+               dites-le : la règle de rapprochement doit alors être revue.`;
+
+        U.modal(
+            (operationnelsSeuls ? 'Doublons entre tableaux opérationnels' : 'Doublons attendus')
+            + ` — ${U.nombre(doublons.length)} factures`,
+            `<p class="fv-hint">${intro}</p>
             <div class="table-scroll" style="max-height:52vh">` + U.table([
                 { key: 'numero', label: 'Facture', format: v => `<span class="mono">${U.escapeHtml(v)}</span>` },
                 { key: 'client', label: 'Client', format: v => `<span class="cell-clip" title="${U.escapeHtml(v)}">${U.escapeHtml(v)}</span>` },
@@ -2667,6 +2697,7 @@
                 { key: 'nb', label: 'Lignes', align: 'right', format: U.nombre },
                 { key: 'tableaux', label: 'Vue sur' },
             ], lignes, { vide: '—' }) + '</div>');
+
     }
 
     /**
@@ -4086,7 +4117,9 @@
 
         $('#chaine-traitement').addEventListener('click', (e) => {
             const l = e.target.closest('[data-chaine]');
-            if (l && l.dataset.chaine === 'doublons') montrerDoublons();
+            if (!l) return;
+            if (l.dataset.chaine === 'doublons') montrerDoublons(false);
+            if (l.dataset.chaine === 'doublons-op') montrerDoublons(true);
         });
         $('#mapping-board-select').addEventListener('change', e => {
             state.ui.mappingBoardId = e.target.value;
