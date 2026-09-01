@@ -2,11 +2,17 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v1.0.0
+   v1.1.0 — 1er septembre 2026
    ========================================================== */
 
 (function () {
     'use strict';
+
+    // Version de l'application, affichée dans la barre supérieure et dans
+    // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
+    // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
+    const VERSION = '1.1.0';
+    const VERSION_DATE = '1er septembre 2026';
 
     const R = window.LioraRules;
     const PR = window.LioraPrelevements;
@@ -102,6 +108,10 @@
 
     async function boot() {
         U.initChartDefaults();
+        $$('#brand-version').forEach(el => {
+            el.textContent = 'v' + VERSION;
+            el.title = 'Version ' + VERSION + ' — ' + VERSION_DATE;
+        });
         brancherEvenements();
 
         const [token, boards, rules, options, imports, gl, factures] = await Promise.all([
@@ -2913,6 +2923,7 @@
         const u = await S.usage();
         const mo = v => (v / 1048576).toFixed(1).replace('.', ',') + ' Mo';
         $('#storage-info').innerHTML = `
+            <div class="storage-line"><span>Version de l'application</span><strong>${VERSION} — ${VERSION_DATE}</strong></div>
             <div class="storage-line"><span>Factures enregistrées</span><strong>${U.nombre(state.brutes.length)}</strong></div>
             <div class="storage-line"><span>Tableaux configurés</span><strong>${U.nombre(state.boards.length)}</strong></div>
             <div class="storage-line"><span>Espace utilisé</span><strong>${u.quota ? mo(u.used) + ' / ' + mo(u.quota) : '—'}</strong></div>`;
@@ -3489,6 +3500,7 @@
         // Synthèse
         const v = X.vueEnsemble(data);
         const synthese = [
+            { Indicateur: "Version de l'application", Valeur: VERSION + ' — ' + VERSION_DATE },
             { Indicateur: 'Factures analysées', Valeur: v.total },
             { Indicateur: 'Total facturé (€)', Valeur: Math.round(v.totalEuros) },
             { Indicateur: 'Factures en retard', Valeur: v.nbEnRetard },

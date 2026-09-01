@@ -1,5 +1,12 @@
 # Liora — Suivi Recouvrement
 
+**Version 1.1.0** — 1er septembre 2026
+
+Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
+capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
+de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
+chiffre surprend.
+
 Application web de pilotage du recouvrement, alimentée par les tableaux
 **Monday.com** de Liora. Elle reprend la structure et le thème de
 [Suivi Cash](../README.md) : filtre de période, vue d'ensemble, graphiques,

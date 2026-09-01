@@ -1012,3 +1012,11 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
 .qualif-col-titre .fv-hint { font-weight: 400; }
 .qualif-col-table tbody tr.row-clickable { cursor: pointer; }
 .check-sm { font-size: 12px; }
+
+
+/* Numéro de version, lisible sur toute capture d'écran sans encombrer */
+.brand-version {
+    margin-left: 8px; font-size: 11px; font-weight: 500;
+    color: var(--text-muted); letter-spacing: .02em;
+    vertical-align: middle;
+}
