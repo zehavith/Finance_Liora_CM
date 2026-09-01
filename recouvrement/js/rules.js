@@ -272,6 +272,10 @@
         { key: 'PERTE',        label: 'Perdu / partiel',    match: ['perdu', 'partiellement', 'perte', 'irrecouvrable'] },
         { key: 'ANNULER',      label: 'À annuler',          match: ['a annuler', 'annuler', 'annulation', 'avoir'] },
         { key: 'RECOUVREMENT', label: 'Recouvrement',       match: ['recouvrement', 'relance', 'mise en demeure', 'a relancer', 'retraiter'] },
+        // Placé avant COMPTA et ADV pour que « Entre process ADV et
+        // recouvrement » ne soit pas capté par le mot « recouvrement » qui le
+        // termine : ces factures relèvent de l'ADV.
+        { key: 'ADV_TRANSIT',  label: 'ADV — entre process', match: ['avant import', 'entre process'] },
         { key: 'COMPTA',       label: 'Comptabilité',       match: ['comptabilit', 'pennylane', 'non pointe', 'non remonte', 'sellsy'] },
         { key: 'PAIEMENT',     label: 'Paiement prévu',     match: ['paiement prevu', 'paiement attendu', 'echeancier'] },
         { key: 'DEPOT',        label: 'Dépôt / déposée',    match: ['a deposer', 'deposee', 'depose', 'depot'] },
@@ -427,13 +431,27 @@
     //  Tranches de balance âgée
     // ──────────────────────────────────────────────
 
+    /**
+     * Tranches d'antériorité de la balance âgée.
+     *
+     * Reprises telles quelles du tableau de balance âgée déjà utilisé chez
+     * Liora, en mois plutôt qu'en jours : l'ancienneté des créances s'y compte
+     * en années, et des tranches de trente jours n'y montraient rien. Les
+     * bornes sont exprimées en jours pour rester comparables au retard calculé,
+     * un mois valant trente jours.
+     */
+    const M = 30;
     const AGING_BUCKETS = [
-        { key: 'nonEchu',  label: 'Non échu',     min: -1e9, max: 0,    couleur: '#3b82f6' },
-        { key: 'j1_30',    label: '1 → 30 j',     min: 1,    max: 30,   couleur: '#84cc16' },
-        { key: 'j31_60',   label: '31 → 60 j',    min: 31,   max: 60,   couleur: '#f59e0b' },
-        { key: 'j61_90',   label: '61 → 90 j',    min: 61,   max: 90,   couleur: '#f97316' },
-        { key: 'j91_180',  label: '91 → 180 j',   min: 91,   max: 180,  couleur: '#F47458' },
-        { key: 'j180p',    label: '> 180 j',      min: 181,  max: 1e9,  couleur: '#ef4444' },
+        { key: 'nonEchu',  label: 'Non échu',      min: -1e9,    max: 0,        couleur: '#3b82f6' },
+        { key: 'm0_3',     label: '0 à 3 mois',    min: 1,       max: 3 * M,    couleur: '#84cc16' },
+        { key: 'm3_4',     label: '3 à 4 mois',    min: 3 * M + 1,  max: 4 * M, couleur: '#a3c714' },
+        { key: 'm4_6',     label: '4 à 6 mois',    min: 4 * M + 1,  max: 6 * M, couleur: '#eab308' },
+        { key: 'm6_12',    label: '6 à 12 mois',   min: 6 * M + 1,  max: 12 * M, couleur: '#f59e0b' },
+        { key: 'm12_18',   label: '12 à 18 mois',  min: 12 * M + 1, max: 18 * M, couleur: '#f97316' },
+        { key: 'm18_24',   label: '18 à 24 mois',  min: 18 * M + 1, max: 24 * M, couleur: '#F47458' },
+        { key: 'm24_38',   label: '24 à 38 mois',  min: 24 * M + 1, max: 38 * M, couleur: '#ef4444' },
+        { key: 'm38_48',   label: '38 à 48 mois',  min: 38 * M + 1, max: 48 * M, couleur: '#dc2626' },
+        { key: 'm48p',     label: '> 48 mois',     min: 48 * M + 1, max: 1e9,   couleur: '#991b1b' },
     ];
 
     function bucketFor(retardJours) {

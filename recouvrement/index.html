@@ -462,7 +462,9 @@
                     </div>
                     <span class="fv-hint">
                         Barres = reste à encaisser à la fin du mois (factures émises non réglées, échues ou non) ·
-                        Courbe = nombre de jours de chiffre d'affaires que ce reste à encaisser représente
+                        Courbe = nombre de jours de chiffre d'affaires que ce reste à encaisser représente.
+                        La courbe s'interrompt sur les mois où l'historique chargé est trop court pour la calculer :
+                        elle mesurerait la longueur de cet historique, pas votre délai de règlement.
                     </span>
                     <div class="chart-container chart-tall">
                         <canvas id="chart-dso"></canvas>

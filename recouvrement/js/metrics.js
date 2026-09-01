@@ -113,6 +113,10 @@
         // Facture connue seulement via le tableau des payées : on déduit du groupe d'origine
         const g = R.norm(x.groupeOrigine || x.groupePaiement || x.groupe || '');
         if (!g) return null;
+        // « Factures payées avant import + Entre process ADV et recouvrement »
+        // nomme les deux étapes : ces factures relèvent de l'ADV, le
+        // recouvrement n'y figure que comme borne du parcours.
+        if (/avant import|entre process/.test(g)) return 'adv';
         if (g.includes('recouv')) return 'recouvrement';
         if (g.includes('opco')) return 'opco';
         if (g.includes('adv') || g.includes('tampon')) return 'adv';
@@ -632,8 +636,18 @@
                 if (reste > c) { jours += nj; reste -= c; k--; }
                 else { jours += (reste / c) * nj; epuise = true; break; }
             }
-            // Encours non épuisé : plus ancien que l'historique disponible
-            const dsoCountBack = soldeFin > 0 ? (epuise ? jours : null) : 0;
+
+            // Un DSO qui consomme presque tout l'historique disponible ne mesure
+            // plus le délai de règlement : il mesure la longueur de l'historique.
+            // Les premiers mois d'un chargement en donnaient une illustration
+            // parfaite — une droite montant de zéro à mille jours, chaque mois
+            // ajoutant exactement sa propre durée. Ces points ne sont pas
+            // affichés : mieux vaut un trou dans la courbe qu'un chiffre qui
+            // n'en est pas un.
+            let historiqueJours = 0;
+            for (let j = 0; j <= idx; j++) historiqueJours += joursDuMois(mois[j]);
+            const fiable = epuise && jours < historiqueJours * 0.9;
+            const dsoCountBack = soldeFin > 0 ? (fiable ? jours : null) : 0;
 
             return {
                 mois: mk,
@@ -642,7 +656,8 @@
                 nbEncours: encours.length,
                 dsoSimple,
                 dsoCountBack,
-                tronque: soldeFin > 0 && !epuise,
+                tronque: soldeFin > 0 && !fiable,
+                historiqueCourt: soldeFin > 0 && epuise && !fiable,
             };
         });
     }

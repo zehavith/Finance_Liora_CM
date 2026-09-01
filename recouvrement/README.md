@@ -519,6 +519,13 @@ Le DSO est calculé mois par mois, sur le reste à encaisser complet — facture
 émises et non réglées à la fin du mois, échues ou non, comme le veut la
 définition. Deux méthodes sont proposées :
 
+La courbe ne porte pas de point sur les mois où le calcul consommerait presque
+tout l'historique chargé : elle y mesurerait la longueur de cet historique et
+non le délai de règlement. Sur un chargement dont les premières factures datent
+de trois ans, cela donnait une droite montant régulièrement de zéro à mille
+jours — chaque mois ajoutant exactement sa propre durée. Un trou dans la courbe
+vaut mieux qu'un chiffre qui n'en est pas un.
+
 - **count-back** (par défaut) — l'encours de fin de mois est épuisé contre le
   chiffre d'affaires des mois précédents, en comptant les jours. C'est la
   méthode du credit management, stable même quand la facturation est
@@ -570,6 +577,13 @@ de factures sans origine connue est affiché.
 
 Le même taux est décliné par type de financement, colonne *% avant échéance* de
 l'onglet *Financements*, et repris dans l'export Excel.
+
+### Tranches de la balance âgée
+
+Les tranches reprennent celles du tableau de balance âgée déjà utilisé chez
+Liora, exprimées en mois : *non échu*, *0 à 3*, *3 à 4*, *4 à 6*, *6 à 12*,
+*12 à 18*, *18 à 24*, *24 à 38*, *38 à 48*, *plus de 48 mois*. L'ancienneté des
+créances s'y compte en années ; des tranches de trente jours n'y montraient rien.
 
 Retards : moyen, médian, maximum, **pondéré par le montant** (un gros impayé
 ancien pèse plus qu'un petit), et **retard moyen au paiement** mesuré sur les
