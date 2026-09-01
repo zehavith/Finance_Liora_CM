@@ -449,8 +449,8 @@
         { key: 'm6_12',    label: '6 à 12 mois',   min: 6 * M + 1,  max: 12 * M, couleur: '#f59e0b' },
         { key: 'm12_18',   label: '12 à 18 mois',  min: 12 * M + 1, max: 18 * M, couleur: '#f97316' },
         { key: 'm18_24',   label: '18 à 24 mois',  min: 18 * M + 1, max: 24 * M, couleur: '#F47458' },
-        { key: 'm24_38',   label: '24 à 38 mois',  min: 24 * M + 1, max: 38 * M, couleur: '#ef4444' },
-        { key: 'm38_48',   label: '38 à 48 mois',  min: 38 * M + 1, max: 48 * M, couleur: '#dc2626' },
+        { key: 'm24_36',   label: '24 à 36 mois',  min: 24 * M + 1, max: 36 * M, couleur: '#ef4444' },
+        { key: 'm36_48',   label: '36 à 48 mois',  min: 36 * M + 1, max: 48 * M, couleur: '#dc2626' },
         { key: 'm48p',     label: '> 48 mois',     min: 48 * M + 1, max: 1e9,   couleur: '#991b1b' },
     ];
 

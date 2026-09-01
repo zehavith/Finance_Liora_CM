@@ -582,7 +582,7 @@ l'onglet *Financements*, et repris dans l'export Excel.
 
 Les tranches reprennent celles du tableau de balance âgée déjà utilisé chez
 Liora, exprimées en mois : *non échu*, *0 à 3*, *3 à 4*, *4 à 6*, *6 à 12*,
-*12 à 18*, *18 à 24*, *24 à 38*, *38 à 48*, *plus de 48 mois*. L'ancienneté des
+*12 à 18*, *18 à 24*, *24 à 36*, *36 à 48*, *plus de 48 mois*. L'ancienneté des
 créances s'y compte en années ; des tranches de trente jours n'y montraient rien.
 
 Retards : moyen, médian, maximum, **pondéré par le montant** (un gros impayé
