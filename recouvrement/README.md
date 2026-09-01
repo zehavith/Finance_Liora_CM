@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 1.1.0** — 1er septembre 2026
+**Version 1.1.1** — 1er septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*

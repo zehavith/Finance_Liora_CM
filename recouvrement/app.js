@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v1.1.0 — 1er septembre 2026
+   v1.1.1 — 1er septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '1.1.0';
+    const VERSION = '1.1.1';
     const VERSION_DATE = '1er septembre 2026';
 
     const R = window.LioraRules;
