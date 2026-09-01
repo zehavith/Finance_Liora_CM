@@ -58,11 +58,59 @@
     }
 
     /**
-     * Associe les colonnes disponibles aux champs canoniques.
-     * @param {Array<{id:string,title:string,type?:string}>} columns
-     * @returns {Object} mapping field -> columnId
+     * Une colonne convient-elle au champ auquel son nom la destine ?
+     *
+     * Le contrôle porte sur les valeurs réellement présentes, les cases vides
+     * étant écartées du calcul : une colonne de dates peu renseignée reste une
+     * colonne de dates, et ne doit pas être rejetée pour sa rareté.
      */
-    function autoMapColumns(columns) {
+    function verifierValeurs(champ, valeurs) {
+        const brutes = (valeurs || [])
+            .map(v => (v == null ? '' : String(v).trim()))
+            .filter(Boolean)
+            .slice(0, 200);
+        if (!brutes.length) return { ok: true };          // rien pour trancher
+
+        const SEUIL = 0.5;
+        if (champ.startsWith('date')) {
+            const n = brutes.filter(v => R.parseDate(v)).length;
+            return n / brutes.length >= SEUIL
+                ? { ok: true } : { ok: false, raison: 'ne contient pas de dates' };
+        }
+        if (champ.startsWith('montant') || champ === 'resteDu') {
+            const n = brutes.filter(v => parseMontant(v) != null).length;
+            return n / brutes.length >= SEUIL
+                ? { ok: true } : { ok: false, raison: 'ne contient pas de nombres' };
+        }
+        // Un numéro de facture n'est ni un lien, ni une adresse, ni une date.
+        // Une colonne de liens Monday emportait le champ et remplaçait le
+        // numéro par une URL, rendant le rapprochement entre tableaux
+        // arbitraire — deux factures partageant un lien devenaient une seule.
+        if (champ === 'numero') {
+            const liens = brutes.filter(v => /:\/\/|^www\.|@/.test(v)).length;
+            if (liens / brutes.length >= SEUIL) return { ok: false, raison: 'contient des liens, pas des numéros' };
+            // Pas de contrôle « ce ne sont pas des dates » ici : un numéro de
+            // facture est fait de groupes de chiffres, et certains se lisent
+            // comme une date. Le test rejetterait de vraies colonnes.
+            const utilisables = brutes.filter(v => factureKey(v)).length;
+            if (utilisables / brutes.length < SEUIL) return { ok: false, raison: 'ne contient pas de numéros exploitables' };
+        }
+        return { ok: true };
+    }
+
+    /**
+     * Associe les colonnes disponibles aux champs canoniques.
+     *
+     * @param {Array<{id:string,title:string,type?:string}>} columns
+     * @param {Function} [valeurs]  id de colonne → valeurs observées. Fourni,
+     *   chaque candidat est confronté aux données avant d'être retenu, et un
+     *   candidat écarté laisse la place au suivant sur ce champ — sans cela un
+     *   nom trompeur emportait le champ, puis se faisait rejeter, et le champ
+     *   restait vide alors qu'une autre colonne convenait.
+     * @returns {Object|{mapping:Object,rejets:Array}} le mapping seul, ou le
+     *   mapping et les rejets quand des valeurs ont été fournies.
+     */
+    function autoMapColumns(columns, valeurs) {
         const pairs = [];
         for (const col of columns) {
             for (const def of FIELD_DEFS) {
@@ -81,14 +129,23 @@
         }
         pairs.sort((a, b) => b.score - a.score);
 
-        const mapping = {}, usedCols = new Set();
+        const mapping = {}, usedCols = new Set(), rejets = [];
         for (const p of pairs) {
             if (mapping[p.field] || usedCols.has(p.colId)) continue;
             if (p.score < 30) continue;
+            if (valeurs) {
+                const v = verifierValeurs(p.field, valeurs(p.colId));
+                if (!v.ok) {
+                    // La colonne reste disponible pour un autre champ, et pour
+                    // les qualifications : seule cette association est écartée.
+                    rejets.push({ champ: p.field, colonne: p.colId, raison: v.raison });
+                    continue;
+                }
+            }
             mapping[p.field] = p.colId;
             usedCols.add(p.colId);
         }
-        return mapping;
+        return valeurs ? { mapping, rejets } : mapping;
     }
 
     /**
@@ -108,30 +165,10 @@
      */
     function validerMapping(mapping, valeurs) {
         const propre = {}, rejets = [];
-        const SEUIL = 0.5;   // la moitié des valeurs renseignées doit convenir
-
         for (const [champ, colId] of Object.entries(mapping)) {
-            const brutes = (valeurs(colId) || [])
-                .map(v => (v == null ? '' : String(v).trim()))
-                .filter(Boolean)
-                .slice(0, 200);
-
-            // Sans valeur pour trancher, on garde l'association du nom
-            if (!brutes.length) { propre[champ] = colId; continue; }
-
-            let ok = true, raison = '';
-            if (champ.startsWith('date')) {
-                const n = brutes.filter(v => R.parseDate(v)).length;
-                ok = n / brutes.length >= SEUIL;
-                raison = 'ne contient pas de dates';
-            } else if (champ.startsWith('montant') || champ === 'resteDu') {
-                const n = brutes.filter(v => parseMontant(v) != null).length;
-                ok = n / brutes.length >= SEUIL;
-                raison = 'ne contient pas de nombres';
-            }
-
-            if (ok) propre[champ] = colId;
-            else rejets.push({ champ, colonne: colId, raison });
+            const v = verifierValeurs(champ, valeurs(colId));
+            if (v.ok) propre[champ] = colId;
+            else rejets.push({ champ, colonne: colId, raison: v.raison });
         }
         return { mapping: propre, rejets };
     }
@@ -361,13 +398,18 @@
         if (!rows.length) return { factures: [], mapping: {}, columns: [] };
         const headers = Object.keys(rows[0]);
         const columns = headers.map(h => ({ id: h, title: h }));
-        let mapping = boardCfg.mapping && Object.keys(boardCfg.mapping).length
-            ? boardCfg.mapping
-            : autoMapColumns(columns);
-
-        // Le mapping déduit des noms est confronté aux valeurs du fichier
-        const contr = validerMapping(mapping, col => rows.map(r => r[col]));
-        mapping = contr.mapping;
+        // Noms de colonnes et valeurs sont confrontés ensemble : un candidat
+        // démenti par les données laisse la place au suivant sur ce champ.
+        const valeursDe = col => rows.map(r => r[col]);
+        let mapping, rejets;
+        if (boardCfg.mapping && Object.keys(boardCfg.mapping).length) {
+            const contr = validerMapping(boardCfg.mapping, valeursDe);
+            mapping = contr.mapping; rejets = contr.rejets;
+        } else {
+            const auto = autoMapColumns(columns, valeursDe);
+            mapping = auto.mapping; rejets = auto.rejets;
+        }
+        const contr = { rejets };
 
         // Sans type de colonne, une colonne de fichier est tenue pour une
         // qualification si elle prend peu de valeurs distinctes sur l'ensemble
@@ -727,7 +769,7 @@
     global.LioraIngest = {
         FIELD_DEFS, FIELD_BY_NAME, autoMapColumns, parseMontant, factureKey,
         buildFacture, facturesFromMondayBoard, facturesFromRows, colonnesQualification,
-        validerMapping, couvertureMapping,
+        validerMapping, couvertureMapping, verifierValeurs,
         consolider, appliquerGrandLivre, enrichir, statutIndiquePaye,
     };
 })(window);

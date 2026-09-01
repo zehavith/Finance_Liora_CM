@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 1.4.0** — 1er septembre 2026
+**Version 1.5.0** — 1er septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -360,18 +360,44 @@ Data Quality.
 
 ### Contrôle des colonnes associées
 
-La reconnaissance automatique des colonnes se fait sur le nom, ce qui suffit la
-plupart du temps mais peut se tromper : la colonne *Problématique Pré-échéance*
-du tableau 1.1 contient le mot « échéance » sans être une date, et se retrouvait
-associée à la date d'échéance — d'où des échéances et des retards aberrants.
+La reconnaissance automatique se fait sur le nom des colonnes, ce qui suffit la
+plupart du temps mais peut se tromper : *Problématique Pré-échéance* contient le
+mot « échéance » sans porter de dates, une colonne de liens Monday contient le
+mot « facture » sans porter de numéros.
 
-Chaque association est désormais **vérifiée sur les valeurs réelles** avant
-d'être retenue : une colonne candidate à un champ de date dont moins de la
-moitié des valeurs se lisent comme des dates est rejetée, de même pour un champ
-de montant dont les valeurs ne sont pas numériques. Le rejet est écrit dans le
-journal de chargement (« *« Problématique Pré-échéance » écartée du champ date
-d'échéance : ne contient pas de dates* ») et la colonne reste disponible dans la
-liste déroulante si l'association était en réalité correcte.
+Le nom et les valeurs sont donc **examinés ensemble** : chaque candidat est
+confronté aux données du tableau avant d'être retenu, et **un candidat démenti
+laisse la place au suivant sur ce champ**. Sans cela, un nom trompeur emportait
+le champ, se faisait rejeter, et le champ restait vide alors qu'une autre colonne
+convenait.
+
+Les contrôles portent sur les valeurs réellement renseignées, les cases vides
+étant écartées du calcul — une colonne de dates peu remplie reste une colonne de
+dates :
+
+| Champ | Rejeté si |
+|---|---|
+| une date | moins de la moitié des valeurs se lisent comme des dates |
+| un montant | moins de la moitié des valeurs sont numériques |
+| le numéro de facture | la moitié des valeurs sont des liens ou des adresses, ou moins de la moitié donnent un numéro exploitable |
+
+Le numéro de facture n'est en revanche pas testé contre les dates : un numéro est
+fait de groupes de chiffres, et certains se lisent comme une date — le test
+rejetterait de vraies colonnes.
+
+Chaque rejet est écrit dans le journal de chargement, avec la colonne retenue à
+la place le cas échéant : « *« Problématique Pré-échéance » écartée du champ
+dateEcheanceSource : ne contient pas de dates — « Echéance négociée » retenue à
+la place* ». Une correspondance choisie à la main est contrôlée, jamais
+remplacée.
+
+### Tableaux de sous-éléments : jamais des factures
+
+Les lignes d'un tableau « Sous-éléments de … » portent le nom du sous-élément en
+guise de numéro — souvent le même pour toutes. Elles se rapprochaient donc entre
+elles et ressortaient comme un doublon à plusieurs exemplaires. Elles sont
+écartées avant toute consolidation, y compris lorsqu'un chargement antérieur les
+a laissées en cache, et comptées avec les groupes de service.
 
 Sur le tableau des factures payées, une valeur *Analysées* à zéro est normale :
 ses lignes se rapprochent des factures des tableaux opérationnels et sont

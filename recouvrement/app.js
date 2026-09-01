@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v1.4.0 — 1er septembre 2026
+   v1.5.0 — 1er septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '1.4.0';
+    const VERSION = '1.5.0';
     const VERSION_DATE = '1er septembre 2026';
 
     const R = window.LioraRules;
@@ -238,7 +238,19 @@
     /** Consolide, enrichit et rafraîchit toute l'interface. */
     function recalculer(options) {
         const o = options || {};
-        let consolidees = I.consolider(state.brutes);
+
+        // Les lignes des tableaux de sous-éléments ne sont pas des factures.
+        // Elles portent le nom du sous-élément en guise de numéro — « Subitem »
+        // — et se rapprochaient donc entre elles, apparaissant comme un doublon
+        // à sept exemplaires. Elles sont écartées avant toute consolidation,
+        // même si un chargement antérieur les a laissées en cache.
+        const ignorees = state.brutes.filter(f => f.role === 'ignore');
+        state.nbLignesIgnorees = ignorees.length;
+        const retenues = ignorees.length
+            ? state.brutes.filter(f => f.role !== 'ignore')
+            : state.brutes;
+
+        let consolidees = I.consolider(retenues);
         state.glStats = state.grandLivre.length
             ? I.appliquerGrandLivre(consolidees, state.grandLivre)
             : null;
@@ -2600,9 +2612,10 @@
         const el = $('#chaine-traitement');
         if (!el) return;
 
+        const ignorees = state.nbLignesIgnorees || 0;
         const brutes = state.brutes.length;
         const consolidees = state.factures.length;
-        const fusionnees = Math.max(0, brutes - consolidees);
+        const fusionnees = Math.max(0, brutes - ignorees - consolidees);
         const ecartees = state.factures.filter(f => f.role === 'technique' || f.groupeTechnique).length;
         const analysees = consolidees - ecartees;
 
@@ -2639,8 +2652,11 @@
                       note: dblPay
                           ? `${U.nombre(nbFacturesDblPay)} factures saisies plusieurs fois dans « 0.1. ALL - Factures payées » — cliquez pour les voir`
                           : 'aucune facture saisie deux fois dans le tableau des factures payées' })
-            + ligne({ signe: '−', retrait: true, label: 'Groupes et tableaux de service', nb: ecartees,
-                      note: 'technique, archive, corbeille' })
+            + ligne({ signe: '−', retrait: true, label: 'Groupes et tableaux de service',
+                      nb: ecartees + ignorees,
+                      note: ignorees
+                          ? `technique, archive, corbeille — dont ${U.nombre(ignorees)} lignes de tableaux de sous-éléments, qui ne sont pas des factures`
+                          : 'technique, archive, corbeille' })
             + ligne({ signe: '=', label: 'Factures analysées', nb: analysees, fort: true,
                       note: 'ce que comptent les indicateurs, avant filtres de période et de source' });
     }
@@ -3203,29 +3219,44 @@
                         const meta = await M.boardColumns(state.token, b.id);
                         b.columns = meta ? meta.columns : [];
                     }
-                    if (!b.mapping || !Object.keys(b.mapping).length) {
-                        b.mapping = I.autoMapColumns(b.columns || []);
-                        const manquants = ['numero', 'montant'].filter(k => !b.mapping[k]);
-                        if (manquants.length) log(`   ⚠ colonnes non reconnues : ${manquants.join(', ')}`);
-                    }
+                    const mappingManuel = !!(b.mapping && Object.keys(b.mapping).length);
 
                     const { board, items } = await M.fetchBoardItems(state.token, b.id, log);
                     if (!board) throw new Error('Tableau inaccessible');
 
-                    // Le mapping déduit des noms de colonnes est confronté aux
-                    // valeurs réellement présentes : « Problématique
-                    // Pré-échéance » ne doit pas passer pour une date.
+                    // L'association se fait sur les noms de colonnes, puis se
+                    // vérifie sur les valeurs. Les deux étapes sont menées
+                    // ensemble : un candidat démenti par les données — la
+                    // colonne « Problématique Pré-échéance », qui contient le
+                    // mot échéance sans porter de dates — laisse ainsi la place
+                    // au candidat suivant sur ce champ, au lieu de l'emporter
+                    // puis de le laisser vide.
                     const echantillon = items.slice(0, 200);
-                    const contr = I.validerMapping(b.mapping, colId =>
-                        echantillon.map(it => {
-                            const cv = (it.column_values || []).find(c => c.id === colId);
-                            return cv ? M.columnValue(cv) : '';
-                        }));
-                    if (contr.rejets.length) {
+                    const valeursDe = colId => echantillon.map(it => {
+                        const cv = (it.column_values || []).find(c => c.id === colId);
+                        return cv ? M.columnValue(cv) : '';
+                    });
+
+                    let rejets = [];
+                    if (mappingManuel) {
+                        // Une correspondance choisie à la main fait foi : elle
+                        // est contrôlée, jamais remplacée.
+                        const contr = I.validerMapping(b.mapping, valeursDe);
                         b.mapping = contr.mapping;
-                        b.rejetsMapping = contr.rejets;
-                        contr.rejets.forEach(r => log(`   ⚠ « ${r.colonne} » écartée du champ ${r.champ} : ${r.raison}`));
+                        rejets = contr.rejets;
+                    } else {
+                        const auto = I.autoMapColumns(b.columns || [], valeursDe);
+                        b.mapping = auto.mapping;
+                        rejets = auto.rejets;
+                        const manquants = ['numero', 'montant'].filter(k => !b.mapping[k]);
+                        if (manquants.length) log(`   ⚠ colonnes non reconnues : ${manquants.join(', ')}`);
                     }
+                    b.rejetsMapping = rejets;
+                    rejets.forEach(r => {
+                        const repris = b.mapping[r.champ];
+                        log(`   ⚠ « ${r.colonne} » écartée du champ ${r.champ} : ${r.raison}`
+                            + (repris ? ` — « ${repris} » retenue à la place` : ''));
+                    });
 
                     // Une colonne correctement nommée peut n'être jamais
                     // renseignée. Le taux de remplissage est mesuré ici, sur les
