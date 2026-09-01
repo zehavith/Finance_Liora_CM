@@ -559,20 +559,29 @@ spécifique sur le 2.1 B2C - Financement personnel, et ainsi de suite. Ces
 colonnes ne servent pas au calcul du retard — l'échéance seule en décide — mais
 elles disent *pourquoi* une facture est là.
 
-L'onglet *Qualifications* les inventorie sans les avoir configurées : toute
-colonne de type statut, couleur ou liste déroulante non déjà utilisée pour un
-autre usage est capturée telle quelle, avec ses valeurs.
+L'onglet *Qualifications* les relève sans configuration, et les présente
+**tableau par tableau** : la même colonne n'a pas le même sens d'un tableau à
+l'autre — celle du 1.2 parle de recouvrement, celle du 1.1 de problèmes avant
+échéance — et les additionner effacerait précisément la distinction cherchée.
 
-- L'**inventaire** liste, tableau par tableau, chaque colonne de qualification,
-  le nombre de factures renseignées et le nombre de valeurs distinctes.
-- Le **détail d'une colonne** donne la répartition en nombre, en pourcentage et
-  en euros : combien de *doublon*, combien de *litige*, combien de *relance
-  envoyée*. Un clic sur une valeur ouvre les factures concernées.
+Sont retenues les colonnes à choix dont le nom relève du vocabulaire de
+qualification : *qualification*, *problématique*, *motif*, *litige*,
+*contentieux*, *anomalie*, *blocage*. Les statuts d'avancement et autres listes
+de suivi restent en dehors ; une case *Afficher aussi les autres colonnes à
+choix* les fait apparaître quand c'est utile.
+
+- Une **rangée de puces** liste les tableaux qui portent une qualification.
+  Un clic exclut le tableau du décompte, un second le réintègre. Cette portée
+  est locale à l'onglet et ne touche pas aux filtres généraux.
+- Une **carte par tableau** donne, pour chacune de ses colonnes, la répartition
+  des factures entre les valeurs : nombre, part, montant, nombre en retard et
+  retard moyen. Un clic sur une ligne ouvre les factures concernées.
+- Le **graphique du haut** reprend une colonne au choix, en nombre ou en euros.
 - Les **créances douteuses** sont comptées à part : factures des étapes
   *Contentieux* et *Perte*, en nombre et en montant.
 
-Ces statistiques suivent les filtres de la barre supérieure — période, périmètre,
-tableau — comme le reste de l'application.
+Ces statistiques suivent aussi les filtres de la barre supérieure — période,
+périmètre, source — comme le reste de l'application.
 
 ## Prélèvements GoCardless
 

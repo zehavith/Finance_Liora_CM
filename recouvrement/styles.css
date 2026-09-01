@@ -1001,3 +1001,14 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
 .chaine-ligne.chaine-cliquable { cursor: pointer; border-radius: 6px; }
 .chaine-ligne.chaine-cliquable:hover { background: rgba(255, 255, 255, .05); }
 .chaine-ligne.chaine-cliquable .chaine-nb { text-decoration: underline dotted; text-underline-offset: 3px; }
+
+
+/* Qualifications : une carte par tableau */
+.qualif-col-titre {
+    margin: 18px 0 8px; font-size: 13px; font-weight: 600;
+    display: flex; align-items: baseline; gap: 10px;
+}
+.qualif-col-titre:first-of-type { margin-top: 6px; }
+.qualif-col-titre .fv-hint { font-weight: 400; }
+.qualif-col-table tbody tr.row-clickable { cursor: pointer; }
+.check-sm { font-size: 12px; }

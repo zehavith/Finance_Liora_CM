@@ -691,11 +691,19 @@
                 <div class="period-badge" id="qualif-badge"></div>
             </div>
             <p class="aide-bloc">
-                Les colonnes à choix de vos tableaux Monday — <em>Problématique pré-échéance</em>,
-                <em>Qualification recouvrement avec basculement</em>, <em>Type de paiement</em> — sont
-                relevées automatiquement, quel que soit le tableau. Choisissez-en une pour voir la
-                répartition de vos factures entre ses valeurs, en nombre comme en euros.
+                Les qualifications que portent vos tableaux — <em>Qualification recouvrement</em> sur le
+                1.2, <em>Problématique pré-échéance</em> sur le 1.1 — sont présentées
+                <strong>tableau par tableau</strong> : la même colonne n'y a pas le même sens.
+                Cliquez sur un tableau pour l'exclure ou le retenir.
             </p>
+
+            <div class="filter-row">
+                <span class="filter-label">Tableaux</span>
+                <div class="chip-row" id="qualif-boards"></div>
+                <label class="check check-sm">
+                    <input type="checkbox" id="qualif-toutes"> Afficher aussi les autres colonnes à choix
+                </label>
+            </div>
 
             <div class="recup-grid" id="douteuses-kpi"></div>
 
@@ -713,17 +721,10 @@
                     </div>
                     <span class="fv-hint" id="qualif-portee"></span>
                     <div class="chart-container chart-tall"><canvas id="chart-qualif"></canvas></div>
-                    <div class="table-wrap" id="qualif-table"></div>
                 </div>
             </div>
 
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header"><h3>Colonnes de qualification disponibles</h3></div>
-                    <span class="fv-hint">Ce que l'application a relevé dans vos tableaux</span>
-                    <div class="table-wrap" id="qualif-inventaire"></div>
-                </div>
-            </div>
+            <div id="qualif-par-tableau"></div>
         </div>
     </div>
 

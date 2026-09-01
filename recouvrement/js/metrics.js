@@ -759,6 +759,59 @@
     // ──────────────────────────────────────────────
 
     /** Colonnes de qualification présentes, avec le tableau qui les porte. */
+    /**
+     * Une colonne relève-t-elle de la qualification métier ?
+     *
+     * Toute colonne à choix non affectée à un champ canonique était retenue, ce
+     * qui ramenait des statuts d'avancement, des types de paiement et des
+     * colonnes de suivi au milieu des qualifications proprement dites. Seules
+     * comptent ici les colonnes qui portent un jugement sur la facture :
+     * qualification, problématique, motif, litige.
+     */
+    const MOTS_QUALIF = /qualif|problematique|motif|litige|contentieux|douteus|anomalie|blocage/;
+    function estColonneQualification(nom) {
+        return MOTS_QUALIF.test(R.norm(nom || ''));
+    }
+
+    /**
+     * Inventaire des qualifications regroupé par tableau.
+     *
+     * La même colonne n'a pas le même sens d'un tableau à l'autre — la
+     * qualification du 1.2 parle de recouvrement, celle du 1.1 de problèmes
+     * avant échéance. Les mélanger dans une seule liste efface justement la
+     * distinction que l'on cherche à lire.
+     *
+     * @param {Array} factures
+     * @param {boolean} toutes  inclure les colonnes à choix qui ne sont pas des
+     *                          qualifications au sens strict
+     * @returns {Array} un objet par tableau : { board, colonnes: [{nom, nb, nbValeurs}] }
+     */
+    function qualificationsParTableau(factures, toutes) {
+        const boards = new Map();
+        for (const f of factures) {
+            for (const nom of Object.keys(f.qualifs || {})) {
+                if (!toutes && !estColonneQualification(nom)) continue;
+                // Une facture vue sur plusieurs tableaux porte les colonnes des
+                // deux : elle est rattachée à son tableau opérationnel, celui
+                // où la qualification a été saisie.
+                const board = f.boardOperationnel || f.board || '—';
+                let b = boards.get(board);
+                if (!b) { b = { board, colonnes: new Map(), nb: 0 }; boards.set(board, b); }
+                let c = b.colonnes.get(nom);
+                if (!c) { c = { nom, nb: 0, valeurs: new Set() }; b.colonnes.set(nom, c); }
+                c.nb++;
+                c.valeurs.add(f.qualifs[nom]);
+            }
+        }
+        return [...boards.values()].map(b => ({
+            board: b.board,
+            colonnes: [...b.colonnes.values()]
+                .map(c => ({ nom: c.nom, nb: c.nb, nbValeurs: c.valeurs.size }))
+                .sort((x, y) => y.nb - x.nb),
+        })).sort((a, b) => b.colonnes.reduce((n, c) => n + c.nb, 0)
+                          - a.colonnes.reduce((n, c) => n + c.nb, 0));
+    }
+
     function inventaireQualifications(factures) {
         const map = new Map();
         for (const f of factures) {
@@ -775,9 +828,16 @@
             .sort((a, b) => b.nb - a.nb);
     }
 
-    /** Répartition d'une colonne de qualification, valeur par valeur. */
-    function repartitionQualification(factures, nomColonne) {
-        const concernees = factures.filter(f => f.qualifs && f.qualifs[nomColonne]);
+    /**
+     * Répartition d'une colonne de qualification, valeur par valeur.
+     *
+     * @param {Array} factures
+     * @param {string} nomColonne
+     * @param {string} [board]  restreindre au tableau où la colonne est saisie
+     */
+    function repartitionQualification(factures, nomColonne, board) {
+        const concernees = factures.filter(f => f.qualifs && f.qualifs[nomColonne]
+            && (!board || (f.boardOperationnel || f.board) === board));
         const map = new Map();
 
         for (const f of concernees) {
@@ -807,6 +867,7 @@
 
         return {
             nom: nomColonne,
+            board: board || null,
             lignes,
             totalNb,
             totalEur,
@@ -949,6 +1010,7 @@
         dsoParMois, histogrammeRetards, TRANCHES_RETARD, joursDuMois,
         balanceAgee, balanceAgeeParDimension, topClients, parTableau, parGroupe,
         qualite, scoreQualite, comparaisonMensuelle,
-        inventaireQualifications, repartitionQualification, creancesDouteuses,
+        inventaireQualifications, repartitionQualification,
+        qualificationsParTableau, estColonneQualification, creancesDouteuses,
     };
 })(window);

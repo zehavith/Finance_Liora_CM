@@ -85,8 +85,10 @@
             prlvEtat: '',
             prlvRecherche: '',
             triPrlv: { key: 'montantEchoue', sens: 'desc' },
-            qualifColonne: null,
+            qualifChoix: null,
             qualifUnite: 'nb',
+            qualifToutes: false,
+            qualifBoardsExclus: new Set(),
         },
 
         moisDispo: [],
@@ -1867,10 +1869,39 @@
     // ══════════════════════════════════════════════
 
     function rendreQualifications(data) {
-        const inventaire = X.inventaireQualifications(data);
+        // Les qualifications se lisent par tableau : la colonne « qualification »
+        // du 1.2 parle de recouvrement, celle du 1.1 de problèmes avant
+        // échéance. Les additionner effacerait la distinction cherchée.
+        const toutes = !!state.ui.qualifToutes;
+        const parTableau = X.qualificationsParTableau(data, toutes);
+
+        // Puces de tableau : elles servent à écarter un tableau du décompte,
+        // sans toucher aux filtres généraux de l'application.
+        const exclus = state.ui.qualifBoardsExclus || (state.ui.qualifBoardsExclus = new Set());
+        $('#qualif-boards').innerHTML = parTableau.length
+            ? parTableau.map(b => {
+                const nb = b.colonnes.reduce((n, c) => n + c.nb, 0);
+                const off = exclus.has(b.board);
+                return `<button class="chip${off ? '' : ' active'}" data-qboard="${U.escapeHtml(b.board)}"`
+                    + ` title="${off ? 'Cliquez pour réintégrer ce tableau' : 'Cliquez pour exclure ce tableau'}">`
+                    + `${U.escapeHtml(b.board)}<span class="chip-count">${U.nombre(nb)}</span></button>`;
+            }).join('')
+            : '<span class="fv-hint">Aucun tableau ne porte de colonne de qualification.</span>';
+
+        const retenus = parTableau.filter(b => !exclus.has(b.board));
+        const dataRetenue = data.filter(f => !exclus.has(f.boardOperationnel || f.board));
+
+        // L'inventaire à plat n'est conservé que pour alimenter le sélecteur :
+        // une entrée par couple tableau × colonne, pour que deux colonnes
+        // homonymes restent distinctes.
+        const inventaire = [];
+        for (const b of retenus) {
+            for (const c of b.colonnes) inventaire.push({ ...c, board: b.board });
+        }
+        inventaire.sort((a2, b2) => b2.nb - a2.nb);
 
         // Créances douteuses : contentieux et pertes
-        const d = X.creancesDouteuses(data);
+        const d = X.creancesDouteuses(dataRetenue);
         const tuile = (o) => `
             <div class="recup-card">
                 <span class="recup-bar" style="background:${o.couleur}"></span>
@@ -1891,37 +1922,76 @@
         ].join('');
 
         // Sélecteur de colonne
+        const cle = q => q.board + ' ‖ ' + q.nom;
         const sel = $('#qualif-colonne');
         if (!inventaire.length) {
-            sel.innerHTML = '<option value="">Aucune colonne de qualification détectée</option>';
-            $('#qualif-portee').textContent = "Vos tableaux ne portent aucune colonne à choix, ou elles ont toutes été affectées à un champ de l'application.";
+            sel.innerHTML = '<option value="">Aucune qualification</option>';
+            $('#qualif-portee').textContent = exclus.size
+                ? 'Tous les tableaux portant une qualification sont exclus — cliquez sur une puce pour en réintégrer un.'
+                : "Vos tableaux ne portent aucune colonne de qualification. Cochez « Afficher aussi les autres colonnes à choix » pour voir ce que l'application a relevé.";
             U.chart('chart-qualif', videConfig('Aucune qualification'));
-            $('#qualif-table').innerHTML = '';
-            $('#qualif-inventaire').innerHTML = '';
+            $('#qualif-par-tableau').innerHTML = '';
             return;
         }
-        if (!state.ui.qualifColonne || !inventaire.some(q => q.nom === state.ui.qualifColonne)) {
-            state.ui.qualifColonne = inventaire[0].nom;
+        if (!state.ui.qualifChoix || !inventaire.some(q => cle(q) === state.ui.qualifChoix)) {
+            state.ui.qualifChoix = cle(inventaire[0]);
         }
         sel.innerHTML = inventaire.map(q =>
-            `<option value="${U.escapeHtml(q.nom)}"${q.nom === state.ui.qualifColonne ? ' selected' : ''}>`
-            + `${U.escapeHtml(q.nom)} (${U.nombre(q.nb)})</option>`).join('');
+            `<option value="${U.escapeHtml(cle(q))}"${cle(q) === state.ui.qualifChoix ? ' selected' : ''}>`
+            + `${U.escapeHtml(q.board)} — ${U.escapeHtml(q.nom)} (${U.nombre(q.nb)})</option>`).join('');
 
-        rendreRepartitionQualif(data);
+        rendreRepartitionQualif(dataRetenue);
+        rendreQualifParTableau(dataRetenue, retenus);
+    }
 
-        // Inventaire
-        $('#qualif-inventaire').innerHTML = U.table([
-            { key: 'nom', label: 'Colonne' },
-            { key: 'nb', label: 'Factures renseignées', align: 'right', format: U.nombre },
-            { key: 'nbValeurs', label: 'Valeurs distinctes', align: 'right', format: U.nombre },
-            { key: 'tableaux', label: 'Tableaux', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v.join(', '))}">${U.escapeHtml(v.join(', '))}</span>` },
-        ], inventaire, { vide: '—' });
+    /**
+     * Une carte par tableau, avec la répartition de chacune de ses colonnes de
+     * qualification. C'est la vue demandée : voir d'un coup ce que dit le 1.1 et
+     * ce que dit le 1.2, sans avoir à basculer d'une liste déroulante à l'autre.
+     */
+    function rendreQualifParTableau(data, parTableau) {
+        const el = $('#qualif-par-tableau');
+        el.innerHTML = parTableau.map(b => {
+            const blocs = b.colonnes.map(c => {
+                const r = X.repartitionQualification(data, c.nom, b.board);
+                const table = U.table([
+                    { key: 'valeur', label: 'Qualification' },
+                    { key: 'nb', label: 'Factures', align: 'right', format: U.nombre },
+                    { key: 'partNb', label: '%', align: 'right', format: v => U.pourcent(v, 1) },
+                    { key: 'euros', label: 'Montant', align: 'right', format: v => U.euros(v) },
+                    { key: 'nbEnRetard', label: 'En retard', align: 'right', format: v => v ? U.nombre(v) : '—' },
+                    { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
+                ], r.lignes, {
+                    vide: '—',
+                    total: { valeur: 'Total', nb: U.nombre(r.totalNb), euros: U.euros(r.totalEur),
+                             nbEnRetard: U.nombre(X.sum(r.lignes, l => l.nbEnRetard)) },
+                });
+                return `<h4 class="qualif-col-titre">${U.escapeHtml(c.nom)}`
+                    + `<span class="fv-hint">${U.nombre(r.totalNb)} factures · ${U.nombre(c.nbValeurs)} valeurs</span></h4>`
+                    + `<div class="table-wrap qualif-col-table" data-qcol="${U.escapeHtml(c.nom)}">${table}</div>`;
+            }).join('');
+            return `<div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>${U.escapeHtml(b.board)}</h3></div>
+                ${blocs}
+            </div></div>`;
+        }).join('');
+
+        // Un clic sur une ligne ouvre les factures de cette qualification.
+        $$('.qualif-col-table', el).forEach(w => {
+            const nom = w.dataset.qcol;
+            $$('tbody tr', w).forEach(tr => {
+                const val = (tr.firstElementChild || {}).textContent;
+                if (!val || val === 'Total') return;
+                tr.classList.add('row-clickable');
+                tr.addEventListener('click', () => filtrerParQualification(nom, val.trim()));
+            });
+        });
     }
 
     function rendreRepartitionQualif(data) {
-        const nom = state.ui.qualifColonne;
+        const [board, nom] = String(state.ui.qualifChoix || '').split(' ‖ ');
         const eur = state.ui.qualifUnite === 'euros';
-        const r = X.repartitionQualification(data, nom);
+        const r = X.repartitionQualification(data, nom, board);
 
         $('#qualif-portee').textContent =
             `${U.nombre(r.totalNb)} factures renseignées sur cette colonne · ${U.euros(r.totalEur)}`
@@ -1929,7 +1999,6 @@
 
         if (!r.lignes.length) {
             U.chart('chart-qualif', videConfig('Aucune valeur'));
-            $('#qualif-table').innerHTML = '';
             return;
         }
 
@@ -1964,25 +2033,6 @@
             },
         });
 
-        const el = $('#qualif-table');
-        el.innerHTML = U.table([
-            { key: 'valeur', label: 'Qualification' },
-            { key: 'nb', label: 'Factures', align: 'right', format: U.nombre },
-            { key: 'partNb', label: '% du nombre', align: 'right', format: v => U.pourcent(v, 1) },
-            { key: 'euros', label: 'Montant', align: 'right', format: v => U.euros(v) },
-            { key: 'partEur', label: '% des euros', align: 'right', format: v => U.pourcent(v, 1) },
-            { key: 'nbEnRetard', label: 'En retard', align: 'right', format: v => v ? U.nombre(v) : '—' },
-            { key: 'eurEnRetard', label: 'Montant en retard', align: 'right', format: v => v ? U.euros(v) : '—' },
-            { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
-        ], r.lignes, {
-            vide: '—', onRowClick: true,
-            total: {
-                valeur: 'Total', nb: U.nombre(r.totalNb), euros: U.euros(r.totalEur),
-                nbEnRetard: U.nombre(X.sum(r.lignes, l => l.nbEnRetard)),
-                eurEnRetard: U.euros(X.sum(r.lignes, l => l.eurEnRetard)),
-            },
-        });
-        U.bindTable(el, r.lignes, { onRowClick: l => filtrerParQualification(nom, l.valeur) });
     }
 
     /** Filtre sur une valeur de qualification, via la recherche plein texte. */
@@ -3839,7 +3889,21 @@
         });
 
         $('#qualif-colonne').addEventListener('change', e => {
-            state.ui.qualifColonne = e.target.value;
+            state.ui.qualifChoix = e.target.value;
+            rendreQualifications(facturesFiltrees());
+        });
+        $('#qualif-toutes').addEventListener('change', e => {
+            state.ui.qualifToutes = e.target.checked;
+            rendreQualifications(facturesFiltrees());
+        });
+        // Une puce de tableau bascule entre retenu et exclu, sans toucher aux
+        // filtres généraux : la portée reste locale à cet onglet.
+        $('#qualif-boards').addEventListener('click', e => {
+            const b = e.target.closest('[data-qboard]');
+            if (!b) return;
+            const nom = b.dataset.qboard;
+            const ex = state.ui.qualifBoardsExclus;
+            if (ex.has(nom)) ex.delete(nom); else ex.add(nom);
             rendreQualifications(facturesFiltrees());
         });
         $$('#seg-qualif-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
