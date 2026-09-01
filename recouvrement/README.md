@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 1.1.1** — 1er septembre 2026
+**Version 1.2.0** — 1er septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -318,6 +318,29 @@ La même mesure alimente une anomalie *Data Quality*, « Colonnes essentielles n
 reconnues », qui nomme le tableau, le champ, le taux constaté et l'effet sur les
 indicateurs. Il n'est donc pas nécessaire d'ouvrir les tableaux un par un pour
 s'en apercevoir.
+
+### Pourquoi une facture n'a pas d'échéance
+
+Le nombre de factures sans échéance ne dit pas quoi corriger : une colonne non
+reconnue, une date vide dans Monday et une règle qui réclame une date que la
+facture ne porte pas donnent le même chiffre et appellent trois gestes
+différents.
+
+La colonne *Sans échéance* de l'inventaire par tableau est donc cliquable. Elle
+ouvre le détail, cause par cause, de la plus fréquente à la plus rare :
+
+- **Aucune date exploitable** — ni facture, ni début, ni fin de formation. Le
+  plus souvent une colonne non reconnue sur ce tableau : le taux de remplissage
+  de l'écran de correspondance le confirme.
+- **Type de financement non identifié** — sans financement, aucune règle ne dit
+  sur quelle date compter.
+- **Règle non applicable** — le financement est connu, la règle aussi, mais la
+  facture ne porte pas la date sur laquelle cette règle compte. Une facture
+  *B2C-Perso* sans dates de formation en est le cas type : sa règle ne connaît
+  que celles-là, et ne se rabat pas sur la date de facture.
+
+Le même classement accompagne l'anomalie *Échéance impossible à calculer* de
+Data Quality.
 
 ### Contrôle des colonnes associées
 

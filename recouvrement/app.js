@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v1.1.1 — 1er septembre 2026
+   v1.2.0 — 1er septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '1.1.1';
+    const VERSION = '1.2.0';
     const VERSION_DATE = '1er septembre 2026';
 
     const R = window.LioraRules;
@@ -2756,8 +2756,10 @@
             { key: 'retenues', label: 'Analysées', align: 'right', format: v => `<strong>${U.nombre(v)}</strong>`,
               title: 'Factures qui entrent dans les indicateurs' },
             { key: 'sansEcheance', label: 'Sans échéance', align: 'right',
-              title: "Échéance non calculable : ces factures sortent de tous les taux",
-              format: v => v ? `<span class="cell-danger">${U.nombre(v)}</span>` : '—' },
+              title: "Échéance non calculable : ces factures sortent de tous les taux. Cliquez pour savoir pourquoi.",
+              format: (v, r) => v
+                  ? `<button class="lien-cellule cell-danger" data-sans-echeance="${U.escapeHtml(r.name)}">${U.nombre(v)}</button>`
+                  : '—' },
             { key: 'enRetard', label: 'En retard', align: 'right', format: v => v ? U.nombre(v) : '—' },
             { key: 'nonEchues', label: 'Non échues', align: 'right', format: v => v ? U.nombre(v) : '—' },
             { key: 'payees', label: 'Payées', align: 'right', format: v => v ? U.nombre(v) : '—' },
@@ -2874,6 +2876,40 @@
             sauverBoards();
             U.toast('Correspondance mise à jour — rechargez le tableau pour l\'appliquer.', 'info');
         }));
+    }
+
+    /**
+     * Détail des factures sans échéance d'un tableau, cause par cause.
+     *
+     * Le nombre seul n'indique pas quoi corriger : une colonne non reconnue,
+     * une date vide, et une règle qui réclame une date de formation absente
+     * produisent le même chiffre et appellent trois gestes différents.
+     */
+    function montrerSansEcheance(nomBoard) {
+        const lot = state.factures.filter(f =>
+            (f.board === nomBoard || f.boardOperationnel === nomBoard)
+            && !f.dateEcheance && !(f.role === 'technique' || f.groupeTechnique));
+        const causes = X.causesSansEcheance(lot);
+
+        U.modal(`${U.escapeHtml(nomBoard)} — ${U.nombre(lot.length)} factures sans échéance`,
+            `<p class="fv-hint">Ces factures ne peuvent être ni en retard ni non échues : elles sortent
+             de tous les taux. Voici ce qui manque, du cas le plus fréquent au plus rare.</p>`
+            + causes.map(c => `
+                <div class="cause-bloc">
+                    <div class="cause-titre">
+                        <strong>${U.escapeHtml(c.cause)}</strong>
+                        <span class="cause-nb">${U.nombre(c.nb)} factures · ${U.euros(c.euros)}</span>
+                    </div>
+                    <p class="fv-hint">${U.escapeHtml(c.conseil)}</p>
+                    <div class="table-wrap">` + U.table([
+                        { key: 'numero', label: 'Facture', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
+                        { key: 'client', label: 'Client', format: v => `<span class="cell-clip" title="${U.escapeHtml(v)}">${U.escapeHtml(v)}</span>` },
+                        { key: 'groupe', label: 'Groupe', format: v => `<span class="cell-clip" title="${U.escapeHtml(v)}">${U.escapeHtml(v || '—')}</span>` },
+                        { key: 'montant', label: 'Montant', align: 'right', format: v => v != null ? U.euros(v) : '—' },
+                    ], c.items.slice(0, 25), { vide: '—' })
+                    + (c.items.length > 25 ? `<p class="fv-hint">… et ${U.nombre(c.items.length - 25)} autres</p>` : '')
+                    + `</div>
+                </div>`).join(''));
     }
 
     function exempleValeur(board, colId) {
@@ -4042,6 +4078,11 @@
         });
         $('#btn-boards-refresh').addEventListener('click', chargerListeBoards);
         $('#btn-boards-load').addEventListener('click', chargerBoardsActifs);
+
+        $('#boards-table').addEventListener('click', (e) => {
+            const b = e.target.closest('[data-sans-echeance]');
+            if (b) montrerSansEcheance(b.dataset.sansEcheance);
+        });
 
         $('#chaine-traitement').addEventListener('click', (e) => {
             const l = e.target.closest('[data-chaine]');

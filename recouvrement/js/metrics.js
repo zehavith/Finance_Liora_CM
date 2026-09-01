@@ -662,6 +662,64 @@
         });
     }
 
+    /**
+     * Pourquoi une facture n'a-t-elle pas d'échéance calculable ?
+     *
+     * Le nombre seul n'est pas actionnable : il peut désigner une colonne non
+     * reconnue, une date vide dans Monday, ou une règle qui réclame une date de
+     * formation que la facture ne porte pas. Chacune de ces causes se corrige
+     * autrement, d'où ce classement.
+     *
+     * @returns {Array} { cause, conseil, nb, euros, items }, la plus fréquente
+     *                  en tête
+     */
+    function causesSansEcheance(factures) {
+        const groupes = new Map();
+        const ajouter = (cause, conseil, f) => {
+            let g = groupes.get(cause);
+            if (!g) { g = { cause, conseil, items: [] }; groupes.set(cause, g); }
+            g.items.push(f);
+        };
+
+        for (const f of factures) {
+            if (f.dateEcheance) continue;
+            const aFacture = !!f.dateFacture;
+            const aDebut = !!f.dateDebutFormation;
+            const aFin = !!f.dateFinFormation;
+
+            if (!aFacture && !aDebut && !aFin) {
+                ajouter('Aucune date exploitable',
+                    'Ni date de facture, ni date de début ou de fin de formation. Vérifier que ces '
+                    + "colonnes sont bien associées pour ce tableau — l'écran « Correspondance des "
+                    + 'colonnes » indique la part de lignes réellement renseignée — puis compléter '
+                    + 'les dates manquantes dans Monday.', f);
+            } else if (!f.financement) {
+                ajouter('Type de financement non identifié',
+                    'Sans financement, aucune règle ne dit sur quelle date compter. Renseigner '
+                    + '« Type de financement » ou « Type de client », ou ranger la facture dans un '
+                    + 'groupe qui nomme son financement.', f);
+            } else {
+                const regle = R.getRule(f.financement);
+                const attendues = [regle.base, regle.fallback].filter(Boolean);
+                const libelle = {
+                    dateFacture: 'la date de facture',
+                    dateDebutFormation: 'la date de début de formation',
+                    dateFinFormation: 'la date de fin de formation',
+                };
+                ajouter(`${regle.label} — ${attendues.map(c => libelle[c] || c).join(' ou ')} manquante`,
+                    `La règle « ${regle.note} » ne peut pas s'appliquer : cette facture porte `
+                    + (aFacture ? 'une date de facture' : 'aucune des dates attendues')
+                    + ', mais pas la date sur laquelle la règle compte. Compléter cette date dans '
+                    + 'Monday, ou corriger le type de financement si la règle appliquée n\'est pas la bonne.',
+                    f);
+            }
+        }
+
+        return [...groupes.values()]
+            .map(g => ({ ...g, nb: g.items.length, euros: sum(g.items, x => x.montant) }))
+            .sort((a, b) => b.nb - a.nb);
+    }
+
     /** Tranches de l'histogramme de répartition des retards. */
     const TRANCHES_RETARD = [
         { label: '1 → 15 j',    min: 1,   max: 15 },
@@ -922,9 +980,14 @@
             if (items.length) anomalies.push({ code, titre, gravite, nb: items.length, euros: sum(items, x => x.montant), items, conseil });
         };
 
-        push('ECHEANCE', "Échéance impossible à calculer", 'haute',
-            factures.filter(f => !f.dateEcheance),
-            "Renseigner la date de facture ou la date de fin de formation sur Monday.");
+        // Le détail par cause accompagne le nombre : une colonne non reconnue,
+        // une date vide et une règle qui réclame une date absente donnent le
+        // même chiffre et appellent trois gestes différents.
+        const sansEch = factures.filter(f => !f.dateEcheance);
+        push('ECHEANCE', "Échéance impossible à calculer", 'haute', sansEch,
+            "Ces factures sortent de tous les taux — ni en retard, ni non échues. "
+            + causesSansEcheance(sansEch)
+                .map(c => `${c.cause} : ${Math.round(c.nb)}`).join(' · '));
 
         push('FINANCEMENT', "Type de financement non identifié", 'haute',
             factures.filter(f => !f.financement),
@@ -1034,7 +1097,7 @@
         filtrer, sourceDe, origineRecouvrement, vueEnsemble, parMois, parFinancement, croiseMoisFinancement,
         agreger, repartitionMontants, fluxRecouvrement, parDimension, finDeMois,
         dsoParMois, histogrammeRetards, TRANCHES_RETARD, joursDuMois,
-        balanceAgee, balanceAgeeParDimension, topClients, parTableau, parGroupe,
+        balanceAgee, balanceAgeeParDimension, causesSansEcheance, topClients, parTableau, parGroupe,
         qualite, scoreQualite, comparaisonMensuelle,
         inventaireQualifications, repartitionQualification,
         qualificationsParTableau, estColonneQualification, creancesDouteuses,
