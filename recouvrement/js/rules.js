@@ -51,6 +51,22 @@
                     'b2c corporate', 'btc corporate', 'corporate alternance'],
         },
         {
+            // Repli corporate. Le tableau des factures payées range ses lignes
+            // dans des groupes qui nomment tantôt un financement (Opco, CPF,
+            // AIF…), tantôt une étape du circuit corporate — « Factures Payées
+            // ADV », « Factures payées avant import + Entre process ADV et
+            // recouvrement ». Ces dernières ne disent pas le financement, mais
+            // elles disent le périmètre : les laisser en « Non renseigné »
+            // faisait perdre cette information, la seule disponible pour une
+            // facture réglée avant la mise en place du circuit.
+            key: 'CORPORATE', label: 'Corporate — financement à préciser',
+            base: 'dateFacture', jours: 30,
+            fallback: 'dateFinFormation', fallbackJours: 30,
+            note: 'Date de facture +30 jours — règle corporate par défaut',
+            perimetre: 'Corporate',
+            match: ['avant import', 'entre process', 'factures payees adv', 'payees adv', 'adv'],
+        },
+        {
             key: 'B2B', label: 'B2B',
             base: 'dateFinFormation', jours: 30,
             fallback: 'dateFacture', fallbackJours: 30,
@@ -134,8 +150,14 @@
             fallback: 'dateDebutFormation', fallbackJours: 0,
             note: 'Début de formation / fin de formation (aucun délai supplémentaire)',
             perimetre: 'B2C',
+            // « B2C » employé seul — le groupe « Factures payées B2C » du tableau
+            // 0.1, à côté de groupes CPF, AIF, POEI, REGION — désigne le
+            // financement personnel : les financements publics ont chacun le
+            // leur. « B2C - Entreprise » reste capté par sa règle propre, dont
+            // le libellé de correspondance est plus long et l'emporte.
             match: ['b2c perso', 'btc perso', 'perso alternance', 'financement personnel',
-                    'perso', 'personnel', 'fonds propres', 'auto financement', 'autofinancement'],
+                    'perso', 'personnel', 'fonds propres', 'auto financement', 'autofinancement',
+                    'b2c', 'btc'],
         },
         {
             key: 'CPF', label: 'CPF',
@@ -259,10 +281,18 @@
         { key: 'EN_COURS',     label: 'En cours',           match: ['en cours', 'en traitement'] },
     ];
 
-    /** @returns {{key:string,label:string}} étape déduite du libellé du groupe. */
+    /**
+     * @returns {{key:string,label:string}} étape déduite du libellé du groupe.
+     *
+     * La négation est vérifiée avant tout : le groupe « Factures non payées :
+     * Perte / Contentieux » contient le mot « payées » et ressortait donc comme
+     * réglé, alors qu'il dit exactement l'inverse.
+     */
     function etapeDepuisGroupe(nom) {
         const n = ' ' + norm(nom) + ' ';
+        const nie = /non pay|impay|pas pay|non regl|a payer/.test(n);
         for (const e of ETAPES) {
+            if (nie && e.key === 'PAYEE') continue;
             if (e.match.some(m => n.includes(m))) return { key: e.key, label: e.label };
         }
         return { key: 'AUTRE', label: 'Non qualifié' };

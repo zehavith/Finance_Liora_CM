@@ -161,6 +161,31 @@ Le référentiel écrit *BTC-Entreprise* là où Monday écrit *B2C - Entreprise
 les deux graphies sont reconnues et désignent la même chose, un particulier dont
 la formation est facturée à une entreprise.
 
+### Les groupes du tableau des factures payées
+
+*0.1. ALL - Factures payées* range ses lignes dans des groupes qui disent
+l'appartenance de la facture, et c'est souvent la seule information disponible :
+une facture réglée avant la mise en place du circuit n'existe nulle part
+ailleurs. Le libellé du groupe est donc lu comme type de financement.
+
+Ces groupes se répartissent en deux familles :
+
+- ceux qui **nomment un financement** — *Factures payées Opco*, *CPF*, *REGION*,
+  *TRANSITION PRO*, *AGEFIPH*, *AIF*, *POEI*, *B2C* — d'où le financement se
+  déduit directement ; *B2C* employé seul y désigne le financement personnel,
+  les financements publics ayant chacun leur propre groupe ;
+- ceux qui **nomment une étape du circuit corporate** — *Factures Payées ADV*,
+  *Factures payées avant import + Entre process ADV et recouvrement* — qui ne
+  disent pas le financement mais établissent le périmètre. Ces factures
+  reçoivent le financement *Corporate — financement à préciser*, calculé sur la
+  règle corporate par défaut (facture +30 jours), et sont listées en Data
+  Quality : renseigner « Type de client » les répartirait entre B2B et
+  B2C-Entreprise.
+
+Le groupe *Factures non payées : Perte / Contentieux* contient le mot « payées »
+sans rien devoir au règlement : la négation est vérifiée avant tout, et ces
+factures sont classées en contentieux, non en réglées.
+
 ### D'où vient le type de financement
 
 Du plus fiable au plus approximatif, la première source renseignée l'emporte :

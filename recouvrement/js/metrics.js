@@ -915,6 +915,17 @@
             factures.filter(f => !f.financement),
             "La règle d'échéance par défaut (facture +30 j) est appliquée — compléter la colonne « Type de financement ».");
 
+        // Ces factures ne sont connues que par leur groupe dans le tableau des
+        // factures payées, lequel nomme une étape du circuit corporate et non
+        // un financement. Le périmètre est donc sûr, le financement non.
+        push('FINANCEMENT_CORPORATE', "Financement corporate à préciser", 'moyenne',
+            factures.filter(f => f.financement === 'CORPORATE'),
+            "Réglées avant l'entrée dans le circuit, ou rangées dans un groupe qui nomme "
+            + "l'étape plutôt que le financement. Le périmètre corporate est certain ; "
+            + "la règle appliquée est la règle corporate par défaut, facture +30 jours. "
+            + "Renseigner « Type de client » sur ces factures les répartirait entre "
+            + "B2B et B2C-Entreprise.");
+
         push('MONTANT', "Montant absent ou nul", 'haute',
             factures.filter(f => f.montant == null || f.montant === 0),
             "Sans montant, la facture ne pèse pas dans les indicateurs en euros.");
