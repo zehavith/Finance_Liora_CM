@@ -437,7 +437,7 @@
     function mergeFacture(base, extra) {
         const out = { ...base };
         // Champs conservés depuis la source la plus riche (non vide gagne)
-        const champs = ['client', 'financement', 'financementBrut', 'montant', 'montantHT', 'montantRegle',
+        const champs = ['client', 'financement', 'financementBrut', 'typeClient', 'montant', 'montantHT', 'montantRegle',
             'resteDu', 'dateFacture', 'dateDebutFormation', 'dateFinFormation', 'dateEcheanceSource',
             'datePaiement', 'dateControlePaiement', 'statut', 'proprietaire', 'qualifRecouvrement',
             'relance', 'commentaire', 'litige', 'groupeOrigine'];
@@ -591,6 +591,18 @@
             f.groupeTechnique = R.estGroupeTechnique(f.groupe);
             const et = R.etapeDepuisGroupe(f.groupe);
             f.etape = et.key; f.etapeLabel = et.label;
+
+            // Le type de financement est redéduit ici, et non seulement à
+            // l'import, pour la même raison : une correction de la
+            // reconnaissance — un libellé de groupe jusque-là non rattaché —
+            // profite aux factures déjà en cache, sans recharger Monday. La
+            // cascade reprend celle de l'import, du plus fiable au plus
+            // approximatif, en repartant des valeurs brutes conservées.
+            const finRededuit = R.detectFinancement(f.financementBrut, o.rules)
+                || R.detectFinancement(f.typeClient, o.rules)
+                || R.detectFinancement(f.groupe, o.rules)
+                || R.detectFinancement(f.board, o.rules);
+            if (finRededuit) f.financement = finRededuit;
 
             const ech = R.computeEcheance(f, { rules: o.rules, prefereEcheanceMonday: o.prefereEcheanceMonday });
             f.dateEcheance = ech.date;

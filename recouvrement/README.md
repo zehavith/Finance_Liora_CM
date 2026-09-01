@@ -55,6 +55,24 @@ dans sa propre fenêtre, sans barre de navigateur, avec son icône, et peut êtr
 épinglée à la barre des tâches. Le serveur local doit tourner : garder le
 lanceur ouvert.
 
+## Ce qui se recalcule sans recharger
+
+Les factures récupérées sont conservées telles quelles ; les indicateurs, eux,
+sont recalculés à chaque ouverture. Une correction du référentiel profite donc
+aux données déjà en place, sans repasser par Monday :
+
+- règles d'échéance, dates d'échéance, retards et états ;
+- reconnaissance du type de financement, y compris depuis le libellé du groupe ;
+- étapes du circuit, groupes de service écartés, sources du retard ;
+- tranches de la balance âgée, DSO, tous les graphiques et tableaux.
+
+Un rechargement reste nécessaire pour ce qui est lu **au moment de l'import** :
+la correspondance des colonnes — donc les montants et les dates récupérés — les
+colonnes de qualification, et le taux de remplissage mesuré par tableau. En
+pratique : après une mise à jour touchant la lecture des colonnes, rechargez ;
+après une mise à jour touchant les règles ou l'affichage, il suffit d'ouvrir
+l'application.
+
 ## Actualisation depuis Monday
 
 Trois moments, réglables dans *Données → Options de calcul* :
