@@ -600,8 +600,12 @@ colonnes, l'ordre n'importe pas.
 | **Subscriptions** | utile — date de début, périodicité, nombre d'échéances |
 | **Mandates** | utile — relie prélèvement et apprenant si Payments ne le fait pas |
 
-Sans *Customers*, les apprenants sont regroupés sur l'identifiant GoCardless et
-une même personne inscrite deux fois compte double ; l'application le signale.
+Sans *Customers*, aucun prélèvement ne porte d'identité : l'export Payments ne
+contient que des identifiants. Les apprenants sont alors regroupés sur leur
+identifiant GoCardless, et une même personne titulaire de deux mandats compte
+deux fois. *Fiabilité de l'analyse* le signale sous « Export Customers non
+fourni » — en nommant le fichier manquant plutôt qu'en laissant croire à des
+identités absentes de GoCardless.
 
 ### Identité de l'apprenant
 

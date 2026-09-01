@@ -466,8 +466,14 @@
         return [...map.values()].sort((a, b) => b.nb - a.nb);
     }
 
-    /** Limites de lecture à signaler avant d'exploiter les chiffres. */
-    function qualite(apprenants, orphelins) {
+    /**
+     * Limites de lecture à signaler avant d'exploiter les chiffres.
+     *
+     * @param {Array} apprenants
+     * @param {number} orphelins
+     * @param {boolean} avecClients  un export Customers a-t-il été fourni ?
+     */
+    function qualite(apprenants, orphelins, avecClients) {
         const anomalies = [];
         const push = (titre, gravite, nb, conseil) => { if (nb) anomalies.push({ titre, gravite, nb, conseil }); };
 
@@ -475,9 +481,25 @@
             apprenants.filter(a => a.identifieParNom).length,
             "Deux homonymes seraient comptés comme une seule personne. Ajouter l'e-mail dans GoCardless lève le doute.");
 
-        push("Apprenants sans e-mail ni nom", 'haute',
-            apprenants.filter(a => a.sansIdentite).length,
-            "Regroupés sur l'identifiant GoCardless : une même personne inscrite deux fois compte double.");
+        // Sans export Customers, aucun paiement ne porte d'identité : ce n'est
+        // pas une lacune des données GoCardless mais un fichier manquant, et
+        // l'annoncer comme un défaut de saisie envoyait chercher au mauvais
+        // endroit.
+        const sansIdentite = apprenants.filter(a => a.sansIdentite).length;
+        if (sansIdentite && !avecClients) {
+            anomalies.push({
+                titre: "Export Customers non fourni", gravite: 'moyenne', nb: sansIdentite,
+                conseil: "Ces apprenants n'ont ni e-mail ni nom parce que le fichier qui les porte "
+                    + "n'a pas été chargé : l'export Payments ne contient que des identifiants. "
+                    + "En attendant, ils sont regroupés sur leur identifiant GoCardless — une même "
+                    + "personne titulaire de deux mandats compte donc deux fois. "
+                    + "Ajoutez l'export Customers pour lever l'ambiguïté.",
+            });
+        } else {
+            push("Apprenants sans e-mail ni nom", 'haute', sansIdentite,
+                "Présents dans l'export Customers mais sans e-mail ni nom renseigné. Regroupés sur "
+                + "l'identifiant GoCardless : une même personne inscrite deux fois compte double.");
+        }
 
         push("Prélèvements sans client rattachable", 'haute', orphelins,
             "Importer l'export Customers, et si besoin Mandates, permet de les relier.");

@@ -2073,7 +2073,6 @@
         rendreNotesPrelevements(st);
         rendreChartSurvie();
         rendreChartRang();
-        rendreChartMotifs();
         rendreChartEchecsMois();
         rendreTableApprenants();
         rendreQualitePrelevements();
@@ -2235,45 +2234,6 @@
         });
     }
 
-    function rendreChartMotifs() {
-        const rows = PR.motifsEchec(state.gcl.paiements);
-        if (!rows.length) { U.chart('chart-motifs', videConfig('Aucun rejet')); return; }
-        const libelle = {
-            insufficient_funds: 'Provision insuffisante',
-            mandate_cancelled: 'Mandat annulé',
-            account_closed: 'Compte clos',
-            bank_account_closed: 'Compte clos',
-            refer_to_payer: 'Contacter le payeur',
-            invalid_account_number: 'Coordonnées invalides',
-            authorisation_disputed: 'Autorisation contestée',
-            payment_stopped: 'Paiement bloqué',
-        };
-        U.chart('chart-motifs', {
-            type: 'doughnut',
-            data: {
-                labels: rows.map(r => libelle[r.motif] || r.motif),
-                datasets: [{
-                    data: rows.map(r => r.nb),
-                    backgroundColor: rows.map((_, i) => U.palette[i % U.palette.length]),
-                    borderColor: 'rgba(11,14,26,0.9)', borderWidth: 2,
-                }],
-            },
-            options: {
-                cutout: '58%',
-                plugins: {
-                    legend: { position: 'right' },
-                    tooltip: {
-                        callbacks: {
-                            label: ctx => {
-                                const r = rows[ctx.dataIndex];
-                                return `${U.nombre(r.nb)} rejets · ${U.euros(r.euros)}`;
-                            },
-                        },
-                    },
-                },
-            },
-        });
-    }
 
     function rendreChartEchecsMois() {
         const rows = PR.echecsParMois(state.gcl.paiements);
@@ -2401,7 +2361,8 @@
     }
 
     function rendreQualitePrelevements() {
-        const anomalies = PR.qualite(state.apprenants, state.gclOrphelins);
+        const anomalies = PR.qualite(state.apprenants, state.gclOrphelins,
+            !!(state.gcl.clients && state.gcl.clients.length));
         const el = $('#prlv-qualite');
         if (!anomalies.length) {
             el.innerHTML = '<div class="note note-ok"><div class="note-body"><strong>Rien à signaler</strong>'
