@@ -57,6 +57,10 @@
         // L'identifiant du tiers est plus stable que le numéro de compte pour
         // reconnaître un client d'un extrait à l'autre.
         identifiantTiers: ['identifiant du tiers', 'id tiers', 'identifiant tiers', 'code tiers'],
+        // Le SIREN dit qu'un tiers est une entreprise immatriculée. Il ne dit
+        // pas l'inverse — il n'est renseigné que sur un compte sur cinq — mais
+        // là où il est présent, il vaut certitude.
+        siren: ['siren', 'siret', 'n siren', 'numero siren'],
         // Un extrait déjà qualifié porte sa propre réponse : la sous-catégorie
         // est le financement, plus fine que le type de client — « B2C » couvre
         // aussi bien BTC-Perso que CPF, Transition Pro, AIF ou Agefiph.
@@ -102,6 +106,29 @@
     // ──────────────────────────────────────────────
     //  2. Nature d'une écriture
     // ──────────────────────────────────────────────
+
+    /**
+     * La date que porte le libellé d'une écriture.
+     *
+     * Pennylane préfixe très souvent son libellé de ligne par la date de la
+     * pièce : « 2025-06-24 – Charge: = Receipt: 1199-3270 (txn_…) – G9VK083OKQ »,
+     * « 2024-07-31 – Facture 2B INNOVATION - FACT-2407-04923 ». Sur l'extrait
+     * de septembre, 71 % des lignes en portent une. Quand la colonne de date
+     * est absente ou vide — un export brut n'a pas toujours de « Date de
+     * facture » — c'est la seule date disponible, et sans elle la créance
+     * n'est pas vieillissable.
+     *
+     * La dernière date du texte est retenue, comme dans le classeur.
+     */
+    const DATE_DANS_TEXTE = /(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})/g;
+    function dateDepuisTexte(txt) {
+        const t = String(txt == null ? '' : txt);
+        if (!t) return null;
+        DATE_DANS_TEXTE.lastIndex = 0;
+        let m, derniere = null;
+        while ((m = DATE_DANS_TEXTE.exec(t)) !== null) derniere = m[1];
+        return derniere ? R.parseDate(derniere) : null;
+    }
 
     // Le journal où sont passées les factures de vente. Une écriture au débit
     // qui en vient est une facture, même si son numéro a dû être lu au libellé.
@@ -249,7 +276,18 @@
             const compte = texteBrut(col(r, 'compte'));
             const debit = nombre(col(r, 'debit'));
             const credit = nombre(col(r, 'credit'));
-            const date = R.parseDate(col(r, 'date'));
+            // Un report à nouveau porte la date d'ouverture de l'exercice, pas
+            // celle de la facture : « Report à nouveau », journal AN, date
+            // 01/07/2025, alors que le libellé dit « 2024-07-31 – Facture … ».
+            // Prendre la colonne rajeunirait la créance d'un exercice entier et
+            // la sortirait des tranches anciennes. Sur ces lignes, le libellé
+            // fait foi ; partout ailleurs il ne sert que de secours.
+            const dateTexte = dateDepuisTexte(col(r, 'libelleLigne'))
+                || dateDepuisTexte(col(r, 'libelle'));
+            const aNouveau = /^an/i.test(String(col(r, 'journal') || '').trim())
+                || /report a nouveau|a nouveaux?/.test(R.norm(col(r, 'libelle')));
+            const date = (aNouveau && dateTexte) ? dateTexte
+                : (R.parseDate(col(r, 'date')) || dateTexte);
 
             // Le numéro porté par sa colonne d'abord ; à défaut, celui que cite
             // le libellé — c'est ainsi que se rattache un règlement bancaire.
@@ -280,12 +318,13 @@
             let g = groupes.get(cle);
             if (!g) {
                 g = { cle, compte, lettre: groupe, nonLettre: !lettre,
-                      tiers: '', debit: 0, credit: 0,
+                      tiers: '', siren: '', debit: 0, credit: 0,
                       factures: [], avoirs: [], reglements: [], autres: [] };
                 groupes.set(cle, g);
             }
             if (!g.tiers) g.tiers = String(col(r, 'tiers') || col(r, 'libelleCompte') || '').trim();
             if (!g.identifiantTiers) g.identifiantTiers = texteBrut(col(r, 'identifiantTiers'));
+            if (!g.siren) g.siren = texteBrut(col(r, 'siren'));
             if (!g.qualif && qualif) g.qualif = qualif;
             g.debit += debit;
             g.credit += credit;
@@ -486,6 +525,7 @@
                         numero: f.numero, cle: I.factureKey(f.numero),
                         qualif: f.qualif || g.qualif || '',
                         identifiantTiers: g.identifiantTiers || '',
+                        siren: g.siren || '',
                         compte: g.compte, tiers: g.tiers, lettre: g.lettre,
                         montant: f.debit,
                         resteDu: reste * (f.debit / total),
@@ -501,6 +541,7 @@
                     numero: '', cle: null,
                     qualif: g.qualif || '',
                     identifiantTiers: g.identifiantTiers || '',
+                    siren: g.siren || '',
                     compte: g.compte, tiers: g.tiers, lettre: g.lettre,
                     montant: null, resteDu: reste,
                     // Ce sont les débits qui créent la dette : leur date fait
@@ -810,7 +851,7 @@
             const ech = R.computeEcheance(
                 { ...c, financement: fin, dateEcheanceSource: null,
                   dateEcheanceComptable: c.dateEcheance || null },
-                { rules: o.rules, prefereEcheanceMonday: false });
+                { rules: o.rules, prefereEcheanceMonday: false, grandLivre: true });
             return {
                 ...c, financement: fin, origineClassement: origine,
                 typeClient: typeDeClient(fin, c, o),
@@ -835,9 +876,17 @@
             if (sellsy) return poser(c, sellsy, 'Type de client (facturation)');
             const fichier = propre(c);
             if (fichier) return poser(c, fichier, 'Héritée du fichier (à vérifier)');
-            const tiers = unique(idx.parTiers, c.identifiantTiers);
+            // Un compte qui porte un SIREN est une entreprise immatriculée :
+            // sur les 303 comptes du référentiel qui en ont un, 3 seulement
+            // relèvent du financement personnel. Le déduire par propagation
+            // serait donc faux 99 fois sur 100. L'inverse ne vaut pas : le
+            // SIREN n'est renseigné que sur un compte sur cinq, son absence ne
+            // prouve rien.
+            const immatricule = !!String(c.siren == null ? '' : c.siren).trim();
+            const pasPerso = f => (immatricule && (f === 'BTC_PERSO' || f === 'PERSO_ALTERNANCE')) ? null : f;
+            const tiers = pasPerso(unique(idx.parTiers, c.identifiantTiers));
             if (tiers) return poser(c, tiers, 'Identifiant du tiers');
-            const compte = unique(idx.parCompte, c.compte);
+            const compte = pasPerso(unique(idx.parCompte, c.compte));
             if (compte) return poser(c, compte, 'Compte client');
             return { ...c, financement: null, typeClient: null, origineClassement: null };
         });
@@ -1150,6 +1199,7 @@
         regleCorrespond, financementParRegles, porteeDesRegles, etiquetteRegle,
         A_CLASSER, POOL_NON_LETTRE, MOTIFS_NUMERO, numeroDepuisTexte,
         creancesOuvertes, classer, classerEcritures, ecrituresAPlat, balanceAgee, comparer,
+        dateDepuisTexte,
         MOTIFS_COMPTE, financementDuLibelle, typeDeClient, SEUIL_POEI,
         COLONNES, TOLERANCE, EST_FACTURE, EST_AVOIR,
         detecterColonnes, estComptable, lettreDe, lire, lireComptable, lireSimple,

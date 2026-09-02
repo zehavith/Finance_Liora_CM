@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.28.0** — 2 septembre 2026
+**Version 2.29.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.28.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.29.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -765,6 +765,19 @@ Trois familles de comptes ne se laissent pas trancher par leur seul nom :
   *B2C - Entreprise* par défaut et *B2B* seulement si Sellsy le dit.
 - **L'État** — *B2C - Entreprise* ou *B2B*, la facturation tranche.
 
+#### Le SIREN, et ce qu'il prouve
+
+Le grand livre porte un **SIREN**, et il tranche dans un seul sens : sur les
+303 comptes du référentiel qui en ont un, **3 seulement** relèvent du
+financement personnel. Un compte immatriculé n'est donc jamais classé
+B2C-Perso ni Perso-Alternance par propagation — ce serait faux 99 fois sur 100.
+
+L'inverse ne vaut pas : le SIREN n'est renseigné que sur **un compte sur cinq**,
+et parmi ceux qui n'en ont pas, seuls 66 % sont des particuliers. Son absence ne
+prouve rien. Un annuaire externe n'y changerait rien non plus : il dirait qu'une
+raison sociale existe, pas qu'un nom de personne n'en est pas une — les
+auto-entrepreneurs portent le leur.
+
 Deux sous-catégories ne se devinent jamais : **Perso-Alternance** ne vaut que
 là où elle a été posée à la main, et **B2C-Perso** n'est attribué que lorsqu'il
 est certain que le client n'est pas une entreprise — un compte collectif qui se
@@ -778,6 +791,18 @@ mais elle vient de la facturation et ignore le dispositif. Elle est donc
 **recalculée**, exactement comme la colonne *Date d'échéance recalculée* du
 classeur de trésorerie — et vérifiée contre elle : **15 769 lignes, aucun
 écart**.
+
+**Deux règles, pas une.** Le suivi de recouvrement et la balance âgée comptable
+ne mesurent pas la même chose — l'un le travail de relance, l'autre le solde du
+compte — et les délais diffèrent sur deux dispositifs :
+
+| Sous-catégorie | Suivi recouvrement | Balance âgée comptable |
+|---|---|---|
+| B2B | fin de formation + 30 j | fin de formation + **60 j** |
+| B2C-Entreprise | date de facture + 30 j, plafonnée à début de formation + 30 j | fin de formation + **60 j** |
+
+Les deux cas ci-dessous, comme le repli sur l'échéance du grand livre, ne valent
+que pour la balance âgée comptable.
 
 Deux cas passent avant la règle du dispositif :
 
@@ -799,6 +824,33 @@ Sinon, le délai dépend de la sous-catégorie :
 
 Et faute de date de formation, l'échéance que porte le grand livre — elle vaut
 mieux que pas d'échéance du tout.
+
+#### Les reports à nouveau, et la date qui ment
+
+Un **report à nouveau** porte la date d'ouverture de l'exercice, pas celle de la
+facture. Sur l'extrait de septembre, **11 459 lignes sur 16 054** sont ainsi
+datées du 01/07/2025 — alors que leur libellé dit la vérité :
+
+> `2024-07-31 – Facture 2B INNOVATION - FACT-2407-04923`
+> `2025-06-24 – Charge: = Receipt: 1199-3270 (txn_3RdWkwAzHerdRZ1r3nb0lkwx)`
+
+Prendre la colonne rajeunissait la créance d'un exercice entier. Sur ces lignes
+— journal *AN*, ou libellé *Report à nouveau* — **c'est la date du libellé qui
+fait foi** ; ailleurs elle ne sert que de secours, quand la colonne est absente
+ou vide.
+
+L'effet sur la balance âgée est considérable, à total inchangé :
+
+| Tranche | Avant | Après |
+|---|---|---|
+| > 48 mois | — | **367 365 €** |
+| 36 à 48 mois | — | **193 366 €** |
+| 24 à 36 mois | 444 244 € | **1 855 034 €** |
+| 12 à 18 mois | 4 289 914 € | 2 247 343 € |
+
+Deux millions d'euros quittent la tranche « 12 à 18 mois » pour rejoindre leur
+vraie ancienneté, et 560 731 € apparaissent au-delà de 36 mois, où il n'y avait
+rien.
 
 #### D'où viennent les dates
 

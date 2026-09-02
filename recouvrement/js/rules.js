@@ -38,9 +38,16 @@
         {
             key: 'BTC_ENTREPRISE',
             label: 'B2C-Entreprise',
-            base: 'dateFinFormation', jours: 60,
-            fallback: 'dateFacture', fallbackJours: 60,
-            note: 'Fin de formation +60 jours',
+            base: 'dateFacture', jours: 30,
+            fallback: 'dateDebutFormation', fallbackJours: 30,
+            plafondDebutFormation: true,
+            // Le classeur de trésorerie compte autrement pour la balance âgée
+            // comptable : fin de formation + 60. Les deux suivis ne mesurent
+            // pas la même chose — l'un le travail de relance, l'autre le solde
+            // du compte — et gardent donc chacun sa règle.
+            gl: { base: 'dateFinFormation', jours: 60 },
+            note: "Date de facture +30 jours, sans dépasser début de formation +30 jours"
+                + " — au grand livre : fin de formation +60 jours",
             categorie: 'B2C - Entreprise', perimetre: 'Corporate',
             // Monday écrit « B2C - Entreprise », le référentiel « BTC-Entreprise ».
             // Les deux graphies désignent la même chose : un particulier dont la
@@ -58,6 +65,8 @@
             key: 'CORPORATE_ALTERNANCE', label: 'Corporate - Alternance',
             base: 'dateFacture', jours: 30,
             fallback: 'dateDebutFormation', fallbackJours: 30,
+            plafondDebutFormation: true,
+            gl: { base: 'dateFacture', jours: 30 },
             note: 'Date de facture +30 jours',
             categorie: 'Alternance', perimetre: 'Corporate',
             match: ['corporate alternance', 'corporate-alternance'],
@@ -80,9 +89,11 @@
         },
         {
             key: 'B2B', label: 'B2B',
-            base: 'dateFinFormation', jours: 60,
-            fallback: 'dateFacture', fallbackJours: 60,
-            note: 'Fin de formation +60 jours', categorie: 'B2B', perimetre: 'Corporate',
+            base: 'dateFinFormation', jours: 30,
+            fallback: 'dateFacture', fallbackJours: 30,
+            gl: { base: 'dateFinFormation', jours: 60 },
+            note: 'Fin de formation +30 jours — au grand livre : +60 jours',
+            categorie: 'B2B', perimetre: 'Corporate',
             match: ['b2b', 'btob', 'entreprise', 'corporate'],
         },
         {
@@ -464,20 +475,28 @@
             return { date: inv.dateEcheanceSource, origine: 'Monday', regle: rule, baseUtilisee: 'colonne Monday' };
         }
 
+        // Le grand livre et le suivi recouvrement ne mesurent pas la même
+        // chose : l'un le solde du compte, l'autre le travail de relance. Les
+        // délais diffèrent donc sur certains dispositifs, et c'est le classeur
+        // de trésorerie qui fait foi côté comptable.
+        const gl = o.grandLivre === true;
+
         // ── Les deux cas qui passent avant la règle du dispositif ──
+        // Ils ne valent que pour la balance âgée comptable : c'est la règle du
+        // classeur de trésorerie, pas celle du suivi de relance.
         //
         // Une facture émise APRÈS la fin de la formation n'est pas une facture
         // d'avance : c'est une régularisation, et le délai court depuis son
         // émission. Sans cela, une formation terminée en 2024 refacturée en
         // 2026 ressortait échue depuis deux ans le jour de son émission.
-        if (inv.dateFacture && inv.dateFinFormation && inv.dateFacture > inv.dateFinFormation) {
+        if (gl && inv.dateFacture && inv.dateFinFormation && inv.dateFacture > inv.dateFinFormation) {
             return { date: addDays(inv.dateFacture, 60), origine: 'Règle', regle: rule,
                      baseUtilisee: 'dateFacture', motif: 'Facture postérieure à la fin de formation' };
         }
         // Un mandat de prélèvement change la mécanique : l'argent est appelé,
         // il n'y a pas de délai de paiement à accorder. L'échéance est la fin
         // de la formation, sans rien ajouter.
-        if (inv.mandatGocardless && inv.dateFinFormation) {
+        if (gl && inv.mandatGocardless && inv.dateFinFormation) {
             return { date: stripTime(inv.dateFinFormation), origine: 'Règle', regle: rule,
                      baseUtilisee: 'dateFinFormation', motif: 'Mandat de prélèvement en place' };
         }
@@ -487,8 +506,9 @@
         // et elle vaut mieux qu'un repli calculé sur la date de facture, qui
         // ne dit rien du dispositif. Le repli de la règle ne sert qu'aux
         // factures Monday, où aucune échéance comptable n'existe.
+        const principale = (gl && rule.gl) ? rule.gl : rule;
         const bases = [
-            { champ: rule.base, jours: rule.jours },
+            { champ: principale.base, jours: principale.jours },
             { comptable: true },
             { champ: rule.fallback, jours: rule.fallbackJours != null ? rule.fallbackJours : rule.jours },
         ];
@@ -504,6 +524,16 @@
             let date = addDays(src, b.jours || 0);
             let base = b.champ;
 
+            // Garde-fou du suivi de relance : une facture corrigée est réémise,
+            // sa date devient récente, et son échéance repart à zéro alors que
+            // la créance traîne depuis des mois. Le début de formation, lui, ne
+            // bouge pas : il plafonne l'échéance, et ne peut que l'avancer.
+            // Au grand livre, c'est la règle « facture postérieure à la fin de
+            // formation » qui traite le même biais, autrement.
+            if (!gl && rule.plafondDebutFormation && base === 'dateFacture' && inv.dateDebutFormation) {
+                const plafond = addDays(inv.dateDebutFormation, b.jours || 0);
+                if (plafond < date) { date = plafond; base = 'dateDebutFormation'; }
+            }
             return { date, origine: 'Règle', regle: rule, baseUtilisee: base };
         }
         if (inv.dateEcheanceSource) {
