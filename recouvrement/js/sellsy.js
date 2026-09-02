@@ -98,6 +98,10 @@
         // mieux que de recopier l'échéance calculée par Sellsy.
         dateDebutFormation: ['debut de service', 'date de debut de service', 'debut service'],
         dateFinFormation: ['fin de service', 'date de fin de service', 'fin service'],
+        // La correspondance Sellsy ↔ Zoho, portée par l'export Sellsy lui-même.
+        // Les factures « FA-… » ne sont plus émises, mais elles vivent encore au
+        // grand livre : c'est par ce numéro qu'on retrouve leurs dates.
+        numeroZoho: ['numero de facture zoho', 'facture zoho', 'numero zoho'],
         statut:     ['statut', 'status', 'etat', 'etat du paiement', 'statut de paiement'],
     };
 
@@ -171,13 +175,18 @@
             const numero = mapping.numero ? String(r[mapping.numero] || '').trim() : '';
             const cle = I.factureKey(numero);
             if (!cle) { ignorees++; continue; }
+            // Seconde clé : le numéro Zoho de la même facture, quand l'export le
+            // porte. Une créance du grand livre nommée « FA-… » se rapproche
+            // alors de sa ligne Sellsy, avec ses dates et son type de client.
+            const numeroZoho = mapping.numeroZoho ? String(r[mapping.numeroZoho] || '').trim() : '';
+            const cleZoho = numeroZoho ? I.factureKey(numeroZoho) : null;
 
             const montant = mapping.montant ? I.parseMontant(r[mapping.montant]) : null;
             const resteDu = mapping.resteDu ? I.parseMontant(r[mapping.resteDu]) : null;
             const statut = normaliserStatut(mapping.statut ? r[mapping.statut] : '', resteDu, montant);
 
             lignes.push({
-                cle, numero,
+                cle, numero, cleZoho, numeroZoho,
                 client: mapping.client ? String(r[mapping.client] || '').trim() : '',
                 montant,
                 montantHT: mapping.montantHT ? I.parseMontant(r[mapping.montantHT]) : null,

@@ -38,10 +38,9 @@
         {
             key: 'BTC_ENTREPRISE',
             label: 'B2C-Entreprise',
-            base: 'dateFacture', jours: 30,
-            fallback: 'dateDebutFormation', fallbackJours: 30,
-            plafondDebutFormation: true,
-            note: "Date de facture +30 jours, sans dépasser début de formation +30 jours",
+            base: 'dateFinFormation', jours: 60,
+            fallback: 'dateFacture', fallbackJours: 60,
+            note: 'Fin de formation +60 jours',
             categorie: 'B2C - Entreprise', perimetre: 'Corporate',
             // Monday écrit « B2C - Entreprise », le référentiel « BTC-Entreprise ».
             // Les deux graphies désignent la même chose : un particulier dont la
@@ -59,8 +58,7 @@
             key: 'CORPORATE_ALTERNANCE', label: 'Corporate - Alternance',
             base: 'dateFacture', jours: 30,
             fallback: 'dateDebutFormation', fallbackJours: 30,
-            plafondDebutFormation: true,
-            note: "Date de facture +30 jours, sans dépasser début de formation +30 jours",
+            note: 'Date de facture +30 jours',
             categorie: 'Alternance', perimetre: 'Corporate',
             match: ['corporate alternance', 'corporate-alternance'],
         },
@@ -76,16 +74,15 @@
             key: 'CORPORATE', label: 'Corporate — financement à préciser',
             base: 'dateFacture', jours: 30,
             fallback: 'dateFinFormation', fallbackJours: 30,
-            plafondDebutFormation: true,
-            note: 'Date de facture +30 jours, sans dépasser début de formation +30 jours',
+            note: 'Date de facture +30 jours',
             categorie: 'B2C - Entreprise', perimetre: 'Corporate',
             match: ['avant import', 'entre process', 'factures payees adv', 'payees adv', 'adv'],
         },
         {
             key: 'B2B', label: 'B2B',
-            base: 'dateFinFormation', jours: 30,
-            fallback: 'dateFacture', fallbackJours: 30,
-            note: 'Fin de formation +30 jours', categorie: 'B2B', perimetre: 'Corporate',
+            base: 'dateFinFormation', jours: 60,
+            fallback: 'dateFacture', fallbackJours: 60,
+            note: 'Fin de formation +60 jours', categorie: 'B2B', perimetre: 'Corporate',
             match: ['b2b', 'btob', 'entreprise', 'corporate'],
         },
         {
@@ -467,37 +464,57 @@
             return { date: inv.dateEcheanceSource, origine: 'Monday', regle: rule, baseUtilisee: 'colonne Monday' };
         }
 
+        // ── Les deux cas qui passent avant la règle du dispositif ──
+        //
+        // Une facture émise APRÈS la fin de la formation n'est pas une facture
+        // d'avance : c'est une régularisation, et le délai court depuis son
+        // émission. Sans cela, une formation terminée en 2024 refacturée en
+        // 2026 ressortait échue depuis deux ans le jour de son émission.
+        if (inv.dateFacture && inv.dateFinFormation && inv.dateFacture > inv.dateFinFormation) {
+            return { date: addDays(inv.dateFacture, 60), origine: 'Règle', regle: rule,
+                     baseUtilisee: 'dateFacture', motif: 'Facture postérieure à la fin de formation' };
+        }
+        // Un mandat de prélèvement change la mécanique : l'argent est appelé,
+        // il n'y a pas de délai de paiement à accorder. L'échéance est la fin
+        // de la formation, sans rien ajouter.
+        if (inv.mandatGocardless && inv.dateFinFormation) {
+            return { date: stripTime(inv.dateFinFormation), origine: 'Règle', regle: rule,
+                     baseUtilisee: 'dateFinFormation', motif: 'Mandat de prélèvement en place' };
+        }
+
+        // La base de la règle d'abord. Puis, s'il y en a une, l'échéance que
+        // porte le grand livre : c'est ce que fait le classeur de trésorerie,
+        // et elle vaut mieux qu'un repli calculé sur la date de facture, qui
+        // ne dit rien du dispositif. Le repli de la règle ne sert qu'aux
+        // factures Monday, où aucune échéance comptable n'existe.
         const bases = [
             { champ: rule.base, jours: rule.jours },
+            { comptable: true },
             { champ: rule.fallback, jours: rule.fallbackJours != null ? rule.fallbackJours : rule.jours },
         ];
         for (const b of bases) {
+            if (b.comptable) {
+                if (!inv.dateEcheanceComptable) continue;
+                return { date: inv.dateEcheanceComptable, origine: 'Grand livre', regle: rule,
+                         baseUtilisee: 'dateEcheanceComptable' };
+            }
             if (!b.champ) continue;
             const src = inv[b.champ];
             if (!src) continue;
             let date = addDays(src, b.jours || 0);
             let base = b.champ;
 
-            // Garde-fou des règles assises sur la date de facture : une facture
-            // corrigée est réémise, sa date devient récente, et son échéance
-            // repart à zéro — la créance apparaît « pas encore due » alors
-            // qu'elle traîne depuis des mois. Le début de formation, lui, ne
-            // bouge pas : il plafonne l'échéance. Le garde-fou ne peut
-            // qu'avancer la date, jamais la retarder, donc il ne masque
-            // aucun retard réel.
-            //
-            // Il ne vaut que pour la date de facture, la seule qui puisse être
-            // réécrite. Sur le repli — pas de date de facture, on prend la fin
-            // de formation — il n'y a rien à corriger : l'appliquer avancerait
-            // l'échéance d'une formation longue de plusieurs mois sans raison.
-            if (rule.plafondDebutFormation && base === 'dateFacture' && inv.dateDebutFormation) {
-                const plafond = addDays(inv.dateDebutFormation, b.jours || 0);
-                if (plafond < date) { date = plafond; base = 'dateDebutFormation'; }
-            }
             return { date, origine: 'Règle', regle: rule, baseUtilisee: base };
         }
         if (inv.dateEcheanceSource) {
             return { date: inv.dateEcheanceSource, origine: 'Monday', regle: rule, baseUtilisee: 'colonne Monday' };
+        }
+        // Faute de date de formation, l'échéance que porte le grand livre : elle
+        // vaut mieux qu'aucune échéance du tout, et c'est ce que fait le
+        // classeur de trésorerie.
+        if (inv.dateEcheanceComptable) {
+            return { date: inv.dateEcheanceComptable, origine: 'Grand livre', regle: rule,
+                     baseUtilisee: 'dateEcheanceComptable' };
         }
         return { date: null, origine: null, regle: rule, baseUtilisee: null };
     }

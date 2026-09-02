@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.27.0** — 2 septembre 2026
+**Version 2.28.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.27.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.28.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -770,6 +770,45 @@ là où elle a été posée à la main, et **B2C-Perso** n'est attribué que lor
 est certain que le client n'est pas une entreprise — un compte collectif qui se
 nomme, le référentiel, ou Sellsy. Un nom qui ressemble à celui d'une personne
 ne suffit pas : beaucoup d'entreprises tiennent en deux mots.
+
+### La règle d'échéance, telle que le classeur la pose
+
+L'échéance ne se lit pas dans le grand livre : celui-ci porte bien une date,
+mais elle vient de la facturation et ignore le dispositif. Elle est donc
+**recalculée**, exactement comme la colonne *Date d'échéance recalculée* du
+classeur de trésorerie — et vérifiée contre elle : **15 769 lignes, aucun
+écart**.
+
+Deux cas passent avant la règle du dispositif :
+
+1. **Facture postérieure à la fin de formation** → date de facture **+ 60 j**.
+   Une formation terminée en 2024 refacturée en 2026 n'est pas échue depuis
+   deux ans le jour de son émission : c'est une régularisation, et le délai
+   court depuis la facture.
+2. **Client sous mandat de prélèvement** → **fin de formation**, sans délai.
+   L'argent est appelé ; il n'y a pas de délai de paiement à accorder.
+
+Sinon, le délai dépend de la sous-catégorie :
+
+| Base | + jours | Sous-catégories |
+|---|---|---|
+| Fin de formation | + 60 | Agefiph · AIF · B2B · B2C-Entreprise · CPF · Interco · Interne - DST Allemagne · POEI · Region · Transition Pro |
+| Fin de formation | + 30 | Alternance · ETAT · OPCO · OPCO - Alternance |
+| Date de facture | + 30 | Corporate - Alternance |
+| Début de formation | + 0 | B2C-Perso · Perso-Alternance |
+
+Et faute de date de formation, l'échéance que porte le grand livre — elle vaut
+mieux que pas d'échéance du tout.
+
+#### D'où viennent les dates
+
+Les dates de formation ne sont ni dans Monday ni dans le grand livre : c'est la
+**facturation** qui les porte. L'export Sellsy les fournit — *Début de service*
+et *Fin de service* — et elles sont désormais rattachées aux créances du grand
+livre comme elles l'étaient déjà aux factures Monday. Deux clés servent au
+rapprochement : le numéro Sellsy, et le **numéro Zoho** que l'export Sellsy
+porte en regard. Les factures *FA-…* ne sont plus émises mais vivent encore au
+grand livre : c'est par cette seconde clé qu'on retrouve leurs dates.
 
 ### Les paiements suivent leur facture
 

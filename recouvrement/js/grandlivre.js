@@ -669,15 +669,45 @@
         //    validé à la main : Sellsy décrit un client, le référentiel tranche
         //    une facture.
         for (const l of (o.sellsy || [])) {
-            if (!l.cle || parCle.has(l.cle)) continue;
             const fin = R.detectFinancement(l.typeClient, o.rules);
-            if (fin) parSellsy.set(l.cle, fin);
+            if (!fin) continue;
+            for (const k of [l.cle, l.cleZoho]) {
+                if (k && !parCle.has(k) && !parSellsy.has(k)) parSellsy.set(k, fin);
+            }
         }
         // Le « Type de client » brut de la facturation, pour les arbitrages
         // qui ne peuvent pas se satisfaire d'un financement déduit.
         const brutSellsy = new Map();
-        for (const l of (o.sellsy || [])) if (l.cle && l.typeClient) brutSellsy.set(l.cle, l.typeClient);
-        return { parCle, parSellsy, parCompte, parTiers, brutSellsy, noter };
+        // Les dates de formation : c'est la facturation qui les porte, et ce
+        // sont elles qui font l'échéance. Sans elles, la balance âgée vieillit
+        // sur la date de facture, qui ne dit rien du dispositif.
+        const datesSellsy = new Map();
+        for (const l of (o.sellsy || [])) {
+            // Deux clés pour la même facture : son numéro Sellsy, et son numéro
+            // Zoho quand elle en a un. Les factures « FA-… » ne sont plus
+            // émises mais vivent encore au grand livre, et c'est par là qu'on
+            // retrouve leurs dates de formation.
+            const cles = [l.cle, l.cleZoho].filter(Boolean);
+            if (!cles.length) continue;
+            const dates = (l.dateDebutService || l.dateFinService || l.dateFacture) ? {
+                debut: l.dateDebutService || null,
+                fin: l.dateFinService || null,
+                facture: l.dateFacture || null,
+                client: l.client || '',
+            } : null;
+            for (const k of cles) {
+                if (l.typeClient && !brutSellsy.has(k)) brutSellsy.set(k, l.typeClient);
+                if (dates && !datesSellsy.has(k)) datesSellsy.set(k, dates);
+            }
+        }
+        // Les clients sous mandat de prélèvement : chez eux l'argent est appelé
+        // à la fin de la formation, sans délai de paiement.
+        const mandats = new Set();
+        for (const m of (o.mandats || [])) {
+            const nom = R.norm(m.client || m.nom || '');
+            if (nom) mandats.add(nom);
+        }
+        return { parCle, parSellsy, parCompte, parTiers, brutSellsy, datesSellsy, mandats, noter };
     }
 
     /**
@@ -758,13 +788,38 @@
 
         // Le type de client de la facturation voyage avec la créance : c'est
         // lui qui arbitre entre B2C-Entreprise et B2B sur un OPCO ou l'État.
-        const avecSellsy = c => (c.cle && idx.brutSellsy.has(c.cle))
-            ? { ...c, typeClientSellsy: idx.brutSellsy.get(c.cle) } : c;
+        const avecSellsy = c => {
+            const d = c.cle ? idx.datesSellsy.get(c.cle) : null;
+            const type = c.cle ? idx.brutSellsy.get(c.cle) : null;
+            if (!d && !type) return c;
+            const nom = R.norm((d && d.client) || c.tiers || '');
+            return {
+                ...c,
+                typeClientSellsy: type || c.typeClientSellsy,
+                dateDebutFormation: (d && d.debut) || c.dateDebutFormation || null,
+                dateFinFormation: (d && d.fin) || c.dateFinFormation || null,
+                mandatGocardless: nom ? idx.mandats.has(nom) : false,
+            };
+        };
 
-        const poser = (c, fin, origine) => ({
-            ...c, financement: fin, origineClassement: origine,
-            typeClient: typeDeClient(fin, c, o),
-        });
+        // L'échéance se recalcule sur la règle du dispositif, comme dans le
+        // classeur de trésorerie : le grand livre porte une date d'échéance,
+        // mais elle vient de la facturation et ignore le dispositif. Elle reste
+        // le dernier recours, quand aucune date de formation n'est connue.
+        const poser = (c, fin, origine) => {
+            const ech = R.computeEcheance(
+                { ...c, financement: fin, dateEcheanceSource: null,
+                  dateEcheanceComptable: c.dateEcheance || null },
+                { rules: o.rules, prefereEcheanceMonday: false });
+            return {
+                ...c, financement: fin, origineClassement: origine,
+                typeClient: typeDeClient(fin, c, o),
+                dateEcheance: ech.date || c.dateEcheance || null,
+                echeanceBase: ech.baseUtilisee,
+                echeanceOrigine: ech.origine,
+                echeanceMotif: ech.motif || null,
+            };
+        };
 
         return ouvertes.map(brut => {
             const c = avecSellsy(brut);

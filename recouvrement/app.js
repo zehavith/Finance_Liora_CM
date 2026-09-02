@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.27.0 — 2 septembre 2026
+   v2.28.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.27.0';
+    const VERSION = '2.28.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -2358,6 +2358,10 @@
         const classees = GL.classer(ouvertes, {
             referentiel: state.qualifRef,
             regles: state.reglesClassement,
+            // Les mandats de prélèvement, ramenés au nom du client : chez un
+            // client sous mandat l'argent est appelé, donc l'échéance est la
+            // fin de la formation, sans délai de paiement.
+            mandats: clientsSousMandat(),
             factures: state.factures,
             sellsy: state.sellsy.lignes,
             historique: state.grandLivre,
@@ -2381,6 +2385,21 @@
             k => R.getRule(k, state.rules).label);
         state.glComparaison = GL.comparer(state.glBalance,
             monday.map(m => ({ cle: m.key, label: m.label, total: m.total, nb: m.nb })), state.rules);
+    }
+
+    /** Les clients qui ont au moins un mandat de prélèvement, par leur nom. */
+    function clientsSousMandat() {
+        const g = state.gcl || {};
+        if (!g.mandats || !g.mandats.length) return [];
+        const parId = new Map((g.clients || []).map(c => [c.id, c]));
+        const noms = [];
+        for (const m of g.mandats) {
+            const c = parId.get(m.clientId);
+            if (!c) continue;
+            const nom = c.nomComplet || [c.prenom, c.nom].filter(Boolean).join(' ').trim();
+            if (nom) noms.push({ client: nom });
+        }
+        return noms;
     }
 
     function rendreAgingSource() {
