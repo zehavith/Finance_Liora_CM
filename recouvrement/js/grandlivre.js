@@ -137,7 +137,10 @@
     // Les mêmes préfixes que MOTIFS_NUMERO : « FCAT-2312-00417 » n'était
     // reconnu nulle part, l'écriture était perdue, et sa créance se retrouvait
     // sans numéro, sans montant et sans date — donc vieillie en « Non échu ».
-    const EST_FACTURE = /^(fact|fcat|fct|fa)[-_ ]?/i;
+    // « DV » est une forme de numéro Zoho — leur table en compte 1 901, et ce
+    // sont bien des factures. Un chiffre est exigé après le préfixe pour qu'un
+    // mot commençant par ces lettres ne passe pas pour un numéro.
+    const EST_FACTURE = /^(fact|fcat|fct|fa|dv)[-_ ]?\d/i;
     const EST_AVOIR = /^(avr|av|avo)[-_ ]?/i;
 
     /**
@@ -153,6 +156,11 @@
         /\bAVR[-_ ]?\d{4}[-_ ]?\d{4,6}\b/ig,                // AVR-2512-02297
         /\bFCAT[-_ ]?\d{4}[-_ ]?\d{4,6}\b/ig,
         /\bFA[-_ ]?\d{3,4}[-_ ]?\d{3,6}\b/ig,               // FA-880-0097
+        // Les formes de Zoho, relevées sur sa table : un préfixe de dispositif
+        // au milieu du numéro, une suite de chiffres longue, et les « DV ».
+        /\bFA[-_ ][A-Z]{2,6}[-_ ]\d{4,9}\b/ig,             // FA-POEI-123456
+        /\bFA[-_ ]?\d{7,13}(?:[-_]\d{1,3})?\b/ig,          // FA-09051502108
+        /\bDV[-_ ]?\d{4,9}(?:[-_]\d{1,3})?\b/ig,           // DV-005370
     ];
 
     /**
@@ -291,7 +299,9 @@
 
             // Le numéro porté par sa colonne d'abord ; à défaut, celui que cite
             // le libellé — c'est ainsi que se rattache un règlement bancaire.
-            let numero = texteBrut(col(r, 'numero'));
+            // Un numéro peut arriver préfixé — « # DV-002048 » — d'une saisie ou
+            // d'un export. La ponctuation de tête n'appartient pas au numéro.
+            let numero = texteBrut(col(r, 'numero')).replace(/^[#\s.:;,-]+/, '');
             let numeroExtrait = false;
             if (!numero) {
                 // Au crédit, l'avoir cité l'emporte sur la facture citée :
