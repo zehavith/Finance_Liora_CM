@@ -415,6 +415,73 @@
         };
     }
 
+    /**
+     * Évolution du taux de recouvrement, une série par type de financement.
+     *
+     * Le croisement mois × financement existe déjà sous forme de carte
+     * thermique, mais une grille de couleurs dit mal si une catégorie se
+     * dégrade ou s'assainit : c'est une variation, elle se lit sur une courbe.
+     *
+     * Le taux est celui de la cohorte échue — sur les factures arrivées à
+     * échéance dans le mois, la part payée en retard ou encore impayée. C'est le
+     * seul comparable d'un mois à l'autre : un taux « à date » ferait chuter
+     * mécaniquement les mois récents, dont les factures n'ont pas encore eu le
+     * temps d'être en retard.
+     *
+     * @param {Array} factures
+     * @param {string} baseMois
+     * @param {Array} rules
+     * @param {number} [minAssiette] taille minimale de cohorte pour qu'un point
+     *        soit tracé — trois factures ne font pas un taux
+     * @returns {{mois:Array, series:Array}}
+     */
+    function evolutionParFinancement(factures, baseMois, rules, minAssiette) {
+        const seuil = minAssiette == null ? 5 : minAssiette;
+        const champ = baseMois === 'facture' ? 'moisFacture'
+            : baseMois === 'paiement' ? 'moisPaiement' : 'moisEcheance';
+
+        const parFin = new Map();
+        const moisVus = new Set();
+        for (const f of factures) {
+            const mk = f[champ];
+            if (!mk) continue;
+            // Assiette : les factures dont l'échéance est connue et passée.
+            if (!f.dateEcheance || f.etat === 'Non échue') continue;
+            moisVus.add(mk);
+            const cle = f.financement || 'INCONNU';
+            let g = parFin.get(cle);
+            if (!g) { g = { cle, mois: new Map() }; parFin.set(cle, g); }
+            let c = g.mois.get(mk);
+            if (!c) { c = { nb: 0, eur: 0, nbRetard: 0, eurRetard: 0 }; g.mois.set(mk, c); }
+            c.nb++; c.eur += f.montant || 0;
+            if (f.etat === 'En retard' || f.etat === 'Payée en retard') {
+                c.nbRetard++; c.eurRetard += f.montant || 0;
+            }
+        }
+
+        const mois = [...moisVus].sort();
+        const series = [...parFin.values()].map(g => ({
+            cle: g.cle,
+            label: R.getRule(g.cle, rules).label,
+            nbTotal: sum([...g.mois.values()], c => c.nb),
+            eurRetard: sum([...g.mois.values()], c => c.eurRetard),
+            // Un point par mois, null là où la cohorte est trop petite : la
+            // courbe s'interrompt au lieu de sauter de 0 à 100 %.
+            pointsNb: mois.map(m => {
+                const c = g.mois.get(m);
+                return c && c.nb >= seuil ? pct(c.nbRetard, c.nb) : null;
+            }),
+            pointsEur: mois.map(m => {
+                const c = g.mois.get(m);
+                return c && c.nb >= seuil && c.eur > 0 ? pct(c.eurRetard, c.eur) : null;
+            }),
+            cohortes: mois.map(m => (g.mois.get(m) || { nb: 0 }).nb),
+        })).filter(s => s.pointsNb.some(v => v != null))
+           .sort((a, b) => b.eurRetard - a.eurRetard);
+
+        return { mois, series };
+    }
+
     // ──────────────────────────────────────────────
     //  Répartition des montants
     //
@@ -1107,6 +1174,7 @@
     global.LioraMetrics = {
         sum, pct, moyenne, moyennePonderee, mediane,
         filtrer, sourceDe, origineRecouvrement, vueEnsemble, parMois, parFinancement, croiseMoisFinancement,
+        evolutionParFinancement,
         agreger, repartitionMontants, fluxRecouvrement, parDimension, finDeMois,
         dsoParMois, histogrammeRetards, TRANCHES_RETARD, joursDuMois,
         balanceAgee, balanceAgeeParDimension, causesSansEcheance, topClients, parTableau, parGroupe,

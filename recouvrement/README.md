@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 1.6.0** — 1er septembre 2026
+**Version 1.7.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -604,6 +604,39 @@ le signale alors au lieu d'afficher un trompeur 0 %.
 
 La ligne *Total* reprend l'ensemble du portefeuille filtré. Un clic sur une
 ligne bascule vers l'onglet *Factures* avec le financement déjà filtré.
+
+### Le fil du tableau de bord
+
+Les blocs se suivaient sans ordre apparent. Ils sont désormais rangés en quatre
+temps, chacun annoncé par un titre numéroté, du général au particulier :
+
+1. **Comment se répartit le retard** — l'ancienneté des créances d'abord, avant
+   toute autre chose : répartition des retards, montant en retard par
+   financement, balance âgée.
+2. **Par catégorie de financement** — l'évolution du taux par catégorie, la carte
+   thermique mois × financement, la concentration du retard.
+3. **Comment cela évolue** — le mois écoulé, puis les tendances de fond : taux
+   par mois, flux, retard moyen, DSO.
+4. **Où aller chercher l'argent** — le détail jusqu'à la facture : arbre des
+   montants, top clients, répartition par tableau, structure du portefeuille.
+
+La vue d'ensemble — indicateurs et état du portefeuille — reste en tête, avant
+le premier temps.
+
+### Évolution du taux par catégorie
+
+La carte thermique donne le taux mois par mois et par financement, mais une
+grille de couleurs dit mal si une catégorie se dégrade ou s'assainit. Le
+graphique *Évolution du % en recouvrement, par catégorie* trace une courbe par
+type de financement : montante, la catégorie se dégrade ; descendante, elle
+s'assainit. Un clic sur une légende isole une catégorie.
+
+Le taux tracé est celui de la **cohorte échue** — sur les factures arrivées à
+échéance dans le mois, la part payée en retard ou encore impayée. C'est le seul
+comparable d'un mois à l'autre : un taux « à date » ferait chuter mécaniquement
+les mois récents, dont les factures n'ont pas eu le temps d'être en retard. Les
+mois dont la cohorte compte moins de cinq factures ne portent pas de point —
+trois factures ne font pas un taux.
 
 ### Graphiques du tableau de bord
 

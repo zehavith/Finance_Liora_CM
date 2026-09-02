@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v1.6.0 — 1er septembre 2026
+   v1.7.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,8 +11,8 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '1.6.0';
-    const VERSION_DATE = '1er septembre 2026';
+    const VERSION = '1.7.0';
+    const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
     const PR = window.LioraPrelevements;
@@ -93,6 +93,7 @@
             prlvEtat: '',
             prlvRecherche: '',
             triPrlv: { key: 'montantEchoue', sens: 'desc' },
+            evoCatUnite: 'nb',
             qualifChoix: null,
             qualifUnite: 'nb',
             qualifToutes: false,
@@ -551,6 +552,7 @@
 
         // ── Heatmap mois × financement ──
         rendreHeatmap(X.croiseMoisFinancement(data, state.filtres.baseMois, state.rules));
+        rendreChartEvoCategorie(data);
 
         rendreChartStructure(data);
 
@@ -1429,6 +1431,61 @@
     }
 
     /** Heatmap mois × financement du taux de retard. */
+    /**
+     * Variation du taux de recouvrement, une courbe par type de financement.
+     *
+     * La carte thermique dit l'état mois par mois ; elle dit mal le sens de la
+     * pente. C'est pourtant la question — quelles catégories se dégradent ?
+     */
+    function rendreChartEvoCategorie(data) {
+        const eur = state.ui.evoCatUnite === 'euros';
+        const { mois, series } = X.evolutionParFinancement(data, state.filtres.baseMois, state.rules);
+
+        if (!mois.length || !series.length) {
+            U.chart('chart-evo-categorie', videConfig('Pas assez de factures échues pour tracer une évolution'));
+            return;
+        }
+
+        // Trop de courbes ne se lisent plus : les catégories marginales sont
+        // regroupées hors du graphique plutôt que de le saturer.
+        const principales = series.slice(0, 8);
+
+        U.chart('chart-evo-categorie', {
+            type: 'line',
+            data: {
+                labels: mois.map(m => U.moisLabel(m, true)),
+                datasets: principales.map((s2, i) => ({
+                    label: s2.label,
+                    data: eur ? s2.pointsEur : s2.pointsNb,
+                    borderColor: U.palette[i % U.palette.length],
+                    backgroundColor: U.palette[i % U.palette.length],
+                    borderWidth: 2, tension: 0.3, spanGaps: false,
+                    pointRadius: 2, pointHoverRadius: 5,
+                })),
+            },
+            options: {
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    y: { grid: U.grille, min: 0, max: 100, ticks: { callback: v => v + ' %' } },
+                    x: { grid: { display: false } },
+                },
+                plugins: {
+                    legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true } },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const s2 = principales[ctx.datasetIndex];
+                                if (ctx.parsed.y == null) return null;
+                                return `${s2.label} : ${U.pourcent(ctx.parsed.y, 1)}`
+                                    + ` (${U.nombre(s2.cohortes[ctx.dataIndex])} factures échues)`;
+                            },
+                        },
+                    },
+                },
+            },
+        });
+    }
+
     function rendreHeatmap(croise) {
         const el = $('#heatmap-mois-financement');
         const eur = state.ui.uniteHeat === 'euros';
@@ -4122,6 +4179,11 @@
             if (ex.has(nom)) ex.delete(nom); else ex.add(nom);
             rendreQualifications(facturesFiltrees());
         });
+        $$('#seg-evocat-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.evoCatUnite = b.dataset.unite;
+            $$('#seg-evocat-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendreTout();
+        }));
         $$('#seg-qualif-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.qualifUnite = b.dataset.unite;
             $$('#seg-qualif-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));

@@ -1043,3 +1043,20 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
 .barre-selection .sel-champ { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
 /* display:flex l'emporterait sur la règle par défaut de l'attribut hidden */
 .barre-selection[hidden] { display: none; }
+
+
+/* Actes du tableau de bord : le récit se voit dans la mise en page */
+.section-acte {
+    margin-top: 42px; padding-top: 22px;
+    border-top: 1px solid var(--border);
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+}
+.section-acte h2 { display: flex; align-items: center; gap: 12px; }
+.acte-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--red-bg, rgba(244,116,88,.15));
+    color: var(--red, #F47458);
+    font-size: 14px; font-weight: 700;
+}
+.acte-sous { font-size: 13px; color: var(--text-muted); }

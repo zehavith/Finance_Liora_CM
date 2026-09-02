@@ -223,7 +223,6 @@
                 Les trois colonnes ci-dessous répondent à : combien ça pèse, combien j'ai facturé en tout,
                 et depuis combien de temps ça traîne.
             </p>
-
             <div class="kpi-grid kpi-grid-grouped">
                 <div class="kpi-group kpi-group-dec">
                     <div class="kpi-group-label">En recouvrement</div>
@@ -354,30 +353,130 @@
             <div id="scope-note" class="scope-note"></div>
 
             <!-- Répartition des montants : hors / en recouvrement -->
+
+            <div class="section-header section-acte">
+                <h2><span class="acte-num">1</span>Comment se répartit le retard</h2>
+                <span class="acte-sous">L'ancienneté des créances, avant tout le reste</span>
+            </div>
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header">
-                        <h3>Montants — hors recouvrement / en recouvrement</h3>
+                        <h3>Répartition des retards</h3>
                         <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-repartition">
-                                <button class="seg-btn active" data-dims="perimetre,financement">Périmètre › Financement</button>
-                                <button class="seg-btn" data-dims="financement,board">Financement › Tableau</button>
-                                <button class="seg-btn" data-dims="board,groupe">Tableau › Groupe</button>
-                                <button class="seg-btn" data-dims="etape,financement">Étape › Financement</button>
-                                <button class="seg-btn" data-dims="mois,financement">Mois › Financement</button>
+                            <div class="seg seg-sm" id="seg-histo-unite">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
                             </div>
-                            <button class="btn btn-ghost btn-sm" id="btn-repartition-toggle">Tout déplier</button>
                         </div>
                     </div>
                     <span class="fv-hint">
-                        Montant total = hors recouvrement + en recouvrement. Cliquez sur une flèche pour
-                        déplier, sur une ligne pour ouvrir les factures correspondantes.
+                        Comparer les deux séries montre si les créances anciennes finissent par rentrer
+                        ou si elles s'enkystent. Cliquez sur une tranche pour filtrer.
                     </span>
-                    <div class="table-wrap" id="repartition-table"></div>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-histo-retards"></canvas>
+                    </div>
                 </div>
             </div>
 
-            <!-- Taux de recouvrement par mois -->
+            <!-- Treemap : concentration du retard -->
+            <div class="charts-grid charts-2col">
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Montant en retard par financement</h3></div>
+                    <div class="chart-container">
+                        <canvas id="chart-financement"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Balance âgée</h3><span class="fv-hint">montant non réglé</span></div>
+                    <div class="chart-container">
+                        <canvas id="chart-aging"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Structure du portefeuille -->
+
+            <div class="section-header section-acte">
+                <h2><span class="acte-num">2</span>Par catégorie de financement</h2>
+                <span class="acte-sous">Où le retard se concentre, et comment chaque catégorie évolue</span>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Évolution du % en recouvrement, par catégorie</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-evocat-unite">
+                                <button class="seg-btn active" data-unite="nb">Nombre</button>
+                                <button class="seg-btn" data-unite="euros">€</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Une courbe par type de financement : sur les factures arrivées à échéance dans le mois,
+                        la part tombée en recouvrement. Montante, la catégorie se dégrade ;
+                        descendante, elle s'assainit. Cliquez sur une légende pour isoler une catégorie.
+                    </span>
+                    <div class="chart-container chart-tall"><canvas id="chart-evo-categorie"></canvas></div>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>% en recouvrement par mois et par financement</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-unite-heat">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">Chaque case : part des factures échues du mois qui sont en retard. Cliquez pour filtrer.</span>
+                    <div class="heatmap-wrap" id="heatmap-mois-financement"></div>
+                </div>
+            </div>
+
+            <!-- Top clients -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Où se concentre le montant en retard</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-treemap-dim">
+                                <button class="seg-btn active" data-dim="financement">Financement</button>
+                                <button class="seg-btn" data-dim="client">Client</button>
+                                <button class="seg-btn" data-dim="board">Tableau</button>
+                                <button class="seg-btn" data-dim="etape">Étape</button>
+                                <button class="seg-btn" data-dim="groupe">Groupe</button>
+                                <button class="seg-btn" data-dim="proprietaire">Propriétaire</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">La surface est proportionnelle au montant en retard. Cliquez sur une case pour filtrer.</span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-treemap"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Financement + balance âgée -->
+
+            <div class="section-header section-acte">
+                <h2><span class="acte-num">3</span>Comment cela évolue</h2>
+                <span class="acte-sous">Le mois écoulé, puis les tendances de fond</span>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Évolution du dernier mois</h3>
+                        <span class="fv-hint" id="month-compare-title"></span>
+                    </div>
+                    <div id="month-compare-body"></div>
+                </div>
+            </div>
+
+            <!-- Flux : ce qui entre, ce qui sort, ce qui reste -->
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header">
@@ -400,17 +499,6 @@
             </div>
 
             <!-- Comparaison mensuelle -->
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Évolution du dernier mois</h3>
-                        <span class="fv-hint" id="month-compare-title"></span>
-                    </div>
-                    <div id="month-compare-body"></div>
-                </div>
-            </div>
-
-            <!-- Flux : ce qui entre, ce qui sort, ce qui reste -->
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header">
@@ -473,95 +561,35 @@
             </div>
 
             <!-- Histogramme des retards -->
+
+            <div class="section-header section-acte">
+                <h2><span class="acte-num">4</span>Où aller chercher l'argent</h2>
+                <span class="acte-sous">Le détail, jusqu'à la facture</span>
+            </div>
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header">
-                        <h3>Répartition des retards</h3>
+                        <h3>Montants — hors recouvrement / en recouvrement</h3>
                         <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-histo-unite">
-                                <button class="seg-btn active" data-unite="euros">€</button>
-                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            <div class="seg seg-sm" id="seg-repartition">
+                                <button class="seg-btn active" data-dims="perimetre,financement">Périmètre › Financement</button>
+                                <button class="seg-btn" data-dims="financement,board">Financement › Tableau</button>
+                                <button class="seg-btn" data-dims="board,groupe">Tableau › Groupe</button>
+                                <button class="seg-btn" data-dims="etape,financement">Étape › Financement</button>
+                                <button class="seg-btn" data-dims="mois,financement">Mois › Financement</button>
                             </div>
+                            <button class="btn btn-ghost btn-sm" id="btn-repartition-toggle">Tout déplier</button>
                         </div>
                     </div>
                     <span class="fv-hint">
-                        Comparer les deux séries montre si les créances anciennes finissent par rentrer
-                        ou si elles s'enkystent. Cliquez sur une tranche pour filtrer.
+                        Montant total = hors recouvrement + en recouvrement. Cliquez sur une flèche pour
+                        déplier, sur une ligne pour ouvrir les factures correspondantes.
                     </span>
-                    <div class="chart-container chart-tall">
-                        <canvas id="chart-histo-retards"></canvas>
-                    </div>
+                    <div class="table-wrap" id="repartition-table"></div>
                 </div>
             </div>
 
-            <!-- Treemap : concentration du retard -->
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Où se concentre le montant en retard</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-treemap-dim">
-                                <button class="seg-btn active" data-dim="financement">Financement</button>
-                                <button class="seg-btn" data-dim="client">Client</button>
-                                <button class="seg-btn" data-dim="board">Tableau</button>
-                                <button class="seg-btn" data-dim="etape">Étape</button>
-                                <button class="seg-btn" data-dim="groupe">Groupe</button>
-                                <button class="seg-btn" data-dim="proprietaire">Propriétaire</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint">La surface est proportionnelle au montant en retard. Cliquez sur une case pour filtrer.</span>
-                    <div class="chart-container chart-tall">
-                        <canvas id="chart-treemap"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Financement + balance âgée -->
-            <div class="charts-grid charts-2col">
-                <div class="chart-card">
-                    <div class="chart-header"><h3>Montant en retard par financement</h3></div>
-                    <div class="chart-container">
-                        <canvas id="chart-financement"></canvas>
-                    </div>
-                </div>
-                <div class="chart-card">
-                    <div class="chart-header"><h3>Balance âgée</h3><span class="fv-hint">montant non réglé</span></div>
-                    <div class="chart-container">
-                        <canvas id="chart-aging"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Structure du portefeuille -->
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Structure du portefeuille</h3>
-                        <span class="fv-hint">anneau extérieur : état · intérieur : périmètre</span>
-                    </div>
-                    <div class="chart-container"><canvas id="chart-structure"></canvas></div>
-                </div>
-            </div>
-
-            <!-- Taux par mois et financement -->
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>% en recouvrement par mois et par financement</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-unite-heat">
-                                <button class="seg-btn active" data-unite="euros">€</button>
-                                <button class="seg-btn" data-unite="nb">Nombre</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint">Chaque case : part des factures échues du mois qui sont en retard. Cliquez pour filtrer.</span>
-                    <div class="heatmap-wrap" id="heatmap-mois-financement"></div>
-                </div>
-            </div>
-
-            <!-- Top clients -->
+            <!-- Taux de recouvrement par mois -->
             <div class="charts-grid charts-2col">
                 <div class="chart-card">
                     <div class="chart-header"><h3>Top clients en retard</h3></div>
@@ -574,6 +602,19 @@
             </div>
         </div>
     </div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Structure du portefeuille</h3>
+                        <span class="fv-hint">anneau extérieur : état · intérieur : périmètre</span>
+                    </div>
+                    <div class="chart-container"><canvas id="chart-structure"></canvas></div>
+                </div>
+            </div>
+
+            <!-- Taux par mois et financement -->
+
+
 
     <!-- ══════════ ONGLET : BALANCE ÂGÉE ══════════ -->
     <div class="tab-content" id="tab-aging">
