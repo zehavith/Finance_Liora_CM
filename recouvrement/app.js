@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.6.0 — 2 septembre 2026
+   v2.7.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.6.0';
+    const VERSION = '2.7.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -367,14 +367,12 @@
         }
         const cles = [...compte.keys()].sort((a2, b2) => compte.get(b2) - compte.get(a2));
 
-        // Quatorze dispositifs feraient une barre de filtres plus haute que les
-        // graphiques qu'elle surplombe : seuls les principaux sont montrés, les
-        // autres à la demande — et ceux qui sont sélectionnés restent visibles.
-        const MAX = 6;
-        const tousVisibles = state.ui.finChipsTout
-            || cles.length <= MAX + 1
-            || (sel && sel.size && cles.slice(MAX).some(k => sel.has(k)));
-        const montres = tousVisibles ? cles : cles.slice(0, MAX);
+        // Un nombre fixe de puces ne tient pas compte de la largeur des libellés
+        // ni de celle de la fenêtre : « B2C-Entreprise / Corporate Alternance »
+        // occupe trois fois « AIF ». On les pose toutes, puis on masque celles
+        // qui débordent de la ligne — voir ajusterChipsFinancements.
+        const tousVisibles = !!state.ui.finChipsTout;
+        const montres = cles;
 
         c.innerHTML = '';
         for (const k of montres) {
@@ -398,18 +396,16 @@
             c.appendChild(b);
         }
 
-        if (!tousVisibles || (state.ui.finChipsTout && cles.length > MAX)) {
-            const plus = document.createElement('button');
-            plus.className = 'chip chip-plus';
-            plus.textContent = state.ui.finChipsTout
-                ? '− réduire'
-                : `+ ${U.nombre(cles.length - MAX)} autres`;
-            plus.addEventListener('click', () => {
-                state.ui.finChipsTout = !state.ui.finChipsTout;
-                rendreChipsFinancements();
-            });
-            c.appendChild(plus);
-        }
+        const plus = document.createElement('button');
+        plus.className = 'chip chip-plus';
+        plus.dataset.plus = '1';
+        plus.textContent = tousVisibles ? '− réduire' : '+ autres';
+        plus.addEventListener('click', () => {
+            state.ui.finChipsTout = !state.ui.finChipsTout;
+            rendreChipsFinancements();
+        });
+        c.appendChild(plus);
+
         if (sel && sel.size) {
             const raz = document.createElement('button');
             raz.className = 'chip chip-plus';
@@ -418,6 +414,57 @@
                 state.filtres.financements = null; state.ui.page = 1; rendreTout();
             });
             c.appendChild(raz);
+        }
+
+        c.classList.toggle('chips-une-ligne', !tousVisibles);
+        // Après la mise en page, sans quoi les largeurs ne sont pas connues.
+        requestAnimationFrame(ajusterChipsFinancements);
+    }
+
+    /**
+     * Ne garder qu'une ligne de puces.
+     *
+     * Le nombre de puces affichables dépend de la longueur des libellés et de
+     * la largeur de la fenêtre : il se mesure, il ne se devine pas. Les puces
+     * sont posées, puis celles qui débordent de la première ligne sont
+     * masquées ; le bouton « + N autres » annonce le reste. Une puce
+     * sélectionnée reste visible, sans quoi le filtre actif disparaîtrait.
+     */
+    function ajusterChipsFinancements() {
+        const c = $('#chips-financements');
+        if (!c || !c.children.length) return;
+
+        const plus = c.querySelector('[data-plus]');
+        const puces = [...c.children].filter(e => e !== plus && !e.classList.contains('chip-plus'));
+        puces.forEach(e => { e.hidden = false; });
+        if (plus) plus.hidden = true;
+        if (state.ui.finChipsTout) return;
+
+        const dispo = c.clientWidth;
+        if (!dispo) return;                      // pas encore mis en page
+
+        const style = getComputedStyle(c);
+        const espace = parseFloat(style.columnGap || style.gap || '8') || 8;
+
+        // On réserve la place du bouton « + N autres » dès qu'il en faudra un.
+        if (plus) { plus.hidden = false; plus.textContent = '+ 0 autres'; }
+        const largeurPlus = plus ? plus.getBoundingClientRect().width + espace : 0;
+
+        let cumul = 0, caches = 0, deborde = false;
+        for (const e of puces) {
+            const l = e.getBoundingClientRect().width;
+            const garde = e.classList.contains('active') && state.filtres.financements
+                && state.filtres.financements.size;
+            const reste = dispo - (deborde ? 0 : largeurPlus);
+            if (!deborde && cumul + l <= reste) { cumul += l + espace; continue; }
+            if (garde) { cumul += l + espace; continue; }   // le filtre actif reste visible
+            deborde = true;
+            e.hidden = true; caches++;
+        }
+
+        if (plus) {
+            plus.hidden = caches === 0;
+            plus.textContent = `+ ${U.nombre(caches)} autre${caches > 1 ? 's' : ''}`;
         }
     }
 
@@ -1616,14 +1663,16 @@
         const t = $('#regl-titre');
         if (t) t.textContent = viaRecouv
             ? 'Ce que le recouvrement fait rentrer'
-            : 'Ce qui rentre sans relance';
+            : 'Ce qui rentre sans passer par le recouvrement';
 
         const h = $('#regl-hint');
         if (h) h.innerHTML = (viaRecouv
             ? "Factures réglées qui sont passées par le recouvrement — le tableau des factures payées "
               + "conserve le groupe d'où elles venaient. C'est le produit du travail de relance."
-            : "Factures réglées qui ne sont jamais passées par le recouvrement : elles sont rentrées "
-              + "d'elles-mêmes, avec ou sans retard.")
+              : "Factures réglées qui ne sont jamais entrées dans le circuit de recouvrement. "
+              + "<strong>Cela ne veut pas dire qu'elles ont été payées à l'heure</strong> : le compteur "
+              + "« dont payées en retard » ci-dessous montre combien l'ont été après leur échéance, "
+              + "sans qu'une relance ait été engagée. C'est une distinction de processus, pas de délai.")
             + (r.nbOrigineInconnue
                 ? ` <strong>${U.nombre(r.nbOrigineInconnue)} factures réglées ne peuvent être attribuées</strong>,
                     faute de groupe d'origine renseigné dans « 0.1. ALL - Factures payées » : elles sont
@@ -1631,13 +1680,17 @@
                 : '');
 
         $('#regl-kpi').innerHTML = [
-            tuileDetail(U.nombre(r.nb), viaRecouv ? 'Factures récupérées' : 'Factures rentrées seules',
+            tuileDetail(U.nombre(r.nb), viaRecouv ? 'Factures récupérées' : 'Réglées hors recouvrement',
                 U.euros(r.euros), viaRecouv ? U.couleurs.payeRetard : U.couleurs.paye),
             tuileDetail(U.pourcent(r.partEuros, 1), 'Part des règlements',
                 `${U.pourcent(r.partNb, 1)} en nombre`, U.couleurs.indigo),
-            tuileDetail(U.nombre(r.nbEnRetard), 'Dont payées en retard',
+            // La question posée à chaque fois : passer par le recouvrement ou
+            // non ne dit rien du délai. Les deux sont donc affichés côte à côte.
+            tuileDetail(U.nombre(r.nb - r.nbEnRetard), 'Payées avant échéance',
+                U.euros(Math.max(0, r.euros - r.eurosEnRetard)), U.couleurs.paye),
+            tuileDetail(U.nombre(r.nbEnRetard), 'Payées après échéance',
                 U.euros(r.eurosEnRetard), U.couleurs.retard),
-            tuileDetail(U.jours(r.retardMoyen), 'Retard moyen au paiement',
+            tuileDetail(U.jours(r.retardMoyen), 'Retard moyen des retardataires',
                 r.delaiMoyen != null ? `délai facture → règlement : ${U.jours(r.delaiMoyen)}` : '—',
                 U.couleurs.nonEchue),
         ].join('');
@@ -1652,7 +1705,7 @@
                 data: {
                     labels: mois.map(m => U.moisLabel(m.mois, true)),
                     datasets: [{
-                        label: viaRecouv ? 'Encaissé après relance' : 'Encaissé sans relance',
+                        label: viaRecouv ? 'Encaissé après relance' : 'Encaissé hors recouvrement',
                         data: mois.map(m => m.euros),
                         backgroundColor: viaRecouv ? U.couleurs.payeRetard : U.couleurs.paye,
                         borderRadius: 3,
@@ -4236,7 +4289,12 @@
         const el = $('#' + nom + '-screen');
         if (el) el.classList.add('active');
         window.scrollTo(0, 0);
-        if (nom === 'app') requestAnimationFrame(mesurerNavbar);
+        // Les puces ne se mesurent qu'une fois l'écran affiché : tant qu'il
+        // est masqué, toutes les largeurs valent zéro et rien n'est masqué.
+        if (nom === 'app') requestAnimationFrame(() => {
+            mesurerNavbar();
+            ajusterChipsFinancements();
+        });
     }
 
     function ouvrirOnglet(nom) {
@@ -4434,6 +4492,14 @@
         $('#prlv-file-input-2').addEventListener('change', e => {
             if (e.target.files.length) importerGoCardless([...e.target.files]);
             e.target.value = '';
+        });
+
+        // La place disponible change avec la fenêtre : le nombre de puces
+        // affichables se remesure au redimensionnement.
+        let minuteurPuces = null;
+        window.addEventListener('resize', () => {
+            clearTimeout(minuteurPuces);
+            minuteurPuces = setTimeout(ajusterChipsFinancements, 120);
         });
 
         brancherActes();

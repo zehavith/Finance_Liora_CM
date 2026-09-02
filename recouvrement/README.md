@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.6.0** — 2 septembre 2026
+**Version 2.7.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.6.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.7.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -710,6 +710,12 @@ eu besoin. Une bascule passe de l'une à l'autre sur la même mise en page, pour
 que la comparaison se fasse d'un coup d'œil : nombre et montant, part des
 règlements, combien ont été payées en retard, écart moyen à l'échéance, ce qui
 rentre chaque mois, et la répartition par dispositif.
+
+**Passer par le recouvrement ou non ne dit rien du délai.** Une facture peut
+n'être jamais entrée dans le circuit et avoir été réglée des mois après son
+échéance : c'est une distinction de processus, pas de ponctualité. Les deux vues
+affichent donc côte à côte les factures **payées avant échéance** et celles
+**payées après**, pour que la confusion ne soit pas possible.
 
 L'appartenance se lit dans le groupe conservé par *0.1. ALL - Factures payées* :
 un groupe mentionnant le recouvrement, une relance, une mise en demeure ou un

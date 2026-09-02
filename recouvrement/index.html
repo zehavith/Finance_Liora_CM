@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.6.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.6.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.6.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.6.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.6.0">
-    <link rel="stylesheet" href="styles.css?v=2.6.0">
+    <script src="../vendor/chart.umd.min.js?v=2.7.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.7.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.7.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.7.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.7.0">
+    <link rel="stylesheet" href="styles.css?v=2.7.0">
 </head>
 <body>
 
@@ -182,7 +182,7 @@
             </div>
 
 
-            <div class="filter-block filter-block-grow">
+            <div class="filter-block filter-block-large">
                 <span class="filter-label">Financement</span>
                 <span class="aide-ligne">Restreint l'ensemble de l'application à un ou plusieurs dispositifs. Aucun sélectionné : tous comptent.</span>
                 <div class="chips" id="chips-financements"></div>
@@ -436,7 +436,7 @@
                         <div class="chart-controls">
                             <div class="seg seg-sm" id="seg-regl-origine">
                                 <button class="seg-btn active" data-origine="recouvrement">Passées par le recouvrement</button>
-                                <button class="seg-btn" data-origine="hors">Rentrées sans relance</button>
+                                <button class="seg-btn" data-origine="hors">Jamais passées par le recouvrement</button>
                             </div>
                         </div>
                     </div>
@@ -1061,13 +1061,13 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.6.0"></script>
-<script src="js/store.js?v=2.6.0"></script>
-<script src="js/monday.js?v=2.6.0"></script>
-<script src="js/ingest.js?v=2.6.0"></script>
-<script src="js/metrics.js?v=2.6.0"></script>
-<script src="js/prelevements.js?v=2.6.0"></script>
-<script src="js/ui.js?v=2.6.0"></script>
-<script src="app.js?v=2.6.0"></script>
+<script src="js/rules.js?v=2.7.0"></script>
+<script src="js/store.js?v=2.7.0"></script>
+<script src="js/monday.js?v=2.7.0"></script>
+<script src="js/ingest.js?v=2.7.0"></script>
+<script src="js/metrics.js?v=2.7.0"></script>
+<script src="js/prelevements.js?v=2.7.0"></script>
+<script src="js/ui.js?v=2.7.0"></script>
+<script src="app.js?v=2.7.0"></script>
 </body>
 </html>
