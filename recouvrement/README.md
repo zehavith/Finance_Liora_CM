@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 1.8.0** — 2 septembre 2026
+**Version 1.9.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=1.8.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=1.9.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -628,6 +628,16 @@ temps, chacun annoncé par un titre numéroté, du général au particulier :
 
 La vue d'ensemble — indicateurs et état du portefeuille — reste en tête, avant
 le premier temps.
+
+Ranger les blocs dans le bon ordre n'en réduisait pas le nombre : sept écrans de
+défilement, dont deux pour les seules tendances de fond — la partie la moins
+consultée occupait la plus grande place. **Les deux derniers temps s'ouvrent donc
+à la demande**, et le choix est mémorisé. La page s'ouvre sur trois écrans au
+lieu de sept, sans que rien ne soit retiré.
+
+Le treemap *Où se concentre le montant en retard* a rejoint le quatrième temps :
+il fait doublon avec la carte thermique dans le deuxième, et c'est un outil de
+fouille — sa dimension se change — plutôt qu'un constat.
 
 ### Évolution du taux par catégorie
 

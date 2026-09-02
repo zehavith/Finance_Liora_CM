@@ -1060,3 +1060,14 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
     font-size: 14px; font-weight: 700;
 }
 .acte-sous { font-size: 13px; color: var(--text-muted); }
+
+
+/* Actes repliables */
+.acte-toggle {
+    background: none; border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 6px; padding: 4px 12px; font: inherit; font-size: 12px;
+    cursor: pointer; margin-left: auto;
+}
+.acte-toggle:hover { border-color: var(--border-hover); color: var(--text-primary); }
+.section-acte { justify-content: flex-start; }
+.acte-corps[hidden] { display: none; }

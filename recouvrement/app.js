@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v1.8.0 — 2 septembre 2026
+   v1.9.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '1.8.0';
+    const VERSION = '1.9.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -840,6 +840,41 @@
         const n = state.ui.fenetreMois;
         if (!n || rows.length <= n) return rows;
         return rows.slice(rows.length - n);
+    }
+
+    /**
+     * Actes repliables du tableau de bord.
+     *
+     * Le classement en quatre temps avait remis les blocs dans le bon ordre,
+     * sans rien retirer : sept écrans de défilement, dont deux pour les
+     * tendances de fond — la partie la moins consultée occupait la plus grande
+     * place. Les deux derniers actes s'ouvrent donc à la demande, et le choix
+     * est mémorisé. Rien n'est perdu, la page s'ouvre courte.
+     */
+    function brancherActes() {
+        const etats = state.options.actesOuverts || (state.options.actesOuverts = {});
+        $$('[data-acte-toggle]').forEach(btn => {
+            const num = btn.dataset.acteToggle;
+            const corps = $(`[data-acte-corps="${num}"]`);
+            if (!corps) return;
+
+            const appliquer = (ouvert) => {
+                corps.hidden = !ouvert;
+                btn.textContent = ouvert ? 'Replier' : 'Déplier';
+                btn.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
+            };
+            if (etats[num] != null) appliquer(!!etats[num]);
+
+            btn.addEventListener('click', () => {
+                const ouvert = corps.hidden;
+                appliquer(ouvert);
+                etats[num] = ouvert;
+                sauverReglages();
+                // Les graphiques d'un acte replié n'ont pas de taille : ils se
+                // dessinent de travers si on ne les redessine pas à l'ouverture.
+                if (ouvert) rendreTout();
+            });
+        });
     }
 
     /** Sélecteur de fenêtre, partagé par les graphiques mensuels. */
@@ -4206,6 +4241,7 @@
             if (ex.has(nom)) ex.delete(nom); else ex.add(nom);
             rendreQualifications(facturesFiltrees());
         });
+        brancherActes();
         brancherFenetreMois();
         $$('#seg-evocat-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.evoCatUnite = b.dataset.unite;
