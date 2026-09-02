@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.7.0 — 2 septembre 2026
+   v2.8.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.7.0';
+    const VERSION = '2.8.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -66,6 +66,7 @@
             client: null,
             etapes: null,
             qualif: null,
+            exclureReprise: false,
             recherche: '',
             retardMin: null,
             retardMax: null,
@@ -539,6 +540,7 @@
         if (f.etats && f.etats.size) add('État : ' + [...f.etats].join(', '), () => { f.etats = null; rendreChipsEtats(); });
         if (f.recherche) add('Recherche : ' + f.recherche, () => { f.recherche = ''; $('#search-input').value = ''; });
         if (f.mois) add(`Période : ${f.mois.size} mois sur ${state.moisDispo.length}`, () => { f.mois = null; rendreBoutonsMois(); });
+        if (f.exclureReprise) add('Reprise d\'historique exclue', () => { f.exclureReprise = false; majSegments(); });
 
         if (!chips.length) { c.classList.add('hidden'); c.innerHTML = ''; return; }
         c.classList.remove('hidden');
@@ -559,6 +561,7 @@
         f.mois = null; f.perimetre = 'Tous'; f.financements = null; f.etats = null;
         f.boards = null; f.bucket = null; f.client = null; f.recherche = '';
         f.retardMin = null; f.retardMax = null; f.etapes = null; f.qualif = null;
+        f.exclureReprise = false;
         f.sources = new Set(['recouvrement', 'adv', 'opco', 'b2c']);
         $('#search-input').value = '';
         state.ui.page = 1;
@@ -572,6 +575,24 @@
             b.classList.toggle('active', b.dataset.perimetre === state.filtres.perimetre));
         $$('#seg-base-mois .seg-btn').forEach(b =>
             b.classList.toggle('active', b.dataset.base === state.filtres.baseMois));
+        $$('#seg-reprise .seg-btn').forEach(b =>
+            b.classList.toggle('active',
+                (b.dataset.reprise === 'exclure') === !!state.filtres.exclureReprise));
+        rendreAideReprise();
+    }
+
+    /**
+     * Rappelle combien de factures sont concernées par la reprise d'historique,
+     * pour que le choix « Incluse / Exclue » se fasse en connaissance de cause.
+     */
+    function rendreAideReprise() {
+        const el = $('#aide-reprise');
+        if (!el) return;
+        const n = state.factures.filter(f => f.repriseHistorique).length;
+        const base = 'Les factures déjà soldées quand le circuit a été mis en place '
+            + '(groupes « payées avant import »). Les exclure montre le travail réellement fourni.';
+        el.textContent = n ? base + ' ' + U.nombre(n) + ' facture' + (n > 1 ? 's' : '') + ' concernée'
+            + (n > 1 ? 's' : '') + '.' : base;
     }
 
     function appliquerOptionsAuxCases() {
@@ -591,6 +612,7 @@
         rendreChipsSources();
         rendreChipsFinancements();
         rendreChipsEtats();
+        rendreAideReprise();
         rendreFiltresActifs();
         majBadgesPeriode(data);
 
@@ -4424,9 +4446,15 @@
             }
         }
 
-        // Tableau « ALL - Factures payées » : reprend les factures réglées
+        // Tableau « ALL - Factures payées » : reprend les factures réglées.
+        // Comme dans les tableaux réels, les plus anciennes sont rangées dans le
+        // groupe « payées avant import » : elles étaient déjà soldées quand le
+        // circuit de recouvrement a été mis en place.
         const payees = brutes.filter(f => f.datePaiement || f.dateControlePaiement);
+        const seuilImport = R.addDays(aujourdhui, -450);
         for (const f of payees) {
+            const regle = f.datePaiement || f.dateControlePaiement;
+            const avantImport = regle < seuilImport;
             brutes.push(I.buildFacture({
                 numero: f.numero, client: f.client, montant: f.montant,
                 dateFacture: f.dateFacture, datePaiement: f.datePaiement,
@@ -4435,7 +4463,10 @@
             }, {
                 boardId: 'file:0.1. ALL - Factures payées', boardName: '0.1. ALL - Factures payées',
                 role: 'payees', source: 'payees', perimetre: 'Tous', financementDefaut: null,
-                groupTitle: '0.1.1. Factures Payées ADV', itemId: 'pay' + f.itemId, itemName: f.numero,
+                groupTitle: avantImport
+                    ? '0.1.2. Factures payées avant import + Entre process ADV et recouvrement'
+                    : '0.1.1. Factures Payées ADV',
+                itemId: 'pay' + f.itemId, itemName: f.numero,
             }));
         }
 
@@ -4558,6 +4589,13 @@
 
         $$('#seg-perimetre .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.filtres.perimetre = b.dataset.perimetre;
+            majSegments();
+            state.ui.page = 1;
+            rendreTout();
+        }));
+
+        $$('#seg-reprise .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.filtres.exclureReprise = b.dataset.reprise === 'exclure';
             majSegments();
             state.ui.page = 1;
             rendreTout();

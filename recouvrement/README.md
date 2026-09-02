@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.7.0** — 2 septembre 2026
+**Version 2.8.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.7.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.8.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -216,6 +216,28 @@ Ces groupes se répartissent en deux familles :
 Le groupe *Factures non payées : Perte / Contentieux* contient le mot « payées »
 sans rien devoir au règlement : la négation est vérifiée avant tout, et ces
 factures sont classées en contentieux, non en réglées.
+
+### Écarter la reprise d'historique
+
+Les factures rangées dans un groupe **« payées avant import »** étaient déjà
+soldées le jour où le circuit de recouvrement a été mis en place. Aucune relance
+n'a été faite dessus : elles entrent dans les totaux facturés et encaissés, et
+tirent mécaniquement le taux de récupération vers ce qui a été récupéré *avant*
+que l'équipe existe.
+
+Le sélecteur **Reprise d'historique** de la barre de filtres — *Incluse* /
+*Exclue* — les retire de toute l'application : indicateurs, graphiques, tableaux
+et export. La ligne d'aide indique combien de factures sont concernées, et un
+badge rappelle le filtre tant qu'il est actif.
+
+- **Incluse** (par défaut) : la photographie complète du portefeuille, telle
+  qu'elle sort de Monday.
+- **Exclue** : le travail réellement fourni depuis la mise en place du circuit.
+
+Les deux lectures sont justes ; c'est la question posée qui change. Le taux de
+récupération monte à l'exclusion, puisque les encaissements acquis d'avance
+disparaissent du numérateur comme du dénominateur, mais pas dans les mêmes
+proportions.
 
 ### Corriger un financement à la main
 

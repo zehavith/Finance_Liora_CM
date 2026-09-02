@@ -724,6 +724,14 @@
                 || R.detectFinancement(f.board, o.rules);
             if (finRededuit) f.financement = finRededuit;
 
+            // Reprise d'historique : les factures rangées dans un groupe
+            // « payées avant import » étaient déjà soldées quand le circuit a
+            // été mis en place. Elles gonflent les taux de récupération sans
+            // qu'aucune relance ait été faite : pouvoir les écarter est le seul
+            // moyen de mesurer le travail réellement fourni.
+            f.repriseHistorique = /avant import/.test(
+                R.norm([f.groupeOrigine, f.groupePaiement, f.groupe].filter(Boolean).join(' ')));
+
             // Une correction saisie à la main l'emporte sur toute déduction, et
             // précède le calcul de l'échéance : c'est la règle du financement
             // choisi qui doit s'appliquer. La correction est retenue sur le
