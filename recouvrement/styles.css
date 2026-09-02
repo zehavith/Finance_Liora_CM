@@ -1072,6 +1072,26 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
 .barre-selection .barre-info { font-weight: 600; font-size: 13px; margin-right: auto; }
 
 
+/* Règles de classement écrites à la main */
+.regles-classement { margin-bottom: 22px; }
+.regle-form {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 12px 14px; margin: 12px 0 10px; border-radius: 8px;
+    background: var(--surface-2, rgba(255,255,255,.04));
+    border: 1px solid var(--border);
+}
+.regle-form .input { min-width: 150px; }
+.regle-form #gl-regle-val { min-width: 200px; flex: 1 1 200px; }
+.regle-form #gl-regle-apercu { flex-basis: 100%; margin-top: 2px; }
+.regle-ordre { display: inline-flex; gap: 2px; }
+.regle-ordre .btn-icone {
+    border: 1px solid var(--border); background: transparent; color: var(--text-secondary);
+    border-radius: 5px; cursor: pointer; padding: 1px 6px; font-size: 12px; line-height: 1.5;
+}
+.regle-ordre .btn-icone:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+.regle-ordre .btn-icone:disabled { opacity: .3; cursor: default; }
+
+
 /* Actes du tableau de bord : le récit se voit dans la mise en page */
 .section-acte {
     margin-top: 42px; padding-top: 22px;

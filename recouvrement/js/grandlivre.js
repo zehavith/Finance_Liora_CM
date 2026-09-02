@@ -173,6 +173,19 @@
      */
     const POOL_NON_LETTRE = '(non lettré)';
 
+    /**
+     * Valeur en texte, sans notation scientifique.
+     *
+     * Un identifiant lu en nombre — numéro de compte, identifiant de tiers —
+     * doit garder tous ses chiffres. String() d'un entier le fait ; le format
+     * d'affichage de la cellule, non.
+     */
+    function texteBrut(v) {
+        if (v == null) return '';
+        if (typeof v === 'number') return Number.isInteger(v) ? String(v) : String(v);
+        return String(v).trim();
+    }
+
     function nombre(valeur) {
         const v = I.parseMontant(valeur);
         return v == null ? 0 : v;
@@ -208,14 +221,17 @@
         let ignorees = 0, numerosExtraits = 0;
         for (const r of rows) {
             const lettre = lettreDe(col(r, 'lettrage'));
-            const compte = String(col(r, 'compte') || '').trim();
+            // Un numéro de compte lu en nombre doit revenir en texte sans
+            // notation scientifique : String(4110600400000) le fait, mais pas
+            // le format d'affichage de la cellule.
+            const compte = texteBrut(col(r, 'compte'));
             const debit = nombre(col(r, 'debit'));
             const credit = nombre(col(r, 'credit'));
             const date = R.parseDate(col(r, 'date'));
 
             // Le numéro porté par sa colonne d'abord ; à défaut, celui que cite
             // le libellé — c'est ainsi que se rattache un règlement bancaire.
-            let numero = String(col(r, 'numero') || '').trim();
+            let numero = texteBrut(col(r, 'numero'));
             let numeroExtrait = false;
             if (!numero) {
                 numero = numeroDepuisTexte(col(r, 'libelleLigne'), connus)
@@ -243,7 +259,7 @@
                 groupes.set(cle, g);
             }
             if (!g.tiers) g.tiers = String(col(r, 'tiers') || col(r, 'libelleCompte') || '').trim();
-            if (!g.identifiantTiers) g.identifiantTiers = String(col(r, 'identifiantTiers') || '').trim();
+            if (!g.identifiantTiers) g.identifiantTiers = texteBrut(col(r, 'identifiantTiers'));
             if (!g.qualif && qualif) g.qualif = qualif;
             g.debit += debit;
             g.credit += credit;
@@ -427,6 +443,8 @@
                         resteDu: reste * (f.debit / total),
                         dateFacture: f.date,
                         dateEcheance: f.dateEcheance || null,
+                        libelle: f.libelle || '',
+                        journal: f.journal || '',
                         sansNumero: false,
                     });
                 }
@@ -439,11 +457,23 @@
                     montant: null, resteDu: reste,
                     dateFacture: derniereDate(g.reglements.concat(g.avoirs)),
                     dateEcheance: null,
+                    libelle: libelleRepresentatif(g),
+                    journal: '',
                     sansNumero: true,
                 });
             }
         }
         return ouvertes;
+    }
+
+    // Un groupe sans facture n'a pas de libellé unique : on retient celui de
+    // l'écriture la plus récente, c'est lui qui décrit l'opération en cours.
+    function libelleRepresentatif(g) {
+        const lignes = g.reglements.concat(g.avoirs, g.factures)
+            .filter(l => l.libelle);
+        if (!lignes.length) return '';
+        return lignes.reduce(
+            (max, l) => (l.date && (!max.date || l.date > max.date)) ? l : max, lignes[0]).libelle;
     }
 
     function derniereDate(lignes) {
@@ -466,7 +496,8 @@
      */
     function indexerClassification(sources) {
         const o = sources || {};
-        const parCle = new Map();       // numéro de facture → financement
+        const parCle = new Map();       // numéro de facture Monday → financement
+        const parSellsy = new Map();    // numéro de facture Sellsy → financement
         const parCompte = new Map();    // compte client → { fin: nb }
         const parTiers = new Map();     // identifiant du tiers → { fin: nb }
 
@@ -487,12 +518,15 @@
         }
         // 2. Sellsy : « Type de client » nomme le dispositif pour toutes les
         //    factures émises, y compris celles que Monday ne suit pas.
+        //    Elle vient après le référentiel qualifié, qui est du travail
+        //    validé à la main : Sellsy décrit un client, le référentiel tranche
+        //    une facture.
         for (const l of (o.sellsy || [])) {
             if (!l.cle || parCle.has(l.cle)) continue;
             const fin = R.detectFinancement(l.typeClient, o.rules);
-            if (fin) parCle.set(l.cle, fin);
+            if (fin) parSellsy.set(l.cle, fin);
         }
-        return { parCle, parCompte, parTiers, noter };
+        return { parCle, parSellsy, parCompte, parTiers, noter };
     }
 
     /**
@@ -519,11 +553,21 @@
         // Le référentiel, lui, est constitué des qualifications validées des
         // extraits précédents : c'est le travail déjà fait qui se réutilise.
         const duReferentiel = c => (c.cle && ref[c.cle]) || null;
+        // Les règles écrites à la main passent juste après ce qui est établi
+        // facture par facture : elles sont délibérées, mais un rapprochement
+        // nominatif reste plus précis qu'un motif.
+        const desRegles = c => {
+            const hit = financementParRegles(c, o.regles);
+            return hit ? hit : null;
+        };
 
         // Apprentissage : ce que chaque compte et chaque tiers contiennent de
         // déjà classé, quelle qu'en soit la source.
         for (const c of ouvertes) {
-            const fin = (c.cle ? idx.parCle.get(c.cle) : null) || duReferentiel(c) || propre(c);
+            const parRegle = desRegles(c);
+            const fin = (c.cle ? idx.parCle.get(c.cle) : null) || duReferentiel(c)
+                || (parRegle && parRegle.financement)
+                || (c.cle ? idx.parSellsy.get(c.cle) : null) || propre(c);
             if (fin) idx.noter(c.compte, fin, c.identifiantTiers);
         }
         for (const l of (o.historique || [])) {
@@ -543,6 +587,11 @@
             if (direct) return { ...c, financement: direct, origineClassement: 'Facture' };
             const refFin = duReferentiel(c);
             if (refFin) return { ...c, financement: refFin, origineClassement: 'Référentiel qualifié' };
+            const parRegle = desRegles(c);
+            if (parRegle) return { ...c, financement: parRegle.financement,
+                origineClassement: 'Règle : ' + etiquetteRegle(parRegle.regle) };
+            const sellsy = c.cle ? idx.parSellsy.get(c.cle) : null;
+            if (sellsy) return { ...c, financement: sellsy, origineClassement: 'Type de client (facturation)' };
             const fichier = propre(c);
             if (fichier) return { ...c, financement: fichier, origineClassement: 'Héritée du fichier (à vérifier)' };
             const tiers = unique(idx.parTiers, c.identifiantTiers);
@@ -554,6 +603,72 @@
     }
 
     const A_CLASSER = '__A_CLASSER__';
+
+    // ──────────────────────────────────────────────
+    //  Règles de classement écrites à la main
+    // ──────────────────────────────────────────────
+
+    /**
+     * Champs sur lesquels une règle peut porter.
+     *
+     * Le libellé est le plus riche — c'est là que figurent « ALMA », « CPF »,
+     * le nom du dossier — mais aussi le plus bruyant ; le compte et
+     * l'identifiant du tiers sont sûrs mais ne valent que pour un client.
+     */
+    const CHAMPS_REGLE = [
+        { cle: 'tiers',   label: 'Nom du client',        valeur: c => c.tiers },
+        { cle: 'compte',  label: 'N° de compte',         valeur: c => c.compte },
+        { cle: 'idTiers', label: 'Identifiant du tiers', valeur: c => c.identifiantTiers },
+        { cle: 'numero',  label: 'N° de facture',        valeur: c => c.numero },
+        { cle: 'libelle', label: 'Libellé de l’écriture', valeur: c => c.libelle },
+    ];
+
+    const OPERATEURS = [
+        { cle: 'contient',   label: 'contient',       test: (v, m) => v.includes(m) },
+        { cle: 'commence',   label: 'commence par',   test: (v, m) => v.startsWith(m) },
+        { cle: 'finit',      label: 'finit par',      test: (v, m) => v.endsWith(m) },
+        { cle: 'egal',       label: 'est exactement', test: (v, m) => v === m },
+    ];
+
+    /**
+     * Une règle s'applique-t-elle à cette créance ?
+     *
+     * La comparaison passe par la normalisation maison : sans accents, sans
+     * ponctuation, en minuscules. « Clients - Alma » trouve « alma », et une
+     * règle écrite en majuscules marche aussi.
+     */
+    function regleCorrespond(regle, creance) {
+        const champ = CHAMPS_REGLE.find(c => c.cle === regle.champ);
+        const op = OPERATEURS.find(o => o.cle === regle.operateur);
+        if (!champ || !op || !regle.valeur) return false;
+        const v = R.norm(champ.valeur(creance) || '');
+        const m = R.norm(regle.valeur);
+        return !!v && !!m && op.test(v, m);
+    }
+
+    /**
+     * Le financement qu'imposent les règles écrites, s'il y en a un.
+     *
+     * L'ordre de la liste fait la priorité : la première règle qui correspond
+     * l'emporte, comme dans un jeu de règles de classement bancaire. Une règle
+     * plus précise se place donc au-dessus.
+     */
+    function financementParRegles(creance, regles) {
+        for (const r of (regles || [])) {
+            if (r.actif === false) continue;
+            if (regleCorrespond(r, creance)) return { financement: r.financement, regle: r };
+        }
+        return null;
+    }
+
+    /** Combien de créances chaque règle toucherait, pour l'écrire en connaissance de cause. */
+    function porteeDesRegles(creances, regles) {
+        return (regles || []).map(r => {
+            const touchees = (creances || []).filter(c => regleCorrespond(r, c));
+            return { regle: r, nb: touchees.length, euros: touchees.reduce((s, c) => s + (c.resteDu || 0), 0) };
+        });
+    }
+
 
     /**
      * Balance âgée comptable : le reste dû ventilé par financement et par
@@ -671,8 +786,16 @@
         return ref;
     }
 
+    /** Une règle en une ligne lisible : « Nom du client contient alma ». */
+    function etiquetteRegle(r) {
+        const champ = CHAMPS_REGLE.find(c => c.cle === r.champ);
+        const op = OPERATEURS.find(o => o.cle === r.operateur);
+        return `${(champ || {}).label || r.champ} ${(op || {}).label || r.operateur} « ${r.valeur} »`;
+    }
+
     global.LioraGrandLivre = {
-        referentielDepuis,
+        referentielDepuis, CHAMPS_REGLE, OPERATEURS,
+        regleCorrespond, financementParRegles, porteeDesRegles, etiquetteRegle,
         A_CLASSER, POOL_NON_LETTRE, MOTIFS_NUMERO, numeroDepuisTexte,
         creancesOuvertes, classer, balanceAgee, comparer,
         COLONNES, TOLERANCE, EST_FACTURE, EST_AVOIR,

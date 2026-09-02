@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.23.0 — 2 septembre 2026
+   v2.24.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.23.0';
+    const VERSION = '2.24.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -48,6 +48,9 @@
         // extraits déjà qualifiés. C'est l'ancien grand livre classé qui fait
         // foi : une fois ce travail fait, il ne se refait plus.
         qualifRef: {},
+        // Règles de classement écrites à la main : « le libellé contient ALMA
+        // → financement personnel ». Elles valent pour tous les extraits.
+        reglesClassement: [],
         glCreances: [],
         glBalance: null,
         glComparaison: null,
@@ -206,6 +209,7 @@
             state.glLecture = await S.get('rec_gl_lecture', null);
             state.glOuvertes = (await S.get('rec_gl_ouvertes', [])) || [];
             state.qualifRef = (await S.get('rec_qualif_ref', {})) || {};
+            state.reglesClassement = (await S.get('rec_regles_classement', [])) || [];
         } catch { /* ignore */ }
 
         try {
@@ -2297,6 +2301,7 @@
 
         const classees = GL.classer(ouvertes, {
             referentiel: state.qualifRef,
+            regles: state.reglesClassement,
             factures: state.factures,
             sellsy: state.sellsy.lignes,
             historique: state.grandLivre,
@@ -2376,9 +2381,11 @@
             })), { vide: 'Aucune règle.' })}
             <p class="fv-hint"><strong>Classement d'une créance du grand livre</strong>, du plus sûr au moins
             sûr — le premier qui répond gagne : ① la facture Monday de même numéro ; ② le référentiel des
-            qualifications déjà validées ; ③ le « Type de client » de la facturation (Sellsy, Zoho) ;
-            ④ la qualification portée par le fichier, à vérifier ; ⑤ l'identifiant du tiers, puis ⑥ le
-            numéro de compte, à condition qu'un seul financement y soit connu. Sinon : <em>À classer</em>.</p>`;
+            qualifications déjà validées, c'est-à-dire l'ancien grand livre classé ; ③ <strong>vos règles
+            de classement</strong>, dans l'ordre où vous les avez écrites ; ④ le « Type de client » de la
+            facturation (Sellsy) ; ⑤ la qualification portée par le fichier, à vérifier ; ⑥ l'identifiant
+            du tiers, puis ⑦ le numéro de compte, à condition qu'un seul financement y soit connu.
+            Sinon : <em>À classer</em>.</p>`;
     }
 
     function rendreBalanceGL() {
@@ -2460,6 +2467,7 @@
             onRowClick: true, rowClass: r => r.cle === GL.A_CLASSER ? 'ligne-a-classer' : '' });
         U.bindTable(el, rows, { onRowClick: r => montrerCreancesGL(r) });
 
+        rendreReglesClassement();
         rendreAClasser();
     }
 
@@ -2471,6 +2479,141 @@
      * choisit un financement, on applique — et le choix rejoint le référentiel,
      * donc il vaut aussi pour les extraits suivants.
      */
+    /**
+     * Les règles de classement écrites à la main.
+     *
+     * Le grand livre ne nomme aucun dispositif, et le recoupement automatique
+     * n'en retrouve qu'une partie : le reste, il faut le dire. Une règle écrite
+     * une fois — « le nom du client contient ALMA » — range d'un coup tout ce
+     * qui lui ressemble, dans cet extrait comme dans les prochains.
+     *
+     * Deux comptages, parce qu'ils ne disent pas la même chose : ce que la
+     * règle *reconnaît*, et ce qu'elle *classe* réellement — une créance déjà
+     * rattachée à sa facture Monday n'a pas besoin d'elle.
+     */
+    function rendreReglesClassement() {
+        const el = $('#gl-regles-table');
+        if (!el) return;
+        remplirFormRegle();
+
+        const regles = state.reglesClassement || [];
+        const creances = state.glCreances || [];
+        const portees = GL.porteeDesRegles(creances, regles);
+        // Ce que chaque règle a effectivement classé : l'origine porte son nom.
+        const posees = new Map();
+        for (const c of creances) {
+            const o = c.origineClassement || '';
+            if (!o.startsWith('Règle : ')) continue;
+            const e = posees.get(o.slice(8)) || { nb: 0, euros: 0 };
+            e.nb++; e.euros += c.resteDu || 0;
+            posees.set(o.slice(8), e);
+        }
+
+        const lignes = regles.map((r, i) => {
+            const p = portees[i] || { nb: 0, euros: 0 };
+            const q = posees.get(GL.etiquetteRegle(r)) || { nb: 0, euros: 0 };
+            return { i, regle: r, nbVus: p.nb, nbPoses: q.nb, eurosPoses: q.euros,
+                     financement: r.financement };
+        });
+
+        el.innerHTML = U.table([
+            { key: 'i', label: 'Ordre', align: 'center', width: '78px', format: v => `
+                <span class="regle-ordre">
+                    <button class="btn-icone regle-monter" data-i="${v}"${v === 0 ? ' disabled' : ''}
+                            title="Monter : la règle sera examinée plus tôt">&#9650;</button>
+                    <button class="btn-icone regle-descendre" data-i="${v}"${v === lignes.length - 1 ? ' disabled' : ''}
+                            title="Descendre">&#9660;</button>
+                </span>` },
+            { key: 'regle', label: 'Règle', format: v => U.escapeHtml(GL.etiquetteRegle(v)) },
+            { key: 'financement', label: 'Classe en', format: v =>
+                `<span class="pill">${U.escapeHtml(R.getRule(v, state.rules).label)}</span>` },
+            { key: 'nbVus', label: 'Reconnaît', align: 'right',
+              title: 'Créances du grand livre où le motif se retrouve', format: U.nombre },
+            { key: 'nbPoses', label: 'Classe', align: 'right',
+              title: 'Créances que cette règle a réellement classées — les autres l’étaient déjà par une source plus sûre',
+              format: U.nombre },
+            { key: 'eurosPoses', label: 'Reste dû classé', align: 'right', format: U.euros },
+            { key: '__sup', label: '', align: 'center', width: '40px', format: (v, r) =>
+                `<button class="btn-icone regle-supprimer" data-i="${r.i}" title="Supprimer cette règle">&times;</button>` },
+        ], lignes, { vide: 'Aucune règle pour l’instant. Écrivez-en une ci-dessus.' });
+
+        $$('.regle-supprimer', el).forEach(b => b.addEventListener('click', () => {
+            const r = state.reglesClassement[Number(b.dataset.i)];
+            if (!r) return;
+            state.reglesClassement.splice(Number(b.dataset.i), 1);
+            appliquerReglesClassement(`Règle supprimée : ${GL.etiquetteRegle(r)}.`);
+        }));
+        const bouger = (i, pas) => {
+            const l = state.reglesClassement, j = i + pas;
+            if (j < 0 || j >= l.length) return;
+            [l[i], l[j]] = [l[j], l[i]];
+            appliquerReglesClassement(null);
+        };
+        $$('.regle-monter', el).forEach(b => b.addEventListener('click', () => bouger(Number(b.dataset.i), -1)));
+        $$('.regle-descendre', el).forEach(b => b.addEventListener('click', () => bouger(Number(b.dataset.i), 1)));
+    }
+
+    /** Les listes du formulaire, remplies une fois pour toutes. */
+    function remplirFormRegle() {
+        const champ = $('#gl-regle-champ');
+        if (!champ || champ.options.length) return;
+        champ.innerHTML = GL.CHAMPS_REGLE
+            .map(c => `<option value="${U.escapeHtml(c.cle)}">${U.escapeHtml(c.label)}</option>`).join('');
+        $('#gl-regle-op').innerHTML = GL.OPERATEURS
+            .map(o => `<option value="${U.escapeHtml(o.cle)}">${U.escapeHtml(o.label)}</option>`).join('');
+        $('#gl-regle-fin').innerHTML = '<option value="">Classer en…</option>'
+            + state.rules.filter(r => r.key !== 'INCONNU')
+                .map(r => `<option value="${U.escapeHtml(r.key)}">${U.escapeHtml(r.label)}</option>`).join('');
+    }
+
+    /** La règle en cours d'écriture, telle qu'elle est dans le formulaire. */
+    function regleDuFormulaire() {
+        return { champ: $('#gl-regle-champ').value, operateur: $('#gl-regle-op').value,
+                 valeur: ($('#gl-regle-val').value || '').trim(),
+                 financement: $('#gl-regle-fin').value };
+    }
+
+    // Les origines de classement qui passent APRÈS les règles écrites : une
+    // nouvelle règle les remplace, alors qu'elle s'incline devant les autres.
+    const ORIGINES_APRES_REGLES = new Set(['Type de client (facturation)',
+        'Héritée du fichier (à vérifier)', 'Identifiant du tiers', 'Compte client']);
+
+    /**
+     * L'aperçu, avant d'écrire quoi que ce soit.
+     *
+     * Une règle trop large se voit à ce compte : « reconnaît 4 210 créances »
+     * n'est pas une règle, c'est un accident. Autant le montrer avant.
+     */
+    function rendreApercuRegle() {
+        const el = $('#gl-regle-apercu');
+        if (!el) return;
+        const r = regleDuFormulaire();
+        if (!r.valeur) {
+            el.textContent = 'Saisissez le texte à rechercher pour voir ce que la règle toucherait.';
+            return;
+        }
+        const vus = (state.glCreances || []).filter(c => GL.regleCorrespond(r, c));
+        if (!vus.length) { el.textContent = 'Aucune créance ne correspond à ce texte pour l’instant.'; return; }
+        // Ajoutée en dernier, la règle ne prend que ce qu'aucune source plus
+        // sûre — ni facture, ni référentiel, ni règle déjà écrite — ne tient.
+        const pris = vus.filter(c => !c.financement || ORIGINES_APRES_REGLES.has(c.origineClassement));
+        el.innerHTML = `Cette règle reconnaît <strong>${U.nombre(vus.length)}</strong> créance${vus.length > 1 ? 's' : ''} `
+            + `du grand livre et en classerait <strong>${U.nombre(pris.length)}</strong> `
+            + `(${U.euros(X.sum(pris, c => c.resteDu))})`
+            + (pris.length < vus.length
+                ? ` — les ${U.nombre(vus.length - pris.length)} autres sont déjà rattachées à une source plus sûre.`
+                : '.');
+    }
+
+    /** Enregistre, reclasse, réaffiche. */
+    async function appliquerReglesClassement(message) {
+        try { await S.set('rec_regles_classement', state.reglesClassement); } catch { /* ignore */ }
+        recalculerBalanceGL();
+        rendreTout();
+        rendreApercuRegle();
+        if (message) U.toast(message, 'success', 7000);
+    }
+
     function rendreAClasser() {
         const el = $('#aging-gl-aclasser');
         if (!el) return;
@@ -2711,7 +2854,8 @@
         }
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
             [...parCompte.values()].sort((a, b) => b.total - a.total).map(g => {
-                const o = { 'N° de compte': g.compte, 'Client': g.tiers,
+                const o = { 'Clé': (g.compte + ' - ' + (g.tiers || '')).trim().replace(/ -$/, ''),
+                    'N° de compte': g.compte, 'Client': g.tiers,
                     'Financements': [...g.financements].join(' / ') || 'À classer',
                     'Restant dû': arrondi(g.total), 'Total échu': arrondi(g.echu) };
                 for (const b of buckets) if (b.key !== 'nonEchu') o[b.label] = arrondi(g.buckets[b.key]);
@@ -2725,6 +2869,7 @@
             const base = c.dateEcheance || c.dateFacture;
             const retard = base ? R.diffDays(ref, base) : null;
             return {
+                'Clé': ((c.compte || '') + ' - ' + (c.tiers || '')).trim().replace(/^- | -$/g, ''),
                 'Facture': c.numero || '',
                 'Client': c.tiers || '',
                 'N° de compte': c.compte || '',
@@ -2753,6 +2898,7 @@
         const sansNumero = creances.filter(c => c.sansNumero);
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
             sansNumero.length ? sansNumero.map(c => ({
+                'Clé': ((c.compte || '') + ' - ' + (c.tiers || '')).trim().replace(/^- | -$/g, ''),
                 'N° de compte': c.compte, 'Client': c.tiers,
                 'Lettrage': c.lettre, 'Restant dû': arrondi(c.resteDu),
                 'Dernier mouvement': c.dateFacture ? U.dateFR(c.dateFacture) : '',
@@ -2792,6 +2938,24 @@
                 'Plafond début de formation': r.plafondDebutFormation ? 'oui' : '',
                 'À défaut': libelle[r.fallback] || r.fallback || '',
             }))), 'Règles appliquées');
+
+        // ── Vos règles de classement, avec ce qu'elles ont réellement fait ──
+        if ((state.reglesClassement || []).length) {
+            const portees = GL.porteeDesRegles(creances, state.reglesClassement);
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+                state.reglesClassement.map((r, i) => {
+                    const etiq = GL.etiquetteRegle(r);
+                    const posees = creances.filter(c => c.origineClassement === 'Règle : ' + etiq);
+                    return {
+                        'Ordre': i + 1,
+                        'Règle': etiq,
+                        'Classe en': R.getRule(r.financement, state.rules).label,
+                        'Reconnaît': (portees[i] || {}).nb || 0,
+                        'Classe': posees.length,
+                        'Reste dû classé': arrondi(X.sum(posees, c => c.resteDu)),
+                    };
+                })), 'Règles de classement');
+        }
 
         XLSX.writeFile(wb, `Balance_agee_grand_livre_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
@@ -5447,7 +5611,13 @@
                     } else {
                         const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
                         const sheet = wb.Sheets[wb.SheetNames[0]];
-                        matrice = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false, blankrows: false });
+                        // raw:true, sinon un numéro de compte long revient dans
+                        // le format d'affichage de sa cellule — « 4.1106E+12 »
+                        // au lieu de 4110600400000 — et les chiffres sont
+                        // perdus, pas seulement masqués. Les dates arrivent en
+                        // objets Date grâce à cellDates, les montants en
+                        // nombres : les deux sont déjà gérés en aval.
+                        matrice = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true, blankrows: false });
                     }
                     const groupe = I.aplatirExportMonday(matrice);
                     if (groupe) {
@@ -6322,6 +6492,33 @@
             rendreApresClic(() => rendreTout());
         }));
         $('#btn-aging-gl-export').addEventListener('click', exporterBalanceGL);
+
+        // Règles de classement : l'aperçu suit la frappe, pour qu'une règle
+        // trop large se voie avant d'être écrite.
+        ['#gl-regle-champ', '#gl-regle-op', '#gl-regle-val'].forEach(sel => {
+            const e = $(sel);
+            if (e) e.addEventListener('input', rendreApercuRegle);
+        });
+        $('#gl-regle-val').addEventListener('keydown', ev => {
+            if (ev.key === 'Enter') { ev.preventDefault(); $('#gl-regle-ajouter').click(); }
+        });
+        $('#gl-regle-ajouter').addEventListener('click', () => {
+            const r = regleDuFormulaire();
+            if (!r.valeur) { U.toast('Écrivez le texte que la règle doit reconnaître.', 'error'); return; }
+            if (!r.financement) { U.toast('Choisissez le financement à attribuer.', 'error'); return; }
+            const etiq = GL.etiquetteRegle(r);
+            if ((state.reglesClassement || []).some(x => GL.etiquetteRegle(x) === etiq)) {
+                U.toast('Cette règle existe déjà.', 'error'); return;
+            }
+            const touchees = (state.glCreances || []).filter(c => GL.regleCorrespond(r, c));
+            const neuves = touchees.filter(c => !c.financement).length;
+            state.reglesClassement = (state.reglesClassement || []).concat([r]);
+            $('#gl-regle-val').value = '';
+            appliquerReglesClassement(`${etiq} → ${R.getRule(r.financement, state.rules).label}. `
+                + `${U.nombre(neuves)} créance${neuves > 1 ? 's' : ''} à classer y trouve`
+                + `${neuves > 1 ? 'nt' : ''} un financement. La règle est conservée : elle vaudra `
+                + `aussi pour les prochains extraits.`);
+        });
         $$('#seg-gl-niveau .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.glNiveau = b.dataset.niveau;
             recalculerBalanceGL();
