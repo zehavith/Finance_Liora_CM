@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.22.0** — 2 septembre 2026
+**Version 2.23.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.22.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.23.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -677,6 +677,29 @@ Les **règles appliquées** sont rappelées juste au-dessus, dans un bloc
 repliable : pour chaque financement, sa catégorie, la date sur laquelle son
 échéance est calculée, son périmètre — puis la cascade de classement. Une
 balance ne se lit pas sans savoir d'où viennent ses dates.
+
+### L'export du classeur de trésorerie
+
+Le bouton **Exporter en Excel** de la balance âgée comptable produit un
+classeur qui reprend la structure du fichier de trésorerie, neuf onglets :
+
+| Onglet | Contenu |
+|---|---|
+| Synthèse | date d'arrêté, fichier lu, totaux, ce qui reste à classer |
+| Synthèse catégorie | par catégorie de client — B2C, B2C-Entreprise, B2B… |
+| Synthèse financement | par dispositif — CPF, B2C-Perso, Transition pro… |
+| Par compte client | le niveau où l'on relance, avec les dispositifs du compte |
+| Créances | une ligne par créance, avec son classement et son origine |
+| À classer | seulement celles qu'aucun recoupement n'a tranchées |
+| Écritures non rattachées | acomptes, écarts de règlement, crédits sans facture |
+| Monday vs grand livre | l'écart par financement |
+| Règles appliquées | de quoi relire la balance dans six mois |
+
+Les deux synthèses sont recalculées à l'export, quel que soit le niveau affiché
+à l'écran : un export n'a pas à dépendre de l'onglet ouvert. Chaque synthèse
+suit l'ordre de colonnes du classeur — *Restant dû*, *Total échu*, les tranches
+de la plus ancienne à la plus récente, *Non échu*, *Total*, *Nb* — et se termine
+par sa ligne TOTAL.
 
 ### Classer plusieurs créances d'un coup
 

@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.22.0 — 2 septembre 2026
+   v2.23.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.22.0';
+    const VERSION = '2.23.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -2634,41 +2634,165 @@
     }
 
     /** Export Excel de la balance âgée comptable, dans sa présentation d'écran. */
+    /**
+     * Export Excel de la balance âgée comptable.
+     *
+     * Reprend la structure du classeur de trésorerie : une synthèse par
+     * catégorie de client, une par financement, une par compte, le détail des
+     * créances, ce qui reste à classer, les écritures non rattachées, et la
+     * confrontation avec Monday. Les deux synthèses sont recalculées ici quel
+     * que soit le niveau affiché à l'écran — un export n'a pas à dépendre de
+     * l'onglet ouvert.
+     */
     function exporterBalanceGL() {
-        const b = state.glBalance;
-        if (!b) return;
+        if (!state.glBalance || !state.glCreances) return;
         const buckets = colonnesAnciennete();
         const wb = XLSX.utils.book_new();
+        const creances = state.glCreances;
+        const ref = state.filtres.dateRef;
 
-        const ligne = r => {
-            const o = { Financement: r.label, 'Total échu': arrondi(r.echu) };
-            for (const bk of buckets) o[bk.label] = arrondi(r.buckets[bk.key]);
+        // ── Une ligne de synthèse, dans l'ordre des colonnes du classeur ──
+        const ligneSynthese = (r, colonne) => {
+            const o = {};
+            o[colonne] = r.label;
+            o['Restant dû'] = arrondi(r.total);
+            o['Total échu'] = arrondi(r.echu);
+            for (const b of buckets) if (b.key !== 'nonEchu') o[b.label] = arrondi(r.buckets[b.key]);
             o['Non échu'] = arrondi(r.nonEchu);
-            o.Total = arrondi(r.total);
-            o.Nb = r.nb;
+            o['Total'] = arrondi(r.total);
+            o['Nb'] = r.nb;
             return o;
         };
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-            b.rows.map(ligne).concat([ligne({ ...b.total, buckets: b.total.buckets })])), 'Balance âgée GL');
+        const feuilleSynthese = (niveau, colonne, nom) => {
+            const b = GL.balanceAgee(creances, ref, state.rules, niveau);
+            const lignes = b.rows.map(r => ligneSynthese(r, colonne));
+            lignes.push(ligneSynthese({ ...b.total, label: 'TOTAL' }, colonne));
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lignes), nom);
+            return b;
+        };
 
+        const parCat = feuilleSynthese('categorie', 'Catégorie de client', 'Synthèse catégorie');
+        const parFin = feuilleSynthese('financement', 'Financement', 'Synthèse financement');
+
+        // ── Synthèse ──
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+            { Indicateur: 'Arrêté au', Valeur: U.dateFR(ref) },
+            { Indicateur: 'Fichier', Valeur: (state.glLecture && state.glLecture.fichier) || '' },
+            { Indicateur: 'Écritures lues', Valeur: (state.glLecture && state.glLecture.nbLignes) || '' },
+            { Indicateur: 'Créances ouvertes', Valeur: parFin.total.nb },
+            { Indicateur: 'Reste dû total', Valeur: arrondi(parFin.total.total) },
+            { Indicateur: 'Dont échu', Valeur: arrondi(parFin.total.echu) },
+            { Indicateur: 'Non échu', Valeur: arrondi(parFin.total.nonEchu) },
+            { Indicateur: 'À classer — nombre', Valeur: parFin.nbAClasser },
+            { Indicateur: 'À classer — montant', Valeur: arrondi(parFin.eurosAClasser) },
+            { Indicateur: 'Catégories', Valeur: parCat.rows.length },
+            { Indicateur: 'Financements', Valeur: parFin.rows.length },
+            { Indicateur: 'Version de l\'application', Valeur: VERSION + ' — ' + VERSION_DATE },
+        ]), 'Synthèse');
+
+        // ── Par compte client : le niveau où l'on relance ──
+        const parCompte = new Map();
+        for (const c of creances) {
+            const cle = c.compte || '(sans compte)';
+            let g = parCompte.get(cle);
+            if (!g) {
+                g = { compte: cle, tiers: c.tiers || '', nb: 0, total: 0, echu: 0, nonEchu: 0,
+                      financements: new Set(), buckets: {} };
+                for (const b of buckets) g.buckets[b.key] = 0;
+                parCompte.set(cle, g);
+            }
+            const base = c.dateEcheance || c.dateFacture;
+            const retard = base ? R.diffDays(ref, base) : 0;
+            const bk = R.bucketFor(retard) || R.AGING_BUCKETS[0];
+            g.nb++; g.total += c.resteDu;
+            g.buckets[bk.key] += c.resteDu;
+            if (retard > 0) g.echu += c.resteDu; else g.nonEchu += c.resteDu;
+            if (c.financement) g.financements.add(R.getRule(c.financement, state.rules).label);
+        }
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-            (state.glCreances || []).map(c => ({
-                'Facture': c.numero, 'Client': c.tiers, 'Compte': c.compte,
+            [...parCompte.values()].sort((a, b) => b.total - a.total).map(g => {
+                const o = { 'N° de compte': g.compte, 'Client': g.tiers,
+                    'Financements': [...g.financements].join(' / ') || 'À classer',
+                    'Restant dû': arrondi(g.total), 'Total échu': arrondi(g.echu) };
+                for (const b of buckets) if (b.key !== 'nonEchu') o[b.label] = arrondi(g.buckets[b.key]);
+                o['Non échu'] = arrondi(g.nonEchu);
+                o['Nb'] = g.nb;
+                return o;
+            })), 'Par compte client');
+
+        // ── Détail des créances ──
+        const ligneCreance = c => {
+            const base = c.dateEcheance || c.dateFacture;
+            const retard = base ? R.diffDays(ref, base) : null;
+            return {
+                'Facture': c.numero || '',
+                'Client': c.tiers || '',
+                'N° de compte': c.compte || '',
+                'Identifiant tiers': c.identifiantTiers || '',
+                'Lettrage': c.lettre || '',
                 'Financement': c.financement ? R.getRule(c.financement, state.rules).label : 'À classer',
+                'Catégorie': c.financement ? R.categorieDe(c.financement, state.rules) : 'À classer',
                 'Classé par': c.origineClassement || '',
-                'Reste dû': arrondi(c.resteDu), 'Montant': arrondi(c.montant),
+                'Montant facture': arrondi(c.montant),
+                'Restant dû': arrondi(c.resteDu),
                 'Date de facture': c.dateFacture ? U.dateFR(c.dateFacture) : '',
                 'Échéance': c.dateEcheance ? U.dateFR(c.dateEcheance) : '',
-            }))), 'Créances');
+                'Jours de retard': retard == null ? '' : retard,
+                'Tranche': ((R.bucketFor(retard) || {}).label) || '',
+                'Numéro lu dans le libellé': c.numeroExtrait ? 'oui' : '',
+            };
+        };
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            creances.filter(c => !c.sansNumero).map(ligneCreance)), 'Créances');
 
+        const aClasser = creances.filter(c => !c.financement);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            aClasser.length ? aClasser.map(ligneCreance)
+                : [{ 'Facture': 'Aucune créance à classer' }]), 'À classer');
+
+        const sansNumero = creances.filter(c => c.sansNumero);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            sansNumero.length ? sansNumero.map(c => ({
+                'N° de compte': c.compte, 'Client': c.tiers,
+                'Lettrage': c.lettre, 'Restant dû': arrondi(c.resteDu),
+                'Dernier mouvement': c.dateFacture ? U.dateFR(c.dateFacture) : '',
+                'Nature': 'Acompte, écart de règlement ou crédit non rattaché',
+            })) : [{ 'N° de compte': 'Aucune écriture sans numéro' }]), 'Écritures non rattachées');
+
+        // ── Confrontation avec Monday ──
         if (state.glComparaison) {
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
                 state.glComparaison.rows.map(r => ({
-                    'Financement': r.label, 'Encours Monday': arrondi(r.monday),
-                    'Reste dû comptable': arrondi(r.grandLivre), 'Écart': arrondi(r.ecart),
-                    'Écart relatif %': r.ecartRelatif == null ? '' : Math.round(r.ecartRelatif),
-                }))), 'Monday vs Grand livre');
+                    'Financement': r.label,
+                    'Encours Monday': arrondi(r.monday), 'Nb Monday': r.nbMonday,
+                    'Reste dû comptable': arrondi(r.grandLivre), 'Nb comptable': r.nbGL,
+                    'Écart': arrondi(r.ecart),
+                    'Écart %': r.ecartRelatif == null ? '' : Math.round(r.ecartRelatif),
+                })).concat([{
+                    'Financement': 'TOTAL',
+                    'Encours Monday': arrondi(state.glComparaison.total.monday),
+                    'Nb Monday': state.glComparaison.total.nbMonday,
+                    'Reste dû comptable': arrondi(state.glComparaison.total.grandLivre),
+                    'Nb comptable': state.glComparaison.total.nbGL,
+                    'Écart': arrondi(state.glComparaison.total.ecart),
+                    'Écart %': state.glComparaison.total.ecartRelatif == null ? ''
+                        : Math.round(state.glComparaison.total.ecartRelatif),
+                }])), 'Monday vs grand livre');
         }
+
+        // ── Les règles, pour que la balance se relise plus tard ──
+        const libelle = { dateFacture: 'date de facture', dateDebutFormation: 'début de formation',
+            dateFinFormation: 'fin de formation' };
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            state.rules.filter(r => r.key !== 'INCONNU').map(r => ({
+                'Financement': r.label,
+                'Catégorie': R.categorieDe(r.key, state.rules),
+                'Périmètre': r.perimetre,
+                'Échéance calculée sur': (libelle[r.base] || r.base) + (r.jours ? ` + ${r.jours} j` : ''),
+                'Plafond début de formation': r.plafondDebutFormation ? 'oui' : '',
+                'À défaut': libelle[r.fallback] || r.fallback || '',
+            }))), 'Règles appliquées');
+
         XLSX.writeFile(wb, `Balance_agee_grand_livre_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
 
