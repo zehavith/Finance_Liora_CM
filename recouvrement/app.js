@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.15.0 — 2 septembre 2026
+   v2.16.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.15.0';
+    const VERSION = '2.16.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -4927,7 +4927,13 @@
             const rows = await lireFichier(file);
             if (!rows.length) { U.toast('Fichier vide.', 'error'); return; }
 
-            const lu = GL.lire(rows);
+            // Les numéros déjà connus — Monday et Sellsy — servent d'arbitre
+            // quand un libellé de virement cite plusieurs références.
+            const connus = new Set();
+            for (const f of state.factures) if (f.cle) connus.add(f.cle);
+            for (const l of state.sellsy.lignes) if (l.cle) connus.add(l.cle);
+
+            const lu = GL.lire(rows, { numerosConnus: connus });
             if (lu.erreur) { U.toast(lu.erreur + ' Colonnes trouvées : '
                 + lu.entetes.slice(0, 10).join(', '), 'error', 12000); return; }
             if (!lu.lignes.length) {
@@ -4963,7 +4969,9 @@
             const st = state.glStats || {};
             const l = lu.stats;
             U.toast(`Grand livre ${l.comptable ? 'comptable' : ''} intégré : `
-                + `${U.nombre(l.nbFactures)} factures sur ${U.nombre(l.nbLignes)} écritures, `
+                + `${U.nombre(l.nbFactures)} factures sur ${U.nombre(l.nbLignes)} écritures`
+                + (l.numerosExtraits ? ` (dont ${U.nombre(l.numerosExtraits)} numéros lus dans le libellé)` : '')
+                + `, `
                 + `${U.nombre(l.nbSoldeesParReglement)} soldées par règlement`
                 + (l.nbSoldeesParAvoir ? `, ${U.nombre(l.nbSoldeesParAvoir)} par avoir` : '')
                 + (l.nbOuvertes ? `, ${U.nombre(l.nbOuvertes)} encore ouvertes` : '')

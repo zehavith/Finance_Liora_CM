@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.15.0** — 2 septembre 2026
+**Version 2.16.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.15.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.16.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -1081,18 +1081,42 @@ Aucun filtre de la barre ne s'applique aux deux dernières : la comptabilité
 tient un compte, elle ne connaît pas le circuit, et masquer une créance ne la
 fait pas disparaître du solde.
 
+#### Le numéro caché dans le libellé
+
+Un règlement bancaire ne remplit jamais la colonne « N° de facture » — mais son
+libellé cite très souvent la facture qu'il paie : *« /RNF ALMA 20250423 -
+PAYOUT … FACT-2504-09118 »*. Sans le lire, deux écritures sur trois restent
+anonymes et ne peuvent ni solder une facture ni être classées.
+
+Le numéro est donc cherché dans le libellé de ligne, puis dans le libellé de
+pièce, selon les formes réellement émises chez Liora — `FACT-2407-04923`,
+`FCT-FILIZ-DST-2025-276`, `AVR-2512-02297`, `FA-880-0097`. Les motifs sont
+bornés : sans cela, l'identifiant de la transaction bancaire se collait au
+numéro et le rendait inutilisable. Quand plusieurs références figurent dans le
+même libellé, **celle que Monday ou Sellsy connaissent déjà l'emporte**.
+
+Sur l'extrait de septembre : 3 756 écritures nommaient leur facture, **5 862 de
+plus** l'ont retrouvée dans leur libellé — deux fois et demie plus.
+
 #### D'où vient le financement d'une créance comptable
 
 Le grand livre ne connaît pas les dispositifs — il ne porte qu'un compte et un
 numéro. Le financement est donc recoupé, du plus sûr au moins sûr :
 
-1. **la facture Monday** de même numéro, dont le financement est établi par les
+1. **la qualification portée par le fichier lui-même** — un extrait déjà
+   travaillé porte sa colonne *Sous catégorie de type de client*, qui est le
+   financement. Elle passe devant tout : c'est le travail de la trésorerie, pas
+   une déduction. La sous-catégorie prime sur le type de client, plus grossier :
+   « B2C » recouvre aussi bien B2C-Perso que CPF, Transition Pro, AIF ou
+   Agefiph.
+2. **la facture Monday** de même numéro, dont le financement est établi par les
    règles métier ;
-2. **l'export Sellsy**, dont la colonne *Type de client* nomme le dispositif de
+3. **l'export Sellsy**, dont la colonne *Type de client* nomme le dispositif de
    toutes les factures émises, y compris celles que Monday ne suit pas ;
-3. **l'historique du compte client** : un compte dont toutes les factures
-   connues relèvent du même dispositif désigne ce dispositif pour ses factures
-   inconnues. Un compte partagé entre plusieurs dispositifs ne tranche rien.
+4. **l'identifiant du tiers**, puis **le numéro de compte** : un client dont
+   toutes les factures connues relèvent du même dispositif désigne ce dispositif
+   pour ses factures inconnues. Un client partagé entre plusieurs dispositifs ne
+   tranche rien.
 
 **Ce qui n'est pas sûr n'est pas deviné** : la créance part dans **« À
 classer »**, ligne à part en bas du tableau, détaillée juste en dessous. Elle se

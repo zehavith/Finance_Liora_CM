@@ -50,6 +50,19 @@
         solde:        ['solde', 'solde progressif'],
         tiers:        ['tiers', 'nom du tiers', 'client', 'raison sociale'],
         dateEcheance: ['date d echeance', 'date echeance', 'echeance'],
+        // Le libellé de ligne porte souvent le numéro de facture que la colonne
+        // dédiée laisse vide : sur un extrait réel, il en révèle 5 862 de plus
+        // que les 3 756 déjà nommées, soit deux fois et demie plus.
+        libelleLigne: ['libelle de ligne', 'libelle ligne', 'detail', 'libelle ecriture'],
+        // L'identifiant du tiers est plus stable que le numéro de compte pour
+        // reconnaître un client d'un extrait à l'autre.
+        identifiantTiers: ['identifiant du tiers', 'id tiers', 'identifiant tiers', 'code tiers'],
+        // Un extrait déjà qualifié porte sa propre réponse : la sous-catégorie
+        // est le financement, plus fine que le type de client — « B2C » couvre
+        // aussi bien BTC-Perso que CPF, Transition Pro, AIF ou Agefiph.
+        sousCategorie: ['sous categorie de type de client', 'sous categorie type de client',
+                        'sous categorie', 'sous type de facture', 'sous type'],
+        typeClient:   ['type de client', 'type client', 'typologie client'],
     };
 
     function trouver(entetes, alias) {
@@ -92,6 +105,49 @@
 
     const EST_FACTURE = /^(fact|fct|fa)[-_ ]?/i;
     const EST_AVOIR = /^(avr|av|avo)[-_ ]?/i;
+
+    /**
+     * Formes de numéro réellement émises chez Liora.
+     *
+     * Les motifs sont bornés — quatre chiffres d'année-mois, puis le rang — pour
+     * ne pas happer ce qui suit : sans bornes, un libellé de virement collait
+     * l'identifiant de la transaction au numéro et le rendait inutilisable.
+     */
+    const MOTIFS_NUMERO = [
+        /\bFACT[-_ ]?\d{4}[-_ ]?\d{4,6}\b/ig,               // FACT-2407-04923
+        /\bFCT(?:[-_][A-Z]{2,8}){1,3}[-_]\d{4}[-_]\d{1,6}\b/ig, // FCT-FILIZ-DST-2025-276
+        /\bAVR[-_ ]?\d{4}[-_ ]?\d{4,6}\b/ig,                // AVR-2512-02297
+        /\bFCAT[-_ ]?\d{4}[-_ ]?\d{4,6}\b/ig,
+        /\bFA[-_ ]?\d{3,4}[-_ ]?\d{3,6}\b/ig,               // FA-880-0097
+    ];
+
+    /**
+     * Retrouve un numéro de facture dans un texte libre.
+     *
+     * Le règlement bancaire ne remplit pas la colonne « N° de facture », mais
+     * son libellé cite très souvent la facture qu'il paie — « /RNF ALMA … 
+     * FACT-2504-09118 ». Sans cette lecture, deux écritures sur trois restaient
+     * anonymes et ne pouvaient ni solder une facture ni être classées.
+     *
+     * @param {string} txt
+     * @param {Set<string>} [connus]  clés des numéros existants. Fournies, un
+     *   candidat reconnu l'emporte sur un candidat seulement plausible.
+     */
+    function numeroDepuisTexte(txt, connus) {
+        const s = String(txt == null ? '' : txt).toUpperCase();
+        if (!s) return '';
+        const candidats = [];
+        for (const re of MOTIFS_NUMERO) {
+            re.lastIndex = 0;
+            let m;
+            while ((m = re.exec(s)) !== null) candidats.push(m[0].trim());
+        }
+        if (!candidats.length) return '';
+        if (connus && connus.size) {
+            for (const c of candidats) if (connus.has(I.factureKey(c))) return c;
+        }
+        return candidats[0];
+    }
 
     /**
      * La lettre de lettrage, débarrassée des flèches d'état de Pennylane.
@@ -143,18 +199,34 @@
      *   et il n'y a plus rien à relancer ;
      * — partiellement réglée : le groupe ne se solde pas, il reste dû.
      */
-    function lireComptable(rows, mapping) {
+    function lireComptable(rows, mapping, opts) {
+        const o = opts || {};
+        const connus = o.numerosConnus;
         const col = (r, champ) => (mapping[champ] ? r[mapping[champ]] : '');
 
         const groupes = new Map();
-        let ignorees = 0;
+        let ignorees = 0, numerosExtraits = 0;
         for (const r of rows) {
             const lettre = lettreDe(col(r, 'lettrage'));
             const compte = String(col(r, 'compte') || '').trim();
             const debit = nombre(col(r, 'debit'));
             const credit = nombre(col(r, 'credit'));
-            const numero = String(col(r, 'numero') || '').trim();
             const date = R.parseDate(col(r, 'date'));
+
+            // Le numéro porté par sa colonne d'abord ; à défaut, celui que cite
+            // le libellé — c'est ainsi que se rattache un règlement bancaire.
+            let numero = String(col(r, 'numero') || '').trim();
+            let numeroExtrait = false;
+            if (!numero) {
+                numero = numeroDepuisTexte(col(r, 'libelleLigne'), connus)
+                    || numeroDepuisTexte(col(r, 'libelle'), connus);
+                if (numero) { numeroExtrait = true; numerosExtraits++; }
+            }
+
+            // Qualification déjà portée par le fichier : la sous-catégorie est
+            // le financement, le type de client ne l'est qu'à défaut.
+            const qualif = String(col(r, 'sousCategorie') || '').trim()
+                || String(col(r, 'typeClient') || '').trim();
 
             // Sans compte, l'écriture n'appartient à personne : rien à en tirer.
             // Sans lettre, en revanche, elle rejoint le pool non lettré de son
@@ -171,11 +243,13 @@
                 groupes.set(cle, g);
             }
             if (!g.tiers) g.tiers = String(col(r, 'tiers') || col(r, 'libelleCompte') || '').trim();
+            if (!g.identifiantTiers) g.identifiantTiers = String(col(r, 'identifiantTiers') || '').trim();
+            if (!g.qualif && qualif) g.qualif = qualif;
             g.debit += debit;
             g.credit += credit;
 
             const ligne = {
-                numero, date, debit, credit,
+                numero, numeroExtrait, qualif, date, debit, credit,
                 journal: String(col(r, 'journal') || '').trim(),
                 libelle: String(col(r, 'libelle') || '').trim(),
                 dateEcheance: R.parseDate(col(r, 'dateEcheance')),
@@ -208,7 +282,10 @@
             for (const f of g.factures) {
                 resultats.push({
                     numero: f.numero,
+                    numeroExtrait: f.numeroExtrait,
+                    qualif: f.qualif || g.qualif || '',
                     cle: I.factureKey(f.numero),
+                    identifiantTiers: g.identifiantTiers || '',
                     compte: g.compte,
                     lettre: g.lettre,
                     tiers: g.tiers,
@@ -231,7 +308,8 @@
             }
         }
 
-        return { lignes: resultats, groupes: [...groupes.values()], ignorees, comptable: true };
+        return { lignes: resultats, groupes: [...groupes.values()], ignorees,
+                 numerosExtraits, comptable: true };
     }
 
     // ──────────────────────────────────────────────
@@ -275,13 +353,14 @@
      *
      * @param {Array<Object>} rows  lignes telles que lues du CSV / XLSX
      */
-    function lire(rows) {
+    function lire(rows, opts) {
         if (!rows || !rows.length) {
             return { lignes: [], groupes: [], ignorees: 0, comptable: false, mapping: {}, entetes: [] };
         }
         const entetes = Object.keys(rows[0]);
         const mapping = detecterColonnes(entetes);
-        const res = estComptable(mapping) ? lireComptable(rows, mapping) : lireSimple(rows, entetes);
+        const res = estComptable(mapping)
+            ? lireComptable(rows, mapping, opts) : lireSimple(rows, entetes);
         return { ...res, mapping, entetes, nbLignes: rows.length,
                  stats: statistiques(res, rows.length) };
     }
@@ -296,11 +375,15 @@
             nbSoldeesParReglement: soldees.filter(x => !x.parAvoir).length,
             nbSoldeesParAvoir: soldees.filter(x => x.parAvoir).length,
             nbOuvertes: l.length - soldees.length,
-            eurosOuverts: l.filter(x => !x.soldee)
-                .reduce((s, x) => s + (x.resteGroupe > 0 ? x.resteGroupe : 0), 0),
+            // Le reste d'un groupe appartient au groupe, pas à chacune de ses
+            // factures : le sommer par facture le comptait autant de fois qu'il
+            // y en avait, et affichait des milliards sur un extrait réel.
+            eurosOuverts: (res.groupes || []).reduce(
+                (s, g) => s + (g.soldee ? 0 : Math.max(0, g.debit - g.credit)), 0),
             nbGroupes: res.groupes.length,
             nbSansDate: soldees.filter(x => !x.parAvoir && !x.datePaiement).length,
             ignorees: res.ignorees,
+            numerosExtraits: res.numerosExtraits || 0,
             comptable: !!res.comptable,
         };
     }
@@ -337,6 +420,8 @@
                 for (const f of g.factures) {
                     ouvertes.push({
                         numero: f.numero, cle: I.factureKey(f.numero),
+                        qualif: f.qualif || g.qualif || '',
+                        identifiantTiers: g.identifiantTiers || '',
                         compte: g.compte, tiers: g.tiers, lettre: g.lettre,
                         montant: f.debit,
                         resteDu: reste * (f.debit / total),
@@ -348,6 +433,8 @@
             } else {
                 ouvertes.push({
                     numero: '', cle: null,
+                    qualif: g.qualif || '',
+                    identifiantTiers: g.identifiantTiers || '',
                     compte: g.compte, tiers: g.tiers, lettre: g.lettre,
                     montant: null, resteDu: reste,
                     dateFacture: derniereDate(g.reglements.concat(g.avoirs)),
@@ -381,12 +468,17 @@
         const o = sources || {};
         const parCle = new Map();       // numéro de facture → financement
         const parCompte = new Map();    // compte client → { fin: nb }
+        const parTiers = new Map();     // identifiant du tiers → { fin: nb }
 
-        const noter = (compte, fin) => {
-            if (!compte || !fin) return;
-            let m = parCompte.get(compte);
-            if (!m) { m = new Map(); parCompte.set(compte, m); }
+        const compter = (carte, cle, fin) => {
+            if (!cle || !fin) return;
+            let m = carte.get(cle);
+            if (!m) { m = new Map(); carte.set(cle, m); }
             m.set(fin, (m.get(fin) || 0) + 1);
+        };
+        const noter = (compte, fin, tiers) => {
+            compter(parCompte, compte, fin);
+            compter(parTiers, tiers, fin);
         };
 
         // 1. Monday : le financement y est établi par les règles métier.
@@ -400,7 +492,7 @@
             const fin = R.detectFinancement(l.typeClient, o.rules);
             if (fin) parCle.set(l.cle, fin);
         }
-        return { parCle, parCompte, noter };
+        return { parCle, parCompte, parTiers, noter };
     }
 
     /**
@@ -413,29 +505,40 @@
      * classer.
      */
     function classer(ouvertes, sources) {
-        const idx = indexerClassification(sources);
+        const o = sources || {};
+        const idx = indexerClassification(o);
 
-        // Apprentissage : ce que chaque compte contient de déjà classé.
+        // La qualification déjà portée par le fichier passe devant tout : c'est
+        // le travail de la trésorerie, pas une déduction.
+        const propre = c => (c.qualif ? R.detectFinancement(c.qualif, o.rules) : null);
+
+        // Apprentissage : ce que chaque compte et chaque tiers contiennent de
+        // déjà classé, quelle qu'en soit la source.
         for (const c of ouvertes) {
-            const fin = c.cle ? idx.parCle.get(c.cle) : null;
-            if (fin) idx.noter(c.compte, fin);
+            const fin = propre(c) || (c.cle ? idx.parCle.get(c.cle) : null);
+            if (fin) idx.noter(c.compte, fin, c.identifiantTiers);
         }
-        for (const l of (sources.historique || [])) {
+        for (const l of (o.historique || [])) {
             const fin = l.cle ? idx.parCle.get(l.cle) : null;
-            if (fin) idx.noter(l.compte, fin);
+            if (fin) idx.noter(l.compte, fin, l.identifiantTiers);
         }
 
-        const financementDuCompte = compte => {
-            const m = idx.parCompte.get(compte);
-            if (!m || m.size !== 1) return null;   // partagé ou inconnu : on ne tranche pas
-            return [...m.keys()][0];
+        // Une clé ne tranche que si elle ne connaît qu'un seul financement :
+        // un compte partagé entre deux dispositifs ne prouve rien.
+        const unique = (carte, cle) => {
+            const m = cle ? carte.get(cle) : null;
+            return (m && m.size === 1) ? [...m.keys()][0] : null;
         };
 
         return ouvertes.map(c => {
+            const fichier = propre(c);
+            if (fichier) return { ...c, financement: fichier, origineClassement: 'Qualification du fichier' };
             const direct = c.cle ? idx.parCle.get(c.cle) : null;
             if (direct) return { ...c, financement: direct, origineClassement: 'Facture' };
-            const parCompte = financementDuCompte(c.compte);
-            if (parCompte) return { ...c, financement: parCompte, origineClassement: 'Compte client' };
+            const tiers = unique(idx.parTiers, c.identifiantTiers);
+            if (tiers) return { ...c, financement: tiers, origineClassement: 'Identifiant du tiers' };
+            const compte = unique(idx.parCompte, c.compte);
+            if (compte) return { ...c, financement: compte, origineClassement: 'Compte client' };
             return { ...c, financement: null, origineClassement: null };
         });
     }
@@ -535,7 +638,8 @@
     }
 
     global.LioraGrandLivre = {
-        A_CLASSER, creancesOuvertes, classer, balanceAgee, comparer,
+        A_CLASSER, POOL_NON_LETTRE, MOTIFS_NUMERO, numeroDepuisTexte,
+        creancesOuvertes, classer, balanceAgee, comparer,
         COLONNES, TOLERANCE, EST_FACTURE, EST_AVOIR,
         detecterColonnes, estComptable, lettreDe, lire, lireComptable, lireSimple,
     };
