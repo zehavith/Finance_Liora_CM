@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.4.0 — 2 septembre 2026
+   v2.5.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.4.0';
+    const VERSION = '2.5.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -652,7 +652,6 @@
 
         // ── Classements ──
         rendreTopClients(X.topClients(data, 12));
-        rendreParTableau(X.parTableau(data));
     }
 
     /**
@@ -2939,6 +2938,10 @@
 
     async function rendreDonnees() {
         rendreChaineTraitement();
+        // Le découpage par tableau Monday a quitté le tableau de bord : il dit
+        // où la facture se trouve, pas ce qu'elle est. Sa place est ici, avec
+        // les tableaux et leur inventaire.
+        rendreParTableau(X.parTableau(facturesFiltrees()));
         rendreExclusions();
         rendreTableBoards();
         rendreSelectMapping();

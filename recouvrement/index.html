@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.4.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.4.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.4.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.4.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.4.0">
-    <link rel="stylesheet" href="styles.css?v=2.4.0">
+    <script src="../vendor/chart.umd.min.js?v=2.5.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.5.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.5.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.5.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.5.0">
+    <link rel="stylesheet" href="styles.css?v=2.5.0">
 </head>
 <body>
 
@@ -181,16 +181,17 @@
                 </div>
             </div>
 
-            <div class="filter-block filter-block-grow">
-                <span class="filter-label" title="Périmètre des factures comptées comme en retard">Sources du retard</span>
-                <span class="aide-ligne">D'où viennent les factures comptées comme en retard. Éteignez-en une pour l'exclure de tous les chiffres — l'OPCO par exemple, où il n'y a pas de recouvrement.</span>
-                <div class="chips" id="chips-sources"></div>
-            </div>
 
             <div class="filter-block filter-block-grow">
                 <span class="filter-label">Financement</span>
                 <span class="aide-ligne">Restreint l'ensemble de l'application à un ou plusieurs dispositifs. Aucun sélectionné : tous comptent.</span>
                 <div class="chips" id="chips-financements"></div>
+            </div>
+
+            <div class="filter-block filter-block-grow">
+                <span class="filter-label" title="Périmètre des factures comptées comme en retard">Étape du circuit</span>
+                <span class="aide-ligne">Où en est la facture dans le circuit Monday — à ne pas confondre avec son financement, filtré juste avant. Éteignez-en une pour l'exclure de tous les chiffres.</span>
+                <div class="chips" id="chips-sources"></div>
             </div>
 
             <div class="filter-block">
@@ -620,14 +621,10 @@
                     <div class="table-wrap" id="repartition-table"></div>
                 </div>
             </div>
-            <div class="charts-grid charts-2col">
-                <div class="chart-card">
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
                     <div class="chart-header"><h3>Top clients en retard</h3></div>
                     <div class="mini-table-wrap" id="top-clients"></div>
-                </div>
-                <div class="chart-card">
-                    <div class="chart-header"><h3>Répartition par tableau Monday</h3></div>
-                    <div class="mini-table-wrap" id="par-tableau"></div>
                 </div>
             </div>
             </div>
@@ -941,6 +938,10 @@
                     est mal chargé ou si ses échéances ne se calculent pas.
                 </span>
                 <div class="table-wrap" id="boards-table"></div>
+                <h4 class="qualif-col-titre">Factures en retard par tableau
+                    <span class="fv-hint">le tableau Monday dit où la facture se trouve, pas ce qu'elle est : ce n'est pas un axe d'analyse</span>
+                </h4>
+                <div class="mini-table-wrap" id="par-tableau"></div>
             </div>
 
             <!-- Mapping des colonnes -->
@@ -1054,13 +1055,13 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.4.0"></script>
-<script src="js/store.js?v=2.4.0"></script>
-<script src="js/monday.js?v=2.4.0"></script>
-<script src="js/ingest.js?v=2.4.0"></script>
-<script src="js/metrics.js?v=2.4.0"></script>
-<script src="js/prelevements.js?v=2.4.0"></script>
-<script src="js/ui.js?v=2.4.0"></script>
-<script src="app.js?v=2.4.0"></script>
+<script src="js/rules.js?v=2.5.0"></script>
+<script src="js/store.js?v=2.5.0"></script>
+<script src="js/monday.js?v=2.5.0"></script>
+<script src="js/ingest.js?v=2.5.0"></script>
+<script src="js/metrics.js?v=2.5.0"></script>
+<script src="js/prelevements.js?v=2.5.0"></script>
+<script src="js/ui.js?v=2.5.0"></script>
+<script src="app.js?v=2.5.0"></script>
 </body>
 </html>

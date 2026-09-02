@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.4.0** — 2 septembre 2026
+**Version 2.5.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.4.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.5.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -636,6 +636,20 @@ d'ancienneté, quelle part a fini par rentrer ? Chaque tranche est donc ramenée
 cent pour cent et se lit de haut en bas — vert, ce qui est rentré ; rouge, ce qui
 est toujours dû. Les montants et les nombres restent en info-bulle, et un clic
 ouvre les factures de la tranche.
+
+### Le financement, pas le tableau
+
+Le tableau Monday dit **où une facture se trouve** dans le circuit ; le
+financement dit **ce qu'elle est**, et c'est lui qui commande la règle
+d'échéance. Le tableau de bord s'analyse donc par financement, jamais par
+tableau.
+
+Deux conséquences. Le filtre *Financement* précède celui de l'étape du circuit,
+lequel s'appelle désormais ainsi — *Sources du retard* laissait croire à un axe
+de même nature, alors qu'il désigne un stade du parcours. Et la répartition par
+tableau Monday a quitté le tableau de bord pour l'onglet *Données*, auprès de
+l'inventaire des tableaux : elle sert à vérifier un chargement, pas à analyser
+un portefeuille.
 
 ### Filtrer par financement
 
