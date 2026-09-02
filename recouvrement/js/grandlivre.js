@@ -44,6 +44,14 @@
         date:         ['date d ecriture', 'date ecriture', 'date de piece', 'date piece', 'date'],
         numero:       ['n de facture', 'numero de facture', 'numero facture', 'n facture',
                        'n de piece', 'numero de piece', 'piece', 'reference'],
+        // Le classeur de trésorerie porte une colonne où le numéro a déjà été
+        // extrait du libellé de ligne : sur l'extrait de septembre elle est
+        // remplie sur 10 599 lignes, contre 3 435 pour la colonne « N° de
+        // facture ». C'est là que vivent les numéros Zoho — FA-, DV-, CN- —
+        // que la colonne dédiée ne porte pas.
+        numeroExtrait: ['numero de facture zoho extrait du libelle de ligne',
+                        'numero de facture zoho extrait', 'numero extrait du libelle',
+                        'numero de facture extrait'],
         libelle:      ['libelle de piece', 'libelle piece', 'libelle de ligne', 'libelle', 'intitule'],
         debit:        ['debit', 'montant debit', 'debit eur'],
         credit:       ['credit', 'montant credit', 'credit eur'],
@@ -141,7 +149,10 @@
     // sont bien des factures. Un chiffre est exigé après le préfixe pour qu'un
     // mot commençant par ces lettres ne passe pas pour un numéro.
     const EST_FACTURE = /^(fact|fcat|fct|fa|dv)[-_ ]?\d/i;
-    const EST_AVOIR = /^(avr|av|avo)[-_ ]?/i;
+    // « CN » — credit note — est la forme des avoirs chez Zoho : la balance de
+    // septembre en compte 89. Sans elle, ils passaient pour des règlements et
+    // faisaient entrer de l'argent qui n'est jamais rentré.
+    const EST_AVOIR = /^(avr|av|avo|cn)[-_ ]?\d/i;
 
     /**
      * Formes de numéro réellement émises chez Liora.
@@ -161,6 +172,7 @@
         /\bFA[-_ ][A-Z]{2,6}[-_ ]\d{4,9}\b/ig,             // FA-POEI-123456
         /\bFA[-_ ]?\d{7,13}(?:[-_]\d{1,3})?\b/ig,          // FA-09051502108
         /\bDV[-_ ]?\d{4,9}(?:[-_]\d{1,3})?\b/ig,           // DV-005370
+        /\bCN[-_ ]?\d{4,8}\b/ig,                           // CN-00750, l'avoir de Zoho
     ];
 
     /**
@@ -301,8 +313,20 @@
             // le libellé — c'est ainsi que se rattache un règlement bancaire.
             // Un numéro peut arriver préfixé — « # DV-002048 » — d'une saisie ou
             // d'un export. La ponctuation de tête n'appartient pas au numéro.
-            let numero = texteBrut(col(r, 'numero')).replace(/^[#\s.:;,-]+/, '');
+            const propre = v => texteBrut(v).replace(/^[#\s.:;,-]+/, '');
+            let numero = propre(col(r, 'numero'));
             let numeroExtrait = false;
+            // La colonne où le classeur a déjà fait le travail : elle porte les
+            // numéros Zoho que la colonne dédiée laisse vides.
+            // Le numéro y est déjà extrait, pas deviné : il vient d'une colonne
+            // du fichier, pas d'une lecture au jugé dans un libellé. Il ne
+            // déclenche donc pas le garde-fou qui écarte les débits au numéro
+            // seulement supposé — sans quoi toutes les factures Zoho, dont le
+            // numéro ne vit que là, disparaissaient de la balance.
+            if (!numero) {
+                const dejaExtrait = propre(col(r, 'numeroExtrait'));
+                if (dejaExtrait) { numero = dejaExtrait; numerosExtraits++; }
+            }
             if (!numero) {
                 // Au crédit, l'avoir cité l'emporte sur la facture citée :
                 // « AVOIR AVR-… ANNULATION FACT-… » est un avoir, pas un

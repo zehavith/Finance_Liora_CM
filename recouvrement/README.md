@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.29.3** — 2 septembre 2026
+**Version 2.30.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.29.3`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.30.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -851,6 +851,29 @@ L'effet sur la balance âgée est considérable, à total inchangé :
 Deux millions d'euros quittent la tranche « 12 à 18 mois » pour rejoindre leur
 vraie ancienneté, et 560 731 € apparaissent au-delà de 36 mois, où il n'y avait
 rien.
+
+#### La colonne où le numéro est déjà extrait
+
+Le classeur de trésorerie porte une colonne *Numero de facture zoho extrait du
+libellé de ligne* : le numéro y a déjà été lu, une fois pour toutes. Sur
+l'extrait de septembre elle est remplie sur **10 599 lignes**, contre 3 435 pour
+la colonne *N° de facture* — et c'est là que vivent les numéros Zoho, que la
+colonne dédiée ne porte pas :
+
+    FA-880-0097 · FA-TRAN-1234 · FA-AIF-1234567 · DV-005370 · CN-00750
+
+L'application lit maintenant cette colonne, et **1 046 factures de plus**
+entrent dans la balance âgée — dont 662 retrouvent leurs dates de formation
+dans la table Zoho embarquée, et 381 leur type de client. Le total ne bouge
+pas : ce sont les mêmes euros, mieux répartis.
+
+Un numéro qui vient de cette colonne n'est pas un numéro *deviné* : il ne
+déclenche pas le garde-fou qui écarte les débits dont le numéro n'a été que
+supposé dans un libellé.
+
+**« CN »** est la forme des avoirs chez Zoho — 89 dans l'extrait de septembre.
+Sans elle, ils passaient pour des règlements et faisaient entrer de l'argent
+qui n'est jamais rentré.
 
 #### D'où viennent les dates
 
