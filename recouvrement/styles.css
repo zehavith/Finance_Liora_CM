@@ -1105,3 +1105,8 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
 .chip-fin { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip-plus { border-style: dashed; opacity: .8; }
 .chip-plus:hover { opacity: 1; }
+
+
+/* Bascule dans l'intitulé d'un groupe d'indicateurs */
+.kpi-group-label { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.kpi-group-label .seg-sm { text-transform: none; letter-spacing: 0; }

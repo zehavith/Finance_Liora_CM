@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.5.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.5.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.5.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.5.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.5.0">
-    <link rel="stylesheet" href="styles.css?v=2.5.0">
+    <script src="../vendor/chart.umd.min.js?v=2.6.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.6.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.6.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.6.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.6.0">
+    <link rel="stylesheet" href="styles.css?v=2.6.0">
 </head>
 <body>
 
@@ -267,16 +267,22 @@
                     </div>
                 </div>
                 <div class="kpi-group kpi-group-dec">
-                    <div class="kpi-group-label">Ce qui est en recouvrement</div>
+                    <div class="kpi-group-label">
+                        <span id="kpi-groupe-titre">Ce qui est en recouvrement</span>
+                        <div class="seg seg-sm" id="seg-vue-echeance">
+                            <button class="seg-btn active" data-vue="retard">En retard</button>
+                            <button class="seg-btn" data-vue="nonEchu">Pas encore échu</button>
+                        </div>
+                    </div>
                     <div class="kpi-card">
                         <div class="kpi-icon kpi-red">
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                         </div>
                         <div class="kpi-data">
-                            <span class="kpi-label">Montant en retard</span>
+                            <span class="kpi-label" id="aide-kpi-1-label">Montant en retard</span>
                             <span class="kpi-value" id="kpi-euros-retard">—</span>
                             <span class="kpi-sub" id="kpi-euros-retard-sub"></span>
-                            <span class="aide-ligne">Montant des factures dont la date d'échéance, calculée selon les règles de financement, est dépassée à la date d'arrêté <strong>et qui ne sont toujours pas réglées</strong>. C'est l'argent que vous devez aller chercher. Les factures finalement payées, mais en retard, n'y figurent pas : elles sont dans « Encaissé ».</span>
+                            <span class="aide-ligne" id="aide-kpi-1-texte">Montant des factures dont la date d'échéance, calculée selon les règles de financement, est dépassée à la date d'arrêté <strong>et qui ne sont toujours pas réglées</strong>. C'est l'argent que vous devez aller chercher. Les factures finalement payées, mais en retard, n'y figurent pas : elles sont dans « Encaissé ».</span>
                         </div>
                     </div>
                     <div class="kpi-card">
@@ -284,10 +290,10 @@
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         </div>
                         <div class="kpi-data">
-                            <span class="kpi-label">Factures en retard</span>
+                            <span class="kpi-label" id="aide-kpi-2-label">Factures en retard</span>
                             <span class="kpi-value" id="kpi-nb-retard">—</span>
                             <span class="kpi-sub" id="kpi-nb-retard-sub"></span>
-                            <span class="aide-ligne">Nombre de factures dont l'échéance calculée est dépassée et qui ne sont pas réglées, tous tableaux confondus — recouvrement, ADV, OPCO et B2C selon les sources activées.</span>
+                            <span class="aide-ligne" id="aide-kpi-2-texte">Nombre de factures dont l'échéance calculée est dépassée et qui ne sont pas réglées, tous tableaux confondus — recouvrement, ADV, OPCO et B2C selon les sources activées.</span>
                         </div>
                     </div>
                     <div class="kpi-card">
@@ -295,10 +301,10 @@
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="21 3 21 9 15 9"/></svg>
                         </div>
                         <div class="kpi-data">
-                            <span class="kpi-label">% en recouvrement (€)</span>
+                            <span class="kpi-label" id="aide-kpi-3-label">% en recouvrement (€)</span>
                             <span class="kpi-value" id="kpi-taux-euros">—</span>
                             <span class="kpi-sub" id="kpi-taux-nb-sub"></span>
-                            <span class="aide-ligne">Montant en retard divisé par le <strong>total facturé</strong> de la période. Attention à ne pas le confondre avec la part du reste à encaisser qui est en retard : ce second pourcentage, plus élevé, figure sous « Reste à encaisser ».</span>
+                            <span class="aide-ligne" id="aide-kpi-3-texte">Montant en retard divisé par le <strong>total facturé</strong> de la période. Attention à ne pas le confondre avec la part du reste à encaisser qui est en retard : ce second pourcentage, plus élevé, figure sous « Reste à encaisser ».</span>
                         </div>
                     </div>
                 </div>
@@ -1055,13 +1061,13 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.5.0"></script>
-<script src="js/store.js?v=2.5.0"></script>
-<script src="js/monday.js?v=2.5.0"></script>
-<script src="js/ingest.js?v=2.5.0"></script>
-<script src="js/metrics.js?v=2.5.0"></script>
-<script src="js/prelevements.js?v=2.5.0"></script>
-<script src="js/ui.js?v=2.5.0"></script>
-<script src="app.js?v=2.5.0"></script>
+<script src="js/rules.js?v=2.6.0"></script>
+<script src="js/store.js?v=2.6.0"></script>
+<script src="js/monday.js?v=2.6.0"></script>
+<script src="js/ingest.js?v=2.6.0"></script>
+<script src="js/metrics.js?v=2.6.0"></script>
+<script src="js/prelevements.js?v=2.6.0"></script>
+<script src="js/ui.js?v=2.6.0"></script>
+<script src="app.js?v=2.6.0"></script>
 </body>
 </html>

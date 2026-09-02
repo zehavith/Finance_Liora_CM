@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.5.0 — 2 septembre 2026
+   v2.6.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.5.0';
+    const VERSION = '2.6.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -96,6 +96,7 @@
             evoCatUnite: 'nb',
             evoDetail: false,
             reglOrigine: 'recouvrement',
+            vueEcheance: 'retard',
             finDetail: null,
             // Fenêtre des graphiques mensuels : l'historique remonte à 2021,
             // mais deux ans suffisent à lire une tendance sans écraser l'axe.
@@ -576,21 +577,29 @@
         const v = X.vueEnsemble(data);
 
         // ── KPIs ──
+        // Le groupe central se lit de deux façons : ce qui est en retard, ou ce
+        // qui n'est pas encore échu. Les libellés et l'aide suivent la bascule.
+        rendreGroupeEcheance(v);
+        const nonEchu = state.ui.vueEcheance === 'nonEchu';
+
         // Le sous-titre disait « X déjà réglés en retard » juste sous le montant
         // en retard, ce qui laissait croire que ce montant en faisait partie.
         // Il n'en fait pas partie : ce KPI ne compte que l'échu impayé.
-        $('#kpi-euros-retard').textContent = U.euros(v.eurosEnRetard);
-        $('#kpi-euros-retard-sub').textContent = 'échues et toujours impayées';
+        $('#kpi-euros-retard').textContent = U.euros(nonEchu ? v.eurosNonEchues : v.eurosEnRetard);
+        $('#kpi-euros-retard-sub').textContent = nonEchu
+            ? 'émises, échéance à venir' : 'échues et toujours impayées';
 
-        $('#kpi-nb-retard').textContent = U.nombre(v.nbEnRetard);
-        $('#kpi-nb-retard-sub').textContent = `sur ${U.nombre(v.total)} factures · ${U.pourcent(v.tauxNb)}`;
+        $('#kpi-nb-retard').textContent = U.nombre(nonEchu ? v.nbNonEchues : v.nbEnRetard);
+        $('#kpi-nb-retard-sub').textContent = `sur ${U.nombre(v.total)} factures · `
+            + U.pourcent(nonEchu ? X.pct(v.nbNonEchues, v.total) : v.tauxNb);
 
         // Un pourcentage sans son dénominateur ne veut rien dire : celui-ci se
         // calcule sur le total facturé, pas sur le reste à encaisser, et les
         // deux lectures donnent des chiffres très différents.
-        $('#kpi-taux-euros').textContent = U.pourcent(v.tauxEuros);
+        $('#kpi-taux-euros').textContent =
+            U.pourcent(nonEchu ? v.tauxPortefeuilleNonEchu : v.tauxEuros);
         $('#kpi-taux-nb-sub').textContent =
-            `${U.eurosCourt(v.eurosEnRetard)} sur ${U.eurosCourt(v.totalEuros)} facturés`;
+            `${U.eurosCourt(nonEchu ? v.eurosNonEchues : v.eurosEnRetard)} sur ${U.eurosCourt(v.totalEuros)} facturés`;
 
         $('#kpi-total-euros').textContent = U.euros(v.totalEuros);
         $('#kpi-total-sub').textContent = `${U.nombre(v.total)} factures`;
@@ -1545,6 +1554,53 @@
     }
 
     /** Heatmap mois × financement du taux de retard. */
+    /**
+     * Le groupe central de la vue d'ensemble, à deux lectures.
+     *
+     * Ce qui est en retard répond au métier du recouvrement ; ce qui n'est pas
+     * encore échu répond à celui de la trésorerie — combien va rentrer, et
+     * quand. Les deux se lisent sur les mêmes trois cases, une bascule passant
+     * de l'une à l'autre, plutôt que de doubler la vue d'ensemble.
+     */
+    function rendreGroupeEcheance(v) {
+        const nonEchu = state.ui.vueEcheance === 'nonEchu';
+        const t = $('#kpi-groupe-titre');
+        if (t) t.textContent = nonEchu ? "Ce qui n'est pas encore échu" : 'Ce qui est en recouvrement';
+
+        const textes = nonEchu ? {
+            l1: 'Montant pas encore échu',
+            a1: "Montant des factures déjà émises dont l'échéance, calculée selon les règles de "
+              + "financement, <strong>n'est pas encore atteinte</strong>. C'est ce qui doit rentrer "
+              + 'sans avoir à le réclamer — la lecture trésorerie du portefeuille.',
+            l2: 'Factures pas encore échues',
+            a2: "Nombre de factures émises dont l'échéance est à venir. Elles ne sont ni en retard "
+              + 'ni réglées : elles attendent simplement leur date.',
+            l3: '% pas encore échu (€)',
+            a3: 'Montant pas encore échu divisé par le <strong>total facturé</strong> de la période. '
+              + 'Plus il est élevé, plus votre portefeuille est jeune.',
+        } : {
+            l1: 'Montant en retard',
+            a1: "Montant des factures dont la date d'échéance, calculée selon les règles de "
+              + "financement, est dépassée à la date d'arrêté <strong>et qui ne sont toujours pas "
+              + "réglées</strong>. C'est l'argent que vous devez aller chercher. Les factures "
+              + "finalement payées, mais en retard, n'y figurent pas : elles sont dans « Encaissé ».",
+            l2: 'Factures en retard',
+            a2: "Nombre de factures dont l'échéance calculée est dépassée et qui ne sont pas réglées, "
+              + 'tous tableaux confondus.',
+            l3: '% en recouvrement (€)',
+            a3: 'Montant en retard divisé par le <strong>total facturé</strong> de la période. '
+              + "À ne pas confondre avec la part du reste à encaisser qui est en retard : ce second "
+              + 'pourcentage, plus élevé, figure sous « Reste à encaisser ».',
+        };
+        const poser = (n, label, aide) => {
+            const l = $(`#aide-kpi-${n}-label`); if (l) l.textContent = label;
+            const a2 = $(`#aide-kpi-${n}-texte`); if (a2) a2.innerHTML = aide;
+        };
+        poser(1, textes.l1, textes.a1);
+        poser(2, textes.l2, textes.a2);
+        poser(3, textes.l3, textes.a3);
+    }
+
     /**
      * Ce que le recouvrement fait rentrer — et ce qui rentre sans lui.
      *
@@ -4382,6 +4438,11 @@
 
         brancherActes();
         brancherFenetreMois();
+        $$('#seg-vue-echeance .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.vueEcheance = b.dataset.vue;
+            $$('#seg-vue-echeance .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendreTout();
+        }));
         $$('#seg-regl-origine .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.reglOrigine = b.dataset.origine;
             $$('#seg-regl-origine .seg-btn').forEach(x => x.classList.toggle('active', x === b));

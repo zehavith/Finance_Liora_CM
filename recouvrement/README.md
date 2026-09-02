@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.5.0** — 2 septembre 2026
+**Version 2.6.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.5.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.6.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -661,6 +661,13 @@ l'ensemble. Seuls les six principaux sont montrés, les autres à la demande, po
 que la barre ne devienne pas plus haute que les graphiques qu'elle surplombe.
 
 ### Le fil du tableau de bord
+
+Le groupe central de la vue d'ensemble a **deux lectures**, une bascule passant
+de l'une à l'autre sur les mêmes trois cases : *En retard* — ce qu'il faut aller
+chercher, le métier du recouvrement — et *Pas encore échu* — ce qui doit rentrer
+sans avoir à le réclamer, la lecture trésorerie. Les intitulés et les phrases
+d'aide suivent la bascule, de sorte qu'aucune case ne peut être lue pour une
+autre.
 
 La vue d'ensemble suit la même règle que le reste : **le portefeuille d'abord**
 — ce qui a été facturé, encaissé, ce qu'il reste à encaisser — puis **ce qui est
