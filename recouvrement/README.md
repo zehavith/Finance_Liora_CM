@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.12.0** — 2 septembre 2026
+**Version 2.13.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.12.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.13.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -720,33 +720,44 @@ lui, décrit un règlement partiel et fait foi.
 
 ### Grand livre lettré
 
-**Le grand livre fait foi.** La comptabilité étant plus fiable que la saisie
-manuelle, une date lettrée est toujours retenue : elle comble les dates absentes
-de Monday et remplace celles qui divergent. La date Monday d'origine reste
-consultable dans la fiche de la facture, mais n'entre plus dans les calculs.
+Un grand livre ne porte pas une ligne par facture mais **une ligne par
+écriture** : la facture au débit, le règlement au crédit, l'avoir au crédit lui
+aussi. Le virement bancaire ne nomme jamais la facture — c'est la **lettre de
+lettrage**, au sein d'un même compte client, qui les rattache.
 
-L'origine de chaque date est traçable : marqueur **GL** dans
-la colonne *Paiement*, ligne « Date retenue pour le retard » dans la fiche, et
-compte-rendu du rapprochement dans l'historique des imports.
+Le lire ligne à ligne comme une liste de règlements revenait à déclarer
+encaissée toute facture qui y apparaît, y compris celles qui n'ont jamais été
+payées. L'application regroupe donc les écritures par **compte + lettre**, et
+lit le sort de chaque facture dans l'équilibre de son groupe :
 
-### En recouvrement n'est pas la même chose que sur le tableau recouvrement
+| Le groupe | Ce que ça veut dire | Effet |
+|---|---|---|
+| débits = crédits, un règlement au crédit | soldée par un règlement | payée, à la date du dernier règlement |
+| débits = crédits, seulement des avoirs | **annulée par avoir** | sort du portefeuille, mais ne compte pas comme récupérée |
+| débits ≠ crédits | reste dû | signalée, jamais appliquée contre Monday |
 
-Les deux se confondent facilement, et ne coïncident pas :
+L'**avoir** est la distinction qui compte : la créance a disparu sans qu'un
+euro rentre. La compter encaissée gonflerait le taux de récupération d'un
+argent qui n'existe pas ; la laisser en retard ferait relancer une facture
+annulée. Elle a donc son propre état, **Annulée par avoir**, filtrable comme
+les autres.
 
-- **sur le tableau recouvrement** : où la facture se trouve dans Monday — un
-  choix de gestion, fait à la main ;
-- **en recouvrement** : sa date d'échéance calculée est dépassée et elle n'est
-  pas réglée — un fait, recalculé à chaque arrêté.
+Une facture que Monday donne réglée et que le grand livre ne solde pas est
+**signalée en Data Quality, jamais appliquée** : un extrait ne couvre qu'un
+exercice, et une facture soldée avant sa première date y figure en à-nouveau.
+Contredire Monday sur cette base ferait plus de dégâts que de bien.
 
-Une facture peut donc être posée sur le tableau *1.2. Entreprise -
-Recouvrement* sans être en retard : soit elle y est arrivée avant son terme,
-soit la règle de financement appliquée ne dit pas la même chose que l'ADV. Data
-Quality les liste sous **« Sur le tableau recouvrement, mais pas encore
-échue »** — la fiche de chaque facture indique sur quelle date son échéance a
-été calculée.
+Le grand livre complète aussi les vides, comme Sellsy : montant comptabilisé et
+date de facture là où le tableau est muet. La comptabilité restant plus fiable
+que la saisie, **une date lettrée remplace celle de Monday**, qui est conservée
+dans la fiche pour référence.
 
-Le filtre s'appelle **Recouvrement Corporate** et non « Recouvrement » : le
-tableau 1.2 ne suit que les entreprises, le B2C n'a pas d'équivalent.
+Un fichier simple « numéro de facture + date de règlement » reste accepté : il
+est reconnu à l'absence de colonnes de lettrage et de débit/crédit.
+
+Colonnes reconnues : *N° de compte*, *Let.*, *Journal*, *Date*, *N° de
+facture*, *Libellé de pièce*, *Débit*, *Crédit*, *Tiers*, *Date d'échéance* —
+les libellés de Pennylane, Sage et Cegid.
 
 ## Indicateurs de recouvrement
 

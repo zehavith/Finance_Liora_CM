@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.12.0 — 2 septembre 2026
+   v2.13.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.12.0';
+    const VERSION = '2.13.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -22,6 +22,7 @@
     const X = window.LioraMetrics;
     const U = window.LioraUI;
     const SE = window.LioraSellsy;
+    const GL = window.LioraGrandLivre;
     const { $, $$ } = U;
 
     // ══════════════════════════════════════════════
@@ -41,6 +42,7 @@
         // Contrôle d'exhaustivité Sellsy ↔ Monday
         sellsy: { lignes: [], mapping: {}, entetes: [], ignorees: 0, nomFichier: null, date: null },
         sellsyResultat: null,
+        glLecture: null,
 
         // Prélèvements GoCardless
         gcl: { paiements: [], clients: [], mandats: [], abonnements: [], fichiers: [], unite: null },
@@ -187,6 +189,8 @@
                 recalculerPrelevements();
             }
         } catch (e) { console.warn('[Recouvrement] Rechargement GoCardless impossible', e); }
+
+        try { state.glLecture = await S.get('rec_gl_lecture', null); } catch { /* ignore */ }
 
         try {
             const sellsy = revivreSellsy(await S.get(S.KEYS.sellsy, null));
@@ -516,7 +520,8 @@
     function rendreChipsEtats() {
         const c = $('#chips-etats');
         if (!c) return;
-        const etats = ['En retard', 'Non échue', 'Payée en retard', 'Payée', 'Échéance inconnue'];
+        const etats = ['En retard', 'Non échue', 'Payée en retard', 'Payée',
+            'Annulée par avoir', 'Échéance inconnue'];
         c.innerHTML = '';
         for (const e of etats) {
             const b = document.createElement('button');
@@ -4620,32 +4625,53 @@
         return r;
     }
 
-    /** Import du grand livre pointé : numéro de facture → date de règlement. */
+    /**
+     * Import du grand livre client.
+     *
+     * Deux formats sont acceptés : l'extrait comptable lettré — une ligne par
+     * écriture, la facture au débit et le règlement au crédit, rattachés par la
+     * lettre de lettrage — et la simple liste « numéro + date de règlement ».
+     * Le premier est reconnu à ses colonnes de lettrage et de débit/crédit.
+     */
     async function importerGrandLivre(file) {
         try {
             const rows = await lireFichier(file);
             if (!rows.length) { U.toast('Fichier vide.', 'error'); return; }
 
-            const cols = Object.keys(rows[0]).map(h => ({ id: h, title: h }));
-            const map = I.autoMapColumns(cols);
-            const colNum = map.numero, colDate = map.datePaiement || map.dateFacture, colMt = map.montant;
-
-            if (!colNum || !colDate) {
-                U.toast("Colonnes « numéro de facture » et « date de règlement » introuvables dans le fichier.", 'error', 9000);
+            const lu = GL.lire(rows);
+            if (lu.erreur) { U.toast(lu.erreur + ' Colonnes trouvées : '
+                + lu.entetes.slice(0, 10).join(', '), 'error', 12000); return; }
+            if (!lu.lignes.length) {
+                U.toast("Aucune facture identifiable dans ce grand livre : ni numéro de facture "
+                    + "au débit, ni lettrage exploitable.", 'error', 10000);
                 return;
             }
 
-            state.grandLivre = rows.map(r => ({
-                numero: r[colNum], datePaiement: r[colDate], montant: colMt ? r[colMt] : null,
-            })).filter(l => l.numero);
+            state.grandLivre = lu.lignes.map(l => ({
+                ...l,
+                datePaiement: l.datePaiement ? l.datePaiement.toISOString() : null,
+                dateFacture: l.dateFacture ? l.dateFacture.toISOString() : null,
+                dateEcheance: l.dateEcheance ? l.dateEcheance.toISOString() : null,
+                dateAvoir: l.dateAvoir ? l.dateAvoir.toISOString() : null,
+            }));
+            state.glLecture = { ...lu.stats, fichier: file.name };
 
             await S.set(S.KEYS.grandLivre, state.grandLivre);
+            await S.set('rec_gl_lecture', state.glLecture);
             recalculer({ conserverPeriode: true });
             rendreHistoriqueImports();
+
             const st = state.glStats || {};
-            U.toast(`Grand livre intégré : ${U.nombre(st.rapprochees || 0)} factures rapprochées, `
-                + `${U.nombre(st.completees || 0)} dates de paiement complétées`
-                + (st.remplacees ? `, ${U.nombre(st.remplacees)} remplacées` : '') + '.', 'success', 8000);
+            const l = lu.stats;
+            U.toast(`Grand livre ${l.comptable ? 'comptable' : ''} intégré : `
+                + `${U.nombre(l.nbFactures)} factures sur ${U.nombre(l.nbLignes)} écritures, `
+                + `${U.nombre(l.nbSoldeesParReglement)} soldées par règlement`
+                + (l.nbSoldeesParAvoir ? `, ${U.nombre(l.nbSoldeesParAvoir)} par avoir` : '')
+                + (l.nbOuvertes ? `, ${U.nombre(l.nbOuvertes)} encore ouvertes` : '')
+                + `. ${U.nombre(st.rapprochees || 0)} retrouvées dans Monday`
+                + (st.completees ? `, ${U.nombre(st.completees)} dates complétées` : '')
+                + (st.remplacees ? `, ${U.nombre(st.remplacees)} remplacées` : '') + '.',
+                'success', 12000);
         } catch (e) {
             U.toast(e.message, 'error', 9000);
         }

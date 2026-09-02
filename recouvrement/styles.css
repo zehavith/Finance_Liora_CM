@@ -515,6 +515,9 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
 .st-paye-retard { background: var(--amber-bg); color: var(--amber); }
 .st-paye { background: var(--green-bg); color: var(--green); }
 .st-non-echue { background: rgba(59, 130, 246, 0.14); color: var(--blue-400); }
+/* Annulée par avoir : sortie du portefeuille sans encaissement — ni le vert
+   des règlements, ni le rouge du retard. */
+.st-annulee { background: rgba(139, 92, 246, 0.14); color: var(--purple-300); }
 .st-inconnu { background: rgba(255, 255, 255, 0.05); color: var(--text-muted); }
 
 /* ============================

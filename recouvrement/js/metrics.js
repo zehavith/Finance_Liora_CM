@@ -1155,6 +1155,22 @@
             + "financement appliquée n'est pas la bonne — la fiche de chaque facture indique "
             + "sur quelle date son échéance a été calculée.");
 
+        // Le grand livre est la comptabilité : quand il contredit Monday, ce
+        // n'est pas lui qu'il faut corriger. Les deux cas sont signalés sans
+        // être appliqués — l'extrait ne couvre qu'un exercice, et une facture
+        // soldée avant sa première date y figure en à-nouveau.
+        push('GL_OUVERTE', "Réglée dans Monday, ouverte au grand livre", 'haute',
+            factures.filter(f => f.grandLivreOuverte && f.paye),
+            "Monday les donne encaissées, la comptabilité ne les a pas soldées. Soit le "
+            + "règlement n'est pas lettré, soit il n'a jamais eu lieu. À vérifier avant de "
+            + "les sortir du portefeuille.");
+
+        push('GL_AVOIR', "Annulées par avoir", 'moyenne',
+            factures.filter(f => f.soldeeParAvoir),
+            "Soldées au grand livre par un avoir, non par un règlement : la créance a été "
+            + "annulée, rien n'est rentré. Elles sortent du portefeuille sans compter dans ce "
+            + "que le recouvrement a récupéré — les compter encaissées gonflerait le taux.");
+
         push('MONTANT', "Montant absent ou nul", 'haute',
             factures.filter(f => f.montant == null || f.montant === 0),
             "Sans montant, la facture ne pèse pas dans les indicateurs en euros.");

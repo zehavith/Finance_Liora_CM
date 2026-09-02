@@ -665,50 +665,112 @@
     }
 
     /**
-     * Applique un extrait de grand livre lettré (numéro → date de règlement).
+     * Reporte sur les factures ce que dit le grand livre.
      *
-     * Le grand livre fait foi : la comptabilité est plus fiable que la saisie
-     * Monday. Une date lettrée remplace donc toujours celle du tableau, et la
-     * date Monday d'origine est conservée pour référence dans la fiche.
+     * La comptabilité est plus fiable que la saisie Monday : une date lettrée
+     * remplace donc celle du tableau, et la date Monday d'origine est conservée
+     * pour référence dans la fiche.
      *
-     * @returns {{completees:number, remplacees:number, rapprochees:number}}
+     * Mais le grand livre ne dit pas seulement « réglée ». Il distingue trois
+     * sorts, et les confondre fausse le recouvrement dans les deux sens :
+     * — soldée par un règlement : l'argent est rentré ;
+     * — soldée par un avoir : la créance a été annulée, rien n'est rentré, et
+     *   il n'y a plus rien à relancer — la compter comme encaissée gonflerait
+     *   le taux de récupération d'un argent qui n'existe pas ;
+     * — présente mais non soldée : elle reste à recouvrer. La marquer payée
+     *   parce qu'elle figure dans le fichier était l'erreur de la lecture
+     *   ligne à ligne.
+     *
+     * @returns {{completees:number, remplacees:number, rapprochees:number,
+     *            soldees:number, avoirs:number, ouvertes:number}}
      */
     function appliquerGrandLivre(factures, gl) {
-        if (!gl || !gl.length) return { completees: 0, remplacees: 0, rapprochees: 0 };
+        const vide = { completees: 0, remplacees: 0, rapprochees: 0, soldees: 0, avoirs: 0, ouvertes: 0 };
+        if (!gl || !gl.length) return vide;
+
+        // Le grand livre est conservé sérialisé entre deux sessions : ses dates
+        // reviennent en texte. Les reconvertir ici, à l'entrée, évite qu'une
+        // chaîne se retrouve là où le calcul attend une date — l'échéance
+        // plantait alors sur toute la passe, et l'erreur ne disait rien.
+        const asDate = v => (v instanceof Date ? v : R.parseDate(v));
+
         const index = new Map();
         for (const l of gl) {
-            const k = factureKey(l.numero);
+            const k = l.cle || factureKey(l.numero);
             if (!k) continue;
-            const d = R.parseDate(l.datePaiement);
+            const d = asDate(l.datePaiement);
             const prev = index.get(k);
-            // On retient le lettrage le plus tardif (solde définitif)
-            if (!prev || (d && prev.date && d > prev.date) || (d && !prev.date)) {
-                index.set(k, { date: d, montant: parseMontant(l.montant) });
+            // Une facture peut apparaître dans plusieurs lettrages (règlement
+            // en plusieurs fois) : on retient le lettrage qui la solde, et à
+            // défaut le plus tardif.
+            const candidat = { ...l, date: d,
+                dateFacture: asDate(l.dateFacture), dateEcheance: asDate(l.dateEcheance),
+                dateAvoir: asDate(l.dateAvoir) };
+            if (!prev
+                || (candidat.soldee && !prev.soldee)
+                || (candidat.soldee === prev.soldee && d && prev.date && d > prev.date)
+                || (candidat.soldee === prev.soldee && d && !prev.date)) {
+                index.set(k, candidat);
             }
         }
-        let completees = 0, remplacees = 0, rapprochees = 0;
+
+        const st = { ...vide };
         for (const f of factures) {
             if (!f.cle) continue;
             const hit = index.get(f.cle);
             if (!hit) continue;
 
-            rapprochees++;
-            f.paye = true;
+            st.rapprochees++;
             f.grandLivre = true;
+            f.grandLivreLettre = hit.lettre || null;
 
+            if (!hit.soldee) {
+                // Le grand livre la connaît et ne la solde pas : c'est une
+                // créance ouverte, quoi qu'en dise le tableau Monday.
+                // Signalé, non appliqué : l'extrait ne couvre qu'un exercice,
+                // et une facture soldée avant sa première date y apparaît en
+                // à-nouveau. Contredire Monday sur cette base ferait plus de
+                // dégâts que de bien — Data Quality met les deux face à face.
+                st.ouvertes++;
+                f.grandLivreOuverte = true;
+                if (hit.resteGroupe > 0 && hit.nbFacturesGroupe === 1) f.resteGrandLivre = hit.resteGroupe;
+                continue;
+            }
+
+            st.soldees++;
+            if (hit.parAvoir) {
+                // Annulée par avoir : plus rien à relancer, mais rien n'est
+                // rentré non plus. Elle sort du portefeuille sans compter dans
+                // ce que le recouvrement a récupéré.
+                st.avoirs++;
+                f.soldeeParAvoir = true;
+                f.avoirsGrandLivre = hit.avoirs || [];
+                f.dateAvoir = hit.dateAvoir || null;
+                f.originePaiement = 'Avoir (grand livre)';
+                continue;
+            }
+
+            f.paye = true;
             if (hit.date) {
-                if (!f.datePaiement) { f.datePaiement = hit.date; completees++; f.dateVientDuGL = true; }
+                if (!f.datePaiement) { f.datePaiement = hit.date; st.completees++; f.dateVientDuGL = true; }
                 else if (+hit.date !== +f.datePaiement) {
                     f.datePaiementMonday = f.datePaiement;
                     f.datePaiement = hit.date;
-                    remplacees++;
+                    st.remplacees++;
                     f.dateVientDuGL = true;
                 }
             }
-            if (hit.montant != null && f.montantRegle == null) f.montantRegle = hit.montant;
+            if (hit.montantRegle != null && f.montantRegle == null) f.montantRegle = hit.montantRegle;
+            // Le grand livre porte le montant comptabilisé de la facture : il
+            // vaut mieux qu'un tableau muet.
+            if ((f.montant == null || f.montant === 0) && hit.montant) {
+                f.montant = hit.montant;
+                f.montantVientDuGL = true;
+            }
+            if (!f.dateFacture && hit.dateFacture) { f.dateFacture = hit.dateFacture; f.dateFactureVientDuGL = true; }
             f.originePaiement = 'Grand livre lettré';
         }
-        return { completees, remplacees, rapprochees };
+        return st;
     }
 
     /**
@@ -887,9 +949,15 @@
             // encore rapproché. Elles ne sont donc plus à recouvrer.
             else if (f.etape === 'COMPTA') motif = 'Groupe de comptabilité — règlement à rapprocher';
 
-            const paye = motif != null;
+            // Annulée par avoir : la créance a disparu sans qu'un euro rentre.
+            // La laisser « payée » la ferait compter dans ce que le
+            // recouvrement a récupéré, alors qu'il n'a rien récupéré du tout.
+            // Elle n'est pas non plus à relancer : elle sort du portefeuille.
+            if (f.soldeeParAvoir) motif = null;
+
+            const paye = motif != null && !f.soldeeParAvoir;
             f.paye = paye;
-            f.motifPaye = motif;
+            f.motifPaye = f.soldeeParAvoir ? 'Annulée par un avoir au grand livre' : motif;
 
             // Signaux de règlement portés par un tableau opérationnel : ils ne
             // valent pas paiement, mais méritent d'être signalés.
@@ -923,8 +991,17 @@
             else if (f.montant != null) f.encours = Math.max(0, f.montant - (f.montantRegle || 0));
             else f.encours = 0;
 
+            // Une créance annulée n'est plus un encours.
+            if (f.soldeeParAvoir) f.encours = 0;
+
             // Retard
-            if (!f.dateEcheance) {
+            if (f.soldeeParAvoir) {
+                // La créance a été annulée : ni en retard, ni encaissée. La
+                // ranger dans l'un ou l'autre fausserait le taux de
+                // récupération — dans un sens comme dans l'autre.
+                f.retardJours = null;
+                f.etat = 'Annulée par avoir';
+            } else if (!f.dateEcheance) {
                 f.retardJours = null;
                 f.etat = 'Échéance inconnue';
             } else if (paye) {

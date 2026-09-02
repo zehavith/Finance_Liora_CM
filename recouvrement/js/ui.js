@@ -69,6 +69,7 @@
             case 'Payée en retard': return 'st-paye-retard';
             case 'Payée': return 'st-paye';
             case 'Non échue': return 'st-non-echue';
+            case 'Annulée par avoir': return 'st-annulee';
             default: return 'st-inconnu';
         }
     }
