@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.0.0 — 2 septembre 2026
+   v2.1.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.0.0';
+    const VERSION = '2.1.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -99,10 +99,6 @@
             // Fenêtre des graphiques mensuels : l'historique remonte à 2021,
             // mais deux ans suffisent à lire une tendance sans écraser l'axe.
             fenetreMois: 24,
-            qualifChoix: null,
-            qualifUnite: 'nb',
-            qualifToutes: false,
-            qualifBoardsExclus: new Set(),
         },
 
         moisDispo: [],
@@ -489,8 +485,7 @@
             ? (mois.length === 1 ? U.moisLabel(mois[0]) : U.moisLabel(mois[0]) + ' → ' + U.moisLabel(mois[mois.length - 1]))
             : 'Aucune période';
         const compl = ` · ${U.nombre(data.length)} factures · arrêté au ${U.dateFR(state.filtres.dateRef)}`;
-        ['#period-badge', '#aging-badge', '#fin-badge', '#factures-badge', '#quality-badge',
-         '#qualif-badge'].forEach(sel => {
+        ['#period-badge', '#aging-badge', '#fin-badge', '#factures-badge', '#quality-badge'].forEach(sel => {
             const el = $(sel); if (el) el.textContent = txt + compl;
         });
     }
@@ -1970,6 +1965,7 @@
 
         const lot = data.filter(f => (f.financement || 'INCONNU') === cle);
         const regle = R.getRule(cle, state.rules);
+        const douteuses = X.creancesDouteuses(lot);
 
         // ── Les qualifications de cette catégorie, tableau par tableau ──
         const parTableau = X.qualificationsParTableau(lot, false);
@@ -2037,6 +2033,10 @@
                     ${tuileDetail(U.nombre(ligne.nbEnRetard), 'En retard', U.euros(ligne.eurEnRetard), U.couleurs.retard)}
                     ${tuileDetail(U.nombre(ligne.nbNonEchues), 'Pas encore échu', U.euros(ligne.eurNonEchues), U.couleurs.nonEchue)}
                     ${tuileDetail(U.jours(ligne.retardMoyen), 'Retard moyen', `${U.pourcent(ligne.tauxNb, 1)} des factures en retard`, U.couleurs.payeRetard)}
+                    ${douteuses.nb
+                        ? tuileDetail(U.nombre(douteuses.nb), 'Créances douteuses',
+                            `${U.euros(douteuses.euros)} — contentieux et pertes`, U.couleurs.inconnu)
+                        : ''}
                 </div>
                 ${blocsQualif || '<p class="fv-hint">Aucune colonne de qualification sur les tableaux de cette catégorie.</p>'}
                 ${blocPrlv}
@@ -3061,13 +3061,26 @@
         });
 
         const couv = board.couverture || {};
+
+        // Les valeurs brutes conservées à l'import servent à juger des colonnes
+        // candidates, sans repasser par Monday.
+        const brutesBoard = state.brutes.filter(f => String(f.boardId) === String(board.id) && f.__brut);
+        const valeursDe = colId => brutesBoard.slice(0, 300).map(f => f.__brut[colId] || '');
+
         const rows = defs.map(def => {
             const c = couv[def.field];
+            const essentiel = ESSENTIELS.includes(def.field);
+            const taux = mapping[def.field] ? (c ? c.taux : null) : null;
+            // On ne propose que là où c'est utile : champ essentiel non pourvu,
+            // ou pourvu par une colonne presque vide.
+            const aBesoin = essentiel && brutesBoard.length
+                && (!mapping[def.field] || (taux != null && taux < 50));
             return {
-                field: def.field, label: def.label,
-                essentiel: ESSENTIELS.includes(def.field),
+                field: def.field, label: def.label, essentiel,
                 colId: mapping[def.field] || '',
-                taux: mapping[def.field] ? (c ? c.taux : null) : null,
+                taux,
+                candidats: aBesoin
+                    ? I.colonnesCandidates(board.columns, mapping, valeursDe, def.field) : [],
                 exemple: exempleValeur(board, mapping[def.field]),
             };
         });
@@ -3082,6 +3095,15 @@
                     + board.columns.map(c => `<option value="${U.escapeHtml(c.id)}"${c.id === v ? ' selected' : ''}>${U.escapeHtml(c.title)}${c.type ? ' (' + c.type + ')' : ''}</option>`).join('')
                     + '</select>',
             },
+            // Quand un champ essentiel n'est pas pourvu, deviner un nom de plus
+            // ne mène nulle part : on montre les colonnes dont les valeurs
+            // conviendraient, et il suffit d'en désigner une.
+            { key: 'candidats', label: 'Colonnes possibles', sortable: false,
+              title: 'Colonnes de ce tableau dont les valeurs conviendraient à ce champ',
+              format: (v, r) => (!v || !v.length) ? ''
+                  : v.map(c => `<button class="candidat" data-champ="${r.field}" data-col="${U.escapeHtml(c.id)}"`
+                      + ` title="${U.escapeHtml(c.title)} — ${U.pourcent(c.taux, 0)} rempli · ex. « ${U.escapeHtml(String(c.exemple).slice(0, 30))} »">`
+                      + `${U.escapeHtml(c.title)}</button>`).join('') },
             // Une colonne bien nommée mais jamais renseignée produit exactement
             // les mêmes zéros qu'une colonne absente : le taux le dit.
             { key: 'taux', label: 'Renseignée', align: 'right',
@@ -3095,6 +3117,14 @@
               } },
             { key: 'exemple', label: 'Exemple de valeur', cls: () => 'cell-note' },
         ], rows, { vide: '—' });
+
+        $$('.candidat', el).forEach(b => b.addEventListener('click', () => {
+            board.mapping = board.mapping || {};
+            board.mapping[b.dataset.champ] = b.dataset.col;
+            sauverBoards();
+            rendreTableMapping();
+            U.toast('Correspondance mise à jour — rechargez ce tableau pour l\'appliquer.', 'info', 7000);
+        }));
 
         $$('.map-sel', el).forEach(s => s.addEventListener('change', () => {
             board.mapping = board.mapping || {};

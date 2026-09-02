@@ -1088,3 +1088,14 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
 .qualif-barre-piste { height: 8px; border-radius: 4px; background: rgba(255,255,255,.06); overflow: hidden; }
 .qualif-barre-jauge { display: block; height: 100%; border-radius: 4px; }
 .qualif-barre-pied { font-size: 11px; color: var(--text-muted); }
+
+
+/* Colonnes proposées quand un champ essentiel n'est pas pourvu */
+.candidat {
+    display: inline-block; margin: 2px 4px 2px 0; padding: 3px 10px;
+    border: 1px dashed var(--border-hover, rgba(255,255,255,.25));
+    border-radius: 999px; background: none; color: var(--text-secondary);
+    font: inherit; font-size: 11px; cursor: pointer; max-width: 220px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
+}
+.candidat:hover { border-style: solid; border-color: var(--red, #F47458); color: var(--text-primary); }

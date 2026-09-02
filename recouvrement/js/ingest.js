@@ -344,6 +344,48 @@
     }
 
     /**
+     * Colonnes qui pourraient convenir à un champ, d'après leurs valeurs.
+     *
+     * Élargir la liste des noms reconnus ne fait que déplacer la limite : il
+     * restera toujours une colonne nommée autrement. Plutôt que de deviner, on
+     * regarde ce que les colonnes contiennent — des nombres pour un montant,
+     * des dates pour une date — et on propose celles qui conviendraient, à
+     * charge pour l'utilisatrice de désigner la bonne.
+     *
+     * @param {Array} colonnes    [{id, title, type}]
+     * @param {Object} mapping    associations déjà retenues
+     * @param {Function} valeurs  id de colonne → valeurs observées
+     * @param {string} champ      champ à pourvoir
+     * @returns {Array} [{id, title, remplies, taux, exemple}] les mieux remplies d'abord
+     */
+    function colonnesCandidates(colonnes, mapping, valeurs, champ) {
+        // Seuls les champs dont les valeurs se reconnaissent — dates, montants,
+        // numéros — peuvent être proposés. Pour un type de financement, toute
+        // colonne de texte conviendrait : proposer les unes plutôt que les
+        // autres serait du bruit, pas une aide.
+        const verifiable = champ.startsWith('date') || champ.startsWith('montant')
+            || champ === 'resteDu' || champ === 'numero';
+        if (!verifiable) return [];
+
+        const prises = new Set(Object.values(mapping || {}));
+        const out = [];
+        for (const c of (colonnes || [])) {
+            if (prises.has(c.id)) continue;
+            const brutes = (valeurs(c.id) || [])
+                .map(v => (v == null ? '' : String(v).trim())).filter(Boolean);
+            if (!brutes.length) continue;
+            if (!verifierValeurs(champ, brutes).ok) continue;
+            // Le champ doit vraiment être servi : une colonne à peine remplie
+            // ne réglera pas un montant absent.
+            const total = (valeurs(c.id) || []).length || brutes.length;
+            const taux = (brutes.length / total) * 100;
+            if (taux < 20) continue;
+            out.push({ id: c.id, title: c.title, remplies: brutes.length, taux, exemple: brutes[0] });
+        }
+        return out.sort((a, b) => b.taux - a.taux).slice(0, 6);
+    }
+
+    /**
      * Colonnes de qualification d'un tableau : les listes de choix qui portent
      * le vocabulaire métier — « Problématique pré-échéance », « Qualification
      * recouvrement », « Type de paiement ». Elles varient d'un tableau à
@@ -789,7 +831,7 @@
     global.LioraIngest = {
         FIELD_DEFS, FIELD_BY_NAME, autoMapColumns, parseMontant, factureKey,
         buildFacture, facturesFromMondayBoard, facturesFromRows, colonnesQualification,
-        validerMapping, couvertureMapping, verifierValeurs,
+        validerMapping, couvertureMapping, verifierValeurs, colonnesCandidates,
         consolider, appliquerGrandLivre, enrichir, statutIndiquePaye,
     };
 })(window);

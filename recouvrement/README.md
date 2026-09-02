@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.0.0** — 2 septembre 2026
+**Version 2.1.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.0.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.1.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -366,6 +366,19 @@ La même mesure alimente une anomalie *Data Quality*, « Colonnes essentielles n
 reconnues », qui nomme le tableau, le champ, le taux constaté et l'effet sur les
 indicateurs. Il n'est donc pas nécessaire d'ouvrir les tableaux un par un pour
 s'en apercevoir.
+
+### Colonnes proposées
+
+Élargir la liste des noms reconnus ne fait que déplacer la limite : il restera
+toujours une colonne nommée autrement. Quand un champ essentiel n'est pas pourvu
+— ou l'est par une colonne remplie à moins de la moitié — l'écran de
+correspondance **propose les colonnes dont les valeurs conviendraient**, jugées
+sur leur contenu et non sur leur nom : celles qui portent des nombres pour un
+montant, des dates pour une date. Un clic sur l'une d'elles l'associe.
+
+La proposition ne vaut que pour les champs dont les valeurs se reconnaissent —
+dates, montants, numéros. Pour un type de financement, n'importe quelle colonne
+de texte conviendrait : en proposer serait du bruit, pas une aide.
 
 ### Pourquoi une facture n'a pas d'échéance
 
