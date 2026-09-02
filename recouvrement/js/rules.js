@@ -151,11 +151,15 @@
             match: ['etat', 'public etat', 'ministere', 'prefecture'],
         },
         {
+            // « Interne », « Interne - UE » : le vocabulaire de Zoho pour les
+            // refacturations entre entités du groupe. La correspondance la plus
+            // longue l'emportant, « Interne - DST Allemagne » reste capté par
+            // sa règle propre.
             key: 'INTERCO', label: 'Interco',
             base: 'dateFinFormation', jours: 60,
             fallback: 'dateFacture', fallbackJours: 60,
             note: 'Fin de formation +60 jours', categorie: 'Interco', perimetre: 'Corporate',
-            match: ['interco', 'intercompany', 'inter co', 'intra groupe'],
+            match: ['interco', 'intercompany', 'inter co', 'intra groupe', 'interne', 'interne ue', 'intra groupe', 'inter societe'],
         },
         {
             key: 'DST_ALLEMAGNE', label: 'Interne - DST Allemagne',

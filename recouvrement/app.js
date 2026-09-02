@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.29.1 — 2 septembre 2026
+   v2.29.2 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.29.1';
+    const VERSION = '2.29.2';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -22,6 +22,20 @@
     const X = window.LioraMetrics;
     const U = window.LioraUI;
     const SE = window.LioraSellsy;
+    const Z = window.LioraZoho;
+
+    /**
+     * La facturation, Sellsy d'abord puis la table Zoho figée.
+     *
+     * Zoho n'émet plus rien : ses factures sont closes et embarquées dans
+     * l'application, il n'y a donc rien à recharger. Elles passent après
+     * l'export Sellsy, qui est la source vivante : sur un numéro connu des
+     * deux, c'est Sellsy qui l'emporte.
+     */
+    function lignesFacturation() {
+        const vivant = (state.sellsy && state.sellsy.lignes) || [];
+        return Z ? vivant.concat(Z.lignes()) : vivant;
+    }
     const GL = window.LioraGrandLivre;
     const { $, $$ } = U;
 
@@ -321,8 +335,11 @@
 
         // L'export Sellsy comble les vides de Monday — montants à zéro, dates
         // de facture absentes — avant tout calcul d'échéance, qui en dépend.
-        state.sellsyStats = state.sellsy.lignes.length
-            ? I.appliquerSellsy(consolidees, state.sellsy.lignes)
+        // La table Zoho figée compte comme une source de facturation : les
+        // factures « FA-… » qu'elle porte n'existent plus ailleurs.
+        const facturation = lignesFacturation();
+        state.sellsyStats = facturation.length
+            ? I.appliquerSellsy(consolidees, facturation)
             : null;
 
         I.enrichir(consolidees, {
@@ -2363,7 +2380,7 @@
             // fin de la formation, sans délai de paiement.
             mandats: clientsSousMandat(),
             factures: state.factures,
-            sellsy: state.sellsy.lignes,
+            sellsy: lignesFacturation(),
             historique: state.grandLivre,
             rules: state.rules,
         });
