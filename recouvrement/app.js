@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.13.0 — 2 septembre 2026
+   v2.14.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.13.0';
+    const VERSION = '2.14.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -43,6 +43,10 @@
         sellsy: { lignes: [], mapping: {}, entetes: [], ignorees: 0, nomFichier: null, date: null },
         sellsyResultat: null,
         glLecture: null,
+        glOuvertes: [],
+        glCreances: [],
+        glBalance: null,
+        glComparaison: null,
 
         // Prélèvements GoCardless
         gcl: { paiements: [], clients: [], mandats: [], abonnements: [], fichiers: [], unite: null },
@@ -91,6 +95,7 @@
             histoUnite: 'euros',
             repartitionOuverts: new Set(),
             agingDim: 'financement',
+            agingSource: 'monday',
             page: 1,
             pageSize: 50,
             tri: { key: 'retardJours', sens: 'desc' },
@@ -190,7 +195,10 @@
             }
         } catch (e) { console.warn('[Recouvrement] Rechargement GoCardless impossible', e); }
 
-        try { state.glLecture = await S.get('rec_gl_lecture', null); } catch { /* ignore */ }
+        try {
+            state.glLecture = await S.get('rec_gl_lecture', null);
+            state.glOuvertes = (await S.get('rec_gl_ouvertes', [])) || [];
+        } catch { /* ignore */ }
 
         try {
             const sellsy = revivreSellsy(await S.get(S.KEYS.sellsy, null));
@@ -312,6 +320,7 @@
         // Le contrôle Sellsy se lit sur les factures fraîchement consolidées :
         // un rechargement de Monday doit refermer les écarts qu'il a corrigés.
         recalculerSellsy();
+        recalculerBalanceGL();
         majMoisDisponibles(o.conserverPeriode);
         rendreTout();
     }
@@ -645,7 +654,7 @@
 
         switch (state.ui.onglet) {
             case 'dashboard':    rendreDashboard(data); break;
-            case 'aging':        rendreAging(data); break;
+            case 'aging':        rendreAging(data); rendreAgingSource(); break;
             case 'financements': rendreFinancements(data); break;
             case 'factures':     rendreFactures(data); break;
             case 'prelevements': rendrePrelevements(); break;
@@ -2052,6 +2061,286 @@
             },
         });
     }
+
+    // ══════════════════════════════════════════════
+    //  Balance âgée comptable et confrontation
+    // ══════════════════════════════════════════════
+
+    /**
+     * Reconstitue la balance âgée du grand livre.
+     *
+     * Elle ne dépend pas des filtres de la barre : c'est la photographie du
+     * compte client, et un filtre y ferait disparaître des créances que la
+     * comptabilité, elle, continue de porter. Seule la date d'arrêté compte.
+     */
+    function recalculerBalanceGL() {
+        const ouvertes = (state.glOuvertes || []).map(c => ({
+            ...c,
+            dateFacture: c.dateFacture ? R.parseDate(c.dateFacture) : null,
+            dateEcheance: c.dateEcheance ? R.parseDate(c.dateEcheance) : null,
+        }));
+        if (!ouvertes.length) { state.glBalance = null; state.glComparaison = null; return; }
+
+        const classees = GL.classer(ouvertes, {
+            factures: state.factures,
+            sellsy: state.sellsy.lignes,
+            historique: state.grandLivre,
+            rules: state.rules,
+        });
+        state.glCreances = classees;
+        state.glBalance = GL.balanceAgee(classees, state.filtres.dateRef, state.rules);
+
+        // La confrontation se fait sur le portefeuille Monday non réglé, sans
+        // filtre non plus : comparer une vue filtrée à un compte complet
+        // n'aurait aucun sens.
+        const monday = X.balanceAgeeParDimension(
+            state.factures, f => f.financement || 'INCONNU',
+            k => R.getRule(k, state.rules).label);
+        state.glComparaison = GL.comparer(state.glBalance,
+            monday.map(m => ({ cle: m.key, label: m.label, total: m.total, nb: m.nb })), state.rules);
+    }
+
+    function rendreAgingSource() {
+        const src = state.ui.agingSource;
+        $$('#seg-aging-source .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.source === src));
+        $('#aging-monday').hidden = src !== 'monday';
+        $('#aging-gl').hidden = src !== 'gl';
+        $('#aging-comparaison').hidden = src !== 'comparaison';
+
+        const charge = !!(state.glBalance && state.glBalance.rows.length);
+        const hint = $('#aging-source-hint');
+        hint.textContent = src === 'monday'
+            ? "Ce que le circuit Monday porte comme encours, filtres de la barre appliqués"
+            : src === 'gl'
+                ? "Le solde des comptes clients, sans filtre : la comptabilité ne connaît pas le circuit"
+                : "Les deux côte à côte, sans filtre";
+
+        if (src === 'gl') {
+            $('#aging-gl-vide').hidden = charge;
+            $('#aging-gl-contenu').hidden = !charge;
+            if (charge) rendreBalanceGL();
+        } else if (src === 'comparaison') {
+            rendreComparaisonAging();
+        }
+    }
+
+    /** Les colonnes d'ancienneté, de la plus ancienne à la plus récente. */
+    function colonnesAnciennete() {
+        return R.AGING_BUCKETS.slice().reverse();
+    }
+
+    function rendreBalanceGL() {
+        const b = state.glBalance;
+
+        $('#aging-gl-kpi').innerHTML = [
+            { couleur: U.couleurs.retard, valeur: U.euros(b.total.total),
+              label: 'Reste dû au grand livre', detail: `${U.nombre(b.total.nb)} créances`,
+              sub: 'solde des comptes clients, hors filtres' },
+            { couleur: U.couleurs.payeRetard, valeur: U.euros(b.total.echu),
+              label: 'Dont échu', detail: U.pourcent(b.total.total ? b.total.echu / b.total.total * 100 : null, 0) + ' du reste dû',
+              sub: 'exigible à la date d’arrêté' },
+            { couleur: U.couleurs.nonEchue, valeur: U.euros(b.total.nonEchu),
+              label: 'Non échu', detail: `${U.nombre(b.total.nb - (b.nbAClasser || 0))} créances classées`,
+              sub: 'pas encore exigible' },
+            { couleur: U.couleurs.inconnu, valeur: U.euros(b.eurosAClasser || 0),
+              label: 'À classer', detail: `${U.nombre(b.nbAClasser || 0)} créances`,
+              sub: 'aucun recoupement concluant' },
+        ].map(o => `
+            <div class="recup-card">
+                <span class="recup-bar" style="background:${o.couleur}"></span>
+                <span class="recup-taux">${o.valeur}</span>
+                <span class="recup-label">${U.escapeHtml(o.label)}</span>
+                <span class="recup-value">${o.detail}</span>
+                <span class="recup-sub">${U.escapeHtml(o.sub)}</span>
+            </div>`).join('');
+
+        const notes = [];
+        const origines = {};
+        for (const c of (state.glCreances || [])) {
+            const k = c.origineClassement || 'Non classé';
+            origines[k] = (origines[k] || 0) + 1;
+        }
+        notes.push('Financement recoupé depuis : '
+            + Object.entries(origines).map(([k, n]) => `${k} — ${U.nombre(n)}`).join(' · ') + '.');
+        if (b.sansDate)
+            notes.push(`${U.nombre(b.sansDate)} créances n'ont ni date d'échéance ni date de facture `
+                + `dans le grand livre : leur ancienneté n'est pas calculable, elles sont comptées en non échu.`);
+        const sansNum = (state.glCreances || []).filter(c => c.sansNumero).length;
+        if (sansNum)
+            notes.push(`${U.nombre(sansNum)} écritures ne portent pas de numéro de facture — acomptes, `
+                + `écarts de règlement. Elles pèsent sur le solde du compte et sont conservées pour que `
+                + `le total comptable se retrouve.`);
+        $('#aging-gl-notes').innerHTML = notes.map(n => `<p>${n}</p>`).join('');
+
+        const buckets = colonnesAnciennete();
+        const cols = [
+            { key: 'label', label: 'Financement' },
+            { key: 'echu', label: 'Total échu', align: 'right',
+              format: v => v ? `<strong>${U.eurosCourt(v)}</strong>` : '<span class="ag-zero">·</span>',
+              cls: () => 'ag-total' },
+            ...buckets.map(bk => ({
+                key: bk.key, label: bk.label, align: 'right',
+                format: (v, row) => v ? `<span class="ag-cell">${U.eurosCourt(v)}</span>` : '<span class="ag-zero">·</span>',
+                cls: () => 'ag-col',
+            })),
+            { key: 'total', label: 'Total', align: 'right', format: U.euros, cls: () => 'ag-total' },
+            { key: 'nb', label: 'Nb', align: 'right', format: U.nombre },
+        ];
+        const rows = b.rows.map(r => ({ ...r, ...r.buckets }));
+        const total = { label: 'TOTAL', echu: U.eurosCourt(b.total.echu),
+            total: U.euros(b.total.total), nb: U.nombre(b.total.nb) };
+        for (const bk of buckets) total[bk.key] = U.eurosCourt(b.total.buckets[bk.key]);
+
+        const el = $('#aging-gl-table');
+        el.innerHTML = U.table(cols, rows, { vide: 'Aucune créance ouverte au grand livre.', total,
+            onRowClick: true, rowClass: r => r.cle === GL.A_CLASSER ? 'ligne-a-classer' : '' });
+        U.bindTable(el, rows, { onRowClick: r => montrerCreancesGL(r) });
+
+        // Le détail de ce qui n'a pas pu être classé, tout de suite : c'est la
+        // seule ligne du tableau sur laquelle il y a quelque chose à faire.
+        const aClasser = (state.glCreances || []).filter(c => !c.financement)
+            .sort((a, b2) => Math.abs(b2.resteDu) - Math.abs(a.resteDu)).slice(0, 100);
+        $('#aging-gl-aclasser').innerHTML = U.table([
+            { key: 'numero', label: 'Facture', format: v => v ? `<span class="mono">${U.escapeHtml(v)}</span>` : '<span class="pill pill-muted">sans numéro</span>' },
+            { key: 'tiers', label: 'Client', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+            { key: 'compte', label: 'Compte', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
+            { key: 'resteDu', label: 'Reste dû', align: 'right', format: U.euros },
+            { key: 'dateEcheance', label: 'Échéance', align: 'center', format: U.dateFR },
+            { key: 'dateFacture', label: 'Facture', align: 'center', format: U.dateFR },
+        ], aClasser, { vide: 'Toutes les créances ont trouvé un financement.' });
+    }
+
+    function montrerCreancesGL(row) {
+        const liste = (row.creances || []).slice()
+            .sort((a, b) => Math.abs(b.resteDu) - Math.abs(a.resteDu)).slice(0, 300);
+        U.modal(`${row.label} — ${U.euros(row.total)} sur ${U.nombre(row.nb)} créances`,
+            U.table([
+                { key: 'numero', label: 'Facture', format: v => v ? `<span class="mono">${U.escapeHtml(v)}</span>` : '<span class="pill pill-muted">sans numéro</span>' },
+                { key: 'tiers', label: 'Client', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'resteDu', label: 'Reste dû', align: 'right', format: U.euros },
+                { key: 'retardJours', label: 'Retard', align: 'right', format: U.pastilleRetard },
+                { key: 'dateEcheance', label: 'Échéance', align: 'center', format: U.dateFR },
+                { key: 'origineClassement', label: 'Classé par', format: v => U.escapeHtml(v || '—') },
+            ], liste, { vide: 'Aucune créance.' }),
+            [{ label: 'Fermer', primary: true }]);
+    }
+
+    function rendreComparaisonAging() {
+        const c = state.glComparaison;
+        const el = $('#aging-cmp-table');
+        if (!c || !c.rows.length) {
+            $('#aging-cmp-kpi').innerHTML = '';
+            $('#aging-cmp-notes').innerHTML =
+                '<p>Chargez un grand livre dans l’onglet Données pour confronter les deux balances.</p>';
+            el.innerHTML = '';
+            U.chart('chart-aging-cmp', videConfig('Aucun grand livre chargé'));
+            return;
+        }
+
+        $('#aging-cmp-kpi').innerHTML = [
+            { couleur: U.couleurs.indigo, valeur: U.euros(c.total.monday), label: 'Encours Monday',
+              detail: `${U.nombre(c.total.nbMonday)} factures non réglées`, sub: 'ce que le circuit porte' },
+            { couleur: U.couleurs.accent, valeur: U.euros(c.total.grandLivre), label: 'Reste dû comptable',
+              detail: `${U.nombre(c.total.nbGL)} créances`, sub: 'ce que les comptes clients portent' },
+            { couleur: c.total.ecart >= 0 ? U.couleurs.retard : U.couleurs.payeRetard,
+              valeur: U.euros(c.total.ecart), label: 'Écart',
+              detail: U.pourcent(c.total.ecartRelatif, 1) + ' de l’encours Monday',
+              sub: c.total.ecart >= 0 ? 'la comptabilité porte davantage' : 'Monday porte davantage' },
+        ].map(o => `
+            <div class="recup-card">
+                <span class="recup-bar" style="background:${o.couleur}"></span>
+                <span class="recup-taux">${o.valeur}</span>
+                <span class="recup-label">${U.escapeHtml(o.label)}</span>
+                <span class="recup-value">${o.detail}</span>
+                <span class="recup-sub">${U.escapeHtml(o.sub)}</span>
+            </div>`).join('');
+
+        $('#aging-cmp-notes').innerHTML =
+            '<p>Un écart positif veut dire que la comptabilité porte plus que le circuit : des factures '
+            + 'émises ne sont sur aucun tableau Monday. Un écart négatif veut dire l’inverse : des '
+            + 'règlements sont encaissés sans être lettrés, ou des factures Monday n’existent pas en '
+            + 'comptabilité. La ligne « À classer » n’a pas d’équivalent Monday par construction.</p>';
+
+        el.innerHTML = U.table([
+            { key: 'label', label: 'Financement' },
+            { key: 'monday', label: 'Encours Monday', align: 'right', format: U.euros },
+            { key: 'nbMonday', label: 'Nb', align: 'right', format: U.nombre },
+            { key: 'grandLivre', label: 'Reste dû comptable', align: 'right', format: U.euros },
+            { key: 'nbGL', label: 'Nb', align: 'right', format: U.nombre },
+            { key: 'ecart', label: 'Écart', align: 'right',
+              format: v => `<span class="pill ${Math.abs(v) < 1 ? 'pill-muted' : v > 0 ? 'pill-danger' : 'pill-soft'}">${U.euros(v)}</span>` },
+            { key: 'ecartRelatif', label: 'Écart relatif', align: 'right', format: v => U.pourcent(v, 0) },
+        ], c.rows, { vide: 'Rien à comparer.', total: {
+            label: 'TOTAL', monday: U.euros(c.total.monday), grandLivre: U.euros(c.total.grandLivre),
+            nbMonday: U.nombre(c.total.nbMonday), nbGL: U.nombre(c.total.nbGL),
+            ecart: U.euros(c.total.ecart), ecartRelatif: U.pourcent(c.total.ecartRelatif, 0),
+        } });
+
+        // Un écart se lit en barres divergentes autour de zéro : le signe est
+        // l'information, pas la hauteur absolue.
+        const rows = c.rows.filter(r => Math.abs(r.ecart) >= 1).slice(0, 14);
+        U.chart('chart-aging-cmp', {
+            type: 'bar',
+            data: {
+                labels: rows.map(r => r.label),
+                datasets: [{
+                    label: 'Grand livre moins Monday',
+                    data: rows.map(r => r.ecart),
+                    backgroundColor: rows.map(r => r.ecart > 0 ? U.couleurs.retard : U.couleurs.nonEchue),
+                    borderRadius: 3,
+                }],
+            },
+            options: {
+                indexAxis: 'y',
+                scales: {
+                    x: { grid: U.grille, ticks: { callback: v => U.eurosCourt(v) } },
+                    y: { grid: { display: false } },
+                },
+                plugins: { legend: { display: false } },
+            },
+        });
+    }
+
+    /** Export Excel de la balance âgée comptable, dans sa présentation d'écran. */
+    function exporterBalanceGL() {
+        const b = state.glBalance;
+        if (!b) return;
+        const buckets = colonnesAnciennete();
+        const wb = XLSX.utils.book_new();
+
+        const ligne = r => {
+            const o = { Financement: r.label, 'Total échu': arrondi(r.echu) };
+            for (const bk of buckets) o[bk.label] = arrondi(r.buckets[bk.key]);
+            o['Non échu'] = arrondi(r.nonEchu);
+            o.Total = arrondi(r.total);
+            o.Nb = r.nb;
+            return o;
+        };
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            b.rows.map(ligne).concat([ligne({ ...b.total, buckets: b.total.buckets })])), 'Balance âgée GL');
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            (state.glCreances || []).map(c => ({
+                'Facture': c.numero, 'Client': c.tiers, 'Compte': c.compte,
+                'Financement': c.financement ? R.getRule(c.financement, state.rules).label : 'À classer',
+                'Classé par': c.origineClassement || '',
+                'Reste dû': arrondi(c.resteDu), 'Montant': arrondi(c.montant),
+                'Date de facture': c.dateFacture ? U.dateFR(c.dateFacture) : '',
+                'Échéance': c.dateEcheance ? U.dateFR(c.dateEcheance) : '',
+            }))), 'Créances');
+
+        if (state.glComparaison) {
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+                state.glComparaison.rows.map(r => ({
+                    'Financement': r.label, 'Encours Monday': arrondi(r.monday),
+                    'Reste dû comptable': arrondi(r.grandLivre), 'Écart': arrondi(r.ecart),
+                    'Écart relatif %': r.ecartRelatif == null ? '' : Math.round(r.ecartRelatif),
+                }))), 'Monday vs Grand livre');
+        }
+        XLSX.writeFile(wb, `Balance_agee_grand_livre_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+
+    function arrondi(v) { return v == null ? '' : Math.round(v * 100) / 100; }
 
     // ══════════════════════════════════════════════
     //  Onglet : Financements
@@ -4656,8 +4945,18 @@
             }));
             state.glLecture = { ...lu.stats, fichier: file.name };
 
+            // Les créances ouvertes sont la matière de la balance âgée
+            // comptable : elles sont conservées à part, le classement par
+            // financement dépendant de Monday et de Sellsy, qui bougent.
+            state.glOuvertes = GL.creancesOuvertes(lu).map(c => ({
+                ...c,
+                dateFacture: c.dateFacture ? c.dateFacture.toISOString() : null,
+                dateEcheance: c.dateEcheance ? c.dateEcheance.toISOString() : null,
+            }));
+
             await S.set(S.KEYS.grandLivre, state.grandLivre);
             await S.set('rec_gl_lecture', state.glLecture);
+            await S.set('rec_gl_ouvertes', state.glOuvertes);
             recalculer({ conserverPeriode: true });
             rendreHistoriqueImports();
 
@@ -4668,6 +4967,7 @@
                 + `${U.nombre(l.nbSoldeesParReglement)} soldées par règlement`
                 + (l.nbSoldeesParAvoir ? `, ${U.nombre(l.nbSoldeesParAvoir)} par avoir` : '')
                 + (l.nbOuvertes ? `, ${U.nombre(l.nbOuvertes)} encore ouvertes` : '')
+                + (state.glBalance ? ` — ${U.euros(state.glBalance.total.total)} de reste dû comptable` : '')
                 + `. ${U.nombre(st.rapprochees || 0)} retrouvées dans Monday`
                 + (st.completees ? `, ${U.nombre(st.completees)} dates complétées` : '')
                 + (st.remplacees ? `, ${U.nombre(st.remplacees)} remplacées` : '') + '.',
@@ -5262,6 +5562,12 @@
             $$('#seg-unite-heat .seg-btn').forEach(x => x.classList.toggle('active', x === b));
             rendreTout();
         }));
+        $$('#seg-aging-source .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.agingSource = b.dataset.source;
+            rendreApresClic(() => rendreTout());
+        }));
+        $('#btn-aging-gl-export').addEventListener('click', exporterBalanceGL);
+
         $$('#seg-aging-dim .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.agingDim = b.dataset.dim;
             $$('#seg-aging-dim .seg-btn').forEach(x => x.classList.toggle('active', x === b));

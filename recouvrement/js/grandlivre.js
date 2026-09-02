@@ -285,7 +285,237 @@
         };
     }
 
+    // ──────────────────────────────────────────────
+    //  5. Balance âgée comptable
+    // ──────────────────────────────────────────────
+
+    /**
+     * Ce qui reste dû d'après le grand livre.
+     *
+     * Une facture est ouverte quand son groupe de lettrage ne se solde pas —
+     * ou qu'elle n'est pas lettrée du tout, ce qui est le cas d'un extrait
+     * « non lettré » où figurent précisément les créances vivantes. Le reste
+     * dû est alors le solde du groupe.
+     *
+     * Les écritures sans numéro de facture ne disparaissent pas pour autant :
+     * un acompte encaissé d'avance, un écart de règlement, tout crédit non
+     * rattaché pèse sur le solde du compte. Ils sont regroupés sous le compte
+     * client, sans numéro — sinon le total comptable ne se retrouve pas.
+     */
+    function creancesOuvertes(lu) {
+        const ouvertes = [];
+        for (const g of lu.groupes) {
+            if (g.soldee) continue;
+            const reste = g.debit - g.credit;
+            if (Math.abs(reste) < TOLERANCE) continue;
+
+            if (g.factures.length) {
+                // Le solde se répartit sur les factures du groupe au prorata de
+                // leur montant : à facture unique c'est exact, à plusieurs
+                // c'est la seule répartition qui conserve le total.
+                const total = g.factures.reduce((s, f) => s + f.debit, 0) || 1;
+                for (const f of g.factures) {
+                    ouvertes.push({
+                        numero: f.numero, cle: I.factureKey(f.numero),
+                        compte: g.compte, tiers: g.tiers, lettre: g.lettre,
+                        montant: f.debit,
+                        resteDu: reste * (f.debit / total),
+                        dateFacture: f.date,
+                        dateEcheance: f.dateEcheance || null,
+                        sansNumero: false,
+                    });
+                }
+            } else {
+                ouvertes.push({
+                    numero: '', cle: null,
+                    compte: g.compte, tiers: g.tiers, lettre: g.lettre,
+                    montant: null, resteDu: reste,
+                    dateFacture: derniereDate(g.reglements.concat(g.avoirs)),
+                    dateEcheance: null,
+                    sansNumero: true,
+                });
+            }
+        }
+        return ouvertes;
+    }
+
+    function derniereDate(lignes) {
+        return lignes.reduce((max, l) => (l.date && (!max || l.date > max)) ? l.date : max, null);
+    }
+
+    /**
+     * Attribue un type de financement à une créance du grand livre.
+     *
+     * Le grand livre ne connaît pas les dispositifs : il ne porte qu'un compte
+     * et un numéro. La classification se fait donc par recoupement, du plus sûr
+     * au moins sûr, et **ce qui n'est pas sûr n'est pas deviné** — il part dans
+     * « À classer », où il se voit et se corrige, plutôt que de fausser
+     * silencieusement une catégorie.
+     *
+     * @param {Object} sources
+     *   - factures : les factures Monday (financement établi par les règles)
+     *   - sellsy   : lignes de l'export Sellsy (Type de client)
+     *   - rules    : règles d'échéance, pour la reconnaissance des libellés
+     */
+    function indexerClassification(sources) {
+        const o = sources || {};
+        const parCle = new Map();       // numéro de facture → financement
+        const parCompte = new Map();    // compte client → { fin: nb }
+
+        const noter = (compte, fin) => {
+            if (!compte || !fin) return;
+            let m = parCompte.get(compte);
+            if (!m) { m = new Map(); parCompte.set(compte, m); }
+            m.set(fin, (m.get(fin) || 0) + 1);
+        };
+
+        // 1. Monday : le financement y est établi par les règles métier.
+        for (const f of (o.factures || [])) {
+            if (f.cle && f.financement && f.financement !== 'CORPORATE') parCle.set(f.cle, f.financement);
+        }
+        // 2. Sellsy : « Type de client » nomme le dispositif pour toutes les
+        //    factures émises, y compris celles que Monday ne suit pas.
+        for (const l of (o.sellsy || [])) {
+            if (!l.cle || parCle.has(l.cle)) continue;
+            const fin = R.detectFinancement(l.typeClient, o.rules);
+            if (fin) parCle.set(l.cle, fin);
+        }
+        return { parCle, parCompte, noter };
+    }
+
+    /**
+     * Classe les créances, puis propage par compte client.
+     *
+     * Un compte client dont toutes les factures connues relèvent du même
+     * dispositif désigne ce dispositif pour ses factures inconnues : c'est la
+     * classification que porte l'historique du grand livre. Un compte partagé
+     * entre plusieurs dispositifs ne tranche rien — ses inconnues restent à
+     * classer.
+     */
+    function classer(ouvertes, sources) {
+        const idx = indexerClassification(sources);
+
+        // Apprentissage : ce que chaque compte contient de déjà classé.
+        for (const c of ouvertes) {
+            const fin = c.cle ? idx.parCle.get(c.cle) : null;
+            if (fin) idx.noter(c.compte, fin);
+        }
+        for (const l of (sources.historique || [])) {
+            const fin = l.cle ? idx.parCle.get(l.cle) : null;
+            if (fin) idx.noter(l.compte, fin);
+        }
+
+        const financementDuCompte = compte => {
+            const m = idx.parCompte.get(compte);
+            if (!m || m.size !== 1) return null;   // partagé ou inconnu : on ne tranche pas
+            return [...m.keys()][0];
+        };
+
+        return ouvertes.map(c => {
+            const direct = c.cle ? idx.parCle.get(c.cle) : null;
+            if (direct) return { ...c, financement: direct, origineClassement: 'Facture' };
+            const parCompte = financementDuCompte(c.compte);
+            if (parCompte) return { ...c, financement: parCompte, origineClassement: 'Compte client' };
+            return { ...c, financement: null, origineClassement: null };
+        });
+    }
+
+    const A_CLASSER = '__A_CLASSER__';
+
+    /**
+     * Balance âgée comptable : le reste dû ventilé par financement et par
+     * ancienneté, dans la présentation du tableau de trésorerie.
+     *
+     * L'ancienneté se compte sur la date d'échéance quand le grand livre la
+     * porte, à défaut sur la date de facture — une créance sans aucune des deux
+     * ne peut pas être vieillie et rejoint « Non échu », faute de mieux, mais
+     * elle est comptée à part.
+     */
+    function balanceAgee(creances, dateRef, rules) {
+        const ref = dateRef || R.stripTime(new Date());
+        const lignes = new Map();
+        let sansDate = 0;
+
+        for (const c of creances) {
+            const cle = c.financement || A_CLASSER;
+            let l = lignes.get(cle);
+            if (!l) {
+                l = { financement: c.financement, cle,
+                      label: c.financement ? R.getRule(c.financement, rules).label : 'À classer',
+                      total: 0, echu: 0, nonEchu: 0, nb: 0, buckets: {}, creances: [] };
+                for (const b of R.AGING_BUCKETS) l.buckets[b.key] = 0;
+                lignes.set(cle, l);
+            }
+            const base = c.dateEcheance || c.dateFacture;
+            if (!base) sansDate++;
+            const retard = base ? R.diffDays(ref, base) : 0;
+            const bucket = R.bucketFor(retard) || R.AGING_BUCKETS[0];
+
+            l.nb++;
+            l.total += c.resteDu;
+            l.buckets[bucket.key] += c.resteDu;
+            if (retard > 0) l.echu += c.resteDu; else l.nonEchu += c.resteDu;
+            l.creances.push({ ...c, retardJours: retard, bucket: bucket.key });
+        }
+
+        const rows = [...lignes.values()].sort((a, b) => {
+            // « À classer » ferme la marche : c'est un reste, pas une catégorie.
+            if (a.cle === A_CLASSER) return 1;
+            if (b.cle === A_CLASSER) return -1;
+            return b.total - a.total;
+        });
+
+        const total = { label: 'TOTAL', cle: '__TOTAL__', total: 0, echu: 0, nonEchu: 0, nb: 0, buckets: {} };
+        for (const b of R.AGING_BUCKETS) total.buckets[b.key] = 0;
+        for (const r of rows) {
+            total.total += r.total; total.echu += r.echu; total.nonEchu += r.nonEchu; total.nb += r.nb;
+            for (const b of R.AGING_BUCKETS) total.buckets[b.key] += r.buckets[b.key];
+        }
+
+        return { rows, total, sansDate, dateRef: ref,
+                 nbAClasser: (lignes.get(A_CLASSER) || { nb: 0 }).nb,
+                 eurosAClasser: (lignes.get(A_CLASSER) || { total: 0 }).total };
+    }
+
+    /**
+     * Confronte la balance âgée Monday et la balance âgée comptable.
+     *
+     * Les deux ne peuvent pas coïncider exactement — Monday suit un circuit,
+     * la comptabilité tient un compte — mais l'écart par financement dit où
+     * regarder : un dispositif très au-dessus côté comptable signale des
+     * factures absentes du circuit, l'inverse des règlements non lettrés.
+     */
+    function comparer(balanceGL, agingMonday, rules) {
+        const parFin = new Map();
+        const ligne = (cle, label) => {
+            let l = parFin.get(cle);
+            if (!l) { l = { cle, label, monday: 0, grandLivre: 0, nbMonday: 0, nbGL: 0 }; parFin.set(cle, l); }
+            return l;
+        };
+        for (const r of balanceGL.rows) ligne(r.cle, r.label).grandLivre += r.total,
+            ligne(r.cle, r.label).nbGL += r.nb;
+        for (const m of agingMonday) {
+            const cle = m.cle || m.key || m.financement;
+            const l = ligne(cle, m.label || R.getRule(cle, rules).label);
+            l.monday += m.total || 0;
+            l.nbMonday += m.nb || 0;
+        }
+        const rows = [...parFin.values()].map(l => ({
+            ...l, ecart: l.grandLivre - l.monday,
+            ecartRelatif: l.monday ? (l.grandLivre - l.monday) / l.monday * 100 : null,
+        })).sort((a, b) => Math.abs(b.ecart) - Math.abs(a.ecart));
+
+        const total = rows.reduce((t, r) => ({
+            monday: t.monday + r.monday, grandLivre: t.grandLivre + r.grandLivre,
+            nbMonday: t.nbMonday + r.nbMonday, nbGL: t.nbGL + r.nbGL,
+        }), { monday: 0, grandLivre: 0, nbMonday: 0, nbGL: 0 });
+        total.ecart = total.grandLivre - total.monday;
+        total.ecartRelatif = total.monday ? total.ecart / total.monday * 100 : null;
+        return { rows, total };
+    }
+
     global.LioraGrandLivre = {
+        A_CLASSER, creancesOuvertes, classer, balanceAgee, comparer,
         COLONNES, TOLERANCE, EST_FACTURE, EST_AVOIR,
         detecterColonnes, estComptable, lettreDe, lire, lireComptable, lireSimple,
     };

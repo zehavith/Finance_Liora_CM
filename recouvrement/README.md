@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.13.0** — 2 septembre 2026
+**Version 2.14.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.13.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.14.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -1050,6 +1050,59 @@ de factures sans origine connue est affiché.
 
 Le même taux est décliné par type de financement, colonne *% avant échéance* de
 l'onglet *Financements*, et repris dans l'export Excel.
+
+### La balance âgée comptable, et sa confrontation
+
+L'onglet **Balance âgée** propose trois lectures, au choix :
+
+- **D'après Monday** — l'encours que porte le circuit, filtres de la barre
+  appliqués. C'est la vue historique.
+- **D'après le grand livre** — le solde des comptes clients, ventilé par
+  financement et par ancienneté, dans la présentation du tableau de trésorerie :
+  *Total échu*, puis les tranches de la plus ancienne à la plus récente, puis
+  *Non échu*.
+- **Comparer les deux** — l'écart par financement, et où il se creuse.
+
+Aucun filtre de la barre ne s'applique aux deux dernières : la comptabilité
+tient un compte, elle ne connaît pas le circuit, et masquer une créance ne la
+fait pas disparaître du solde.
+
+#### D'où vient le financement d'une créance comptable
+
+Le grand livre ne connaît pas les dispositifs — il ne porte qu'un compte et un
+numéro. Le financement est donc recoupé, du plus sûr au moins sûr :
+
+1. **la facture Monday** de même numéro, dont le financement est établi par les
+   règles métier ;
+2. **l'export Sellsy**, dont la colonne *Type de client* nomme le dispositif de
+   toutes les factures émises, y compris celles que Monday ne suit pas ;
+3. **l'historique du compte client** : un compte dont toutes les factures
+   connues relèvent du même dispositif désigne ce dispositif pour ses factures
+   inconnues. Un compte partagé entre plusieurs dispositifs ne tranche rien.
+
+**Ce qui n'est pas sûr n'est pas deviné** : la créance part dans **« À
+classer »**, ligne à part en bas du tableau, détaillée juste en dessous. Elle se
+voit et se corrige, au lieu de fausser silencieusement une catégorie. La note
+sous les indicateurs dit combien de créances doivent leur classement à chaque
+source.
+
+#### Les écritures sans numéro de facture
+
+Un acompte encaissé d'avance, un écart de règlement, tout crédit non rattaché
+pèse sur le solde du compte sans désigner de facture. Ils sont conservés,
+regroupés sous leur compte client — sinon le total comptable ne se retrouve
+pas — et signalés dans les notes.
+
+#### Lire l'écart
+
+Les deux balances ne peuvent pas coïncider exactement. L'écart dit où regarder :
+
+- **positif** (la comptabilité porte davantage) : des factures émises ne sont
+  sur aucun tableau Monday. L'onglet Contrôle Sellsy les nomme.
+- **négatif** (Monday porte davantage) : des règlements sont encaissés sans
+  être lettrés, ou des factures Monday n'existent pas en comptabilité.
+
+La ligne « À classer » n'a pas d'équivalent Monday par construction.
 
 ### Tranches de la balance âgée
 

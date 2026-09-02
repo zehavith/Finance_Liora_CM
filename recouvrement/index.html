@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.13.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.13.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.13.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.13.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.13.0">
-    <link rel="stylesheet" href="styles.css?v=2.13.0">
+    <script src="../vendor/chart.umd.min.js?v=2.14.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.14.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.14.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.14.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.14.0">
+    <link rel="stylesheet" href="styles.css?v=2.14.0">
 </head>
 <body>
 
@@ -122,7 +122,7 @@
             <button class="nav-tab" data-tab="aging">Balance âgée</button>
             <button class="nav-tab" data-tab="financements">Financements</button>
             <button class="nav-tab" data-tab="factures">Factures</button>
-            <button class="nav-tab" data-tab="prelevements">Prélèvements</button>
+            <button class="nav-tab" data-tab="prelevements">Prélèvement GoCardless</button>
             <button class="nav-tab" data-tab="sellsy">Contrôle Sellsy</button>
             <button class="nav-tab" data-tab="quality">Data Quality</button>
             <button class="nav-tab" data-tab="donnees">Données</button>
@@ -656,6 +656,18 @@
             </div>
             <p class="aide-bloc">Répartit ce qui reste dû selon l'ancienneté du retard. Plus une créance glisse vers la droite, plus elle devient difficile à récupérer.</p>
 
+            <div class="table-toolbar">
+                <div class="seg" id="seg-aging-source">
+                    <button class="seg-btn active" data-source="monday">D'après Monday</button>
+                    <button class="seg-btn" data-source="gl">D'après le grand livre</button>
+                    <button class="seg-btn" data-source="comparaison">Comparer les deux</button>
+                </div>
+                <div class="table-toolbar-right">
+                    <span class="fv-hint" id="aging-source-hint"></span>
+                </div>
+            </div>
+
+            <div id="aging-monday">
             <div class="bucket-grid" id="bucket-cards"></div>
 
             <div class="charts-grid">
@@ -680,6 +692,69 @@
                     <div class="chart-header"><h3>Antériorité par mois d'échéance</h3></div>
                     <div class="chart-container chart-tall">
                         <canvas id="chart-aging-mois"></canvas>
+                    </div>
+                </div>
+            </div>
+            </div><!-- /aging-monday -->
+
+            <!-- Balance âgée reconstituée depuis le grand livre -->
+            <div id="aging-gl" hidden>
+                <div id="aging-gl-vide" class="empty-state">
+                    <h3>Aucun grand livre chargé</h3>
+                    <p>
+                        Déposez un extrait de grand livre client dans l'onglet <strong>Données</strong>.
+                        Un extrait <strong>non lettré</strong> donne directement les créances vivantes ;
+                        un extrait lettré n'en contient que si des groupes ne se soldent pas.
+                    </p>
+                </div>
+                <div id="aging-gl-contenu" hidden>
+                    <div class="recup-grid" id="aging-gl-kpi"></div>
+                    <div id="aging-gl-notes" class="scope-note"></div>
+                    <div class="charts-grid">
+                        <div class="chart-card chart-wide">
+                            <div class="chart-header">
+                                <h3>Reste dû comptable par financement et par ancienneté</h3>
+                                <div class="chart-controls">
+                                    <button class="btn btn-ghost btn-sm" id="btn-aging-gl-export">Exporter en Excel</button>
+                                </div>
+                            </div>
+                            <span class="fv-hint">
+                                Le grand livre ne connaît pas les dispositifs : le financement est
+                                recoupé depuis les factures Monday, l'export Sellsy et l'historique des
+                                comptes clients. Ce qui n'est pas sûr n'est pas deviné — il part
+                                dans « À classer ».
+                            </span>
+                            <div class="table-wrap" id="aging-gl-table"></div>
+                        </div>
+                    </div>
+                    <div class="section-header section-header-sub">
+                        <h3>Les créances à classer</h3>
+                        <span class="fv-hint">Aucun recoupement n'a permis de leur attribuer un financement</span>
+                    </div>
+                    <div class="table-wrap" id="aging-gl-aclasser"></div>
+                </div>
+            </div>
+
+            <!-- Confrontation des deux balances -->
+            <div id="aging-comparaison" hidden>
+                <div class="recup-grid" id="aging-cmp-kpi"></div>
+                <div id="aging-cmp-notes" class="scope-note"></div>
+                <div class="charts-grid">
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header"><h3>Monday face au grand livre, par financement</h3></div>
+                        <span class="fv-hint">
+                            Les deux ne peuvent pas coïncider exactement — Monday suit un circuit,
+                            la comptabilité tient un compte. L'écart dit où regarder : au-dessus côté
+                            comptable, des factures manquent au circuit ; en dessous, des règlements
+                            ne sont pas lettrés.
+                        </span>
+                        <div class="table-wrap" id="aging-cmp-table"></div>
+                    </div>
+                </div>
+                <div class="charts-grid">
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header"><h3>Où se creuse l'écart</h3></div>
+                        <div class="chart-container"><canvas id="chart-aging-cmp"></canvas></div>
                     </div>
                 </div>
             </div>
@@ -1166,15 +1241,15 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.13.0"></script>
-<script src="js/store.js?v=2.13.0"></script>
-<script src="js/monday.js?v=2.13.0"></script>
-<script src="js/ingest.js?v=2.13.0"></script>
-<script src="js/metrics.js?v=2.13.0"></script>
-<script src="js/prelevements.js?v=2.13.0"></script>
-    <script src="js/grandlivre.js?v=2.13.0"></script>
-    <script src="js/sellsy.js?v=2.13.0"></script>
-<script src="js/ui.js?v=2.13.0"></script>
-<script src="app.js?v=2.13.0"></script>
+<script src="js/rules.js?v=2.14.0"></script>
+<script src="js/store.js?v=2.14.0"></script>
+<script src="js/monday.js?v=2.14.0"></script>
+<script src="js/ingest.js?v=2.14.0"></script>
+<script src="js/metrics.js?v=2.14.0"></script>
+<script src="js/prelevements.js?v=2.14.0"></script>
+    <script src="js/grandlivre.js?v=2.14.0"></script>
+    <script src="js/sellsy.js?v=2.14.0"></script>
+<script src="js/ui.js?v=2.14.0"></script>
+<script src="app.js?v=2.14.0"></script>
 </body>
 </html>

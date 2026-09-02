@@ -187,6 +187,10 @@
                 dateDebutService: mapping.dateDebutFormation ? R.parseDate(r[mapping.dateDebutFormation]) : null,
                 dateFinService: mapping.dateFinFormation ? R.parseDate(r[mapping.dateFinFormation]) : null,
                 montantAberrant: montantAberrant(montant),
+                // « Type de client » nomme le dispositif de financement : c'est
+                // la seule source qui le porte pour toutes les factures émises,
+                // et elle sert à classer les créances du grand livre.
+                typeClient: mapping.typeClient ? String(r[mapping.typeClient] || '').trim() : '',
                 statutBrut: mapping.statut ? String(r[mapping.statut] || '').trim() : '',
                 statut: statut.key,
                 statutLabel: statut.label,
@@ -204,6 +208,7 @@
             prec.lignesExport++;
             if (prec.montant == null) prec.montant = l.montant;
             if (!prec.dateFacture) prec.dateFacture = l.dateFacture;
+            if (!prec.typeClient) prec.typeClient = l.typeClient;
             if (!prec.dateDebutService) prec.dateDebutService = l.dateDebutService;
             if (!prec.dateFinService) prec.dateFinService = l.dateFinService;
         }
