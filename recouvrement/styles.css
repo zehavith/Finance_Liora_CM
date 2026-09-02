@@ -392,6 +392,8 @@ button.recup-card:hover { border-color: var(--border-hover); transform: translat
 .note-warn { border-left-color: var(--amber); }
 .note-danger { border-left-color: var(--red); }
 .note-info { border-left-color: var(--blue-500); }
+/* Ligne hors somme de la chaîne d'import : elle informe sans additionner. */
+.chaine-aparte { opacity: 0.78; font-style: italic; }
 .note-ok { border-left-color: var(--green); }
 
 /* ============================

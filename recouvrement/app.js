@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.18.0 — 2 septembre 2026
+   v2.19.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.18.0';
+    const VERSION = '2.19.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -958,6 +958,27 @@
         const el = $('#scope-note');
         if (!el) return;
         const notes = [];
+
+        // Avant toute lecture métier : le portefeuille est-il complet ? Un
+        // tableau coché mais vide de données rend tous les chiffres faux sans
+        // qu'aucun d'eux n'ait l'air anormal — sur un chargement interrompu,
+        // seul le premier tableau était arrivé, et le tableau de bord
+        // présentait un neuvième du portefeuille comme s'il était entier.
+        const presents = new Set(state.factures.map(f => f.board));
+        const vides = state.boards.filter(b => b.actif && b.role !== 'technique' && b.role !== 'ignore'
+            && !presents.has(b.name));
+        if (vides.length && state.boards.some(b => presents.has(b.name))) {
+            const attendues = X.sum(vides, b => b.itemsCount || 0);
+            notes.push({
+                ton: 'danger',
+                titre: `${U.nombre(vides.length)} tableau${vides.length > 1 ? 'x' : ''} coché${vides.length > 1 ? 's' : ''} `
+                    + `mais vide${vides.length > 1 ? 's' : ''} — tous les chiffres portent sur une partie du portefeuille`,
+                texte: (attendues ? `${U.nombre(attendues)} factures y sont annoncées par Monday et ne sont pas là. ` : '')
+                    + `${vides.map(b => b.name).join(', ')}. Un chargement interrompu — connexion, session `
+                    + `expirée, limite d'API — laisse ce genre de trou sans rien afficher d'anormal.`,
+                action: { label: 'Recharger les tableaux', fn: () => chargerBoardsActifs() },
+            });
+        }
 
         // Le filtre « Étape du circuit » écarte aussi les factures déjà réglées
         // dont l'origine est ailleurs : le tableau des factures payées conserve
@@ -4200,13 +4221,73 @@
                           ? `${U.nombre(nbFacturesDblPay)} factures saisies plusieurs fois dans « 0.1. ALL - Factures payées » — cliquez pour les voir`
                           : 'aucune facture saisie deux fois dans le tableau des factures payées' })
             + ligne({ signe: '−', retrait: true, label: 'Groupes et tableaux de service',
-                      nb: ecartees + ignorees,
-                      note: ignorees
+                      nb: ecartees + ignorees, action: 'ecartees',
+                      danger: brutes > 0 && (ecartees + ignorees) > brutes * 0.4,
+                      note: (ignorees
                           ? `technique, archive, corbeille — dont ${U.nombre(ignorees)} lignes de tableaux de sous-éléments, qui ne sont pas des factures`
-                          : 'technique, archive, corbeille' })
+                          : 'technique, archive, corbeille')
+                          + ' — cliquez pour voir de quels groupes il s\'agit' })
             + ligne({ signe: '=', label: 'Factures analysées', nb: analysees, fort: true,
                       note: 'ce que comptent les indicateurs, avant filtres de période et de source' })
             + ligneSellsyComplement();
+    }
+
+    /**
+     * Le détail de ce qui est écarté comme « groupe de service ».
+     *
+     * Sur le tableau de recouvrement réel, trois groupes nommés « 1.2.9.
+     * Technique — Service ADV / Archive / Tampon » portent 85 % des lignes.
+     * Les écarter est juste quand les tableaux ADV et Tampon sont chargés — ces
+     * factures y sont, à leur vraie étape. Ce ne l'est plus du tout quand ils ne
+     * le sont pas : les factures disparaissent alors purement et simplement.
+     * Le détail par groupe permet d'en juger, plutôt que de subir un total.
+     */
+    function montrerEcartees() {
+        const ignorees = state.brutes.filter(f => f.role === 'ignore');
+        const service = state.brutes.filter(f =>
+            f.role !== 'ignore' && (f.role === 'technique' || R.estGroupeTechnique(f.groupe)));
+
+        const parGroupe = new Map();
+        for (const f of service.concat(ignorees)) {
+            const cle = (f.board || '—') + ' › ' + (f.groupe || '(sans groupe)');
+            let g = parGroupe.get(cle);
+            if (!g) { g = { cle, board: f.board, groupe: f.groupe || '(sans groupe)', nb: 0,
+                            euros: 0, motif: f.role === 'ignore' ? 'Tableau de sous-éléments'
+                                : f.role === 'technique' ? 'Tableau technique' : 'Groupe de service' }; parGroupe.set(cle, g); }
+            g.nb++; g.euros += f.montant || 0;
+        }
+        const rows = [...parGroupe.values()].sort((a, b) => b.nb - a.nb);
+
+        // Une facture écartée ici mais présente ailleurs n'est pas perdue :
+        // c'est la question qui compte, et elle a une réponse chiffrée.
+        const cles = new Set(state.factures.map(f => f.cle).filter(Boolean));
+        const perdues = service.filter(f => {
+            const k = I.factureKey(f.numero);
+            return k && !cles.has(k);
+        });
+
+        U.modal(`Groupes et tableaux écartés — ${U.nombre(service.length + ignorees.length)} lignes`,
+            `<p>Ces lignes sont retirées avant tout calcul. Un groupe d'archive, oui — mais
+             « Technique — Service ADV » ou « Technique — Tampon » contiennent des factures bien
+             vivantes, simplement garées là en attendant d'être traitées ailleurs. Les écarter est
+             juste <strong>si le tableau qui les porte vraiment est chargé</strong> ; sinon elles
+             disparaissent de tous les chiffres.</p>
+             ${perdues.length
+                ? `<p class="cell-danger"><strong>${U.nombre(perdues.length)} de ces factures
+                   n'existent nulle part ailleurs dans les données chargées</strong>
+                   (${U.euros(X.sum(perdues, f => f.montant))}) : pour celles-là, l'écartement est
+                   une perte sèche. Chargez les tableaux ADV et Tampon pour les retrouver.</p>`
+                : `<p>Bonne nouvelle : <strong>toutes ces factures existent aussi sur un autre
+                   tableau chargé</strong>. Aucune n'est perdue — elles sont comptées une seule
+                   fois, à leur vraie étape.</p>`}
+             ${U.table([
+                { key: 'groupe', label: 'Groupe' },
+                { key: 'board', label: 'Tableau' },
+                { key: 'motif', label: 'Motif' },
+                { key: 'nb', label: 'Lignes', align: 'right', format: U.nombre },
+                { key: 'euros', label: 'Montant', align: 'right', format: U.euros },
+             ], rows, { vide: 'Aucun groupe écarté.' })}`,
+            [{ label: 'Fermer', primary: true }]);
     }
 
     /**
@@ -4224,13 +4305,17 @@
             c.datesFacture ? `${U.nombre(c.datesFacture)} dates de facture` : '',
             c.datesService ? `${U.nombre(c.datesService)} dates de service` : '',
         ].filter(Boolean).join(', ');
+        // Le nombre de valeurs complétées n'est pas un nombre de factures : mis
+        // dans la colonne des comptes, sous « factures analysées », il se lisait
+        // comme un ajout au total. Il reste hors de la chaîne.
         return `
-            <div class="chaine-ligne chaine-retrait">
-                <span class="chaine-signe">+</span>
-                <span class="chaine-label">Complétées par l'export Sellsy</span>
-                <span class="chaine-nb">${U.nombre(c.montants + c.datesFacture + c.datesService)}</span>
-                <span class="chaine-note">${U.nombre(c.rapprochees)} factures retrouvées dans Sellsy${
-                    details ? ' — ' + U.escapeHtml(details) + ' repris de la facturation' : ''}</span>
+            <div class="chaine-ligne chaine-retrait chaine-aparte">
+                <span class="chaine-signe"></span>
+                <span class="chaine-label">Complétées par la facturation</span>
+                <span class="chaine-nb">${U.nombre(c.rapprochees)}</span>
+                <span class="chaine-note">factures retrouvées dans Sellsy ou Zoho${
+                    details ? ' — ' + U.escapeHtml(details) + ' y ont été repris'
+                            : ''}. Ces valeurs complètent des factures déjà comptées : elles n'en ajoutent aucune.</span>
             </div>`;
     }
 
@@ -5893,6 +5978,7 @@
             if (l.dataset.chaine === 'doublons') montrerDoublons('attendus');
             if (l.dataset.chaine === 'doublons-op') montrerDoublons('op');
             if (l.dataset.chaine === 'doublons-payees') montrerDoublons('payees');
+            if (l.dataset.chaine === 'ecartees') montrerEcartees();
         });
         $('#mapping-board-select').addEventListener('change', e => {
             state.ui.mappingBoardId = e.target.value;
