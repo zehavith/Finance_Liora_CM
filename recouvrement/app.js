@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.21.0 — 2 septembre 2026
+   v2.22.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.21.0';
+    const VERSION = '2.22.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -5314,14 +5314,46 @@
             reader.onerror = () => reject(new Error('Lecture impossible : ' + file.name));
             reader.onload = e => {
                 try {
+                    // Lecture en matrice d'abord : un export Monday n'est pas
+                    // rectangulaire (titre, groupe, en-tête, lignes, et on
+                    // recommence), et lu à plat il ne donne qu'une colonne.
+                    let matrice;
                     if (estCSV) {
-                        const res = Papa.parse(e.target.result, { header: true, skipEmptyLines: true, delimiter: '' });
-                        resolve(res.data);
+                        matrice = Papa.parse(e.target.result, { header: false, skipEmptyLines: true, delimiter: '' }).data;
                     } else {
                         const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
                         const sheet = wb.Sheets[wb.SheetNames[0]];
-                        resolve(XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false }));
+                        matrice = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false, blankrows: false });
                     }
+                    const groupe = I.aplatirExportMonday(matrice);
+                    if (groupe) {
+                        // Le vrai nom du tableau est écrit dans le fichier ;
+                        // celui du fichier a perdu sa ponctuation en chemin.
+                        // Il voyage sur le tableau de lignes, sans devenir une
+                        // colonne qui polluerait le mapping.
+                        Object.defineProperty(groupe.lignes, 'tableauMonday',
+                            { value: groupe.tableau, enumerable: false });
+                        resolve(groupe.lignes);
+                        return;
+                    }
+
+                    // Fichier rectangulaire ordinaire : la première ligne
+                    // non vide est l'en-tête.
+                    const entete = (matrice.find(r => (r || []).some(c => String(c == null ? '' : c).trim())) || [])
+                        .map(c => String(c == null ? '' : c).trim());
+                    const debut = matrice.indexOf(matrice.find(r => (r || []).some(c => String(c == null ? '' : c).trim())));
+                    const lignes = [];
+                    for (let i = debut + 1; i < matrice.length; i++) {
+                        const r = matrice[i] || [];
+                        if (!r.some(c => String(c == null ? '' : c).trim())) continue;
+                        const o = {};
+                        for (let c = 0; c < entete.length; c++) {
+                            const nom = entete[c] || ('Colonne ' + (c + 1));
+                            if (!(nom in o)) o[nom] = r[c] == null ? '' : r[c];
+                        }
+                        lignes.push(o);
+                    }
+                    resolve(lignes);
                 } catch (err) { reject(err); }
             };
             if (estCSV) reader.readAsText(file, 'UTF-8');
@@ -5364,10 +5396,11 @@
 
         try {
             for (const file of files) {
-                const nom = file.name.replace(/\.(csv|xlsx|xls)$/i, '');
                 log(`→ ${file.name}`);
                 const rows = await lireFichier(file);
                 if (!rows.length) { log('   ⚠ fichier vide'); continue; }
+                const nom = rows.tableauMonday || file.name.replace(/\.(csv|xlsx|xls)$/i, '');
+                if (rows.tableauMonday) log(`   tableau reconnu : ${rows.tableauMonday}`);
 
                 const detect = R.detectBoardRole(nom);
                 const cfg = {

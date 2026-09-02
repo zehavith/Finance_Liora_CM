@@ -23,11 +23,11 @@
     // ──────────────────────────────────────────────
 
     const FIELD_DEFS = [
-        // « Élément » est le nom que Monday donne à sa colonne d'items : dans un
-        // export de tableau, c'est elle qui porte le numéro de facture. Le
-        // contrôle de valeurs fait le tri — une colonne « Élément » qui ne
-        // contient pas de numéros exploitables est écartée.
-        { field: 'numero',               label: 'Numéro de facture',      aliases: ['numero de facture', 'numero facture', 'n facture', 'no facture', 'num facture', 'reference facture', 'numero de piece', 'invoice number', 'facture', 'element', 'elements'] },
+        // « Élément », « Name », « Nom » : les noms que Monday donne à sa colonne
+        // d'items selon la langue de l'export. C'est elle qui porte le numéro de
+        // facture. Le contrôle de valeurs fait le tri — une colonne de ce nom
+        // qui ne contient pas de numéros exploitables est écartée.
+        { field: 'numero',               label: 'Numéro de facture',      aliases: ['numero de facture', 'numero facture', 'n facture', 'no facture', 'num facture', 'reference facture', 'numero de piece', 'invoice number', 'facture', 'element', 'elements', 'name', 'nom'] },
         { field: 'client',               label: 'Client / Entreprise',    aliases: ['entreprise', 'client', 'societe', 'raison sociale', 'nom du client', 'compte', 'apprenant', 'stagiaire', 'beneficiaire', 'nom prenom'] },
         // « Montant dû » n'est pas le montant de la facture mais ce qu'il en
         // reste à payer : sur une facture réglée il vaut zéro. Le prendre pour
@@ -785,6 +785,71 @@
     }
 
     /**
+     * Un export Monday est-il groupé, et si oui, à plat.
+     *
+     * Monday n'exporte pas un tableau rectangulaire : il écrit le nom du
+     * tableau, puis pour chaque groupe son titre, sa propre ligne d'en-tête et
+     * ses lignes — et recommence au groupe suivant. Lu comme un fichier plat,
+     * la première ligne devient l'en-tête et tout le reste est illisible :
+     * l'export de « 1.1. Entreprise - ADV » donnait une seule colonne nommée
+     * « 1.1. Entreprise - ADV » et zéro facture exploitable.
+     *
+     * La mise à plat suit la structure : ligne à une seule cellule = titre de
+     * groupe, ligne commençant par « Name » = nouvel en-tête, le reste = des
+     * lignes, rattachées au groupe courant.
+     *
+     * @param {Array<Array>} matrice  le fichier en tableau de tableaux
+     * @returns {{lignes:Array<Object>, groupes:number, tableau:string}|null}
+     *   null si le fichier n'a pas cette forme — il est alors lu normalement.
+     */
+    function aplatirExportMonday(matrice) {
+        if (!Array.isArray(matrice) || matrice.length < 3) return null;
+
+        const remplies = r => (r || []).filter(c => String(c == null ? '' : c).trim()).length;
+        const estEnTete = r => {
+            const p = R.norm(r && r[0]);
+            return p === 'name' || p === 'nom' || p === 'element' || p === 'elements';
+        };
+
+        // Signature : un en-tête « Name » ailleurs qu'en première ligne, précédé
+        // d'au moins un titre seul. Sans cela, c'est un fichier plat ordinaire.
+        let premierEnTete = -1;
+        for (let i = 0; i < Math.min(matrice.length, 40); i++) {
+            if (estEnTete(matrice[i])) { premierEnTete = i; break; }
+        }
+        if (premierEnTete < 1) return null;
+        if (!matrice.slice(0, premierEnTete).some(r => remplies(r) === 1)) return null;
+
+        const tableau = String((matrice[0] || [])[0] || '').trim();
+        let entete = null, groupe = '', groupes = 0;
+        const lignes = [];
+
+        for (let i = 0; i < matrice.length; i++) {
+            const r = matrice[i];
+            if (!remplies(r)) continue;
+            if (estEnTete(r)) { entete = r.map(c => String(c == null ? '' : c).trim()); continue; }
+            if (remplies(r) === 1) {
+                // Le titre du tableau lui-même n'est pas un groupe.
+                if (i > 0 || String(r[0]).trim() !== tableau) { groupe = String(r[0]).trim(); groupes++; }
+                continue;
+            }
+            if (!entete) continue;
+
+            const o = {};
+            for (let c = 0; c < entete.length; c++) {
+                const nom = entete[c] || ('Colonne ' + (c + 1));
+                if (!(nom in o)) o[nom] = r[c] == null ? '' : r[c];
+            }
+            // Le groupe est une colonne à part entière : c'est lui qui porte
+            // l'étape du circuit, et il n'existe nulle part ailleurs.
+            if (!('Groupe' in o)) o.Groupe = groupe;
+            lignes.push(o);
+        }
+
+        return lignes.length ? { lignes, groupes, tableau } : null;
+    }
+
+    /**
      * Complète les factures Monday avec l'export Sellsy.
      *
      * Sellsy est le logiciel de facturation : il porte le montant, la date de
@@ -1040,5 +1105,6 @@
         buildFacture, facturesFromMondayBoard, facturesFromRows, colonnesQualification,
         validerMapping, couvertureMapping, verifierValeurs, colonnesCandidates,
         consolider, appliquerGrandLivre, appliquerSellsy, enrichir, statutIndiquePaye,
+        aplatirExportMonday,
     };
 })(window);

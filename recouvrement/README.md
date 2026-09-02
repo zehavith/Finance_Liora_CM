@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.21.0** — 2 septembre 2026
+**Version 2.22.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.21.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.22.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -426,6 +426,34 @@ ouvre le détail, cause par cause, de la plus fréquente à la plus rare :
 Le même classement accompagne l'anomalie *Échéance impossible à calculer* de
 Data Quality.
 
+### Lire un export Monday
+
+Monday n'exporte pas un tableau rectangulaire. Il écrit le nom du tableau, puis
+pour chaque groupe : son titre, **sa propre ligne d'en-tête**, ses lignes — et
+recommence au groupe suivant.
+
+Lu comme un fichier plat, la première ligne devient l'en-tête et tout le reste
+est illisible : l'export de *1.1. Entreprise - ADV* donnait une seule colonne
+nommée « 1.1. Entreprise - ADV » et zéro facture. La lecture suit donc la
+structure — ligne à une seule cellule = titre de groupe, ligne commençant par
+*Name* = nouvel en-tête, le reste = des lignes rattachées au groupe courant.
+
+Deux conséquences utiles :
+
+- le **groupe** devient une colonne à part entière : c'est lui qui porte l'étape
+  du circuit, et il n'existe nulle part ailleurs dans le fichier ;
+- le **nom du tableau** est lu dans le fichier, pas déduit du nom de fichier :
+  *0.1. ALL - Factures payées* plutôt que *0 1 ALL Factures payees*. Le rôle du
+  tableau en dépend.
+
+La colonne d'items de Monday — *Name*, *Nom* ou *Élément* selon la langue de
+l'export — est reconnue comme numéro de facture, sous réserve du contrôle de
+valeurs : une colonne de ce nom qui ne contient pas de numéros exploitables est
+écartée.
+
+Sur les huit tableaux réels : **10 660 factures** lues depuis les fichiers, avec
+leurs groupes, leurs montants et leurs échéances.
+
 ### Le vocabulaire des tableaux Liora
 
 Les colonnes ne s'appellent pas partout pareil, et un nom non reconnu vaut une
@@ -635,6 +663,30 @@ seulement des trous remplis.
 
 Les valeurs venues de Sellsy sont marquées d'un **S** dans la table des
 factures, et le compte apparaît dans la chaîne « De Monday au tableau de bord ».
+
+### Deux niveaux de lecture
+
+La balance âgée comptable se lit **par financement** — CPF, B2C-Perso,
+Transition pro… — ou **par catégorie de client** : B2C, B2C-Entreprise, B2B,
+Alternance, POEI, Interco. La catégorie est le *Type de client* de la
+facturation ; « B2C » y recouvre B2C-Perso, CPF, Transition Pro, AIF, Region et
+Agefiph. C'est le niveau du tableau de trésorerie, et il ne remplace pas le
+détail : la bascule est au-dessus du tableau.
+
+Les **règles appliquées** sont rappelées juste au-dessus, dans un bloc
+repliable : pour chaque financement, sa catégorie, la date sur laquelle son
+échéance est calculée, son périmètre — puis la cascade de classement. Une
+balance ne se lit pas sans savoir d'où viennent ses dates.
+
+### Classer plusieurs créances d'un coup
+
+Les créances qu'aucun recoupement n'a su classer se cochent et se classent par
+lot : on sélectionne, on choisit un financement, on applique. **Le choix entre
+au référentiel** — il vaudra aussi pour les extraits suivants, où les mêmes
+factures reviennent. Ce travail ne se fait donc qu'une fois.
+
+Une créance sans numéro de facture ne peut pas y entrer : le référentiel est
+indexé par numéro. Sa case est désactivée plutôt que trompeuse.
 
 ### Les quatre vues
 
@@ -1223,6 +1275,18 @@ n'entre donc pas dans le taux de rejet.
   aucun rejet sur leurs trois derniers prélèvements présentés. Un simple
   encaissement après l'incident ne suffit pas à le dire.
 - **Montant à risque** — rejets non rattrapés et prélèvements encore en vol.
+
+### Regarder une période plutôt que tout l'historique
+
+Une fenêtre — 6, 12, 24 mois, ou tout — s'applique à la date de prélèvement.
+Elle change vraiment ce qui est analysé, et pas seulement ce qui est mis en
+évidence : **un apprenant dont aucun prélèvement ne tombe dans la fenêtre en
+sort**, et la courbe de survie se recalcule sur ce qui reste. La période
+retenue et le nombre de prélèvements concernés sont affichés à côté de la
+bascule.
+
+Les indicateurs portent sur les prélèvements retenus, pas sur l'historique
+complet : le bandeau annonçait 900 prélèvements quand 290 étaient analysés.
 
 ### Courbe de survie
 
