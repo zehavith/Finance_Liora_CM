@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v1.7.0 — 2 septembre 2026
+   v1.8.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '1.7.0';
+    const VERSION = '1.8.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -94,6 +94,9 @@
             prlvRecherche: '',
             triPrlv: { key: 'montantEchoue', sens: 'desc' },
             evoCatUnite: 'nb',
+            // Fenêtre des graphiques mensuels : l'historique remonte à 2021,
+            // mais deux ans suffisent à lire une tendance sans écraser l'axe.
+            fenetreMois: 24,
             qualifChoix: null,
             qualifUnite: 'nb',
             qualifToutes: false,
@@ -115,6 +118,18 @@
             el.textContent = 'v' + VERSION;
             el.title = 'Version ' + VERSION + ' — ' + VERSION_DATE;
         });
+
+        // Le navigateur peut resservir un app.js d'une version antérieure : les
+        // fichiers portent donc leur version dans leur adresse, et l'on vérifie
+        // ici que la page et le script viennent bien de la même. Sans ce
+        // contrôle, une mise à jour pouvait sembler installée sans l'être.
+        const marque = (document.querySelector('script[src*="app.js"]') || {}).src || '';
+        const versionPage = (marque.match(/[?&]v=([0-9.]+)/) || [])[1];
+        if (versionPage && versionPage !== VERSION) {
+            U.toast(`Cette page charge la version ${VERSION} alors qu'elle attend la ${versionPage} : `
+                + 'votre navigateur ressert d\'anciens fichiers. Faites Ctrl + F5 pour forcer le rechargement.',
+                'error', 15000);
+        }
         brancherEvenements();
 
         const [token, boards, rules, options, imports, gl, factures, finManuels] = await Promise.all([
@@ -813,7 +828,38 @@
         ouvrirOnglet('factures');
     }
 
-    function rendreChartMois(rows) {
+    /**
+     * Ne garder que la fin d'une série mensuelle.
+     *
+     * L'historique remonte à décembre 2021, mais les trois premières années ne
+     * portent presque rien : cinquante-sept colonnes dont la moitié est vide
+     * écrasent la période qui compte et rendent l'axe illisible. La fenêtre est
+     * réglable au-dessus de chaque graphique, et « Tout » reste disponible.
+     */
+    function derniersMois(rows) {
+        const n = state.ui.fenetreMois;
+        if (!n || rows.length <= n) return rows;
+        return rows.slice(rows.length - n);
+    }
+
+    /** Sélecteur de fenêtre, partagé par les graphiques mensuels. */
+    function brancherFenetreMois() {
+        $$('[data-fenetre]').forEach(b => {
+            b.classList.toggle('active', String(state.ui.fenetreMois || '') === b.dataset.fenetre);
+            b.addEventListener('click', () => {
+                state.ui.fenetreMois = b.dataset.fenetre ? +b.dataset.fenetre : null;
+                rendreTout();
+            });
+        });
+    }
+
+    function rendreChartMois(toutesLesLignes) {
+        // Un seul axe : les deux courbes de pourcentage vivaient sur un second
+        // axe à droite, dont l'alignement avec les barres était arbitraire. Le
+        // taux se lit désormais sur la courbe dédiée par catégorie, et ce
+        // graphique ne répond plus qu'à une question : que sont devenues les
+        // factures échues de chaque mois ?
+        const rows = derniersMois(toutesLesLignes);
         const eur = state.ui.uniteMois === 'euros';
         const labels = rows.map(r => U.moisLabel(r.mois, true));
         const fmt = eur ? U.eurosCourt : U.nombre;
@@ -834,18 +880,6 @@
                     jeu('En retard (impayée)', 'EnRetard', U.couleurs.retard),
                     jeu('Non échue', 'NonEchue', U.couleurs.nonEchue),
                     jeu('Échéance inconnue', 'SansEcheance', U.couleurs.inconnu),
-                    {
-                        type: 'line', label: '% en retard', yAxisID: 'y1',
-                        data: rows.map(r => eur ? r.tauxEur : r.tauxNb),
-                        borderColor: U.couleurs.accent, backgroundColor: U.couleurs.accent,
-                        borderWidth: 2.5, tension: 0.3, pointRadius: 3, pointHoverRadius: 5, order: 0,
-                    },
-                    {
-                        type: 'line', label: '% encore impayé', yAxisID: 'y1',
-                        data: rows.map(r => eur ? r.tauxImpayeEur : r.tauxImpayeNb),
-                        borderColor: U.couleurs.retard, borderDash: [5, 4],
-                        borderWidth: 2, tension: 0.3, pointRadius: 0, order: 0,
-                    },
                 ],
             },
             options: {
@@ -853,24 +887,17 @@
                 scales: {
                     x: { stacked: true, grid: { display: false } },
                     y: { stacked: true, grid: U.grille, ticks: { callback: v => fmt(v) } },
-                    y1: {
-                        position: 'right', min: 0, max: 100, grid: { display: false },
-                        ticks: { callback: v => v + ' %' },
-                    },
                 },
                 plugins: {
                     tooltip: {
                         callbacks: {
-                            label: ctx => {
-                                const d = ctx.dataset;
-                                if (d.yAxisID === 'y1') return `${d.label} : ${U.pourcent(ctx.parsed.y)}`;
-                                return `${d.label} : ${eur ? U.euros(ctx.parsed.y) : U.nombre(ctx.parsed.y) + ' factures'}`;
-                            },
+                            label: ctx => `${ctx.dataset.label} : `
+                                + (eur ? U.euros(ctx.parsed.y) : U.nombre(ctx.parsed.y) + ' factures'),
                             afterBody: items => {
                                 const r = rows[items[0].dataIndex];
                                 if (!r) return '';
-                                return ['', `Retard moyen : ${U.jours(r.retardMoyen)}`,
-                                    `Base échue : ${U.nombre(r.assietteNb)} factures / ${U.eurosCourt(r.assietteEur)}`];
+                                return ['', `${U.pourcent(eur ? r.tauxEur : r.tauxNb)} en retard`,
+                                    `Retard moyen : ${U.jours(r.retardMoyen)}`];
                             },
                         },
                     },
@@ -894,8 +921,15 @@
      */
     function rendreChartFlux(data) {
         const eur = state.ui.fluxUnite === 'euros';
-        const rows = X.fluxRecouvrement(data, state.moisDispo, state.filtres.dateRef);
-        if (!rows.length) { U.chart('chart-flux', videConfig('Aucun mois exploitable')); return; }
+        const toutes = X.fluxRecouvrement(data, state.moisDispo, state.filtres.dateRef);
+        if (!toutes.length) { U.chart('chart-flux', videConfig('Aucun mois exploitable')); return; }
+        // La courbe de stock vivait sur un second axe, à une échelle six fois
+        // supérieure à celle des barres : l'alignement des deux était arbitraire
+        // et suggérait des rapprochements que les chiffres ne disent pas. Le
+        // stock se lit sur le KPI « Montant en retard » et dans la balance âgée ;
+        // ce graphique ne répond plus qu'à une question : ce mois-ci, ai-je
+        // gagné ou perdu du terrain ?
+        const rows = derniersMois(toutes);
 
         const champ = (base) => eur ? 'eur' + base : 'nb' + base;
         const fmt = eur ? U.eurosCourt : U.nombre;
@@ -915,27 +949,13 @@
                         data: rows.map(r => -r[champ('Sorties')]),
                         backgroundColor: 'rgba(132, 204, 22, 0.75)', borderRadius: 3,
                     },
-                    {
-                        type: 'line', label: 'Montant en retard à fin de mois', order: 0, yAxisID: 'y1',
-                        data: rows.map(r => r[champ('Stock')]),
-                        borderColor: U.couleurs.accent, backgroundColor: 'rgba(244, 116, 88, 0.12)',
-                        borderWidth: 2.5, tension: 0.3, fill: true, pointRadius: 2, pointHoverRadius: 5,
-                    },
                 ],
             },
             options: {
                 interaction: { mode: 'index', intersect: false },
                 scales: {
                     x: { grid: { display: false } },
-                    y: {
-                        grid: U.grille, title: { display: true, text: 'Flux du mois' },
-                        ticks: { callback: v => fmt(Math.abs(v)) },
-                    },
-                    y1: {
-                        position: 'right', grid: { display: false }, beginAtZero: true,
-                        title: { display: true, text: 'Stock à fin de mois' },
-                        ticks: { callback: v => fmt(v) },
-                    },
+                    y: { grid: U.grille, ticks: { callback: v => fmt(Math.abs(v)) } },
                 },
                 plugins: {
                     tooltip: {
@@ -945,8 +965,10 @@
                                 const r = rows[items[0].dataIndex];
                                 if (!r) return '';
                                 const v = eur ? r.variation : r.nbEntrees - r.nbSorties;
-                                return ['', `Variation du mois : ${v > 0 ? '+' : ''}${fmt(v)}`,
-                                    `Retard moyen du stock : ${U.jours(r.retardMoyenStock)}`];
+                                return ['', v > 0
+                                    ? `Le retard a augmenté de ${fmt(v)} ce mois-ci`
+                                    : `Le retard a reculé de ${fmt(-v)} ce mois-ci`,
+                                    `Montant en retard à fin de mois : ${fmt(r[champ('Stock')])}`];
                             },
                         },
                     },
@@ -962,10 +984,20 @@
         });
     }
 
-    /** Trois lectures du retard, toutes en jours, sur un axe commun. */
+    /**
+     * Le retard des factures impayées, moyen et médian.
+     *
+     * Une troisième courbe, l'écart au règlement, y figurait : elle porte sur
+     * une autre population — les factures encaissées dans le mois — et sautait
+     * de vingt à quatre cents jours d'un mois à l'autre selon les quelques
+     * vieilles créances soldées. Trois lectures sur un même axe pour deux
+     * populations différentes, c'était la confusion assurée ; elle est retirée,
+     * le KPI « Retard moyen au paiement » la donne déjà.
+     */
     function rendreChartRetardEvolution(data) {
-        const rows = X.fluxRecouvrement(data, state.moisDispo, state.filtres.dateRef);
-        if (!rows.length) { U.chart('chart-retard-evolution', videConfig('Aucun mois exploitable')); return; }
+        const toutes = X.fluxRecouvrement(data, state.moisDispo, state.filtres.dateRef);
+        if (!toutes.length) { U.chart('chart-retard-evolution', videConfig('Aucun mois exploitable')); return; }
+        const rows = derniersMois(toutes);
 
         const ligne = (label, cle, couleur, dash) => ({
             label,
@@ -985,9 +1017,8 @@
             data: {
                 labels: rows.map(r => U.moisLabel(r.mois, true)),
                 datasets: [
-                    ligne("Retard moyen de l'encours", 'retardMoyenStock', U.couleurs.retard),
-                    ligne("Retard médian de l'encours", 'retardMedianStock', U.couleurs.payeRetard, [5, 4]),
-                    ligne('Écart au règlement', 'retardMoyenReglement', U.couleurs.paye),
+                    ligne('Retard moyen', 'retardMoyenStock', U.couleurs.retard),
+                    ligne('Retard médian', 'retardMedianStock', U.couleurs.payeRetard, [5, 4]),
                 ],
             },
             options: {
@@ -1019,8 +1050,9 @@
     }
 
     function rendreChartDSO(data) {
-        const rows = X.dsoParMois(data, state.moisDispo, state.filtres.dateRef);
-        if (!rows.length) { U.chart('chart-dso', videConfig('Aucun mois exploitable')); return; }
+        const toutes = X.dsoParMois(data, state.moisDispo, state.filtres.dateRef);
+        if (!toutes.length) { U.chart('chart-dso', videConfig('Aucun mois exploitable')); return; }
+        const rows = derniersMois(toutes);
 
         const methode = state.ui.dsoMethode;
         const courbes = [];
@@ -1041,36 +1073,31 @@
             type: 'bar',
             data: {
                 labels: rows.map(r => U.moisLabel(r.mois, true)),
-                datasets: [
-                    {
-                        label: 'Reste à encaisser à fin de mois', order: 2,
-                        data: rows.map(r => r.encours),
-                        backgroundColor: 'rgba(99, 102, 241, 0.45)', borderRadius: 3,
-                    },
-                    ...courbes,
-                ],
+                // Les barres en euros et la courbe en jours partageaient un
+                // graphique à deux axes, dont l'alignement ne veut rien dire :
+                // le reste à encaisser se lit dans la balance âgée. Ne subsiste
+                // ici que ce que le DSO mesure — un nombre de jours.
+                datasets: courbes.map(c => ({ ...c, yAxisID: 'y' })),
             },
             options: {
                 interaction: { mode: 'index', intersect: false },
                 scales: {
                     x: { grid: { display: false } },
-                    y: { grid: U.grille, ticks: { callback: v => U.eurosCourt(v) } },
-                    y1: {
-                        position: 'right', beginAtZero: true, grid: { display: false },
-                        title: { display: true, text: 'Jours' },
+                    y: {
+                        grid: U.grille, beginAtZero: true,
                         ticks: { callback: v => v + ' j' },
                     },
                 },
                 plugins: {
                     tooltip: {
                         callbacks: {
-                            label: ctx => ctx.dataset.yAxisID === 'y1'
-                                ? `${ctx.dataset.label} : ${ctx.parsed.y == null ? 'non calculable' : U.jours(ctx.parsed.y)}`
-                                : `${ctx.dataset.label} : ${U.euros(ctx.parsed.y)}`,
+                            label: ctx => `${ctx.dataset.label} : `
+                                + (ctx.parsed.y == null ? 'non calculable' : U.jours(ctx.parsed.y)),
                             afterBody: items => {
                                 const r = rows[items[0].dataIndex];
                                 if (!r) return '';
-                                const l = [`CA facturé du mois : ${U.euros(r.ca)}`,
+                                const l = [`Reste à encaisser : ${U.euros(r.encours)}`,
+                                    `CA facturé du mois : ${U.euros(r.ca)}`,
                                     `${U.nombre(r.nbEncours)} factures non réglées`];
                                 if (r.tronque) l.push("⚠ encours plus ancien que l'historique chargé");
                                 return ['', ...l];
@@ -4179,6 +4206,7 @@
             if (ex.has(nom)) ex.delete(nom); else ex.add(nom);
             rendreQualifications(facturesFiltrees());
         });
+        brancherFenetreMois();
         $$('#seg-evocat-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.evoCatUnite = b.dataset.unite;
             $$('#seg-evocat-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));

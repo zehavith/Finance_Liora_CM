@@ -1,11 +1,17 @@
 # Liora — Suivi Recouvrement
 
-**Version 1.7.0** — 2 septembre 2026
+**Version 1.8.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
 de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
+
+Chaque fichier de l'application porte sa version dans son adresse
+(`app.js?v=1.8.0`) : sans cela le navigateur resservait ses fichiers en cache et
+une mise à jour pouvait sembler installée sans l'être. Si les deux ne
+concordent pas, l'application le signale et invite à forcer le rechargement par
+Ctrl + F5.
 
 Application web de pilotage du recouvrement, alimentée par les tableaux
 **Monday.com** de Liora. Elle reprend la structure et le thème de
@@ -637,6 +643,27 @@ comparable d'un mois à l'autre : un taux « à date » ferait chuter mécanique
 les mois récents, dont les factures n'ont pas eu le temps d'être en retard. Les
 mois dont la cohorte compte moins de cinq factures ne portent pas de point —
 trois factures ne font pas un taux.
+
+### Un graphique, une question
+
+Les graphiques mensuels cumulaient jusqu'à sept séries sur deux axes verticaux,
+et cinquante-sept mois en abscisse dont la moitié presque vide. Chacun répond
+désormais à une seule question, sur **un seul axe**.
+
+Deux échelles verticales sur un même graphique donnent une correspondance
+arbitraire entre les deux séries et suggèrent des rapprochements que les chiffres
+ne disent pas. Elles ont disparu :
+
+| Graphique | Ce qui a été retiré | Ce qu'il dit maintenant |
+|---|---|---|
+| **Taux de recouvrement par mois** | deux courbes de pourcentage sur un axe de droite | ce que sont devenues les factures échues de chaque mois — le taux est en info-bulle, et la courbe par catégorie le trace |
+| **Flux de recouvrement** | la courbe de stock, six fois plus haute que les barres | gagne-t-on ou perd-on du terrain ce mois-ci |
+| **DSO** | les barres de reste à encaisser | un nombre de jours, ce que le DSO mesure |
+| **Évolution du retard moyen** | l'écart au règlement, qui porte sur une autre population | depuis combien de jours les impayées attendent, en moyenne et en médiane |
+
+Un sélecteur **12 / 24 mois / Tout**, en tête du troisième temps, règle la
+fenêtre commune à ces graphiques ; deux ans par défaut, assez pour lire une
+tendance sans écraser l'axe.
 
 ### Graphiques du tableau de bord
 

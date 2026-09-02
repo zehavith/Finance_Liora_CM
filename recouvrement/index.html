@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js"></script>
-    <script src="../vendor/papaparse.min.js"></script>
-    <script src="../vendor/xlsx.full.min.js"></script>
-    <link rel="stylesheet" href="../styles.css">
-    <link rel="stylesheet" href="styles.css">
+    <script src="../vendor/chart.umd.min.js?v=1.8.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=1.8.0"></script>
+    <script src="../vendor/papaparse.min.js?v=1.8.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=1.8.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=1.8.0">
+    <link rel="stylesheet" href="styles.css?v=1.8.0">
 </head>
 <body>
 
@@ -465,6 +465,11 @@
             <div class="section-header section-acte">
                 <h2><span class="acte-num">3</span>Comment cela évolue</h2>
                 <span class="acte-sous">Le mois écoulé, puis les tendances de fond</span>
+                <div class="seg seg-sm" id="seg-fenetre">
+                    <button class="seg-btn" data-fenetre="12">12 mois</button>
+                    <button class="seg-btn active" data-fenetre="24">24 mois</button>
+                    <button class="seg-btn" data-fenetre="">Tout</button>
+                </div>
             </div>
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
@@ -489,8 +494,9 @@
                         </div>
                     </div>
                     <span class="fv-hint">
-                        Barres = factures arrivées à échéance dans le mois, réparties par issue ·
-                        Ligne = part en retard (payées en retard + impayées) sur les factures échues du mois
+                        Que sont devenues les factures arrivées à échéance chaque mois. La hauteur de la
+                        colonne, c'est la taille du mois ; les couleurs, son issue. Cliquez sur un mois
+                        pour n'afficher que lui.
                     </span>
                     <div class="chart-container chart-tall">
                         <canvas id="chart-mois"></canvas>
@@ -511,8 +517,9 @@
                         </div>
                     </div>
                     <span class="fv-hint">
-                        Entrées = factures devenues échues sans être réglées · Sorties = factures en retard
-                        encaissées dans le mois · Courbe = montant en retard restant à la fin du mois
+                        Gagne-t-on ou perd-on du terrain ? Au-dessus de zéro, les factures tombées en
+                        retard dans le mois ; en dessous, celles encaissées. Une colonne rouge plus haute
+                        que sa jumelle verte, et le retard progresse.
                     </span>
                     <div class="chart-container chart-tall">
                         <canvas id="chart-flux"></canvas>
@@ -525,9 +532,9 @@
                 <div class="chart-card chart-wide">
                     <div class="chart-header"><h3>Évolution du retard moyen</h3></div>
                     <span class="fv-hint">
-                        Retard des factures impayées constaté à la fin de chaque mois, et écart entre
-                        règlement et échéance sur les factures encaissées dans le mois
-                        (négatif = payé en avance)
+                        Depuis combien de jours vos factures impayées attendent, à la fin de chaque mois.
+                        La médiane écarte les quelques très vieilles créances qui tirent la moyenne vers
+                        le haut.
                     </span>
                     <div class="chart-container chart-tall">
                         <canvas id="chart-retard-evolution"></canvas>
@@ -1065,13 +1072,13 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js"></script>
-<script src="js/store.js"></script>
-<script src="js/monday.js"></script>
-<script src="js/ingest.js"></script>
-<script src="js/metrics.js"></script>
-<script src="js/prelevements.js"></script>
-<script src="js/ui.js"></script>
-<script src="app.js"></script>
+<script src="js/rules.js?v=1.8.0"></script>
+<script src="js/store.js?v=1.8.0"></script>
+<script src="js/monday.js?v=1.8.0"></script>
+<script src="js/ingest.js?v=1.8.0"></script>
+<script src="js/metrics.js?v=1.8.0"></script>
+<script src="js/prelevements.js?v=1.8.0"></script>
+<script src="js/ui.js?v=1.8.0"></script>
+<script src="app.js?v=1.8.0"></script>
 </body>
 </html>
