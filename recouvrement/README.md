@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.9.0** — 2 septembre 2026
+**Version 2.10.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.9.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.10.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -217,27 +217,28 @@ Le groupe *Factures non payées : Perte / Contentieux* contient le mot « payée
 sans rien devoir au règlement : la négation est vérifiée avant tout, et ces
 factures sont classées en contentieux, non en réglées.
 
-### Écarter la reprise d'historique
+### Écarter les factures en tampon
 
-Les factures rangées dans un groupe **« payées avant import »** étaient déjà
-soldées le jour où le circuit de recouvrement a été mis en place. Aucune relance
-n'a été faite dessus : elles entrent dans les totaux facturés et encaissés, et
-tirent mécaniquement le taux de récupération vers ce qui a été récupéré *avant*
-que l'équipe existe.
+Le **tampon** est le sas où la facture attend avant d'entrer dans le circuit :
+ni l'ADV ni le recouvrement n'y touchent. Une facture qui s'y trouve encore, ou
+qui a été réglée sans jamais en sortir, entre dans les totaux facturés et
+encaissés alors qu'**aucune relance n'a été faite dessus**.
 
-Le sélecteur **Reprise d'historique** de la barre de filtres — *Incluse* /
-*Exclue* — les retire de toute l'application : indicateurs, graphiques, tableaux
-et export. La ligne d'aide indique combien de factures sont concernées, et un
-badge rappelle le filtre tant qu'il est actif.
+Le sélecteur **Factures en tampon** de la barre de filtres — *Incluses* /
+*Exclues* — les retire de toute l'application : indicateurs, graphiques,
+tableaux et export. La ligne d'aide indique combien de factures sont
+concernées, et un badge rappelle le filtre tant qu'il est actif.
 
-- **Incluse** (par défaut) : la photographie complète du portefeuille, telle
+- **Incluses** (par défaut) : la photographie complète du portefeuille, telle
   qu'elle sort de Monday.
-- **Exclue** : le travail réellement fourni depuis la mise en place du circuit.
+- **Exclues** : le travail réellement fourni par l'ADV et le recouvrement.
 
-Les deux lectures sont justes ; c'est la question posée qui change. Le taux de
-récupération monte à l'exclusion, puisque les encaissements acquis d'avance
-disparaissent du numérateur comme du dénominateur, mais pas dans les mêmes
-proportions.
+Le tampon est reconnu partout où la facture en a gardé la trace — le tableau où
+elle est, celui d'où elle vient, son rôle, et les groupes traversés. Une facture
+passée au tampon puis réglée ne porte plus que son groupe d'origine pour le
+dire : la chercher uniquement sur le tableau courant en manquerait la moitié.
+
+Les deux lectures sont justes ; c'est la question posée qui change.
 
 ### Corriger un financement à la main
 
@@ -552,9 +553,39 @@ les doublons entre tableaux Monday.
 | Date de facture | situe le trou dans le temps et borne le contrôle |
 | Client | dit si le trou se concentre sur un compte |
 
-Les libellés sont reconnus automatiquement — « Numéro », « Référence »,
-« Restant dû », « Total TTC »… L'onglet indique ce qu'il n'a pas trouvé plutôt
-que de le calculer sur du vide.
+Les libellés exacts de Sellsy sont reconnus en priorité — « Numéro »,
+« Statut », « Montant », « Montant dû TTC », « Date d'échéance » — avant tout
+rapprochement approché : l'export porte à la fois *Numéro* et *Numéro de
+facture Zoho*, et un score de ressemblance choisissait la seconde, vide, qui ne
+rapprochait rien. L'onglet indique ce qu'il n'a pas trouvé plutôt que de le
+calculer sur du vide.
+
+### Les statuts de Sellsy
+
+| Statut Sellsy | Lu comme | Attendue dans Monday |
+|---|---|---|
+| Payée | réglée | oui |
+| Retard | impayée | oui |
+| À régler | impayée | oui |
+| Paiement partiel | partiellement réglée | oui |
+| Annulée | hors périmètre | non |
+
+« À régler » contient *régl* : sans traitement explicite, il tombait sur le
+motif des factures payées et des centaines d'impayées étaient comptées
+encaissées. Les libellés d'autres outils — brouillon, avoir, unpaid, settled —
+restent reconnus. À défaut de colonne de statut, le **reste dû** tranche : à
+zéro, la facture est soldée.
+
+### Montants aberrants
+
+Au-delà de **10 000 000 €**, la valeur n'est pas une facture de formation mais
+une anomalie de la source. L'export réel en contient trois, dont deux à
+−421 046 417 789 € : additionnées, elles affichaient un total facturé de −460
+milliards d'euros et rendaient toute lecture impossible.
+
+Le montant est donc écarté des sommes ; **la facture reste comptée et
+signalée**, nommément, sous les indicateurs et en rouge dans la table. C'est à
+corriger dans Sellsy — pas à cet outil de le cacher.
 
 ### Les quatre vues
 

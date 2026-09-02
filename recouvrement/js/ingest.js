@@ -724,13 +724,22 @@
                 || R.detectFinancement(f.board, o.rules);
             if (finRededuit) f.financement = finRededuit;
 
-            // Reprise d'historique : les factures rangées dans un groupe
-            // « payées avant import » étaient déjà soldées quand le circuit a
-            // été mis en place. Elles gonflent les taux de récupération sans
-            // qu'aucune relance ait été faite : pouvoir les écarter est le seul
-            // moyen de mesurer le travail réellement fourni.
-            f.repriseHistorique = /avant import/.test(
-                R.norm([f.groupeOrigine, f.groupePaiement, f.groupe].filter(Boolean).join(' ')));
+            // Tampon : le sas où la facture attend avant d'entrer dans le
+            // circuit. Aucune relance n'y est faite — ni ADV, ni recouvrement.
+            // Une facture qui y est encore, ou qui a été réglée sans jamais en
+            // sortir, gonfle les taux sans qu'aucun travail ait été fourni :
+            // pouvoir l'écarter est le seul moyen de mesurer ce travail.
+            //
+            // Le tampon se lit partout où la facture a laissé une trace : le
+            // tableau où elle est, celui d'où elle vient, son rôle, et les
+            // groupes traversés — une facture passée au tampon puis réglée ne
+            // porte plus que son groupe d'origine pour le dire.
+            f.enTampon = (f.presenceRoles || [f.role]).includes('tampon')
+                || /tampon/.test(R.norm([
+                    f.board, f.groupe, f.groupeOrigine, f.groupePaiement,
+                    f.boardOperationnel, f.groupeOperationnel,
+                    ...(f.presenceTableaux || []),
+                ].filter(Boolean).join(' ')));
 
             // Une correction saisie à la main l'emporte sur toute déduction, et
             // précède le calcul de l'échéance : c'est la règle du financement

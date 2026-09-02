@@ -70,9 +70,10 @@
             if (f.masquerTechnique !== false && (x.role === 'technique' || x.groupeTechnique)) return false;
             if (x.role === 'ignore') return false;
 
-            // Reprise d'historique : soldées avant la mise en place du circuit,
-            // elles ne doivent pas compter dans la mesure du travail fourni.
-            if (f.exclureReprise && x.repriseHistorique) return false;
+            // Tampon : le sas d'attente avant le circuit. Aucune relance n'y
+            // est faite, donc rien de ce qui s'y trouve ne mesure le travail
+            // fourni.
+            if (f.exclureTampon && x.enTampon) return false;
 
             if (f.perimetre && f.perimetre !== 'Tous' && x.perimetre !== f.perimetre) return false;
 

@@ -41,7 +41,10 @@
         { key: 'brouillon', label: 'Brouillon',            attendueDansMonday: false, paye: false, match: /brouillon|draft|projet|devis|en cours de redaction/ },
         { key: 'annulee',   label: 'Annulée',              attendueDansMonday: false, paye: false, match: /annul|cancel|abandonn/ },
         { key: 'avoir',     label: 'Avoir',                attendueDansMonday: false, paye: false, match: /avoir|credit note|note de credit|remboursement/ },
-        { key: 'impayee',   label: 'Impayée',              attendueDansMonday: true,  paye: false, match: /non pay|impay|pas pay|a payer|non regl|unpaid|due|en retard|late|echu/ },
+        // « À régler » et « Retard » sont les libellés de Sellsy pour une facture
+        // qui reste due. Sans eux, « à régler » tombait sur le motif « payée »
+        // — il contient « régl » — et 769 impayées étaient comptées encaissées.
+        { key: 'impayee',   label: 'Impayée',              attendueDansMonday: true,  paye: false, match: /non pay|impay|pas pay|a payer|a regl|reste a|non regl|unpaid|overdue|due|retard|late|echu|a encaisser/ },
         { key: 'partielle', label: 'Partiellement payée',  attendueDansMonday: true,  paye: false, match: /partiel|partial|acompte|advance/ },
         { key: 'payee',     label: 'Payée',                attendueDansMonday: true,  paye: true,  match: /pay|regl|encaiss|sold|lettr|settled/ },
         { key: 'envoyee',   label: 'Envoyée / en attente', attendueDansMonday: true,  paye: false, match: /envoy|emise|emis|sent|attente|pending|ouverte|open|valid/ },
@@ -87,24 +90,34 @@
         client:     ['client', 'tiers', 'societe', 'nom du tiers', 'raison sociale'],
         montant:    ['montant ttc', 'total ttc', 'ttc', 'montant', 'total'],
         montantHT:  ['montant ht', 'total ht', 'ht'],
-        resteDu:    ['restant du', 'reste du', 'reste a payer', 'solde du', 'solde', 'du'],
+        resteDu:    ['montant du ttc', 'montant du', 'restant du', 'reste du', 'reste a payer', 'solde du', 'solde'],
         dateFacture: ['date', 'date de facture', 'date facture', 'date d emission'],
         dateEcheanceSource: ['date d echeance', 'echeance', 'date limite de paiement'],
         statut:     ['statut', 'status', 'etat', 'etat du paiement', 'statut de paiement'],
     };
 
-    /** Le libellé de colonne correspond-il exactement à l'un des alias ? */
-    function trouverColonne(entetes, alias) {
-        const cibles = alias.map(a => R.norm(a));
-        for (const cible of cibles) {
+    /** Le libellé de colonne est-il exactement l'un des alias ? */
+    function trouverColonneExacte(entetes, alias) {
+        for (const cible of alias.map(a => R.norm(a))) {
             const exact = entetes.find(h => R.norm(h) === cible);
             if (exact) return exact;
         }
-        for (const cible of cibles) {
+        return null;
+    }
+
+    /** À défaut d'exact, le libellé contient-il l'un des alias ? */
+    function trouverColonnePartielle(entetes, alias) {
+        for (const cible of alias.map(a => R.norm(a))) {
             const partiel = entetes.find(h => R.norm(h).includes(cible));
             if (partiel) return partiel;
         }
         return null;
+    }
+
+    /** Part des valeurs réellement renseignées dans une colonne. */
+    function tauxRempli(valeurs) {
+        if (!valeurs.length) return 0;
+        return valeurs.filter(v => v != null && String(v).trim()).length / valeurs.length;
     }
 
     /**
@@ -118,22 +131,34 @@
         if (!rows || !rows.length) return { lignes: [], mapping: {}, entetes: [], ignorees: 0 };
         const entetes = Object.keys(rows[0]);
 
-        // Le mapping générique d'abord — il connaît les libellés longs et
-        // vérifie les valeurs — puis les alias Sellsy pour ce qu'il a laissé.
-        const cols = entetes.map(h => ({ id: h, title: h }));
         const valeurs = id => rows.slice(0, 200).map(r => r[id]);
-        const { mapping } = I.autoMapColumns(cols, valeurs);
-
-        const pris = new Set(Object.values(mapping));
-        for (const [champ, alias] of Object.entries(ALIAS_SELLSY)) {
-            if (mapping[champ]) continue;
-            const libres = entetes.filter(h => !pris.has(h));
-            const col = trouverColonne(libres, alias);
-            if (!col) continue;
-            if (!I.verifierValeurs(champ, valeurs(col)).ok) continue;
+        const mapping = {}, pris = new Set();
+        const retenir = (champ, col) => {
+            if (!col || mapping[champ] || pris.has(col)) return;
+            if (!I.verifierValeurs(champ, valeurs(col)).ok) return;
+            // Une colonne presque vide ne peut pas servir de clé : l'export
+            // porte « Numéro » et « Numéro de facture Zoho », et la seconde,
+            // vide, emportait le rapprochement en ne rapprochant rien.
+            if (champ === 'numero' && tauxRempli(valeurs(col)) < 0.5) return;
             mapping[champ] = col;
             pris.add(col);
-        }
+        };
+
+        // Les libellés exacts de Sellsy d'abord : « Numéro », « Statut »,
+        // « Montant » sont sans ambiguïté, là où un score approché va chercher
+        // « Numéro de facture Zoho » ou « Montant dû TTC ».
+        for (const [champ, alias] of Object.entries(ALIAS_SELLSY))
+            retenir(champ, trouverColonneExacte(entetes.filter(h => !pris.has(h)), alias));
+
+        // Puis le mapping générique, qui connaît les libellés longs des autres
+        // outils, pour les champs encore vides.
+        const libres = entetes.filter(h => !pris.has(h)).map(h => ({ id: h, title: h }));
+        const generique = I.autoMapColumns(libres, valeurs).mapping;
+        for (const [champ, col] of Object.entries(generique)) retenir(champ, col);
+
+        // Et en dernier recours l'inclusion : « Montant dû TTC » pour le reste dû.
+        for (const [champ, alias] of Object.entries(ALIAS_SELLSY))
+            retenir(champ, trouverColonnePartielle(entetes.filter(h => !pris.has(h)), alias));
 
         const lignes = [];
         let ignorees = 0;
@@ -154,6 +179,7 @@
                 resteDu,
                 dateFacture: mapping.dateFacture ? R.parseDate(r[mapping.dateFacture]) : null,
                 dateEcheance: mapping.dateEcheanceSource ? R.parseDate(r[mapping.dateEcheanceSource]) : null,
+                montantAberrant: montantAberrant(montant),
                 statutBrut: mapping.statut ? String(r[mapping.statut] || '').trim() : '',
                 statut: statut.key,
                 statutLabel: statut.label,
@@ -183,6 +209,28 @@
     const ECART_MONTANT_TOLERE = 1;   // euros — arrondis de TVA
 
     /**
+     * Au-delà de ce montant, la valeur n'est pas une facture de formation mais
+     * une anomalie de la source.
+     *
+     * L'export réel en contient : deux factures à −421 046 417 789 € et une à
+     * +381 091 361 414 €. Additionnées, elles affichaient un total facturé de
+     * −460 milliards d'euros et rendaient toute lecture impossible. Le montant
+     * est donc écarté des sommes — la facture, elle, reste comptée et signalée :
+     * c'est à la comptabilité de la corriger dans Sellsy, pas à cet outil de la
+     * cacher.
+     */
+    const MONTANT_ABERRANT = 10000000;
+
+    function montantAberrant(montant) {
+        return montant != null && Math.abs(montant) > MONTANT_ABERRANT;
+    }
+
+    /** Montant utilisable dans une somme : null si la source est aberrante. */
+    function montantSommable(l) {
+        return l.montantAberrant ? null : l.montant;
+    }
+
+    /**
      * Confronte l'export Sellsy aux factures Monday.
      *
      * @param {Array} lignes    sorties de lireExport()
@@ -206,7 +254,7 @@
             }
             // Écart de montant : Sellsy fait foi, c'est le logiciel de
             // facturation. Un écart signale une saisie Monday à corriger.
-            const ecartMontant = (l.montant != null && f.montant != null
+            const ecartMontant = (l.montant != null && !l.montantAberrant && f.montant != null
                 && Math.abs(l.montant - f.montant) > ECART_MONTANT_TOLERE)
                 ? f.montant - l.montant : null;
             // Écart de statut : Sellsy encaissé et Monday encore en cours, c'est
@@ -259,16 +307,19 @@
         return {
             nbSellsy: o.lignes.length,
             nbAttendues: attendues.length,
-            eurosAttendues: somme(attendues, l => l.montant),
+            eurosAttendues: somme(attendues, montantSommable),
             nbAbsentes: absentes.length,
-            eurosAbsentes: somme(absentes, l => l.montant),
-            eurosAbsentesDues: somme(absentes.filter(l => !l.paye), l => l.resteDu != null ? l.resteDu : l.montant),
+            eurosAbsentes: somme(absentes, montantSommable),
+            eurosAbsentesDues: somme(absentes.filter(l => !l.paye),
+                l => l.resteDu != null ? l.resteDu : montantSommable(l)),
             nbAbsentesImpayees: absentes.filter(l => !l.paye).length,
             nbAbsentesPayees: absentes.filter(l => l.paye).length,
             nbHorsPerimetre: o.horsPerimetre.length,
             nbRapprochees: o.rapprochees.length,
             nbSurnumeraires: o.surnumeraires.length,
             nbMondaySansNumero: o.sansNumero.length,
+            nbMontantAberrant: o.lignes.filter(l => l.montantAberrant).length,
+            numerosMontantAberrant: o.lignes.filter(l => l.montantAberrant).map(l => l.numero),
             eurosSurnumeraires: somme(o.surnumeraires, f => f.montant),
             nbEcartMontant: o.rapprochees.filter(r => r.ecartMontant != null).length,
             eurosEcartMontant: somme(o.rapprochees.filter(r => r.ecartMontant != null), r => r.ecartMontant),
@@ -292,8 +343,8 @@
             if (!m.has(l.statut)) m.set(l.statut, { key: l.statut, label: l.statutLabel, nb: 0, euros: 0, resteDu: 0 });
             const e = m.get(l.statut);
             e.nb++;
-            e.euros += l.montant || 0;
-            e.resteDu += (l.resteDu != null ? l.resteDu : (l.paye ? 0 : l.montant)) || 0;
+            e.euros += montantSommable(l) || 0;
+            e.resteDu += (l.resteDu != null ? l.resteDu : (l.paye ? 0 : montantSommable(l))) || 0;
         }
         return [...m.values()].sort((a, b) => b.nb - a.nb);
     }
@@ -316,7 +367,7 @@
         for (const l of absentes) {
             const mk = R.monthKey(l.dateFacture);
             touche(mk, 'absentes');
-            if (mk && m.has(mk)) m.get(mk).euros += l.montant || 0;
+            if (mk && m.has(mk)) m.get(mk).euros += montantSommable(l) || 0;
         }
         return [...m.values()].sort((a, b) => a.mois.localeCompare(b.mois))
             .map(x => ({ ...x, part: x.total ? x.absentes / x.total * 100 : null }));
@@ -329,13 +380,14 @@
             const c = l.client || '(client non renseigné)';
             if (!m.has(c)) m.set(c, { client: c, nb: 0, euros: 0 });
             const e = m.get(c);
-            e.nb++; e.euros += l.montant || 0;
+            e.nb++; e.euros += montantSommable(l) || 0;
         }
         return [...m.values()].sort((a, b) => b.euros - a.euros || b.nb - a.nb).slice(0, limite || 20);
     }
 
     global.LioraSellsy = {
-        STATUTS, STATUT_INCONNU, ALIAS_SELLSY, ECART_MONTANT_TOLERE,
+        STATUTS, STATUT_INCONNU, ALIAS_SELLSY, ECART_MONTANT_TOLERE, MONTANT_ABERRANT,
+        montantAberrant, montantSommable,
         normaliserStatut, lireExport, rapprocher,
         absentesParStatut, absentesParMois, absentesParClient,
     };

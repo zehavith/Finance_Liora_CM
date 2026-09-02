@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.9.0 — 2 septembre 2026
+   v2.10.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.9.0';
+    const VERSION = '2.10.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -71,7 +71,7 @@
             client: null,
             etapes: null,
             qualif: null,
-            exclureReprise: false,
+            exclureTampon: false,
             recherche: '',
             retardMin: null,
             retardMax: null,
@@ -556,7 +556,7 @@
         if (f.etats && f.etats.size) add('État : ' + [...f.etats].join(', '), () => { f.etats = null; rendreChipsEtats(); });
         if (f.recherche) add('Recherche : ' + f.recherche, () => { f.recherche = ''; $('#search-input').value = ''; });
         if (f.mois) add(`Période : ${f.mois.size} mois sur ${state.moisDispo.length}`, () => { f.mois = null; rendreBoutonsMois(); });
-        if (f.exclureReprise) add('Reprise d\'historique exclue', () => { f.exclureReprise = false; majSegments(); });
+        if (f.exclureTampon) add('Tampon exclu', () => { f.exclureTampon = false; majSegments(); });
 
         if (!chips.length) { c.classList.add('hidden'); c.innerHTML = ''; return; }
         c.classList.remove('hidden');
@@ -577,7 +577,7 @@
         f.mois = null; f.perimetre = 'Tous'; f.financements = null; f.etats = null;
         f.boards = null; f.bucket = null; f.client = null; f.recherche = '';
         f.retardMin = null; f.retardMax = null; f.etapes = null; f.qualif = null;
-        f.exclureReprise = false;
+        f.exclureTampon = false;
         f.sources = new Set(['recouvrement', 'adv', 'opco', 'b2c']);
         $('#search-input').value = '';
         state.ui.page = 1;
@@ -591,22 +591,22 @@
             b.classList.toggle('active', b.dataset.perimetre === state.filtres.perimetre));
         $$('#seg-base-mois .seg-btn').forEach(b =>
             b.classList.toggle('active', b.dataset.base === state.filtres.baseMois));
-        $$('#seg-reprise .seg-btn').forEach(b =>
+        $$('#seg-tampon .seg-btn').forEach(b =>
             b.classList.toggle('active',
-                (b.dataset.reprise === 'exclure') === !!state.filtres.exclureReprise));
-        rendreAideReprise();
+                (b.dataset.tampon === 'exclure') === !!state.filtres.exclureTampon));
+        rendreAideTampon();
     }
 
     /**
-     * Rappelle combien de factures sont concernées par la reprise d'historique,
-     * pour que le choix « Incluse / Exclue » se fasse en connaissance de cause.
+     * Rappelle combien de factures sont passées par le tampon, pour que le choix
+     * « Incluses / Exclues » se fasse en connaissance de cause.
      */
-    function rendreAideReprise() {
-        const el = $('#aide-reprise');
+    function rendreAideTampon() {
+        const el = $('#aide-tampon');
         if (!el) return;
-        const n = state.factures.filter(f => f.repriseHistorique).length;
-        const base = 'Les factures déjà soldées quand le circuit a été mis en place '
-            + '(groupes « payées avant import »). Les exclure montre le travail réellement fourni.';
+        const n = state.factures.filter(f => f.enTampon).length;
+        const base = 'Le sas d\'attente avant le circuit : aucune relance n\'y est faite. '
+            + 'Les exclure montre le travail réellement fourni par ADV et le recouvrement.';
         el.textContent = n ? base + ' ' + U.nombre(n) + ' facture' + (n > 1 ? 's' : '') + ' concernée'
             + (n > 1 ? 's' : '') + '.' : base;
     }
@@ -628,7 +628,7 @@
         rendreChipsSources();
         rendreChipsFinancements();
         rendreChipsEtats();
-        rendreAideReprise();
+        rendreAideTampon();
         rendreFiltresActifs();
         majBadgesPeriode(data);
 
@@ -3017,6 +3017,13 @@
         if (!state.sellsy.mapping.statut)
             notes.push(`Aucune colonne « statut » n'a été reconnue dans l'export : les statuts affichés sont `
                 + `déduits du reste dû.`);
+        if (st.nbMontantAberrant)
+            notes.push(`${U.nombre(st.nbMontantAberrant)} facture${st.nbMontantAberrant > 1 ? 's' : ''} de `
+                + `l'export porte${st.nbMontantAberrant > 1 ? 'nt' : ''} un montant aberrant `
+                + `(${U.escapeHtml(st.numerosMontantAberrant.join(', '))}) : au-delà de `
+                + `${U.euros(SE.MONTANT_ABERRANT)}, ce n'est pas une facture de formation mais une anomalie de `
+                + `Sellsy. Le montant est écarté des totaux, la facture reste comptée — c'est à corriger dans `
+                + `Sellsy.`);
         if (!state.sellsy.mapping.montant)
             notes.push(`Aucune colonne de montant n'a été reconnue : l'enjeu financier des absentes ne peut pas `
                 + `être chiffré.`);
@@ -3168,7 +3175,10 @@
         ];
         return [
             num, client,
-            { key: 'montant', label: 'Montant TTC', align: 'right', format: v => v == null ? '—' : U.euros(v) },
+            { key: 'montant', label: 'Montant TTC', align: 'right',
+              format: (v, r) => v == null ? '—' : (r.montantAberrant
+                ? `<span class="pill pill-danger" title="Montant aberrant dans Sellsy : écarté des totaux">${U.euros(v)}</span>`
+                : U.euros(v)) },
             { key: 'resteDu', label: 'Reste dû', align: 'right', format: v => v == null ? '—' : U.euros(v) },
             { key: 'statutLabel', label: 'Statut Sellsy', format: (v, r) => {
                 const cls = r.paye ? 'pill-ok' : r.statut === 'partielle' ? 'pill-soft' : 'pill-danger';
@@ -5107,8 +5117,8 @@
             rendreTout();
         }));
 
-        $$('#seg-reprise .seg-btn').forEach(b => b.addEventListener('click', () => {
-            state.filtres.exclureReprise = b.dataset.reprise === 'exclure';
+        $$('#seg-tampon .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.filtres.exclureTampon = b.dataset.tampon === 'exclure';
             majSegments();
             state.ui.page = 1;
             rendreTout();
