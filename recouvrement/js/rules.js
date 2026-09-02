@@ -42,7 +42,7 @@
             fallback: 'dateDebutFormation', fallbackJours: 30,
             plafondDebutFormation: true,
             note: "Date de facture +30 jours, sans dépasser début de formation +30 jours",
-            perimetre: 'Corporate',
+            categorie: 'B2C - Entreprise', perimetre: 'Corporate',
             // Monday écrit « B2C - Entreprise », le référentiel « BTC-Entreprise ».
             // Les deux graphies désignent la même chose : un particulier dont la
             // formation est facturée à une entreprise. Sans le libellé « b2c
@@ -65,77 +65,77 @@
             fallback: 'dateFinFormation', fallbackJours: 30,
             plafondDebutFormation: true,
             note: 'Date de facture +30 jours, sans dépasser début de formation +30 jours',
-            perimetre: 'Corporate',
+            categorie: 'B2C - Entreprise', perimetre: 'Corporate',
             match: ['avant import', 'entre process', 'factures payees adv', 'payees adv', 'adv'],
         },
         {
             key: 'B2B', label: 'B2B',
             base: 'dateFinFormation', jours: 30,
             fallback: 'dateFacture', fallbackJours: 30,
-            note: 'Fin de formation +30 jours', perimetre: 'Corporate',
+            note: 'Fin de formation +30 jours', categorie: 'B2B', perimetre: 'Corporate',
             match: ['b2b', 'btob', 'entreprise', 'corporate'],
         },
         {
             key: 'ALTERNANCE', label: 'Alternance',
             base: 'dateFinFormation', jours: 30,
             fallback: 'dateFacture', fallbackJours: 30,
-            note: 'Fin de formation +30 jours', perimetre: 'Corporate',
+            note: 'Fin de formation +30 jours', categorie: 'Alternance', perimetre: 'Corporate',
             match: ['alternance', 'apprentissage', 'contrat pro'],
         },
         {
             key: 'TRANSITION', label: 'Transition pro',
             base: 'dateFinFormation', jours: 60,
             fallback: 'dateFacture', fallbackJours: 60,
-            note: 'Fin de formation +60 jours', perimetre: 'B2C',
+            note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
             match: ['transition pro', 'transitions pro', 'transition', 'ptp', 'projet de transition', 'atpro', 'associations transitions pro'],
         },
         {
             key: 'REGION', label: 'REGION',
             base: 'dateFinFormation', jours: 60,
             fallback: 'dateFacture', fallbackJours: 60,
-            note: 'Fin de formation +60 jours', perimetre: 'B2C',
+            note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
             match: ['region', 'conseil regional', 'regional'],
         },
         {
             key: 'AIF', label: 'AIF',
             base: 'dateFinFormation', jours: 60,
             fallback: 'dateFacture', fallbackJours: 60,
-            note: 'Fin de formation +60 jours', perimetre: 'B2C',
+            note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
             match: ['aif', 'aide individuelle a la formation', 'pole emploi aif', 'france travail aif'],
         },
         {
             key: 'POEI', label: 'POEI',
             base: 'dateFinFormation', jours: 60,
             fallback: 'dateFacture', fallbackJours: 60,
-            note: 'Fin de formation +60 jours', perimetre: 'B2C',
+            note: 'Fin de formation +60 jours', categorie: 'POEI', perimetre: 'B2C',
             match: ['poei', 'poec', 'preparation operationnelle'],
         },
         {
             key: 'AGEFIPH', label: 'Agefiph',
             base: 'dateFinFormation', jours: 60,
             fallback: 'dateFacture', fallbackJours: 60,
-            note: 'Fin de formation +60 jours', perimetre: 'B2C',
+            note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
             match: ['agefiph', 'fiphfp'],
         },
         {
             key: 'ETAT', label: 'Etat',
             base: 'dateFinFormation', jours: 30,
             fallback: 'dateFacture', fallbackJours: 30,
-            note: 'Fin de formation +30 jours', perimetre: 'Corporate',
+            note: 'Fin de formation +30 jours', categorie: 'B2B', perimetre: 'Corporate',
             match: ['etat', 'public etat', 'ministere', 'prefecture'],
         },
         {
             key: 'INTERCO', label: 'Interco',
             base: 'dateFinFormation', jours: 60,
             fallback: 'dateFacture', fallbackJours: 60,
-            note: 'Fin de formation +60 jours', perimetre: 'Corporate',
+            note: 'Fin de formation +60 jours', categorie: 'Interco', perimetre: 'Corporate',
             match: ['interco', 'intercompany', 'inter co', 'intra groupe'],
         },
         {
             key: 'DST_ALLEMAGNE', label: 'Interne - DST Allemagne',
             base: 'dateFinFormation', jours: 60,
             fallback: 'dateFacture', fallbackJours: 60,
-            note: 'Fin de formation +60 jours', perimetre: 'Corporate',
+            note: 'Fin de formation +60 jours', categorie: 'Interne - DST Allemagne', perimetre: 'Corporate',
             match: ['dst allemagne', 'interne dst allemagne', 'dst', 'allemagne', 'germany', 'bu1 germany'],
         },
         {
@@ -143,7 +143,7 @@
             base: 'dateFinFormation', jours: 30,
             fallback: 'dateFacture', fallbackJours: 30,
             note: 'Fin de formation +30 jours — pas de recouvrement OPCO, suivi du retard uniquement',
-            perimetre: 'Corporate', sansRecouvrement: true,
+            categorie: 'Alternance', perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco', 'akto', 'atlas', 'uniformation', 'ocapiat', 'constructys', 'afdas', 'opcommerce', 'l opcommerce', 'opco ep', 'opco 2i', 'opco mobilites', 'opco sante'],
         },
         {
@@ -151,7 +151,7 @@
             base: 'dateDebutFormation', jours: 0,
             fallback: 'dateFinFormation', fallbackJours: 0,
             note: 'Début de formation (aucun délai supplémentaire)',
-            perimetre: 'B2C',
+            categorie: 'B2C', perimetre: 'B2C',
             // « B2C » employé seul — le groupe « Factures payées B2C » du tableau
             // 0.1, à côté de groupes CPF, AIF, POEI, REGION — désigne le
             // financement personnel : les financements publics ont chacun le
@@ -165,7 +165,7 @@
             key: 'CPF', label: 'CPF',
             base: 'dateFinFormation', jours: 60,
             fallback: 'dateFacture', fallbackJours: 60,
-            note: 'Fin de formation +60 jours', perimetre: 'B2C',
+            note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
             match: ['cpf', 'compte personnel de formation', 'edof', 'caisse des depots', 'cdc'],
         },
     ];
@@ -313,6 +313,18 @@
         { key: 'opco',         label: 'OPCO',          hint: 'Tableau 1.3 — pas de recouvrement, suivi du retard' },
         { key: 'b2c',          label: 'B2C',           hint: 'Tableaux 2.x — pas de tableau recouvrement dédié' },
     ];
+
+    /**
+     * Catégorie de client d'un financement — le niveau au-dessus.
+     *
+     * C'est le « Type de client » de la facturation : B2C recouvre B2C-Perso,
+     * CPF, Transition Pro, AIF, Region et Agefiph. La balance de trésorerie se
+     * lit aux deux niveaux, et l'un ne remplace pas l'autre.
+     */
+    function categorieDe(financement, rules) {
+        const r = getRule(financement, rules);
+        return r.categorie || r.perimetre || 'Non catégorisé';
+    }
 
     /** Déduit le rôle d'un tableau à partir de son nom Monday. */
     function detectBoardRole(boardName) {
@@ -485,6 +497,6 @@
         detectBoardRole, detectFinancement, getRule, computeEcheance,
         GROUPES_EXCLUS, estGroupeTechnique, perimetreDepuisTexte,
         ETAPES, etapeDepuisGroupe,
-        AGING_BUCKETS, bucketFor, MS_DAY,
+        AGING_BUCKETS, bucketFor, MS_DAY, categorieDe,
     };
 })(window);

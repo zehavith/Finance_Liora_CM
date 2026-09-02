@@ -564,17 +564,22 @@
      * ne peut pas être vieillie et rejoint « Non échu », faute de mieux, mais
      * elle est comptée à part.
      */
-    function balanceAgee(creances, dateRef, rules) {
+    function balanceAgee(creances, dateRef, rules, niveau) {
         const ref = dateRef || R.stripTime(new Date());
+        const parCategorie = niveau === 'categorie';
         const lignes = new Map();
         let sansDate = 0;
 
         for (const c of creances) {
-            const cle = c.financement || A_CLASSER;
+            // Deux lectures du même reste dû : par financement — le détail —
+            // ou par catégorie de client, le niveau du tableau de trésorerie.
+            const cle = !c.financement ? A_CLASSER
+                : parCategorie ? R.categorieDe(c.financement, rules) : c.financement;
             let l = lignes.get(cle);
             if (!l) {
-                l = { financement: c.financement, cle,
-                      label: c.financement ? R.getRule(c.financement, rules).label : 'À classer',
+                l = { financement: parCategorie ? null : c.financement, cle,
+                      label: !c.financement ? 'À classer'
+                          : parCategorie ? cle : R.getRule(c.financement, rules).label,
                       total: 0, echu: 0, nonEchu: 0, nb: 0, buckets: {}, creances: [] };
                 for (const b of R.AGING_BUCKETS) l.buckets[b.key] = 0;
                 lignes.set(cle, l);

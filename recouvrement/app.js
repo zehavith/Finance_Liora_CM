@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.20.0 — 2 septembre 2026
+   v2.21.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.20.0';
+    const VERSION = '2.21.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -44,6 +44,10 @@
         sellsyResultat: null,
         glLecture: null,
         glOuvertes: [],
+        // Correspondances numéro de facture → financement, apprises des
+        // extraits déjà qualifiés. C'est l'ancien grand livre classé qui fait
+        // foi : une fois ce travail fait, il ne se refait plus.
+        qualifRef: {},
         glCreances: [],
         glBalance: null,
         glComparaison: null,
@@ -96,6 +100,7 @@
             repartitionOuverts: new Set(),
             agingDim: 'financement',
             agingSource: 'monday',
+            glNiveau: 'financement',
             page: 1,
             pageSize: 50,
             tri: { key: 'retardJours', sens: 'desc' },
@@ -104,6 +109,7 @@
             onglet: 'dashboard',
             rangUnite: 'nb',
             prlvEtat: '',
+            prlvFenetre: 0,
             prlvRecherche: '',
             triPrlv: { key: 'montantEchoue', sens: 'desc' },
             evoCatUnite: 'nb',
@@ -199,6 +205,7 @@
         try {
             state.glLecture = await S.get('rec_gl_lecture', null);
             state.glOuvertes = (await S.get('rec_gl_ouvertes', [])) || [];
+            state.qualifRef = (await S.get('rec_qualif_ref', {})) || {};
         } catch { /* ignore */ }
 
         try {
@@ -2289,13 +2296,15 @@
         if (!ouvertes.length) { state.glBalance = null; state.glComparaison = null; return; }
 
         const classees = GL.classer(ouvertes, {
+            referentiel: state.qualifRef,
             factures: state.factures,
             sellsy: state.sellsy.lignes,
             historique: state.grandLivre,
             rules: state.rules,
         });
         state.glCreances = classees;
-        state.glBalance = GL.balanceAgee(classees, state.filtres.dateRef, state.rules);
+        state.glBalance = GL.balanceAgee(classees, state.filtres.dateRef, state.rules,
+            state.ui.glNiveau || 'financement');
 
         // La confrontation se fait sur le portefeuille Monday non réglé, sans
         // filtre non plus : comparer une vue filtrée à un compte complet
@@ -2336,8 +2345,52 @@
         return R.AGING_BUCKETS.slice().reverse();
     }
 
+    /**
+     * Les règles, rappelées au-dessus du tableau qu'elles produisent.
+     *
+     * Une balance âgée ne se lit pas sans savoir sur quelle date chaque
+     * échéance a été calculée, ni comment le financement a été attribué. Le
+     * bloc est replié par défaut : présent quand on en a besoin, discret sinon.
+     */
+    function rendreReglesGL() {
+        const el = $('#aging-gl-regles-corps');
+        if (!el) return;
+        const libelle = { dateFacture: 'date de facture', dateDebutFormation: 'début de formation',
+            dateFinFormation: 'fin de formation' };
+        const regles = state.rules.filter(r => r.key !== 'INCONNU');
+
+        el.innerHTML = `
+            <p class="fv-hint">Ces règles sont modifiables dans l'onglet Données → « Règles d'échéance ».</p>
+            ${U.table([
+                { key: 'label', label: 'Financement' },
+                { key: 'categorie', label: 'Catégorie' },
+                { key: 'base', label: 'Échéance calculée sur' },
+                { key: 'perimetre', label: 'Périmètre' },
+            ], regles.map(r => ({
+                label: r.label,
+                categorie: R.categorieDe(r.key, state.rules),
+                base: (libelle[r.base] || r.base) + (r.jours ? ` + ${r.jours} j` : ' (sans délai)')
+                    + (r.plafondDebutFormation ? ', plafonné à début de formation + ' + r.jours + ' j' : '')
+                    + (r.fallback ? ` — à défaut ${libelle[r.fallback] || r.fallback}` : ''),
+                perimetre: r.perimetre,
+            })), { vide: 'Aucune règle.' })}
+            <p class="fv-hint"><strong>Classement d'une créance du grand livre</strong>, du plus sûr au moins
+            sûr — le premier qui répond gagne : ① la facture Monday de même numéro ; ② le référentiel des
+            qualifications déjà validées ; ③ le « Type de client » de la facturation (Sellsy, Zoho) ;
+            ④ la qualification portée par le fichier, à vérifier ; ⑤ l'identifiant du tiers, puis ⑥ le
+            numéro de compte, à condition qu'un seul financement y soit connu. Sinon : <em>À classer</em>.</p>`;
+    }
+
     function rendreBalanceGL() {
         const b = state.glBalance;
+        const parCat = state.ui.glNiveau === 'categorie';
+        $$('#seg-gl-niveau .seg-btn').forEach(x =>
+            x.classList.toggle('active', x.dataset.niveau === (state.ui.glNiveau || 'financement')));
+        const t = $('#aging-gl-titre');
+        if (t) t.textContent = parCat
+            ? 'Reste dû comptable par catégorie de client et par ancienneté'
+            : 'Reste dû comptable par financement et par ancienneté';
+        rendreReglesGL();
 
         $('#aging-gl-kpi').innerHTML = [
             { couleur: U.couleurs.retard, valeur: U.euros(b.total.total),
@@ -2369,6 +2422,10 @@
         }
         notes.push('Financement recoupé depuis : '
             + Object.entries(origines).map(([k, n]) => `${k} — ${U.nombre(n)}`).join(' · ') + '.');
+        const nRef = Object.keys(state.qualifRef || {}).length;
+        if (nRef) notes.push(`Le référentiel retient ${U.nombre(nRef)} correspondances numéro → financement, `
+            + `apprises des extraits déjà qualifiés. Chargez l'ancien grand livre classé pour l'enrichir : `
+            + `ce travail ne se refait plus ensuite.`);
         if (b.sansDate)
             notes.push(`${U.nombre(b.sansDate)} créances n'ont ni date d'échéance ni date de facture `
                 + `dans le grand livre : leur ancienneté n'est pas calculable, elles sont comptées en non échu.`);
@@ -2381,7 +2438,7 @@
 
         const buckets = colonnesAnciennete();
         const cols = [
-            { key: 'label', label: 'Financement' },
+            { key: 'label', label: parCat ? 'Catégorie de client' : 'Financement' },
             { key: 'echu', label: 'Total échu', align: 'right',
               format: v => v ? `<strong>${U.eurosCourt(v)}</strong>` : '<span class="ag-zero">·</span>',
               cls: () => 'ag-total' },
@@ -2403,11 +2460,31 @@
             onRowClick: true, rowClass: r => r.cle === GL.A_CLASSER ? 'ligne-a-classer' : '' });
         U.bindTable(el, rows, { onRowClick: r => montrerCreancesGL(r) });
 
-        // Le détail de ce qui n'a pas pu être classé, tout de suite : c'est la
-        // seule ligne du tableau sur laquelle il y a quelque chose à faire.
+        rendreAClasser();
+    }
+
+    /**
+     * Les créances qu'aucun recoupement n'a su classer, et de quoi les classer.
+     *
+     * C'est la seule ligne du tableau sur laquelle il y a quelque chose à faire.
+     * Les traiter une par une n'est pas tenable à mille lignes : on coche, on
+     * choisit un financement, on applique — et le choix rejoint le référentiel,
+     * donc il vaut aussi pour les extraits suivants.
+     */
+    function rendreAClasser() {
+        const el = $('#aging-gl-aclasser');
+        if (!el) return;
+        const sel = state.ui.selGL || (state.ui.selGL = new Set());
         const aClasser = (state.glCreances || []).filter(c => !c.financement)
-            .sort((a, b2) => Math.abs(b2.resteDu) - Math.abs(a.resteDu)).slice(0, 100);
-        $('#aging-gl-aclasser').innerHTML = U.table([
+            .sort((a, b) => Math.abs(b.resteDu) - Math.abs(a.resteDu)).slice(0, 200);
+
+        // Une créance sans numéro ne peut pas entrer au référentiel : il est
+        // indexé par numéro de facture. La case est donc désactivée.
+        el.innerHTML = U.table([
+            { key: '__sel', label: '', align: 'center', width: '34px', sortable: false,
+              format: (v, r) => r.cle
+                  ? `<input type="checkbox" class="gl-sel" data-cle="${U.escapeHtml(r.cle)}"${sel.has(r.cle) ? ' checked' : ''}>`
+                  : '<span class="fv-hint" title="Sans numéro de facture, le classement ne peut pas être mémorisé">—</span>' },
             { key: 'numero', label: 'Facture', format: v => v ? `<span class="mono">${U.escapeHtml(v)}</span>` : '<span class="pill pill-muted">sans numéro</span>' },
             { key: 'tiers', label: 'Client', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
             { key: 'compte', label: 'Compte', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
@@ -2415,6 +2492,54 @@
             { key: 'dateEcheance', label: 'Échéance', align: 'center', format: U.dateFR },
             { key: 'dateFacture', label: 'Facture', align: 'center', format: U.dateFR },
         ], aClasser, { vide: 'Toutes les créances ont trouvé un financement.' });
+
+        $$('.gl-sel', el).forEach(c => c.addEventListener('click', ev => {
+            ev.stopPropagation();
+            if (c.checked) sel.add(c.dataset.cle); else sel.delete(c.dataset.cle);
+            rendreBarreGL(aClasser);
+        }));
+        rendreBarreGL(aClasser);
+    }
+
+    /** Barre d'action du classement par lot. */
+    function rendreBarreGL(aClasser) {
+        const barre = $('#aging-gl-barre');
+        if (!barre) return;
+        const sel = state.ui.selGL || new Set();
+        const classables = aClasser.filter(c => c.cle);
+        if (!classables.length) { barre.hidden = true; return; }
+
+        const retenues = classables.filter(c => sel.has(c.cle));
+        barre.hidden = false;
+        barre.innerHTML = `
+            <label class="barre-tout"><input type="checkbox" id="gl-tout"${
+                retenues.length === classables.length && classables.length ? ' checked' : ''}>
+                Tout cocher (${U.nombre(classables.length)})</label>
+            <span class="barre-info">${U.nombre(retenues.length)} créance${retenues.length > 1 ? 's' : ''} `
+            + `sélectionnée${retenues.length > 1 ? 's' : ''} · ${U.euros(X.sum(retenues, c => c.resteDu))}</span>
+            <select id="gl-fin" class="input input-sm"${retenues.length ? '' : ' disabled'}>
+                <option value="">Classer en…</option>
+                ${state.rules.filter(r => r.key !== 'INCONNU')
+                    .map(r => `<option value="${U.escapeHtml(r.key)}">${U.escapeHtml(r.label)}</option>`).join('')}
+            </select>
+            <button class="btn btn-primary btn-sm" id="gl-appliquer"${retenues.length ? '' : ' disabled'}>Appliquer</button>`;
+
+        $('#gl-tout', barre).addEventListener('change', e => {
+            state.ui.selGL = e.target.checked ? new Set(classables.map(c => c.cle)) : new Set();
+            rendreAClasser();
+        });
+        $('#gl-appliquer', barre).addEventListener('click', async () => {
+            const fin = $('#gl-fin', barre).value;
+            if (!fin) { U.toast('Choisissez un financement.', 'error'); return; }
+            for (const c of retenues) state.qualifRef[c.cle] = fin;
+            state.ui.selGL = new Set();
+            try { await S.set('rec_qualif_ref', state.qualifRef); } catch { /* ignore */ }
+            recalculerBalanceGL();
+            rendreTout();
+            U.toast(`${U.nombre(retenues.length)} créances classées en `
+                + `${R.getRule(fin, state.rules).label}. Le choix est retenu : il vaudra aussi pour les `
+                + `prochains extraits.`, 'success', 9000);
+        });
     }
 
     function montrerCreancesGL(row) {
@@ -3129,6 +3254,16 @@
     // ══════════════════════════════════════════════
 
     /** Recalcule les apprenants à partir des exports chargés. */
+    /**
+     * Reconstruit les apprenants à partir des prélèvements retenus.
+     *
+     * La fenêtre de période porte sur la date de prélèvement : elle sert à
+     * regarder une saison plutôt que tout l'historique. Elle change vraiment ce
+     * qui est analysé — un apprenant dont tous les prélèvements sont hors
+     * fenêtre disparaît, et la courbe de survie se recalcule sur ce qui reste.
+     * La note sous les indicateurs le dit, plutôt que de laisser croire à une
+     * simple mise en évidence.
+     */
     function recalculerPrelevements() {
         const g = state.gcl;
         if (!g.paiements.length) { state.apprenants = []; state.gclOrphelins = 0; return; }
@@ -3136,7 +3271,28 @@
         if (!g.unite) g.unite = PR.detecterUniteMontant(g.paiements);
         PR.appliquerUnite(g.paiements, g.unite.unite);
 
-        const r = PR.construireApprenants(g);
+        const mois = state.ui.prlvFenetre || 0;
+        let retenu = g;
+        state.prlvPeriode = null;
+        if (mois > 0) {
+            const dates = g.paiements.map(p => p.dateEcheance || p.dateCreation).filter(Boolean);
+            if (dates.length) {
+                const fin = new Date(Math.max(...dates.map(d => +d)));
+                const debut = new Date(fin.getFullYear(), fin.getMonth() - (mois - 1), 1);
+                const dans = p => {
+                    const d = p.dateEcheance || p.dateCreation;
+                    return d ? d >= debut : false;
+                };
+                const paiements = g.paiements.filter(dans);
+                retenu = { ...g, paiements };
+                state.prlvPeriode = { debut, fin, retenus: paiements.length, total: g.paiements.length };
+            }
+        }
+
+        // Les prélèvements retenus servent aussi aux statistiques : sans cela
+        // le bandeau annonçait 900 prélèvements alors que 290 étaient analysés.
+        state.gclRetenus = retenu.paiements;
+        const r = PR.construireApprenants(retenu);
         state.apprenants = r.apprenants;
         state.gclOrphelins = r.orphelins;
     }
@@ -3147,9 +3303,21 @@
         $('#prlv-contenu').hidden = !charge;
         if (!charge) { $('#prlv-badge').textContent = ''; return; }
 
-        const st = PR.statistiques(state.apprenants, state.gcl.paiements);
+        const st = PR.statistiques(state.apprenants, state.gclRetenus || state.gcl.paiements);
         $('#prlv-badge').textContent =
             `${U.nombre(st.nbApprenants)} apprenants · ${U.nombre(st.nbPrelevements)} prélèvements`;
+
+        // La fenêtre retenue, dite explicitement : tout ce qui suit ne porte
+        // que sur elle, courbe de survie comprise.
+        $$('#seg-prlv-fenetre .seg-btn').forEach(x =>
+            x.classList.toggle('active', +x.dataset.fenetre === (state.ui.prlvFenetre || 0)));
+        const per = $('#prlv-periode');
+        if (per) per.textContent = state.prlvPeriode
+            ? `Du ${U.dateFR(state.prlvPeriode.debut)} au ${U.dateFR(state.prlvPeriode.fin)} — `
+              + `${U.nombre(state.prlvPeriode.retenus)} prélèvements retenus sur `
+              + `${U.nombre(state.prlvPeriode.total)}. Un apprenant sans prélèvement dans la fenêtre `
+              + `en sort, et la courbe de survie se recalcule sur ce qui reste.`
+            : "Tout l'historique disponible";
 
         rendreKpiPrelevements(st);
         rendreNotesPrelevements(st);
@@ -5352,6 +5520,13 @@
             }));
             state.glLecture = { ...lu.stats, fichier: file.name };
 
+            // Ce que ce fichier sait classer entre dans le référentiel, sans
+            // jamais l'effacer : chaque extrait qualifié enrichit le suivant.
+            const appris = GL.referentielDepuis(lu.lignes, state.rules);
+            const avant = Object.keys(state.qualifRef).length;
+            state.qualifRef = { ...state.qualifRef, ...appris };
+            state.glApprises = Object.keys(state.qualifRef).length - avant;
+
             // Les créances ouvertes sont la matière de la balance âgée
             // comptable : elles sont conservées à part, le classement par
             // financement dépendant de Monday et de Sellsy, qui bougent.
@@ -5364,6 +5539,7 @@
             await S.set(S.KEYS.grandLivre, state.grandLivre);
             await S.set('rec_gl_lecture', state.glLecture);
             await S.set('rec_gl_ouvertes', state.glOuvertes);
+            await S.set('rec_qualif_ref', state.qualifRef);
             recalculer({ conserverPeriode: true });
             rendreHistoriqueImports();
 
@@ -5377,6 +5553,8 @@
                 + (l.nbSoldeesParAvoir ? `, ${U.nombre(l.nbSoldeesParAvoir)} par avoir` : '')
                 + (l.nbOuvertes ? `, ${U.nombre(l.nbOuvertes)} encore ouvertes` : '')
                 + (state.glBalance ? ` — ${U.euros(state.glBalance.total.total)} de reste dû comptable` : '')
+                + (state.glApprises ? `. ${U.nombre(state.glApprises)} nouvelles qualifications retenues `
+                    + `(${U.nombre(Object.keys(state.qualifRef).length)} au total)` : '')
                 + `. ${U.nombre(st.rapprochees || 0)} retrouvées dans Monday`
                 + (st.completees ? `, ${U.nombre(st.completees)} dates complétées` : '')
                 + (st.remplacees ? `, ${U.nombre(st.remplacees)} remplacées` : '') + '.',
@@ -5872,6 +6050,12 @@
             $$('#seg-evocat-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));
             rendreTout();
         }));
+        $$('#seg-prlv-fenetre .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.prlvFenetre = +b.dataset.fenetre;
+            recalculerPrelevements();
+            rendreApresClic(() => rendreTout());
+        }));
+
         $$('#seg-rang-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.rangUnite = b.dataset.unite;
             $$('#seg-rang-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));
@@ -5981,6 +6165,11 @@
             rendreApresClic(() => rendreTout());
         }));
         $('#btn-aging-gl-export').addEventListener('click', exporterBalanceGL);
+        $$('#seg-gl-niveau .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.glNiveau = b.dataset.niveau;
+            recalculerBalanceGL();
+            rendreApresClic(() => rendreTout());
+        }));
 
         $$('#seg-aging-dim .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.agingDim = b.dataset.dim;
