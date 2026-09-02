@@ -692,6 +692,16 @@
             if (manuel) { f.financement = manuel; f.financementManuel = true; }
             else f.financementManuel = false;
 
+            // Le périmètre suit le financement, non le tableau où la facture se
+            // trouve. Une facture CPF déposée sur un tableau corporate est un
+            // financement B2C : la ranger en Corporate parce qu'elle transite
+            // par l'ADV faisait apparaître du B2C-Perso et du CPF sous
+            // Corporate, ce que le référentiel dément.
+            if (f.financement) {
+                const per = R.getRule(f.financement, o.rules).perimetre;
+                if (per && per !== 'Tous' && per !== 'Inconnu') f.perimetre = per;
+            }
+
             const ech = R.computeEcheance(f, { rules: o.rules, prefereEcheanceMonday: o.prefereEcheanceMonday });
             f.dateEcheance = ech.date;
             f.echeanceOrigine = ech.origine;

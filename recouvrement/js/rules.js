@@ -146,9 +146,9 @@
         },
         {
             key: 'BTC_PERSO', label: 'B2C-Perso / Perso-Alternance',
-            base: 'dateFinFormation', jours: 0,
-            fallback: 'dateDebutFormation', fallbackJours: 0,
-            note: 'Début de formation / fin de formation (aucun délai supplémentaire)',
+            base: 'dateDebutFormation', jours: 0,
+            fallback: 'dateFinFormation', fallbackJours: 0,
+            note: 'Début de formation (aucun délai supplémentaire)',
             perimetre: 'B2C',
             // « B2C » employé seul — le groupe « Factures payées B2C » du tableau
             // 0.1, à côté de groupes CPF, AIF, POEI, REGION — désigne le
@@ -161,9 +161,9 @@
         },
         {
             key: 'CPF', label: 'CPF',
-            base: 'dateFinFormation', jours: 45,
-            fallback: 'dateFacture', fallbackJours: 45,
-            note: 'Fin de formation +45 jours', perimetre: 'B2C',
+            base: 'dateFinFormation', jours: 60,
+            fallback: 'dateFacture', fallbackJours: 60,
+            note: 'Fin de formation +60 jours', perimetre: 'B2C',
             match: ['cpf', 'compte personnel de formation', 'edof', 'caisse des depots', 'cdc'],
         },
     ];

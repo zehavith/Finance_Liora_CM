@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v1.9.0 — 2 septembre 2026
+   v2.0.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '1.9.0';
+    const VERSION = '2.0.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -94,6 +94,8 @@
             prlvRecherche: '',
             triPrlv: { key: 'montantEchoue', sens: 'desc' },
             evoCatUnite: 'nb',
+            evoDetail: false,
+            finDetail: null,
             // Fenêtre des graphiques mensuels : l'historique remonte à 2021,
             // mais deux ans suffisent à lire une tendance sans écraser l'axe.
             fenetreMois: 24,
@@ -475,7 +477,6 @@
             case 'aging':        rendreAging(data); break;
             case 'financements': rendreFinancements(data); break;
             case 'factures':     rendreFactures(data); break;
-            case 'qualifications': rendreQualifications(data); break;
             case 'prelevements': rendrePrelevements(); break;
             case 'quality':      rendreQualite(data); break;
             case 'donnees':      rendreDonnees(); break;
@@ -566,10 +567,14 @@
         rendreChartAging(X.balanceAgee(data));
 
         // ── Heatmap mois × financement ──
-        rendreHeatmap(X.croiseMoisFinancement(data, state.filtres.baseMois, state.rules));
+        // Le détail de la courbe : replié tant qu'on ne l'a pas demandé.
+        const detail = $('#evo-detail');
+        if (detail) detail.hidden = !state.ui.evoDetail;
+        if (state.ui.evoDetail) {
+            rendreHeatmap(X.croiseMoisFinancement(data, state.filtres.baseMois, state.rules));
+        }
         rendreChartEvoCategorie(data);
 
-        rendreChartStructure(data);
 
         // ── Classements ──
         rendreTopClients(X.topClients(data, 12));
@@ -877,6 +882,18 @@
         });
     }
 
+    /**
+     * Redessiner après un clic sur un graphique.
+     *
+     * Chart.js poursuit son traitement d'événement après avoir appelé le
+     * gestionnaire : détruire la toile dans la foulée le laisse travailler sur
+     * un objet disparu (« Cannot read properties of undefined »). On lui rend
+     * la main avant de reconstruire.
+     */
+    function rendreApresClic(action) {
+        setTimeout(() => { if (action) action(); rendreTout(); }, 0);
+    }
+
     /** Sélecteur de fenêtre, partagé par les graphiques mensuels. */
     function brancherFenetreMois() {
         $$('[data-fenetre]').forEach(b => {
@@ -943,7 +960,7 @@
                     state.filtres.mois = new Set([mk]);
                     state.ui.page = 1;
                     rendreBoutonsMois();
-                    rendreTout();
+                    rendreApresClic();
                 },
             },
         });
@@ -1013,7 +1030,7 @@
                     state.filtres.mois = new Set([rows[els[0].index].mois]);
                     state.ui.page = 1;
                     rendreBoutonsMois();
-                    rendreTout();
+                    rendreApresClic();
                 },
             },
         });
@@ -1078,7 +1095,7 @@
                     state.filtres.mois = new Set([rows[els[0].index].mois]);
                     state.ui.page = 1;
                     rendreBoutonsMois();
-                    rendreTout();
+                    rendreApresClic();
                 },
             },
         });
@@ -1309,68 +1326,6 @@
         rendreTout();
     }
 
-    /** Anneau : structure du portefeuille par état, puis par périmètre. */
-    function rendreChartStructure(data) {
-        const etats = [
-            { label: 'Payée', couleur: U.couleurs.paye },
-            { label: 'Payée en retard', couleur: U.couleurs.payeRetard },
-            { label: 'Non échue', couleur: U.couleurs.nonEchue },
-            { label: 'En retard', couleur: U.couleurs.retard },
-            { label: 'Échéance inconnue', couleur: U.couleurs.inconnu },
-        ].map(e => ({ ...e, valeur: X.sum(data.filter(f => f.etat === e.label), f => f.montant),
-                      nb: data.filter(f => f.etat === e.label).length }))
-         .filter(e => e.valeur > 0);
-
-        if (!etats.length) { U.chart('chart-structure', videConfig('Aucune facture')); return; }
-
-        const perims = X.parDimension(data, f => f.perimetre);
-        const total = X.sum(etats, e => e.valeur);
-
-        U.chart('chart-structure', {
-            type: 'doughnut',
-            data: {
-                labels: [...etats.map(e => e.label), ...perims.map(p => p.label)],
-                datasets: [
-                    {
-                        label: 'État', data: etats.map(e => e.valeur),
-                        backgroundColor: etats.map(e => e.couleur),
-                        borderColor: 'rgba(11,14,26,0.9)', borderWidth: 2,
-                    },
-                    {
-                        label: 'Périmètre', data: perims.map(p => p.valeur),
-                        backgroundColor: perims.map((_, i) => U.palette[(i + 4) % U.palette.length]),
-                        borderColor: 'rgba(11,14,26,0.9)', borderWidth: 2,
-                    },
-                ],
-            },
-            options: {
-                cutout: '42%',
-                plugins: {
-                    legend: { position: 'right', labels: { filter: item => item.index < etats.length } },
-                    tooltip: {
-                        callbacks: {
-                            label: ctx => {
-                                const part = total > 0 ? (ctx.parsed / total) * 100 : 0;
-                                const nb = ctx.datasetIndex === 0 ? etats[ctx.dataIndex].nb : perims[ctx.dataIndex].nb;
-                                return `${ctx.label} : ${U.euros(ctx.parsed)} (${U.pourcent(part, 1)}) · ${U.nombre(nb)} factures`;
-                            },
-                        },
-                    },
-                },
-                onClick: (evt, els) => {
-                    if (!els.length) return;
-                    const e = els[0];
-                    if (e.datasetIndex === 0) {
-                        state.filtres.etats = new Set([etats[e.index].label]);
-                        state.ui.page = 1;
-                        rendreTout();
-                    } else {
-                        filtrerParDimension('perimetre', perims[e.index].cle);
-                    }
-                },
-            },
-        });
-    }
 
     function rendreComparaison(rows) {
         const el = $('#month-compare-body');
@@ -1441,7 +1396,7 @@
                     if (!els.length) return;
                     state.filtres.financements = new Set([top[els[0].index].key]);
                     state.ui.page = 1;
-                    rendreTout();
+                    rendreApresClic();
                 },
             },
         });
@@ -1478,7 +1433,7 @@
                     if (!els.length) return;
                     state.filtres.bucket = actifs[els[0].index].key;
                     state.ui.page = 1;
-                    rendreTout();
+                    rendreApresClic();
                 },
             },
         });
@@ -1541,9 +1496,13 @@
                                 return `${s2.label} : ${U.pourcent(ctx.parsed.y, 1)}`
                                     + ` (${U.nombre(s2.cohortes[ctx.dataIndex])} factures échues)`;
                             },
+                            afterBody: () => ['', 'Cliquez pour ouvrir le détail mois par mois'],
                         },
                     },
                 },
+                // La carte thermique dit le détail que la courbe résume : elle
+                // s'ouvre au clic, plutôt que d'occuper l'écran en permanence.
+                onClick: () => rendreApresClic(() => { state.ui.evoDetail = !state.ui.evoDetail; }),
             },
         });
     }
@@ -1821,8 +1780,17 @@
         });
         U.bindTable(el, rows, {
             onSort: k => { t.sens = (t.key === k && t.sens === 'desc') ? 'asc' : 'desc'; t.key = k; rendreTout(); },
-            onRowClick: r => { state.filtres.financements = new Set([r.key]); state.ui.page = 1; ouvrirOnglet('factures'); },
+            onRowClick: r => {
+                // Entrer dans une catégorie plutôt que sauter aux factures :
+                // ses qualifications et ses prélèvements se lisent ici.
+                state.ui.finDetail = state.ui.finDetail === r.key ? null : r.key;
+                rendreTout();
+                const el = $('#fin-detail');
+                if (el && !el.hidden) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            },
         });
+
+        rendreDetailFinancement(data, rows);
 
         // Graphiques
         const top = X.parFinancement(data, state.rules).filter(r => r.nbTotal > 0).slice(0, 12);
@@ -1831,8 +1799,8 @@
             data: {
                 labels: top.map(r => r.label),
                 datasets: [
-                    { label: '% en retard (à date)', data: top.map(r => r.tauxEur), backgroundColor: U.couleurs.retard, borderRadius: 4 },
-                    { label: '% cohorte échue', data: top.map(r => r.tauxCohorteEur), backgroundColor: U.couleurs.payeRetard, borderRadius: 4 },
+                    { label: "Aujourd'hui : encore en retard", data: top.map(r => r.tauxEur), backgroundColor: U.couleurs.retard, borderRadius: 4 },
+                    { label: 'Au fil du temps : a fini en retard', data: top.map(r => r.tauxCohorteEur), backgroundColor: U.couleurs.payeRetard, borderRadius: 4 },
                 ],
             },
             options: {
@@ -1846,8 +1814,8 @@
             data: {
                 labels: top.map(r => r.label),
                 datasets: [
-                    { label: 'Retard moyen (impayées)', data: top.map(r => r.retardMoyen || 0), backgroundColor: U.couleurs.indigo, borderRadius: 4 },
-                    { label: 'Retard moyen au paiement', data: top.map(r => r.retardMoyenPaiement || 0), backgroundColor: U.couleurs.paye, borderRadius: 4 },
+                    { label: 'Impayées : attendent depuis', data: top.map(r => r.retardMoyen || 0), backgroundColor: U.couleurs.indigo, borderRadius: 4 },
+                    { label: 'Réglées : payées avec ce retard', data: top.map(r => r.retardMoyenPaiement || 0), backgroundColor: U.couleurs.paye, borderRadius: 4 },
                 ],
             },
             options: {
@@ -1985,6 +1953,118 @@
     }
 
     /**
+     * Détail d'une catégorie de financement.
+     *
+     * L'onglet Qualifications présentait ces colonnes hors de tout contexte :
+     * on y lisait la répartition des problématiques sans savoir de quelle
+     * catégorie elles parlaient. Elles ont leur place ici, quand on entre dans
+     * une catégorie — avec, pour le financement personnel, les prélèvements
+     * GoCardless qui en sont le mode de paiement.
+     */
+    function rendreDetailFinancement(data, lignes) {
+        const el = $('#fin-detail');
+        if (!el) return;
+        const cle = state.ui.finDetail;
+        const ligne = cle && lignes.find(r => r.key === cle);
+        if (!ligne) { el.hidden = true; el.innerHTML = ''; return; }
+
+        const lot = data.filter(f => (f.financement || 'INCONNU') === cle);
+        const regle = R.getRule(cle, state.rules);
+
+        // ── Les qualifications de cette catégorie, tableau par tableau ──
+        const parTableau = X.qualificationsParTableau(lot, false);
+        const blocsQualif = parTableau.map(b => {
+            const cartes = b.colonnes.map(c => {
+                const r = X.repartitionQualification(lot, c.nom, b.board);
+                const barres = r.lignes.slice(0, 8).map((l, i) => `
+                    <button class="qualif-barre" data-qnom="${U.escapeHtml(c.nom)}" data-qval="${U.escapeHtml(l.valeur)}">
+                        <span class="qualif-barre-tete">
+                            <span class="cell-clip" title="${U.escapeHtml(l.valeur)}">${U.escapeHtml(l.valeur)}</span>
+                            <strong>${U.nombre(l.nb)}</strong>
+                        </span>
+                        <span class="qualif-barre-piste">
+                            <span class="qualif-barre-jauge" style="width:${Math.max(2, l.partNb)}%;background:${U.palette[i % U.palette.length]}"></span>
+                        </span>
+                        <span class="qualif-barre-pied">${U.pourcent(l.partNb, 1)} · ${U.euros(l.euros)}${l.nbEnRetard ? ` · ${U.nombre(l.nbEnRetard)} en retard` : ''}</span>
+                    </button>`).join('');
+                return `<h4 class="qualif-col-titre">${U.escapeHtml(c.nom)}
+                            <span class="fv-hint">${U.nombre(r.totalNb)} factures renseignées</span>
+                        </h4>
+                        <div class="qualif-barres">${barres}</div>`;
+            }).join('');
+            return `<div class="detail-sous-bloc"><h3>${U.escapeHtml(b.board)}</h3>${cartes}</div>`;
+        }).join('');
+
+        // ── Prélèvements, quand la catégorie est payée par mandat ──
+        const st = state.apprenants.length ? PR.statistiques(state.apprenants, state.gcl.paiements) : null;
+        const parMandat = /perso|personnel/i.test(regle.label);
+        const blocPrlv = (parMandat && st) ? `
+            <div class="detail-sous-bloc">
+                <h3>Prélèvements GoCardless</h3>
+                <span class="fv-hint">
+                    Le financement personnel se règle par mandat : voici comment ces prélèvements se passent.
+                    Ces chiffres portent sur l'ensemble des mandats, non sur les seules factures de la catégorie.
+                </span>
+                <div class="recup-grid">
+                    ${tuileDetail(U.pourcent(st.partSansIncident, 1), 'Apprenants sans incident',
+                        `${U.nombre(st.nbSansIncident)} sur ${U.nombre(st.nbApprenants)}`, U.couleurs.paye)}
+                    ${tuileDetail(U.pourcent(st.tauxEchecPrelevements, 1), 'Prélèvements rejetés',
+                        `${U.nombre(st.nbEchecsPrelevements)} sur ${U.nombre(st.nbPresentes)} présentés`, U.couleurs.retard)}
+                    ${tuileDetail(U.pourcent(st.partRattrapes, 1), 'Incidents rattrapés',
+                        `${U.nombre(st.nbRattrapes)} sur ${U.nombre(st.nbAvecIncident)} apprenants touchés`, U.couleurs.payeRetard)}
+                    ${tuileDetail(U.euros(st.montantARisque), 'Montant à risque',
+                        `${U.nombre(st.nbEnDifficulte)} apprenants en difficulté`, U.couleurs.inconnu)}
+                </div>
+            </div>` : (parMandat ? `
+            <div class="detail-sous-bloc">
+                <h3>Prélèvements GoCardless</h3>
+                <span class="fv-hint">Aucun export GoCardless chargé — l'onglet <em>Prélèvements</em> permet de les déposer.</span>
+            </div>` : '');
+
+        el.hidden = false;
+        el.innerHTML = `
+            <div class="charts-grid"><div class="chart-card chart-wide detail-categorie">
+                <div class="chart-header">
+                    <h3>${U.escapeHtml(ligne.label)}</h3>
+                    <div class="chart-controls">
+                        <button class="btn btn-ghost btn-sm" id="fin-detail-factures">Voir les factures</button>
+                        <button class="btn btn-ghost btn-sm" id="fin-detail-fermer">Fermer</button>
+                    </div>
+                </div>
+                <span class="fv-hint">Règle d'échéance : ${U.escapeHtml(regle.note || '—')}</span>
+                <div class="recup-grid">
+                    ${tuileDetail(U.nombre(ligne.nbTotal), 'Factures', U.euros(ligne.eurTotal), U.couleurs.indigo)}
+                    ${tuileDetail(U.nombre(ligne.nbEnRetard), 'En retard', U.euros(ligne.eurEnRetard), U.couleurs.retard)}
+                    ${tuileDetail(U.nombre(ligne.nbNonEchues), 'Pas encore échu', U.euros(ligne.eurNonEchues), U.couleurs.nonEchue)}
+                    ${tuileDetail(U.jours(ligne.retardMoyen), 'Retard moyen', `${U.pourcent(ligne.tauxNb, 1)} des factures en retard`, U.couleurs.payeRetard)}
+                </div>
+                ${blocsQualif || '<p class="fv-hint">Aucune colonne de qualification sur les tableaux de cette catégorie.</p>'}
+                ${blocPrlv}
+            </div></div>`;
+
+        $('#fin-detail-fermer').addEventListener('click', () => {
+            state.ui.finDetail = null; rendreTout();
+        });
+        $('#fin-detail-factures').addEventListener('click', () => {
+            state.filtres.financements = new Set([cle]);
+            state.ui.page = 1;
+            ouvrirOnglet('factures');
+        });
+        $$('.qualif-barre', el).forEach(b => b.addEventListener('click', () => {
+            state.filtres.financements = new Set([cle]);
+            filtrerParQualification(b.dataset.qnom, b.dataset.qval);
+        }));
+    }
+
+    const tuileDetail = (valeur, label, detail, couleur) => `
+        <div class="recup-card">
+            <span class="recup-bar" style="background:${couleur}"></span>
+            <span class="recup-taux">${valeur}</span>
+            <span class="recup-label">${U.escapeHtml(label)}</span>
+            <span class="recup-value">${detail}</span>
+        </div>`;
+
+    /**
      * Barre d'action de la sélection.
      *
      * Corriger le financement facture par facture n'est pas tenable quand
@@ -2119,172 +2199,8 @@
     //  Onglet : Qualifications métier
     // ══════════════════════════════════════════════
 
-    function rendreQualifications(data) {
-        // Les qualifications se lisent par tableau : la colonne « qualification »
-        // du 1.2 parle de recouvrement, celle du 1.1 de problèmes avant
-        // échéance. Les additionner effacerait la distinction cherchée.
-        const toutes = !!state.ui.qualifToutes;
-        const parTableau = X.qualificationsParTableau(data, toutes);
 
-        // Puces de tableau : elles servent à écarter un tableau du décompte,
-        // sans toucher aux filtres généraux de l'application.
-        const exclus = state.ui.qualifBoardsExclus || (state.ui.qualifBoardsExclus = new Set());
-        $('#qualif-boards').innerHTML = parTableau.length
-            ? parTableau.map(b => {
-                const nb = b.colonnes.reduce((n, c) => n + c.nb, 0);
-                const off = exclus.has(b.board);
-                return `<button class="chip${off ? '' : ' active'}" data-qboard="${U.escapeHtml(b.board)}"`
-                    + ` title="${off ? 'Cliquez pour réintégrer ce tableau' : 'Cliquez pour exclure ce tableau'}">`
-                    + `${U.escapeHtml(b.board)}<span class="chip-count">${U.nombre(nb)}</span></button>`;
-            }).join('')
-            : '<span class="fv-hint">Aucun tableau ne porte de colonne de qualification.</span>';
 
-        const retenus = parTableau.filter(b => !exclus.has(b.board));
-        const dataRetenue = data.filter(f => !exclus.has(f.boardOperationnel || f.board));
-
-        // L'inventaire à plat n'est conservé que pour alimenter le sélecteur :
-        // une entrée par couple tableau × colonne, pour que deux colonnes
-        // homonymes restent distinctes.
-        const inventaire = [];
-        for (const b of retenus) {
-            for (const c of b.colonnes) inventaire.push({ ...c, board: b.board });
-        }
-        inventaire.sort((a2, b2) => b2.nb - a2.nb);
-
-        // Créances douteuses : contentieux et pertes
-        const d = X.creancesDouteuses(dataRetenue);
-        const tuile = (o) => `
-            <div class="recup-card">
-                <span class="recup-bar" style="background:${o.couleur}"></span>
-                <span class="recup-taux">${o.valeur}</span>
-                <span class="recup-label">${U.escapeHtml(o.label)}</span>
-                <span class="recup-value">${o.detail}</span>
-                <span class="recup-sub">${U.escapeHtml(o.sub)}</span>
-            </div>`;
-        $('#douteuses-kpi').innerHTML = [
-            tuile({ couleur: U.couleurs.retard, valeur: U.nombre(d.nb), label: 'Créances douteuses',
-                    detail: U.euros(d.euros), sub: 'contentieux et pertes réunis' }),
-            tuile({ couleur: '#f97316', valeur: U.nombre(d.nbContentieux), label: 'En contentieux',
-                    detail: U.euros(d.eurContentieux), sub: 'transmises au service contentieux' }),
-            tuile({ couleur: U.couleurs.inconnu, valeur: U.nombre(d.nbPerte), label: 'Perdues ou partielles',
-                    detail: U.euros(d.eurPerte), sub: 'qualifiées perdues ou partiellement recouvrées' }),
-            tuile({ couleur: U.couleurs.payeRetard, valeur: U.pourcent(d.partEur, 1), label: 'Part du portefeuille',
-                    detail: U.pourcent(d.partNb, 1) + ' des factures', sub: 'en euros facturés' }),
-        ].join('');
-
-        // Sélecteur de colonne
-        const cle = q => q.board + ' ‖ ' + q.nom;
-        const sel = $('#qualif-colonne');
-        if (!inventaire.length) {
-            sel.innerHTML = '<option value="">Aucune qualification</option>';
-            $('#qualif-portee').textContent = exclus.size
-                ? 'Tous les tableaux portant une qualification sont exclus — cliquez sur une puce pour en réintégrer un.'
-                : "Vos tableaux ne portent aucune colonne de qualification. Cochez « Afficher aussi les autres colonnes à choix » pour voir ce que l'application a relevé.";
-            U.chart('chart-qualif', videConfig('Aucune qualification'));
-            $('#qualif-par-tableau').innerHTML = '';
-            return;
-        }
-        if (!state.ui.qualifChoix || !inventaire.some(q => cle(q) === state.ui.qualifChoix)) {
-            state.ui.qualifChoix = cle(inventaire[0]);
-        }
-        sel.innerHTML = inventaire.map(q =>
-            `<option value="${U.escapeHtml(cle(q))}"${cle(q) === state.ui.qualifChoix ? ' selected' : ''}>`
-            + `${U.escapeHtml(q.board)} — ${U.escapeHtml(q.nom)} (${U.nombre(q.nb)})</option>`).join('');
-
-        rendreRepartitionQualif(dataRetenue);
-        rendreQualifParTableau(dataRetenue, retenus);
-    }
-
-    /**
-     * Une carte par tableau, avec la répartition de chacune de ses colonnes de
-     * qualification. C'est la vue demandée : voir d'un coup ce que dit le 1.1 et
-     * ce que dit le 1.2, sans avoir à basculer d'une liste déroulante à l'autre.
-     */
-    function rendreQualifParTableau(data, parTableau) {
-        const el = $('#qualif-par-tableau');
-        el.innerHTML = parTableau.map(b => {
-            const blocs = b.colonnes.map(c => {
-                const r = X.repartitionQualification(data, c.nom, b.board);
-                const table = U.table([
-                    { key: 'valeur', label: 'Qualification' },
-                    { key: 'nb', label: 'Factures', align: 'right', format: U.nombre },
-                    { key: 'partNb', label: '%', align: 'right', format: v => U.pourcent(v, 1) },
-                    { key: 'euros', label: 'Montant', align: 'right', format: v => U.euros(v) },
-                    { key: 'nbEnRetard', label: 'En retard', align: 'right', format: v => v ? U.nombre(v) : '—' },
-                    { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
-                ], r.lignes, {
-                    vide: '—',
-                    total: { valeur: 'Total', nb: U.nombre(r.totalNb), euros: U.euros(r.totalEur),
-                             nbEnRetard: U.nombre(X.sum(r.lignes, l => l.nbEnRetard)) },
-                });
-                return `<h4 class="qualif-col-titre">${U.escapeHtml(c.nom)}`
-                    + `<span class="fv-hint">${U.nombre(r.totalNb)} factures · ${U.nombre(c.nbValeurs)} valeurs</span></h4>`
-                    + `<div class="table-wrap qualif-col-table" data-qcol="${U.escapeHtml(c.nom)}">${table}</div>`;
-            }).join('');
-            return `<div class="charts-grid"><div class="chart-card chart-wide">
-                <div class="chart-header"><h3>${U.escapeHtml(b.board)}</h3></div>
-                ${blocs}
-            </div></div>`;
-        }).join('');
-
-        // Un clic sur une ligne ouvre les factures de cette qualification.
-        $$('.qualif-col-table', el).forEach(w => {
-            const nom = w.dataset.qcol;
-            $$('tbody tr', w).forEach(tr => {
-                const val = (tr.firstElementChild || {}).textContent;
-                if (!val || val === 'Total') return;
-                tr.classList.add('row-clickable');
-                tr.addEventListener('click', () => filtrerParQualification(nom, val.trim()));
-            });
-        });
-    }
-
-    function rendreRepartitionQualif(data) {
-        const [board, nom] = String(state.ui.qualifChoix || '').split(' ‖ ');
-        const eur = state.ui.qualifUnite === 'euros';
-        const r = X.repartitionQualification(data, nom, board);
-
-        $('#qualif-portee').textContent =
-            `${U.nombre(r.totalNb)} factures renseignées sur cette colonne · ${U.euros(r.totalEur)}`
-            + (r.nonQualifiees ? ` · ${U.nombre(r.nonQualifiees)} factures ne la portent pas` : '');
-
-        if (!r.lignes.length) {
-            U.chart('chart-qualif', videConfig('Aucune valeur'));
-            return;
-        }
-
-        U.chart('chart-qualif', {
-            type: 'bar',
-            data: {
-                labels: r.lignes.map(l => l.valeur),
-                datasets: [{
-                    data: r.lignes.map(l => eur ? l.euros : l.nb),
-                    backgroundColor: r.lignes.map((_, i) => U.palette[i % U.palette.length]),
-                    borderRadius: 4,
-                }],
-            },
-            options: {
-                indexAxis: 'y',
-                scales: {
-                    x: { grid: U.grille, ticks: { callback: v => eur ? U.eurosCourt(v) : U.nombre(v) } },
-                    y: { grid: { display: false } },
-                },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: ctx => {
-                                const l = r.lignes[ctx.dataIndex];
-                                return `${U.nombre(l.nb)} factures · ${U.euros(l.euros)} · ${U.pourcent(l.partNb)}`;
-                            },
-                        },
-                    },
-                },
-                onClick: (evt, els) => { if (els.length) filtrerParQualification(nom, r.lignes[els[0].index].valeur); },
-            },
-        });
-
-    }
 
     /** Filtre sur une valeur de qualification, via la recherche plein texte. */
     function filtrerParQualification(nom, valeur) {
@@ -4223,35 +4139,12 @@
             e.target.value = '';
         });
 
-        $('#qualif-colonne').addEventListener('change', e => {
-            state.ui.qualifChoix = e.target.value;
-            rendreQualifications(facturesFiltrees());
-        });
-        $('#qualif-toutes').addEventListener('change', e => {
-            state.ui.qualifToutes = e.target.checked;
-            rendreQualifications(facturesFiltrees());
-        });
-        // Une puce de tableau bascule entre retenu et exclu, sans toucher aux
-        // filtres généraux : la portée reste locale à cet onglet.
-        $('#qualif-boards').addEventListener('click', e => {
-            const b = e.target.closest('[data-qboard]');
-            if (!b) return;
-            const nom = b.dataset.qboard;
-            const ex = state.ui.qualifBoardsExclus;
-            if (ex.has(nom)) ex.delete(nom); else ex.add(nom);
-            rendreQualifications(facturesFiltrees());
-        });
         brancherActes();
         brancherFenetreMois();
         $$('#seg-evocat-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.evoCatUnite = b.dataset.unite;
             $$('#seg-evocat-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));
             rendreTout();
-        }));
-        $$('#seg-qualif-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
-            state.ui.qualifUnite = b.dataset.unite;
-            $$('#seg-qualif-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));
-            rendreQualifications(facturesFiltrees());
         }));
         $$('#seg-rang-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.rangUnite = b.dataset.unite;

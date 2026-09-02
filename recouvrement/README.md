@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 1.9.0** — 2 septembre 2026
+**Version 2.0.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=1.9.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.0.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -176,8 +176,8 @@ du type de financement, selon le référentiel Liora :
 | Interco | Fin de formation +60 j |
 | Interne - DST Allemagne | Fin de formation +60 j |
 | OPCO | Fin de formation +30 j — *pas de recouvrement, suivi du retard uniquement* |
-| B2C-Perso / Perso-Alternance | Début / fin de formation (aucun délai) |
-| CPF | Fin de formation +45 j |
+| B2C-Perso / Perso-Alternance | Début de formation (aucun délai) |
+| CPF | Fin de formation +60 j |
 
 **Les règles font foi.** L'échéance est toujours recalculée à partir du type de
 financement, même quand Monday porte une date d'échéance : la date saisie est
@@ -647,6 +647,10 @@ graphique *Évolution du % en recouvrement, par catégorie* trace une courbe par
 type de financement : montante, la catégorie se dégrade ; descendante, elle
 s'assainit. Un clic sur une légende isole une catégorie.
 
+Un clic sur la courbe ouvre la **carte thermique** mois × financement, qui donne
+le détail chiffré de ce que la courbe résume. Elle ne s'affiche plus en
+permanence : deux lectures de la même chose côte à côte alourdissaient l'écran.
+
 Le taux tracé est celui de la **cohorte échue** — sur les factures arrivées à
 échéance dans le mois, la part payée en retard ou encore impayée. C'est le seul
 comparable d'un mois à l'autre : un taux « à date » ferait chuter mécaniquement
@@ -775,38 +779,28 @@ Retards : moyen, médian, maximum, **pondéré par le montant** (un gros impayé
 ancien pèse plus qu'un petit), et **retard moyen au paiement** mesuré sur les
 factures déjà réglées.
 
-## Qualifications
+## Entrer dans une catégorie
 
-Les tableaux Monday portent, en plus des dates et des montants, des colonnes de
-qualification propres à chaque périmètre : *qualification recouvrement* sur le
-tableau 1.2, *problématique pré-échéance* sur le 1.1, une qualification
-spécifique sur le 2.1 B2C - Financement personnel, et ainsi de suite. Ces
-colonnes ne servent pas au calcul du retard — l'échéance seule en décide — mais
-elles disent *pourquoi* une facture est là.
+Les qualifications avaient leur onglet : on y lisait la répartition des
+problématiques sans savoir de quelle catégorie elles parlaient, et il fallait
+reconstituer le lien de tête. Elles sont désormais **là où on les cherche** —
+en entrant dans une catégorie de financement.
 
-L'onglet *Qualifications* les relève sans configuration, et les présente
-**tableau par tableau** : la même colonne n'a pas le même sens d'un tableau à
-l'autre — celle du 1.2 parle de recouvrement, celle du 1.1 de problèmes avant
-échéance — et les additionner effacerait précisément la distinction cherchée.
+Un clic sur une ligne du tableau *Par type de financement* ouvre, sous la
+synthèse, le détail de cette catégorie :
 
-Sont retenues les colonnes à choix dont le nom relève du vocabulaire de
-qualification : *qualification*, *problématique*, *motif*, *litige*,
-*contentieux*, *anomalie*, *blocage*. Les statuts d'avancement et autres listes
-de suivi restent en dehors ; une case *Afficher aussi les autres colonnes à
-choix* les fait apparaître quand c'est utile.
+- ses **chiffres** — factures, en retard, pas encore échu, retard moyen — et la
+  règle d'échéance qui lui est appliquée ;
+- la **répartition de ses qualifications, tableau par tableau** : chaque valeur
+  avec son nombre, sa part, son montant et le nombre en retard. Un clic sur une
+  barre ouvre les factures concernées, déjà filtrées sur la catégorie ;
+- pour le **financement personnel**, qui se règle par mandat, les indicateurs
+  **GoCardless** : part d'apprenants sans incident, taux de rejet, incidents
+  rattrapés, montant à risque.
 
-- Une **rangée de puces** liste les tableaux qui portent une qualification.
-  Un clic exclut le tableau du décompte, un second le réintègre. Cette portée
-  est locale à l'onglet et ne touche pas aux filtres généraux.
-- Une **carte par tableau** donne, pour chacune de ses colonnes, la répartition
-  des factures entre les valeurs : nombre, part, montant, nombre en retard et
-  retard moyen. Un clic sur une ligne ouvre les factures concernées.
-- Le **graphique du haut** reprend une colonne au choix, en nombre ou en euros.
-- Les **créances douteuses** sont comptées à part : factures des étapes
-  *Contentieux* et *Perte*, en nombre et en montant.
-
-Ces statistiques suivent aussi les filtres de la barre supérieure — période,
-périmètre, source — comme le reste de l'application.
+Sont retenues les colonnes dont le nom relève du vocabulaire de qualification :
+*qualification*, *problématique*, *motif*, *litige*, *contentieux*, *anomalie*,
+*blocage*.
 
 ## Prélèvements GoCardless
 

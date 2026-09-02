@@ -1071,3 +1071,20 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
 .acte-toggle:hover { border-color: var(--border-hover); color: var(--text-primary); }
 .section-acte { justify-content: flex-start; }
 .acte-corps[hidden] { display: none; }
+
+
+/* Détail d'une catégorie de financement */
+.detail-categorie { border-left: 3px solid var(--red, #F47458); }
+.detail-sous-bloc { margin-top: 26px; }
+.detail-sous-bloc > h3 { font-size: 14px; margin-bottom: 6px; }
+.qualif-barres { display: grid; gap: 10px; margin-top: 10px; }
+.qualif-barre {
+    display: grid; gap: 4px; text-align: left; width: 100%;
+    background: none; border: 0; padding: 4px 2px; font: inherit;
+    color: inherit; cursor: pointer; border-radius: 6px;
+}
+.qualif-barre:hover { background: rgba(255,255,255,.04); }
+.qualif-barre-tete { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+.qualif-barre-piste { height: 8px; border-radius: 4px; background: rgba(255,255,255,.06); overflow: hidden; }
+.qualif-barre-jauge { display: block; height: 100%; border-radius: 4px; }
+.qualif-barre-pied { font-size: 11px; color: var(--text-muted); }

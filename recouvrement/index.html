@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=1.9.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=1.9.0"></script>
-    <script src="../vendor/papaparse.min.js?v=1.9.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=1.9.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=1.9.0">
-    <link rel="stylesheet" href="styles.css?v=1.9.0">
+    <script src="../vendor/chart.umd.min.js?v=2.0.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.0.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.0.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.0.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.0.0">
+    <link rel="stylesheet" href="styles.css?v=2.0.0">
 </head>
 <body>
 
@@ -122,7 +122,6 @@
             <button class="nav-tab" data-tab="aging">Balance âgée</button>
             <button class="nav-tab" data-tab="financements">Financements</button>
             <button class="nav-tab" data-tab="factures">Factures</button>
-            <button class="nav-tab" data-tab="qualifications">Qualifications</button>
             <button class="nav-tab" data-tab="prelevements">Prélèvements</button>
             <button class="nav-tab" data-tab="quality">Data Quality</button>
             <button class="nav-tab" data-tab="donnees">Données</button>
@@ -330,7 +329,7 @@
                             <span class="kpi-label">Retard moyen au paiement</span>
                             <span class="kpi-value" id="kpi-retard-paiement">—</span>
                             <span class="kpi-sub" id="kpi-delai-paiement-sub"></span>
-                            <span class="aide-ligne">Sur les factures déjà réglées, combien de jours après l'échéance le paiement est réellement tombé. Mesure le comportement de paiement de vos clients, une fois l'affaire close.</span>
+                            <span class="aide-ligne">Sur les factures <strong>qui ont fini par être payées</strong>, combien de jours après l'échéance l'argent est réellement tombé. À ne pas confondre avec « Retard moyen », qui porte sur les factures <strong>toujours impayées</strong> : l'un dit combien de temps vos clients mettent à payer, l'autre depuis combien de temps vous attendez.</span>
                         </div>
                     </div>
                 </div>
@@ -426,6 +425,9 @@
                     <div class="chart-container chart-tall"><canvas id="chart-evo-categorie"></canvas></div>
                 </div>
             </div>
+
+            <!-- Détail de la courbe : la carte thermique, mois par mois -->
+            <div id="evo-detail" hidden>
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header">
@@ -441,6 +443,8 @@
                     <div class="heatmap-wrap" id="heatmap-mois-financement"></div>
                 </div>
             </div>
+            </div>
+
 
 
             <!-- Financement + balance âgée -->
@@ -618,15 +622,6 @@
                     <div class="mini-table-wrap" id="par-tableau"></div>
                 </div>
             </div>
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Structure du portefeuille</h3>
-                        <span class="fv-hint">anneau extérieur : état · intérieur : périmètre</span>
-                    </div>
-                    <div class="chart-container"><canvas id="chart-structure"></canvas></div>
-                </div>
-            </div>
             </div>
         </div>
     </div>
@@ -677,26 +672,41 @@
                 <h2>Par type de financement</h2>
                 <div class="period-badge" id="fin-badge"></div>
             </div>
-            <p class="aide-bloc">Le même suivi, dispositif par dispositif. La règle d'échéance n'est pas la même partout : le CPF paie à fin de formation +45 jours, le B2B à +30, l'OPCO à +30.</p>
+            <p class="aide-bloc">Le même suivi, dispositif par dispositif. La règle d'échéance n'est pas la même partout : le CPF paie à fin de formation +60 jours, le B2B à +30, le financement personnel dès le début de formation. <strong>Cliquez sur une ligne</strong> pour entrer dans la catégorie : ses qualifications, tableau par tableau, et ses prélèvements.</p>
 
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header">
                         <h3>Synthèse</h3>
-                        <span class="fv-hint">Cliquez sur une ligne pour filtrer l'ensemble de l'application</span>
+                        <span class="fv-hint">Cliquez sur une ligne pour entrer dans la catégorie</span>
                     </div>
                     <div class="table-wrap" id="fin-table"></div>
                     <p class="fv-hint" id="fin-coherence"></p>
                 </div>
             </div>
 
+            <!-- Détail d'une catégorie : ce qu'on voit en « entrant » dedans -->
+            <div id="fin-detail" hidden></div>
+
             <div class="charts-grid charts-2col">
                 <div class="chart-card">
                     <div class="chart-header"><h3>Taux en recouvrement (€)</h3></div>
+                    <span class="fv-hint">
+                        <strong>Aujourd'hui</strong> : sur tout ce que vous avez facturé dans cette catégorie,
+                        la part encore en retard à ce jour. <strong>Au fil du temps</strong> : sur les seules
+                        factures arrivées à échéance, la part qui a fini par être en retard — payées en retard
+                        comprises. La seconde est plus haute parce qu'elle compte aussi ce qui est rentré,
+                        mais en retard.
+                    </span>
                     <div class="chart-container"><canvas id="chart-fin-taux"></canvas></div>
                 </div>
                 <div class="chart-card">
                     <div class="chart-header"><h3>Retard moyen par financement</h3></div>
+                    <span class="fv-hint">
+                        <strong>Impayées</strong> : depuis combien de jours les factures encore dues attendent.
+                        <strong>Réglées</strong> : sur celles qui ont fini par rentrer, combien de jours après
+                        l'échéance le paiement est tombé.
+                    </span>
                     <div class="chart-container"><canvas id="chart-fin-retard"></canvas></div>
                 </div>
             </div>
@@ -743,51 +753,7 @@
     </div>
 
     <!-- ══════════ ONGLET : QUALIFICATIONS ══════════ -->
-    <div class="tab-content" id="tab-qualifications">
-        <div class="dashboard-content">
-            <div class="section-header">
-                <h2>Qualifications métier</h2>
-                <div class="period-badge" id="qualif-badge"></div>
-            </div>
-            <p class="aide-bloc">
-                Les qualifications que portent vos tableaux — <em>Qualification recouvrement</em> sur le
-                1.2, <em>Problématique pré-échéance</em> sur le 1.1 — sont présentées
-                <strong>tableau par tableau</strong> : la même colonne n'y a pas le même sens.
-                Cliquez sur un tableau pour l'exclure ou le retenir.
-            </p>
-
-            <div class="filter-row">
-                <span class="filter-label">Tableaux</span>
-                <div class="chip-row" id="qualif-boards"></div>
-                <label class="check check-sm">
-                    <input type="checkbox" id="qualif-toutes"> Afficher aussi les autres colonnes à choix
-                </label>
-            </div>
-
-            <div class="recup-grid" id="douteuses-kpi"></div>
-
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Répartition d'une qualification</h3>
-                        <div class="chart-controls">
-                            <select id="qualif-colonne" class="input input-sm"></select>
-                            <div class="seg seg-sm" id="seg-qualif-unite">
-                                <button class="seg-btn active" data-unite="nb">Nombre</button>
-                                <button class="seg-btn" data-unite="euros">€</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint" id="qualif-portee"></span>
-                    <div class="chart-container chart-tall"><canvas id="chart-qualif"></canvas></div>
-                </div>
-            </div>
-
-            <div id="qualif-par-tableau"></div>
-        </div>
-    </div>
-
-    <!-- ══════════ ONGLET : PRÉLÈVEMENTS ══════════ -->
+<!-- ══════════ ONGLET : PRÉLÈVEMENTS ══════════ -->
     <div class="tab-content" id="tab-prelevements">
         <div class="dashboard-content">
             <div class="section-header">
@@ -1080,13 +1046,13 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=1.9.0"></script>
-<script src="js/store.js?v=1.9.0"></script>
-<script src="js/monday.js?v=1.9.0"></script>
-<script src="js/ingest.js?v=1.9.0"></script>
-<script src="js/metrics.js?v=1.9.0"></script>
-<script src="js/prelevements.js?v=1.9.0"></script>
-<script src="js/ui.js?v=1.9.0"></script>
-<script src="app.js?v=1.9.0"></script>
+<script src="js/rules.js?v=2.0.0"></script>
+<script src="js/store.js?v=2.0.0"></script>
+<script src="js/monday.js?v=2.0.0"></script>
+<script src="js/ingest.js?v=2.0.0"></script>
+<script src="js/metrics.js?v=2.0.0"></script>
+<script src="js/prelevements.js?v=2.0.0"></script>
+<script src="js/ui.js?v=2.0.0"></script>
+<script src="app.js?v=2.0.0"></script>
 </body>
 </html>
