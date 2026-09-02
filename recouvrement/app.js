@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.26.0 — 2 septembre 2026
+   v2.27.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.26.0';
+    const VERSION = '2.27.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -52,6 +52,10 @@
         // → financement personnel ». Elles valent pour tous les extraits.
         reglesClassement: [],
         glCreances: [],
+        // Les écritures du grand livre à plat, gardées pour que le classement
+        // descende sur les règlements et que les non rattachés se pointent.
+        glLignes: [],
+        glEcritures: null,
         glBalance: null,
         glComparaison: null,
 
@@ -210,6 +214,8 @@
             state.glOuvertes = (await S.get('rec_gl_ouvertes', [])) || [];
             state.qualifRef = (await S.get('rec_qualif_ref', {})) || {};
             state.reglesClassement = (await S.get('rec_regles_classement', [])) || [];
+            state.glLignes = ((await S.get('rec_gl_lignes', [])) || [])
+                .map(l => ({ ...l, date: l.date ? R.parseDate(l.date) : null }));
         } catch { /* ignore */ }
 
         try {
@@ -2343,6 +2349,7 @@
         }));
         if (!ouvertes.length) {
             state.glCreances = [];
+            state.glEcritures = null;
             state.glBalance = null;
             state.glComparaison = null;
             return;
@@ -2357,6 +2364,12 @@
             rules: state.rules,
         });
         state.glCreances = classees;
+        // Le classement descend sur les écritures : une facture classée classe
+        // son règlement et son avoir. Ce qui n'a pas de facture dans son
+        // lettrage ressort à part, pour être pointé à la main.
+        state.glEcritures = (state.glLignes && state.glLignes.length)
+            ? GL.classerEcritures(state.glLignes, classees)
+            : null;
         state.glBalance = GL.balanceAgee(classees, state.filtres.dateRef, state.rules,
             state.ui.glNiveau || 'financement');
 
@@ -2444,19 +2457,27 @@
             x.classList.toggle('active', x.dataset.niveau === (state.ui.glNiveau || 'financement')));
         const t = $('#aging-gl-titre');
         if (t) t.textContent = parCat
-            ? 'Reste dû comptable par catégorie de client et par ancienneté'
-            : 'Reste dû comptable par financement et par ancienneté';
+            ? 'Reste dû comptable par type de client et par ancienneté'
+            : 'Reste dû comptable par sous-catégorie et par ancienneté';
         rendreReglesGL();
 
+        // Ce qui est réellement dû : le solde des comptes, débarrassé des
+        // positions créditrices qui ne sont pas des créances.
+        const du = b.total.total - (b.total.crediteur || 0);
         $('#aging-gl-kpi').innerHTML = [
             { couleur: U.couleurs.retard, valeur: U.euros(b.total.total),
               label: 'Reste dû au grand livre', detail: `${U.nombre(b.total.nb)} créances`,
               sub: 'solde des comptes clients, hors filtres' },
+            // Le rapport se prend sur ce qui est dû, non sur le solde : un
+            // compte créditeur abaisse le solde sans rien retirer aux arriérés,
+            // et le taux dépassait alors cent pour cent.
             { couleur: U.couleurs.payeRetard, valeur: U.euros(b.total.echu),
-              label: 'Dont échu', detail: U.pourcent(b.total.total ? b.total.echu / b.total.total * 100 : null, 0) + ' du reste dû',
+              label: 'Dont échu',
+              detail: U.pourcent(du ? b.total.echu / du * 100 : null, 0) + ' de ce qui est dû',
               sub: 'exigible à la date d’arrêté' },
             { couleur: U.couleurs.nonEchue, valeur: U.euros(b.total.nonEchu),
-              label: 'Non échu', detail: `${U.nombre(b.total.nb - (b.nbAClasser || 0))} créances classées`,
+              label: 'Non échu',
+              detail: U.pourcent(du ? b.total.nonEchu / du * 100 : null, 0) + ' de ce qui est dû',
               sub: 'pas encore exigible' },
             { couleur: U.couleurs.inconnu, valeur: U.euros(b.eurosAClasser || 0),
               label: 'À classer', detail: `${U.nombre(b.nbAClasser || 0)} créances`,
@@ -2500,7 +2521,7 @@
 
         const buckets = colonnesAnciennete();
         const cols = [
-            { key: 'label', label: parCat ? 'Catégorie de client' : 'Financement' },
+            { key: 'label', label: parCat ? 'Type de client' : 'Sous-catégorie' },
             { key: 'echu', label: 'Total échu', align: 'right',
               format: v => v ? `<strong>${U.eurosCourt(v)}</strong>` : '<span class="ag-zero">·</span>',
               cls: () => 'ag-total' },
@@ -2528,8 +2549,92 @@
             onRowClick: true, rowClass: r => r.cle === GL.A_CLASSER ? 'ligne-a-classer' : '' });
         U.bindTable(el, rows, { onRowClick: r => montrerCreancesGL(r) });
 
+        rendreOrphelins();
         rendreReglesClassement();
         rendreAClasser();
+    }
+
+    /**
+     * Ce qui pourrait expliquer un paiement non pointé.
+     *
+     * Un règlement orphelin se pointe contre les créances encore ouvertes du
+     * même compte. Le montant identique est l'indice le plus fort — un
+     * virement solde presque toujours une facture entière — et vient donc en
+     * premier ; à défaut, les créances ouvertes du compte sont listées pour
+     * que le rapprochement se fasse à l'œil.
+     */
+    function rapprochementsPossibles(orphelins) {
+        const parCompte = new Map();
+        for (const c of (state.glCreances || [])) {
+            if (!c.compte || !(c.resteDu > 0)) continue;
+            const l = parCompte.get(c.compte) || [];
+            l.push(c);
+            parCompte.set(c.compte, l);
+        }
+        const TOL = 0.01;
+        return orphelins.map(o => {
+            const candidates = (parCompte.get(o.compte) || [])
+                .slice().sort((a, b) => Math.abs(b.resteDu) - Math.abs(a.resteDu));
+            const exact = candidates.filter(c => Math.abs(c.resteDu - (o.credit || 0)) < TOL);
+            return {
+                ...o,
+                exact: exact[0] || null,
+                nbOuvertes: candidates.length,
+                eurosOuverts: X.sum(candidates, c => c.resteDu),
+                candidates: candidates.slice(0, 5),
+            };
+        });
+    }
+
+    /**
+     * Les règlements que rien ne rattache.
+     *
+     * Le classement d'une facture descend sur tout ce qui la solde : son
+     * règlement, son avoir, son rejet. Mais un règlement seul dans son
+     * lettrage — un acompte, un virement non pointé, un solde de tout compte —
+     * n'a aucune facture de qui hériter. Le deviner serait faux ; il est donc
+     * montré tel quel, du plus gros au plus petit, pour être pointé.
+     */
+    function rendreOrphelins() {
+        const el = $('#gl-orphelins'), note = $('#gl-orphelins-note');
+        if (!el || !note) return;
+        const e = state.glEcritures;
+        if (!e) {
+            note.innerHTML = '<p>Rechargez le grand livre pour voir le détail des écritures : '
+                + 'les règlements ne sont conservés que depuis le dernier import.</p>';
+            el.innerHTML = '';
+            return;
+        }
+        const st = e.stats;
+        const totalRegl = st.reglements + st.avoirs;
+        note.innerHTML = `<p>Sur ${U.nombre(totalRegl)} règlements et avoirs du grand livre, `
+            + `<strong>${U.nombre(st.reglementsClasses)}</strong> héritent du dispositif de la facture `
+            + `qu'ils soldent. Les <strong>${U.nombre(st.reglementsOrphelins)}</strong> autres `
+            + `(${U.euros(st.eurosReglementsOrphelins)}) ne sont rattachés à aucune facture : acompte, `
+            + `virement non pointé, solde de tout compte. Ils sont listés ici pour être pointés à la main — `
+            + `les deviner fausserait la répartition de ce qui rentre.</p>`;
+
+        const avecRappro = rapprochementsPossibles(e.orphelins);
+        const nbExacts = avecRappro.filter(o => o.exact).length;
+        if (nbExacts) note.innerHTML += `<p><strong>${U.nombre(nbExacts)}</strong> d'entre eux tombent `
+            + `au centime sur une créance encore ouverte du même compte : ce sont les plus faciles à `
+            + `pointer, et la colonne « Rapprochement » les nomme.</p>`;
+
+        const liste = avecRappro.slice(0, 300);
+        el.innerHTML = U.table([
+            { key: 'date', label: 'Date', align: 'center', format: U.dateFR },
+            { key: 'tiers', label: 'Client', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+            { key: 'compte', label: 'Compte', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
+            { key: 'libelle', label: 'Libellé', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+            { key: 'credit', label: 'Montant', align: 'right', format: U.euros },
+            { key: 'nature', label: 'Nature', align: 'center',
+              format: v => v === 'avoir' ? '<span class="pill pill-muted">avoir</span>' : '<span class="pill">règlement</span>' },
+            { key: '__rappro', label: 'Rapprochement', sortable: false, format: (v, r) => r.exact
+                ? `<span class="pill pill-ok" title="Même montant, même compte">${U.escapeHtml(r.exact.numero || 'créance sans numéro')}</span>`
+                : r.nbOuvertes
+                    ? `<span class="fv-hint">${U.nombre(r.nbOuvertes)} créance${r.nbOuvertes > 1 ? 's' : ''} ouverte${r.nbOuvertes > 1 ? 's' : ''} · ${U.euros(r.eurosOuverts)}</span>`
+                    : '<span class="fv-hint">aucune créance ouverte sur ce compte</span>' },
+        ], liste, { vide: 'Tous les règlements sont rattachés à une facture.' });
     }
 
     /**
@@ -3002,6 +3107,43 @@
                 'Plafond début de formation': r.plafondDebutFormation ? 'oui' : '',
                 'À défaut': libelle[r.fallback] || r.fallback || '',
             }))), 'Règles appliquées');
+
+        // ── Les règlements : ce qui rentre, et par quel dispositif ──
+        if (state.glEcritures) {
+            const e = state.glEcritures;
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+                e.lignes.filter(l => l.nature === 'reglement' || l.nature === 'avoir').map(l => ({
+                    'Date': l.date ? U.dateFR(l.date) : '',
+                    'Clé': (l.compte || '') + ' - ' + (l.tiers || ''),
+                    'N° de compte': l.compte, 'Client': l.tiers,
+                    'Libellé': l.libelle, 'Journal': l.journal, 'Lettrage': l.lettre,
+                    'Nature': l.nature === 'avoir' ? 'Avoir' : 'Règlement',
+                    'Montant': arrondi(l.credit),
+                    'Sous-catégorie': l.financement
+                        ? R.getRule(l.financement, state.rules).label : 'Non rattaché',
+                    'Type de client': l.typeClient || '',
+                    'Classé par': l.origineClassement || '',
+                }))), 'Règlements');
+
+            const aPointer = rapprochementsPossibles(e.orphelins);
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+                aPointer.length ? aPointer.map(l => ({
+                    'Date': l.date ? U.dateFR(l.date) : '',
+                    'Clé': (l.compte || '') + ' - ' + (l.tiers || ''),
+                    'N° de compte': l.compte, 'Client': l.tiers,
+                    'Libellé': l.libelle, 'Journal': l.journal, 'Lettrage': l.lettre,
+                    'Nature': l.nature === 'avoir' ? 'Avoir' : 'Règlement',
+                    'Montant': arrondi(l.credit),
+                    'Facture de même montant': l.exact ? (l.exact.numero || '(sans numéro)') : '',
+                    'Sous-catégorie de cette facture': l.exact && l.exact.financement
+                        ? R.getRule(l.exact.financement, state.rules).label : '',
+                    'Créances ouvertes du compte': l.nbOuvertes,
+                    'Reste dû du compte': arrondi(l.eurosOuverts),
+                    'Candidates': l.candidates.map(c => (c.numero || '(sans n°)')
+                        + ' ' + arrondi(c.resteDu) + ' €').join(' | '),
+                })) : [{ 'Date': 'Tous les règlements sont rattachés à une facture' }]),
+                'Paiements à pointer');
+        }
 
         // ── Vos règles de classement, avec ce qu'elles ont réellement fait ──
         if ((state.reglesClassement || []).length) {
@@ -5353,12 +5495,15 @@
             // rechargement de la page.
             state.grandLivre = [];
             state.glOuvertes = [];
+            state.glLignes = [];
+            state.glEcritures = null;
             state.glCreances = [];
             state.glLecture = null;
             state.glBalance = null;
             state.glComparaison = null;
             await S.set(S.KEYS.grandLivre, []);
             await S.set('rec_gl_ouvertes', []);
+            await S.set('rec_gl_lignes', []);
             await S.set('rec_gl_lecture', null);
             U.toast('Grand livre retiré.', 'info');
             recalculer({ conserverPeriode: true });
@@ -6008,6 +6153,10 @@
             // Les créances ouvertes sont la matière de la balance âgée
             // comptable : elles sont conservées à part, le classement par
             // financement dépendant de Monday et de Sellsy, qui bougent.
+            // Les écritures à plat : c'est elles qui portent les règlements, et
+            // donc le classement de ce qui rentre.
+            state.glLignes = GL.ecrituresAPlat(lu);
+
             state.glOuvertes = GL.creancesOuvertes(lu).map(c => ({
                 ...c,
                 dateFacture: c.dateFacture ? c.dateFacture.toISOString() : null,
@@ -6017,6 +6166,8 @@
             await S.set(S.KEYS.grandLivre, state.grandLivre);
             await S.set('rec_gl_lecture', state.glLecture);
             await S.set('rec_gl_ouvertes', state.glOuvertes);
+            await S.set('rec_gl_lignes', state.glLignes.map(l => ({
+                ...l, date: l.date ? l.date.toISOString() : null })));
             await S.set('rec_qualif_ref', state.qualifRef);
             recalculer({ conserverPeriode: true });
             rendreHistoriqueImports();

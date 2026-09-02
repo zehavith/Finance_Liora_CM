@@ -37,7 +37,7 @@
     const DEFAULT_ECHEANCE_RULES = [
         {
             key: 'BTC_ENTREPRISE',
-            label: 'B2C-Entreprise / Corporate Alternance',
+            label: 'B2C-Entreprise',
             base: 'dateFacture', jours: 30,
             fallback: 'dateDebutFormation', fallbackJours: 30,
             plafondDebutFormation: true,
@@ -49,7 +49,20 @@
             // entreprise », il était capté par « entreprise » et traité en B2B,
             // donc calculé sur la fin de formation au lieu de la date de facture.
             match: ['b2c entreprise', 'b2c ent', 'btc entreprise', 'btc ent',
-                    'b2c corporate', 'btc corporate', 'corporate alternance'],
+                    'b2c corporate', 'btc corporate'],
+        },
+        {
+            // Corporate - Alternance : une alternance facturée à l'entreprise.
+            // L'échéance suit celle du B2C-Entreprise — c'est la même
+            // facturation — mais le type de client est « Alternance », comme
+            // dans le classeur de trésorerie.
+            key: 'CORPORATE_ALTERNANCE', label: 'Corporate - Alternance',
+            base: 'dateFacture', jours: 30,
+            fallback: 'dateDebutFormation', fallbackJours: 30,
+            plafondDebutFormation: true,
+            note: "Date de facture +30 jours, sans dépasser début de formation +30 jours",
+            categorie: 'Alternance', perimetre: 'Corporate',
+            match: ['corporate alternance', 'corporate-alternance'],
         },
         {
             // Repli corporate. Le tableau des factures payées range ses lignes
@@ -83,24 +96,27 @@
             match: ['alternance', 'apprentissage', 'contrat pro'],
         },
         {
-            key: 'TRANSITION', label: 'Transition pro',
+            key: 'TRANSITION', label: 'Transition Pro',
             base: 'dateFinFormation', jours: 60,
             fallback: 'dateFacture', fallbackJours: 60,
             note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
             match: ['transition pro', 'transitions pro', 'transition', 'ptp', 'projet de transition', 'atpro', 'associations transitions pro'],
         },
         {
-            key: 'REGION', label: 'REGION',
+            key: 'REGION', label: 'Region',
             base: 'dateFinFormation', jours: 60,
             fallback: 'dateFacture', fallbackJours: 60,
             note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
             match: ['region', 'conseil regional', 'regional'],
         },
         {
+            // L'AIF est une aide de France Travail : son type de client est
+            // POEI, comme la POEI elle-même. C'est la lecture du classeur de
+            // trésorerie, pas celle du dispositif.
             key: 'AIF', label: 'AIF',
             base: 'dateFinFormation', jours: 60,
             fallback: 'dateFacture', fallbackJours: 60,
-            note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
+            note: 'Fin de formation +60 jours', categorie: 'POEI', perimetre: 'B2C',
             match: ['aif', 'aide individuelle a la formation', 'pole emploi aif', 'france travail aif'],
         },
         {
@@ -118,10 +134,12 @@
             match: ['agefiph', 'fiphfp'],
         },
         {
-            key: 'ETAT', label: 'Etat',
+            key: 'ETAT', label: 'ETAT',
             base: 'dateFinFormation', jours: 30,
             fallback: 'dateFacture', fallbackJours: 30,
-            note: 'Fin de formation +30 jours', categorie: 'B2B', perimetre: 'Corporate',
+            note: 'Fin de formation +30 jours',
+            categorie: 'B2C - Entreprise', typesPossibles: ['B2C - Entreprise', 'B2B'],
+            perimetre: 'Corporate',
             match: ['etat', 'public etat', 'ministere', 'prefecture'],
         },
         {
@@ -135,7 +153,7 @@
             key: 'DST_ALLEMAGNE', label: 'Interne - DST Allemagne',
             base: 'dateFinFormation', jours: 60,
             fallback: 'dateFacture', fallbackJours: 60,
-            note: 'Fin de formation +60 jours', categorie: 'Interne - DST Allemagne', perimetre: 'Corporate',
+            note: 'Fin de formation +60 jours', categorie: 'Interco', perimetre: 'Corporate',
             match: ['dst allemagne', 'interne dst allemagne', 'dst', 'allemagne', 'germany', 'bu1 germany'],
         },
         {
@@ -143,11 +161,21 @@
             base: 'dateFinFormation', jours: 30,
             fallback: 'dateFacture', fallbackJours: 30,
             note: 'Fin de formation +30 jours — pas de recouvrement OPCO, suivi du retard uniquement',
-            categorie: 'Alternance', perimetre: 'Corporate', sansRecouvrement: true,
+            categorie: 'B2C - Entreprise', typesPossibles: ['B2C - Entreprise', 'B2B'],
+            perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco', 'akto', 'atlas', 'uniformation', 'ocapiat', 'constructys', 'afdas', 'opcommerce', 'l opcommerce', 'opco ep', 'opco 2i', 'opco mobilites', 'opco sante'],
         },
         {
-            key: 'BTC_PERSO', label: 'B2C-Perso / Perso-Alternance',
+            // Un OPCO qui finance une alternance : même payeur, autre dispositif.
+            key: 'OPCO_ALTERNANCE', label: 'OPCO - Alternance',
+            base: 'dateFinFormation', jours: 30,
+            fallback: 'dateFacture', fallbackJours: 30,
+            note: 'Fin de formation +30 jours — pas de recouvrement OPCO, suivi du retard uniquement',
+            categorie: 'Alternance', perimetre: 'Corporate', sansRecouvrement: true,
+            match: ['opco alternance', 'opco-alternance'],
+        },
+        {
+            key: 'BTC_PERSO', label: 'B2C-Perso',
             base: 'dateDebutFormation', jours: 0,
             fallback: 'dateFinFormation', fallbackJours: 0,
             note: 'Début de formation (aucun délai supplémentaire)',
@@ -157,9 +185,20 @@
             // financement personnel : les financements publics ont chacun le
             // leur. « B2C - Entreprise » reste capté par sa règle propre, dont
             // le libellé de correspondance est plus long et l'emporte.
-            match: ['b2c perso', 'btc perso', 'perso alternance', 'financement personnel',
+            match: ['b2c perso', 'btc perso', 'financement personnel',
                     'perso', 'personnel', 'fonds propres', 'auto financement', 'autofinancement',
                     'b2c', 'btc'],
+        },
+        {
+            // Perso-Alternance : une alternance que l'apprenant paie lui-même.
+            // Elle ne se devine pas — elle ne vaut que là où elle a été posée
+            // à la main dans l'ancien grand livre.
+            key: 'PERSO_ALTERNANCE', label: 'Perso-Alternance',
+            base: 'dateDebutFormation', jours: 0,
+            fallback: 'dateFinFormation', fallbackJours: 0,
+            note: 'Début de formation (aucun délai supplémentaire)',
+            categorie: 'Alternance', perimetre: 'B2C',
+            match: ['perso alternance', 'perso-alternance'],
         },
         {
             key: 'CPF', label: 'CPF',

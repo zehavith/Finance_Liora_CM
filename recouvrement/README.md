@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.26.0** — 2 septembre 2026
+**Version 2.27.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.26.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.27.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -727,6 +727,66 @@ le solde est négatif — acompte encaissé d'avance, trop-perçu, avoir non imp
 dans la tranche d'ancienneté de sa facture l'y soustrairait et effacerait des
 arriérés bien réels. Il compte donc dans le total, qui reste le solde des
 comptes clients, mais dans sa propre colonne.
+
+### Type de client et sous-catégorie
+
+Le classeur de trésorerie lit chaque créance à **deux niveaux**, et l'application
+fait de même : un **type de client** — six valeurs — et une **sous-catégorie** —
+seize. Les deux ne se déduisent pas toujours l'un de l'autre : *OPCO* relève de
+*B2C - Entreprise* d'ordinaire, mais de *B2B* quand la facturation le dit.
+
+| Type de client | Sous-catégories |
+|---|---|
+| B2C | B2C-Perso · CPF · Transition Pro · Region · Agefiph |
+| B2C - Entreprise | B2C-Entreprise · OPCO · ETAT |
+| B2B | B2B |
+| Alternance | Corporate - Alternance · OPCO - Alternance · Perso-Alternance |
+| POEI | POEI · AIF |
+| Interco | Interco · Interne - DST Allemagne |
+
+#### Ce que le libellé de compte dit à lui seul
+
+Mesuré sur l'ancien grand livre classé : **le libellé du compte détermine 92 %
+des lignes**, et il est juste à 97 % là où il répond. Les comptes collectifs se
+nomment eux-mêmes — *B2c - reglement direct*, *Clients b2c - cpf*,
+*Clients - Alma* — et les institutionnels portent leur dispositif dans leur
+raison sociale : *CAISSE DES DEPOTS* → CPF, *Transitions Pro* → Transition Pro,
+*Agefiph*, *REGION …*, *DR Pôle Emploi …*, *AKTO / AFDAS / ATLAS* → OPCO.
+
+#### Les trois arbitrages
+
+Trois familles de comptes ne se laissent pas trancher par leur seul nom :
+
+- **France Travail** — le type est toujours POEI. La sous-catégorie est POEI ou
+  AIF : le dispositif nommé quelque part fait foi ; à défaut, une facture de
+  plus de **7 000 €** est une POEI, en dessous une AIF.
+- **OPCO** — alternance dès que le numéro de facture est une **Filiz** ; sinon
+  ce que dit la facturation ; à défaut, alternance. Le type de client, lui, est
+  *B2C - Entreprise* par défaut et *B2B* seulement si Sellsy le dit.
+- **L'État** — *B2C - Entreprise* ou *B2B*, la facturation tranche.
+
+Deux sous-catégories ne se devinent jamais : **Perso-Alternance** ne vaut que
+là où elle a été posée à la main, et **B2C-Perso** n'est attribué que lorsqu'il
+est certain que le client n'est pas une entreprise — un compte collectif qui se
+nomme, le référentiel, ou Sellsy. Un nom qui ressemble à celui d'une personne
+ne suffit pas : beaucoup d'entreprises tiennent en deux mots.
+
+### Les paiements suivent leur facture
+
+Le classement ne s'arrête pas aux créances. Dans un groupe de lettrage, les
+écritures se répondent : la facture classée **classe son règlement, son avoir et
+son rejet**. C'est ainsi que le suivi sait de quel dispositif vient l'argent qui
+rentre, et pas seulement celui qui est dû.
+
+Un règlement seul dans son lettrage — acompte, virement non pointé, solde de
+tout compte — n'a aucune facture de qui hériter. Le deviner serait faux : il
+part dans **« Les paiements à pointer »**, sous la balance âgée comptable, avec
+de quoi le rapprocher. La colonne *Rapprochement* nomme la créance ouverte du
+même compte **au montant identique au centime** quand il y en a une — c'est
+l'indice le plus fort, un virement soldant presque toujours une facture
+entière — et à défaut compte les créances ouvertes du compte. L'export du
+classeur en fait deux onglets : *Règlements* (tous, avec leur dispositif) et
+*Paiements à pointer* (les orphelins, avec leurs candidates).
 
 ### Vos règles de classement
 

@@ -545,6 +545,102 @@
      *   - sellsy   : lignes de l'export Sellsy (Type de client)
      *   - rules    : règles d'échéance, pour la reconnaissance des libellés
      */
+    /**
+     * Ce que le libellé du compte dit à lui seul.
+     *
+     * Mesuré sur l'ancien grand livre classé : ces motifs couvrent 44 % des
+     * lignes sans rien d'autre. Les comptes collectifs se nomment eux-mêmes
+     * — « B2c - reglement direct », « Clients b2c - cpf », « Clients - Alma » —
+     * et les institutionnels portent leur dispositif dans leur raison sociale.
+     *
+     * L'ordre compte : les libellés qui se nomment passent avant les motifs
+     * généraux, sinon « Clients b2c - cpf » serait capté par « b2c ».
+     */
+    const MOTIFS_COMPTE = [
+        // Comptes collectifs, qui annoncent leur dispositif
+        { motif: /\bb2c\b.*\bcpf\b|\bcpf\b.*\bb2c\b/, fin: 'CPF' },
+        { motif: /\bb2c\b.*\baif\b/, fin: 'AIF' },
+        { motif: /\bb2c\b.*\bregion\b/, fin: 'REGION' },
+        { motif: /\bb2c\b.*(reglement direct|alma)/, fin: 'BTC_PERSO' },
+        { motif: /^clients? - alma\b|\balma\b/, fin: 'BTC_PERSO' },
+        // Institutionnels
+        { motif: /caisse des depots|caisse des depot|\bcdc\b|mon compte formation|\bedof\b/, fin: 'CPF' },
+        { motif: /transitions? pro|fongecif|\batpro\b/, fin: 'TRANSITION' },
+        { motif: /\bagefiph\b/, fin: 'AGEFIPH' },
+        { motif: /\bregion\b/, fin: 'REGION' },
+        // France Travail : le type est POEI, la sous-catégorie s'arbitre.
+        { motif: /pole emploi|pole emploie|france travail|\bdr pole\b/, fin: 'AIF', arbitrage: 'poleEmploi' },
+        // OPCO : la sous-catégorie s'arbitre entre OPCO et OPCO - Alternance.
+        { motif: /\bopco\b|\bakto\b|\bafdas\b|\batlas\b|uniformation|ocapiat|constructys|intergros|\banfa\b|opcommerce/,
+          fin: 'OPCO', arbitrage: 'opco' },
+        // Les entités du groupe sont de l'interco. « Interne - DST Allemagne »
+        // est la sous-catégorie de la seule filiale allemande : elle se nomme,
+        // les autres non.
+        { motif: /dst (germany|allemagne)|datascientest germany|\bgmbh\b/, fin: 'DST_ALLEMAGNE' },
+        { motif: /\bdst\b|datascientest (spain|espagne|uk|inc)/, fin: 'INTERCO' },
+    ];
+
+    /** Le financement que le libellé du compte désigne, s'il en désigne un. */
+    function financementDuLibelle(libelle) {
+        const n = R.norm(libelle || '');
+        if (!n) return null;
+        for (const m of MOTIFS_COMPTE) if (m.motif.test(n)) return m;
+        return null;
+    }
+
+
+    /**
+     * Les arbitrages que le libellé seul ne tranche pas.
+     *
+     * Trois familles, et une règle métier pour chacune :
+     *  · France Travail — POEI quand le montant dépasse le seuil, AIF sinon,
+     *    sauf si le dispositif est nommé quelque part : l'explicite l'emporte ;
+     *  · OPCO — alternance dès que la facture est une Filiz, sinon ce que dit
+     *    la facturation, et à défaut alternance ;
+     *  · le type de client d'un OPCO ou de l'État — B2C-Entreprise par défaut,
+     *    B2B seulement si la facturation le dit.
+     */
+    const SEUIL_POEI = 7000;
+
+    function arbitrer(nom, creance, o) {
+        const dit = c => (c && c.cle && o.parCleSellsy) ? o.parCleSellsy.get(c.cle) : null;
+        const explicite = R.detectFinancement(creance.qualif, o.rules);
+
+        if (nom === 'poleEmploi') {
+            // Le dispositif nommé fait foi, où qu'il soit écrit.
+            if (explicite === 'POEI' || explicite === 'AIF') return explicite;
+            const parFacture = dit(creance);
+            if (parFacture === 'POEI' || parFacture === 'AIF') return parFacture;
+            // Sinon le montant tranche : au-delà du seuil c'est une POEI.
+            const montant = Math.abs(creance.montant != null ? creance.montant : creance.resteDu || 0);
+            return montant > SEUIL_POEI ? 'POEI' : 'AIF';
+        }
+
+        if (nom === 'opco') {
+            if (creance.filiz) return 'OPCO_ALTERNANCE';
+            if (explicite === 'OPCO' || explicite === 'OPCO_ALTERNANCE') return explicite;
+            const parFacture = dit(creance);
+            if (parFacture === 'OPCO' || parFacture === 'OPCO_ALTERNANCE') return parFacture;
+            if (parFacture === 'ALTERNANCE' || parFacture === 'CORPORATE_ALTERNANCE') return 'OPCO_ALTERNANCE';
+            return 'OPCO_ALTERNANCE';
+        }
+        return null;
+    }
+
+    /**
+     * Le type de client d'une créance : celui de sa sous-catégorie, sauf quand
+     * la facturation en désigne un autre parmi ceux que la règle admet.
+     */
+    function typeDeClient(financement, creance, o) {
+        const regle = R.getRule(financement, o && o.rules);
+        const defaut = R.categorieDe(financement, o && o.rules);
+        if (!regle.typesPossibles) return defaut;
+        const brut = (creance && creance.typeClientSellsy) || '';
+        const n = R.norm(brut);
+        if (/\bb2b\b/.test(n) && regle.typesPossibles.indexOf('B2B') >= 0) return 'B2B';
+        return defaut;
+    }
+
     function indexerClassification(sources) {
         const o = sources || {};
         const parCle = new Map();       // numéro de facture Monday → financement
@@ -577,7 +673,11 @@
             const fin = R.detectFinancement(l.typeClient, o.rules);
             if (fin) parSellsy.set(l.cle, fin);
         }
-        return { parCle, parSellsy, parCompte, parTiers, noter };
+        // Le « Type de client » brut de la facturation, pour les arbitrages
+        // qui ne peuvent pas se satisfaire d'un financement déduit.
+        const brutSellsy = new Map();
+        for (const l of (o.sellsy || [])) if (l.cle && l.typeClient) brutSellsy.set(l.cle, l.typeClient);
+        return { parCle, parSellsy, parCompte, parTiers, brutSellsy, noter };
     }
 
     /**
@@ -618,6 +718,15 @@
             return src === source ? (fin || null) : null;
         };
         const duReferentiel = c => entree(c, 'valide');
+        // Le libellé du compte, seul ou presque : « B2c - cpf », « CAISSE DES
+        // DEPOTS », « DR Pôle Emploi Occitanie ». Il couvre à lui seul 44 %
+        // des lignes de l'ancien grand livre classé.
+        const duLibelle = c => {
+            const m = financementDuLibelle(c.tiers) || financementDuLibelle(c.compte);
+            if (!m) return null;
+            return m.arbitrage ? (arbitrer(m.arbitrage, c, o) || m.fin) : m.fin;
+        };
+
         // Les règles écrites à la main passent juste après ce qui est établi
         // facture par facture : elles sont délibérées, mais un rapprochement
         // nominatif reste plus précis qu'un motif.
@@ -647,24 +756,124 @@
             return (m && m.size === 1) ? [...m.keys()][0] : null;
         };
 
-        return ouvertes.map(c => {
-            const direct = c.cle ? idx.parCle.get(c.cle) : null;
-            if (direct) return { ...c, financement: direct, origineClassement: 'Facture' };
-            const refFin = duReferentiel(c);
-            if (refFin) return { ...c, financement: refFin, origineClassement: 'Référentiel qualifié' };
-            const parRegle = desRegles(c);
-            if (parRegle) return { ...c, financement: parRegle.financement,
-                origineClassement: 'Règle : ' + etiquetteRegle(parRegle.regle) };
-            const sellsy = c.cle ? idx.parSellsy.get(c.cle) : null;
-            if (sellsy) return { ...c, financement: sellsy, origineClassement: 'Type de client (facturation)' };
-            const fichier = propre(c);
-            if (fichier) return { ...c, financement: fichier, origineClassement: 'Héritée du fichier (à vérifier)' };
-            const tiers = unique(idx.parTiers, c.identifiantTiers);
-            if (tiers) return { ...c, financement: tiers, origineClassement: 'Identifiant du tiers' };
-            const compte = unique(idx.parCompte, c.compte);
-            if (compte) return { ...c, financement: compte, origineClassement: 'Compte client' };
-            return { ...c, financement: null, origineClassement: null };
+        // Le type de client de la facturation voyage avec la créance : c'est
+        // lui qui arbitre entre B2C-Entreprise et B2B sur un OPCO ou l'État.
+        const avecSellsy = c => (c.cle && idx.brutSellsy.has(c.cle))
+            ? { ...c, typeClientSellsy: idx.brutSellsy.get(c.cle) } : c;
+
+        const poser = (c, fin, origine) => ({
+            ...c, financement: fin, origineClassement: origine,
+            typeClient: typeDeClient(fin, c, o),
         });
+
+        return ouvertes.map(brut => {
+            const c = avecSellsy(brut);
+            const direct = c.cle ? idx.parCle.get(c.cle) : null;
+            if (direct) return poser(c, direct, 'Facture');
+            const refFin = duReferentiel(c);
+            if (refFin) return poser(c, refFin, 'Référentiel qualifié');
+            const parRegle = desRegles(c);
+            if (parRegle) return poser(c, parRegle.financement, 'Règle : ' + etiquetteRegle(parRegle.regle));
+            const libelle = duLibelle(c);
+            if (libelle) return poser(c, libelle, 'Libellé du compte');
+            const sellsy = c.cle ? idx.parSellsy.get(c.cle) : null;
+            if (sellsy) return poser(c, sellsy, 'Type de client (facturation)');
+            const fichier = propre(c);
+            if (fichier) return poser(c, fichier, 'Héritée du fichier (à vérifier)');
+            const tiers = unique(idx.parTiers, c.identifiantTiers);
+            if (tiers) return poser(c, tiers, 'Identifiant du tiers');
+            const compte = unique(idx.parCompte, c.compte);
+            if (compte) return poser(c, compte, 'Compte client');
+            return { ...c, financement: null, typeClient: null, origineClassement: null };
+        });
+    }
+
+    /**
+     * Le classement des écritures, règlements compris.
+     *
+     * Une facture classée classe tout ce qui la solde : son règlement, son
+     * avoir, son rejet. C'est la demande du suivi de trésorerie — savoir de
+     * quel dispositif vient l'argent qui rentre, et pas seulement celui qui est
+     * dû. La propagation se fait par groupe de lettrage : dans un groupe, les
+     * écritures se répondent, donc elles relèvent du même dispositif.
+     *
+     * Ce qui n'a pas de facture dans son groupe ne peut pas hériter : ce sont
+     * les **règlements non rattachés**, et ils sont rendus à part pour être
+     * pointés à la main plutôt que classés au hasard.
+     *
+     * @returns {{lignes:Array, orphelins:Array, stats:Object}}
+     */
+    /**
+     * Les écritures à plat, avec la clé de leur groupe de lettrage.
+     *
+     * Conservées telles quelles d'un import à l'autre : le classement, lui, se
+     * rejoue à chaque recalcul, puisqu'il dépend de Monday et de Sellsy qui
+     * bougent. C'est la seule forme du grand livre qui tienne dans le stockage
+     * du navigateur sans y remettre le fichier entier.
+     */
+    function ecrituresAPlat(lu) {
+        const out = [];
+        for (const g of (lu.groupes || [])) {
+            const nature = [['facture', g.factures], ['reglement', g.reglements],
+                            ['avoir', g.avoirs], ['autre', g.autres || []]];
+            for (const [quoi, liste] of nature) {
+                for (const l of liste) out.push({
+                    nature: quoi, cleGroupe: g.cle, numero: l.numero, date: l.date,
+                    libelle: l.libelle, journal: l.journal, debit: l.debit, credit: l.credit,
+                    compte: g.compte, tiers: g.tiers, lettre: g.lettre,
+                    identifiantTiers: g.identifiantTiers || '',
+                });
+            }
+        }
+        return out;
+    }
+
+    function classerEcritures(lignesAPlat, creances) {
+        // Le financement retenu par groupe, depuis les créances déjà classées.
+        const parGroupe = new Map();
+        for (const c of (creances || [])) {
+            if (!c.financement || !c.compte) continue;
+            const cle = c.compte + '|' + (c.lettre || POOL_NON_LETTRE);
+            if (!parGroupe.has(cle)) parGroupe.set(cle, c);
+        }
+
+        const lignes = [], orphelins = [];
+        const NATURES = { facture: 'factures', reglement: 'reglements', avoir: 'avoirs', autre: 'autres' };
+        const stats = { factures: 0, reglements: 0, avoirs: 0, autres: 0,
+                        classees: 0, orphelines: 0, eurosOrphelins: 0,
+                        reglementsClasses: 0, reglementsOrphelins: 0, eurosReglementsOrphelins: 0 };
+
+        for (const l of (lignesAPlat || [])) {
+            const source = parGroupe.get(l.cleGroupe);
+            stats[NATURES[l.nature] || 'autres']++;
+            const encaissement = l.nature === 'reglement' || l.nature === 'avoir';
+            const ligne = {
+                ...l,
+                financement: source ? source.financement : null,
+                typeClient: source ? source.typeClient : null,
+                origineClassement: source
+                    ? (l.nature === 'facture' ? source.origineClassement
+                        : 'Hérité de la facture du même lettrage')
+                    : null,
+            };
+            if (ligne.financement) {
+                stats.classees++;
+                if (encaissement) stats.reglementsClasses++;
+            } else {
+                stats.orphelines++;
+                stats.eurosOrphelins += (l.credit || 0) - (l.debit || 0);
+                // Un règlement sans facture identifiable : c'est là que le
+                // pointage manuel a quelque chose à faire.
+                if (encaissement) {
+                    stats.reglementsOrphelins++;
+                    stats.eurosReglementsOrphelins += (l.credit || 0) - (l.debit || 0);
+                    orphelins.push(ligne);
+                }
+            }
+            lignes.push(ligne);
+        }
+        orphelins.sort((a, b) => (b.credit || 0) - (a.credit || 0));
+        return { lignes, orphelins, stats };
     }
 
     const A_CLASSER = '__A_CLASSER__';
@@ -885,7 +1094,8 @@
         referentielDepuis, financementDuReferentiel, CHAMPS_REGLE, OPERATEURS,
         regleCorrespond, financementParRegles, porteeDesRegles, etiquetteRegle,
         A_CLASSER, POOL_NON_LETTRE, MOTIFS_NUMERO, numeroDepuisTexte,
-        creancesOuvertes, classer, balanceAgee, comparer,
+        creancesOuvertes, classer, classerEcritures, ecrituresAPlat, balanceAgee, comparer,
+        MOTIFS_COMPTE, financementDuLibelle, typeDeClient, SEUIL_POEI,
         COLONNES, TOLERANCE, EST_FACTURE, EST_AVOIR,
         detecterColonnes, estComptable, lettreDe, lire, lireComptable, lireSimple,
     };
