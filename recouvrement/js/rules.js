@@ -40,7 +40,8 @@
             label: 'B2C-Entreprise / Corporate Alternance',
             base: 'dateFacture', jours: 30,
             fallback: 'dateDebutFormation', fallbackJours: 30,
-            note: "Date de facture +30 jours (si facture modifiée : début de formation +30 jours)",
+            plafondDebutFormation: true,
+            note: "Date de facture +30 jours, sans dépasser début de formation +30 jours",
             perimetre: 'Corporate',
             // Monday écrit « B2C - Entreprise », le référentiel « BTC-Entreprise ».
             // Les deux graphies désignent la même chose : un particulier dont la
@@ -62,7 +63,8 @@
             key: 'CORPORATE', label: 'Corporate — financement à préciser',
             base: 'dateFacture', jours: 30,
             fallback: 'dateFinFormation', fallbackJours: 30,
-            note: 'Date de facture +30 jours — règle corporate par défaut',
+            plafondDebutFormation: true,
+            note: 'Date de facture +30 jours, sans dépasser début de formation +30 jours',
             perimetre: 'Corporate',
             match: ['avant import', 'entre process', 'factures payees adv', 'payees adv', 'adv'],
         },
@@ -421,7 +423,22 @@
         for (const b of bases) {
             if (!b.champ) continue;
             const src = inv[b.champ];
-            if (src) return { date: addDays(src, b.jours || 0), origine: 'Règle', regle: rule, baseUtilisee: b.champ };
+            if (!src) continue;
+            let date = addDays(src, b.jours || 0);
+            let base = b.champ;
+
+            // Garde-fou des règles assises sur la date de facture : une facture
+            // corrigée est réémise, sa date devient récente, et son échéance
+            // repart à zéro — la créance apparaît « pas encore due » alors
+            // qu'elle traîne depuis des mois. Le début de formation, lui, ne
+            // bouge pas : il plafonne l'échéance. Le garde-fou ne peut
+            // qu'avancer la date, jamais la retarder, donc il ne masque
+            // aucun retard réel.
+            if (rule.plafondDebutFormation && inv.dateDebutFormation) {
+                const plafond = addDays(inv.dateDebutFormation, rule.jours || 0);
+                if (plafond < date) { date = plafond; base = 'dateDebutFormation'; }
+            }
+            return { date, origine: 'Règle', regle: rule, baseUtilisee: base };
         }
         if (inv.dateEcheanceSource) {
             return { date: inv.dateEcheanceSource, origine: 'Monday', regle: rule, baseUtilisee: 'colonne Monday' };

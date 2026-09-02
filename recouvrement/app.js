@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.16.0 — 2 septembre 2026
+   v2.17.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.16.0';
+    const VERSION = '2.17.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -107,6 +107,7 @@
             prlvRecherche: '',
             triPrlv: { key: 'montantEchoue', sens: 'desc' },
             evoCatUnite: 'nb',
+            cmpBase: 'precedent',
             evoDetail: false,
             reglOrigine: 'recouvrement',
             vueEcheance: 'retard',
@@ -841,11 +842,115 @@
             }) : '',
         ].join('');
 
+        // Un clic ouvre la répartition par financement plutôt que la liste
+        // brute : le chiffre global ne dit pas de quels dispositifs il est
+        // fait, et c'est la première question qu'on se pose devant une tuile.
         $$('[data-etats]', el).forEach(b => b.addEventListener('click', () => {
-            state.filtres.etats = new Set(b.dataset.etats.split('|'));
-            state.ui.page = 1;
-            ouvrirOnglet('factures');
+            const etats = b.dataset.etats.split('|');
+            const titre = $('.recup-label', b).textContent.trim();
+            rendreApresClic(() => montrerRepartitionEtat(etats, titre));
         }));
+    }
+
+    /**
+     * Répartition d'un état du portefeuille par type de financement.
+     *
+     * « 42 % réglé en recouvrement » ne dit pas si l'effort a porté sur du CPF
+     * ou du B2B. Chaque ligne reste cliquable pour descendre aux factures.
+     */
+    function montrerRepartitionEtat(etats, titre) {
+        const jeu = new Set(etats);
+        const lignes = facturesFiltrees().filter(f => jeu.has(f.etat));
+        const eur = state.ui.uniteRecup === 'euros';
+
+        const parFin = new Map();
+        for (const f of lignes) {
+            const cle = f.financement || 'INCONNU';
+            let l = parFin.get(cle);
+            if (!l) {
+                l = { cle, label: R.getRule(cle, state.rules).label, nb: 0, euros: 0, encours: 0 };
+                parFin.set(cle, l);
+            }
+            l.nb++;
+            l.euros += f.montant || 0;
+            l.encours += f.encours || 0;
+        }
+        const rows = [...parFin.values()].sort((a, b) => (eur ? b.euros - a.euros : b.nb - a.nb));
+        const totalNb = X.sum(rows, r => r.nb), totalEur = X.sum(rows, r => r.euros);
+
+        const corps = U.table([
+            { key: 'label', label: 'Financement' },
+            { key: 'nb', label: 'Factures', align: 'right', format: U.nombre },
+            { key: 'euros', label: 'Montant', align: 'right', format: U.euros },
+            { key: 'part', label: 'Part', align: 'right',
+              format: (v, r) => U.barre(eur ? r.euros : r.nb, eur ? totalEur : totalNb, U.couleurs.accent)
+                + ' ' + U.pourcent(eur
+                    ? (totalEur ? r.euros / totalEur * 100 : null)
+                    : (totalNb ? r.nb / totalNb * 100 : null), 1) },
+        ], rows, {
+            vide: 'Aucune facture dans cet état.',
+            total: { label: 'Total', nb: U.nombre(totalNb), euros: U.euros(totalEur) },
+            onRowClick: true,
+        });
+
+        const el = U.modal(`${titre} — ${U.nombre(totalNb)} factures · ${U.euros(totalEur)}`, corps,
+            [{ label: 'Voir toutes les factures', onClick: () => {
+                state.filtres.etats = new Set(etats);
+                state.filtres.financements = null;
+                state.ui.page = 1;
+                ouvrirOnglet('factures');
+            } }, { label: 'Fermer', primary: true }]);
+
+        U.bindTable(el, rows, {
+            onRowClick: r => {
+                state.filtres.etats = new Set(etats);
+                state.filtres.financements = new Set([r.cle]);
+                state.ui.page = 1;
+                U.closeModal();
+                ouvrirOnglet('factures');
+            },
+        });
+    }
+
+    /**
+     * Ce que Monday annonce et que l'application n'a pas reçu.
+     *
+     * L'API ne dit pas quelles lignes manquent — seulement combien. La seule
+     * source capable de les nommer est la facturation : une facture émise dans
+     * Sellsy ou Zoho et absente de Monday est identifiée par son numéro. Le
+     * clic renvoie donc là où la réponse existe, plutôt que d'afficher un
+     * nombre sans suite.
+     */
+    function montrerManquantes(nomBoard) {
+        const b = state.boards.find(x => x.name === nomBoard);
+        if (!b) return;
+        const nb = Math.max(0, (b.itemsCount || 0) - (b.charge || 0));
+        const aLaFacturation = !!(state.sellsyResultat && state.sellsyResultat.absentes.length);
+
+        U.modal(`${nomBoard} — ${U.nombre(nb)} lignes annoncées mais non reçues`, `
+            <p>Monday annonce <strong>${U.nombre(b.itemsCount || 0)} éléments</strong> sur ce tableau ;
+            l'application en a reçu <strong>${U.nombre(b.charge || 0)}</strong>. L'écart vient presque
+            toujours d'un chargement interrompu — connexion coupée, session expirée, limite d'API
+            atteinte.</p>
+            <p><strong>L'API Monday ne dit pas lesquelles manquent</strong>, seulement combien. Deux
+            façons de le savoir :</p>
+            <ul>
+                <li><strong>Recharger le tableau</strong> — le plus simple : si l'écart disparaît,
+                    il s'agissait bien d'un chargement incomplet.</li>
+                <li><strong>Le contrôle de facturation</strong> — Sellsy et Zoho savent quelles
+                    factures existent. L'onglet <em>Contrôle Sellsy</em> nomme celles qui ne sont sur
+                    aucun tableau Monday${aLaFacturation
+                        ? `, et il en a déjà trouvé <strong>${U.nombre(state.sellsyResultat.absentes.length)}</strong>`
+                        : ' — chargez-y vos exports de facturation'}.</li>
+            </ul>`,
+            [
+                { label: 'Recharger les tableaux', onClick: () => chargerBoardsActifs() },
+                { label: 'Voir les factures absentes', onClick: () => {
+                    state.ui.sellsyVue = 'absentes';
+                    ouvrirOnglet('sellsy');
+                } },
+                { label: 'Fermer', primary: true },
+            ]);
     }
 
     /** Rappels métier contextuels (OPCO sans recouvrement, retards côté ADV). */
@@ -853,6 +958,38 @@
         const el = $('#scope-note');
         if (!el) return;
         const notes = [];
+
+        // Le filtre « Étape du circuit » écarte aussi les factures déjà réglées
+        // dont l'origine est ailleurs : le tableau des factures payées conserve
+        // le groupe d'où venait chaque facture, et une facture réglée qui n'est
+        // jamais passée par l'étape retenue sort du périmètre. D'où un « réglé »
+        // presque vide et un flux sans encaissements, sans que rien ne le dise.
+        const toutesEtapes = R.SOURCES.length;
+        const retenues = state.filtres.sources ? state.filtres.sources.size : toutesEtapes;
+        if (retenues < toutesEtapes) {
+            const complet = X.filtrer(state.factures, {
+                ...state.filtres, sources: null,
+                masquerTechnique: state.options.masquerTechnique,
+            });
+            const exclusReglees = complet.filter(f => f.paye).length - data.filter(f => f.paye).length;
+            if (exclusReglees > 0) {
+                const noms = [...state.filtres.sources]
+                    .map(k => (R.SOURCES.find(x => x.key === k) || {}).label || k).join(', ');
+                notes.push({
+                    ton: 'info',
+                    titre: `${U.nombre(exclusReglees)} factures déjà réglées sont exclues par le filtre d'étape`,
+                    texte: `Vous ne regardez que « ${noms} ». Une facture réglée reste rattachée à `
+                        + `l'étape d'où elle venait : celles passées par une autre étape sortent du `
+                        + `périmètre, ce qui vide les indicateurs de règlement et le flux des `
+                        + `encaissements. Rallumez les autres étapes pour voir tout ce qui est rentré.`,
+                    action: { label: 'Toutes les étapes', fn: () => {
+                        state.filtres.sources = new Set(R.SOURCES.map(x => x.key));
+                        state.ui.page = 1;
+                        rendreTout();
+                    } },
+                });
+            }
+        }
 
         const advRetard = data.filter(f => f.etat === 'En retard' && (f.role === 'adv' || f.role === 'tampon'));
         if (advRetard.length) {
@@ -1541,10 +1678,21 @@
 
     function rendreComparaison(rows) {
         const el = $('#month-compare-body');
-        const cmp = X.comparaisonMensuelle(rows, R.monthKey(state.filtres.dateRef));
-        if (!cmp) { el.innerHTML = '<p class="fv-hint">Deux mois au minimum sont nécessaires pour comparer.</p>'; $('#month-compare-title').textContent = ''; return; }
+        const base = state.ui.cmpBase || 'precedent';
+        $$('#seg-cmp-base .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.base === base));
 
-        $('#month-compare-title').textContent = `${U.moisLabel(cmp.mois)} vs ${U.moisLabel(cmp.moisPrec)}`;
+        const cmp = X.comparaisonMensuelle(rows, R.monthKey(state.filtres.dateRef), base);
+        if (!cmp) { el.innerHTML = '<p class="fv-hint">Deux mois au minimum sont nécessaires pour comparer.</p>'; $('#month-compare-title').textContent = ''; return; }
+        if (cmp.indisponible) {
+            el.innerHTML = `<p class="fv-hint">${U.moisLabel(cmp.moisCible)} n'est pas dans l'historique
+                chargé : la comparaison d'une année sur l'autre n'est pas possible pour
+                ${U.moisLabel(cmp.mois)}.</p>`;
+            $('#month-compare-title').textContent = '';
+            return;
+        }
+
+        $('#month-compare-title').textContent = `${U.moisLabel(cmp.mois)} vs ${U.moisLabel(cmp.moisPrec)}`
+            + (base === 'annee' ? ' — un an plus tôt' : '');
 
         const ligne = (label, d, fmt, inverse) => {
             const hausse = d.ecart > 0;
@@ -1721,14 +1869,15 @@
 
         const t = $('#regl-titre');
         if (t) t.textContent = viaRecouv
-            ? 'Ce que le recouvrement fait rentrer'
-            : 'Ce qui rentre sans passer par le recouvrement';
+            ? 'Factures payées après être passées par le recouvrement'
+            : 'Factures payées sans jamais passer par le recouvrement';
 
         const h = $('#regl-hint');
         if (h) h.innerHTML = (viaRecouv
-            ? "Factures réglées qui sont passées par le recouvrement — le tableau des factures payées "
-              + "conserve le groupe d'où elles venaient. C'est le produit du travail de relance."
-              : "Factures réglées qui ne sont jamais entrées dans le circuit de recouvrement. "
+            ? "Ces factures ont été payées, et elles étaient passées par le tableau de recouvrement "
+              + "avant de l'être — c'est le groupe d'origine conservé dans « 0.1. ALL - Factures payées » "
+              + "qui le dit. Autrement dit : <strong>il a fallu les relancer pour qu'elles rentrent</strong>."
+              : "Ces factures ont été payées sans jamais entrer dans le circuit de recouvrement : "
               + "<strong>Cela ne veut pas dire qu'elles ont été payées à l'heure</strong> : le compteur "
               + "« dont payées en retard » ci-dessous montre combien l'ont été après leur échéance, "
               + "sans qu'une relance ait été engagée. C'est une distinction de processus, pas de délai.")
@@ -1738,21 +1887,43 @@
                     hors de ce décompte.`
                 : '');
 
+        // Chaque tuile dit sur quoi elle est calculée : sans cela, « 416 payées
+        // avant échéance » parmi des factures passées en recouvrement se lit
+        // comme une contradiction, alors que c'est un signal — voir plus bas.
         $('#regl-kpi').innerHTML = [
             tuileDetail(U.nombre(r.nb), viaRecouv ? 'Factures récupérées' : 'Réglées hors recouvrement',
-                U.euros(r.euros), viaRecouv ? U.couleurs.payeRetard : U.couleurs.paye),
+                U.euros(r.euros), viaRecouv ? U.couleurs.payeRetard : U.couleurs.paye,
+                viaRecouv ? 'encaissées après être passées par le tableau de recouvrement'
+                          : 'encaissées sans jamais y entrer'),
             tuileDetail(U.pourcent(r.partEuros, 1), 'Part des règlements',
-                `${U.pourcent(r.partNb, 1)} en nombre`, U.couleurs.indigo),
+                `${U.pourcent(r.partNb, 1)} en nombre`, U.couleurs.indigo,
+                'part de cette population dans tout ce qui a été encaissé'),
             // La question posée à chaque fois : passer par le recouvrement ou
             // non ne dit rien du délai. Les deux sont donc affichés côte à côte.
             tuileDetail(U.nombre(r.nb - r.nbEnRetard), 'Payées avant échéance',
-                U.euros(Math.max(0, r.euros - r.eurosEnRetard)), U.couleurs.paye),
+                U.euros(Math.max(0, r.euros - r.eurosEnRetard)), U.couleurs.paye,
+                viaRecouv ? 'réglées avant leur date d’échéance calculée — à vérifier, voir ci-dessous'
+                          : 'réglées dans les délais, sans relance'),
             tuileDetail(U.nombre(r.nbEnRetard), 'Payées après échéance',
-                U.euros(r.eurosEnRetard), U.couleurs.retard),
+                U.euros(r.eurosEnRetard), U.couleurs.retard,
+                'réglées après leur date d’échéance calculée'),
             tuileDetail(U.jours(r.retardMoyen), 'Retard moyen des retardataires',
                 r.delaiMoyen != null ? `délai facture → règlement : ${U.jours(r.delaiMoyen)}` : '—',
-                U.couleurs.nonEchue),
-        ].join('');
+                U.couleurs.nonEchue,
+                'moyenne du seul groupe payé en retard, pas de l’ensemble'),
+        ].join('')
+        // Une facture passée en recouvrement puis « payée avant échéance » est
+        // en principe impossible : elle n'y serait jamais entrée. C'est presque
+        // toujours une facture réémise, dont la date repart à zéro.
+        + (viaRecouv && r.nb - r.nbEnRetard > 0
+            ? `<p class="scope-note"><strong>${U.nombre(r.nb - r.nbEnRetard)} factures passées par le
+                recouvrement apparaissent payées avant leur échéance.</strong> Une facture n'entre en
+                recouvrement qu'une fois échue : ce sont donc presque toujours des factures
+                <strong>réémises après correction</strong> — la nouvelle date de facture repousse
+                l'échéance calculée après la date de règlement. Pour les financements corporate,
+                l'échéance est désormais plafonnée à <em>début de formation + 30 jours</em>, qui ne
+                bouge pas quand la facture est refaite.</p>`
+            : '');
 
         // Ce qui rentre chaque mois
         const mois = derniersMois(r.mois);
@@ -2718,12 +2889,13 @@
         }));
     }
 
-    const tuileDetail = (valeur, label, detail, couleur) => `
+    const tuileDetail = (valeur, label, detail, couleur, sub) => `
         <div class="recup-card">
             <span class="recup-bar" style="background:${couleur}"></span>
             <span class="recup-taux">${valeur}</span>
             <span class="recup-label">${U.escapeHtml(label)}</span>
             <span class="recup-value">${detail}</span>
+            ${sub ? `<span class="recup-sub">${U.escapeHtml(sub)}</span>` : ''}
         </div>`;
 
     /**
@@ -3033,23 +3205,35 @@
     function rendreChartRang() {
         const eur = state.ui.rangUnite === 'euros';
         const rows = PR.distributionRang(state.apprenants, 12);
+        // Deux couleurs, donc deux séries nommées : le rouge des trois premiers
+        // rangs signalait la rupture précoce, mais rien ne le disait — une
+        // couleur qui porte du sens sans légende ne se lit pas.
+        const PRECOCE = 3;
+        const valeur = r => (eur ? r.euros : r.nb);
         U.chart('chart-rang', {
             type: 'bar',
             data: {
                 labels: rows.map(r => r.rang),
-                datasets: [{
-                    data: rows.map(r => eur ? r.euros : r.nb),
-                    backgroundColor: rows.map((_, i) => i < 3 ? U.couleurs.retard : U.couleurs.payeRetard),
-                    borderRadius: 3,
-                }],
+                datasets: [
+                    {
+                        label: `Rupture précoce — dès les ${PRECOCE} premiers prélèvements`,
+                        data: rows.map((r, i) => i < PRECOCE ? valeur(r) : null),
+                        backgroundColor: U.couleurs.retard, borderRadius: 3, stack: 'a',
+                    },
+                    {
+                        label: 'Rupture plus tardive',
+                        data: rows.map((r, i) => i < PRECOCE ? null : valeur(r)),
+                        backgroundColor: U.couleurs.payeRetard, borderRadius: 3, stack: 'a',
+                    },
+                ],
             },
             options: {
                 scales: {
-                    x: { grid: { display: false }, title: { display: true, text: 'Rang du prélèvement rejeté' } },
-                    y: { grid: U.grille, ticks: { callback: v => eur ? U.eurosCourt(v) : U.nombre(v) } },
+                    x: { stacked: true, grid: { display: false }, title: { display: true, text: 'Rang du prélèvement rejeté' } },
+                    y: { stacked: true, grid: U.grille, ticks: { callback: v => eur ? U.eurosCourt(v) : U.nombre(v) } },
                 },
                 plugins: {
-                    legend: { display: false },
+                    legend: { display: true },
                     tooltip: {
                         callbacks: {
                             label: ctx => {
@@ -3576,28 +3760,65 @@
 
     // ── Import ──
 
+    /**
+     * Import des exports de facturation.
+     *
+     * Sellsy émet les factures d'aujourd'hui ; Zoho n'en émet plus, mais les
+     * factures « FA-… » qu'il a émises figurent encore au grand livre et lui
+     * seul porte leurs dates de formation. Les deux exports sont donc acceptés
+     * ensemble et fusionnés sur le numéro de facture : ce qui compte est la
+     * facture, pas l'outil qui l'a émise.
+     *
+     * La fusion ne remplace jamais : le premier fichier qui renseigne un champ
+     * le garde, les suivants ne comblent que les vides.
+     */
     async function importerSellsy(files) {
-        const file = Array.isArray(files) ? files[0] : files;
-        if (!file) return;
+        const liste = Array.isArray(files) ? files : [files];
+        if (!liste.length) return;
         try {
-            const rows = await lireFichier(file);
-            if (!rows.length) { U.toast('Fichier vide.', 'error'); return; }
+            const parCle = new Map();
+            const journal = [], entetes = [];
+            let mapping = null, ignorees = 0, lues = 0;
 
-            const lu = SE.lireExport(rows);
-            if (!lu.mapping.numero) {
-                U.toast("Aucune colonne de numéro de facture reconnue dans l'export : "
-                    + "le rapprochement est impossible. Colonnes trouvées : "
-                    + lu.entetes.slice(0, 8).join(', '), 'error', 12000);
-                return;
+            for (const file of liste) {
+                const rows = await lireFichier(file);
+                if (!rows.length) { journal.push(`${file.name} : fichier vide`); continue; }
+
+                const lu = SE.lireExport(rows);
+                if (!lu.mapping.numero || !lu.lignes.length) {
+                    journal.push(`${file.name} : aucun numéro de facture exploitable`);
+                    continue;
+                }
+                if (!mapping) mapping = lu.mapping;
+                else for (const [k, v] of Object.entries(lu.mapping)) if (!mapping[k]) mapping[k] = v;
+                entetes.push(...lu.entetes.filter(h => !entetes.includes(h)));
+                ignorees += lu.ignorees;
+                lues += lu.lignes.length;
+
+                for (const l of lu.lignes) {
+                    const prec = parCle.get(l.cle);
+                    if (!prec) { parCle.set(l.cle, { ...l, source: file.name }); continue; }
+                    // Complément seulement : la première source qui renseigne
+                    // un champ fait foi, les suivantes bouchent les trous.
+                    for (const [k, v] of Object.entries(l)) {
+                        if (v == null || v === '' ) continue;
+                        if (prec[k] == null || prec[k] === '') prec[k] = v;
+                    }
+                }
+                journal.push(`${file.name} : ${U.nombre(lu.lignes.length)} factures`);
             }
-            if (!lu.lignes.length) {
-                U.toast("Aucun numéro de facture exploitable dans l'export.", 'error', 9000);
+
+            if (!parCle.size) {
+                U.toast("Aucun export exploitable. Un numéro de facture est indispensable. "
+                    + journal.join(' · '), 'error', 12000);
                 return;
             }
 
             state.sellsy = {
-                lignes: lu.lignes, mapping: lu.mapping, entetes: lu.entetes,
-                ignorees: lu.ignorees, nomFichier: file.name, date: new Date().toISOString(),
+                lignes: [...parCle.values()], mapping: mapping || {}, entetes,
+                ignorees, fichiers: journal,
+                nomFichier: liste.length === 1 ? liste[0].name : `${liste.length} exports`,
+                date: new Date().toISOString(),
             };
             await sauverSellsy();
             // Recalcul complet : l'export ne sert pas qu'au contrôle, il comble
@@ -3611,7 +3832,8 @@
                 c.datesFacture ? `${U.nombre(c.datesFacture)} dates de facture` : '',
                 c.datesService ? `${U.nombre(c.datesService)} dates de formation` : '',
             ].filter(Boolean).join(', ');
-            U.toast(`Export Sellsy intégré : ${U.nombre(state.sellsy.lignes.length)} factures lues`
+            U.toast(`Facturation intégrée : ${U.nombre(state.sellsy.lignes.length)} factures `
+                + `(${journal.join(' · ')})`
                 + (st ? `, ${U.nombre(st.nbAbsentes)} absentes de Monday (${U.euros(st.eurosAbsentes)})` : '')
                 + (complements ? `. ${complements} complétés dans Monday` : '') + '.',
                 st && st.nbAbsentes ? 'error' : 'success', 11000);
@@ -4154,11 +4376,16 @@
         const vide = { retenues: 0, ecartees: 0, sansEcheance: 0, enRetard: 0, payees: 0, nonEchues: 0 };
         const rows = state.boards.map(b => {
             const r = { ...b, ...(parBoard.get(b.name) || vide) };
-            // Écart entre ce que Monday annonce et ce qui est arrivé : c'est la
-            // seule perte réelle. Les doublons fusionnés et les groupes de
-            // service, eux, sont des retraits voulus.
-            r.manquantes = (b.itemsCount != null && b.charge != null)
-                ? Math.max(0, b.itemsCount - b.charge) : null;
+
+            // Un tableau dont aucune ligne n'est arrivée n'a pas « perdu » ses
+            // factures : il n'a pas été chargé. Les confondre affichait la
+            // totalité d'un tableau en rouge — 6 471 factures « manquantes »
+            // sur le tableau des factures payées — alors qu'il suffisait de le
+            // charger. Les trois cas sont distingués.
+            const aDesLignes = !!parBoard.get(b.name) || (b.charge || 0) > 0;
+            r.nonCharge = !aDesLignes;
+            r.manquantes = (!aDesLignes || b.itemsCount == null || b.charge == null)
+                ? null : Math.max(0, b.itemsCount - b.charge);
             return r;
         });
         el.innerHTML = U.table([
@@ -4175,11 +4402,17 @@
             },
             { key: 'itemsCount', label: 'Sur Monday', align: 'right', format: v => v == null ? '—' : U.nombre(v),
               title: "Nombre d'éléments annoncé par Monday" },
-            { key: 'charge', label: 'Chargées', align: 'right', format: v => v == null ? '—' : U.nombre(v),
-              title: 'Factures effectivement récupérées' },
+            { key: 'charge', label: 'Chargées', align: 'right',
+              title: 'Factures effectivement récupérées',
+              format: (v, r) => r.nonCharge
+                  ? '<span class="pill pill-muted" title="Ce tableau n\'a pas été chargé dans cette session">non chargé</span>'
+                  : (v == null ? '—' : U.nombre(v)) },
             { key: 'manquantes', label: 'Manquantes', align: 'right',
-              title: "Annoncées par Monday mais jamais récupérées — la seule perte réelle",
-              format: v => v == null ? '—' : (v ? `<span class="cell-danger">${U.nombre(v)}</span>` : '0') },
+              title: "Annoncées par Monday mais jamais récupérées — la seule perte réelle. "
+                  + "Un tableau non chargé n'est pas compté ici.",
+              format: (v, r) => r.nonCharge ? '—' : (v
+                  ? `<button class="lien-cellule cell-danger" data-manquantes="${U.escapeHtml(r.name)}">${U.nombre(v)}</button>`
+                  : '0') },
             { key: 'ecartees', label: 'Écartées', align: 'right', format: v => v ? U.nombre(v) : '—',
               title: 'Groupes de service : archives, technique, corbeille' },
             { key: 'retenues', label: 'Analysées', align: 'right', format: v => `<strong>${U.nombre(v)}</strong>`,
@@ -5456,6 +5689,11 @@
             $$('#seg-vue-echeance .seg-btn').forEach(x => x.classList.toggle('active', x === b));
             rendreTout();
         }));
+        $$('#seg-cmp-base .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.cmpBase = b.dataset.base;
+            rendreApresClic(() => rendreTout());
+        }));
+
         $$('#seg-regl-origine .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.reglOrigine = b.dataset.origine;
             $$('#seg-regl-origine .seg-btn').forEach(x => x.classList.toggle('active', x === b));
@@ -5640,7 +5878,9 @@
 
         $('#boards-table').addEventListener('click', (e) => {
             const b = e.target.closest('[data-sans-echeance]');
-            if (b) montrerSansEcheance(b.dataset.sansEcheance);
+            if (b) { montrerSansEcheance(b.dataset.sansEcheance); return; }
+            const m = e.target.closest('[data-manquantes]');
+            if (m) montrerManquantes(m.dataset.manquantes);
         });
 
         $('#chaine-traitement').addEventListener('click', (e) => {

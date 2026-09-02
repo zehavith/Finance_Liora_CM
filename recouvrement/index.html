@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.16.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.16.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.16.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.16.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.16.0">
-    <link rel="stylesheet" href="styles.css?v=2.16.0">
+    <script src="../vendor/chart.umd.min.js?v=2.17.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.17.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.17.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.17.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.17.0">
+    <link rel="stylesheet" href="styles.css?v=2.17.0">
 </head>
 <body>
 
@@ -376,10 +376,55 @@
 
             <div class="section-header section-acte" data-acte="1">
                 <h2><span class="acte-num">1</span>Par type de financement</h2>
-                <span class="acte-sous">Où le retard se concentre, et comment chaque catégorie évolue</span>
+                <span class="acte-sous">Où le retard se concentre, puis comment chaque catégorie évolue</span>
                 <button class="acte-toggle" data-acte-toggle="1" aria-expanded="true">Replier</button>
             </div>
             <div class="acte-corps" data-acte-corps="1">
+            <!-- Treemap : outil de fouille, dimension au choix -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Où se concentre le montant en retard</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-treemap-dim">
+                                <button class="seg-btn active" data-dim="financement">Financement</button>
+                                <button class="seg-btn" data-dim="client">Client</button>
+                                <button class="seg-btn" data-dim="board">Tableau</button>
+                                <button class="seg-btn" data-dim="etape">Étape</button>
+                                <button class="seg-btn" data-dim="groupe">Groupe</button>
+                                <button class="seg-btn" data-dim="proprietaire">Propriétaire</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">La surface est proportionnelle au montant en retard. Cliquez sur une case pour filtrer.</span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-treemap"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Montants — hors recouvrement / en recouvrement</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-repartition">
+                                <button class="seg-btn active" data-dims="perimetre,financement">Périmètre › Financement</button>
+                                <button class="seg-btn" data-dims="financement,board">Financement › Tableau</button>
+                                <button class="seg-btn" data-dims="board,groupe">Tableau › Groupe</button>
+                                <button class="seg-btn" data-dims="etape,financement">Étape › Financement</button>
+                                <button class="seg-btn" data-dims="mois,financement">Mois › Financement</button>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" id="btn-repartition-toggle">Tout déplier</button>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Montant total = hors recouvrement + en recouvrement. Cliquez sur une flèche pour
+                        déplier, sur une ligne pour ouvrir les factures correspondantes.
+                    </span>
+                    <div class="table-wrap" id="repartition-table"></div>
+                </div>
+            </div>
+
 
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
@@ -434,19 +479,19 @@
             </div>
 
             <div class="section-header section-acte" data-acte="2">
-                <h2><span class="acte-num">2</span>Les factures qui rentrent</h2>
-                <span class="acte-sous">Ce que le recouvrement récupère, et ce qui rentre sans relance</span>
+                <h2><span class="acte-num">2</span>Les factures qui ont été payées</h2>
+                <span class="acte-sous">Celles qu'il a fallu relancer, et celles qui sont rentrées seules</span>
                 <button class="acte-toggle" data-acte-toggle="2" aria-expanded="true">Replier</button>
             </div>
             <div class="acte-corps" data-acte-corps="2">
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header">
-                        <h3 id="regl-titre">Ce que le recouvrement fait rentrer</h3>
+                        <h3 id="regl-titre">Factures payées après être passées par le recouvrement</h3>
                         <div class="chart-controls">
                             <div class="seg seg-sm" id="seg-regl-origine">
-                                <button class="seg-btn active" data-origine="recouvrement">Passées par le recouvrement</button>
-                                <button class="seg-btn" data-origine="hors">Jamais passées par le recouvrement</button>
+                                <button class="seg-btn active" data-origine="recouvrement">Il a fallu les relancer</button>
+                                <button class="seg-btn" data-origine="hors">Elles sont rentrées seules</button>
                             </div>
                         </div>
                     </div>
@@ -581,6 +626,12 @@
                     <div class="chart-header">
                         <h3>Évolution du dernier mois</h3>
                         <span class="fv-hint" id="month-compare-title"></span>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-cmp-base">
+                                <button class="seg-btn active" data-base="precedent">vs mois précédent</button>
+                                <button class="seg-btn" data-base="annee">vs même mois l'an dernier</button>
+                            </div>
+                        </div>
                     </div>
                     <div id="month-compare-body"></div>
                 </div>
@@ -588,55 +639,11 @@
             </div>
 
             <div class="section-header section-acte" data-acte="4">
-                <h2><span class="acte-num">4</span>Où aller chercher l'argent</h2>
-                <span class="acte-sous">Le détail, jusqu'à la facture</span>
+                <h2><span class="acte-num">4</span>Les clients à appeler</h2>
+                <span class="acte-sous">Ceux qui pèsent le plus dans le retard</span>
                 <button class="acte-toggle" data-acte-toggle="4" aria-expanded="false">Déplier</button>
             </div>
             <div class="acte-corps" data-acte-corps="4" hidden>
-            <!-- Treemap : outil de fouille, dimension au choix -->
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Où se concentre le montant en retard</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-treemap-dim">
-                                <button class="seg-btn active" data-dim="financement">Financement</button>
-                                <button class="seg-btn" data-dim="client">Client</button>
-                                <button class="seg-btn" data-dim="board">Tableau</button>
-                                <button class="seg-btn" data-dim="etape">Étape</button>
-                                <button class="seg-btn" data-dim="groupe">Groupe</button>
-                                <button class="seg-btn" data-dim="proprietaire">Propriétaire</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint">La surface est proportionnelle au montant en retard. Cliquez sur une case pour filtrer.</span>
-                    <div class="chart-container chart-tall">
-                        <canvas id="chart-treemap"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Montants — hors recouvrement / en recouvrement</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-repartition">
-                                <button class="seg-btn active" data-dims="perimetre,financement">Périmètre › Financement</button>
-                                <button class="seg-btn" data-dims="financement,board">Financement › Tableau</button>
-                                <button class="seg-btn" data-dims="board,groupe">Tableau › Groupe</button>
-                                <button class="seg-btn" data-dims="etape,financement">Étape › Financement</button>
-                                <button class="seg-btn" data-dims="mois,financement">Mois › Financement</button>
-                            </div>
-                            <button class="btn btn-ghost btn-sm" id="btn-repartition-toggle">Tout déplier</button>
-                        </div>
-                    </div>
-                    <span class="fv-hint">
-                        Montant total = hors recouvrement + en recouvrement. Cliquez sur une flèche pour
-                        déplier, sur une ligne pour ouvrir les factures correspondantes.
-                    </span>
-                    <div class="table-wrap" id="repartition-table"></div>
-                </div>
-            </div>
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header"><h3>Top clients en retard</h3></div>
@@ -920,6 +927,14 @@
                                 </div>
                             </div>
                         </div>
+                        <span class="fv-hint">
+                            Chaque barre : le nombre d'apprenants dont le premier rejet est tombé à ce
+                            rang de prélèvement. <strong>En rouge, les ruptures précoces</strong> — dès
+                            l'un des trois premiers prélèvements : le mandat n'a jamais vraiment
+                            fonctionné, et c'est là que la perte est la plus lourde puisque presque
+                            rien n'a été encaissé. En orange, les ruptures plus tardives, sur des
+                            échéanciers déjà bien avancés.
+                        </span>
                         <div class="chart-container"><canvas id="chart-rang"></canvas></div>
                     </div>
                 </div>
@@ -984,11 +999,16 @@
             </p>
 
             <div id="sellsy-vide" class="empty-state">
-                <h3>Aucun export Sellsy chargé</h3>
+                <h3>Aucun export de facturation chargé</h3>
                 <p>
-                    Exportez la liste des factures depuis Sellsy (Facturation → Factures →
-                    Exporter) et déposez le fichier ici. Le rapprochement se fait sur le
-                    <strong>numéro de facture</strong>, ponctuation et casse ignorées.
+                    Déposez ici vos exports de facturation. <strong>Sellsy</strong> émet les
+                    factures d'aujourd'hui (Facturation → Factures → Exporter) ; <strong>Zoho</strong>
+                    n'en émet plus, mais son export reste indispensable — les factures
+                    <code>FA-…</code> qu'il a émises figurent encore au grand livre, et lui seul
+                    porte leurs dates de formation. Vous pouvez déposer les deux ensemble : ils sont
+                    fusionnés sur le <strong>numéro de facture</strong>, ponctuation et casse
+                    ignorées, et aucune source n'en écrase une autre — la première qui renseigne un
+                    champ le garde.
                 </p>
                 <div class="besoin-grid">
                     <div class="besoin besoin-requis">
@@ -1013,9 +1033,9 @@
                     </div>
                 </div>
                 <div class="upload-zone upload-zone-sm" id="sellsy-drop">
-                    <p class="upload-text">Glissez votre export Sellsy ici</p>
-                    <p class="upload-hint">.csv, .xlsx</p>
-                    <input type="file" id="sellsy-file-input" accept=".csv,.xlsx,.xls" hidden>
+                    <p class="upload-text">Glissez vos exports de facturation ici</p>
+                    <p class="upload-hint">Sellsy et Zoho — .csv, .xlsx, plusieurs fichiers à la fois</p>
+                    <input type="file" id="sellsy-file-input" accept=".csv,.xlsx,.xls" multiple hidden>
                 </div>
             </div>
 
@@ -1032,7 +1052,7 @@
                     </div>
                     <div class="table-toolbar-right">
                         <button class="btn btn-ghost btn-sm" id="btn-sellsy-recharger">Remplacer l'export</button>
-                        <input type="file" id="sellsy-file-input-2" accept=".csv,.xlsx,.xls" hidden>
+                        <input type="file" id="sellsy-file-input-2" accept=".csv,.xlsx,.xls" multiple hidden>
                         <button class="btn btn-ghost btn-sm" id="btn-sellsy-export">Exporter en Excel</button>
                     </div>
                 </div>
@@ -1241,15 +1261,15 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.16.0"></script>
-<script src="js/store.js?v=2.16.0"></script>
-<script src="js/monday.js?v=2.16.0"></script>
-<script src="js/ingest.js?v=2.16.0"></script>
-<script src="js/metrics.js?v=2.16.0"></script>
-<script src="js/prelevements.js?v=2.16.0"></script>
-    <script src="js/grandlivre.js?v=2.16.0"></script>
-    <script src="js/sellsy.js?v=2.16.0"></script>
-<script src="js/ui.js?v=2.16.0"></script>
-<script src="app.js?v=2.16.0"></script>
+<script src="js/rules.js?v=2.17.0"></script>
+<script src="js/store.js?v=2.17.0"></script>
+<script src="js/monday.js?v=2.17.0"></script>
+<script src="js/ingest.js?v=2.17.0"></script>
+<script src="js/metrics.js?v=2.17.0"></script>
+<script src="js/prelevements.js?v=2.17.0"></script>
+    <script src="js/grandlivre.js?v=2.17.0"></script>
+    <script src="js/sellsy.js?v=2.17.0"></script>
+<script src="js/ui.js?v=2.17.0"></script>
+<script src="app.js?v=2.17.0"></script>
 </body>
 </html>

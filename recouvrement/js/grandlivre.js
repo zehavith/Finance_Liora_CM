@@ -507,15 +507,23 @@
     function classer(ouvertes, sources) {
         const o = sources || {};
         const idx = indexerClassification(o);
+        const ref = o.referentiel || {};
 
-        // La qualification déjà portée par le fichier passe devant tout : c'est
-        // le travail de la trésorerie, pas une déduction.
+        // La qualification que porte le fichier courant n'est pas une
+        // référence : sur l'extrait de septembre, elle venait d'une ancienne
+        // balance collée à côté, et ne valait donc que pour la période
+        // précédente. Elle est retenue — elle a le mérite d'exister — mais
+        // derrière les sources qui font foi, et son origine est nommée pour
+        // qu'elle se vérifie.
         const propre = c => (c.qualif ? R.detectFinancement(c.qualif, o.rules) : null);
+        // Le référentiel, lui, est constitué des qualifications validées des
+        // extraits précédents : c'est le travail déjà fait qui se réutilise.
+        const duReferentiel = c => (c.cle && ref[c.cle]) || null;
 
         // Apprentissage : ce que chaque compte et chaque tiers contiennent de
         // déjà classé, quelle qu'en soit la source.
         for (const c of ouvertes) {
-            const fin = propre(c) || (c.cle ? idx.parCle.get(c.cle) : null);
+            const fin = (c.cle ? idx.parCle.get(c.cle) : null) || duReferentiel(c) || propre(c);
             if (fin) idx.noter(c.compte, fin, c.identifiantTiers);
         }
         for (const l of (o.historique || [])) {
@@ -531,10 +539,12 @@
         };
 
         return ouvertes.map(c => {
-            const fichier = propre(c);
-            if (fichier) return { ...c, financement: fichier, origineClassement: 'Qualification du fichier' };
             const direct = c.cle ? idx.parCle.get(c.cle) : null;
             if (direct) return { ...c, financement: direct, origineClassement: 'Facture' };
+            const refFin = duReferentiel(c);
+            if (refFin) return { ...c, financement: refFin, origineClassement: 'Référentiel qualifié' };
+            const fichier = propre(c);
+            if (fichier) return { ...c, financement: fichier, origineClassement: 'Héritée du fichier (à vérifier)' };
             const tiers = unique(idx.parTiers, c.identifiantTiers);
             if (tiers) return { ...c, financement: tiers, origineClassement: 'Identifiant du tiers' };
             const compte = unique(idx.parCompte, c.compte);
@@ -637,7 +647,27 @@
         return { rows, total };
     }
 
+    /**
+     * Dictionnaire des qualifications portées par un extrait.
+     *
+     * Une fois qu'un mois a été qualifié à la main, ce travail ne doit plus
+     * être refait : les correspondances numéro → financement sont conservées et
+     * resservent aux extraits suivants, où les mêmes factures reviennent.
+     *
+     * @returns {Object} clé de facture → clé de financement
+     */
+    function referentielDepuis(lignes, rules) {
+        const ref = {};
+        for (const l of (lignes || [])) {
+            if (!l.cle || !l.qualif) continue;
+            const fin = R.detectFinancement(l.qualif, rules);
+            if (fin) ref[l.cle] = fin;
+        }
+        return ref;
+    }
+
     global.LioraGrandLivre = {
+        referentielDepuis,
         A_CLASSER, POOL_NON_LETTRE, MOTIFS_NUMERO, numeroDepuisTexte,
         creancesOuvertes, classer, balanceAgee, comparer,
         COLONNES, TOLERANCE, EST_FACTURE, EST_AVOIR,

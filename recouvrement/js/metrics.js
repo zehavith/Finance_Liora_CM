@@ -1255,11 +1255,32 @@
      * Les mois postérieurs à la date d'arrêté ne contiennent que des factures
      * non échues : les inclure comparerait deux mois vides.
      */
-    function comparaisonMensuelle(rowsMois, moisRef) {
+    /**
+     * Confronte le dernier mois à un mois de référence.
+     *
+     * Deux comparaisons ont un sens et ne disent pas la même chose : le mois
+     * précédent montre le mouvement récent, le même mois de l'année d'avant
+     * neutralise la saisonnalité — un août se compare mal à un juillet, il se
+     * compare bien à l'août précédent.
+     *
+     * @param {string} [base] 'precedent' (défaut) ou 'annee'
+     */
+    function comparaisonMensuelle(rowsMois, moisRef, base) {
         let rows = rowsMois.filter(m => m.assietteNb > 0);
         if (moisRef) rows = rows.filter(m => m.mois <= moisRef);
         if (rows.length < 2) return null;
-        const cur = rows[rows.length - 1], prev = rows[rows.length - 2];
+        const cur = rows[rows.length - 1];
+        let prev;
+        if (base === 'annee') {
+            const [a, m] = cur.mois.split('-');
+            const cible = (Number(a) - 1) + '-' + m;
+            prev = rows.find(x => x.mois === cible);
+            // Sans le mois de l'an dernier, mieux vaut le dire que comparer à
+            // n'importe quoi : la bascule le signalera.
+            if (!prev) return { indisponible: true, mois: cur.mois, moisCible: cible };
+        } else {
+            prev = rows[rows.length - 2];
+        }
         const delta = (a, b) => ({ cur: a, prev: b, ecart: a - b, ecartPct: b !== 0 ? ((a - b) / Math.abs(b)) * 100 : null });
         return {
             mois: cur.mois, moisPrec: prev.mois,
