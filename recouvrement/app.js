@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.8.0 — 2 septembre 2026
+   v2.9.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.8.0';
+    const VERSION = '2.9.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -21,6 +21,7 @@
     const I = window.LioraIngest;
     const X = window.LioraMetrics;
     const U = window.LioraUI;
+    const SE = window.LioraSellsy;
     const { $, $$ } = U;
 
     // ══════════════════════════════════════════════
@@ -36,6 +37,10 @@
         financementsManuels: {},
         grandLivre: [],
         imports: [],
+
+        // Contrôle d'exhaustivité Sellsy ↔ Monday
+        sellsy: { lignes: [], mapping: {}, entetes: [], ignorees: 0, nomFichier: null, date: null },
+        sellsyResultat: null,
 
         // Prélèvements GoCardless
         gcl: { paiements: [], clients: [], mandats: [], abonnements: [], fichiers: [], unite: null },
@@ -99,6 +104,9 @@
             reglOrigine: 'recouvrement',
             vueEcheance: 'retard',
             finDetail: null,
+            sellsyVue: 'absentes',
+            sellsyPage: 1,
+            triSellsy: { key: 'montant', sens: 'desc' },
             // Fenêtre des graphiques mensuels : l'historique remonte à 2021,
             // mais deux ans suffisent à lire une tendance sans écraser l'axe.
             fenetreMois: 24,
@@ -179,6 +187,11 @@
                 recalculerPrelevements();
             }
         } catch (e) { console.warn('[Recouvrement] Rechargement GoCardless impossible', e); }
+
+        try {
+            const sellsy = revivreSellsy(await S.get(S.KEYS.sellsy, null));
+            if (sellsy && sellsy.lignes.length) state.sellsy = sellsy;
+        } catch (e) { console.warn('[Recouvrement] Rechargement Sellsy impossible', e); }
 
         const brutes = (factures || []).map(revivre);
         if (brutes.length) state.brutes = brutes;
@@ -286,6 +299,9 @@
         if (state.options.payeesHorsPortefeuille) consolidees = consolidees.filter(f => !f.paye);
 
         state.factures = consolidees;
+        // Le contrôle Sellsy se lit sur les factures fraîchement consolidées :
+        // un rechargement de Monday doit refermer les écarts qu'il a corrigés.
+        recalculerSellsy();
         majMoisDisponibles(o.conserverPeriode);
         rendreTout();
     }
@@ -622,6 +638,7 @@
             case 'financements': rendreFinancements(data); break;
             case 'factures':     rendreFactures(data); break;
             case 'prelevements': rendrePrelevements(); break;
+            case 'sellsy':       rendreSellsy(); break;
             case 'quality':      rendreQualite(data); break;
             case 'donnees':      rendreDonnees(); break;
         }
@@ -2885,6 +2902,486 @@
     }
 
     // ══════════════════════════════════════════════
+    //  Onglet : Contrôle Sellsy
+    // ══════════════════════════════════════════════
+
+    /**
+     * Confronte l'export Sellsy aux factures Monday.
+     *
+     * Le contrôle porte sur la totalité des factures Monday, sans les filtres de
+     * la barre : une facture manquante ne peut pas être retrouvée par un filtre
+     * qui, par construction, ne connaît que ce qui est déjà là.
+     */
+    function recalculerSellsy() {
+        state.sellsyResultat = state.sellsy.lignes.length
+            ? SE.rapprocher(state.sellsy.lignes, state.factures) : null;
+    }
+
+    /**
+     * Sans facture Monday chargée, le rapprochement déclarerait tout l'export
+     * manquant : ce n'est pas un constat, c'est l'absence de l'un des deux
+     * termes de la comparaison. Le dire plutôt que d'afficher un faux contrôle.
+     */
+    function sellsyPretAComparer() {
+        return state.factures.length > 0;
+    }
+
+    let introSellsyOrigine = null;
+
+    function rendreSellsy() {
+        const charge = !!(state.sellsyResultat && state.sellsy.lignes.length) && sellsyPretAComparer();
+        $('#sellsy-vide').hidden = charge;
+        $('#sellsy-contenu').hidden = !charge;
+        const titre = $('#sellsy-vide h3'), intro = $('#sellsy-vide p');
+        if (introSellsyOrigine == null) introSellsyOrigine = intro.innerHTML;
+        if (state.sellsy.lignes.length && !sellsyPretAComparer()) {
+            titre.textContent = 'Export Sellsy chargé, mais aucune facture Monday';
+            intro.textContent = `${U.nombre(state.sellsy.lignes.length)} factures Sellsy sont en mémoire. `
+                + `Chargez les tableaux Monday depuis l'onglet Données : sans eux, la comparaison `
+                + `déclarerait tout l'export manquant.`;
+        } else if (!charge) {
+            titre.textContent = 'Aucun export Sellsy chargé';
+            intro.innerHTML = introSellsyOrigine;
+        }
+        if (!charge) { $('#sellsy-badge').textContent = ''; return; }
+
+        const res = state.sellsyResultat, st = res.stats;
+        $('#sellsy-badge').textContent = `${U.nombre(st.nbSellsy)} factures Sellsy · `
+            + `${U.nombre(state.factures.length)} factures Monday`
+            + (state.sellsy.nomFichier ? ' · ' + state.sellsy.nomFichier : '');
+
+        rendreKpiSellsy(st);
+        rendreNotesSellsy(res);
+        rendreChartSellsyMois(res);
+        rendreRepartitionSellsy(res);
+        rendreTableSellsy(res);
+    }
+
+    function rendreKpiSellsy(st) {
+        const tuile = (o) => `
+            <div class="recup-card">
+                <span class="recup-bar" style="background:${o.couleur}"></span>
+                <span class="recup-taux">${o.valeur}</span>
+                <span class="recup-label">${U.escapeHtml(o.label)}</span>
+                <span class="recup-value">${o.detail}</span>
+                <span class="recup-sub">${U.escapeHtml(o.sub)}</span>
+            </div>`;
+
+        $('#sellsy-kpi').innerHTML = [
+            tuile({
+                couleur: U.couleurs.paye,
+                valeur: U.pourcent(st.tauxCouverture, 1),
+                label: 'Factures Sellsy suivies dans Monday',
+                detail: `${U.nombre(st.nbAttendues - st.nbAbsentes)} sur ${U.nombre(st.nbAttendues)}`,
+                sub: 'hors brouillons, avoirs et factures annulées',
+            }),
+            tuile({
+                couleur: U.couleurs.retard,
+                valeur: U.nombre(st.nbAbsentes),
+                label: 'Factures absentes de Monday',
+                detail: U.euros(st.eurosAbsentes) + ' facturés',
+                sub: 'émises dans Sellsy, suivies par personne',
+            }),
+            tuile({
+                couleur: U.couleurs.accent,
+                valeur: U.euros(st.eurosAbsentesDues),
+                label: 'Encore à encaisser parmi les absentes',
+                detail: `${U.nombre(st.nbAbsentesImpayees)} non réglées · ${U.nombre(st.nbAbsentesPayees)} déjà réglées`,
+                sub: 'le montant qui échappe au recouvrement',
+            }),
+            tuile({
+                couleur: U.couleurs.payeRetard,
+                valeur: U.nombre(st.nbEcartMontant + st.nbPayeeSellsySeulement + st.nbPayeeMondaySeulement),
+                label: 'Écarts sur les factures communes',
+                detail: `${U.nombre(st.nbEcartMontant)} de montant · ${U.nombre(st.nbPayeeSellsySeulement + st.nbPayeeMondaySeulement)} de statut`,
+                sub: 'saisies Monday à corriger',
+            }),
+        ].join('');
+    }
+
+    /** Ce que le contrôle ne dit pas — les angles morts, énoncés. */
+    function rendreNotesSellsy(res) {
+        const st = res.stats, notes = [];
+        if (st.nbHorsPerimetre)
+            notes.push(`${U.nombre(st.nbHorsPerimetre)} lignes de l'export sont des brouillons, avoirs ou `
+                + `factures annulées : elles n'ont pas à figurer dans Monday et ne comptent pas comme manquantes.`);
+        if (state.sellsy.ignorees)
+            notes.push(`${U.nombre(state.sellsy.ignorees)} lignes de l'export n'ont pas de numéro de facture `
+                + `exploitable et n'ont pas pu être rapprochées.`);
+        if (st.nbMondaySansNumero)
+            notes.push(`${U.nombre(st.nbMondaySansNumero)} factures Monday n'ont pas de numéro : elles ne peuvent `
+                + `être rapprochées de rien, et peuvent correspondre à des « absentes » listées ici.`);
+        if (res.bornes.min && res.bornes.max)
+            notes.push(`L'export couvre du ${U.dateFR(res.bornes.min)} au ${U.dateFR(res.bornes.max)}. `
+                + `Les factures Monday hors de cette période ne sont pas jugées.`);
+        if (!state.sellsy.mapping.statut)
+            notes.push(`Aucune colonne « statut » n'a été reconnue dans l'export : les statuts affichés sont `
+                + `déduits du reste dû.`);
+        if (!state.sellsy.mapping.montant)
+            notes.push(`Aucune colonne de montant n'a été reconnue : l'enjeu financier des absentes ne peut pas `
+                + `être chiffré.`);
+
+        const el = $('#sellsy-notes');
+        el.hidden = !notes.length;
+        el.innerHTML = notes.map(n => `<p>${n}</p>`).join('');
+    }
+
+    function rendreChartSellsyMois(res) {
+        const rows = SE.absentesParMois(res.absentes, state.sellsy.lignes)
+            .slice(-state.ui.fenetreMois);
+        if (!rows.length) { U.chart('chart-sellsy-mois', videConfig('Aucune date de facture dans l\'export')); return; }
+        U.chart('chart-sellsy-mois', {
+            type: 'bar',
+            data: {
+                labels: rows.map(r => U.moisLabel(r.mois, true)),
+                datasets: [
+                    {
+                        label: 'Suivies dans Monday', stack: 'a',
+                        data: rows.map(r => r.total - r.absentes),
+                        backgroundColor: U.couleurs.paye, borderRadius: 3,
+                    },
+                    {
+                        label: 'Absentes de Monday', stack: 'a',
+                        data: rows.map(r => r.absentes),
+                        backgroundColor: U.couleurs.retard, borderRadius: 3,
+                    },
+                ],
+            },
+            options: {
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { stacked: true, grid: { display: false } },
+                    y: { stacked: true, grid: U.grille, ticks: { callback: v => U.nombre(v) } },
+                },
+                plugins: {
+                    legend: { display: true },
+                    tooltip: {
+                        callbacks: {
+                            afterBody: (items) => {
+                                const r = rows[items[0].dataIndex];
+                                return r.part == null ? '' :
+                                    `${U.pourcent(r.part, 1)} du mois absentes · ${U.euros(r.euros)}`;
+                            },
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+    /** Les absentes par statut : lesquelles sont encore à aller chercher. */
+    function rendreRepartitionSellsy(res) {
+        const parStatut = SE.absentesParStatut(res.absentes);
+        const el = $('#sellsy-repartition');
+        if (!parStatut.length) { el.innerHTML = ''; return; }
+        const total = res.absentes.length;
+        const couleur = k => k === 'payee' ? U.couleurs.paye
+            : k === 'partielle' ? U.couleurs.payeRetard : U.couleurs.retard;
+        el.innerHTML = parStatut.map(s => `
+            <div class="recup-card">
+                <span class="recup-bar" style="background:${couleur(s.key)}"></span>
+                <span class="recup-taux">${U.nombre(s.nb)}</span>
+                <span class="recup-label">Absentes — ${U.escapeHtml(s.label)}</span>
+                <span class="recup-value">${U.euros(s.euros)} facturés</span>
+                <span class="recup-sub">${U.pourcent(total ? s.nb / total * 100 : null, 0)} des absentes${
+                    s.key !== 'payee' ? ' · ' + U.euros(s.resteDu) + ' à encaisser' : ''}</span>
+            </div>`).join('');
+    }
+
+    const VUES_SELLSY = {
+        absentes: {
+            titre: 'Factures absentes de Monday',
+            aide: 'Elles existent dans Sellsy et ne sont sur aucun tableau Monday : personne ne les relance. '
+                + 'Les impayées sont à créer dans le circuit ; les payées expliquent une partie des factures '
+                + 'qui « manquent » au total sans rien coûter.',
+        },
+        ecarts: {
+            titre: 'Écarts entre Sellsy et Monday',
+            aide: 'La facture est bien dans Monday, mais son montant ou son statut n\'y correspond pas à Sellsy. '
+                + 'Sellsy fait foi : c\'est la saisie Monday qui est à corriger. Une facture encaissée dans '
+                + 'Sellsy et encore ouverte dans Monday, c\'est une relance envoyée pour rien.',
+        },
+        surnumeraires: {
+            titre: 'Factures Monday inconnues de Sellsy',
+            aide: 'Leur numéro n\'existe pas dans l\'export, sur la période qu\'il couvre : numéro mal saisi, '
+                + 'ligne de test, ou facture émise par un autre outil. Seules les factures dont la date tombe '
+                + 'dans la période de l\'export sont jugées.',
+        },
+        ignorees: {
+            titre: 'Lignes Sellsy hors périmètre',
+            aide: 'Brouillons, avoirs et factures annulées : ils n\'ont pas vocation à être suivis en '
+                + 'recouvrement, et leur absence de Monday est normale. Listés pour vérification.',
+        },
+    };
+
+    /**
+     * Les lignes d'une vue, mises à plat.
+     *
+     * Le tri de U.table passe par le nom de la colonne : une clé calculée n'y
+     * survivrait pas. Chaque vue produit donc des objets aux champs simples.
+     */
+    function lignesVueSellsy(res, vue) {
+        if (vue === 'ecarts') return res.rapprochees
+            .filter(r => r.ecartMontant != null || r.ecartStatut)
+            .map(r => ({
+                numero: r.sellsy.numero,
+                client: r.sellsy.client || r.facture.client,
+                montantSellsy: r.sellsy.montant,
+                montantMonday: r.facture.montant,
+                ecartMontant: r.ecartMontant,
+                statutSellsy: r.sellsy.statutLabel,
+                etatMonday: r.facture.etat,
+                ecartStatut: r.ecartStatut,
+                board: r.facture.board,
+                facture: r.facture,
+            }));
+        if (vue === 'surnumeraires') return res.surnumeraires;
+        if (vue === 'ignorees') return res.horsPerimetre;
+        return res.absentes;
+    }
+
+    function colonnesVueSellsy(vue) {
+        const num = { key: 'numero', label: 'Facture', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` };
+        const client = { key: 'client', label: 'Client',
+            format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` };
+
+        if (vue === 'ecarts') return [
+            num, client,
+            { key: 'montantSellsy', label: 'Montant Sellsy', align: 'right', format: v => v == null ? '—' : U.euros(v) },
+            { key: 'montantMonday', label: 'Montant Monday', align: 'right', format: v => v == null ? '—' : U.euros(v) },
+            { key: 'ecartMontant', label: 'Écart', align: 'right',
+              title: 'Montant Monday moins montant Sellsy. Négatif : Monday sous-évalue la facture.',
+              format: v => v == null ? '—' : `<span class="pill pill-danger">${U.euros(v)}</span>` },
+            { key: 'statutSellsy', label: 'Statut Sellsy' },
+            { key: 'etatMonday', label: 'État Monday', format: v => `<span class="pill ${U.etatClass(v)}">${U.escapeHtml(v)}</span>` },
+            { key: 'ecartStatut', label: 'Écart de statut', format: v =>
+                v === 'payee_sellsy_seulement' ? '<span class="pill pill-danger">Encaissée dans Sellsy, ouverte dans Monday</span>'
+                : v === 'payee_monday_seulement' ? '<span class="pill pill-soft">Réglée dans Monday, impayée dans Sellsy</span>'
+                : '—' },
+        ];
+        if (vue === 'surnumeraires') return [
+            num, client,
+            { key: 'montant', label: 'Montant', align: 'right', format: v => U.euros(v) },
+            { key: 'etat', label: 'État Monday', format: v => `<span class="pill ${U.etatClass(v)}">${U.escapeHtml(v)}</span>` },
+            { key: 'dateFacture', label: 'Date de facture', align: 'center', format: U.dateFR },
+            { key: 'board', label: 'Tableau Monday', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+        ];
+        return [
+            num, client,
+            { key: 'montant', label: 'Montant TTC', align: 'right', format: v => v == null ? '—' : U.euros(v) },
+            { key: 'resteDu', label: 'Reste dû', align: 'right', format: v => v == null ? '—' : U.euros(v) },
+            { key: 'statutLabel', label: 'Statut Sellsy', format: (v, r) => {
+                const cls = r.paye ? 'pill-ok' : r.statut === 'partielle' ? 'pill-soft' : 'pill-danger';
+                return `<span class="pill ${cls}" title="${U.escapeHtml(r.statutBrut || v)}">${U.escapeHtml(v)}</span>`;
+            } },
+            { key: 'dateFacture', label: 'Date de facture', align: 'center', format: U.dateFR },
+            { key: 'dateEcheance', label: 'Échéance Sellsy', align: 'center', format: U.dateFR },
+        ];
+    }
+
+    function rendreTableSellsy(res) {
+        const vue = state.ui.sellsyVue;
+        const def = VUES_SELLSY[vue];
+        $('#sellsy-titre-table').textContent = def.titre;
+        $('#sellsy-aide-table').textContent = def.aide;
+        $$('#seg-sellsy-vue .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.vue === vue));
+
+        const cols = colonnesVueSellsy(vue);
+        const t = state.ui.triSellsy;
+        const rows = lignesVueSellsy(res, vue).slice();
+        if (cols.some(c => c.key === t.key)) {
+            rows.sort((a, b) => {
+                let va = a[t.key], vb = b[t.key];
+                if (va instanceof Date) va = va.getTime();
+                if (vb instanceof Date) vb = vb.getTime();
+                let cmp;
+                if (typeof va === 'string' || typeof vb === 'string')
+                    cmp = String(va || '').localeCompare(String(vb || ''), 'fr');
+                else cmp = (va == null ? -Infinity : va) - (vb == null ? -Infinity : vb);
+                return t.sens === 'asc' ? cmp : -cmp;
+            });
+        }
+
+        const pageSize = state.ui.pageSize;
+        const nbPages = Math.max(1, Math.ceil(rows.length / pageSize));
+        if (state.ui.sellsyPage > nbPages) state.ui.sellsyPage = nbPages;
+        const debut = (state.ui.sellsyPage - 1) * pageSize;
+        const page = rows.slice(debut, debut + pageSize);
+
+        const el = $('#sellsy-table');
+        el.innerHTML = U.table(cols, page, {
+            tri: t, onSort: true,
+            vide: 'Rien à signaler dans cette vue — c\'est la bonne nouvelle.',
+        });
+        U.bindTable(el, page, {
+            onSort: k => {
+                t.sens = (t.key === k && t.sens === 'desc') ? 'asc' : 'desc';
+                t.key = k;
+                state.ui.sellsyPage = 1;
+                rendreTout();
+            },
+            // Les factures Monday ont une fiche ; les lignes Sellsy pures, non.
+            onRowClick: (r) => {
+                const f = r.facture || (vue === 'surnumeraires' ? r : null);
+                if (f) ouvrirFiche(f);
+            },
+        });
+
+        const p = $('#sellsy-pagination');
+        p.innerHTML = `
+            <div class="pagination-info">${U.nombre(rows.length)} lignes${resumeMontantSellsy(vue, rows)}</div>
+            <div class="pagination-controls">
+                <button class="btn btn-ghost btn-sm" data-page="1" ${state.ui.sellsyPage === 1 ? 'disabled' : ''}>«</button>
+                <button class="btn btn-ghost btn-sm" data-page="${state.ui.sellsyPage - 1}" ${state.ui.sellsyPage === 1 ? 'disabled' : ''}>‹</button>
+                <span class="pagination-page">Page ${state.ui.sellsyPage} / ${nbPages}</span>
+                <button class="btn btn-ghost btn-sm" data-page="${state.ui.sellsyPage + 1}" ${state.ui.sellsyPage >= nbPages ? 'disabled' : ''}>›</button>
+                <button class="btn btn-ghost btn-sm" data-page="${nbPages}" ${state.ui.sellsyPage >= nbPages ? 'disabled' : ''}>»</button>
+            </div>`;
+        $$('[data-page]', p).forEach(b => b.addEventListener('click', () => {
+            state.ui.sellsyPage = Math.max(1, Math.min(nbPages, +b.dataset.page));
+            rendreTout();
+        }));
+    }
+
+    function resumeMontantSellsy(vue, rows) {
+        if (vue === 'ecarts') return '';
+        const mt = X.sum(rows, r => r.montant);
+        return mt ? ' · ' + U.euros(mt) : '';
+    }
+
+    // ── Import ──
+
+    async function importerSellsy(files) {
+        const file = Array.isArray(files) ? files[0] : files;
+        if (!file) return;
+        try {
+            const rows = await lireFichier(file);
+            if (!rows.length) { U.toast('Fichier vide.', 'error'); return; }
+
+            const lu = SE.lireExport(rows);
+            if (!lu.mapping.numero) {
+                U.toast("Aucune colonne de numéro de facture reconnue dans l'export : "
+                    + "le rapprochement est impossible. Colonnes trouvées : "
+                    + lu.entetes.slice(0, 8).join(', '), 'error', 12000);
+                return;
+            }
+            if (!lu.lignes.length) {
+                U.toast("Aucun numéro de facture exploitable dans l'export.", 'error', 9000);
+                return;
+            }
+
+            state.sellsy = {
+                lignes: lu.lignes, mapping: lu.mapping, entetes: lu.entetes,
+                ignorees: lu.ignorees, nomFichier: file.name, date: new Date().toISOString(),
+            };
+            await sauverSellsy();
+            recalculerSellsy();
+            rendreTout();
+
+            const st = state.sellsyResultat.stats;
+            U.toast(`Export Sellsy intégré : ${U.nombre(st.nbSellsy)} factures lues, `
+                + `${U.nombre(st.nbAbsentes)} absentes de Monday `
+                + `(${U.euros(st.eurosAbsentes)}).`, st.nbAbsentes ? 'error' : 'success', 10000);
+        } catch (e) {
+            U.toast(e.message, 'error', 9000);
+        }
+    }
+
+    async function sauverSellsy() {
+        try {
+            await S.set(S.KEYS.sellsy, {
+                ...state.sellsy,
+                lignes: state.sellsy.lignes.map(l => ({
+                    ...l,
+                    dateFacture: l.dateFacture ? l.dateFacture.toISOString() : null,
+                    dateEcheance: l.dateEcheance ? l.dateEcheance.toISOString() : null,
+                })),
+            });
+        } catch (e) { console.warn('[Recouvrement] Sauvegarde Sellsy impossible', e); }
+    }
+
+    function revivreSellsy(o) {
+        if (!o || !o.lignes) return null;
+        return {
+            ...o,
+            lignes: o.lignes.map(l => ({
+                ...l,
+                dateFacture: l.dateFacture ? R.parseDate(l.dateFacture) : null,
+                dateEcheance: l.dateEcheance ? R.parseDate(l.dateEcheance) : null,
+            })),
+        };
+    }
+
+    /** Export Excel du contrôle : une feuille par nature d'écart. */
+    function exporterSellsy() {
+        const res = state.sellsyResultat;
+        if (!res) return;
+        const wb = XLSX.utils.book_new();
+        const st = res.stats;
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+            { Indicateur: 'Factures dans l\'export Sellsy', Valeur: st.nbSellsy },
+            { Indicateur: 'Dont attendues dans Monday', Valeur: st.nbAttendues },
+            { Indicateur: 'Absentes de Monday', Valeur: st.nbAbsentes },
+            { Indicateur: 'Montant des absentes', Valeur: st.eurosAbsentes },
+            { Indicateur: 'Reste à encaisser sur les absentes', Valeur: st.eurosAbsentesDues },
+            { Indicateur: 'Absentes non réglées', Valeur: st.nbAbsentesImpayees },
+            { Indicateur: 'Absentes déjà réglées', Valeur: st.nbAbsentesPayees },
+            { Indicateur: 'Taux de couverture', Valeur: st.tauxCouverture },
+            { Indicateur: 'Écarts de montant', Valeur: st.nbEcartMontant },
+            { Indicateur: 'Encaissées dans Sellsy, ouvertes dans Monday', Valeur: st.nbPayeeSellsySeulement },
+            { Indicateur: 'Réglées dans Monday, impayées dans Sellsy', Valeur: st.nbPayeeMondaySeulement },
+            { Indicateur: 'Factures Monday inconnues de Sellsy', Valeur: st.nbSurnumeraires },
+            { Indicateur: 'Factures Monday sans numéro', Valeur: st.nbMondaySansNumero },
+            { Indicateur: 'Fichier', Valeur: state.sellsy.nomFichier || '' },
+            { Indicateur: 'Version de l\'application', Valeur: VERSION + ' — ' + VERSION_DATE },
+        ]), 'Synthèse');
+
+        const ligneSellsy = l => ({
+            'Numéro': l.numero, 'Client': l.client,
+            'Montant TTC': l.montant, 'Reste dû': l.resteDu,
+            'Statut Sellsy': l.statutLabel, 'Statut brut': l.statutBrut,
+            'Date de facture': l.dateFacture ? U.dateFR(l.dateFacture) : '',
+            'Échéance Sellsy': l.dateEcheance ? U.dateFR(l.dateEcheance) : '',
+        });
+        XLSX.utils.book_append_sheet(wb,
+            XLSX.utils.json_to_sheet(res.absentes.map(ligneSellsy)), 'Absentes de Monday');
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            res.rapprochees.filter(r => r.ecartMontant != null || r.ecartStatut).map(r => ({
+                'Numéro': r.sellsy.numero, 'Client': r.sellsy.client || r.facture.client,
+                'Montant Sellsy': r.sellsy.montant, 'Montant Monday': r.facture.montant,
+                'Écart': r.ecartMontant,
+                'Statut Sellsy': r.sellsy.statutLabel, 'État Monday': r.facture.etat,
+                'Écart de statut': r.ecartStatut === 'payee_sellsy_seulement'
+                    ? 'Encaissée dans Sellsy, ouverte dans Monday'
+                    : r.ecartStatut === 'payee_monday_seulement'
+                        ? 'Réglée dans Monday, impayée dans Sellsy' : '',
+                'Tableau Monday': r.facture.board,
+            }))), 'Écarts');
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            res.surnumeraires.map(f => ({
+                'Numéro': f.numero, 'Client': f.client, 'Montant': f.montant,
+                'État Monday': f.etat, 'Tableau Monday': f.board, 'Groupe': f.groupe,
+                'Date de facture': f.dateFacture ? U.dateFR(f.dateFacture) : '',
+            }))), 'Inconnues de Sellsy');
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            SE.absentesParMois(res.absentes, state.sellsy.lignes).map(r => ({
+                'Mois': r.mois, 'Factures Sellsy': r.total, 'Absentes': r.absentes,
+                'Part absentes': r.part, 'Montant absent': r.euros,
+            }))), 'Absentes par mois');
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            SE.absentesParClient(res.absentes, 200).map(r => ({
+                'Client': r.client, 'Factures absentes': r.nb, 'Montant': r.euros,
+            }))), 'Absentes par client');
+
+        XLSX.writeFile(wb, `Controle_Sellsy_Monday_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+
+    // ══════════════════════════════════════════════
     //  Onglet : Data Quality
     // ══════════════════════════════════════════════
 
@@ -4324,7 +4821,10 @@
         $$('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === nom));
         $$('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + nom));
         // La barre de filtres n'a pas de sens sur l'onglet Données
-        $('#filters-wrap').classList.toggle('hidden', nom === 'donnees' || nom === 'prelevements');
+        // Le contrôle Sellsy porte sur la totalité des factures : un filtre y
+        // ferait passer pour manquantes celles qu'il vient d'écarter.
+        $('#filters-wrap').classList.toggle('hidden',
+            nom === 'donnees' || nom === 'prelevements' || nom === 'sellsy');
         rendreTout();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -4516,6 +5016,19 @@
         brancherZoneDepot('#welcome-drop', '#welcome-file-input', files => importerFichiers(files));
         brancherZoneDepot('#settings-drop', '#settings-file-input', files => importerFichiers(files));
         brancherZoneDepot('#gl-drop', '#gl-file-input', files => importerGrandLivre(files[0]));
+        brancherZoneDepot('#sellsy-drop', '#sellsy-file-input', files => importerSellsy(files));
+        $('#btn-sellsy-recharger').addEventListener('click', () => $('#sellsy-file-input-2').click());
+        $('#sellsy-file-input-2').addEventListener('change', e => {
+            if (e.target.files.length) importerSellsy([...e.target.files]);
+            e.target.value = '';
+        });
+        $('#btn-sellsy-export').addEventListener('click', exporterSellsy);
+        $$('#seg-sellsy-vue .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.sellsyVue = b.dataset.vue;
+            state.ui.sellsyPage = 1;
+            rendreTout();
+        }));
+
         brancherZoneDepot('#prlv-drop', '#prlv-file-input', files => importerGoCardless(files));
         brancherZoneDepot('#gcl-drop', '#gcl-file-input', files => importerGoCardless(files));
 

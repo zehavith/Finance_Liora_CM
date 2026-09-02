@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.8.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.8.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.8.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.8.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.8.0">
-    <link rel="stylesheet" href="styles.css?v=2.8.0">
+    <script src="../vendor/chart.umd.min.js?v=2.9.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.9.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.9.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.9.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.9.0">
+    <link rel="stylesheet" href="styles.css?v=2.9.0">
 </head>
 <body>
 
@@ -123,6 +123,7 @@
             <button class="nav-tab" data-tab="financements">Financements</button>
             <button class="nav-tab" data-tab="factures">Factures</button>
             <button class="nav-tab" data-tab="prelevements">Prélèvements</button>
+            <button class="nav-tab" data-tab="sellsy">Contrôle Sellsy</button>
             <button class="nav-tab" data-tab="quality">Data Quality</button>
             <button class="nav-tab" data-tab="donnees">Données</button>
         </div>
@@ -892,7 +893,102 @@
     </div>
 
     <!-- ══════════ ONGLET : DATA QUALITY ══════════ -->
-    <div class="tab-content" id="tab-quality">
+<!-- ══════════ ONGLET : CONTRÔLE SELLSY ══════════ -->
+    <div class="tab-content" id="tab-sellsy">
+        <div class="dashboard-content">
+            <div class="section-header">
+                <h2>Contrôle d'exhaustivité — Sellsy ↔ Monday</h2>
+                <div class="period-badge" id="sellsy-badge"></div>
+            </div>
+            <p class="aide-bloc">
+                Sellsy est le logiciel de facturation : c'est lui qui dit quelles factures
+                existent. Monday est le tableau de suivi. Une facture émise dans Sellsy et
+                absente de Monday n'est suivie par personne. Déposez l'export Sellsy :
+                l'application vous dit <strong>combien de factures manquent, lesquelles, et
+                dans quel état elles sont</strong> — payées, impayées, partiellement réglées.
+            </p>
+
+            <div id="sellsy-vide" class="empty-state">
+                <h3>Aucun export Sellsy chargé</h3>
+                <p>
+                    Exportez la liste des factures depuis Sellsy (Facturation → Factures →
+                    Exporter) et déposez le fichier ici. Le rapprochement se fait sur le
+                    <strong>numéro de facture</strong>, ponctuation et casse ignorées.
+                </p>
+                <div class="besoin-grid">
+                    <div class="besoin besoin-requis">
+                        <strong>Numéro de facture</strong><span>indispensable</span>
+                        <p>La clé du rapprochement. Sans elle, aucun contrôle n'est possible.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>Statut</strong><span>très utile</span>
+                        <p>Dit si la facture manquante est déjà payée ou reste à recouvrer. À défaut, le reste dû suffit.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>Montant TTC</strong><span>très utile</span>
+                        <p>Chiffre l'enjeu des manquantes et révèle les écarts de saisie sur les factures communes.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>Date de facture</strong><span>utile</span>
+                        <p>Situe le trou dans le temps et borne le contrôle à la période couverte par l'export.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>Client</strong><span>utile</span>
+                        <p>Dit si l'absence se concentre sur un compte ou touche tout le portefeuille.</p>
+                    </div>
+                </div>
+                <div class="upload-zone upload-zone-sm" id="sellsy-drop">
+                    <p class="upload-text">Glissez votre export Sellsy ici</p>
+                    <p class="upload-hint">.csv, .xlsx</p>
+                    <input type="file" id="sellsy-file-input" accept=".csv,.xlsx,.xls" hidden>
+                </div>
+            </div>
+
+            <div id="sellsy-contenu" hidden>
+                <div class="recup-grid" id="sellsy-kpi"></div>
+                <div id="sellsy-notes" class="scope-note"></div>
+
+                <div class="table-toolbar">
+                    <div class="seg" id="seg-sellsy-vue">
+                        <button class="seg-btn active" data-vue="absentes">Absentes de Monday</button>
+                        <button class="seg-btn" data-vue="ecarts">Écarts de saisie</button>
+                        <button class="seg-btn" data-vue="surnumeraires">Inconnues de Sellsy</button>
+                        <button class="seg-btn" data-vue="ignorees">Hors périmètre</button>
+                    </div>
+                    <div class="table-toolbar-right">
+                        <button class="btn btn-ghost btn-sm" id="btn-sellsy-recharger">Remplacer l'export</button>
+                        <input type="file" id="sellsy-file-input-2" accept=".csv,.xlsx,.xls" hidden>
+                        <button class="btn btn-ghost btn-sm" id="btn-sellsy-export">Exporter en Excel</button>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header">
+                            <h3>À quelle période les factures ont-elles cessé d'arriver dans Monday ?</h3>
+                        </div>
+                        <span class="fv-hint">
+                            Part des factures Sellsy absentes de Monday, mois par mois. Un pic sur
+                            quelques mois est une rupture d'import à une date donnée ; une absence
+                            étalée est une fuite permanente du circuit.
+                        </span>
+                        <div class="chart-container"><canvas id="chart-sellsy-mois"></canvas></div>
+                    </div>
+                </div>
+
+                <div id="sellsy-repartition" class="recup-grid"></div>
+
+                <div class="section-header section-header-sub">
+                    <h3 id="sellsy-titre-table">Factures absentes de Monday</h3>
+                </div>
+                <p class="aide-bloc" id="sellsy-aide-table"></p>
+                <div class="table-wrap table-wrap-tall" id="sellsy-table"></div>
+                <div class="pagination" id="sellsy-pagination"></div>
+            </div>
+        </div>
+    </div>
+
+        <div class="tab-content" id="tab-quality">
         <div class="dashboard-content">
             <div class="section-header">
                 <h2>Qualité des données</h2>
@@ -1070,13 +1166,14 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.8.0"></script>
-<script src="js/store.js?v=2.8.0"></script>
-<script src="js/monday.js?v=2.8.0"></script>
-<script src="js/ingest.js?v=2.8.0"></script>
-<script src="js/metrics.js?v=2.8.0"></script>
-<script src="js/prelevements.js?v=2.8.0"></script>
-<script src="js/ui.js?v=2.8.0"></script>
-<script src="app.js?v=2.8.0"></script>
+<script src="js/rules.js?v=2.9.0"></script>
+<script src="js/store.js?v=2.9.0"></script>
+<script src="js/monday.js?v=2.9.0"></script>
+<script src="js/ingest.js?v=2.9.0"></script>
+<script src="js/metrics.js?v=2.9.0"></script>
+<script src="js/prelevements.js?v=2.9.0"></script>
+    <script src="js/sellsy.js?v=2.9.0"></script>
+<script src="js/ui.js?v=2.9.0"></script>
+<script src="app.js?v=2.9.0"></script>
 </body>
 </html>

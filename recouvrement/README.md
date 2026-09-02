@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.8.0** — 2 septembre 2026
+**Version 2.9.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.8.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.9.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -528,6 +528,73 @@ Pour le **B2C**, il n'existe pas de tableau recouvrement : le retard est
 déduit uniquement des dates et des règles d'échéance, conformément à la
 demande. La colonne « qualification recouvrement » est lue mais n'entre dans
 aucun calcul.
+
+## Contrôle d'exhaustivité — Sellsy ↔ Monday
+
+Sellsy est le logiciel de facturation : c'est lui qui dit quelles factures
+existent. Monday est le tableau de suivi. Une facture émise dans Sellsy et
+absente de Monday **n'est relancée par personne** — et n'apparaît dans aucun
+chiffre de cette application, puisque celle-ci ne connaît que Monday.
+
+L'onglet **Contrôle Sellsy** répond à la question. Déposez l'export des
+factures Sellsy (Facturation → Factures → Exporter) : le rapprochement se fait
+sur le **numéro de facture**, ponctuation, espaces et casse ignorés, comme pour
+les doublons entre tableaux Monday.
+
+### Ce qu'il faut dans l'export
+
+| Colonne | Rôle |
+|---|---|
+| Numéro de facture | **indispensable** — la clé du rapprochement |
+| Statut | dit si la manquante est déjà payée ou reste à recouvrer |
+| Montant TTC | chiffre l'enjeu et révèle les écarts de saisie |
+| Reste dû | remplace le statut s'il est absent : à zéro, la facture est soldée |
+| Date de facture | situe le trou dans le temps et borne le contrôle |
+| Client | dit si le trou se concentre sur un compte |
+
+Les libellés sont reconnus automatiquement — « Numéro », « Référence »,
+« Restant dû », « Total TTC »… L'onglet indique ce qu'il n'a pas trouvé plutôt
+que de le calculer sur du vide.
+
+### Les quatre vues
+
+- **Absentes de Monday** — émises dans Sellsy, sur aucun tableau. Ce sont
+  celles à créer dans le circuit. Elles sont séparées par statut : les impayées
+  sont de l'argent qui échappe au recouvrement ; les payées expliquent une
+  partie des factures qui « manquent » au total sans rien coûter.
+- **Écarts de saisie** — la facture est bien dans Monday, mais son montant ou
+  son statut n'y correspond pas. Sellsy fait foi : c'est Monday qui est à
+  corriger. Une facture encaissée dans Sellsy et encore ouverte dans Monday,
+  c'est une relance envoyée pour rien.
+- **Inconnues de Sellsy** — leur numéro n'existe pas dans l'export : numéro mal
+  saisi, ligne de test, facture d'un autre outil. Seules les factures dont la
+  date tombe dans la période couverte par l'export sont jugées.
+- **Hors périmètre** — brouillons, avoirs et factures annulées. Leur absence de
+  Monday est normale : les compter comme manquantes noierait les vraies.
+
+### Ce que le contrôle ne peut pas dire
+
+Les angles morts sont affichés sous les indicateurs, jamais tus :
+
+- les lignes de l'export sans numéro exploitable, qui n'ont pu être
+  rapprochées ;
+- les factures Monday **sans numéro**, qui ne peuvent être rapprochées de rien
+  et peuvent correspondre à des « absentes » listées ici ;
+- la **période réellement couverte** par l'export, hors de laquelle aucune
+  facture Monday n'est jugée ;
+- l'absence d'une colonne de statut ou de montant, quand elle prive une lecture.
+
+Le contrôle porte sur **la totalité des factures Monday**, sans les filtres de
+la barre : la barre est masquée sur cet onglet. Un filtre y ferait passer pour
+manquantes les factures qu'il vient lui-même d'écarter.
+
+Le bouton **Exporter en Excel** produit un classeur à cinq feuilles — synthèse,
+absentes, écarts, inconnues de Sellsy, absentes par mois et par client — de quoi
+créer les manquantes dans Monday sans les ressaisir une par une.
+
+L'export reste enregistré d'une session à l'autre, et le contrôle se recalcule
+à chaque rechargement des tableaux Monday : les écarts corrigés disparaissent
+d'eux-mêmes.
 
 ## Rapprochement des paiements
 
