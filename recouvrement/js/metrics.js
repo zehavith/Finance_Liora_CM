@@ -536,6 +536,10 @@
         const enRetard = lot.filter(f => f.etat === 'Payée en retard');
         return {
             origine,
+            // Les factures elles-mêmes : un chiffre qu'on ne peut pas ouvrir ne
+            // se vérifie pas, et celui des « payées avant échéance » demande à
+            // l'être — il a l'air de contredire le passage en recouvrement.
+            factures: lot,
             nb: lot.length,
             euros: sum(lot, x => x.montant),
             // Part des règlements dont l'origine est connue : les factures sans

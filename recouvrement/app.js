@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.19.0 — 2 septembre 2026
+   v2.20.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.19.0';
+    const VERSION = '2.20.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -1919,7 +1919,7 @@
             tuileDetail(U.nombre(r.nb), viaRecouv ? 'Factures récupérées' : 'Réglées hors recouvrement',
                 U.euros(r.euros), viaRecouv ? U.couleurs.payeRetard : U.couleurs.paye,
                 viaRecouv ? 'encaissées après être passées par le tableau de recouvrement'
-                          : 'encaissées sans jamais y entrer'),
+                          : 'encaissées sans jamais y entrer', 'toutes'),
             tuileDetail(U.pourcent(r.partEuros, 1), 'Part des règlements',
                 `${U.pourcent(r.partNb, 1)} en nombre`, U.couleurs.indigo,
                 'part de cette population dans tout ce qui a été encaissé'),
@@ -1927,28 +1927,39 @@
             // non ne dit rien du délai. Les deux sont donc affichés côte à côte.
             tuileDetail(U.nombre(r.nb - r.nbEnRetard), 'Payées avant échéance',
                 U.euros(Math.max(0, r.euros - r.eurosEnRetard)), U.couleurs.paye,
-                viaRecouv ? 'réglées avant leur date d’échéance calculée — à vérifier, voir ci-dessous'
-                          : 'réglées dans les délais, sans relance'),
+                viaRecouv ? 'réglées avant leur date d’échéance calculée — cliquez pour les voir'
+                          : 'réglées dans les délais, sans relance', 'avant'),
             tuileDetail(U.nombre(r.nbEnRetard), 'Payées après échéance',
                 U.euros(r.eurosEnRetard), U.couleurs.retard,
-                'réglées après leur date d’échéance calculée'),
+                'réglées après leur date d’échéance calculée', 'apres'),
             tuileDetail(U.jours(r.retardMoyen), 'Retard moyen des retardataires',
                 r.delaiMoyen != null ? `délai facture → règlement : ${U.jours(r.delaiMoyen)}` : '—',
                 U.couleurs.nonEchue,
                 'moyenne du seul groupe payé en retard, pas de l’ensemble'),
-        ].join('')
-        // Une facture passée en recouvrement puis « payée avant échéance » est
-        // en principe impossible : elle n'y serait jamais entrée. C'est presque
-        // toujours une facture réémise, dont la date repart à zéro.
-        + (viaRecouv && r.nb - r.nbEnRetard > 0
-            ? `<p class="scope-note"><strong>${U.nombre(r.nb - r.nbEnRetard)} factures passées par le
-                recouvrement apparaissent payées avant leur échéance.</strong> Une facture n'entre en
-                recouvrement qu'une fois échue : ce sont donc presque toujours des factures
-                <strong>réémises après correction</strong> — la nouvelle date de facture repousse
-                l'échéance calculée après la date de règlement. Pour les financements corporate,
-                l'échéance est désormais plafonnée à <em>début de formation + 30 jours</em>, qui ne
-                bouge pas quand la facture est refaite.</p>`
-            : '');
+        ].join('');
+
+        // Hors de la grille : dans une case de 215 px, l'explication s'étirait
+        // sur quinze lignes d'un mot. Elle a sa place, en pleine largeur.
+        const note = $('#regl-note');
+        const avant = r.nb - r.nbEnRetard;
+        if (note) {
+            note.hidden = !(viaRecouv && avant > 0);
+            note.innerHTML = (viaRecouv && avant > 0)
+                ? `<p><strong>${U.nombre(avant)} factures passées par le recouvrement apparaissent
+                   payées avant leur échéance.</strong> Vous avez raison de trouver ça contradictoire :
+                   une facture n'entre en recouvrement qu'une fois échue. L'explication la plus probable
+                   est la <strong>réémission après correction</strong> — la nouvelle date de facture
+                   repousse l'échéance calculée après la date de règlement. Mais c'est une hypothèse :
+                   <strong>ouvrez la tuile « Payées avant échéance » pour voir ces factures</strong> et
+                   juger sur pièces.</p>`
+                : '';
+        }
+
+        // Chaque tuile ouvre sa population : un chiffre qu'on ne peut pas
+        // ouvrir ne se vérifie pas.
+        $$('[data-regl]', $('#regl-kpi')).forEach(el => el.addEventListener('click', () => {
+            rendreApresClic(() => montrerReglements(r, el.dataset.regl, viaRecouv));
+        }));
 
         // Ce qui rentre chaque mois
         const mois = derniersMois(r.mois);
@@ -2914,14 +2925,59 @@
         }));
     }
 
-    const tuileDetail = (valeur, label, detail, couleur, sub) => `
-        <div class="recup-card">
+    /**
+     * Les factures derrière une tuile de règlement.
+     *
+     * « 382 payées avant échéance parmi celles passées en recouvrement » est
+     * une contradiction apparente : on n'entre en recouvrement qu'une fois
+     * échu. Plutôt que de demander de croire l'explication, la liste montre
+     * pour chacune la date de facture, l'échéance calculée et le règlement —
+     * l'écart entre les trois se lit alors directement.
+     */
+    function montrerReglements(r, quoi, viaRecouv) {
+        const lignes = (r.factures || []).filter(f =>
+            quoi === 'toutes' ? true
+            : quoi === 'avant' ? !(f.retardJours > 0)
+            : f.retardJours > 0);
+        const titre = quoi === 'avant' ? 'Payées avant leur échéance'
+            : quoi === 'apres' ? 'Payées après leur échéance'
+            : (viaRecouv ? 'Factures récupérées' : 'Réglées hors recouvrement');
+
+        const rows = lignes.slice().sort((a, b) => (a.retardJours || 0) - (b.retardJours || 0));
+        const corps =
+            (quoi === 'avant' && viaRecouv
+                ? `<p>Une facture réglée <strong>avant</strong> son échéance calculée n'aurait pas dû
+                   entrer en recouvrement. Comparez les trois dates : quand l'échéance calculée tombe
+                   après le règlement, c'est que la <strong>date de facture est postérieure</strong> à
+                   l'entrée en recouvrement — la facture a été refaite. La colonne « Écart » donne le
+                   nombre de jours entre le règlement et l'échéance.</p>`
+                : '')
+            + U.table([
+                { key: 'numero', label: 'Facture', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'client', label: 'Client', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'financement', label: 'Financement', format: v => U.escapeHtml(R.getRule(v, state.rules).label) },
+                { key: 'montant', label: 'Montant', align: 'right', format: U.euros },
+                { key: 'dateFacture', label: 'Date de facture', align: 'center', format: U.dateFR },
+                { key: 'dateEcheance', label: 'Échéance calculée', align: 'center', format: U.dateFR },
+                { key: 'datePaiementEffective', label: 'Règlement', align: 'center', format: U.dateFR },
+                { key: 'retardJours', label: 'Écart à l’échéance', align: 'right', format: U.pastilleRetard },
+                { key: 'groupeOrigine', label: 'Groupe d’origine', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+            ], rows.slice(0, 300), { vide: 'Aucune facture.' })
+            + (rows.length > 300 ? `<p class="fv-hint">300 premières sur ${U.nombre(rows.length)}.</p>` : '');
+
+        const el = U.modal(`${titre} — ${U.nombre(rows.length)} factures`, corps,
+            [{ label: 'Fermer', primary: true }]);
+        U.bindTable(el, rows.slice(0, 300), { onRowClick: f => { U.closeModal(); ouvrirFiche(f); } });
+    }
+
+    const tuileDetail = (valeur, label, detail, couleur, sub, cle) => `
+        <${cle ? 'button' : 'div'} class="recup-card"${cle ? ` data-regl="${cle}" title="Voir ces factures"` : ''}>
             <span class="recup-bar" style="background:${couleur}"></span>
             <span class="recup-taux">${valeur}</span>
             <span class="recup-label">${U.escapeHtml(label)}</span>
             <span class="recup-value">${detail}</span>
             ${sub ? `<span class="recup-sub">${U.escapeHtml(sub)}</span>` : ''}
-        </div>`;
+        </${cle ? 'button' : 'div'}>`;
 
     /**
      * Barre d'action de la sélection.
@@ -5107,6 +5163,29 @@
 
     async function importerFichiers(files) {
         if (!files || !files.length) return;
+
+        // Un grand livre déposé dans la zone des tableaux se faisait charger
+        // comme un tableau Monday : 15 875 écritures comptables devenaient des
+        // « factures ADV ». Les zones se ressemblent, le fichier ne ment pas —
+        // on le reconnaît à ses colonnes et on l'envoie où il doit aller.
+        const restants = [];
+        for (const file of files) {
+            let entetes = null;
+            try {
+                const apercu = await lireFichier(file);
+                entetes = apercu.length ? Object.keys(apercu[0]) : null;
+            } catch { /* illisible : la suite s'en chargera */ }
+            if (entetes && GL.estComptable(GL.detecterColonnes(entetes))) {
+                U.toast(`${file.name} est un grand livre, pas un tableau Monday : il part au bon endroit.`,
+                    'info', 8000);
+                await importerGrandLivre(file);
+                continue;
+            }
+            restants.push(file);
+        }
+        if (!restants.length) return;
+        files = restants;
+
         montrerEcran('loading');
         $('#loader-log').innerHTML = '';
         statut('Lecture des fichiers');
