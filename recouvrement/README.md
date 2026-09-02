@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.10.0** — 2 septembre 2026
+**Version 2.11.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.10.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.11.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -587,6 +587,26 @@ Le montant est donc écarté des sommes ; **la facture reste comptée et
 signalée**, nommément, sous les indicateurs et en rouge dans la table. C'est à
 corriger dans Sellsy — pas à cet outil de le cacher.
 
+### Sellsy complète Monday
+
+Le rapprochement ne sert pas qu'à compter ce qui manque : il **comble les vides
+de Monday**, selon la même règle que le grand livre — jamais de remplacement,
+seulement des trous remplis.
+
+- **Montant absent ou à zéro** → le montant TTC de Sellsy. Le tableau du
+  financement personnel portait des montants à zéro : tous les indicateurs en
+  euros de la catégorie valaient zéro.
+- **Date de facture absente** → celle de Sellsy. C'est elle qui débloque le
+  calcul de l'échéance : les factures du tableau des factures payées n'ont ni
+  date de formation ni date de facture, et sortaient de tous les taux avec la
+  mention « échéance inconnue ».
+- **Aucune règle applicable** → en tout dernier recours, la date d'échéance de
+  Sellsy. Les règles de financement gardent la main partout où elles savent
+  répondre : leur échéance n'est jamais remplacée par celle de Sellsy.
+
+Les valeurs venues de Sellsy sont marquées d'un **S** dans la table des
+factures, et le compte apparaît dans la chaîne « De Monday au tableau de bord ».
+
 ### Les quatre vues
 
 - **Absentes de Monday** — émises dans Sellsy, sur aucun tableau. Ce sont
@@ -679,6 +699,25 @@ consultable dans la fiche de la facture, mais n'entre plus dans les calculs.
 L'origine de chaque date est traçable : marqueur **GL** dans
 la colonne *Paiement*, ligne « Date retenue pour le retard » dans la fiche, et
 compte-rendu du rapprochement dans l'historique des imports.
+
+### En recouvrement n'est pas la même chose que sur le tableau recouvrement
+
+Les deux se confondent facilement, et ne coïncident pas :
+
+- **sur le tableau recouvrement** : où la facture se trouve dans Monday — un
+  choix de gestion, fait à la main ;
+- **en recouvrement** : sa date d'échéance calculée est dépassée et elle n'est
+  pas réglée — un fait, recalculé à chaque arrêté.
+
+Une facture peut donc être posée sur le tableau *1.2. Entreprise -
+Recouvrement* sans être en retard : soit elle y est arrivée avant son terme,
+soit la règle de financement appliquée ne dit pas la même chose que l'ADV. Data
+Quality les liste sous **« Sur le tableau recouvrement, mais pas encore
+échue »** — la fiche de chaque facture indique sur quelle date son échéance a
+été calculée.
+
+Le filtre s'appelle **Recouvrement Corporate** et non « Recouvrement » : le
+tableau 1.2 ne suit que les entreprises, le B2C n'a pas d'équivalent.
 
 ## Indicateurs de recouvrement
 

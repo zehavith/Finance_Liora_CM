@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.10.0 — 2 septembre 2026
+   v2.11.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.10.0';
+    const VERSION = '2.11.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -287,6 +287,12 @@
         let consolidees = I.consolider(retenues);
         state.glStats = state.grandLivre.length
             ? I.appliquerGrandLivre(consolidees, state.grandLivre)
+            : null;
+
+        // L'export Sellsy comble les vides de Monday — montants à zéro, dates
+        // de facture absentes — avant tout calcul d'échéance, qui en dépend.
+        state.sellsyStats = state.sellsy.lignes.length
+            ? I.appliquerSellsy(consolidees, state.sellsy.lignes)
             : null;
 
         I.enrichir(consolidees, {
@@ -2233,7 +2239,9 @@
             { key: 'etat', label: 'État', format: v => `<span class="pill ${U.etatClass(v)}">${U.escapeHtml(v)}</span>` },
             { key: 'retardJours', label: 'Retard', align: 'right', format: v => U.pastilleRetard(v) },
             { key: 'encours', label: 'Reste dû', align: 'right', format: v => v ? U.euros(v) : '—' },
-            { key: 'montant', label: 'Montant', align: 'right', format: v => U.euros(v) },
+            { key: 'montant', label: 'Montant', align: 'right',
+              format: (v, r) => U.euros(v) + (r.montantVientDeSellsy
+                ? '<span class="calc-flag calc-gl" title="Montant absent de Monday, repris de l\'export Sellsy">S</span>' : '') },
             {
                 key: 'financement', label: 'Financement',
                 format: (v, r) => {
@@ -2244,7 +2252,12 @@
                 },
             },
             { key: 'dateFacture', label: 'Facture', align: 'center', format: U.dateFR },
-            { key: 'dateEcheance', label: 'Échéance', align: 'center', format: (v, r) => `${U.dateFR(v)}${r.echeanceOrigine === 'Règle' ? `<span class="calc-flag" title="Calculée par la règle ${U.escapeHtml(r.regleLabel)}">ƒ</span>` : ''}` },
+            { key: 'dateEcheance', label: 'Échéance', align: 'center', format: (v, r) =>
+                `${U.dateFR(v)}` + (r.echeanceOrigine === 'Règle'
+                    ? `<span class="calc-flag" title="Calculée par la règle ${U.escapeHtml(r.regleLabel)}">ƒ</span>`
+                    : r.echeanceOrigine === 'Sellsy'
+                        ? '<span class="calc-flag calc-gl" title="Aucune règle applicable : échéance reprise de l\'export Sellsy">S</span>'
+                        : '') },
             {
                 key: 'datePaiementEffective', label: 'Paiement', align: 'center',
                 format: (v, r) => {
@@ -3017,6 +3030,13 @@
         if (!state.sellsy.mapping.statut)
             notes.push(`Aucune colonne « statut » n'a été reconnue dans l'export : les statuts affichés sont `
                 + `déduits du reste dû.`);
+        const c = state.sellsyStats;
+        if (c && (c.montants || c.datesFacture))
+            notes.push(`Cet export complète Monday là où il est muet : `
+                + [c.montants ? `${U.nombre(c.montants)} montants absents ou à zéro` : '',
+                   c.datesFacture ? `${U.nombre(c.datesFacture)} dates de facture` : '']
+                    .filter(Boolean).join(' et ')
+                + ` ont été repris de Sellsy. Les valeurs déjà saisies dans Monday ne sont jamais remplacées.`);
         if (st.nbMontantAberrant)
             notes.push(`${U.nombre(st.nbMontantAberrant)} facture${st.nbMontantAberrant > 1 ? 's' : ''} de `
                 + `l'export porte${st.nbMontantAberrant > 1 ? 'nt' : ''} un montant aberrant `
@@ -3285,13 +3305,20 @@
                 ignorees: lu.ignorees, nomFichier: file.name, date: new Date().toISOString(),
             };
             await sauverSellsy();
-            recalculerSellsy();
-            rendreTout();
+            // Recalcul complet : l'export ne sert pas qu'au contrôle, il comble
+            // aussi les montants et les dates manquants de Monday.
+            recalculer({ conserverPeriode: true });
 
-            const st = state.sellsyResultat.stats;
-            U.toast(`Export Sellsy intégré : ${U.nombre(st.nbSellsy)} factures lues, `
-                + `${U.nombre(st.nbAbsentes)} absentes de Monday `
-                + `(${U.euros(st.eurosAbsentes)}).`, st.nbAbsentes ? 'error' : 'success', 10000);
+            const st = state.sellsyResultat ? state.sellsyResultat.stats : null;
+            const c = state.sellsyStats || {};
+            const complements = [
+                c.montants ? `${U.nombre(c.montants)} montants` : '',
+                c.datesFacture ? `${U.nombre(c.datesFacture)} dates de facture` : '',
+            ].filter(Boolean).join(' et ');
+            U.toast(`Export Sellsy intégré : ${U.nombre(state.sellsy.lignes.length)} factures lues`
+                + (st ? `, ${U.nombre(st.nbAbsentes)} absentes de Monday (${U.euros(st.eurosAbsentes)})` : '')
+                + (complements ? `. ${complements} complétés dans Monday` : '') + '.',
+                st && st.nbAbsentes ? 'error' : 'success', 11000);
         } catch (e) {
             U.toast(e.message, 'error', 9000);
         }
@@ -3652,7 +3679,32 @@
                           ? `technique, archive, corbeille — dont ${U.nombre(ignorees)} lignes de tableaux de sous-éléments, qui ne sont pas des factures`
                           : 'technique, archive, corbeille' })
             + ligne({ signe: '=', label: 'Factures analysées', nb: analysees, fort: true,
-                      note: 'ce que comptent les indicateurs, avant filtres de période et de source' });
+                      note: 'ce que comptent les indicateurs, avant filtres de période et de source' })
+            + ligneSellsyComplement();
+    }
+
+    /**
+     * Ce que l'export Sellsy a comblé dans Monday.
+     *
+     * La chaîne dit d'où viennent les factures ; cette ligne dit ce qui, dans
+     * ces factures, ne venait pas de Monday. Sans elle, un montant apparu de
+     * nulle part serait incompréhensible.
+     */
+    function ligneSellsyComplement() {
+        const c = state.sellsyStats;
+        if (!c || !c.rapprochees) return '';
+        const details = [
+            c.montants ? `${U.nombre(c.montants)} montants absents ou à zéro` : '',
+            c.datesFacture ? `${U.nombre(c.datesFacture)} dates de facture` : '',
+        ].filter(Boolean).join(', ');
+        return `
+            <div class="chaine-ligne chaine-retrait">
+                <span class="chaine-signe">+</span>
+                <span class="chaine-label">Complétées par l'export Sellsy</span>
+                <span class="chaine-nb">${U.nombre(c.montants + c.datesFacture)}</span>
+                <span class="chaine-note">${U.nombre(c.rapprochees)} factures retrouvées dans Sellsy${
+                    details ? ' — ' + U.escapeHtml(details) + ' repris de la facturation' : ''}</span>
+            </div>`;
     }
 
     /**

@@ -698,6 +698,60 @@
     }
 
     /**
+     * Complète les factures Monday avec l'export Sellsy.
+     *
+     * Sellsy est le logiciel de facturation : il porte le montant, la date de
+     * facture et la date d'échéance de chaque facture émise. Monday, lui, est
+     * saisi à la main et laisse des trous — le tableau des factures payées ne
+     * reprend qu'un numéro et un règlement, et le tableau du financement
+     * personnel porte des montants à zéro parce que le prix est ailleurs.
+     *
+     * Ce complément suit la même règle que le grand livre : il ne remplace
+     * jamais une valeur présente, il ne remplit que les vides. Et il ne touche
+     * pas au calcul de l'échéance — les règles de financement font foi. La date
+     * d'échéance Sellsy est seulement mise de côté, pour servir de dernier
+     * recours aux factures dont aucune règle ne peut calculer l'échéance.
+     *
+     * @param {Array} factures  factures consolidées
+     * @param {Array} lignes    lignes issues de LioraSellsy.lireExport()
+     * @returns {{rapprochees:number, montants:number, datesFacture:number,
+     *            echeancesDisponibles:number}}
+     */
+    function appliquerSellsy(factures, lignes) {
+        const vide = { rapprochees: 0, montants: 0, datesFacture: 0, echeancesDisponibles: 0 };
+        if (!lignes || !lignes.length) return vide;
+
+        const index = new Map();
+        for (const l of lignes) if (l.cle && !index.has(l.cle)) index.set(l.cle, l);
+
+        const st = { ...vide };
+        for (const f of factures) {
+            if (!f.cle) continue;
+            const l = index.get(f.cle);
+            if (!l) continue;
+            st.rapprochees++;
+            f.sellsy = true;
+            f.statutSellsy = l.statutLabel;
+
+            // Un montant à zéro n'est pas un montant : sur le tableau du
+            // financement personnel, toutes les factures en portaient un, et
+            // tous les indicateurs en euros de la catégorie valaient zéro.
+            if ((f.montant == null || f.montant === 0) && l.montant && !l.montantAberrant) {
+                f.montant = l.montant;
+                f.montantVientDeSellsy = true;
+                st.montants++;
+            }
+            if (!f.dateFacture && l.dateFacture) {
+                f.dateFacture = l.dateFacture;
+                f.dateFactureVientDeSellsy = true;
+                st.datesFacture++;
+            }
+            if (l.dateEcheance) { f.echeanceSellsy = l.dateEcheance; st.echeancesDisponibles++; }
+        }
+        return st;
+    }
+
+    /**
      * Calcule échéance, retard et état pour chaque facture.
      * @param {Date} dateRef  date d'arrêté
      */
@@ -764,6 +818,17 @@
             const ech = R.computeEcheance(f, { rules: o.rules, prefereEcheanceMonday: o.prefereEcheanceMonday });
             f.dateEcheance = ech.date;
             f.echeanceOrigine = ech.origine;
+
+            // Dernier recours : l'échéance portée par Sellsy. Elle n'intervient
+            // que là où aucune règle n'a pu calculer — une facture réglée avant
+            // l'entrée dans le circuit ne porte ni date de formation, ni parfois
+            // de date de facture, et sortait de tous les taux. Les règles de
+            // financement gardent la main partout où elles savent répondre.
+            if (!f.dateEcheance && f.echeanceSellsy) {
+                f.dateEcheance = f.echeanceSellsy;
+                f.echeanceOrigine = 'Sellsy';
+                f.echeanceBase = 'dateEcheanceSellsy';
+            }
             f.echeanceBase = ech.baseUtilisee;
             f.regleLabel = ech.regle.label;
             f.regleNote = ech.regle.note;
@@ -849,6 +914,6 @@
         FIELD_DEFS, FIELD_BY_NAME, autoMapColumns, parseMontant, factureKey,
         buildFacture, facturesFromMondayBoard, facturesFromRows, colonnesQualification,
         validerMapping, couvertureMapping, verifierValeurs, colonnesCandidates,
-        consolider, appliquerGrandLivre, enrichir, statutIndiquePaye,
+        consolider, appliquerGrandLivre, appliquerSellsy, enrichir, statutIndiquePaye,
     };
 })(window);

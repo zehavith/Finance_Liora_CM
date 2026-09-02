@@ -1142,6 +1142,19 @@
             + "Renseigner « Type de client » sur ces factures les répartirait entre "
             + "B2B et B2C-Entreprise.");
 
+        // Une facture posée sur le tableau de recouvrement dont l'échéance n'est
+        // pas passée n'est pas en retard : les deux notions sont indépendantes.
+        // C'est soit une facture arrivée trop tôt sur le tableau, soit une règle
+        // d'échéance qui ne dit pas la même chose que l'ADV — dans les deux cas,
+        // quelque chose à trancher, pas un chiffre à ignorer.
+        push('RECOUV_NON_ECHUE', "Sur le tableau recouvrement, mais pas encore échue", 'moyenne',
+            factures.filter(f => f.etat === 'Non échue'
+                && ((f.presenceRoles || [f.role]).includes('recouvrement'))),
+            "Le tableau dit « à recouvrer », l'échéance calculée dit « pas encore due ». "
+            + "Soit la facture est arrivée sur le tableau avant son terme, soit la règle de "
+            + "financement appliquée n'est pas la bonne — la fiche de chaque facture indique "
+            + "sur quelle date son échéance a été calculée.");
+
         push('MONTANT', "Montant absent ou nul", 'haute',
             factures.filter(f => f.montant == null || f.montant === 0),
             "Sans montant, la facture ne pèse pas dans les indicateurs en euros.");

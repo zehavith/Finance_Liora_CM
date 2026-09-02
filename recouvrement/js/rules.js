@@ -304,7 +304,9 @@
 
     /** Sources de retard, utilisées pour les chips de filtrage du dashboard. */
     const SOURCES = [
-        { key: 'recouvrement', label: 'Recouvrement',  hint: 'Tableau 1.2 — recouvrement Corporate' },
+        // « Recouvrement » seul laissait croire à un circuit unique : le tableau
+        // 1.2 ne suit que les entreprises, le B2C n'a pas d'équivalent.
+        { key: 'recouvrement', label: 'Recouvrement Corporate', hint: 'Tableau 1.2 — recouvrement Corporate' },
         { key: 'adv',          label: 'ADV / Tampon',  hint: 'Tableaux 1.0 et 1.1 — retard côté ADV' },
         { key: 'opco',         label: 'OPCO',          hint: 'Tableau 1.3 — pas de recouvrement, suivi du retard' },
         { key: 'b2c',          label: 'B2C',           hint: 'Tableaux 2.x — pas de tableau recouvrement dédié' },
