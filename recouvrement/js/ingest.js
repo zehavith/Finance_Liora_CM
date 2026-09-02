@@ -54,6 +54,13 @@
         { field: 'statut',               label: 'Statut',                 aliases: ['statut', 'status', 'etat', 'statut facture', 'statut de la facture'] },
         { field: 'proprietaire',         label: 'Propriétaire',           aliases: ['proprietaire', 'owner', 'responsable', 'charge de recouvrement', 'charge d affaire', 'gestionnaire', 'personne'] },
         { field: 'groupeOrigine',        label: 'Groupe d’origine',  aliases: ['groupe', 'grp', 'group', 'groupe d origine', 'tableau d origine', 'origine'] },
+        // « Qualification recouvrement avec basculement » est la colonne que
+        // l'équipe renseigne à la main sur le tableau 1.2 : c'est elle qui dit
+        // où en est le dossier — en cours de traitement, permission de payer en
+        // plusieurs fois, à déposer sur plateforme, pas de contact adéquat. Le
+        // groupe Monday, lui, ne dit que l'étape du circuit. Champ distinct
+        // pour que l'un ne se substitue pas à l'autre.
+        { field: 'qualifBascule',        label: 'Qualification recouvrement (avec basculement)', aliases: ['qualification recouvrement avec basculement', 'qualif recouvrement avec basculement', 'qualification avec basculement', 'qualification recouv basculement'] },
         { field: 'qualifRecouvrement',   label: 'Qualification recouvrement', aliases: ['qualification recouvrement', 'qualif recouvrement', 'recouvrement', 'statut recouvrement'] },
         { field: 'relance',              label: 'Relances',               aliases: ['relance', 'nb relance', 'nombre de relances', 'derniere relance', 'date de relance'] },
         { field: 'commentaire',          label: 'Commentaire',            aliases: ['commentaire', 'commentaires', 'note', 'notes', 'observation'] },
@@ -274,6 +281,7 @@
         if (!finKey) finKey = ctx.financementDefaut || null;
 
         const qualifRecouvrement = String(v.qualifRecouvrement || '').trim();
+        const qualifBascule = String(v.qualifBascule || '').trim();
         const datePaiement = R.parseDate(v.datePaiement);
         const dateControlePaiement = R.parseDate(v.dateControlePaiement);
 
@@ -314,8 +322,11 @@
             // au filtrage — mais elle reste une colonne de vocabulaire métier :
             // on la verse aussi dans les qualifications pour qu'elle apparaisse
             // dans l'inventaire et dans les statistiques de répartition.
-            qualifs: qualifRecouvrement
-                ? { 'Qualification recouvrement': qualifRecouvrement, ...(v.__qualifs || {}) }
+            qualifBascule,
+            qualifs: qualifRecouvrement || qualifBascule
+                ? { ...(qualifRecouvrement ? { 'Qualification recouvrement': qualifRecouvrement } : {}),
+                    ...(qualifBascule ? { 'Qualification recouvrement avec basculement': qualifBascule } : {}),
+                    ...(v.__qualifs || {}) }
                 : (v.__qualifs || {}),
             statut: String(v.statut || '').trim(),
             proprietaire: String(v.proprietaire || '').trim() || '—',
@@ -537,7 +548,7 @@
         // Champs conservés depuis la source la plus riche (non vide gagne)
         const champs = ['client', 'financement', 'financementBrut', 'typeClient', 'montant', 'montantHT', 'montantRegle',
             'resteDu', 'dateFacture', 'dateDebutFormation', 'dateFinFormation', 'dateEcheanceSource',
-            'datePaiement', 'dateControlePaiement', 'statut', 'proprietaire', 'qualifRecouvrement',
+            'datePaiement', 'dateControlePaiement', 'statut', 'proprietaire', 'qualifRecouvrement', 'qualifBascule',
             'relance', 'commentaire', 'litige', 'groupeOrigine'];
         // Les qualifications de chaque source se cumulent : une facture vue sur
         // deux tableaux porte les colonnes de qualification des deux.

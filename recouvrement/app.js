@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.17.0 — 2 septembre 2026
+   v2.18.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.17.0';
+    const VERSION = '2.18.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -1046,8 +1046,12 @@
                        labelFn: k => (k === '—' ? 'Échéance inconnue' : U.moisLabel(k)) },
         client:      { key: 'client',      titre: 'Client',      fn: f => f.client || '—' },
         proprietaire:{ key: 'proprietaire', titre: 'Propriétaire', fn: f => f.proprietaire || '—' },
-        etape:       { key: 'etape',       titre: 'Étape',       fn: f => f.etape || 'AUTRE',
-                       labelFn: (k, f) => (f && f.etapeLabel) || k },
+        // « Étape » ne se lit pas dans le groupe Monday mais dans la colonne
+        // « Qualification recouvrement avec basculement », que l'équipe
+        // renseigne dossier par dossier. Le groupe reste disponible sous sa
+        // propre dimension : les deux ne disent pas la même chose.
+        etape:       { key: 'etape',       titre: 'Qualification recouvrement',
+                       fn: f => f.qualifBascule || f.qualifRecouvrement || '(non qualifiée)' },
     };
 
     function rendreRepartition(data) {
