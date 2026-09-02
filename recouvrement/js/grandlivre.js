@@ -58,6 +58,11 @@
         solde:        ['solde', 'solde progressif'],
         tiers:        ['tiers', 'nom du tiers', 'client', 'raison sociale'],
         dateEcheance: ['date d echeance', 'date echeance', 'echeance'],
+        // La date à laquelle l'écriture est entrée en comptabilité. Dernier
+        // recours pour dater une créance : le classeur s'en sert quand ni la
+        // facturation ni le libellé ne donnent de date.
+        dateEnregistrement: ['date d enregistrement', 'date enregistrement',
+                             'date de saisie', 'date de creation'],
         // Le libellé de ligne porte souvent le numéro de facture que la colonne
         // dédiée laisse vide : sur un extrait réel, il en révèle 5 862 de plus
         // que les 3 756 déjà nommées, soit deux fois et demie plus.
@@ -307,7 +312,8 @@
             const aNouveau = /^an/i.test(String(col(r, 'journal') || '').trim())
                 || /report a nouveau|a nouveaux?/.test(R.norm(col(r, 'libelle')));
             const date = (aNouveau && dateTexte) ? dateTexte
-                : (R.parseDate(col(r, 'date')) || dateTexte);
+                : (R.parseDate(col(r, 'date')) || dateTexte
+                   || R.parseDate(col(r, 'dateEnregistrement')));
 
             // Le numéro porté par sa colonne d'abord ; à défaut, celui que cite
             // le libellé — c'est ainsi que se rattache un règlement bancaire.
@@ -781,11 +787,13 @@
         // L'e-mail est la clé sûre — c'est celle du classeur de trésorerie — le
         // nom ne sert qu'à défaut, car il s'écrit de dix façons d'un fichier à
         // l'autre. Le préfixe « @ » évite qu'un nom et un e-mail se confondent.
-        const mandats = new Set();
+        const mandats = new Map();
         for (const m of (o.mandats || [])) {
-            if (m.email) mandats.add('@' + String(m.email).trim().toLowerCase());
+            const v = { etat: m.etatMandat || '', preleve: m.montantPreleve || 0,
+                        nb: m.nbPrelevements || 0 };
+            if (m.email) mandats.set('@' + String(m.email).trim().toLowerCase(), v);
             const nom = R.norm(m.client || m.nom || '');
-            if (nom) mandats.add(nom);
+            if (nom && !mandats.has(nom)) mandats.set(nom, v);
         }
         return { parCle, parSellsy, parCompte, parTiers, brutSellsy, datesSellsy, mandats, noter };
     }
@@ -874,13 +882,18 @@
             if (!d && !type) return c;
             const email = (d && d.email) ? '@' + d.email : '';
             const nom = R.norm((d && d.client) || c.tiers || '');
+            const gcl = (email && idx.mandats.get(email)) || (nom && idx.mandats.get(nom)) || null;
             return {
                 ...c,
                 typeClientSellsy: type || c.typeClientSellsy,
                 dateDebutFormation: (d && d.debut) || c.dateDebutFormation || null,
                 dateFinFormation: (d && d.fin) || c.dateFinFormation || null,
-                mandatGocardless: (!!email && idx.mandats.has(email))
-                    || (!!nom && idx.mandats.has(nom)),
+                // Le mandat change la règle d'échéance ; le montant prélevé dit
+                // ce qui est déjà rentré par ce canal, rejets exclus.
+                mandatGocardless: !!(gcl && gcl.etat),
+                etatMandat: gcl ? gcl.etat : '',
+                montantPreleve: gcl ? gcl.preleve : 0,
+                nbPrelevements: gcl ? gcl.nb : 0,
             };
         };
 

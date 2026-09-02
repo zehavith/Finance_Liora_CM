@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.30.0** — 2 septembre 2026
+**Version 2.31.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.30.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.31.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -884,6 +884,21 @@ livre comme elles l'étaient déjà aux factures Monday. Deux clés servent au
 rapprochement : le numéro Sellsy, et le **numéro Zoho** que l'export Sellsy
 porte en regard. Les factures *FA-…* ne sont plus émises mais vivent encore au
 grand livre : c'est par cette seconde clé qu'on retrouve leurs dates.
+
+#### Ce que le prélèvement a réellement rapporté
+
+Deux calculs du classeur portent sur GoCardless, et l'application les fait
+maintenant tous les deux :
+
+- **l'état du mandat**, qui change la règle d'échéance — sous mandat, l'argent
+  est appelé, l'échéance est la fin de la formation sans délai ;
+- **la somme des prélèvements réellement sortis**, statut `paid_out`. Un
+  prélèvement rejeté n'est pas de l'argent rentré et ne compte pas.
+
+Le rattachement se fait par **e-mail** — facture → ligne de facturation →
+client GoCardless — comme dans le classeur. Le nom ne sert qu'à défaut : il
+s'écrit de dix façons d'un fichier à l'autre, l'e-mail non. Les deux valeurs
+apparaissent dans le détail d'une ligne de la balance et dans l'export.
 
 ### Les paiements suivent leur facture
 

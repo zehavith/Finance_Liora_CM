@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.30.0 — 2 septembre 2026
+   v2.31.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.30.0';
+    const VERSION = '2.31.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -2378,7 +2378,7 @@
             // Les mandats de prélèvement, ramenés au nom du client : chez un
             // client sous mandat l'argent est appelé, donc l'échéance est la
             // fin de la formation, sans délai de paiement.
-            mandats: clientsSousMandat(),
+            mandats: clientsGocardless(),
             factures: state.factures,
             sellsy: lignesFacturation(),
             historique: state.grandLivre,
@@ -2404,19 +2404,53 @@
             monday.map(m => ({ cle: m.key, label: m.label, total: m.total, nb: m.nb })), state.rules);
     }
 
-    /** Les clients qui ont au moins un mandat de prélèvement, par leur nom. */
-    function clientsSousMandat() {
+    /**
+     * Les clients GoCardless, avec leur mandat et ce qui a réellement été
+     * prélevé chez eux.
+     *
+     * Le classeur de trésorerie fait deux calculs sur ces fichiers : l'état du
+     * mandat — qui change la règle d'échéance — et la somme des prélèvements
+     * effectivement sortis, statut « paid_out ». Un prélèvement rejeté n'est
+     * pas de l'argent rentré, et ne compte donc pas.
+     */
+    function clientsGocardless() {
         const g = state.gcl || {};
-        if (!g.mandats || !g.mandats.length) return [];
-        const parId = new Map((g.clients || []).map(c => [c.id, c]));
-        const noms = [];
-        for (const m of g.mandats) {
-            const c = parId.get(m.clientId);
-            if (!c) continue;
-            const nom = c.nomComplet || [c.prenom, c.nom].filter(Boolean).join(' ').trim();
-            if (nom || c.email) noms.push({ client: nom, email: c.email || '' });
+        if (!g.clients || !g.clients.length) return [];
+        const parId = new Map(g.clients.map(c => [c.id, c]));
+        const mandatParId = new Map((g.mandats || []).map(m => [m.id, m]));
+
+        // Le client d'un paiement, directement ou par son mandat.
+        const clientDe = p => {
+            if (p.clientId && parId.has(p.clientId)) return p.clientId;
+            const m = p.mandatId ? mandatParId.get(p.mandatId) : null;
+            return (m && m.clientId) || null;
+        };
+
+        const paye = new Map(), nbPaye = new Map();
+        for (const p of (g.paiements || [])) {
+            if (String(p.statutBrut || '').trim().toLowerCase() !== 'paid_out') continue;
+            const id = clientDe(p);
+            if (!id) continue;
+            paye.set(id, (paye.get(id) || 0) + (p.montant || 0));
+            nbPaye.set(id, (nbPaye.get(id) || 0) + 1);
         }
-        return noms;
+        const etat = new Map();
+        for (const m of (g.mandats || [])) {
+            if (m.clientId && !etat.has(m.clientId)) etat.set(m.clientId, m.statut || 'actif');
+        }
+
+        const out = [];
+        for (const c of g.clients) {
+            const nom = c.nomComplet || [c.prenom, c.nom].filter(Boolean).join(' ').trim();
+            if (!nom && !c.email) continue;
+            out.push({
+                client: nom, email: c.email || '',
+                etatMandat: etat.get(c.id) || '',
+                montantPreleve: paye.get(c.id) || 0,
+                nbPrelevements: nbPaye.get(c.id) || 0,
+            });
+        }
+        return out;
     }
 
     function rendreAgingSource() {
@@ -2900,6 +2934,9 @@
                 { key: 'retardJours', label: 'Retard', align: 'right', format: U.pastilleRetard },
                 { key: 'dateEcheance', label: 'Échéance', align: 'center', format: U.dateFR },
                 { key: 'origineClassement', label: 'Classé par', format: v => U.escapeHtml(v || '—') },
+                { key: 'montantPreleve', label: 'Prélevé', align: 'right',
+                  title: 'Somme des prélèvements GoCardless réellement sortis chez ce client — rejets exclus',
+                  format: (v, r) => v ? `${U.euros(v)}<span class="fv-hint"> · ${U.nombre(r.nbPrelevements)}</span>` : '—' },
             ], liste, { vide: 'Aucune créance.' }),
             [{ label: 'Fermer', primary: true }]);
     }
@@ -3089,6 +3126,9 @@
                 'Échéance': c.dateEcheance ? U.dateFR(c.dateEcheance) : '',
                 'Jours de retard': retard == null ? '' : retard,
                 'Tranche': ((R.bucketFor(retard) || {}).label) || '',
+                'Mandat de prélèvement': c.etatMandat || '',
+                'Prélevé (paid_out)': c.montantPreleve ? arrondi(c.montantPreleve) : '',
+                'Nb de prélèvements': c.nbPrelevements || '',
                 'Numéro lu dans le libellé': c.numeroExtrait ? 'oui' : '',
             };
         };
