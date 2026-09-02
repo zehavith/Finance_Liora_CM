@@ -93,11 +93,29 @@
     const EST_FACTURE = /^(fact|fct|fa)[-_ ]?/i;
     const EST_AVOIR = /^(avr|av|avo)[-_ ]?/i;
 
-    /** La lettre de lettrage, débarrassée des flèches d'état de Pennylane. */
+    /**
+     * La lettre de lettrage, débarrassée des flèches d'état de Pennylane.
+     *
+     * La casse est conservée : Pennylane émet aussi bien « a » que « A », et ce
+     * sont deux codes différents. Les confondre fusionnerait deux lettrages
+     * sans rapport, dont les débits et crédits s'équilibreraient par accident.
+     */
     function lettreDe(valeur) {
-        const s = String(valeur == null ? '' : valeur).replace(/[^A-Za-z0-9]/g, '').trim();
-        return s ? s.toUpperCase() : '';
+        return String(valeur == null ? '' : valeur).replace(/[^A-Za-z0-9]/g, '').trim();
     }
+
+    /**
+     * Clé du pool non lettré d'un compte.
+     *
+     * Une écriture sans lettre n'est rattachée à aucune facture en particulier,
+     * mais elle pèse bel et bien sur le compte : c'est même toute la matière
+     * d'un extrait « non lettré », où les créances vivantes n'ont par
+     * définition pas encore été rapprochées. Les écarter, comme le faisait la
+     * première version, revenait à ne rien trouver dans le fichier fait pour
+     * les montrer. Elles sont donc regroupées par compte — le solde non lettré
+     * du client, au sens comptable.
+     */
+    const POOL_NON_LETTRE = '(non lettré)';
 
     function nombre(valeur) {
         const v = I.parseMontant(valeur);
@@ -138,15 +156,17 @@
             const numero = String(col(r, 'numero') || '').trim();
             const date = R.parseDate(col(r, 'date'));
 
-            // Sans lettrage, l'écriture n'est rattachée à rien : elle ne peut ni
-            // solder une facture ni en désigner une. Elle est comptée pour que
-            // le total du fichier reste vérifiable.
-            if (!lettre || !compte) { ignorees++; continue; }
+            // Sans compte, l'écriture n'appartient à personne : rien à en tirer.
+            // Sans lettre, en revanche, elle rejoint le pool non lettré de son
+            // compte — c'est là que vivent les créances non encore rapprochées.
+            if (!compte) { ignorees++; continue; }
+            const groupe = lettre || POOL_NON_LETTRE;
 
-            const cle = compte + '|' + lettre;
+            const cle = compte + '|' + groupe;
             let g = groupes.get(cle);
             if (!g) {
-                g = { cle, compte, lettre, tiers: '', debit: 0, credit: 0,
+                g = { cle, compte, lettre: groupe, nonLettre: !lettre,
+                      tiers: '', debit: 0, credit: 0,
                       factures: [], avoirs: [], reglements: [] };
                 groupes.set(cle, g);
             }

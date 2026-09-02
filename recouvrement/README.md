@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.14.0** — 2 septembre 2026
+**Version 2.15.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.14.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.15.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -751,6 +751,20 @@ Le grand livre complète aussi les vides, comme Sellsy : montant comptabilisé e
 date de facture là où le tableau est muet. La comptabilité restant plus fiable
 que la saisie, **une date lettrée remplace celle de Monday**, qui est conservée
 dans la fiche pour référence.
+
+#### Les écritures non lettrées
+
+Une écriture sans lettre n'est rattachée à aucune facture en particulier, mais
+elle pèse bel et bien sur le compte — et c'est même toute la matière d'un
+extrait **non lettré**, où les créances vivantes n'ont par définition pas encore
+été rapprochées. Elles sont regroupées **par compte client** : le solde non
+lettré du client, au sens comptable. Un crédit qui excède les débits y apparaît
+en négatif, comme un client en avance de règlement.
+
+La **casse du code de lettrage est conservée** : Pennylane émet aussi bien
+« a » que « A », et ce sont deux codes différents. Les confondre fusionnerait
+deux lettrages sans rapport, dont les débits et crédits s'équilibreraient par
+accident.
 
 Un fichier simple « numéro de facture + date de règlement » reste accepté : il
 est reconnu à l'absence de colonnes de lettrage et de débit/crédit.
