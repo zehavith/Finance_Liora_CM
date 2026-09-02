@@ -88,6 +88,10 @@
     const ALIAS_SELLSY = {
         numero:     ['numero', 'num', 'reference', 'ref', 'numero de document', 'document', 'piece'],
         client:     ['client', 'tiers', 'societe', 'nom du tiers', 'raison sociale'],
+        // L'e-mail joint la facturation aux prélèvements : c'est la clé du
+        // classeur de trésorerie pour retrouver le mandat GoCardless d'un
+        // client, et elle ne souffre pas des variantes d'orthographe d'un nom.
+        email:      ['email client', 'e mail client', 'email', 'e mail', 'courriel'],
         montant:    ['montant ttc', 'total ttc', 'ttc', 'montant', 'total'],
         montantHT:  ['montant ht', 'total ht', 'ht'],
         resteDu:    ['montant du ttc', 'montant du', 'restant du', 'reste du', 'reste a payer', 'solde du', 'solde'],
@@ -187,6 +191,7 @@
 
             lignes.push({
                 cle, numero, cleZoho, numeroZoho,
+                email: mapping.email ? String(r[mapping.email] || '').trim().toLowerCase() : '',
                 client: mapping.client ? String(r[mapping.client] || '').trim() : '',
                 montant,
                 montantHT: mapping.montantHT ? I.parseMontant(r[mapping.montantHT]) : null,

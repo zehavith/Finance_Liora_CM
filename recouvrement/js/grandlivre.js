@@ -730,11 +730,12 @@
             // retrouve leurs dates de formation.
             const cles = [l.cle, l.cleZoho].filter(Boolean);
             if (!cles.length) continue;
-            const dates = (l.dateDebutService || l.dateFinService || l.dateFacture) ? {
+            const dates = (l.dateDebutService || l.dateFinService || l.dateFacture || l.email) ? {
                 debut: l.dateDebutService || null,
                 fin: l.dateFinService || null,
                 facture: l.dateFacture || null,
                 client: l.client || '',
+                email: l.email || '',
             } : null;
             for (const k of cles) {
                 if (l.typeClient && !brutSellsy.has(k)) brutSellsy.set(k, l.typeClient);
@@ -743,8 +744,12 @@
         }
         // Les clients sous mandat de prélèvement : chez eux l'argent est appelé
         // à la fin de la formation, sans délai de paiement.
+        // L'e-mail est la clé sûre — c'est celle du classeur de trésorerie — le
+        // nom ne sert qu'à défaut, car il s'écrit de dix façons d'un fichier à
+        // l'autre. Le préfixe « @ » évite qu'un nom et un e-mail se confondent.
         const mandats = new Set();
         for (const m of (o.mandats || [])) {
+            if (m.email) mandats.add('@' + String(m.email).trim().toLowerCase());
             const nom = R.norm(m.client || m.nom || '');
             if (nom) mandats.add(nom);
         }
@@ -833,13 +838,15 @@
             const d = c.cle ? idx.datesSellsy.get(c.cle) : null;
             const type = c.cle ? idx.brutSellsy.get(c.cle) : null;
             if (!d && !type) return c;
+            const email = (d && d.email) ? '@' + d.email : '';
             const nom = R.norm((d && d.client) || c.tiers || '');
             return {
                 ...c,
                 typeClientSellsy: type || c.typeClientSellsy,
                 dateDebutFormation: (d && d.debut) || c.dateDebutFormation || null,
                 dateFinFormation: (d && d.fin) || c.dateFinFormation || null,
-                mandatGocardless: nom ? idx.mandats.has(nom) : false,
+                mandatGocardless: (!!email && idx.mandats.has(email))
+                    || (!!nom && idx.mandats.has(nom)),
             };
         };
 
