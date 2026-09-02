@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.1.0** — 2 septembre 2026
+**Version 2.2.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.1.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.2.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -623,6 +623,28 @@ le signale alors au lieu d'afficher un trompeur 0 %.
 
 La ligne *Total* reprend l'ensemble du portefeuille filtré. Un clic sur une
 ligne bascule vers l'onglet *Factures* avec le financement déjà filtré.
+
+### Les créances anciennes finissent-elles par rentrer ?
+
+Le graphique juxtaposait deux séries que rien ne rend comparables : l'une porte
+sur des factures encore dues, dont le retard court toujours, l'autre sur des
+factures réglées, dont le retard est définitif. Deux hauteurs côte à côte, deux
+significations — la lecture était impossible.
+
+La question tient en une phrase : parmi les factures ayant atteint tel niveau
+d'ancienneté, quelle part a fini par rentrer ? Chaque tranche est donc ramenée à
+cent pour cent et se lit de haut en bas — vert, ce qui est rentré ; rouge, ce qui
+est toujours dû. Les montants et les nombres restent en info-bulle, et un clic
+ouvre les factures de la tranche.
+
+### Filtrer par financement
+
+Le filtre existait dans le moteur mais ne s'atteignait qu'en cliquant une ligne
+du tableau des catégories : il fallait deviner qu'il était là. Il prend sa place
+dans la barre de filtres, sous forme de puces. Le premier clic **isole** le
+dispositif choisi plutôt que d'en retirer un parmi quatorze ; *Tous* rétablit
+l'ensemble. Seuls les six principaux sont montrés, les autres à la demande, pour
+que la barre ne devienne pas plus haute que les graphiques qu'elle surplombe.
 
 ### Le fil du tableau de bord
 

@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.1.0 — 2 septembre 2026
+   v2.2.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.1.0';
+    const VERSION = '2.2.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -343,6 +343,82 @@
         rendreTout();
     }
 
+    /**
+     * Puces de financement.
+     *
+     * Le filtre existait dans le moteur, atteignable seulement en cliquant une
+     * ligne du tableau des catégories : il fallait deviner qu'il était là. Il
+     * prend sa place dans la barre de filtres, avec les autres.
+     */
+    function rendreChipsFinancements() {
+        const c = $('#chips-financements');
+        if (!c) return;
+        const sel = state.filtres.financements;
+
+        // Les dispositifs réellement présents, les plus gros d'abord : une puce
+        // pour un financement absent du portefeuille n'apprend rien.
+        const compte = new Map();
+        for (const f of state.factures) {
+            if (f.role === 'technique' || f.groupeTechnique || f.role === 'ignore') continue;
+            const k = f.financement || 'INCONNU';
+            compte.set(k, (compte.get(k) || 0) + 1);
+        }
+        const cles = [...compte.keys()].sort((a2, b2) => compte.get(b2) - compte.get(a2));
+
+        // Quatorze dispositifs feraient une barre de filtres plus haute que les
+        // graphiques qu'elle surplombe : seuls les principaux sont montrés, les
+        // autres à la demande — et ceux qui sont sélectionnés restent visibles.
+        const MAX = 6;
+        const tousVisibles = state.ui.finChipsTout
+            || cles.length <= MAX + 1
+            || (sel && sel.size && cles.slice(MAX).some(k => sel.has(k)));
+        const montres = tousVisibles ? cles : cles.slice(0, MAX);
+
+        c.innerHTML = '';
+        for (const k of montres) {
+            const regle = R.getRule(k, state.rules);
+            const b = document.createElement('button');
+            const actif = !sel || !sel.size || sel.has(k);
+            b.className = 'chip chip-fin' + (actif ? ' active' : '');
+            b.title = regle.note || regle.label;
+            b.innerHTML = `${U.escapeHtml(regle.label)}<span class="chip-count">${U.nombre(compte.get(k))}</span>`;
+            b.addEventListener('click', () => {
+                // Partir de « tout » : le premier clic isole le dispositif
+                // choisi, plutôt que de retirer une puce parmi quatorze.
+                let set = state.filtres.financements;
+                if (!set || !set.size) set = new Set([k]);
+                else if (set.has(k)) { set.delete(k); if (!set.size) set = null; }
+                else set.add(k);
+                state.filtres.financements = set;
+                state.ui.page = 1;
+                rendreTout();
+            });
+            c.appendChild(b);
+        }
+
+        if (!tousVisibles || (state.ui.finChipsTout && cles.length > MAX)) {
+            const plus = document.createElement('button');
+            plus.className = 'chip chip-plus';
+            plus.textContent = state.ui.finChipsTout
+                ? '− réduire'
+                : `+ ${U.nombre(cles.length - MAX)} autres`;
+            plus.addEventListener('click', () => {
+                state.ui.finChipsTout = !state.ui.finChipsTout;
+                rendreChipsFinancements();
+            });
+            c.appendChild(plus);
+        }
+        if (sel && sel.size) {
+            const raz = document.createElement('button');
+            raz.className = 'chip chip-plus';
+            raz.textContent = 'Tous';
+            raz.addEventListener('click', () => {
+                state.filtres.financements = null; state.ui.page = 1; rendreTout();
+            });
+            c.appendChild(raz);
+        }
+    }
+
     function rendreChipsSources() {
         const c = $('#chips-sources');
         if (!c) return;
@@ -464,6 +540,7 @@
     function rendreTout() {
         const data = facturesFiltrees();
         rendreChipsSources();
+        rendreChipsFinancements();
         rendreChipsEtats();
         rendreFiltresActifs();
         majBadgesPeriode(data);
@@ -1156,63 +1233,6 @@
         });
     }
 
-    function rendreChartHistoRetards(data) {
-        const eur = state.ui.histoUnite === 'euros';
-        const rows = X.histogrammeRetards(data);
-        const total = X.sum(rows, r => (eur ? r.eurImpayees + r.eurPayees : r.nbImpayees + r.nbPayees));
-        if (!total) { U.chart('chart-histo-retards', videConfig('Aucun retard sur ce périmètre')); return; }
-
-        const fmt = eur ? U.eurosCourt : U.nombre;
-
-        U.chart('chart-histo-retards', {
-            type: 'bar',
-            data: {
-                labels: rows.map(r => r.label),
-                datasets: [
-                    {
-                        label: 'Encore impayées',
-                        data: rows.map(r => eur ? r.eurImpayees : r.nbImpayees),
-                        backgroundColor: U.couleurs.retard, borderRadius: 3,
-                    },
-                    {
-                        label: 'Finalement encaissées',
-                        data: rows.map(r => eur ? r.eurPayees : r.nbPayees),
-                        backgroundColor: U.couleurs.payeRetard, borderRadius: 3,
-                    },
-                ],
-            },
-            options: {
-                interaction: { mode: 'index', intersect: false },
-                scales: {
-                    x: { grid: { display: false }, title: { display: true, text: "Retard constaté" } },
-                    y: { grid: U.grille, ticks: { callback: v => fmt(v) } },
-                },
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            label: ctx => `${ctx.dataset.label} : ${eur ? U.euros(ctx.parsed.y) : U.nombre(ctx.parsed.y) + ' factures'}`,
-                            afterBody: items => {
-                                const r = rows[items[0].dataIndex];
-                                if (!r) return '';
-                                const t = eur ? r.eurImpayees + r.eurPayees : r.nbImpayees + r.nbPayees;
-                                return ['', `${U.pourcent((t / total) * 100)} de l'ensemble des retards`];
-                            },
-                        },
-                    },
-                },
-                onClick: (evt, els) => {
-                    if (!els.length) return;
-                    const t = rows[els[0].index];
-                    state.filtres.retardMin = t.min;
-                    state.filtres.retardMax = t.max;
-                    state.ui.page = 1;
-                    ouvrirOnglet('factures');
-                },
-            },
-        });
-    }
-
-    /** Palette dense pour les treemaps, reprise de Suivi Cash. */
     const treemapPalette = [
         '#1e2a5e', '#2a3a80', '#3b4fa0', '#4f62b8', '#6474cc', '#7c8ae0',
         '#F47458', '#f59e0b', '#84cc16', '#3b82f6', '#8b5cf6', '#06b6d4',
@@ -1301,6 +1321,87 @@
                 },
             });
         }
+    }
+
+    /** Pose le filtre correspondant à une dimension puis rafraîchit. */
+
+    /**
+     * Les créances anciennes finissent-elles par rentrer ?
+     *
+     * Le graphique juxtaposait deux séries que rien ne rend comparables :
+     * l'une porte sur des factures encore dues, dont le retard court toujours,
+     * l'autre sur des factures réglées, dont le retard est définitif. Deux
+     * hauteurs côte à côte, deux significations, aucune lecture possible.
+     *
+     * La question tient en une phrase — parmi les factures ayant atteint tel
+     * niveau d'ancienneté, quelle part a fini par rentrer ? — donc en une seule
+     * série : la composition de chaque tranche, ramenée à cent pour cent.
+     */
+    function rendreChartHistoRetards(data) {
+        const eur = state.ui.histoUnite === 'euros';
+        const rows = X.histogrammeRetards(data);
+        const total = X.sum(rows, r => (eur ? r.eurImpayees + r.eurPayees : r.nbImpayees + r.nbPayees));
+        if (!total) { U.chart('chart-histo-retards', videConfig('Aucun retard sur ce périmètre')); return; }
+
+        const val = (r, quoi) => eur ? r['eur' + quoi] : r['nb' + quoi];
+        const somme = r => val(r, 'Impayees') + val(r, 'Payees');
+        const part = (r, quoi) => somme(r) ? (val(r, quoi) / somme(r)) * 100 : 0;
+
+        U.chart('chart-histo-retards', {
+            type: 'bar',
+            data: {
+                labels: rows.map(r => r.label),
+                datasets: [
+                    {
+                        label: 'A fini par rentrer',
+                        data: rows.map(r => part(r, 'Payees')),
+                        backgroundColor: U.couleurs.paye, borderRadius: 3, stack: 'a',
+                    },
+                    {
+                        label: 'Toujours dû',
+                        data: rows.map(r => part(r, 'Impayees')),
+                        backgroundColor: U.couleurs.retard, borderRadius: 3, stack: 'a',
+                    },
+                ],
+            },
+            options: {
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: { stacked: true, grid: { display: false },
+                         title: { display: true, text: "Retard atteint par la facture" } },
+                    y: { stacked: true, min: 0, max: 100, grid: U.grille,
+                         ticks: { callback: v => v + ' %' } },
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => {
+                                const r = rows[ctx.dataIndex];
+                                const quoi = ctx.datasetIndex === 0 ? 'Payees' : 'Impayees';
+                                return `${ctx.dataset.label} : ${U.pourcent(part(r, quoi), 0)}`
+                                    + ` — ${eur ? U.euros(val(r, quoi)) : U.nombre(val(r, quoi)) + ' factures'}`;
+                            },
+                            afterBody: items => {
+                                const r = rows[items[0].dataIndex];
+                                if (!r) return '';
+                                return ['',
+                                    `${eur ? U.euros(somme(r)) : U.nombre(somme(r)) + ' factures'} ont atteint ce retard`,
+                                    `soit ${U.pourcent((somme(r) / total) * 100, 0)} de l'ensemble des retards`,
+                                    '', 'Cliquez pour ouvrir cette tranche'];
+                            },
+                        },
+                    },
+                },
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    const t = rows[els[0].index];
+                    state.filtres.retardMin = t.min;
+                    state.filtres.retardMax = t.max;
+                    state.ui.page = 1;
+                    rendreApresClic(() => ouvrirOnglet('factures'));
+                },
+            },
+        });
     }
 
     /** Pose le filtre correspondant à une dimension puis rafraîchit. */

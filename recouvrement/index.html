@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.1.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.1.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.1.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.1.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.1.0">
-    <link rel="stylesheet" href="styles.css?v=2.1.0">
+    <script src="../vendor/chart.umd.min.js?v=2.2.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.2.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.2.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.2.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.2.0">
+    <link rel="stylesheet" href="styles.css?v=2.2.0">
 </head>
 <body>
 
@@ -185,6 +185,12 @@
                 <span class="filter-label" title="Périmètre des factures comptées comme en retard">Sources du retard</span>
                 <span class="aide-ligne">D'où viennent les factures comptées comme en retard. Éteignez-en une pour l'exclure de tous les chiffres — l'OPCO par exemple, où il n'y a pas de recouvrement.</span>
                 <div class="chips" id="chips-sources"></div>
+            </div>
+
+            <div class="filter-block filter-block-grow">
+                <span class="filter-label">Financement</span>
+                <span class="aide-ligne">Restreint l'ensemble de l'application à un ou plusieurs dispositifs. Aucun sélectionné : tous comptent.</span>
+                <div class="chips" id="chips-financements"></div>
             </div>
 
             <div class="filter-block">
@@ -362,7 +368,7 @@
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header">
-                        <h3>Répartition des retards</h3>
+                        <h3>Les créances anciennes finissent-elles par rentrer ?</h3>
                         <div class="chart-controls">
                             <div class="seg seg-sm" id="seg-histo-unite">
                                 <button class="seg-btn active" data-unite="euros">€</button>
@@ -371,8 +377,10 @@
                         </div>
                     </div>
                     <span class="fv-hint">
-                        Comparer les deux séries montre si les créances anciennes finissent par rentrer
-                        ou si elles s'enkystent. Cliquez sur une tranche pour filtrer.
+                        Chaque colonne se lit de haut en bas : parmi les factures ayant atteint ce
+                        retard, la part qui a fini par rentrer (vert) et celle qui est toujours due
+                        (rouge). Plus on va vers la droite, moins il rentre. Cliquez sur une tranche
+                        pour ouvrir ses factures.
                     </span>
                     <div class="chart-container chart-tall">
                         <canvas id="chart-histo-retards"></canvas>
@@ -1046,13 +1054,13 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.1.0"></script>
-<script src="js/store.js?v=2.1.0"></script>
-<script src="js/monday.js?v=2.1.0"></script>
-<script src="js/ingest.js?v=2.1.0"></script>
-<script src="js/metrics.js?v=2.1.0"></script>
-<script src="js/prelevements.js?v=2.1.0"></script>
-<script src="js/ui.js?v=2.1.0"></script>
-<script src="app.js?v=2.1.0"></script>
+<script src="js/rules.js?v=2.2.0"></script>
+<script src="js/store.js?v=2.2.0"></script>
+<script src="js/monday.js?v=2.2.0"></script>
+<script src="js/ingest.js?v=2.2.0"></script>
+<script src="js/metrics.js?v=2.2.0"></script>
+<script src="js/prelevements.js?v=2.2.0"></script>
+<script src="js/ui.js?v=2.2.0"></script>
+<script src="app.js?v=2.2.0"></script>
 </body>
 </html>

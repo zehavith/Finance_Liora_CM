@@ -1099,3 +1099,9 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
 }
 .candidat:hover { border-style: solid; border-color: var(--red, #F47458); color: var(--text-primary); }
+
+
+/* Puces de financement : compactes, la barre de filtres reste basse */
+.chip-fin { max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-plus { border-style: dashed; opacity: .8; }
+.chip-plus:hover { opacity: 1; }
