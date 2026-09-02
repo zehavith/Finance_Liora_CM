@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.2.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.2.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.2.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.2.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.2.0">
-    <link rel="stylesheet" href="styles.css?v=2.2.0">
+    <script src="../vendor/chart.umd.min.js?v=2.3.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.3.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.3.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.3.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.3.0">
+    <link rel="stylesheet" href="styles.css?v=2.3.0">
 </head>
 <body>
 
@@ -360,59 +360,11 @@
             <!-- Répartition des montants : hors / en recouvrement -->
 
             <div class="section-header section-acte" data-acte="1">
-                <h2><span class="acte-num">1</span>Comment se répartit le retard</h2>
+                <h2><span class="acte-num">1</span>Par type de financement</h2>
+                <span class="acte-sous">Où le retard se concentre, et comment chaque catégorie évolue</span>
                 <button class="acte-toggle" data-acte-toggle="1" aria-expanded="true">Replier</button>
-                <span class="acte-sous">L'ancienneté des créances, avant tout le reste</span>
             </div>
             <div class="acte-corps" data-acte-corps="1">
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Les créances anciennes finissent-elles par rentrer ?</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-histo-unite">
-                                <button class="seg-btn active" data-unite="euros">€</button>
-                                <button class="seg-btn" data-unite="nb">Nombre</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint">
-                        Chaque colonne se lit de haut en bas : parmi les factures ayant atteint ce
-                        retard, la part qui a fini par rentrer (vert) et celle qui est toujours due
-                        (rouge). Plus on va vers la droite, moins il rentre. Cliquez sur une tranche
-                        pour ouvrir ses factures.
-                    </span>
-                    <div class="chart-container chart-tall">
-                        <canvas id="chart-histo-retards"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Treemap : concentration du retard -->
-            <div class="charts-grid charts-2col">
-                <div class="chart-card">
-                    <div class="chart-header"><h3>Montant en retard par financement</h3></div>
-                    <div class="chart-container">
-                        <canvas id="chart-financement"></canvas>
-                    </div>
-                </div>
-                <div class="chart-card">
-                    <div class="chart-header"><h3>Balance âgée</h3><span class="fv-hint">montant non réglé</span></div>
-                    <div class="chart-container">
-                        <canvas id="chart-aging"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Structure du portefeuille -->
-            </div>
-
-            <div class="section-header section-acte" data-acte="2">
-                <h2><span class="acte-num">2</span>Par catégorie de financement</h2>
-                <button class="acte-toggle" data-acte-toggle="2" aria-expanded="true">Replier</button>
-                <span class="acte-sous">Où le retard se concentre, et comment chaque catégorie évolue</span>
-            </div>
-            <div class="acte-corps" data-acte-corps="2">
 
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
@@ -456,29 +408,77 @@
 
 
             <!-- Financement + balance âgée -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Montant en retard par financement</h3></div>
+                    <div class="chart-container">
+                        <canvas id="chart-financement"></canvas>
+                    </div>
+                </div>
+            </div>
+            </div>
+
+            <div class="section-header section-acte" data-acte="2">
+                <h2><span class="acte-num">2</span>Les factures qui rentrent</h2>
+                <span class="acte-sous">Ce que le recouvrement récupère, et ce qui rentre sans relance</span>
+                <button class="acte-toggle" data-acte-toggle="2" aria-expanded="true">Replier</button>
+            </div>
+            <div class="acte-corps" data-acte-corps="2">
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3 id="regl-titre">Ce que le recouvrement fait rentrer</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-regl-origine">
+                                <button class="seg-btn active" data-origine="recouvrement">Passées par le recouvrement</button>
+                                <button class="seg-btn" data-origine="hors">Rentrées sans relance</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint" id="regl-hint"></span>
+                    <div class="recup-grid" id="regl-kpi"></div>
+                    <div class="chart-container chart-tall"><canvas id="chart-regl-mois"></canvas></div>
+                    <div class="table-wrap" id="regl-financements"></div>
+                </div>
+            </div>
             </div>
 
             <div class="section-header section-acte" data-acte="3">
-                <h2><span class="acte-num">3</span>Comment cela évolue</h2>
+                <h2><span class="acte-num">3</span>Analyse du retard</h2>
+                <span class="acte-sous">Ce qui reste dû, depuis quand, et à quel rythme cela rentre</span>
                 <button class="acte-toggle" data-acte-toggle="3" aria-expanded="false">Déplier</button>
-                <span class="acte-sous">Le mois écoulé, puis les tendances de fond</span>
-                <div class="seg seg-sm" id="seg-fenetre">
-                    <button class="seg-btn" data-fenetre="12">12 mois</button>
-                    <button class="seg-btn active" data-fenetre="24">24 mois</button>
-                    <button class="seg-btn" data-fenetre="">Tout</button>
-                </div>
             </div>
             <div class="acte-corps" data-acte-corps="3" hidden>
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header">
-                        <h3>Évolution du dernier mois</h3>
-                        <span class="fv-hint" id="month-compare-title"></span>
+                        <h3>Les créances anciennes finissent-elles par rentrer ?</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-histo-unite">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
                     </div>
-                    <div id="month-compare-body"></div>
+                    <span class="fv-hint">
+                        Chaque colonne se lit de haut en bas : parmi les factures ayant atteint ce
+                        retard, la part qui a fini par rentrer (vert) et celle qui est toujours due
+                        (rouge). Plus on va vers la droite, moins il rentre. Cliquez sur une tranche
+                        pour ouvrir ses factures.
+                    </span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-histo-retards"></canvas>
+                    </div>
                 </div>
             </div>
-
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Balance âgée</h3><span class="fv-hint">montant non réglé</span></div>
+                    <div class="chart-container">
+                        <canvas id="chart-aging"></canvas>
+                    </div>
+                </div>
+            </div>
             <!-- Flux : ce qui entre, ce qui sort, ce qui reste -->
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
@@ -501,7 +501,6 @@
                     </div>
                 </div>
             </div>
-
             <!-- Comparaison mensuelle -->
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
@@ -524,7 +523,6 @@
                     </div>
                 </div>
             </div>
-
             <!-- Évolution du retard moyen -->
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
@@ -539,7 +537,6 @@
                     </div>
                 </div>
             </div>
-
             <!-- DSO -->
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
@@ -564,14 +561,21 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Histogramme des retards -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Évolution du dernier mois</h3>
+                        <span class="fv-hint" id="month-compare-title"></span>
+                    </div>
+                    <div id="month-compare-body"></div>
+                </div>
+            </div>
             </div>
 
             <div class="section-header section-acte" data-acte="4">
                 <h2><span class="acte-num">4</span>Où aller chercher l'argent</h2>
-                <button class="acte-toggle" data-acte-toggle="4" aria-expanded="false">Déplier</button>
                 <span class="acte-sous">Le détail, jusqu'à la facture</span>
+                <button class="acte-toggle" data-acte-toggle="4" aria-expanded="false">Déplier</button>
             </div>
             <div class="acte-corps" data-acte-corps="4" hidden>
             <!-- Treemap : outil de fouille, dimension au choix -->
@@ -618,8 +622,6 @@
                     <div class="table-wrap" id="repartition-table"></div>
                 </div>
             </div>
-
-            <!-- Taux de recouvrement par mois -->
             <div class="charts-grid charts-2col">
                 <div class="chart-card">
                     <div class="chart-header"><h3>Top clients en retard</h3></div>
@@ -634,7 +636,7 @@
         </div>
     </div>
 
-<!-- ══════════ ONGLET : BALANCE ÂGÉE ══════════ -->
+    <!-- ══════════ ONGLET : BALANCE ÂGÉE ══════════ -->
     <div class="tab-content" id="tab-aging">
         <div class="dashboard-content">
             <div class="section-header">
@@ -1054,13 +1056,13 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.2.0"></script>
-<script src="js/store.js?v=2.2.0"></script>
-<script src="js/monday.js?v=2.2.0"></script>
-<script src="js/ingest.js?v=2.2.0"></script>
-<script src="js/metrics.js?v=2.2.0"></script>
-<script src="js/prelevements.js?v=2.2.0"></script>
-<script src="js/ui.js?v=2.2.0"></script>
-<script src="app.js?v=2.2.0"></script>
+<script src="js/rules.js?v=2.3.0"></script>
+<script src="js/store.js?v=2.3.0"></script>
+<script src="js/monday.js?v=2.3.0"></script>
+<script src="js/ingest.js?v=2.3.0"></script>
+<script src="js/metrics.js?v=2.3.0"></script>
+<script src="js/prelevements.js?v=2.3.0"></script>
+<script src="js/ui.js?v=2.3.0"></script>
+<script src="app.js?v=2.3.0"></script>
 </body>
 </html>

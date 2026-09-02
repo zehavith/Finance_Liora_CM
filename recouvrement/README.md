@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.2.0** — 2 septembre 2026
+**Version 2.3.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.2.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.3.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -651,15 +651,16 @@ que la barre ne devienne pas plus haute que les graphiques qu'elle surplombe.
 Les blocs se suivaient sans ordre apparent. Ils sont désormais rangés en quatre
 temps, chacun annoncé par un titre numéroté, du général au particulier :
 
-1. **Comment se répartit le retard** — l'ancienneté des créances d'abord, avant
-   toute autre chose : répartition des retards, montant en retard par
-   financement, balance âgée.
-2. **Par catégorie de financement** — l'évolution du taux par catégorie, la carte
-   thermique mois × financement, la concentration du retard.
-3. **Comment cela évolue** — le mois écoulé, puis les tendances de fond : taux
-   par mois, flux, retard moyen, DSO.
-4. **Où aller chercher l'argent** — le détail jusqu'à la facture : arbre des
-   montants, top clients, répartition par tableau, structure du portefeuille.
+1. **Par type de financement** — l'évolution du taux par catégorie (la carte
+   thermique s'ouvre d'un clic sur la courbe), puis le montant en retard par
+   dispositif.
+2. **Les factures qui rentrent** — ce que le recouvrement récupère, avec une
+   bascule vers ce qui rentre sans relance.
+3. **Analyse du retard** — ce qui reste dû et depuis quand : les créances
+   anciennes finissent-elles par rentrer, balance âgée, taux par mois, flux,
+   retard moyen, DSO.
+4. **Où aller chercher l'argent** — le détail jusqu'à la facture : treemap,
+   arbre des montants, top clients, répartition par tableau.
 
 La vue d'ensemble — indicateurs et état du portefeuille — reste en tête, avant
 le premier temps.
@@ -673,6 +674,22 @@ lieu de sept, sans que rien ne soit retiré.
 Le treemap *Où se concentre le montant en retard* a rejoint le quatrième temps :
 il fait doublon avec la carte thermique dans le deuxième, et c'est un outil de
 fouille — sa dimension se change — plutôt qu'un constat.
+
+### Les factures qui rentrent
+
+Deux populations de factures réglées, qu'il faut savoir comparer : celles qui
+sont passées par le recouvrement, et celles qui sont rentrées seules. La
+première dit ce que le travail de relance rapporte, la seconde ce qui n'en a pas
+eu besoin. Une bascule passe de l'une à l'autre sur la même mise en page, pour
+que la comparaison se fasse d'un coup d'œil : nombre et montant, part des
+règlements, combien ont été payées en retard, écart moyen à l'échéance, ce qui
+rentre chaque mois, et la répartition par dispositif.
+
+L'appartenance se lit dans le groupe conservé par *0.1. ALL - Factures payées* :
+un groupe mentionnant le recouvrement, une relance, une mise en demeure ou un
+contentieux compte comme passé par le recouvrement. Les factures réglées dont ce
+groupe n'est pas renseigné ne peuvent être attribuées ni à l'une ni à l'autre :
+elles sont comptées à part et le nombre en est annoncé.
 
 ### Évolution du taux par catégorie
 

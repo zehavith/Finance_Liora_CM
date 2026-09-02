@@ -482,6 +482,72 @@
         return { mois, series };
     }
 
+    /**
+     * Analyse des factures réglées, selon qu'elles soient passées ou non par le
+     * recouvrement.
+     *
+     * Deux populations qu'il faut savoir comparer : celles qui ont demandé une
+     * relance, et celles qui sont rentrées seules. La première dit ce que le
+     * travail de recouvrement rapporte, la seconde ce qui rentre sans effort.
+     *
+     * @param {Array} factures
+     * @param {'recouvrement'|'hors'} origine
+     * @param {Array} rules
+     */
+    function reglementsParOrigine(factures, origine, rules) {
+        const payees = factures.filter(f => f.paye);
+        const lot = payees.filter(f => origineRecouvrement(f) === origine);
+        const inconnu = payees.filter(f => origineRecouvrement(f) === 'inconnu');
+
+        // Répartition par financement, les plus gros montants d'abord.
+        const parFin = new Map();
+        for (const f of lot) {
+            const k = f.financement || 'INCONNU';
+            let g = parFin.get(k);
+            if (!g) { g = { cle: k, label: R.getRule(k, rules).label, items: [] }; parFin.set(k, g); }
+            g.items.push(f);
+        }
+        const financements = [...parFin.values()].map(g => ({
+            cle: g.cle, label: g.label,
+            nb: g.items.length,
+            euros: sum(g.items, x => x.montant),
+            retardMoyen: moyenne(g.items.map(x => x.retardJours)),
+        })).sort((a, b) => b.euros - a.euros);
+
+        // Ce qui rentre chaque mois, au mois de l'encaissement.
+        const parMois = new Map();
+        for (const f of lot) {
+            const mk = f.moisPaiement;
+            if (!mk) continue;
+            let g = parMois.get(mk);
+            if (!g) { g = { mois: mk, nb: 0, euros: 0, retards: [] }; parMois.set(mk, g); }
+            g.nb++; g.euros += f.montant || 0;
+            if (f.retardJours != null) g.retards.push(f.retardJours);
+        }
+        const mois = [...parMois.values()]
+            .map(g => ({ mois: g.mois, nb: g.nb, euros: g.euros, retardMoyen: moyenne(g.retards) }))
+            .sort((a, b) => a.mois.localeCompare(b.mois));
+
+        const enRetard = lot.filter(f => f.etat === 'Payée en retard');
+        return {
+            origine,
+            nb: lot.length,
+            euros: sum(lot, x => x.montant),
+            // Part des règlements dont l'origine est connue : les factures sans
+            // groupe d'origine ne peuvent être attribuées ni à l'un ni à l'autre.
+            partNb: pct(lot.length, payees.length - inconnu.length),
+            partEuros: pct(sum(lot, x => x.montant),
+                sum(payees.filter(f => origineRecouvrement(f) !== 'inconnu'), x => x.montant)),
+            nbEnRetard: enRetard.length,
+            eurosEnRetard: sum(enRetard, x => x.montant),
+            retardMoyen: moyenne(enRetard.map(x => x.retardJours)),
+            delaiMoyen: moyenne(lot.map(x => x.delaiPaiement).filter(d => d != null && d >= 0)),
+            nbOrigineInconnue: inconnu.length,
+            financements,
+            mois,
+        };
+    }
+
     // ──────────────────────────────────────────────
     //  Répartition des montants
     //
@@ -1174,7 +1240,7 @@
     global.LioraMetrics = {
         sum, pct, moyenne, moyennePonderee, mediane,
         filtrer, sourceDe, origineRecouvrement, vueEnsemble, parMois, parFinancement, croiseMoisFinancement,
-        evolutionParFinancement,
+        evolutionParFinancement, reglementsParOrigine,
         agreger, repartitionMontants, fluxRecouvrement, parDimension, finDeMois,
         dsoParMois, histogrammeRetards, TRANCHES_RETARD, joursDuMois,
         balanceAgee, balanceAgeeParDimension, causesSansEcheance, topClients, parTableau, parGroupe,

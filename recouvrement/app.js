@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.2.0 — 2 septembre 2026
+   v2.3.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.2.0';
+    const VERSION = '2.3.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -95,6 +95,7 @@
             triPrlv: { key: 'montantEchoue', sens: 'desc' },
             evoCatUnite: 'nb',
             evoDetail: false,
+            reglOrigine: 'recouvrement',
             finDetail: null,
             // Fenêtre des graphiques mensuels : l'historique remonte à 2021,
             // mais deux ans suffisent à lire une tendance sans écraser l'axe.
@@ -646,6 +647,7 @@
             rendreHeatmap(X.croiseMoisFinancement(data, state.filtres.baseMois, state.rules));
         }
         rendreChartEvoCategorie(data);
+        rendreReglements(data);
 
 
         // ── Classements ──
@@ -1544,6 +1546,111 @@
     }
 
     /** Heatmap mois × financement du taux de retard. */
+    /**
+     * Ce que le recouvrement fait rentrer — et ce qui rentre sans lui.
+     *
+     * Deux populations de factures réglées : celles qui ont demandé une relance
+     * et celles qui sont rentrées seules. La bascule passe de l'une à l'autre,
+     * sur la même mise en page, pour qu'elles se comparent d'un coup d'œil.
+     */
+    function rendreReglements(data) {
+        const origine = state.ui.reglOrigine || 'recouvrement';
+        const r = X.reglementsParOrigine(data, origine, state.rules);
+        const viaRecouv = origine === 'recouvrement';
+
+        const t = $('#regl-titre');
+        if (t) t.textContent = viaRecouv
+            ? 'Ce que le recouvrement fait rentrer'
+            : 'Ce qui rentre sans relance';
+
+        const h = $('#regl-hint');
+        if (h) h.innerHTML = (viaRecouv
+            ? "Factures réglées qui sont passées par le recouvrement — le tableau des factures payées "
+              + "conserve le groupe d'où elles venaient. C'est le produit du travail de relance."
+            : "Factures réglées qui ne sont jamais passées par le recouvrement : elles sont rentrées "
+              + "d'elles-mêmes, avec ou sans retard.")
+            + (r.nbOrigineInconnue
+                ? ` <strong>${U.nombre(r.nbOrigineInconnue)} factures réglées ne peuvent être attribuées</strong>,
+                    faute de groupe d'origine renseigné dans « 0.1. ALL - Factures payées » : elles sont
+                    hors de ce décompte.`
+                : '');
+
+        $('#regl-kpi').innerHTML = [
+            tuileDetail(U.nombre(r.nb), viaRecouv ? 'Factures récupérées' : 'Factures rentrées seules',
+                U.euros(r.euros), viaRecouv ? U.couleurs.payeRetard : U.couleurs.paye),
+            tuileDetail(U.pourcent(r.partEuros, 1), 'Part des règlements',
+                `${U.pourcent(r.partNb, 1)} en nombre`, U.couleurs.indigo),
+            tuileDetail(U.nombre(r.nbEnRetard), 'Dont payées en retard',
+                U.euros(r.eurosEnRetard), U.couleurs.retard),
+            tuileDetail(U.jours(r.retardMoyen), 'Retard moyen au paiement',
+                r.delaiMoyen != null ? `délai facture → règlement : ${U.jours(r.delaiMoyen)}` : '—',
+                U.couleurs.nonEchue),
+        ].join('');
+
+        // Ce qui rentre chaque mois
+        const mois = derniersMois(r.mois);
+        if (!mois.length) {
+            U.chart('chart-regl-mois', videConfig('Aucun règlement daté sur ce périmètre'));
+        } else {
+            U.chart('chart-regl-mois', {
+                type: 'bar',
+                data: {
+                    labels: mois.map(m => U.moisLabel(m.mois, true)),
+                    datasets: [{
+                        label: viaRecouv ? 'Encaissé après relance' : 'Encaissé sans relance',
+                        data: mois.map(m => m.euros),
+                        backgroundColor: viaRecouv ? U.couleurs.payeRetard : U.couleurs.paye,
+                        borderRadius: 3,
+                    }],
+                },
+                options: {
+                    interaction: { mode: 'index', intersect: false },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { grid: U.grille, ticks: { callback: v => U.eurosCourt(v) } },
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `${U.euros(ctx.parsed.y)}`,
+                                afterBody: items => {
+                                    const m = mois[items[0].dataIndex];
+                                    return ['', `${U.nombre(m.nb)} factures`,
+                                        m.retardMoyen != null ? `retard moyen ${U.jours(m.retardMoyen)}` : ''];
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+        }
+
+        const el = $('#regl-financements');
+        el.innerHTML = U.table([
+            { key: 'label', label: 'Type de financement' },
+            { key: 'nb', label: 'Factures', align: 'right', format: U.nombre },
+            { key: 'euros', label: 'Montant', align: 'right', format: v => U.euros(v) },
+            // La moyenne porte sur toutes les factures réglées de la catégorie,
+            // paiements en avance compris : un chiffre négatif est un règlement
+            // avant échéance, ce que « retard » ne pouvait pas dire.
+            { key: 'retardMoyen', label: 'Écart à l\'échéance', align: 'right',
+              title: 'Négatif : payé avant échéance. Positif : payé en retard.',
+              format: v => v == null ? '—'
+                  : `<span class="${v > 0 ? 'cell-danger' : ''}">${v > 0 ? '+' : ''}${U.jours(v)}</span>` },
+        ], r.financements, {
+            vide: 'Aucune facture réglée dans cette catégorie.', onRowClick: true,
+            total: { label: 'Total', nb: U.nombre(r.nb), euros: U.euros(r.euros) },
+        });
+        U.bindTable(el, r.financements, {
+            onRowClick: f => {
+                state.filtres.financements = new Set([f.cle]);
+                state.ui.page = 1;
+                ouvrirOnglet('factures');
+            },
+        });
+    }
+
     /**
      * Variation du taux de recouvrement, une courbe par type de financement.
      *
@@ -4272,6 +4379,11 @@
 
         brancherActes();
         brancherFenetreMois();
+        $$('#seg-regl-origine .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.reglOrigine = b.dataset.origine;
+            $$('#seg-regl-origine .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendreTout();
+        }));
         $$('#seg-evocat-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.evoCatUnite = b.dataset.unite;
             $$('#seg-evocat-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));
