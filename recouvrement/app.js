@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.25.0 — 2 septembre 2026
+   v2.26.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.25.0';
+    const VERSION = '2.26.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -5745,6 +5745,8 @@
                         // colonne qui polluerait le mapping.
                         Object.defineProperty(groupe.lignes, 'tableauMonday',
                             { value: groupe.tableau, enumerable: false });
+                        Object.defineProperty(groupe.lignes, 'totauxMonday',
+                            { value: groupe.totaux || 0, enumerable: false });
                         resolve(groupe.lignes);
                         return;
                     }
@@ -5829,6 +5831,10 @@
                 if (!rows.length) { log('   ⚠ fichier vide'); continue; }
                 const nom = rows.tableauMonday || file.name.replace(/\.(csv|xlsx|xls)$/i, '');
                 if (rows.tableauMonday) log(`   tableau reconnu : ${rows.tableauMonday}`);
+                // Monday ferme chaque groupe par une ligne de totaux, qui n'est
+                // pas une facture. Le dire : un écart de comptage face à Monday
+                // s'explique alors tout seul.
+                if (rows.totauxMonday) log(`   ${rows.totauxMonday} ligne(s) de total de groupe écartée(s)`);
 
                 const detect = R.detectBoardRole(nom);
                 const cfg = {
@@ -5838,7 +5844,8 @@
                     financementDefaut: detect.financementDefaut,
                     mapping: null,
                 };
-                const { factures, mapping, columns, couverture } = I.facturesFromRows(rows, cfg, nom);
+                const { factures, mapping, columns, couverture, repeches } = I.facturesFromRows(rows, cfg, nom);
+                if (repeches) log(`   ${repeches} numéro(s) retrouvé(s) dans une colonne voisine`);
 
                 // Le fichier devient un « tableau » de la configuration
                 const id = 'file:' + nom;
@@ -5848,6 +5855,7 @@
                     role: cfg.role, perimetre: cfg.perimetre, source: cfg.source,
                     financementDefaut: cfg.financementDefaut, actif: true,
                     columns, mapping, couverture, charge: factures.length,
+                    totauxEcartes: rows.totauxMonday || 0, numerosRepeches: repeches || 0,
                 };
                 if (existant) Object.assign(existant, entree); else state.boards.push(entree);
 

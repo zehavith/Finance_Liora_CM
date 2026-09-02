@@ -159,8 +159,16 @@
         }
         pairs.sort((a, b) => b.score - a.score);
 
-        const mapping = {}, usedCols = new Set(), rejets = [];
+        const mapping = {}, usedCols = new Set(), rejets = [], suppleants = {};
         for (const p of pairs) {
+            // Colonne déjà retenue pour ce champ : on la garde en réserve. Le
+            // tableau des factures payées porte le numéro tantôt dans
+            // « Numero de facture », tantôt dans « Name » : la colonne gagnante
+            // est vide sur 1 400 lignes, et le numéro était perdu alors qu'il
+            // se trouvait juste à côté.
+            if (mapping[p.field] && p.score >= 30 && !usedCols.has(p.colId)) {
+                (suppleants[p.field] = suppleants[p.field] || []).push(p.colId);
+            }
             if (mapping[p.field] || usedCols.has(p.colId)) continue;
             if (p.score < 30) continue;
             if (valeurs) {
@@ -175,7 +183,12 @@
             mapping[p.field] = p.colId;
             usedCols.add(p.colId);
         }
-        return valeurs ? { mapping, rejets } : mapping;
+        // Une colonne suppléante ne doit pas être un champ à part entière.
+        for (const champ of Object.keys(suppleants)) {
+            suppleants[champ] = suppleants[champ].filter(c => !usedCols.has(c));
+            if (!suppleants[champ].length) delete suppleants[champ];
+        }
+        return valeurs ? { mapping, rejets, suppleants } : mapping;
     }
 
     /**
@@ -232,6 +245,19 @@
         const n = parseFloat(s);
         if (!isFinite(n)) return null;
         return negParen ? -Math.abs(n) : n;
+    }
+
+    /**
+     * La valeur a-t-elle la forme d'un numéro de facture Liora ?
+     *
+     * Plus strict que factureKey, qui accepte quatre caractères quelconques :
+     * ce test sert à repêcher un numéro dans une colonne voisine, et un nom de
+     * client pris pour un numéro ferait plus de dégâts qu'un numéro manquant.
+     */
+    const FORME_NUMERO = /^(fact|fcat|fct|avr|avo|fa)[-_ ]/i;
+    function ressembleANumero(v) {
+        const t = String(v == null ? '' : v).trim();
+        return FORME_NUMERO.test(t) && (t.match(/\d/g) || []).length >= 3;
     }
 
     /** Clé de rapprochement d'une facture : numéro normalisé. */
@@ -477,14 +503,22 @@
         // Noms de colonnes et valeurs sont confrontés ensemble : un candidat
         // démenti par les données laisse la place au suivant sur ce champ.
         const valeursDe = col => rows.map(r => r[col]);
-        let mapping, rejets;
+        let mapping, rejets, suppleants = {};
         if (boardCfg.mapping && Object.keys(boardCfg.mapping).length) {
             const contr = validerMapping(boardCfg.mapping, valeursDe);
             mapping = contr.mapping; rejets = contr.rejets;
+            // Un mapping choisi à la main ne dit rien des colonnes voisines :
+            // on redemande les suppléantes au mappage automatique.
+            const auto = autoMapColumns(columns, valeursDe);
+            suppleants = auto.suppleants || {};
         } else {
             const auto = autoMapColumns(columns, valeursDe);
             mapping = auto.mapping; rejets = auto.rejets;
+            suppleants = auto.suppleants || {};
         }
+        // Les colonnes où retrouver un numéro que la colonne principale laisse
+        // vide, dans l'ordre où le mappage les a jugées crédibles.
+        const numeroSuppleant = (suppleants.numero || []).filter(c => c !== mapping.numero);
         const contr = { rejets };
 
         // Sans type de colonne, une colonne de fichier est tenue pour une
@@ -502,11 +536,22 @@
             return vals.size >= 2;
         });
 
+        let repeches = 0;
         const factures = rows.map((row, i) => {
             const rowValues = {};
             for (const field of Object.keys(mapping)) {
                 const col = mapping[field];
                 if (col && row[col] !== undefined) rowValues[field] = row[col];
+            }
+            // Numéro absent de sa colonne : on regarde les colonnes voisines
+            // que le mappage tenait pour des numéros. Une facture sans numéro
+            // ne se rapproche de rien — ni du grand livre, ni de Sellsy, ni de
+            // son tableau d'origine — c'est la donnée à ne pas perdre.
+            if (!String(rowValues.numero == null ? '' : rowValues.numero).trim()) {
+                for (const col of numeroSuppleant) {
+                    const v = String(row[col] == null ? '' : row[col]).trim();
+                    if (ressembleANumero(v)) { rowValues.numero = v; repeches++; break; }
+                }
             }
             const qualifs = {};
             for (const h of qualifHeaders) {
@@ -530,7 +575,7 @@
             });
         });
         const couverture = couvertureMapping(mapping, col => rows.map(r => r[col]), rows.length);
-        return { factures, mapping, columns, rejets: contr.rejets, couverture };
+        return { factures, mapping, columns, rejets: contr.rejets, couverture, repeches };
     }
 
     // ──────────────────────────────────────────────
@@ -838,19 +883,30 @@
         if (!matrice.slice(0, premierEnTete).some(r => remplies(r) === 1)) return null;
 
         const tableau = String((matrice[0] || [])[0] || '').trim();
-        let entete = null, groupe = '', groupes = 0;
+        let entete = null, groupe = '', groupes = 0, totaux = 0;
         const lignes = [];
 
         for (let i = 0; i < matrice.length; i++) {
             const r = matrice[i];
             if (!remplies(r)) continue;
             if (estEnTete(r)) { entete = r.map(c => String(c == null ? '' : c).trim()); continue; }
-            if (remplies(r) === 1) {
+            // Un titre porte son texte dans la première colonne. Une ligne de
+            // total de groupe n'a parfois qu'une cellule remplie elle aussi —
+            // la somme — mais ailleurs : la prendre pour un titre effaçait le
+            // nom du groupe courant, et les factures suivantes le perdaient.
+            if (remplies(r) === 1 && String(r[0] == null ? '' : r[0]).trim()) {
                 // Le titre du tableau lui-même n'est pas un groupe.
                 if (i > 0 || String(r[0]).trim() !== tableau) { groupe = String(r[0]).trim(); groupes++; }
                 continue;
             }
             if (!entete) continue;
+
+            // Monday ferme chaque groupe par une ligne de totaux : la colonne
+            // d'identité y est vide, mais les colonnes de montant portent la
+            // somme du groupe. Elle entrait comme une facture de 7,1 M€. Sur un
+            // tableau Monday, tout élément a un nom : une ligne sans nom n'est
+            // pas un élément.
+            if (!String(r[0] == null ? '' : r[0]).trim()) { totaux++; continue; }
 
             const o = {};
             for (let c = 0; c < entete.length; c++) {
@@ -858,12 +914,14 @@
                 if (!(nom in o)) o[nom] = r[c] == null ? '' : r[c];
             }
             // Le groupe est une colonne à part entière : c'est lui qui porte
-            // l'étape du circuit, et il n'existe nulle part ailleurs.
-            if (!('Groupe' in o)) o.Groupe = groupe;
+            // l'étape du circuit. Quand le fichier a bien une colonne
+            // « Groupe » mais qu'elle est vide sur la ligne, c'est le titre du
+            // groupe qui fait foi — sans quoi l'étape du circuit se perd.
+            if (!String(o.Groupe == null ? '' : o.Groupe).trim()) o.Groupe = groupe;
             lignes.push(o);
         }
 
-        return lignes.length ? { lignes, groupes, tableau } : null;
+        return lignes.length ? { lignes, groupes, tableau, totaux } : null;
     }
 
     /**

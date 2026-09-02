@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.25.0** — 2 septembre 2026
+**Version 2.26.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.25.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.26.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -451,8 +451,27 @@ l'export — est reconnue comme numéro de facture, sous réserve du contrôle d
 valeurs : une colonne de ce nom qui ne contient pas de numéros exploitables est
 écartée.
 
-Sur les huit tableaux réels : **10 660 factures** lues depuis les fichiers, avec
-leurs groupes, leurs montants et leurs échéances.
+Trois pièges de l'export Monday, tous vérifiés sur les huit tableaux réels :
+
+- **Les lignes de totaux.** Monday ferme chaque groupe par une ligne de sommes,
+  sans nom d'élément. Elles entraient comme des factures : 44 lignes sur les
+  huit tableaux, dont une de **7,1 M€** sur *ALL - Factures payées*. Sur un
+  tableau Monday tout élément a un nom : une ligne sans nom n'est pas un
+  élément, elle est écartée et le journal d'import le dit.
+- **Le numéro rangé ailleurs.** Sur *ALL - Factures payées*, la colonne
+  *Numero de facture* est vide sur 1 400 lignes — le numéro s'y trouve dans
+  *Name*. Quand la colonne retenue est vide, les colonnes voisines que le
+  mappage tenait aussi pour des numéros sont interrogées, à condition que la
+  valeur ait bien la forme d'un numéro Liora. **1 388 factures** cessent ainsi
+  d'être anonymes, et redeviennent rapprochables du grand livre et de Sellsy.
+- **La colonne *Groupe* vide.** Quand le fichier porte la colonne mais la
+  laisse vide sur une ligne, c'est le titre du groupe qui fait foi : sinon
+  l'étape du circuit se perdait.
+
+Sur les huit tableaux réels : **16 635 lignes lues, aucune perdue**, qui se
+consolident en **10 608 factures** — 10 584 numéros distincts plus 24 lignes
+vides des groupes techniques. Le compte se vérifie ligne à ligne dans
+l'onglet Données → *chaîne de traitement*.
 
 ### Le vocabulaire des tableaux Liora
 
