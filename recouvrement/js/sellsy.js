@@ -93,6 +93,11 @@
         resteDu:    ['montant du ttc', 'montant du', 'restant du', 'reste du', 'reste a payer', 'solde du', 'solde'],
         dateFacture: ['date', 'date de facture', 'date facture', 'date d emission'],
         dateEcheanceSource: ['date d echeance', 'echeance', 'date limite de paiement'],
+        // Sellsy nomme les dates de formation « début » et « fin de service ».
+        // Ce sont elles que les règles d'échéance attendent : les récupérer vaut
+        // mieux que de recopier l'échéance calculée par Sellsy.
+        dateDebutFormation: ['debut de service', 'date de debut de service', 'debut service'],
+        dateFinFormation: ['fin de service', 'date de fin de service', 'fin service'],
         statut:     ['statut', 'status', 'etat', 'etat du paiement', 'statut de paiement'],
     };
 
@@ -179,6 +184,8 @@
                 resteDu,
                 dateFacture: mapping.dateFacture ? R.parseDate(r[mapping.dateFacture]) : null,
                 dateEcheance: mapping.dateEcheanceSource ? R.parseDate(r[mapping.dateEcheanceSource]) : null,
+                dateDebutService: mapping.dateDebutFormation ? R.parseDate(r[mapping.dateDebutFormation]) : null,
+                dateFinService: mapping.dateFinFormation ? R.parseDate(r[mapping.dateFinFormation]) : null,
                 montantAberrant: montantAberrant(montant),
                 statutBrut: mapping.statut ? String(r[mapping.statut] || '').trim() : '',
                 statut: statut.key,
@@ -197,6 +204,8 @@
             prec.lignesExport++;
             if (prec.montant == null) prec.montant = l.montant;
             if (!prec.dateFacture) prec.dateFacture = l.dateFacture;
+            if (!prec.dateDebutService) prec.dateDebutService = l.dateDebutService;
+            if (!prec.dateFinService) prec.dateFinService = l.dateFinService;
         }
 
         return { lignes: [...parCle.values()], mapping, entetes, ignorees };

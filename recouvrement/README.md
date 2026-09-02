@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.11.0** — 2 septembre 2026
+**Version 2.12.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.11.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.12.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -426,6 +426,32 @@ ouvre le détail, cause par cause, de la plus fréquente à la plus rare :
 Le même classement accompagne l'anomalie *Échéance impossible à calculer* de
 Data Quality.
 
+### Le vocabulaire des tableaux Liora
+
+Les colonnes ne s'appellent pas partout pareil, et un nom non reconnu vaut une
+colonne vide : la facture perd son montant ou son échéance sans que rien ne le
+dise. Les libellés effectivement employés chez Liora sont donc connus
+explicitement :
+
+| Colonne Monday / Sellsy | Champ |
+|---|---|
+| Élément, Factures | numéro de facture |
+| Total Facture | montant TTC |
+| Montant dû TTC, Reste à payer | reste dû |
+| Début de service, Fin de service | dates de formation |
+| Date contrôle paiement | contrôle du règlement |
+
+Deux pièges qui coûtaient cher :
+
+- **« Montant dû » n'est pas le montant de la facture** mais ce qu'il en reste à
+  payer : sur une facture réglée il vaut zéro. Le prendre pour le montant
+  mettait des tableaux entiers à zéro. Il alimente le reste dû, d'où le montant
+  est déduit quand aucune autre colonne ne le porte — et la déduction est
+  marquée, car une facture partiellement réglée le sous-estime.
+- **« Début » et « Fin de service » sont les dates de formation.** Sans ces
+  libellés, les règles qui comptent sur la fin de formation ne trouvaient rien
+  et des milliers de factures sortaient en « échéance impossible à calculer ».
+
 ### Contrôle des colonnes associées
 
 La reconnaissance automatique se fait sur le nom des colonnes, ce qui suffit la
@@ -600,6 +626,9 @@ seulement des trous remplis.
   calcul de l'échéance : les factures du tableau des factures payées n'ont ni
   date de formation ni date de facture, et sortaient de tous les taux avec la
   mention « échéance inconnue ».
+- **Dates de début et fin de service absentes** → celles de Sellsy. Ce sont les
+  dates de formation : les reprendre laisse la règle de financement calculer
+  normalement, plutôt que de recopier l'échéance de Sellsy.
 - **Aucune règle applicable** → en tout dernier recours, la date d'échéance de
   Sellsy. Les règles de financement gardent la main partout où elles savent
   répondre : leur échéance n'est jamais remplacée par celle de Sellsy.

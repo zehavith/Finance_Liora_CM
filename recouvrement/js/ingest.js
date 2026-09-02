@@ -23,16 +23,30 @@
     // ──────────────────────────────────────────────
 
     const FIELD_DEFS = [
-        { field: 'numero',               label: 'Numéro de facture',      aliases: ['numero de facture', 'numero facture', 'n facture', 'no facture', 'num facture', 'reference facture', 'numero de piece', 'invoice number', 'facture'] },
+        // « Élément » est le nom que Monday donne à sa colonne d'items : dans un
+        // export de tableau, c'est elle qui porte le numéro de facture. Le
+        // contrôle de valeurs fait le tri — une colonne « Élément » qui ne
+        // contient pas de numéros exploitables est écartée.
+        { field: 'numero',               label: 'Numéro de facture',      aliases: ['numero de facture', 'numero facture', 'n facture', 'no facture', 'num facture', 'reference facture', 'numero de piece', 'invoice number', 'facture', 'element', 'elements'] },
         { field: 'client',               label: 'Client / Entreprise',    aliases: ['entreprise', 'client', 'societe', 'raison sociale', 'nom du client', 'compte', 'apprenant', 'stagiaire', 'beneficiaire', 'nom prenom'] },
-        { field: 'montant',              label: 'Montant TTC',            aliases: ['montant ttc', 'total ttc', 'montant de la facture', 'montant facture', 'montant', 'total', 'prix ttc', 'ca ttc', 'montant total', 'montant tct', 'prix', 'cout', 'cout total', 'cout formation', 'cout de la formation', 'tarif', 'somme', 'montant a payer', 'montant du', 'valeur'] },
+        // « Montant dû » n'est pas le montant de la facture mais ce qu'il en
+        // reste à payer : sur une facture réglée il vaut zéro. Le prendre pour
+        // le montant mettait à zéro des tableaux entiers — tout le financement
+        // personnel. Il appartient au reste dû, d'où le montant est déduit
+        // quand aucune autre colonne ne le porte.
+        { field: 'montant',              label: 'Montant TTC',            aliases: ['montant ttc', 'total ttc', 'total facture', 'total de la facture', 'montant de la facture', 'montant facture', 'montant', 'total', 'prix ttc', 'ca ttc', 'montant total', 'montant tct', 'prix', 'cout', 'cout total', 'cout formation', 'cout de la formation', 'tarif', 'somme', 'valeur'] },
         { field: 'montantHT',            label: 'Montant HT',             aliases: ['montant ht', 'total ht', 'ca ht', 'prix ht'] },
         { field: 'montantRegle',         label: 'Montant réglé',          aliases: ['montant regle', 'montant paye', 'deja regle', 'encaisse', 'montant encaisse', 'total regle'] },
-        { field: 'resteDu',              label: 'Reste dû',               aliases: ['reste du', 'restant du', 'solde du', 'solde restant', 'solde', 'reliquat'] },
+        { field: 'resteDu',              label: 'Reste dû',               aliases: ['montant du ttc', 'montant du ht', 'montant du', 'reste du', 'restant du', 'reste a payer', 'reste a regler', 'montant a payer', 'solde du', 'solde restant', 'solde', 'reliquat'] },
         { field: 'dateFacture',          label: 'Date de facture',        aliases: ['date de facture', 'date facture', 'date d emission', 'date emission', 'date de la facture', 'date piece', 'date facturation', 'date de facturation', 'facturation', 'date creation facture', 'date edition'] },
         { field: 'dateEcheanceSource',   label: 'Date d’échéance',   aliases: ['date d echeance', 'date echeance', 'echeance', 'date limite de paiement', 'date limite', 'date de reglement prevue', 'date calculee', 'date negociee', 'date calcule negocie'] },
-        { field: 'dateDebutFormation',   label: 'Début de formation',     aliases: ['debut de formation', 'date de debut de formation', 'date debut formation', 'debut formation', 'date de debut', 'date debut', 'debut de session', 'date debut session', 'debut parcours', 'date d entree', 'entree en formation'] },
-        { field: 'dateFinFormation',     label: 'Fin de formation',       aliases: ['fin de formation', 'date de fin de formation', 'date fin formation', 'fin formation', 'date de fin', 'date fin', 'fin de session', 'date fin session', 'fin parcours', 'date de fin de parcours', 'fin de cursus', 'date de sortie', 'sortie de formation'] },
+        // « Début de service » et « Fin de service » sont le vocabulaire de Liora :
+        // les tableaux Monday et l'export Sellsy nomment ainsi les dates de
+        // formation. Sans ces libellés, les règles d'échéance qui comptent sur
+        // la fin de formation ne trouvaient rien et des milliers de factures
+        // sortaient en « échéance impossible à calculer ».
+        { field: 'dateDebutFormation',   label: 'Début de formation',     aliases: ['debut de formation', 'date de debut de formation', 'date debut formation', 'debut formation', 'debut de service', 'date de debut de service', 'date debut service', 'debut service', 'date de debut', 'date debut', 'debut de session', 'date debut session', 'debut parcours', 'date d entree', 'entree en formation'] },
+        { field: 'dateFinFormation',     label: 'Fin de formation',       aliases: ['fin de formation', 'date de fin de formation', 'date fin formation', 'fin formation', 'fin de service', 'date de fin de service', 'date fin service', 'fin service', 'date de fin', 'date fin', 'fin de session', 'date fin session', 'fin parcours', 'date de fin de parcours', 'fin de cursus', 'date de sortie', 'sortie de formation'] },
         { field: 'datePaiement',         label: 'Date de paiement',       aliases: ['date de paiement', 'date paiement', 'date de reglement', 'date reglement', 'date encaissement', 'date d encaissement'] },
         { field: 'dateControlePaiement', label: 'Date contrôle paiement', aliases: ['date controle paiement', 'date de controle paiement', 'controle paiement', 'date de controle', 'date validation paiement', 'validation paiement', 'date pointage'] },
         { field: 'financement',          label: 'Type de financement',    aliases: ['type de financement', 'financement', 'type financement', 'mode de financement', 'dispositif', 'financeur', 'type de financeur', 'source de financement'] },
@@ -718,7 +732,7 @@
      *            echeancesDisponibles:number}}
      */
     function appliquerSellsy(factures, lignes) {
-        const vide = { rapprochees: 0, montants: 0, datesFacture: 0, echeancesDisponibles: 0 };
+        const vide = { rapprochees: 0, montants: 0, datesFacture: 0, datesService: 0, echeancesDisponibles: 0 };
         if (!lignes || !lignes.length) return vide;
 
         const index = new Map();
@@ -745,6 +759,19 @@
                 f.dateFacture = l.dateFacture;
                 f.dateFactureVientDeSellsy = true;
                 st.datesFacture++;
+            }
+            // Les dates de service sont les dates de formation : ce sont elles
+            // que les règles d'échéance attendent. Les reprendre laisse la règle
+            // calculer normalement, plutôt que de recopier l'échéance Sellsy.
+            if (!f.dateDebutFormation && l.dateDebutService) {
+                f.dateDebutFormation = l.dateDebutService;
+                f.datesServiceViennentDeSellsy = true;
+                st.datesService++;
+            }
+            if (!f.dateFinFormation && l.dateFinService) {
+                f.dateFinFormation = l.dateFinService;
+                f.datesServiceViennentDeSellsy = true;
+                st.datesService++;
             }
             if (l.dateEcheance) { f.echeanceSellsy = l.dateEcheance; st.echeancesDisponibles++; }
         }
@@ -813,6 +840,16 @@
             if (f.financement) {
                 const per = R.getRule(f.financement, o.rules).perimetre;
                 if (per && per !== 'Tous' && per !== 'Inconnu') f.perimetre = per;
+            }
+
+            // Un montant absent alors qu'un reste dû est saisi : le reste dû est
+            // le seul chiffre disponible, et il vaut mieux que zéro. Sur une
+            // facture réglée, « Montant dû TTC » porte d'ailleurs le montant de
+            // la facture — c'est ce qui était dû. Repris seulement à défaut, et
+            // marqué : une facture partiellement réglée le sous-estime.
+            if ((f.montant == null || f.montant === 0) && f.resteDu) {
+                f.montant = f.resteDu;
+                f.montantVientDuResteDu = true;
             }
 
             const ech = R.computeEcheance(f, { rules: o.rules, prefereEcheanceMonday: o.prefereEcheanceMonday });

@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.11.0 — 2 septembre 2026
+   v2.12.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.11.0';
+    const VERSION = '2.12.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -3031,11 +3031,12 @@
             notes.push(`Aucune colonne « statut » n'a été reconnue dans l'export : les statuts affichés sont `
                 + `déduits du reste dû.`);
         const c = state.sellsyStats;
-        if (c && (c.montants || c.datesFacture))
+        if (c && (c.montants || c.datesFacture || c.datesService))
             notes.push(`Cet export complète Monday là où il est muet : `
                 + [c.montants ? `${U.nombre(c.montants)} montants absents ou à zéro` : '',
-                   c.datesFacture ? `${U.nombre(c.datesFacture)} dates de facture` : '']
-                    .filter(Boolean).join(' et ')
+                   c.datesFacture ? `${U.nombre(c.datesFacture)} dates de facture` : '',
+                   c.datesService ? `${U.nombre(c.datesService)} dates de début ou fin de service` : '']
+                    .filter(Boolean).join(', ')
                 + ` ont été repris de Sellsy. Les valeurs déjà saisies dans Monday ne sont jamais remplacées.`);
         if (st.nbMontantAberrant)
             notes.push(`${U.nombre(st.nbMontantAberrant)} facture${st.nbMontantAberrant > 1 ? 's' : ''} de `
@@ -3314,7 +3315,8 @@
             const complements = [
                 c.montants ? `${U.nombre(c.montants)} montants` : '',
                 c.datesFacture ? `${U.nombre(c.datesFacture)} dates de facture` : '',
-            ].filter(Boolean).join(' et ');
+                c.datesService ? `${U.nombre(c.datesService)} dates de formation` : '',
+            ].filter(Boolean).join(', ');
             U.toast(`Export Sellsy intégré : ${U.nombre(state.sellsy.lignes.length)} factures lues`
                 + (st ? `, ${U.nombre(st.nbAbsentes)} absentes de Monday (${U.euros(st.eurosAbsentes)})` : '')
                 + (complements ? `. ${complements} complétés dans Monday` : '') + '.',
@@ -3332,6 +3334,8 @@
                     ...l,
                     dateFacture: l.dateFacture ? l.dateFacture.toISOString() : null,
                     dateEcheance: l.dateEcheance ? l.dateEcheance.toISOString() : null,
+                    dateDebutService: l.dateDebutService ? l.dateDebutService.toISOString() : null,
+                    dateFinService: l.dateFinService ? l.dateFinService.toISOString() : null,
                 })),
             });
         } catch (e) { console.warn('[Recouvrement] Sauvegarde Sellsy impossible', e); }
@@ -3345,6 +3349,8 @@
                 ...l,
                 dateFacture: l.dateFacture ? R.parseDate(l.dateFacture) : null,
                 dateEcheance: l.dateEcheance ? R.parseDate(l.dateEcheance) : null,
+                dateDebutService: l.dateDebutService ? R.parseDate(l.dateDebutService) : null,
+                dateFinService: l.dateFinService ? R.parseDate(l.dateFinService) : null,
             })),
         };
     }
@@ -3696,12 +3702,13 @@
         const details = [
             c.montants ? `${U.nombre(c.montants)} montants absents ou à zéro` : '',
             c.datesFacture ? `${U.nombre(c.datesFacture)} dates de facture` : '',
+            c.datesService ? `${U.nombre(c.datesService)} dates de service` : '',
         ].filter(Boolean).join(', ');
         return `
             <div class="chaine-ligne chaine-retrait">
                 <span class="chaine-signe">+</span>
                 <span class="chaine-label">Complétées par l'export Sellsy</span>
-                <span class="chaine-nb">${U.nombre(c.montants + c.datesFacture)}</span>
+                <span class="chaine-nb">${U.nombre(c.montants + c.datesFacture + c.datesService)}</span>
                 <span class="chaine-note">${U.nombre(c.rapprochees)} factures retrouvées dans Sellsy${
                     details ? ' — ' + U.escapeHtml(details) + ' repris de la facturation' : ''}</span>
             </div>`;
