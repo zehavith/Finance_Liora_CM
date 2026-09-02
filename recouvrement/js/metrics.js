@@ -59,6 +59,8 @@
      *    masquerTechnique: bool,
      *  }
      */
+    const ETAT_AVOIR = 'Annulée par avoir';
+
     function filtrer(factures, f) {
         const champMois = f.baseMois === 'facture' ? 'moisFacture'
             : f.baseMois === 'paiement' ? 'moisPaiement' : 'moisEcheance';
@@ -69,6 +71,14 @@
             // (archives, corbeilles) hébergés dans un tableau opérationnel.
             if (f.masquerTechnique !== false && (x.role === 'technique' || x.groupeTechnique)) return false;
             if (x.role === 'ignore') return false;
+
+            // Annulée par avoir : la créance a disparu sans qu'un euro rentre.
+            // Elle a quitté le portefeuille — elle n'est ni à encaisser, ni à
+            // relancer, ni encaissée — et l'y laisser fausse tout : l'encours,
+            // les taux, la balance âgée, et des tuiles qui ne totalisent plus
+            // cent pour cent. Elle reste consultable en la demandant par son
+            // état, et le tableau de bord en donne le compte.
+            if (x.etat === ETAT_AVOIR && !(f.etats && f.etats.has(ETAT_AVOIR))) return false;
 
             // Tampon : le sas d'attente avant le circuit. Aucune relance n'y
             // est faite, donc rien de ce qui s'y trouve ne mesure le travail
@@ -146,6 +156,12 @@
 
         const g = R.norm([f.groupeOrigine, f.groupePaiement, f.groupe].filter(Boolean).join(' '));
         if (!g) return 'inconnu';
+        // Même garde-fou que sourceDe() : « Factures payées avant import +
+        // Entre process ADV et recouvrement » nomme les deux étapes sans que
+        // la facture soit passée par le recouvrement — le mot n'y est qu'une
+        // borne du parcours. Sans ce test, tout ce groupe créditait le
+        // recouvrement de règlements antérieurs au circuit lui-même.
+        if (/avant import|entre process/.test(g)) return 'hors';
         if (/recouv|relance|mise en demeure|contentieux|huissier/.test(g)) return 'recouvrement';
         return 'hors';
     }
@@ -179,6 +195,9 @@
         // Assiette = factures arrivées à échéance. Les trois postes
         // (réglé à temps · réglé en retard · encore dû) totalisent 100 %.
         const regleATemps = assiette.filter(x => x.etat === 'Payée');
+        // Ce qui est rentré sur une facture : la part réglée quand un avoir en
+        // a effacé une partie, son montant sinon.
+        const encaisse = x => (x.montantEncaisse != null ? x.montantEncaisse : x.montant);
         const parOrigine = { recouvrement: [], hors: [], inconnu: [] };
         for (const x of payees) parOrigine[origineRecouvrement(x)].push(x);
         const origineConnue = parOrigine.recouvrement.length + parOrigine.hors.length;
@@ -240,16 +259,20 @@
             tauxResteNb: pct(enRetard.length, assiette.length),
             tauxResteEuros: pct(sum(enRetard, x => x.montant), assietteEuros),
 
-            // Lecture « process » : d'où venait la facture quand elle a été réglée
+            // Lecture « process » : d'où venait la facture quand elle a été
+            // réglée. Ces montants-là disent ce qui est RENTRÉ : ils passent
+            // donc par l'encaissé, et non par le montant de la facture, sans
+            // quoi la part qu'un avoir a effacée serait comptée comme de
+            // l'argent récupéré.
             nbPayeesHorsRecouvrement: parOrigine.hors.length,
-            eurosPayeesHorsRecouvrement: sum(parOrigine.hors, x => x.montant),
+            eurosPayeesHorsRecouvrement: sum(parOrigine.hors, encaisse),
             nbPayeesViaRecouvrement: parOrigine.recouvrement.length,
-            eurosPayeesViaRecouvrement: sum(parOrigine.recouvrement, x => x.montant),
+            eurosPayeesViaRecouvrement: sum(parOrigine.recouvrement, encaisse),
             nbOrigineInconnue: parOrigine.inconnu.length,
             tauxHorsRecouvrementNb: pct(parOrigine.hors.length, origineConnue),
             tauxHorsRecouvrementEuros: pct(
-                sum(parOrigine.hors, x => x.montant),
-                sum(parOrigine.hors, x => x.montant) + sum(parOrigine.recouvrement, x => x.montant)),
+                sum(parOrigine.hors, encaisse),
+                sum(parOrigine.hors, encaisse) + sum(parOrigine.recouvrement, encaisse)),
 
             // DSO simplifié : encours / CA moyen journalier de la période
             dso: null,
@@ -692,19 +715,27 @@
         return mois.map(mk => {
             const fin = finDeMois(mk);
 
+            // Une date d'encaissement ne suffit pas à faire un règlement : une
+            // date saisie sur un tableau opérationnel, sans ligne dans le
+            // tableau des payées, laisse la facture due partout ailleurs. Le
+            // flux repose donc sur la même définition que le reste — f.paye —
+            // sans quoi il déclarait recouvré ce que les autres écrans
+            // comptaient encore à recouvrer.
+            const regle = f => f.paye === true && !!f.datePaiementEffective;
+
             const entrees = factures.filter(f =>
                 f.dateEcheance && f.moisEcheance === mk &&
-                (!f.datePaiementEffective || f.datePaiementEffective > f.dateEcheance));
+                (!regle(f) || f.datePaiementEffective > f.dateEcheance));
 
             const sorties = factures.filter(f =>
-                f.datePaiementEffective && R.monthKey(f.datePaiementEffective) === mk &&
+                regle(f) && R.monthKey(f.datePaiementEffective) === mk &&
                 f.dateEcheance && f.datePaiementEffective > f.dateEcheance);
 
             // Impayé à la fin du mois : échue au plus tard ce jour-là, et pas
             // encore réglée à cette date.
             const stock = factures.filter(f =>
                 f.dateEcheance && f.dateEcheance <= fin &&
-                (!f.datePaiementEffective || f.datePaiementEffective > fin));
+                (!regle(f) || f.datePaiementEffective > fin));
 
             return {
                 mois: mk,
@@ -719,7 +750,7 @@
                 // Écart signé entre règlement et échéance sur les factures
                 // encaissées dans le mois : négatif = payé en avance.
                 retardMoyenReglement: moyenne(factures
-                    .filter(f => f.datePaiementEffective && f.dateEcheance
+                    .filter(f => regle(f) && f.dateEcheance
                         && R.monthKey(f.datePaiementEffective) === mk)
                     .map(f => R.diffDays(f.datePaiementEffective, f.dateEcheance))),
                 variation: sum(entrees, f => f.montant) - sum(sorties, f => f.montant),
@@ -1164,7 +1195,8 @@
         // être appliqués — l'extrait ne couvre qu'un exercice, et une facture
         // soldée avant sa première date y figure en à-nouveau.
         push('GL_OUVERTE', "Réglée dans Monday, ouverte au grand livre", 'haute',
-            factures.filter(f => f.grandLivreOuverte && f.paye),
+            factures.filter(f => f.grandLivreOuverte && f.paye && f.motifPaye
+                === 'Présente dans le tableau des factures payées'),
             "Monday les donne encaissées, la comptabilité ne les a pas soldées. Soit le "
             + "règlement n'est pas lettré, soit il n'a jamais eu lieu. À vérifier avant de "
             + "les sortir du portefeuille.");

@@ -85,12 +85,21 @@
      * étant écartées du calcul : une colonne de dates peu renseignée reste une
      * colonne de dates, et ne doit pas être rejetée pour sa rareté.
      */
-    function verifierValeurs(champ, valeurs) {
+    function verifierValeurs(champ, valeurs, opts) {
         const brutes = (valeurs || [])
             .map(v => (v == null ? '' : String(v).trim()))
             .filter(Boolean)
             .slice(0, 200);
-        if (!brutes.length) return { ok: true };          // rien pour trancher
+        // Rien pour trancher. C'est valide pour un mapping choisi à la main —
+        // une colonne encore vide reste une colonne légitime — mais pas pour un
+        // arbitrage automatique : « Date de fin de formation », jamais
+        // renseignée, gagnait au nom contre « Fin de service », renseignée à
+        // 100 %, et la date utile était perdue.
+        if (!brutes.length) {
+            return (opts && opts.exigerDesValeurs)
+                ? { ok: false, raison: 'colonne entièrement vide' }
+                : { ok: true };
+        }
 
         const SEUIL = 0.5;
         if (champ.startsWith('date')) {
@@ -155,7 +164,7 @@
             if (mapping[p.field] || usedCols.has(p.colId)) continue;
             if (p.score < 30) continue;
             if (valeurs) {
-                const v = verifierValeurs(p.field, valeurs(p.colId));
+                const v = verifierValeurs(p.field, valeurs(p.colId), { exigerDesValeurs: true });
                 if (!v.ok) {
                     // La colonne reste disponible pour un autre champ, et pour
                     // les qualifications : seule cette association est écartée.
@@ -735,6 +744,15 @@
             f.grandLivre = true;
             f.grandLivreLettre = hit.lettre || null;
 
+            // Le grand livre porte le montant comptabilisé de la facture et la
+            // date de la pièce : ils valent mieux qu'un tableau muet, que la
+            // créance soit soldée ou encore ouverte.
+            if ((f.montant == null || f.montant === 0) && hit.montant) {
+                f.montant = hit.montant;
+                f.montantVientDuGL = true;
+            }
+            if (!f.dateFacture && hit.dateFacture) { f.dateFacture = hit.dateFacture; f.dateFactureVientDuGL = true; }
+
             if (!hit.soldee) {
                 // Le grand livre la connaît et ne la solde pas : c'est une
                 // créance ouverte, quoi qu'en dise le tableau Monday.
@@ -761,6 +779,11 @@
                 continue;
             }
 
+            // Soldée par un règlement : c'est ce drapeau-ci, et lui seul, qui
+            // vaut encaissement. « Reconnue au grand livre » ne veut pas dire
+            // « réglée » — un extrait non lettré ne contient que des créances
+            // vivantes, et les confondre viderait le portefeuille d'un coup.
+            f.grandLivreSoldee = true;
             f.paye = true;
             if (hit.date) {
                 if (!f.datePaiement) { f.datePaiement = hit.date; st.completees++; f.dateVientDuGL = true; }
@@ -772,13 +795,7 @@
                 }
             }
             if (hit.montantRegle != null && f.montantRegle == null) f.montantRegle = hit.montantRegle;
-            // Le grand livre porte le montant comptabilisé de la facture : il
-            // vaut mieux qu'un tableau muet.
-            if ((f.montant == null || f.montant === 0) && hit.montant) {
-                f.montant = hit.montant;
-                f.montantVientDuGL = true;
-            }
-            if (!f.dateFacture && hit.dateFacture) { f.dateFacture = hit.dateFacture; f.dateFactureVientDuGL = true; }
+            if (hit.montantAvoir != null) f.montantAvoir = hit.montantAvoir;
             f.originePaiement = 'Grand livre lettré';
         }
         return st;
@@ -999,12 +1016,12 @@
             // l'entrée dans le circuit ne porte ni date de formation, ni parfois
             // de date de facture, et sortait de tous les taux. Les règles de
             // financement gardent la main partout où elles savent répondre.
+            f.echeanceBase = ech.baseUtilisee;
             if (!f.dateEcheance && f.echeanceSellsy) {
                 f.dateEcheance = f.echeanceSellsy;
                 f.echeanceOrigine = 'Sellsy';
                 f.echeanceBase = 'dateEcheanceSellsy';
             }
-            f.echeanceBase = ech.baseUtilisee;
             f.regleLabel = ech.regle.label;
             f.regleNote = ech.regle.note;
             f.sansRecouvrement = !!ech.regle.sansRecouvrement;
@@ -1018,7 +1035,7 @@
             // basculer la quasi-totalité du portefeuille en « payée ».
             let motif = null;
             if (f.paye === true) motif = 'Présente dans le tableau des factures payées';
-            else if (f.grandLivre === true) motif = 'Lettrée dans le grand livre';
+            else if (f.grandLivreSoldee === true) motif = 'Lettrée dans le grand livre';
             // Les groupes de comptabilité — « En traitement Comptabilité »,
             // « Pennylane non pointé », « Paiement non remonté sur Sellsy » —
             // désignent des factures encaissées dont le règlement n'est pas
@@ -1038,11 +1055,24 @@
             // Signaux de règlement portés par un tableau opérationnel : ils ne
             // valent pas paiement, mais méritent d'être signalés.
             f.enAttenteRapprochement = motif === 'Groupe de comptabilité — règlement à rapprocher';
-            f.signalPaiementHorsTableau = !paye && !!(
+            // Une créance annulée par avoir n'est pas un règlement orphelin :
+            // le conseil « ajoutez la ligne manquante au tableau des payées »
+            // n'aurait aucun sens, et la facture était pénalisée deux fois dans
+            // le score de qualité.
+            f.signalPaiementHorsTableau = !paye && !f.soldeeParAvoir && !!(
                 f.datePaiement || f.dateControlePaiement || statutIndiquePaye(f.statut)
                 || (f.resteDu != null && f.montant != null && f.resteDu <= 0.01 && f.montant > 0));
 
-            if (f.datePaiement) {
+            if (f.soldeeParAvoir) {
+                // Aucun euro n'est rentré : lui laisser une date d'encaissement
+                // la ferait entrer dans le flux du mois et dans le délai moyen
+                // de règlement, exactement ce que l'avoir doit empêcher. La
+                // date Monday reste lisible dans f.datePaiement.
+                f.datePaiementEffective = null;
+                f.paiementEstime = false;
+                f.origineDatePaiement = null;
+                f.signalPaiementHorsTableau = false;
+            } else if (f.datePaiement) {
                 f.datePaiementEffective = f.datePaiement;
                 f.paiementEstime = false;
                 f.origineDatePaiement = f.dateVientDuGL ? 'Grand livre lettré' : 'Monday — date de paiement';
@@ -1069,6 +1099,17 @@
 
             // Une créance annulée n'est plus un encours.
             if (f.soldeeParAvoir) f.encours = 0;
+
+            // Ce qui est réellement rentré, distinct du montant de la facture.
+            // Un groupe soldé pour partie par un avoir et pour partie par un
+            // règlement est bien « payé », mais seule la part réglée est de
+            // l'argent : compter le montant entier gonflerait le taux de
+            // récupération de ce que l'avoir a effacé.
+            f.montantEncaisse = f.soldeeParAvoir ? 0
+                : !paye ? (f.montantRegle || 0)
+                : (f.montantRegle != null && f.montantAvoir > 0)
+                    ? f.montantRegle
+                    : (f.montant || 0);
 
             // Retard
             if (f.soldeeParAvoir) {

@@ -446,8 +446,13 @@
             // bouge pas : il plafonne l'échéance. Le garde-fou ne peut
             // qu'avancer la date, jamais la retarder, donc il ne masque
             // aucun retard réel.
-            if (rule.plafondDebutFormation && inv.dateDebutFormation) {
-                const plafond = addDays(inv.dateDebutFormation, rule.jours || 0);
+            //
+            // Il ne vaut que pour la date de facture, la seule qui puisse être
+            // réécrite. Sur le repli — pas de date de facture, on prend la fin
+            // de formation — il n'y a rien à corriger : l'appliquer avancerait
+            // l'échéance d'une formation longue de plusieurs mois sans raison.
+            if (rule.plafondDebutFormation && base === 'dateFacture' && inv.dateDebutFormation) {
+                const plafond = addDays(inv.dateDebutFormation, b.jours || 0);
                 if (plafond < date) { date = plafond; base = 'dateDebutFormation'; }
             }
             return { date, origine: 'Règle', regle: rule, baseUtilisee: base };

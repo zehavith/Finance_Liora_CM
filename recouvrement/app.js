@@ -2,7 +2,7 @@
    Liora — Suivi Recouvrement
    app.js — Orchestration : état, chargement, filtres, rendu
 
-   v2.24.0 — 2 septembre 2026
+   v2.25.0 — 2 septembre 2026
    ========================================================== */
 
 (function () {
@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.24.0';
+    const VERSION = '2.25.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -541,20 +541,34 @@
     function rendreChipsEtats() {
         const c = $('#chips-etats');
         if (!c) return;
-        const etats = ['En retard', 'Non échue', 'Payée en retard', 'Payée',
-            'Annulée par avoir', 'Échéance inconnue'];
+        // « Annulée par avoir » n'est pas un état du portefeuille : la créance
+        // en est sortie. Sa puce se coche donc à part, et elle est éteinte par
+        // défaut — sans quoi décocher « En retard » ramènerait au passage les
+        // annulées, que personne n'a demandées.
+        const ETAT_AVOIR = 'Annulée par avoir';
+        const etats = ['En retard', 'Non échue', 'Payée en retard', 'Payée', 'Échéance inconnue'];
         c.innerHTML = '';
-        for (const e of etats) {
+        for (const e of etats.concat([ETAT_AVOIR])) {
+            const avoir = e === ETAT_AVOIR;
             const b = document.createElement('button');
-            const actif = !state.filtres.etats || state.filtres.etats.has(e);
+            const actif = avoir
+                ? !!(state.filtres.etats && state.filtres.etats.has(ETAT_AVOIR))
+                : (!state.filtres.etats || state.filtres.etats.has(e));
             b.className = 'chip chip-etat ' + U.etatClass(e) + (actif ? ' active' : '');
+            b.title = avoir
+                ? 'Soldées par un avoir : elles ont quitté le portefeuille et ne comptent '
+                  + 'ni dans l’encours ni dans les taux. Cochez pour les faire réapparaître.'
+                : '';
             const n = state.factures.filter(f => f.etat === e).length;
             b.innerHTML = U.escapeHtml(e) + (n ? ` <span class="chip-count">${U.nombre(n)}</span>` : '');
             b.addEventListener('click', () => {
                 let set = state.filtres.etats;
-                if (!set) { set = new Set(etats); }
+                if (!set) set = new Set(etats);
                 if (set.has(e)) set.delete(e); else set.add(e);
-                state.filtres.etats = set.size === etats.length || set.size === 0 ? null : set;
+                // Retour au filtre neutre quand la sélection redevient
+                // exactement le portefeuille — l'avoir n'en fait pas partie.
+                const neutre = set.size === etats.length && etats.every(x => set.has(x));
+                state.filtres.etats = (neutre || set.size === 0) ? null : set;
                 state.ui.page = 1;
                 rendreTout();
             });
@@ -1023,6 +1037,26 @@
             }
         }
 
+        // Elles ne sont plus dans `data` — elles ont quitté le portefeuille —
+        // mais elles ne doivent pas disparaître sans un mot : c'est du chiffre
+        // d'affaires annulé, pas du chiffre d'affaires encaissé.
+        const annulees = state.factures.filter(f => f.etat === 'Annulée par avoir');
+        if (annulees.length) {
+            notes.push({
+                ton: 'info',
+                titre: `${U.nombre(annulees.length)} factures annulées par avoir, hors portefeuille`,
+                texte: `${U.euros(X.sum(annulees, f => f.montant))} de factures que le grand livre solde `
+                    + `par un avoir : la créance a disparu sans qu'un euro rentre. Elles ne sont ni à `
+                    + `relancer ni encaissées, donc elles ne comptent ni dans l'encours, ni dans les `
+                    + `taux de recouvrement, ni dans la balance âgée.`,
+                action: { label: 'Voir ces factures', fn: () => {
+                    state.filtres.etats = new Set(['Annulée par avoir']);
+                    state.ui.page = 1;
+                    ouvrirOnglet('factures');
+                } },
+            });
+        }
+
         const advRetard = data.filter(f => f.etat === 'En retard' && (f.role === 'adv' || f.role === 'tampon'));
         if (advRetard.length) {
             notes.push({
@@ -1039,7 +1073,17 @@
                 ton: 'info',
                 titre: `${U.nombre(opcoRetard.length)} factures OPCO en retard`,
                 texte: `${U.euros(X.sum(opcoRetard, x => x.montant))} de factures. Pas de recouvrement OPCO : suivi du retard uniquement — décochez « OPCO » pour les exclure des indicateurs.`,
-                action: { label: 'Exclure les OPCO', fn: () => { state.filtres.sources.delete('opco'); rendreTout(); } },
+                // Un jeu de sources vide vaut « aucun filtre » : retirer la
+                // dernière source affichait tout le portefeuille au lieu d'en
+                // retirer les OPCO. On nomme alors explicitement les autres.
+                action: { label: 'Exclure les OPCO', fn: () => {
+                    const s = state.filtres.sources;
+                    s.delete('opco');
+                    if (!s.size) state.filtres.sources = new Set(
+                        R.SOURCES.map(x => x.key).filter(k => k !== 'opco'));
+                    state.ui.page = 1;
+                    rendreTout();
+                } },
             });
         }
 
@@ -2297,7 +2341,12 @@
             dateFacture: c.dateFacture ? R.parseDate(c.dateFacture) : null,
             dateEcheance: c.dateEcheance ? R.parseDate(c.dateEcheance) : null,
         }));
-        if (!ouvertes.length) { state.glBalance = null; state.glComparaison = null; return; }
+        if (!ouvertes.length) {
+            state.glCreances = [];
+            state.glBalance = null;
+            state.glComparaison = null;
+            return;
+        }
 
         const classees = GL.classer(ouvertes, {
             referentiel: state.qualifRef,
@@ -2436,6 +2485,12 @@
         if (b.sansDate)
             notes.push(`${U.nombre(b.sansDate)} créances n'ont ni date d'échéance ni date de facture `
                 + `dans le grand livre : leur ancienneté n'est pas calculable, elles sont comptées en non échu.`);
+        if (b.total.nbCrediteur)
+            notes.push(`${U.nombre(b.total.nbCrediteur)} comptes présentent un solde créditeur `
+                + `(${U.euros(b.total.crediteur)}) : acompte encaissé d'avance, trop-perçu ou avoir non `
+                + `imputé. C'est de l'argent déjà reçu, pas une créance à vieillir — il compte dans le `
+                + `total, qui reste le solde des comptes clients, mais il a sa propre colonne pour ne `
+                + `pas effacer des arriérés bien réels dans les tranches d'ancienneté.`);
         const sansNum = (state.glCreances || []).filter(c => c.sansNumero).length;
         if (sansNum)
             notes.push(`${U.nombre(sansNum)} écritures ne portent pas de numéro de facture — acomptes, `
@@ -2454,11 +2509,17 @@
                 format: (v, row) => v ? `<span class="ag-cell">${U.eurosCourt(v)}</span>` : '<span class="ag-zero">·</span>',
                 cls: () => 'ag-col',
             })),
+            { key: 'crediteur', label: 'Solde créditeur', align: 'right',
+              title: 'Acomptes, trop-perçus et avoirs non imputés : de l’argent déjà reçu, '
+                   + 'qui compte dans le total mais dans aucune tranche d’ancienneté',
+              format: v => v ? `<span class="ag-cell">${U.eurosCourt(v)}</span>` : '<span class="ag-zero">·</span>',
+              cls: () => 'ag-col' },
             { key: 'total', label: 'Total', align: 'right', format: U.euros, cls: () => 'ag-total' },
             { key: 'nb', label: 'Nb', align: 'right', format: U.nombre },
         ];
         const rows = b.rows.map(r => ({ ...r, ...r.buckets }));
         const total = { label: 'TOTAL', echu: U.eurosCourt(b.total.echu),
+            crediteur: U.eurosCourt(b.total.crediteur),
             total: U.euros(b.total.total), nb: U.nombre(b.total.nb) };
         for (const bk of buckets) total[bk.key] = U.eurosCourt(b.total.buckets[bk.key]);
 
@@ -2674,7 +2735,9 @@
         $('#gl-appliquer', barre).addEventListener('click', async () => {
             const fin = $('#gl-fin', barre).value;
             if (!fin) { U.toast('Choisissez un financement.', 'error'); return; }
-            for (const c of retenues) state.qualifRef[c.cle] = fin;
+            // Validée à la main : c'est ce que le référentiel est censé
+            // contenir, et c'est ce qui lui donne son rang de source sûre.
+            for (const c of retenues) state.qualifRef[c.cle] = { fin, source: 'valide' };
             state.ui.selGL = new Set();
             try { await S.set('rec_qualif_ref', state.qualifRef); } catch { /* ignore */ }
             recalculerBalanceGL();
@@ -2802,6 +2865,7 @@
             o['Total échu'] = arrondi(r.echu);
             for (const b of buckets) if (b.key !== 'nonEchu') o[b.label] = arrondi(r.buckets[b.key]);
             o['Non échu'] = arrondi(r.nonEchu);
+            o['Solde créditeur'] = arrondi(r.crediteur || 0);
             o['Total'] = arrondi(r.total);
             o['Nb'] = r.nb;
             return o;
@@ -3453,14 +3517,20 @@
 
     /** Fiche détaillée d'une facture, avec la traçabilité du calcul d'échéance. */
     function ouvrirFiche(f) {
-        const baseLabel = { dateFacture: 'date de facture', dateFinFormation: 'fin de formation', dateDebutFormation: 'début de formation', 'colonne Monday': 'colonne Monday' };
+        const baseLabel = { dateFacture: 'date de facture', dateFinFormation: 'fin de formation',
+            dateDebutFormation: 'début de formation', 'colonne Monday': 'colonne Monday',
+            dateEcheanceSellsy: 'échéance portée par la facturation' };
         const ligne = (l, v) => `<div class="fiche-row"><span>${U.escapeHtml(l)}</span><strong>${v}</strong></div>`;
 
         const explication = f.echeanceOrigine === 'Monday'
             ? "Échéance lue directement dans Monday."
-            : f.echeanceBase
-                ? `Échéance calculée : ${baseLabel[f.echeanceBase] || f.echeanceBase} (${U.dateFR(f[f.echeanceBase])}) + ${R.getRule(f.financement, state.rules).jours} jours.`
-                : "Échéance non calculable : ni date de facture ni date de fin de formation.";
+            : f.echeanceOrigine === 'Sellsy'
+                ? `Échéance reprise de la facturation : ${U.dateFR(f.dateEcheance)}. `
+                  + `La règle de financement n'a pas pu la calculer, faute de date de facture `
+                  + `comme de date de fin de formation.`
+                : f.echeanceBase
+                    ? `Échéance calculée : ${baseLabel[f.echeanceBase] || f.echeanceBase} (${U.dateFR(f[f.echeanceBase])}) + ${R.getRule(f.financement, state.rules).jours} jours.`
+                    : "Échéance non calculable : ni date de facture ni date de fin de formation.";
 
         U.modal(`Facture ${f.numero || '—'}`, `
             <div class="fiche">
@@ -4289,9 +4359,20 @@
         }));
     }
 
+    /**
+     * Le total du pied de table, aligné sur celui des tuiles.
+     *
+     * Trois factures Sellsy portent des montants absurdes — des centaines de
+     * milliards. Les tuiles les écartent déjà ; le pied de table les sommait
+     * brut et affichait −461 milliards juste en dessous. Les lignes Sellsy
+     * passent donc par le même filtre, les « surnuméraires » non : ce sont des
+     * factures Monday, pas des lignes Sellsy.
+     */
     function resumeMontantSellsy(vue, rows) {
         if (vue === 'ecarts') return '';
-        const mt = X.sum(rows, r => r.montant);
+        const mt = vue === 'surnumeraires'
+            ? X.sum(rows, r => r.montant)
+            : X.sum(rows, r => (r.montantAberrant ? null : r.montant));
         return mt ? ' · ' + U.euros(mt) : '';
     }
 
@@ -4600,8 +4681,17 @@
     }
 
     function rendreQualite(data) {
-        const anomalies = [...anomaliesImport(), ...X.qualite(data)];
-        const score = X.scoreQualite(data, anomalies.filter(a => a.items));
+        // Le contrôle qualité doit voir ce que le portefeuille écarte : les
+        // annulées par avoir en sortent partout ailleurs, mais c'est ici qu'on
+        // vient vérifier qu'elles sont bien annulées. Les autres filtres — la
+        // période, le périmètre — s'appliquent quand même.
+        const annulees = X.filtrer(state.factures, {
+            ...state.filtres, etats: new Set(['Annulée par avoir']),
+            masquerTechnique: state.options.masquerTechnique,
+        });
+        const population = annulees.length ? data.concat(annulees) : data;
+        const anomalies = [...anomaliesImport(), ...X.qualite(population)];
+        const score = X.scoreQualite(population, anomalies.filter(a => a.items));
         const couleur = score >= 85 ? 'var(--green)' : score >= 65 ? 'var(--amber)' : 'var(--red)';
 
         $('#quality-score').innerHTML = `
@@ -4772,14 +4862,31 @@
 
         // Une facture écartée ici mais présente ailleurs n'est pas perdue :
         // c'est la question qui compte, et elle a une réponse chiffrée.
-        const cles = new Set(state.factures.map(f => f.cle).filter(Boolean));
+        // Bâtie sur les factures qui SURVIVENT à l'écartement : la construire
+        // sur state.factures entier y remettait les techniques elles-mêmes,
+        // « perdues » était vide par construction et le message rassurant
+        // s'affichait toujours, y compris quand les tableaux ADV et Tampon
+        // n'étaient pas chargés — le cas précis qu'il est censé détecter.
+        const cles = new Set(state.factures
+            .filter(f => f.role !== 'technique' && !f.groupeTechnique)
+            .map(f => f.cle).filter(Boolean));
         const perdues = service.filter(f => {
             const k = I.factureKey(f.numero);
             return k && !cles.has(k);
         });
 
+        // La ligne de la chaîne compte des factures consolidées, ce tableau
+        // des lignes brutes : les deux nombres diffèrent légitimement dès
+        // qu'une même facture figure sur deux tableaux. Autant les donner tous
+        // les deux plutôt que de laisser l'écart sans explication.
+        const nbFactures = new Set(service.concat(ignorees)
+            .map(f => I.factureKey(f.numero)).filter(Boolean)).size;
+
         U.modal(`Groupes et tableaux écartés — ${U.nombre(service.length + ignorees.length)} lignes`,
-            `<p>Ces lignes sont retirées avant tout calcul. Un groupe d'archive, oui — mais
+            `<p>Ces ${U.nombre(service.length + ignorees.length)} lignes brutes portent
+             ${U.nombre(nbFactures)} numéros de facture distincts : c'est ce second nombre,
+             une fois consolidé, que retranche la ligne « Groupes et tableaux de service ».
+             Ces lignes sont retirées avant tout calcul. Un groupe d'archive, oui — mais
              « Technique — Service ADV » ou « Technique — Tampon » contiennent des factures bien
              vivantes, simplement garées là en attendant d'être traitées ailleurs. Les écarter est
              juste <strong>si le tableau qui les porte vraiment est chargé</strong> ; sinon elles
@@ -5240,8 +5347,19 @@
 
         const btn = $('#btn-clear-gl');
         if (btn) btn.addEventListener('click', async () => {
+            // Tout l'état du grand livre, pas seulement les lignes lettrées :
+            // les créances ouvertes sont persistées à part, et les oublier
+            // laissait la balance âgée comptable survivre au retrait comme au
+            // rechargement de la page.
             state.grandLivre = [];
+            state.glOuvertes = [];
+            state.glCreances = [];
+            state.glLecture = null;
+            state.glBalance = null;
+            state.glComparaison = null;
             await S.set(S.KEYS.grandLivre, []);
+            await S.set('rec_gl_ouvertes', []);
+            await S.set('rec_gl_lecture', null);
             U.toast('Grand livre retiré.', 'info');
             recalculer({ conserverPeriode: true });
             rendreHistoriqueImports();
@@ -5662,11 +5780,22 @@
         // comme un tableau Monday : 15 875 écritures comptables devenaient des
         // « factures ADV ». Les zones se ressemblent, le fichier ne ment pas —
         // on le reconnaît à ses colonnes et on l'envoie où il doit aller.
+        // L'écran de chargement d'abord : cette boucle lit les fichiers en
+        // entier — plusieurs secondes sur un gros export, thread principal
+        // bloqué — et se faisait jusqu'ici sans que rien ne l'annonce.
+        montrerEcran('loading');
+        $('#loader-log').innerHTML = '';
+        statut('Analyse des fichiers');
+
+        // Chaque fichier n'est lu qu'une fois : la lecture de reconnaissance
+        // sert aussi à l'import, au lieu d'être refaite en pure perte.
+        const lus = new Map();
         const restants = [];
         for (const file of files) {
             let entetes = null;
             try {
                 const apercu = await lireFichier(file);
+                lus.set(file, apercu);
                 entetes = apercu.length ? Object.keys(apercu[0]) : null;
             } catch { /* illisible : la suite s'en chargera */ }
             if (entetes && GL.estComptable(GL.detecterColonnes(entetes))) {
@@ -5677,11 +5806,16 @@
             }
             restants.push(file);
         }
-        if (!restants.length) return;
+        if (!restants.length) {
+            // Rien d'autre à importer : c'était un grand livre. Sans cela
+            // l'écran d'accueil restait affiché, données chargées mais
+            // inaccessibles jusqu'à un rechargement manuel de la page.
+            montrerEcran('app');
+            ouvrirOnglet('aging');
+            return;
+        }
         files = restants;
 
-        montrerEcran('loading');
-        $('#loader-log').innerHTML = '';
         statut('Lecture des fichiers');
         log(`${files.length} fichier(s) à traiter`);
 
@@ -5691,7 +5825,7 @@
         try {
             for (const file of files) {
                 log(`→ ${file.name}`);
-                const rows = await lireFichier(file);
+                const rows = lus.get(file) || await lireFichier(file);
                 if (!rows.length) { log('   ⚠ fichier vide'); continue; }
                 const nom = rows.tableauMonday || file.name.replace(/\.(csv|xlsx|xls)$/i, '');
                 if (rows.tableauMonday) log(`   tableau reconnu : ${rows.tableauMonday}`);
@@ -5849,9 +5983,18 @@
 
             // Ce que ce fichier sait classer entre dans le référentiel, sans
             // jamais l'effacer : chaque extrait qualifié enrichit le suivant.
+            // Ce que le fichier sait classer entre dans le référentiel comme
+            // piste, jamais par-dessus une qualification validée à la main :
+            // une colonne collée d'un ancien tableau ne fait pas foi contre du
+            // travail vérifié.
             const appris = GL.referentielDepuis(lu.lignes, state.rules);
             const avant = Object.keys(state.qualifRef).length;
-            state.qualifRef = { ...state.qualifRef, ...appris };
+            for (const [cle, v] of Object.entries(appris)) {
+                const dejaLa = state.qualifRef[cle];
+                const valide = dejaLa && typeof dejaLa !== 'string' && dejaLa.source === 'valide';
+                if (!valide && typeof dejaLa !== 'string') state.qualifRef[cle] = v;
+                else if (!dejaLa) state.qualifRef[cle] = v;
+            }
             state.glApprises = Object.keys(state.qualifRef).length - avant;
 
             // Les créances ouvertes sont la matière de la balance âgée

@@ -103,7 +103,14 @@
     //  2. Nature d'une écriture
     // ──────────────────────────────────────────────
 
-    const EST_FACTURE = /^(fact|fct|fa)[-_ ]?/i;
+    // Le journal où sont passées les factures de vente. Une écriture au débit
+    // qui en vient est une facture, même si son numéro a dû être lu au libellé.
+    const JOURNAL_VENTE = /^(vt|ve|vte|vent)/i;
+
+    // Les mêmes préfixes que MOTIFS_NUMERO : « FCAT-2312-00417 » n'était
+    // reconnu nulle part, l'écriture était perdue, et sa créance se retrouvait
+    // sans numéro, sans montant et sans date — donc vieillie en « Non échu ».
+    const EST_FACTURE = /^(fact|fcat|fct|fa)[-_ ]?/i;
     const EST_AVOIR = /^(avr|av|avo)[-_ ]?/i;
 
     /**
@@ -133,16 +140,30 @@
      * @param {Set<string>} [connus]  clés des numéros existants. Fournies, un
      *   candidat reconnu l'emporte sur un candidat seulement plausible.
      */
-    function numeroDepuisTexte(txt, connus) {
+    function candidatsNumero(txt) {
         const s = String(txt == null ? '' : txt).toUpperCase();
-        if (!s) return '';
-        const candidats = [];
+        if (!s) return [];
+        const trouves = [];
         for (const re of MOTIFS_NUMERO) {
             re.lastIndex = 0;
             let m;
-            while ((m = re.exec(s)) !== null) candidats.push(m[0].trim());
+            while ((m = re.exec(s)) !== null) trouves.push({ pos: m.index, val: m[0].trim() });
         }
+        // Dans l'ordre du texte, et non dans l'ordre des motifs : « AVOIR
+        // AVR-2512-02297 ANNULATION FACT-2504-09118 » nomme d'abord l'avoir,
+        // et c'est l'avoir qui est l'identité de cette écriture.
+        trouves.sort((a, b) => a.pos - b.pos);
+        const vus = new Set();
+        return trouves.filter(t => (vus.has(t.val) ? false : vus.add(t.val))).map(t => t.val);
+    }
+
+    function numeroDepuisTexte(txt, connus, prefere) {
+        const candidats = candidatsNumero(txt);
         if (!candidats.length) return '';
+        // Une préférence explicite passe avant tout : sur une écriture au
+        // crédit, un numéro d'avoir dit ce qu'est la ligne, alors que le numéro
+        // de facture ne dit que ce qu'elle vise.
+        if (prefere) { const p = candidats.find(prefere); if (p) return p; }
         if (connus && connus.size) {
             for (const c of candidats) if (connus.has(I.factureKey(c))) return c;
         }
@@ -217,6 +238,7 @@
         const connus = o.numerosConnus;
         const col = (r, champ) => (mapping[champ] ? r[mapping[champ]] : '');
 
+        const sansColonneNumero = !mapping.numero;
         const groupes = new Map();
         let ignorees = 0, numerosExtraits = 0;
         for (const r of rows) {
@@ -234,8 +256,12 @@
             let numero = texteBrut(col(r, 'numero'));
             let numeroExtrait = false;
             if (!numero) {
-                numero = numeroDepuisTexte(col(r, 'libelleLigne'), connus)
-                    || numeroDepuisTexte(col(r, 'libelle'), connus);
+                // Au crédit, l'avoir cité l'emporte sur la facture citée :
+                // « AVOIR AVR-… ANNULATION FACT-… » est un avoir, pas un
+                // règlement de la facture qu'il annule.
+                const prefere = (credit > 0 && !debit) ? (c => EST_AVOIR.test(c)) : null;
+                numero = numeroDepuisTexte(col(r, 'libelleLigne'), connus, prefere)
+                    || numeroDepuisTexte(col(r, 'libelle'), connus, prefere);
                 if (numero) { numeroExtrait = true; numerosExtraits++; }
             }
 
@@ -255,7 +281,7 @@
             if (!g) {
                 g = { cle, compte, lettre: groupe, nonLettre: !lettre,
                       tiers: '', debit: 0, credit: 0,
-                      factures: [], avoirs: [], reglements: [] };
+                      factures: [], avoirs: [], reglements: [], autres: [] };
                 groupes.set(cle, g);
             }
             if (!g.tiers) g.tiers = String(col(r, 'tiers') || col(r, 'libelleCompte') || '').trim();
@@ -264,9 +290,9 @@
             g.debit += debit;
             g.credit += credit;
 
+            const journal = String(col(r, 'journal') || '').trim();
             const ligne = {
-                numero, numeroExtrait, qualif, date, debit, credit,
-                journal: String(col(r, 'journal') || '').trim(),
+                numero, numeroExtrait, qualif, date, debit, credit, journal,
                 libelle: String(col(r, 'libelle') || '').trim(),
                 dateEcheance: R.parseDate(col(r, 'dateEcheance')),
             };
@@ -274,9 +300,21 @@
             // Une facture est un débit portant un numéro de facture ; un avoir
             // un crédit portant un numéro d'avoir. Tout autre crédit est un
             // règlement — le virement bancaire ne nomme jamais la facture.
-            if (debit > 0 && EST_FACTURE.test(numero)) g.factures.push(ligne);
+            //
+            // Encore faut-il que le numéro soit celui de l'écriture. Un débit
+            // dont le numéro n'a été que deviné dans un libellé — rejet de
+            // prélèvement, contre-passation, pénalité — cite la facture sans
+            // en être une : la prendre pour telle créerait une seconde facture
+            // au même numéro et couperait en deux le reste dû de la vraie.
+            // Deux exceptions : le journal de ventes, où seules des factures
+            // sont passées, et le fichier sans colonne de numéro, où tout
+            // numéro vient forcément du libellé.
+            const facture = EST_FACTURE.test(numero) && (!numeroExtrait
+                || sansColonneNumero || JOURNAL_VENTE.test(journal));
+            if (debit > 0 && facture) g.factures.push(ligne);
             else if (credit > 0 && EST_AVOIR.test(numero)) g.avoirs.push(ligne);
             else if (credit > 0) g.reglements.push(ligne);
+            else if (debit > 0) g.autres.push(ligne);
         }
 
         const derniere = lignes => lignes.reduce(
@@ -285,7 +323,12 @@
         const resultats = [];
         for (const g of groupes.values()) {
             const solde = g.debit - g.credit;
-            g.soldee = Math.abs(solde) < TOLERANCE;
+            // Un pool non lettré n'est pas un lettrage : ses écritures ne se
+            // répondent pas deux à deux. Que son solde tombe à zéro ne prouve
+            // rien — un acompte sans rapport suffit — et déclarer soldée une
+            // créance vivante est exactement l'erreur que ce module existe pour
+            // éviter. Le pool sert au solde du compte, pas au lettrage.
+            g.soldee = !g.nonLettre && Math.abs(solde) < TOLERANCE;
             g.reste = g.soldee ? 0 : solde;
             g.creditReglements = g.reglements.reduce((s, l) => s + l.credit, 0);
             g.creditAvoirs = g.avoirs.reduce((s, l) => s + l.credit, 0);
@@ -315,6 +358,11 @@
                     // ne rien dire que répartir au hasard.
                     montantRegle: g.factures.length === 1
                         ? Math.min(g.creditReglements, f.debit) : null,
+                    // Ce qu'un avoir a effacé sur cette facture : sur un groupe
+                    // à facture unique, c'est exact ; à plusieurs, ce n'est pas
+                    // attribuable et mieux vaut ne rien dire.
+                    montantAvoir: g.factures.length === 1
+                        ? Math.min(g.creditAvoirs, f.debit) : null,
                     datePaiement: g.parAvoir ? null : g.dateReglement,
                     dateAvoir: g.parAvoir ? g.dateAvoir : null,
                     resteGroupe: g.reste,
@@ -455,7 +503,10 @@
                     identifiantTiers: g.identifiantTiers || '',
                     compte: g.compte, tiers: g.tiers, lettre: g.lettre,
                     montant: null, resteDu: reste,
-                    dateFacture: derniereDate(g.reglements.concat(g.avoirs)),
+                    // Ce sont les débits qui créent la dette : leur date fait
+                    // l'ancienneté. À défaut seulement, le dernier mouvement.
+                    dateFacture: derniereDate(g.autres.length ? g.autres
+                        : g.reglements.concat(g.avoirs)),
                     dateEcheance: null,
                     libelle: libelleRepresentatif(g),
                     journal: '',
@@ -549,10 +600,24 @@
         // précédente. Elle est retenue — elle a le mérite d'exister — mais
         // derrière les sources qui font foi, et son origine est nommée pour
         // qu'elle se vérifie.
-        const propre = c => (c.qualif ? R.detectFinancement(c.qualif, o.rules) : null);
-        // Le référentiel, lui, est constitué des qualifications validées des
-        // extraits précédents : c'est le travail déjà fait qui se réutilise.
-        const duReferentiel = c => (c.cle && ref[c.cle]) || null;
+        // Ce que porte le fichier courant, et ce que portaient les fichiers
+        // précédents, sont de même nature : lus, non vérifiés.
+        const propre = c => (c.qualif ? R.detectFinancement(c.qualif, o.rules) : null)
+            || entree(c, 'fichier');
+        // Le référentiel, lui, ne fait foi que pour ce qui y a été validé à la
+        // main : c'est le travail déjà fait qui se réutilise. Ce qu'un fichier
+        // y a seulement déposé reste marqué comme tel et passe bien plus bas —
+        // une colonne de qualification collée d'un ancien tableau n'est pas une
+        // référence, elle est une piste.
+        const entree = (c, source) => {
+            const v = c.cle ? ref[c.cle] : null;
+            if (!v) return null;
+            // Format historique : une simple chaîne, qui valait pour du validé.
+            const src = typeof v === 'string' ? 'valide' : (v.source || 'valide');
+            const fin = typeof v === 'string' ? v : v.fin;
+            return src === source ? (fin || null) : null;
+        };
+        const duReferentiel = c => entree(c, 'valide');
         // Les règles écrites à la main passent juste après ce qui est établi
         // facture par facture : elles sont délibérées, mais un rapprochement
         // nominatif reste plus précis qu'un motif.
@@ -695,7 +760,8 @@
                 l = { financement: parCategorie ? null : c.financement, cle,
                       label: !c.financement ? 'À classer'
                           : parCategorie ? cle : R.getRule(c.financement, rules).label,
-                      total: 0, echu: 0, nonEchu: 0, nb: 0, buckets: {}, creances: [] };
+                      total: 0, echu: 0, nonEchu: 0, nb: 0, crediteur: 0, nbCrediteur: 0,
+                      buckets: {}, creances: [] };
                 for (const b of R.AGING_BUCKETS) l.buckets[b.key] = 0;
                 lignes.set(cle, l);
             }
@@ -706,6 +772,17 @@
 
             l.nb++;
             l.total += c.resteDu;
+            // Un solde créditeur — acompte, trop-perçu, avoir non imputé — n'est
+            // pas une créance vieillie : c'est de l'argent déjà reçu. Le ranger
+            // dans la tranche d'ancienneté de sa facture l'y soustrairait et
+            // effacerait des arriérés bien réels. Il compte dans le total, qui
+            // reste le solde du compte, mais à part dans les tranches.
+            if (c.resteDu < 0) {
+                l.crediteur += c.resteDu;
+                l.nbCrediteur++;
+                l.creances.push({ ...c, retardJours: retard, bucket: 'crediteur' });
+                continue;
+            }
             l.buckets[bucket.key] += c.resteDu;
             if (retard > 0) l.echu += c.resteDu; else l.nonEchu += c.resteDu;
             l.creances.push({ ...c, retardJours: retard, bucket: bucket.key });
@@ -718,10 +795,12 @@
             return b.total - a.total;
         });
 
-        const total = { label: 'TOTAL', cle: '__TOTAL__', total: 0, echu: 0, nonEchu: 0, nb: 0, buckets: {} };
+        const total = { label: 'TOTAL', cle: '__TOTAL__', total: 0, echu: 0, nonEchu: 0, nb: 0,
+                        crediteur: 0, nbCrediteur: 0, buckets: {} };
         for (const b of R.AGING_BUCKETS) total.buckets[b.key] = 0;
         for (const r of rows) {
             total.total += r.total; total.echu += r.echu; total.nonEchu += r.nonEchu; total.nb += r.nb;
+            total.crediteur += r.crediteur; total.nbCrediteur += r.nbCrediteur;
             for (const b of R.AGING_BUCKETS) total.buckets[b.key] += r.buckets[b.key];
         }
 
@@ -781,9 +860,18 @@
         for (const l of (lignes || [])) {
             if (!l.cle || !l.qualif) continue;
             const fin = R.detectFinancement(l.qualif, rules);
-            if (fin) ref[l.cle] = fin;
+            // Marquée « fichier » : c'est une qualification lue, pas validée.
+            // Promue « valide » seulement quand elle est confirmée à la main
+            // depuis « Les créances à classer ».
+            if (fin) ref[l.cle] = { fin, source: 'fichier' };
         }
         return ref;
+    }
+
+    /** Le financement porté par une entrée de référentiel, quel qu'en soit le format. */
+    function financementDuReferentiel(v) {
+        if (!v) return null;
+        return typeof v === 'string' ? v : (v.fin || null);
     }
 
     /** Une règle en une ligne lisible : « Nom du client contient alma ». */
@@ -794,7 +882,7 @@
     }
 
     global.LioraGrandLivre = {
-        referentielDepuis, CHAMPS_REGLE, OPERATEURS,
+        referentielDepuis, financementDuReferentiel, CHAMPS_REGLE, OPERATEURS,
         regleCorrespond, financementParRegles, porteeDesRegles, etiquetteRegle,
         A_CLASSER, POOL_NON_LETTRE, MOTIFS_NUMERO, numeroDepuisTexte,
         creancesOuvertes, classer, balanceAgee, comparer,

@@ -186,7 +186,10 @@
                 dateEcheance: mapping.dateEcheanceSource ? R.parseDate(r[mapping.dateEcheanceSource]) : null,
                 dateDebutService: mapping.dateDebutFormation ? R.parseDate(r[mapping.dateDebutFormation]) : null,
                 dateFinService: mapping.dateFinFormation ? R.parseDate(r[mapping.dateFinFormation]) : null,
-                montantAberrant: montantAberrant(montant),
+                // Le garde-fou porte sur les deux champs : le reste dû sort du
+                // même export et prend les mêmes valeurs absurdes, et il est
+                // sommé ailleurs sans passer par le montant.
+                montantAberrant: montantAberrant(montant) || montantAberrant(resteDu),
                 // « Type de client » nomme le dispositif de financement : c'est
                 // la seule source qui le porte pour toutes les factures émises,
                 // et elle sert à classer les créances du grand livre.
@@ -242,6 +245,12 @@
     /** Montant utilisable dans une somme : null si la source est aberrante. */
     function montantSommable(l) {
         return l.montantAberrant ? null : l.montant;
+    }
+
+    /** Reste dû utilisable dans une somme, à défaut le montant. */
+    function resteDuSommable(l) {
+        if (l.montantAberrant) return null;
+        return l.resteDu != null ? l.resteDu : (l.paye ? 0 : l.montant);
     }
 
     /**
@@ -324,8 +333,7 @@
             eurosAttendues: somme(attendues, montantSommable),
             nbAbsentes: absentes.length,
             eurosAbsentes: somme(absentes, montantSommable),
-            eurosAbsentesDues: somme(absentes.filter(l => !l.paye),
-                l => l.resteDu != null ? l.resteDu : montantSommable(l)),
+            eurosAbsentesDues: somme(absentes.filter(l => !l.paye), resteDuSommable),
             nbAbsentesImpayees: absentes.filter(l => !l.paye).length,
             nbAbsentesPayees: absentes.filter(l => l.paye).length,
             nbHorsPerimetre: o.horsPerimetre.length,
@@ -358,7 +366,7 @@
             const e = m.get(l.statut);
             e.nb++;
             e.euros += montantSommable(l) || 0;
-            e.resteDu += (l.resteDu != null ? l.resteDu : (l.paye ? 0 : montantSommable(l))) || 0;
+            e.resteDu += resteDuSommable(l) || 0;
         }
         return [...m.values()].sort((a, b) => b.nb - a.nb);
     }
@@ -401,7 +409,7 @@
 
     global.LioraSellsy = {
         STATUTS, STATUT_INCONNU, ALIAS_SELLSY, ECART_MONTANT_TOLERE, MONTANT_ABERRANT,
-        montantAberrant, montantSommable,
+        montantAberrant, montantSommable, resteDuSommable,
         normaliserStatut, lireExport, rapprocher,
         absentesParStatut, absentesParMois, absentesParClient,
     };

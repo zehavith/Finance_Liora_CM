@@ -1,6 +1,6 @@
 # Liora — Suivi Recouvrement
 
-**Version 2.24.0** — 2 septembre 2026
+**Version 2.25.0** — 2 septembre 2026
 
 Le numéro figure à côté du titre dans la barre supérieure, donc sur toute
 capture d'écran, ainsi que dans l'onglet *Données* et dans l'onglet *Synthèse*
@@ -8,7 +8,7 @@ de l'export Excel. Il évite d'avoir à deviner quelle version tourne quand un
 chiffre surprend.
 
 Chaque fichier de l'application porte sa version dans son adresse
-(`app.js?v=2.24.0`) : sans cela le navigateur resservait ses fichiers en cache et
+(`app.js?v=2.25.0`) : sans cela le navigateur resservait ses fichiers en cache et
 une mise à jour pouvait sembler installée sans l'être. Si les deux ne
 concordent pas, l'application le signale et invite à forcer le rechargement par
 Ctrl + F5.
@@ -694,12 +694,44 @@ classeur qui reprend la structure du fichier de trésorerie, neuf onglets :
 | Écritures non rattachées | acomptes, écarts de règlement, crédits sans facture |
 | Monday vs grand livre | l'écart par financement |
 | Règles appliquées | de quoi relire la balance dans six mois |
+| Règles de classement | vos règles, avec ce que chacune a réellement classé |
 
 Les deux synthèses sont recalculées à l'export, quel que soit le niveau affiché
 à l'écran : un export n'a pas à dépendre de l'onglet ouvert. Chaque synthèse
 suit l'ordre de colonnes du classeur — *Restant dû*, *Total échu*, les tranches
-de la plus ancienne à la plus récente, *Non échu*, *Total*, *Nb* — et se termine
-par sa ligne TOTAL.
+de la plus ancienne à la plus récente, *Non échu*, *Solde créditeur*, *Total*,
+*Nb* — et se termine par sa ligne TOTAL.
+
+Le **solde créditeur** est à part, et c'est important : un compte client dont
+le solde est négatif — acompte encaissé d'avance, trop-perçu, avoir non imputé
+— n'est pas une créance qu'on vieillit, c'est de l'argent déjà reçu. Le ranger
+dans la tranche d'ancienneté de sa facture l'y soustrairait et effacerait des
+arriérés bien réels. Il compte donc dans le total, qui reste le solde des
+comptes clients, mais dans sa propre colonne.
+
+### Vos règles de classement
+
+Le grand livre ne nomme aucun dispositif : le recoupement automatique en
+retrouve une partie, le reste resterait à classer ligne à ligne. Une règle
+écrite une fois range d'un coup tout ce qui lui ressemble :
+
+> *Nom du client contient « CAISSE DES DEPOTS » → CPF*
+
+Cinq champs (nom du client, n° de compte, identifiant du tiers, n° de facture,
+libellé de l'écriture) et quatre opérateurs (contient, commence par, finit par,
+est exactement). La comparaison ignore les accents et la casse.
+
+**L'ordre fait la priorité** : la première règle qui répond l'emporte, une
+règle précise se place donc au-dessus d'une règle large, et les flèches de la
+colonne *Ordre* la déplacent. Deux comptages accompagnent chaque règle :
+*Reconnaît*, ce à quoi son motif correspond, et *Classe*, ce qu'elle a
+réellement classé — une créance déjà rattachée à sa facture Monday n'a pas
+besoin d'elle.
+
+Avant d'écrire, l'aperçu dit combien de créances la règle classerait et pour
+combien d'euros : une règle trop large se voit avant d'être posée, pas après.
+Les règles sont conservées dans le navigateur et valent pour tous les extraits
+suivants.
 
 ### Classer plusieurs créances d'un coup
 
@@ -710,6 +742,13 @@ factures reviennent. Ce travail ne se fait donc qu'une fois.
 
 Une créance sans numéro de facture ne peut pas y entrer : le référentiel est
 indexé par numéro. Sa case est désactivée plutôt que trompeuse.
+
+Le référentiel distingue deux origines, et c'est ce qui lui donne son rang.
+Ce qu'un fichier y dépose — la colonne de qualification d'un extrait — reste
+marqué **« hérité du fichier, à vérifier »** et passe après vos règles : une
+colonne collée d'un ancien tableau est une piste, pas une référence. Ce qui a
+été classé **à la main** est validé : c'est ce qui fait foi, juste derrière la
+facture Monday elle-même, et aucun import ne l'écrase.
 
 ### Les quatre vues
 
@@ -814,8 +853,21 @@ lit le sort de chaque facture dans l'équilibre de son groupe :
 L'**avoir** est la distinction qui compte : la créance a disparu sans qu'un
 euro rentre. La compter encaissée gonflerait le taux de récupération d'un
 argent qui n'existe pas ; la laisser en retard ferait relancer une facture
-annulée. Elle a donc son propre état, **Annulée par avoir**, filtrable comme
-les autres.
+annulée. Elle **quitte donc le portefeuille** : elle ne pèse ni dans l'encours,
+ni dans les taux, ni dans la balance âgée, ni dans le flux du mois. Sa puce
+**Annulée par avoir** est éteinte par défaut et se coche pour les revoir ; le
+tableau de bord en donne le compte et le montant, et Data Quality les liste.
+
+Quand un avoir n'en solde qu'une partie et qu'un règlement complète, la facture
+est bien réglée — mais seule la part réglée est de l'argent : c'est elle, et
+non le montant de la facture, qui entre dans ce que le recouvrement a récupéré.
+
+Une facture que le grand livre laisse ouverte n'est **jamais** donnée pour
+réglée : reconnue au grand livre ne veut pas dire lettrée. Un extrait non
+lettré ne contient d'ailleurs que des créances vivantes. Symétriquement, un
+groupe **non lettré** dont les débits égalent par hasard les crédits ne solde
+rien : ses écritures ne se répondent pas deux à deux, et un acompte sans
+rapport suffit à équilibrer un compte.
 
 Une facture que Monday donne réglée et que le grand livre ne solde pas est
 **signalée en Data Quality, jamais appliquée** : un extrait ne couvre qu'un
