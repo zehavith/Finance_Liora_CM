@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.33.0';
+    const VERSION = '2.34.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -86,7 +86,7 @@
             prefereEcheanceMonday: false,   // les règles font foi
             masquerTechnique: true,
             payeesHorsPortefeuille: false,
-            montantsExacts: false,        // balances âgées : à l'euro plutôt qu'arrondi
+            montantsExacts: true,         // balances âgées : à l'euro, pas en k€
             actualisationAuto: 30,        // minutes, 0 = désactivée
             actualiserAuDemarrage: true,
         },
@@ -404,6 +404,21 @@
         if (!state.moisDispo.length) {
             c.innerHTML = '<span class="fv-hint">Aucun mois exploitable — vérifiez les dates dans l\'onglet Data Quality.</span>';
         }
+        majResumePeriode();
+    }
+
+    /** La période retenue, en une ligne, quand la liste des mois est repliée. */
+    function majResumePeriode() {
+        const el = $('#periode-resume');
+        if (!el) return;
+        const dispo = state.moisDispo || [];
+        const sel = state.filtres.mois ? [...state.filtres.mois].sort() : dispo;
+        if (!dispo.length) { el.textContent = ''; return; }
+        el.textContent = !state.filtres.mois
+            ? `tous les mois (${U.moisLabel(dispo[0], true)} → ${U.moisLabel(dispo[dispo.length - 1], true)})`
+            : sel.length === 0 ? 'aucun mois retenu'
+            : sel.length === 1 ? U.moisLabel(sel[0])
+            : `${U.moisLabel(sel[0], true)} → ${U.moisLabel(sel[sel.length - 1], true)} · ${U.nombre(sel.length)} mois`;
     }
 
     function basculerMois(mk) {
@@ -2885,6 +2900,7 @@
             onRowClick: true, rowClass: r => r.cle === GL.A_CLASSER ? 'ligne-a-classer' : '' });
         U.bindTable(el, rows, { onRowClick: r => montrerCreancesGL(r) });
 
+        rendreActionsGL();
         rendreOrphelins();
         rendreReglesClassement();
         rendreAClasser();
@@ -2958,6 +2974,47 @@
             }))), 'Ligne à ligne');
         XLSX.writeFile(wb, `Creances_a_classer_${new Date().toISOString().slice(0, 10)}.xlsx`);
         U.toast(`${U.nombre(toutes.length)} créances à classer exportées.`, 'success');
+    }
+
+    /**
+     * Tout ce qu'il y a à faire sur le grand livre, en haut de l'écran.
+     *
+     * Les boutons vivaient dans l'en-tête de leur tableau, sous six rangées de
+     * filtres : ils n'étaient jamais vus. Ils sont désormais réunis là où le
+     * regard tombe, avec le compte de ce qui les attend, et chacun conduit à
+     * sa section.
+     */
+    function rendreActionsGL() {
+        const el = $('#gl-actions');
+        if (!el) return;
+        const e = state.glEcritures;
+        const nbPointer = e ? (e.orphelins || []).length : 0;
+        const nbClasser = creancesAClasser().length;
+        const nbRegles = (state.reglesClassement || []).length;
+        const exact = !!state.options.montantsExacts;
+        el.innerHTML = `
+            <span class="gl-actions-titre">À faire</span>
+            <button class="btn btn-secondary btn-sm" data-vers="#sec-pointage">Pointer les paiements
+                <span class="compteur">${U.nombre(nbPointer)}</span></button>
+            <button class="btn btn-secondary btn-sm" data-vers="#sec-aclasser">Classer les créances
+                <span class="compteur">${U.nombre(nbClasser)}</span></button>
+            <button class="btn btn-ghost btn-sm" data-vers="#sec-regles">Mes règles
+                <span class="compteur">${U.nombre(nbRegles)}</span></button>
+            <span style="margin-left:auto"></span>
+            <button class="btn btn-ghost btn-sm" id="gl-actions-precision">${
+                exact ? 'Montants arrondis' : 'Montants à l’euro'}</button>
+            <button class="btn btn-primary btn-sm" id="gl-actions-export">Exporter le grand livre (Excel)</button>`;
+
+        $$('[data-vers]', el).forEach(b => b.addEventListener('click', () => {
+            const cible = $(b.dataset.vers);
+            if (cible) cible.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }));
+        $('#gl-actions-precision', el).addEventListener('click', async () => {
+            state.options.montantsExacts = !state.options.montantsExacts;
+            await sauverReglages();
+            rendreTout();
+        });
+        $('#gl-actions-export', el).addEventListener('click', exporterBalanceGL);
     }
 
     /**
@@ -3063,7 +3120,33 @@
      * règle *reconnaît*, et ce qu'elle *classe* réellement — une créance déjà
      * rattachée à sa facture Monday n'a pas besoin d'elle.
      */
+    function rendreReglesLivrees() {
+        const el = $('#gl-regles-livrees');
+        if (!el) return;
+        const portees = GL.porteeDesMotifs(state.glCreances || [])
+            .filter(p => p.nb > 0)
+            .sort((a, b) => b.nb - a.nb);
+        if (!portees.length) { el.innerHTML = ''; return; }
+        const nb = X.sum(portees, p => p.nb), euros = X.sum(portees, p => p.euros);
+        el.innerHTML = `<p class="aide-bloc">Ces règles sont déjà en place, vous n'avez rien à faire :
+            elles lisent le nom du compte client et en déduisent le financement. Elles classent
+            aujourd'hui <strong>${U.nombre(nb)} créances</strong> pour ${U.euros(euros)}.
+            Vos propres règles, écrites ci-dessous, passent avant elles.</p>`
+            + U.table([
+                { key: 'libelle', label: 'Quand le compte client dit…' },
+                { key: 'financement', label: 'La créance est classée en', format: (v, r) =>
+                    `<span class="pill">${U.escapeHtml(R.getRule(v, state.rules).label)}</span>`
+                    + (r.arbitrage === 'poleEmploi'
+                        ? ' <span class="fv-hint">ou POEI selon le montant</span>'
+                        : r.arbitrage === 'opco'
+                            ? ' <span class="fv-hint">ou OPCO - Alternance selon la facture</span>' : '') },
+                { key: 'nb', label: 'Créances classées', align: 'right', format: U.nombre },
+                { key: 'euros', label: 'Reste dû', align: 'right', format: U.euros },
+            ], portees, { vide: '' });
+    }
+
     function rendreReglesClassement() {
+        rendreReglesLivrees();
         const el = $('#gl-regles-table');
         if (!el) return;
         remplirFormRegle();
@@ -3357,29 +3440,6 @@
             if (dejaEcrite(regle)) continue;
             sug.push({ regle, nb: e.nb, euros: e.euros, sur: e.tiers || compte,
                        motif: 'Le reste de ce compte est déjà classé ainsi' });
-        }
-
-        // 2. Les mots qui reviennent dans les noms de clients encore à classer.
-        const VIDES = new Set(['client', 'clients', 'sarl', 'sas', 'sasu', 'sa', 'eurl', 'sci',
-            'association', 'groupe', 'france', 'compte', 'monsieur', 'madame', 'de', 'du', 'des',
-            'la', 'le', 'les', 'et', 'pour', 'par', 'sur', 'aux', 'une', 'un', 'ste', 'societe']);
-        const parMot = new Map();
-        for (const c of aClasser) {
-            const mots = new Set(R.norm(c.tiers || '').split(/[^a-z0-9]+/)
-                .filter(m => m.length >= 4 && !VIDES.has(m)));
-            for (const m of mots) {
-                const e = parMot.get(m) || { nb: 0, euros: 0, exemples: [] };
-                e.nb++; e.euros += c.resteDu || 0;
-                if (e.exemples.length < 3 && c.tiers) e.exemples.push(c.tiers);
-                parMot.set(m, e);
-            }
-        }
-        for (const [mot, e] of parMot) {
-            if (e.nb < 3) continue;
-            const regle = { champ: 'tiers', operateur: 'contient', valeur: mot, financement: '' };
-            if (dejaEcrite(regle)) continue;
-            sug.push({ regle, nb: e.nb, euros: e.euros, sur: e.exemples.join(', '),
-                       motif: 'Ce mot revient dans plusieurs noms de clients' });
         }
 
         return sug.sort((a, b) => Math.abs(b.euros) - Math.abs(a.euros)).slice(0, 10);
@@ -7372,6 +7432,12 @@
         $('#nav-logo-home').addEventListener('click', () => ouvrirOnglet('dashboard'));
 
         // ── Filtres ──
+        $('#btn-periode-ouvrir').addEventListener('click', () => {
+            const c = $('#date-filter-months');
+            const replie = c.classList.toggle('replie');
+            $('#btn-periode-ouvrir').textContent = replie ? 'Choisir les mois' : 'Replier les mois';
+            mesurerNavbar();
+        });
         $('#date-select-all').addEventListener('click', () => { state.filtres.mois = null; state.ui.page = 1; rendreBoutonsMois(); rendreTout(); });
         $('#date-select-none').addEventListener('click', () => { state.filtres.mois = new Set(); state.ui.page = 1; rendreBoutonsMois(); rendreTout(); });
         $('#date-select-12').addEventListener('click', () => {
@@ -7661,12 +7727,22 @@
         document.addEventListener('keydown', e => { if (e.key === 'Escape') U.closeModal(); });
     }
 
-    /** La barre de filtres se cale sous la navbar, dont la hauteur varie. */
+    /**
+     * La barre de filtres se cale sous la navbar, dont la hauteur varie — et
+     * la barre d'actions du grand livre sous la barre de filtres, dont la
+     * hauteur varie aussi selon que les mois sont dépliés ou non. Sans cette
+     * mesure, un clic « aller à la section » amenait la barre sous les filtres,
+     * où elle disparaissait.
+     */
     function mesurerNavbar() {
         const nav = document.querySelector('#app-screen .navbar');
-        if (!nav) return;
-        const h = nav.offsetHeight;
-        if (h) document.documentElement.style.setProperty('--nav-h', h + 'px');
+        if (nav && nav.offsetHeight) {
+            document.documentElement.style.setProperty('--nav-h', nav.offsetHeight + 'px');
+        }
+        const f = document.getElementById('filters-wrap');
+        if (f && f.offsetHeight) {
+            document.documentElement.style.setProperty('--filters-h', f.offsetHeight + 'px');
+        }
     }
 
     /**

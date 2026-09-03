@@ -129,6 +129,12 @@ select.input option { background: var(--bg-secondary); color: var(--text-primary
 }
 .filters-wrap.hidden { display: none; }
 .filters-wrap .date-filter-bar { margin-bottom: 0.6rem; }
+/* Les soixante-dix pastilles de mois occupaient la moitié de l'écran, en
+   permanence, sur tous les onglets : elles sont repliées, et la période
+   retenue se lit en une ligne. */
+.date-filter-months.replie { display: none; }
+.date-filter-months.replie + .date-mois-outil { display: none; }
+.periode-resume { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-right: 4px; }
 
 .filter-bar {
     display: flex;
@@ -1229,3 +1235,24 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
 .qualif-hausse { color: #ef4444; }
 .qualif-baisse { color: #22c55e; }
 .qualif-stable { color: var(--text-muted); }
+
+
+/* La barre d'actions du grand livre : tout ce qu'il y a à faire, en haut */
+.gl-actions {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    /* Sous la navbar et la barre de filtres, toutes deux collantes : ce qu'il
+       y a à faire reste sous les yeux, quel que soit le défilement. */
+    position: sticky; top: calc(var(--nav-h, 66px) + var(--filters-h, 300px)); z-index: 30;
+    padding: 10px 12px; margin-bottom: 14px; border-radius: 8px;
+    background: var(--surface-2, rgba(255,255,255,.04));
+    border: 1px solid var(--border);
+}
+.gl-actions .gl-actions-titre {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--text-muted); margin-right: 4px;
+}
+.gl-actions .btn { white-space: nowrap; }
+.gl-actions .compteur {
+    display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 9px;
+    background: rgba(255,255,255,.12); font-size: 11px; font-weight: 700;
+}

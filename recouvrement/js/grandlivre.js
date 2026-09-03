@@ -658,27 +658,52 @@
      */
     const MOTIFS_COMPTE = [
         // Comptes collectifs, qui annoncent leur dispositif
-        { motif: /\bb2c\b.*\bcpf\b|\bcpf\b.*\bb2c\b/, fin: 'CPF' },
-        { motif: /\bb2c\b.*\baif\b/, fin: 'AIF' },
-        { motif: /\bb2c\b.*\bregion\b/, fin: 'REGION' },
-        { motif: /\bb2c\b.*(reglement direct|alma)/, fin: 'BTC_PERSO' },
-        { motif: /^clients? - alma\b|\balma\b/, fin: 'BTC_PERSO' },
+        { libelle: 'Le compte dit « B2C » et « CPF »', motif: /\bb2c\b.*\bcpf\b|\bcpf\b.*\bb2c\b/, fin: 'CPF' },
+        { libelle: 'Le compte dit « B2C » et « AIF »', motif: /\bb2c\b.*\baif\b/, fin: 'AIF' },
+        { libelle: 'Le compte dit « B2C » et « Région »', motif: /\bb2c\b.*\bregion\b/, fin: 'REGION' },
+        { libelle: 'Le compte dit « B2C » et « règlement direct » ou « Alma »', motif: /\bb2c\b.*(reglement direct|alma)/, fin: 'BTC_PERSO' },
+        { libelle: 'Le client est Alma', motif: /^clients? - alma\b|\balma\b/, fin: 'BTC_PERSO' },
         // Institutionnels
-        { motif: /caisse des depots|caisse des depot|\bcdc\b|mon compte formation|\bedof\b/, fin: 'CPF' },
-        { motif: /transitions? pro|fongecif|\batpro\b/, fin: 'TRANSITION' },
-        { motif: /\bagefiph\b/, fin: 'AGEFIPH' },
-        { motif: /\bregion\b/, fin: 'REGION' },
+        { libelle: 'Caisse des Dépôts, CDC, Mon Compte Formation, EDOF', motif: /caisse des depots|caisse des depot|\bcdc\b|mon compte formation|\bedof\b/, fin: 'CPF' },
+        { libelle: 'Transitions Pro, Fongecif, ATpro', motif: /transitions? pro|fongecif|\batpro\b/, fin: 'TRANSITION' },
+        { libelle: 'Agefiph', motif: /\bagefiph\b/, fin: 'AGEFIPH' },
+        { libelle: 'Le client est une Région', motif: /\bregion\b/, fin: 'REGION' },
         // France Travail : le type est POEI, la sous-catégorie s'arbitre.
-        { motif: /pole emploi|pole emploie|france travail|\bdr pole\b/, fin: 'AIF', arbitrage: 'poleEmploi' },
+        { libelle: 'Pôle emploi, France Travail', motif: /pole emploi|pole emploie|france travail|\bdr pole\b/, fin: 'AIF', arbitrage: 'poleEmploi' },
         // OPCO : la sous-catégorie s'arbitre entre OPCO et OPCO - Alternance.
-        { motif: /\bopco\b|\bakto\b|\bafdas\b|\batlas\b|uniformation|ocapiat|constructys|intergros|\banfa\b|opcommerce/,
+        { libelle: 'Un OPCO (Akto, Afdas, Atlas, Uniformation, Ocapiat, Constructys, Intergros, ANFA, Opcommerce)',
+          motif: /\bopco\b|\bakto\b|\bafdas\b|\batlas\b|uniformation|ocapiat|constructys|intergros|\banfa\b|opcommerce/,
           fin: 'OPCO', arbitrage: 'opco' },
         // Les entités du groupe sont de l'interco. « Interne - DST Allemagne »
         // est la sous-catégorie de la seule filiale allemande : elle se nomme,
         // les autres non.
-        { motif: /dst (germany|allemagne)|datascientest germany|\bgmbh\b/, fin: 'DST_ALLEMAGNE' },
-        { motif: /\bdst\b|datascientest (spain|espagne|uk|inc)/, fin: 'INTERCO' },
+        { libelle: 'DST Allemagne (GmbH)', motif: /dst (germany|allemagne)|datascientest germany|\bgmbh\b/, fin: 'DST_ALLEMAGNE' },
+        { libelle: 'Une autre entité du groupe (DST Espagne, UK, Inc)', motif: /\bdst\b|datascientest (spain|espagne|uk|inc)/, fin: 'INTERCO' },
     ];
+
+    /**
+     * Ce que chaque règle livrée avec l'application a réellement classé.
+     *
+     * Ces règles ne sont pas cachées : ce sont celles dont nous avons convenu
+     * — Alma, la Caisse des Dépôts, Pôle emploi, les OPCO, les entités du
+     * groupe. Elles s'appliquent au libellé du compte client, et elles se
+     * lisent ici avec leur rendement, comme les règles écrites à la main.
+     * La première qui répond l'emporte, d'où le comptage par premier motif.
+     */
+    function porteeDesMotifs(creances) {
+        const compte = MOTIFS_COMPTE.map(() => ({ nb: 0, euros: 0 }));
+        for (const c of (creances || [])) {
+            const t = R.norm(c.tiers || ''), cp = R.norm(c.compte || '');
+            const i = MOTIFS_COMPTE.findIndex(m => m.motif.test(t) || m.motif.test(cp));
+            if (i < 0) continue;
+            compte[i].nb++;
+            compte[i].euros += c.resteDu || 0;
+        }
+        return MOTIFS_COMPTE.map((m, i) => ({
+            libelle: m.libelle, financement: m.fin, arbitrage: m.arbitrage || null,
+            nb: compte[i].nb, euros: compte[i].euros,
+        }));
+    }
 
     /** Le financement que le libellé du compte désigne, s'il en désigne un. */
     function financementDuLibelle(libelle) {
@@ -1268,7 +1293,7 @@
     }
 
     global.LioraGrandLivre = {
-        referentielDepuis, financementDuReferentiel, CHAMPS_REGLE, OPERATEURS,
+        referentielDepuis, financementDuReferentiel, CHAMPS_REGLE, OPERATEURS, porteeDesMotifs,
         regleCorrespond, financementParRegles, porteeDesRegles, etiquetteRegle,
         A_CLASSER, POOL_NON_LETTRE, MOTIFS_NUMERO, numeroDepuisTexte,
         creancesOuvertes, classer, classerEcritures, ecrituresAPlat, balanceAgee, comparer,

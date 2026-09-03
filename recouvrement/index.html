@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.33.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.33.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.33.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.33.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.33.0">
-    <link rel="stylesheet" href="styles.css?v=2.33.0">
+    <script src="../vendor/chart.umd.min.js?v=2.34.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.34.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.34.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.34.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.34.0">
+    <link rel="stylesheet" href="styles.css?v=2.34.0">
 </head>
 <body>
 
@@ -155,10 +155,12 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 <span>Période :</span>
             </div>
-            <div class="date-filter-months" id="date-filter-months"></div>
+            <span class="periode-resume" id="periode-resume"></span>
+            <button class="btn btn-ghost btn-sm" id="btn-periode-ouvrir">Choisir les mois</button>
             <button class="btn btn-ghost btn-sm" id="date-select-all">Tout</button>
-            <button class="btn btn-ghost btn-sm" id="date-select-none">Aucun</button>
             <button class="btn btn-ghost btn-sm" id="date-select-12">12 derniers mois</button>
+            <div class="date-filter-months replie" id="date-filter-months"></div>
+            <button class="btn btn-ghost btn-sm date-mois-outil" id="date-select-none">Aucun</button>
         </div>
 
         <div class="filter-bar">
@@ -736,6 +738,7 @@
                     </p>
                 </div>
                 <div id="aging-gl-contenu" hidden>
+                    <div class="gl-actions" id="gl-actions"></div>
                     <div class="recup-grid" id="aging-gl-kpi"></div>
                     <details class="regles-bloc" id="aging-gl-regles">
                         <summary>Les règles appliquées — échéance et classement</summary>
@@ -764,7 +767,7 @@
                             <div class="table-wrap" id="aging-gl-table"></div>
                         </div>
                     </div>
-                    <div class="section-header section-header-sub">
+                    <div class="section-header section-header-sub" id="sec-pointage">
                         <h3>Les paiements à pointer</h3>
                         <span class="fv-hint">Règlements et avoirs qu'aucune facture du même lettrage ne rattache</span>
                         <button class="btn btn-ghost btn-sm" id="btn-gl-orphelins-export">Exporter les paiements à pointer</button>
@@ -772,7 +775,7 @@
                     <div id="gl-orphelins-note" class="scope-note"></div>
                     <div class="table-wrap" id="gl-orphelins"></div>
 
-                    <div class="section-header section-header-sub">
+                    <div class="section-header section-header-sub" id="sec-regles">
                         <h3>Vos règles de classement</h3>
                         <span class="fv-hint">Classer en masse tout ce qui se reconnaît à son libellé, son compte ou son client</span>
                     </div>
@@ -796,10 +799,11 @@
                             <button class="btn btn-primary btn-sm" id="gl-regle-ajouter">Ajouter la règle</button>
                             <span class="fv-hint" id="gl-regle-apercu"></span>
                         </div>
+                        <div id="gl-regles-livrees"></div>
                         <div id="gl-regles-suggerees"></div>
                         <div class="table-wrap" id="gl-regles-table"></div>
                     </div>
-                    <div class="section-header section-header-sub">
+                    <div class="section-header section-header-sub" id="sec-aclasser">
                         <h3>Les créances à classer</h3>
                         <span class="fv-hint">Aucun recoupement n'a permis de leur attribuer un financement</span>
                         <div class="seg seg-sm" id="seg-gl-aclasser">
@@ -1345,16 +1349,16 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.33.0"></script>
-<script src="js/store.js?v=2.33.0"></script>
-<script src="js/monday.js?v=2.33.0"></script>
-<script src="js/ingest.js?v=2.33.0"></script>
-<script src="js/metrics.js?v=2.33.0"></script>
-<script src="js/prelevements.js?v=2.33.0"></script>
-    <script src="js/grandlivre.js?v=2.33.0"></script>
-    <script src="js/sellsy.js?v=2.33.0"></script>
-    <script src="js/zoho.js?v=2.33.0"></script>
-<script src="js/ui.js?v=2.33.0"></script>
-<script src="app.js?v=2.33.0"></script>
+<script src="js/rules.js?v=2.34.0"></script>
+<script src="js/store.js?v=2.34.0"></script>
+<script src="js/monday.js?v=2.34.0"></script>
+<script src="js/ingest.js?v=2.34.0"></script>
+<script src="js/metrics.js?v=2.34.0"></script>
+<script src="js/prelevements.js?v=2.34.0"></script>
+    <script src="js/grandlivre.js?v=2.34.0"></script>
+    <script src="js/sellsy.js?v=2.34.0"></script>
+    <script src="js/zoho.js?v=2.34.0"></script>
+<script src="js/ui.js?v=2.34.0"></script>
+<script src="app.js?v=2.34.0"></script>
 </body>
 </html>
