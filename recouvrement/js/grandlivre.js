@@ -83,7 +83,39 @@
         sousCategorie: ['sous categorie de type de client', 'sous categorie type de client',
                         'sous categorie', 'sous type de facture', 'sous type'],
         typeClient:   ['type de client', 'type client', 'typologie client'],
+
+        // ── Les dates que porte la facturation, reprises dans l'extrait ──
+        // Sans elles, l'échéance se calculait sur la date comptable : sur
+        // l'extrait de septembre, 3 402 lignes portent leurs dates de
+        // formation et n'en profitaient pas.
+        dateDebutFormation: ['date de debut de formation', 'date debut de formation',
+                             'debut de formation', 'date debut formation'],
+        dateFinFormation:   ['date de fin de formation', 'date fin de formation',
+                             'fin de formation', 'date fin formation'],
+        // Le fichier porte deux colonnes « Date de facture » : la première est
+        // la date comptable, la seconde celle de la facturation.
+        dateFactureFacturation: ['date de facture 1', 'date de la facture', 'date facture sellsy'],
+        mandatEtat: ['mandat gocardless etat du mandat', 'etat du mandat'],
+        mandatPaid: ['mandat gocardless montant paid', 'montant paid'],
+
+        // ── L'ancien grand livre, déjà classé à la main ──
+        // Trois recherches, dans l'ordre de vos formules : par numéro de
+        // facture, puis par identifiant du tiers, puis par numéro de compte.
+        // La sous-catégorie est lue avant le type : elle est plus fine.
+        ancienSousParNumero: ['sous type de facture colonne z'],
+        ancienTypeParNumero: ['type de facture colonne z'],
+        ancienSousParTiers:  ['sous categorie de type de client depuis identifiant du tiers'],
+        ancienTypeParTiers:  ['type de client depuis identifiant du tiers'],
+        ancienSousParCompte: ['sous categorie type de client depuis ancien gd livre'],
+        ancienTypeParCompte: ['type de client depuis ancien gd livre'],
     };
+
+    /** Une valeur de tableur qui ne dit rien : vide, #N/A, tiret. */
+    function utile(v) {
+        const t = String(v == null ? '' : v).trim();
+        if (!t || t === '-' || t === '—') return '';
+        return /^#[A-Z/]+[!?]?$/i.test(t) ? '' : t;
+    }
 
     function trouver(entetes, alias) {
         const normalises = entetes.map(h => ({ h, n: R.norm(h) }));
@@ -149,6 +181,12 @@
     // Le journal où sont passées les factures de vente. Une écriture au débit
     // qui en vient est une facture, même si son numéro a dû être lu au libellé.
     const JOURNAL_VENTE = /^(vt|ve|vte|vent)/i;
+    // Une facture peut aussi entrer par un report à nouveau : les 1 528
+    // factures Zoho de l'extrait de septembre y arrivent toutes, en débit,
+    // journal AN. Un débit passé en banque, lui, n'est jamais une facture —
+    // c'est un rejet de prélèvement, et le prendre pour une facture créait un
+    // second exemplaire de la vraie, avec l'échéance du rejet.
+    const JOURNAL_FACTURE = /^(vt|ve|vte|vent|an)/i;
 
     // Les mêmes préfixes que MOTIFS_NUMERO : « FCAT-2312-00417 » n'était
     // reconnu nulle part, l'écriture était perdue, et sa créance se retrouvait
@@ -342,15 +380,16 @@
             let numero = propre(col(r, 'numero'));
             let numeroExtrait = false;
             // La colonne où le classeur a déjà fait le travail : elle porte les
-            // numéros Zoho que la colonne dédiée laisse vides.
-            // Le numéro y est déjà extrait, pas deviné : il vient d'une colonne
-            // du fichier, pas d'une lecture au jugé dans un libellé. Il ne
-            // déclenche donc pas le garde-fou qui écarte les débits au numéro
-            // seulement supposé — sans quoi toutes les factures Zoho, dont le
-            // numéro ne vit que là, disparaissaient de la balance.
+            // numéros Zoho que la colonne dédiée laisse vides. Le numéro y est
+            // extrait du libellé de ligne — c'est le nom même de la colonne —
+            // donc il reste un numéro *cité*, pas un numéro d'écriture : un
+            // rejet de prélèvement passé en banque cite la facture qu'il
+            // rejette sans en être une. Le garde-fou du journal s'applique
+            // donc, et laisse passer les ventes et les reports à nouveau, par
+            // où arrivent les 1 528 factures Zoho de l'extrait.
             if (!numero) {
                 const dejaExtrait = propre(col(r, 'numeroExtrait'));
-                if (dejaExtrait) { numero = dejaExtrait; numerosExtraits++; }
+                if (dejaExtrait) { numero = dejaExtrait; numeroExtrait = true; numerosExtraits++; }
             }
             if (!numero) {
                 // Au crédit, l'avoir cité l'emporte sur la facture citée :
@@ -389,11 +428,34 @@
             g.credit += credit;
 
             const journal = String(col(r, 'journal') || '').trim();
+            // Ce que l'ancien grand livre, déjà classé à la main, dit de cette
+            // écriture : par numéro de facture d'abord, puis par identifiant du
+            // tiers, puis par numéro de compte — l'ordre de vos formules. La
+            // sous-catégorie prime sur le type : « B2C » ne dit pas si c'est du
+            // CPF, de l'AIF ou du financement personnel.
+            const ancien = {
+                numero: utile(col(r, 'ancienSousParNumero')) || utile(col(r, 'ancienTypeParNumero')),
+                tiers:  utile(col(r, 'ancienSousParTiers'))  || utile(col(r, 'ancienTypeParTiers')),
+                compte: utile(col(r, 'ancienSousParCompte')) || utile(col(r, 'ancienTypeParCompte')),
+            };
             const ligne = {
                 numero, numeroExtrait, qualif, date, debit, credit, journal,
                 libelle: String(col(r, 'libelle') || '').trim(),
                 dateEcheance: R.parseDate(col(r, 'dateEcheance')),
+                // Les dates de la facturation, telles que l'extrait les porte.
+                dateDebutFormation: R.parseDate(utile(col(r, 'dateDebutFormation'))),
+                dateFinFormation: R.parseDate(utile(col(r, 'dateFinFormation'))),
+                dateFacturation: R.parseDate(utile(col(r, 'dateFactureFacturation'))),
+                mandatEtat: utile(col(r, 'mandatEtat')),
+                ancien,
             };
+            for (const k of ['numero', 'tiers', 'compte']) {
+                if (!g.ancien) g.ancien = { numero: '', tiers: '', compte: '' };
+                if (!g.ancien[k] && ancien[k]) g.ancien[k] = ancien[k];
+            }
+            if (!g.dateDebutFormation && ligne.dateDebutFormation) g.dateDebutFormation = ligne.dateDebutFormation;
+            if (!g.dateFinFormation && ligne.dateFinFormation) g.dateFinFormation = ligne.dateFinFormation;
+            if (!g.mandatEtat && ligne.mandatEtat) g.mandatEtat = ligne.mandatEtat;
 
             // Une facture est un débit portant un numéro de facture ; un avoir
             // un crédit portant un numéro d'avoir. Tout autre crédit est un
@@ -408,7 +470,7 @@
             // sont passées, et le fichier sans colonne de numéro, où tout
             // numéro vient forcément du libellé.
             const facture = EST_FACTURE.test(numero) && (!numeroExtrait
-                || sansColonneNumero || JOURNAL_VENTE.test(journal));
+                || sansColonneNumero || JOURNAL_FACTURE.test(journal));
             if (debit > 0 && facture) g.factures.push(ligne);
             else if (credit > 0 && EST_AVOIR.test(numero)) g.avoirs.push(ligne);
             else if (credit > 0) g.reglements.push(ligne);
@@ -588,8 +650,20 @@
                         compte: g.compte, tiers: g.tiers, lettre: g.lettre,
                         montant: f.debit,
                         resteDu: reste * (f.debit / total),
-                        dateFacture: f.date,
+                        // La date de la facturation prime sur la date
+                        // comptable : c'est elle qui date la créance.
+                        dateFacture: f.dateFacturation || f.date,
                         dateEcheance: f.dateEcheance || null,
+                        // Les dates de formation ne se propagent pas d'une
+                        // ligne à l'autre : un lettrage réunit plusieurs
+                        // factures du même client, aux formations différentes.
+                        // Les emprunter au groupe donnait à quatre factures la
+                        // même fin de formation, et donc la même échéance.
+                        dateDebutFormation: f.dateDebutFormation || null,
+                        dateFinFormation: f.dateFinFormation || null,
+                        mandatEtatFichier: f.mandatEtat || '',
+                        ancien: f.ancien && (f.ancien.numero || f.ancien.tiers || f.ancien.compte)
+                            ? f.ancien : (g.ancien || null),
                         libelle: f.libelle || '',
                         journal: f.journal || '',
                         sansNumero: false,
@@ -608,6 +682,10 @@
                     dateFacture: derniereDate(g.autres.length ? g.autres
                         : g.reglements.concat(g.avoirs)),
                     dateEcheance: null,
+                    dateDebutFormation: g.dateDebutFormation || null,
+                    dateFinFormation: g.dateFinFormation || null,
+                    mandatEtatFichier: g.mandatEtat || '',
+                    ancien: g.ancien || null,
                     libelle: libelleRepresentatif(g),
                     journal: '',
                     sansNumero: true,
@@ -930,11 +1008,14 @@
             return {
                 ...c,
                 typeClientSellsy: type || c.typeClientSellsy,
-                dateDebutFormation: (d && d.debut) || c.dateDebutFormation || null,
-                dateFinFormation: (d && d.fin) || c.dateFinFormation || null,
+                // Les dates que porte l'extrait lui-même passent avant celles
+                // de la facturation : c'est sur elles que votre colonne
+                // « Date d'échéance recalculée » est bâtie.
+                dateDebutFormation: c.dateDebutFormation || (d && d.debut) || null,
+                dateFinFormation: c.dateFinFormation || (d && d.fin) || null,
                 // Le mandat change la règle d'échéance ; le montant prélevé dit
                 // ce qui est déjà rentré par ce canal, rejets exclus.
-                mandatGocardless: !!(gcl && gcl.etat),
+                mandatGocardless: !!(gcl && gcl.etat) || !!c.mandatEtatFichier,
                 etatMandat: gcl ? gcl.etat : '',
                 montantPreleve: gcl ? gcl.preleve : 0,
                 nbPrelevements: gcl ? gcl.nb : 0,
@@ -948,6 +1029,7 @@
         const poser = (c, fin, origine) => {
             const ech = R.computeEcheance(
                 { ...c, financement: fin, dateEcheanceSource: null,
+                  mandatGocardless: c.mandatGocardless || !!c.mandatEtatFichier,
                   dateEcheanceComptable: c.dateEcheance || null },
                 { rules: o.rules, prefereEcheanceMonday: false, grandLivre: true });
             return {
@@ -968,6 +1050,21 @@
             if (refFin) return poser(c, refFin, 'Référentiel qualifié');
             const parRegle = desRegles(c);
             if (parRegle) return poser(c, parRegle.financement, 'Règle : ' + etiquetteRegle(parRegle.regle));
+            // L'ancien grand livre, classé à la main : c'est du travail déjà
+            // fait, et il passe donc avant tout ce qui se devine. Trois
+            // recherches, dans l'ordre de vos formules — le numéro de facture
+            // désigne une facture précise, l'identifiant du tiers un client,
+            // le compte une famille de clients.
+            const parAncien = quoi => {
+                const v = c.ancien ? c.ancien[quoi] : '';
+                return v ? R.detectFinancement(v, o.rules) : null;
+            };
+            const ancienNum = parAncien('numero');
+            if (ancienNum) return poser(c, ancienNum, 'Ancien grand livre (n° de facture)');
+            const ancienTiers = parAncien('tiers');
+            if (ancienTiers) return poser(c, ancienTiers, 'Ancien grand livre (identifiant du tiers)');
+            const ancienCompte = parAncien('compte');
+            if (ancienCompte) return poser(c, ancienCompte, 'Ancien grand livre (compte client)');
             const libelle = duLibelle(c);
             if (libelle) return poser(c, libelle, 'Libellé du compte');
             const sellsy = c.cle ? idx.parSellsy.get(c.cle) : null;
