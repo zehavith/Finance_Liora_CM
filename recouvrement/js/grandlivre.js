@@ -851,13 +851,23 @@
     const SEUIL_POEI = 7000;
 
     function arbitrer(nom, creance, o) {
+        // Ce que la facturation dit de cette facture, et à défaut de ce client :
+        // les deux index sont passés par classer(), qui les a construits.
         const dit = c => (c && c.cle && o.parCleSellsy) ? o.parCleSellsy.get(c.cle) : null;
+        const ditDuClient = c => {
+            const m = (c && o.parNomSellsy) ? o.parNomSellsy.get(R.norm(c.tiers || '')) : null;
+            if (!m || !m.size) return null;
+            if (m.size === 1) return [...m.keys()][0];
+            let tete = null, teteNb = 0, total = 0;
+            for (const [fin, nb] of m) { total += nb; if (nb > teteNb) { tete = fin; teteNb = nb; } }
+            return (teteNb / total) >= 0.75 ? tete : null;
+        };
         const explicite = R.detectFinancement(creance.qualif, o.rules);
 
         if (nom === 'poleEmploi') {
             // Le dispositif nommé fait foi, où qu'il soit écrit.
             if (explicite === 'POEI' || explicite === 'AIF') return explicite;
-            const parFacture = dit(creance);
+            const parFacture = dit(creance) || ditDuClient(creance);
             if (parFacture === 'POEI' || parFacture === 'AIF') return parFacture;
             // Sinon le montant tranche : au-delà du seuil c'est une POEI.
             const montant = Math.abs(creance.montant != null ? creance.montant : creance.resteDu || 0);
@@ -869,15 +879,13 @@
         if (nom === 'corporate') {
             if (creance.filiz) return 'CORPORATE_ALTERNANCE';
             if (explicite) return explicite;
-            const parFacture = dit(creance);
-            if (parFacture) return parFacture;
-            return 'CORPORATE';
+            return dit(creance) || ditDuClient(creance) || 'CORPORATE';
         }
 
         if (nom === 'opco') {
             if (creance.filiz) return 'OPCO_ALTERNANCE';
             if (explicite === 'OPCO' || explicite === 'OPCO_ALTERNANCE') return explicite;
-            const parFacture = dit(creance);
+            const parFacture = dit(creance) || ditDuClient(creance);
             if (parFacture === 'OPCO' || parFacture === 'OPCO_ALTERNANCE') return parFacture;
             if (parFacture === 'ALTERNANCE' || parFacture === 'CORPORATE_ALTERNANCE') return 'OPCO_ALTERNANCE';
             return 'OPCO_ALTERNANCE';
@@ -939,6 +947,21 @@
                 if (k && !parCle.has(k) && !parSellsy.has(k)) parSellsy.set(k, fin);
             }
         }
+        // Le même travail, mais par nom de client : une créance dont le numéro
+        // de facture ne se retrouve pas chez Sellsy y retrouve souvent son
+        // client, et la facturation sait de quel type d'entreprise il s'agit.
+        // C'est ce qui distingue « Corporate — financement à préciser » d'un
+        // vrai B2B ou d'un B2C-Entreprise.
+        const parNomSellsy = new Map();
+        for (const l of (o.sellsy || [])) {
+            const fin = R.detectFinancement(l.typeClient, o.rules);
+            const n = R.norm(l.client || '');
+            if (!fin || n.length < 4) continue;
+            let m = parNomSellsy.get(n);
+            if (!m) { m = new Map(); parNomSellsy.set(n, m); }
+            m.set(fin, (m.get(fin) || 0) + 1);
+        }
+
         // Le « Type de client » brut de la facturation, pour les arbitrages
         // qui ne peuvent pas se satisfaire d'un financement déduit.
         const brutSellsy = new Map();
@@ -978,7 +1001,7 @@
             const nom = R.norm(m.client || m.nom || '');
             if (nom && !mandats.has(nom)) mandats.set(nom, v);
         }
-        return { parCle, parSellsy, parCompte, parTiers, parNom, brutSellsy, datesSellsy, mandats, noter };
+        return { parCle, parSellsy, parCompte, parTiers, parNom, parNomSellsy, brutSellsy, datesSellsy, mandats, noter };
     }
 
     /**
@@ -1022,10 +1045,14 @@
         // Le libellé du compte, seul ou presque : « B2c - cpf », « CAISSE DES
         // DEPOTS », « DR Pôle Emploi Occitanie ». Il couvre à lui seul 44 %
         // des lignes de l'ancien grand livre classé.
+        // Les arbitrages ont besoin de ce que sait la facturation : le type
+        // porté par la facture, et à défaut celui du client.
+        const oArb = Object.assign({}, o, {
+            parCleSellsy: idx.parSellsy, parNomSellsy: idx.parNomSellsy });
         const duLibelle = c => {
             const m = financementDuLibelle(c.tiers) || financementDuLibelle(c.compte);
             if (!m) return null;
-            return m.arbitrage ? (arbitrer(m.arbitrage, c, o) || m.fin) : m.fin;
+            return m.arbitrage ? (arbitrer(m.arbitrage, c, oArb) || m.fin) : m.fin;
         };
 
         // Les règles écrites à la main passent juste après ce qui est établi
@@ -1145,6 +1172,10 @@
             }
             const sellsy = c.cle ? idx.parSellsy.get(c.cle) : null;
             if (sellsy) return poser(c, sellsy, 'Type de client (facturation)');
+            // La facture n'est pas chez Sellsy, mais le client y est : son type
+            // vaut pour cette créance-là aussi.
+            const sellsyNom = dominant(idx.parNomSellsy, R.norm(c.tiers || ''));
+            if (sellsyNom) return poser(c, sellsyNom, 'Type de client (même client chez Sellsy)');
             const fichier = propre(c);
             if (fichier) return poser(c, fichier, 'Héritée du fichier (à vérifier)');
             // Un compte qui porte un SIREN est une entreprise immatriculée :
