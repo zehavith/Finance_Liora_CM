@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.31.0';
+    const VERSION = '2.32.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -86,6 +86,7 @@
             prefereEcheanceMonday: false,   // les règles font foi
             masquerTechnique: true,
             payeesHorsPortefeuille: false,
+            montantsExacts: false,        // balances âgées : à l'euro plutôt qu'arrondi
             actualisationAuto: 30,        // minutes, 0 = désactivée
             actualiserAuDemarrage: true,
         },
@@ -703,7 +704,7 @@
 
         switch (state.ui.onglet) {
             case 'dashboard':    rendreDashboard(data); break;
-            case 'aging':        rendreAging(data); rendreAgingSource(); break;
+            case 'aging':        rendreAging(data); rendreAgingSource(); rendreBoutonsPrecision(); break;
             case 'financements': rendreFinancements(data); break;
             case 'factures':     rendreFactures(data); break;
             case 'prelevements': rendrePrelevements(); break;
@@ -811,6 +812,7 @@
             rendreHeatmap(X.croiseMoisFinancement(data, state.filtres.baseMois, state.rules));
         }
         rendreChartEvoCategorie(data);
+        rendreQualifB2C(data);
         rendreReglements(data);
 
 
@@ -1078,6 +1080,46 @@
                     ouvrirOnglet('factures');
                 } },
             });
+        }
+
+        // Le filtre d'état rend certaines tuiles tautologiques : avec « En
+        // retard » seul, « Encaissé » vaut nécessairement zéro et « % en
+        // recouvrement » nécessairement cent. Le dire, plutôt que de laisser
+        // lire un portefeuille entièrement impayé là où il ne s'agit que d'une
+        // vue filtrée.
+        const etatsFiltres = state.filtres.etats;
+        if (etatsFiltres && etatsFiltres.size) {
+            const REGLES = ['Payée', 'Payée en retard'];
+            const NON_ECHUES = ['Non échue'];
+            const sansRegle = REGLES.every(e => !etatsFiltres.has(e));
+            const sansNonEchue = NON_ECHUES.every(e => !etatsFiltres.has(e));
+            if (sansRegle || sansNonEchue) {
+                const complet = X.filtrer(state.factures, {
+                    ...state.filtres, etats: null,
+                    masquerTechnique: state.options.masquerTechnique,
+                });
+                const cachees = complet.length - data.length;
+                const reglees = complet.filter(f => f.paye).length;
+                const nonEchues = complet.filter(f => f.etat === 'Non échue').length;
+                const noms = [...etatsFiltres].join(', ');
+                notes.push({
+                    ton: 'info',
+                    titre: `Vous ne regardez que « ${noms} » — ${U.nombre(cachees)} factures sont hors de cette vue`,
+                    texte: `Le périmètre complet en compte ${U.nombre(complet.length)}, dont `
+                        + `${U.nombre(reglees)} réglées et ${U.nombre(nonEchues)} pas encore échues. `
+                        + (sansRegle ? `Aucune facture réglée ne passe ce filtre : « Encaissé » vaut donc `
+                            + `nécessairement zéro et « % en recouvrement » cent pour cent — ce n'est pas `
+                            + `un constat, c'est le filtre. ` : '')
+                        + (sansNonEchue ? `Les factures pas encore échues en sont exclues aussi : le nombre `
+                            + `d'impayés affiché est celui des seules créances déjà exigibles. ` : '')
+                        + `Retirez le filtre d'état pour voir le portefeuille entier.`,
+                    action: { label: 'Tous les états', fn: () => {
+                        state.filtres.etats = null;
+                        state.ui.page = 1;
+                        rendreTout();
+                    } },
+                });
+            }
         }
 
         const advRetard = data.filter(f => f.etat === 'En retard' && (f.role === 'adv' || f.role === 'tampon'));
@@ -1958,6 +2000,133 @@
         poser(3, textes.l3, textes.a3);
     }
 
+    // ══════════════════════════════════════════════
+    //  Les qualifications du portefeuille B2C
+    // ══════════════════════════════════════════════
+
+    /**
+     * Les quatre colonnes de qualification que porte le suivi B2C.
+     *
+     * Elles ne sont pas des champs de l'application : ce sont des listes de
+     * choix tenues dans Monday, et c'est là que se lit le travail — pourquoi
+     * une créance est bloquée, où elle en est, ce qu'en dit l'ADV. Le nom
+     * exact varie d'un tableau à l'autre ; la reconnaissance se fait donc sur
+     * un libellé normalisé.
+     */
+    const QUALIFS_B2C = [
+        { cle: 'qualification generale',     titre: 'Qualification Générale' },
+        { cle: 'statut creance',             titre: 'Statut créance' },
+        { cle: 'groupe',                     titre: 'Groupe' },
+        { cle: 'qualification recouvrement', titre: 'Qualification recouvrement' },
+    ];
+
+    /** Répartition d'une colonne de qualification : valeur → nombre et euros. */
+    function repartitionQualif(data, cle) {
+        const trouve = new Map();
+        let nb = 0, euros = 0, sans = 0, sansEuros = 0;
+        for (const f of data) {
+            let v = null;
+            for (const [k, val] of Object.entries(f.qualifs || {})) {
+                if (R.norm(k) === cle) { v = val; break; }
+            }
+            // Une colonne de même nom peut porter une date sur un autre
+            // tableau : « Fri Nov 20 2026 » n'est pas une qualification.
+            if (typeof v === 'string' && /^[A-Z][a-z]{2} [A-Z][a-z]{2} \d{2} \d{4}/.test(v)) v = null;
+            if (v == null || v === '') { sans++; sansEuros += f.montant || 0; continue; }
+            const e = trouve.get(v) || { nb: 0, euros: 0 };
+            e.nb++; e.euros += f.montant || 0;
+            trouve.set(v, e);
+            nb++; euros += f.montant || 0;
+        }
+        const lignes = [...trouve.entries()].map(([label, e]) => ({ label, ...e }));
+        return { lignes, nb, euros, sans, sansEuros };
+    }
+
+    /**
+     * Quatre camemberts, un par colonne de qualification.
+     *
+     * Ils ne s'affichent que sur le périmètre B2C : ces colonnes n'existent
+     * que là, et un camembert vide n'apprend rien. Au-delà de huit parts, le
+     * reste est regroupé — une couronne de trente miettes ne se lit pas.
+     */
+    function rendreQualifB2C(data) {
+        const bloc = $('#qualif-b2c');
+        if (!bloc) return;
+        const actif = state.filtres.perimetre === 'B2C';
+        bloc.hidden = !actif;
+        if (!actif) return;
+
+        const unite = state.ui.qualifUnite || 'nb';
+        $$('#seg-qualif-unite .seg-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.unite === unite));
+        const eur = unite === 'euros';
+
+        const hint = $('#qualif-b2c-hint');
+        if (hint) hint.textContent = eur
+            ? `Répartition du montant des ${U.nombre(data.length)} factures B2C du périmètre, `
+              + `par qualification Monday`
+            : `Répartition des ${U.nombre(data.length)} factures B2C du périmètre, `
+              + `par qualification Monday`;
+
+        const grille = $('#qualif-b2c-grid');
+        grille.innerHTML = QUALIFS_B2C.map((q, i) => `
+            <div class="chart-card">
+                <div class="chart-header"><h3>${U.escapeHtml(q.titre)}</h3></div>
+                <span class="fv-hint" id="qualif-hint-${i}"></span>
+                <div class="chart-container"><canvas id="chart-qualif-${i}"></canvas></div>
+            </div>`).join('');
+
+        QUALIFS_B2C.forEach((q, i) => {
+            const r = repartitionQualif(data, q.cle);
+            const sous = $('#qualif-hint-' + i);
+            if (!r.lignes.length) {
+                if (sous) sous.textContent = 'Cette colonne n’est renseignée sur aucune facture du périmètre.';
+                U.chart('chart-qualif-' + i, videConfig('Aucune valeur'));
+                return;
+            }
+            const valeur = l => eur ? l.euros : l.nb;
+            const tri = r.lignes.slice().sort((a, b) => valeur(b) - valeur(a));
+            const gardees = tri.slice(0, 8);
+            const reste = tri.slice(8);
+            if (reste.length) gardees.push({ label: `Autres (${reste.length})`,
+                nb: X.sum(reste, l => l.nb), euros: X.sum(reste, l => l.euros) });
+
+            const total = eur ? r.euros : r.nb;
+            if (sous) sous.textContent = `${U.nombre(r.nb)} factures renseignées`
+                + (eur ? ` · ${U.euros(r.euros)}` : '')
+                + (r.sans ? ` · ${U.nombre(r.sans)} sans valeur, hors camembert` : '');
+
+            U.chart('chart-qualif-' + i, {
+                type: 'doughnut',
+                data: {
+                    // Une légende à droite d'une carte de 280 px coupait les
+                    // libellés en plein mot. En bas, abrégés à trente
+                    // caractères, ils tiennent ; l'infobulle donne le nom
+                    // entier.
+                    labels: gardees.map(l => l.label.length > 30 ? l.label.slice(0, 29) + '…' : l.label),
+                    datasets: [{
+                        data: gardees.map(valeur),
+                        backgroundColor: gardees.map((l, k) => U.palette[k % U.palette.length]),
+                        borderWidth: 0,
+                    }],
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom',
+                            labels: { boxWidth: 9, padding: 8, font: { size: 10 } } },
+                        tooltip: { callbacks: { label: c => {
+                            const v = c.raw || 0;
+                            const part = total ? (v / total) * 100 : 0;
+                            const nom = (gardees[c.dataIndex] || {}).label || c.label;
+                            return `${nom} : ${eur ? U.euros(v) : U.nombre(v)} · ${U.pourcent(part, 1)}`;
+                        } } },
+                    },
+                },
+            });
+        });
+    }
+
     /**
      * Ce que le recouvrement fait rentrer — et ce qui rentre sans lui.
      *
@@ -1972,14 +2141,17 @@
 
         const t = $('#regl-titre');
         if (t) t.textContent = viaRecouv
-            ? 'Factures payées après être passées par le recouvrement'
-            : 'Factures payées sans jamais passer par le recouvrement';
+            ? 'Encaissements après passage en recouvrement'
+            : 'Encaissements sans passage en recouvrement';
+
+        const enRetard = data.filter(f => f.etat === 'En retard');
+        const enCours = { nb: enRetard.length, euros: X.sum(enRetard, f => f.montant) };
 
         const h = $('#regl-hint');
         if (h) h.innerHTML = (viaRecouv
-            ? "Ces factures ont été payées, et elles étaient passées par le tableau de recouvrement "
-              + "avant de l'être — c'est le groupe d'origine conservé dans « 0.1. ALL - Factures payées » "
-              + "qui le dit. Autrement dit : <strong>il a fallu les relancer pour qu'elles rentrent</strong>."
+            ? "Population : les factures <strong>encaissées</strong> qui étaient passées par le tableau "
+              + "de recouvrement avant de l'être — c'est le groupe d'origine conservé dans "
+              + "« 0.1. ALL - Factures payées » qui l'établit. Le recouvrement a donc obtenu leur règlement."
               : "Ces factures ont été payées sans jamais entrer dans le circuit de recouvrement : "
               + "<strong>Cela ne veut pas dire qu'elles ont été payées à l'heure</strong> : le compteur "
               + "« dont payées en retard » ci-dessous montre combien l'ont été après leur échéance, "
@@ -1988,6 +2160,17 @@
                 ? ` <strong>${U.nombre(r.nbOrigineInconnue)} factures réglées ne peuvent être attribuées</strong>,
                     faute de groupe d'origine renseigné dans « 0.1. ALL - Factures payées » : elles sont
                     hors de ce décompte.`
+                : '')
+            // Le compteur ne porte que sur ce qui est rentré. Une facture en
+            // retard est en recouvrement — mais tant qu'elle n'est pas
+            // encaissée, elle n'a pas sa place ici, et la lire comme « une
+            // seule facture en recouvrement » serait un contresens. Le reste
+            // à recouvrer est donc rappelé en regard.
+            + (viaRecouv && enCours.nb
+                ? ` <strong>Ce bloc ne compte que ce qui est rentré.</strong> À la même date,
+                    <strong>${U.nombre(enCours.nb)} factures</strong> sont encore en retard —
+                    donc en recouvrement — pour ${U.euros(enCours.euros)} : elles ne figurent pas
+                    ici, faute d'avoir été encaissées.`
                 : '');
 
         // Chaque tuile dit sur quoi elle est calculée : sans cela, « 416 payées
@@ -2279,6 +2462,31 @@
         rendreAgingParMois(data);
     }
 
+    /**
+     * Le format des cellules de balance âgée.
+     *
+     * Arrondi, un tableau de dix colonnes se lit d'un coup d'œil ; à l'euro,
+     * il se recoupe avec la comptabilité. Les deux servent, à des moments
+     * différents — le choix se fait donc, et il se conserve.
+     */
+    function fmtAg(v) {
+        return state.options.montantsExacts ? U.euros(v) : U.eurosCourt(v);
+    }
+
+    /** Le bouton qui bascule d'un format à l'autre, sur les deux balances. */
+    function rendreBoutonsPrecision() {
+        const exact = !!state.options.montantsExacts;
+        for (const id of ['#btn-aging-precision', '#btn-aging-gl-precision']) {
+            const b = $(id);
+            if (!b) continue;
+            b.textContent = exact ? 'Montants arrondis' : 'Montants exacts';
+            b.title = exact
+                ? 'Revenir aux montants arrondis (k€ et M€), plus rapides à lire'
+                : 'Afficher chaque montant à l’euro près, comme en comptabilité';
+            b.classList.toggle('active', exact);
+        }
+    }
+
     function rendreAgingTable(data) {
         const dim = state.ui.agingDim;
         const dimFn = {
@@ -2296,7 +2504,7 @@
             { key: 'label', label: dim === 'financement' ? 'Financement' : dim === 'board' ? 'Tableau' : dim === 'client' ? 'Client' : 'Propriétaire' },
             ...R.AGING_BUCKETS.map(b => ({
                 key: b.key, label: b.label, align: 'right',
-                format: (v, row) => v ? `<span class="ag-cell" title="${row[b.key + '_nb']} factures">${U.eurosCourt(v)}</span>` : '<span class="ag-zero">·</span>',
+                format: (v, row) => v ? `<span class="ag-cell" title="${row[b.key + '_nb']} factures">${fmtAg(v)}</span>` : '<span class="ag-zero">·</span>',
                 cls: () => 'ag-col',
             })),
             { key: 'total', label: 'Total', align: 'right', format: U.euros, cls: () => 'ag-total' },
@@ -2304,7 +2512,7 @@
         ];
 
         const total = { label: 'Total général', total: U.euros(X.sum(rows, r => r.total)), nb: U.nombre(X.sum(rows, r => r.nb)) };
-        for (const b of R.AGING_BUCKETS) total[b.key] = U.eurosCourt(X.sum(rows, r => r[b.key]));
+        for (const b of R.AGING_BUCKETS) total[b.key] = fmtAg(X.sum(rows, r => r[b.key]));
 
         const el = $('#aging-table');
         el.innerHTML = U.table(cols, rows, { vide: 'Aucun encours non réglé.', total, onRowClick: true });
@@ -2593,26 +2801,26 @@
         const cols = [
             { key: 'label', label: parCat ? 'Type de client' : 'Sous-catégorie' },
             { key: 'echu', label: 'Total échu', align: 'right',
-              format: v => v ? `<strong>${U.eurosCourt(v)}</strong>` : '<span class="ag-zero">·</span>',
+              format: v => v ? `<strong>${fmtAg(v)}</strong>` : '<span class="ag-zero">·</span>',
               cls: () => 'ag-total' },
             ...buckets.map(bk => ({
                 key: bk.key, label: bk.label, align: 'right',
-                format: (v, row) => v ? `<span class="ag-cell">${U.eurosCourt(v)}</span>` : '<span class="ag-zero">·</span>',
+                format: (v, row) => v ? `<span class="ag-cell">${fmtAg(v)}</span>` : '<span class="ag-zero">·</span>',
                 cls: () => 'ag-col',
             })),
             { key: 'crediteur', label: 'Solde créditeur', align: 'right',
               title: 'Acomptes, trop-perçus et avoirs non imputés : de l’argent déjà reçu, '
                    + 'qui compte dans le total mais dans aucune tranche d’ancienneté',
-              format: v => v ? `<span class="ag-cell">${U.eurosCourt(v)}</span>` : '<span class="ag-zero">·</span>',
+              format: v => v ? `<span class="ag-cell">${fmtAg(v)}</span>` : '<span class="ag-zero">·</span>',
               cls: () => 'ag-col' },
             { key: 'total', label: 'Total', align: 'right', format: U.euros, cls: () => 'ag-total' },
             { key: 'nb', label: 'Nb', align: 'right', format: U.nombre },
         ];
         const rows = b.rows.map(r => ({ ...r, ...r.buckets }));
-        const total = { label: 'TOTAL', echu: U.eurosCourt(b.total.echu),
-            crediteur: U.eurosCourt(b.total.crediteur),
+        const total = { label: 'TOTAL', echu: fmtAg(b.total.echu),
+            crediteur: fmtAg(b.total.crediteur),
             total: U.euros(b.total.total), nb: U.nombre(b.total.nb) };
-        for (const bk of buckets) total[bk.key] = U.eurosCourt(b.total.buckets[bk.key]);
+        for (const bk of buckets) total[bk.key] = fmtAg(b.total.buckets[bk.key]);
 
         const el = $('#aging-gl-table');
         el.innerHTML = U.table(cols, rows, { vide: 'Aucune créance ouverte au grand livre.', total,
@@ -2622,6 +2830,76 @@
         rendreOrphelins();
         rendreReglesClassement();
         rendreAClasser();
+    }
+
+    /**
+     * Les paiements à pointer, seuls, en un clic.
+     *
+     * Le classeur complet les contient déjà, mais treize feuilles pour une
+     * liste que l'on veut pointer ligne à ligne, c'est un détour. Chaque
+     * règlement y porte le financement de sa contrepartie probable, faute
+     * d'en avoir un à lui.
+     */
+    function exporterOrphelins() {
+        const e = state.glEcritures;
+        if (!e) { U.toast('Rechargez le grand livre pour exporter les paiements à pointer.', 'error'); return; }
+        const aPointer = rapprochementsPossibles(e.orphelins);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            aPointer.length ? aPointer.map(l => ({
+                'Date': l.date ? U.dateFR(l.date) : '',
+                'N° de compte': l.compte, 'Client': l.tiers,
+                'Libellé': l.libelle, 'Journal': l.journal, 'Lettrage': l.lettre,
+                'Nature': l.nature === 'avoir' ? 'Avoir' : 'Règlement',
+                'Montant': Math.round((l.credit || 0) * 100) / 100,
+                'Facture de même montant': l.exact ? (l.exact.numero || '(sans numéro)') : '',
+                'Financement de cette facture': l.exact && l.exact.financement
+                    ? R.getRule(l.exact.financement, state.rules).label : '',
+                'Créances ouvertes du compte': l.nbOuvertes,
+                'Reste dû du compte': Math.round((l.eurosOuverts || 0) * 100) / 100,
+                'Candidates': l.candidates.map(c => (c.numero || '(sans n°)')
+                    + ' ' + Math.round(c.resteDu) + ' €').join(' | '),
+            })) : [{ 'Date': 'Tous les règlements sont rattachés à une facture' }]),
+            'Paiements à pointer');
+        // Et, en regard, tous les règlements avec le financement dont ils héritent.
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            e.lignes.filter(l => l.nature === 'reglement' || l.nature === 'avoir').map(l => ({
+                'Date': l.date ? U.dateFR(l.date) : '',
+                'N° de compte': l.compte, 'Client': l.tiers,
+                'Libellé': l.libelle, 'Lettrage': l.lettre,
+                'Nature': l.nature === 'avoir' ? 'Avoir' : 'Règlement',
+                'Montant': Math.round((l.credit || 0) * 100) / 100,
+                'Financement': l.financement ? R.getRule(l.financement, state.rules).label : 'Non rattaché',
+                'Type de client': l.typeClient || '',
+                'Classé par': l.origineClassement || '',
+            }))), 'Tous les règlements');
+        XLSX.writeFile(wb, `Paiements_a_pointer_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        U.toast(`${U.nombre(aPointer.length)} paiements à pointer exportés.`, 'success');
+    }
+
+    /** Les créances à classer, telles qu'elles sont à l'écran. */
+    function exporterAClasser() {
+        const toutes = creancesAClasser();
+        if (!toutes.length) { U.toast('Toutes les créances ont trouvé un financement.', 'info'); return; }
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            groupesAClasser(toutes).map(g => ({
+                'Client': g.tiers, 'N° de compte': g.compte,
+                'Créances': g.nb, 'Dont sans numéro': g.sansNumero,
+                'Reste dû': Math.round(g.resteDu * 100) / 100,
+                'Plus ancienne échéance': g.plusAncienne ? U.dateFR(g.plusAncienne) : '',
+            }))), 'Par compte');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            toutes.map(c => ({
+                'N° de facture': c.numero || '', 'Client': c.tiers, 'N° de compte': c.compte,
+                'Identifiant du tiers': c.identifiantTiers || '',
+                'Libellé': c.libelle || '',
+                'Reste dû': Math.round((c.resteDu || 0) * 100) / 100,
+                'Date de facture': c.dateFacture ? U.dateFR(c.dateFacture) : '',
+                'Échéance': c.dateEcheance ? U.dateFR(c.dateEcheance) : '',
+            }))), 'Ligne à ligne');
+        XLSX.writeFile(wb, `Creances_a_classer_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        U.toast(`${U.nombre(toutes.length)} créances à classer exportées.`, 'success');
     }
 
     /**
@@ -2850,76 +3128,329 @@
         if (message) U.toast(message, 'success', 7000);
     }
 
+    /** Les créances qu'aucun recoupement n'a su classer. */
+    function creancesAClasser() {
+        return (state.glCreances || []).filter(c => !c.financement)
+            .sort((a, b) => Math.abs(b.resteDu) - Math.abs(a.resteDu));
+    }
+
+    /**
+     * L'identité d'une créance pour la sélection.
+     *
+     * Le numéro de facture quand il existe ; sinon ce qui ne bouge pas d'un
+     * rendu à l'autre : le compte, la date et le montant. Sans cela une case
+     * cochée se décoche au réaffichage.
+     */
+    function idCreance(c) {
+        if (c.cle) return 'f:' + c.cle;
+        return 'l:' + (c.compte || '') + '|' + (c.numero || '')
+            + '|' + (c.dateFacture ? c.dateFacture.getTime() : '')
+            + '|' + Math.round((c.resteDu || 0) * 100);
+    }
+
+    /**
+     * Le même reste à classer, vu par compte client.
+     *
+     * Deux cents lignes à cocher une par une ne sont pas un travail ; les
+     * mêmes deux cents lignes rangées en quarante clients le sont. Un compte
+     * porte presque toujours un seul dispositif, et c'est de toute façon à ce
+     * niveau que la règle s'écrira.
+     */
+    function groupesAClasser(liste) {
+        const m = new Map();
+        for (const c of liste) {
+            const cle = c.compte || ('tiers:' + (c.tiers || '?'));
+            let g = m.get(cle);
+            if (!g) {
+                g = { cle, id: 'g:' + cle, compte: c.compte || '', tiers: c.tiers || '',
+                      nb: 0, resteDu: 0, avecNumero: 0, sansNumero: 0,
+                      plusAncienne: null, creances: [] };
+                m.set(cle, g);
+            }
+            g.nb++;
+            g.resteDu += c.resteDu || 0;
+            if (c.cle) g.avecNumero++; else g.sansNumero++;
+            if (c.dateEcheance && (!g.plusAncienne || c.dateEcheance < g.plusAncienne)) {
+                g.plusAncienne = c.dateEcheance;
+            }
+            g.creances.push(c);
+        }
+        return [...m.values()].sort((a, b) => Math.abs(b.resteDu) - Math.abs(a.resteDu));
+    }
+
+    /**
+     * Les créances à classer, et de quoi les classer.
+     *
+     * C'est la seule ligne du tableau sur laquelle il y a quelque chose à
+     * faire. On coche — un client entier ou une ligne —, on choisit un
+     * financement, on applique. Ce qui porte un numéro de facture rejoint le
+     * référentiel ; ce qui n'en a pas devient une règle sur son compte. Dans
+     * les deux cas le choix est conservé et vaut pour les extraits suivants,
+     * et dans les deux cas la case se coche : rien n'est bloqué.
+     */
     function rendreAClasser() {
         const el = $('#aging-gl-aclasser');
         if (!el) return;
         const sel = state.ui.selGL || (state.ui.selGL = new Set());
-        const aClasser = (state.glCreances || []).filter(c => !c.financement)
-            .sort((a, b) => Math.abs(b.resteDu) - Math.abs(a.resteDu)).slice(0, 200);
+        const vue = state.ui.vueAClasser || 'compte';
+        $$('#seg-gl-aclasser .seg-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.vue === vue));
 
-        // Une créance sans numéro ne peut pas entrer au référentiel : il est
-        // indexé par numéro de facture. La case est donc désactivée.
+        const toutes = creancesAClasser();
+        rendreSuggestionsRegles(toutes);
+
+        if (vue === 'compte') {
+            const groupes = groupesAClasser(toutes).slice(0, 300);
+            el.innerHTML = U.table([
+                { key: '__sel', label: '', align: 'center', width: '34px', sortable: false,
+                  format: (v, r) => `<input type="checkbox" class="gl-sel" data-id="${U.escapeHtml(r.id)}"${sel.has(r.id) ? ' checked' : ''}>` },
+                { key: 'tiers', label: 'Client', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'compte', label: 'Compte', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'nb', label: 'Créances', align: 'right', format: U.nombre },
+                { key: 'sansNumero', label: 'Sans n°', align: 'right',
+                  title: 'Créances sans numéro de facture : elles se classent par une règle sur le compte',
+                  format: v => v ? U.nombre(v) : '<span class="ag-zero">·</span>' },
+                { key: 'resteDu', label: 'Reste dû', align: 'right', format: U.euros },
+                { key: 'plusAncienne', label: 'Plus ancienne échéance', align: 'center', format: U.dateFR },
+                { key: '__regle', label: '', align: 'center', width: '110px', sortable: false,
+                  format: (v, r) => r.compte
+                      ? `<button class="btn btn-ghost btn-xs gl-depuis-ligne" data-champ="compte" data-valeur="${U.escapeHtml(r.compte)}">Écrire une règle</button>`
+                      : '' },
+            ], groupes, { vide: 'Toutes les créances ont trouvé un financement.' });
+            brancherAClasser(el, groupes);
+            rendreBarreGL(groupes, 'compte');
+            return;
+        }
+
+        const lignes = toutes.slice(0, 300).map(c => ({ ...c, id: idCreance(c) }));
         el.innerHTML = U.table([
             { key: '__sel', label: '', align: 'center', width: '34px', sortable: false,
-              format: (v, r) => r.cle
-                  ? `<input type="checkbox" class="gl-sel" data-cle="${U.escapeHtml(r.cle)}"${sel.has(r.cle) ? ' checked' : ''}>`
-                  : '<span class="fv-hint" title="Sans numéro de facture, le classement ne peut pas être mémorisé">—</span>' },
+              format: (v, r) => `<input type="checkbox" class="gl-sel" data-id="${U.escapeHtml(r.id)}"${sel.has(r.id) ? ' checked' : ''}>` },
             { key: 'numero', label: 'Facture', format: v => v ? `<span class="mono">${U.escapeHtml(v)}</span>` : '<span class="pill pill-muted">sans numéro</span>' },
             { key: 'tiers', label: 'Client', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
             { key: 'compte', label: 'Compte', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
             { key: 'resteDu', label: 'Reste dû', align: 'right', format: U.euros },
             { key: 'dateEcheance', label: 'Échéance', align: 'center', format: U.dateFR },
             { key: 'dateFacture', label: 'Facture', align: 'center', format: U.dateFR },
-        ], aClasser, { vide: 'Toutes les créances ont trouvé un financement.' });
-
-        $$('.gl-sel', el).forEach(c => c.addEventListener('click', ev => {
-            ev.stopPropagation();
-            if (c.checked) sel.add(c.dataset.cle); else sel.delete(c.dataset.cle);
-            rendreBarreGL(aClasser);
-        }));
-        rendreBarreGL(aClasser);
+            { key: '__regle', label: '', align: 'center', width: '110px', sortable: false,
+              format: (v, r) => r.tiers
+                  ? `<button class="btn btn-ghost btn-xs gl-depuis-ligne" data-champ="tiers" data-valeur="${U.escapeHtml(r.tiers)}">Écrire une règle</button>`
+                  : '' },
+        ], lignes, { vide: 'Toutes les créances ont trouvé un financement.' });
+        brancherAClasser(el, lignes);
+        rendreBarreGL(lignes, 'ligne');
     }
 
-    /** Barre d'action du classement par lot. */
-    function rendreBarreGL(aClasser) {
+    /** Cases à cocher et raccourcis « écrire une règle », dans les deux vues. */
+    function brancherAClasser(el, lignes) {
+        const sel = state.ui.selGL;
+        $$('.gl-sel', el).forEach(c => c.addEventListener('click', ev => {
+            ev.stopPropagation();
+            if (c.checked) sel.add(c.dataset.id); else sel.delete(c.dataset.id);
+            rendreAClasser();
+        }));
+        $$('.gl-depuis-ligne', el).forEach(b => b.addEventListener('click', ev => {
+            ev.stopPropagation();
+            const champ = $('#gl-regle-champ'), op = $('#gl-regle-op'), val = $('#gl-regle-val');
+            if (!champ || !op || !val) return;
+            champ.value = b.dataset.champ;
+            op.value = b.dataset.champ === 'compte' ? 'egal' : 'contient';
+            val.value = b.dataset.valeur;
+            rendreApercuRegle();
+            $('#gl-regle-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+            val.focus();
+        }));
+    }
+
+    /**
+     * Ce qu'il resterait à classer, et par quoi commencer.
+     *
+     * Une table de règles vide n'aide personne : elle demande d'inventer le
+     * motif autant que le financement. Les motifs, eux, se lisent dans ce qui
+     * reste — un compte dont une partie est déjà classée dit ce que vaut le
+     * reste, et un mot qui revient dans trente noms de clients est une règle
+     * qui s'ignore. Le financement, lui, ne se devine pas : il se choisit.
+     */
+    function suggestionsRegles(aClasser) {
+        const sug = [];
+        const dejaEcrite = r => (state.reglesClassement || [])
+            .some(x => GL.etiquetteRegle(x) === GL.etiquetteRegle(r));
+
+        // 1. Les comptes qui portent déjà un financement connu ailleurs.
+        const finsParCompte = new Map();
+        for (const c of (state.glCreances || [])) {
+            if (!c.compte || !c.financement) continue;
+            const e = finsParCompte.get(c.compte) || new Set();
+            e.add(c.financement);
+            finsParCompte.set(c.compte, e);
+        }
+        const parCompte = new Map();
+        for (const c of aClasser) {
+            if (!c.compte) continue;
+            const e = parCompte.get(c.compte) || { nb: 0, euros: 0, tiers: c.tiers };
+            e.nb++; e.euros += c.resteDu || 0;
+            parCompte.set(c.compte, e);
+        }
+        for (const [compte, e] of parCompte) {
+            const fins = finsParCompte.get(compte);
+            if (!fins || fins.size !== 1) continue;
+            const regle = { champ: 'compte', operateur: 'egal', valeur: compte,
+                            financement: [...fins][0] };
+            if (dejaEcrite(regle)) continue;
+            sug.push({ regle, nb: e.nb, euros: e.euros, sur: e.tiers || compte,
+                       motif: 'Le reste de ce compte est déjà classé ainsi' });
+        }
+
+        // 2. Les mots qui reviennent dans les noms de clients encore à classer.
+        const VIDES = new Set(['client', 'clients', 'sarl', 'sas', 'sasu', 'sa', 'eurl', 'sci',
+            'association', 'groupe', 'france', 'compte', 'monsieur', 'madame', 'de', 'du', 'des',
+            'la', 'le', 'les', 'et', 'pour', 'par', 'sur', 'aux', 'une', 'un', 'ste', 'societe']);
+        const parMot = new Map();
+        for (const c of aClasser) {
+            const mots = new Set(R.norm(c.tiers || '').split(/[^a-z0-9]+/)
+                .filter(m => m.length >= 4 && !VIDES.has(m)));
+            for (const m of mots) {
+                const e = parMot.get(m) || { nb: 0, euros: 0, exemples: [] };
+                e.nb++; e.euros += c.resteDu || 0;
+                if (e.exemples.length < 3 && c.tiers) e.exemples.push(c.tiers);
+                parMot.set(m, e);
+            }
+        }
+        for (const [mot, e] of parMot) {
+            if (e.nb < 3) continue;
+            const regle = { champ: 'tiers', operateur: 'contient', valeur: mot, financement: '' };
+            if (dejaEcrite(regle)) continue;
+            sug.push({ regle, nb: e.nb, euros: e.euros, sur: e.exemples.join(', '),
+                       motif: 'Ce mot revient dans plusieurs noms de clients' });
+        }
+
+        return sug.sort((a, b) => Math.abs(b.euros) - Math.abs(a.euros)).slice(0, 10);
+    }
+
+    function rendreSuggestionsRegles(aClasser) {
+        const el = $('#gl-regles-suggerees');
+        if (!el) return;
+        const liste = aClasser && aClasser.length ? suggestionsRegles(aClasser) : [];
+        if (!liste.length) { el.innerHTML = ''; return; }
+
+        const options = fin => state.rules.filter(r => r.key !== 'INCONNU')
+            .map(r => `<option value="${U.escapeHtml(r.key)}"${r.key === fin ? ' selected' : ''}>${U.escapeHtml(r.label)}</option>`).join('');
+        el.innerHTML = `
+            <p class="aide-bloc">Voici par quoi commencer : les motifs qui couvrent le plus de reste
+            à classer. Le financement n'est proposé que lorsqu'il est déjà connu ailleurs —
+            sinon, c'est à vous de le choisir.</p>
+            <div class="suggestions-regles">`
+            + liste.map((s, i) => `
+                <div class="suggestion" data-i="${i}">
+                    <span class="suggestion-motif">${U.escapeHtml(GL.etiquetteRegle(s.regle))}</span>
+                    <span class="fv-hint">${U.nombre(s.nb)} créance${s.nb > 1 ? 's' : ''}
+                        · ${U.euros(s.euros)} · ${U.escapeHtml(s.motif)}
+                        <br>${U.escapeHtml(s.sur)}</span>
+                    <select class="input input-sm suggestion-fin">
+                        <option value="">Classer en…</option>${options(s.regle.financement)}
+                    </select>
+                    <button class="btn btn-secondary btn-sm suggestion-ajouter">Créer la règle</button>
+                </div>`).join('')
+            + '</div>';
+
+        $$('.suggestion', el).forEach(d => {
+            const s = liste[Number(d.dataset.i)];
+            $('.suggestion-ajouter', d).addEventListener('click', () => {
+                const fin = $('.suggestion-fin', d).value;
+                if (!fin) { U.toast('Choisissez le financement à attribuer.', 'error'); return; }
+                ajouterRegle({ ...s.regle, financement: fin });
+            });
+        });
+    }
+
+    /** Écrit une règle, l'applique, et dit ce qu'elle a fait. */
+    function ajouterRegle(regle) {
+        const etiq = GL.etiquetteRegle(regle);
+        if ((state.reglesClassement || []).some(x => GL.etiquetteRegle(x) === etiq)) {
+            U.toast('Cette règle existe déjà.', 'error'); return false;
+        }
+        const neuves = (state.glCreances || [])
+            .filter(c => !c.financement && GL.regleCorrespond(regle, c)).length;
+        state.reglesClassement = (state.reglesClassement || []).concat([regle]);
+        appliquerReglesClassement(`${etiq} → ${R.getRule(regle.financement, state.rules).label}. `
+            + `${U.nombre(neuves)} créance${neuves > 1 ? 's' : ''} à classer y trouve`
+            + `${neuves > 1 ? 'nt' : ''} un financement. La règle est conservée : elle vaudra `
+            + `aussi pour les prochains extraits.`);
+        return true;
+    }
+
+    /**
+     * Barre d'action du classement par lot.
+     *
+     * Elle sait ce qu'elle va faire avant de le faire : combien de créances
+     * entrent au référentiel par leur numéro, et combien de règles de compte
+     * seront écrites pour celles qui n'en ont pas.
+     */
+    function rendreBarreGL(lignes, vue) {
         const barre = $('#aging-gl-barre');
         if (!barre) return;
         const sel = state.ui.selGL || new Set();
-        const classables = aClasser.filter(c => c.cle);
-        if (!classables.length) { barre.hidden = true; return; }
+        if (!lignes.length) { barre.hidden = true; return; }
 
-        const retenues = classables.filter(c => sel.has(c.cle));
+        const retenues = lignes.filter(l => sel.has(l.id));
+        const creances = vue === 'compte'
+            ? retenues.flatMap(g => g.creances)
+            : retenues;
+        const numerotees = creances.filter(c => c.cle);
+        const comptes = [...new Set(creances.filter(c => !c.cle && c.compte).map(c => c.compte))];
+        const perdues = creances.filter(c => !c.cle && !c.compte).length;
+
         barre.hidden = false;
         barre.innerHTML = `
             <label class="barre-tout"><input type="checkbox" id="gl-tout"${
-                retenues.length === classables.length && classables.length ? ' checked' : ''}>
-                Tout cocher (${U.nombre(classables.length)})</label>
-            <span class="barre-info">${U.nombre(retenues.length)} créance${retenues.length > 1 ? 's' : ''} `
-            + `sélectionnée${retenues.length > 1 ? 's' : ''} · ${U.euros(X.sum(retenues, c => c.resteDu))}</span>
-            <select id="gl-fin" class="input input-sm"${retenues.length ? '' : ' disabled'}>
+                retenues.length === lignes.length ? ' checked' : ''}>
+                Tout cocher (${U.nombre(lignes.length)})</label>
+            <span class="barre-info">${U.nombre(creances.length)} créance${creances.length > 1 ? 's' : ''} `
+            + `· ${U.euros(X.sum(creances, c => c.resteDu))}`
+            + (comptes.length ? ` · dont ${U.nombre(creances.length - numerotees.length)} sans numéro `
+                + `→ ${U.nombre(comptes.length)} règle${comptes.length > 1 ? 's' : ''} de compte` : '')
+            + (perdues ? ` · ${U.nombre(perdues)} sans numéro ni compte, impossibles à mémoriser` : '')
+            + `</span>
+            <select id="gl-fin" class="input input-sm"${creances.length ? '' : ' disabled'}>
                 <option value="">Classer en…</option>
                 ${state.rules.filter(r => r.key !== 'INCONNU')
                     .map(r => `<option value="${U.escapeHtml(r.key)}">${U.escapeHtml(r.label)}</option>`).join('')}
             </select>
-            <button class="btn btn-primary btn-sm" id="gl-appliquer"${retenues.length ? '' : ' disabled'}>Appliquer</button>`;
+            <button class="btn btn-primary btn-sm" id="gl-appliquer"${creances.length ? '' : ' disabled'}>Appliquer</button>`;
 
         $('#gl-tout', barre).addEventListener('change', e => {
-            state.ui.selGL = e.target.checked ? new Set(classables.map(c => c.cle)) : new Set();
+            state.ui.selGL = e.target.checked ? new Set(lignes.map(l => l.id)) : new Set();
             rendreAClasser();
         });
         $('#gl-appliquer', barre).addEventListener('click', async () => {
             const fin = $('#gl-fin', barre).value;
             if (!fin) { U.toast('Choisissez un financement.', 'error'); return; }
-            // Validée à la main : c'est ce que le référentiel est censé
-            // contenir, et c'est ce qui lui donne son rang de source sûre.
-            for (const c of retenues) state.qualifRef[c.cle] = { fin, source: 'valide' };
+
+            // Validé à la main : c'est ce que le référentiel est censé contenir,
+            // et c'est ce qui lui donne son rang de source sûre.
+            for (const c of numerotees) state.qualifRef[c.cle] = { fin, source: 'valide' };
+            // Sans numéro, rien à mettre au référentiel : le compte est la
+            // seule identité stable de la créance. Une règle le dit, et elle
+            // vaudra aussi pour les extraits suivants.
+            let nbRegles = 0;
+            for (const compte of comptes) {
+                const r = { champ: 'compte', operateur: 'egal', valeur: compte, financement: fin };
+                if ((state.reglesClassement || []).some(x => GL.etiquetteRegle(x) === GL.etiquetteRegle(r))) continue;
+                state.reglesClassement = (state.reglesClassement || []).concat([r]);
+                nbRegles++;
+            }
             state.ui.selGL = new Set();
             try { await S.set('rec_qualif_ref', state.qualifRef); } catch { /* ignore */ }
+            if (nbRegles) { try { await S.set('rec_regles_classement', state.reglesClassement); } catch { /* ignore */ } }
             recalculerBalanceGL();
             rendreTout();
-            U.toast(`${U.nombre(retenues.length)} créances classées en `
-                + `${R.getRule(fin, state.rules).label}. Le choix est retenu : il vaudra aussi pour les `
-                + `prochains extraits.`, 'success', 9000);
+            U.toast(`${U.nombre(creances.length)} créances classées en `
+                + `${R.getRule(fin, state.rules).label}`
+                + (nbRegles ? `, dont ${U.nombre(nbRegles)} compte${nbRegles > 1 ? 's' : ''} `
+                    + `par une règle` : '')
+                + `. Le choix est retenu : il vaudra aussi pour les prochains extraits.`
+                + (perdues ? ` ${U.nombre(perdues)} créances sans numéro ni compte n'ont pas pu `
+                    + `être mémorisées.` : ''), 'success', 9000);
         });
     }
 
@@ -6870,6 +7401,28 @@
             rendreApresClic(() => rendreTout());
         }));
         $('#btn-aging-gl-export').addEventListener('click', exporterBalanceGL);
+        $('#btn-gl-orphelins-export').addEventListener('click', exporterOrphelins);
+        $('#btn-gl-aclasser-export').addEventListener('click', exporterAClasser);
+        $$('#seg-qualif-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.qualifUnite = b.dataset.unite;
+            rendreTout();
+        }));
+        $$('#seg-gl-aclasser .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.vueAClasser = b.dataset.vue;
+            state.ui.selGL = new Set();
+            rendreAClasser();
+        }));
+
+        // Arrondi pour lire, à l'euro pour recouper : le choix se conserve.
+        for (const id of ['#btn-aging-precision', '#btn-aging-gl-precision']) {
+            const b = $(id);
+            if (!b) continue;
+            b.addEventListener('click', async () => {
+                state.options.montantsExacts = !state.options.montantsExacts;
+                await sauverReglages();
+                rendreTout();
+            });
+        }
 
         // Règles de classement : l'aperçu suit la frappe, pour qu'une règle
         // trop large se voie avant d'être écrite.

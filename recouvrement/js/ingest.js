@@ -498,7 +498,9 @@
     /** Transforme les lignes d'un fichier (objets { entête: valeur }) en factures. */
     function facturesFromRows(rows, boardCfg, boardName) {
         if (!rows.length) return { factures: [], mapping: {}, columns: [] };
-        const headers = Object.keys(rows[0]);
+        // Les champs techniques ajoutés à l'aplatissement ne sont pas des
+        // colonnes du tableau : ni à mapper, ni à qualifier.
+        const headers = Object.keys(rows[0]).filter(h => !h.startsWith('__'));
         const columns = headers.map(h => ({ id: h, title: h }));
         // Noms de colonnes et valeurs sont confrontés ensemble : un candidat
         // démenti par les données laisse la place au suivant sur ce champ.
@@ -558,6 +560,14 @@
                 const v = String(row[h] == null ? '' : row[h]).trim();
                 if (v) qualifs[h] = v;
             }
+            // « Groupe » sert de repli au groupe d'origine — c'est ce qu'elle
+            // contient sur le tableau des factures payées. Mais sur les
+            // tableaux B2C, c'est une liste de choix à part entière :
+            // « Recouvrement », « Facture a annuler / Modifier », « Gocard
+            // validé ». Elle est donc aussi versée aux qualifications, sauf
+            // quand elle porte un titre de groupe Monday (« 2.1.3. … »).
+            const grp = String(row['__groupeQualif'] != null ? row['__groupeQualif'] : row['Groupe'] || '').trim();
+            if (grp && !qualifs['Groupe']) qualifs['Groupe'] = grp;
             rowValues.__qualifs = qualifs;
 
             // Le groupe peut venir d'une colonne « Groupe » du fichier
@@ -917,7 +927,13 @@
             // l'étape du circuit. Quand le fichier a bien une colonne
             // « Groupe » mais qu'elle est vide sur la ligne, c'est le titre du
             // groupe qui fait foi — sans quoi l'étape du circuit se perd.
-            if (!String(o.Groupe == null ? '' : o.Groupe).trim()) o.Groupe = groupe;
+            // La colonne « Groupe » de Monday n'est pas toujours le groupe :
+            // sur les tableaux B2C c'est une liste de choix — « Recouvrement »,
+            // « Facture a annuler / Modifier ». Sa valeur propre est conservée
+            // à part, pour ne pas la confondre avec le titre du groupe qui la
+            // remplace quand elle est vide.
+            o.__groupeQualif = String(o.Groupe == null ? '' : o.Groupe).trim();
+            if (!o.__groupeQualif) o.Groupe = groupe;
             lignes.push(o);
         }
 

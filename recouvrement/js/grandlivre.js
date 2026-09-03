@@ -38,6 +38,9 @@
      */
     const COLONNES = {
         compte:       ['n de compte', 'numero de compte', 'compte', 'compte general', 'compte tiers'],
+        // « 4110600400000 - Clients - Alma » : le numéro de compte entier, que
+        // la colonne dédiée perd parfois en notation scientifique.
+        concat:       ['concat', 'compte et libelle', 'cle compte'],
         libelleCompte:['libelle de compte', 'intitule du compte', 'libelle compte'],
         lettrage:     ['let', 'lettrage', 'lettre', 'code lettrage', 'let ', 'rapprochement'],
         journal:      ['journal', 'code journal', 'jrnl'],
@@ -259,6 +262,22 @@
         return String(v).trim();
     }
 
+    /**
+     * Un numéro de compte qu'un tableur a réduit à sa notation scientifique.
+     *
+     * « 4.1106E+12 » n'est plus un numéro de compte : c'est le même texte pour
+     * tous les comptes qui commencent pareil — huit mille lignes de l'extrait
+     * de septembre s'y confondent. La colonne « Concat » du même fichier porte
+     * la valeur entière, « 4110600400000 - Clients - Alma » : c'est elle qui
+     * fait foi quand le numéro est devenu illisible.
+     */
+    const SCIENTIFIQUE = /^-?\d(?:[.,]\d+)?[eE][+-]?\d+$/;
+    function compteRepare(brut, concat) {
+        if (!SCIENTIFIQUE.test(brut)) return brut;
+        const tete = String(concat == null ? '' : concat).split(/\s+-\s+/)[0].trim();
+        return /^[0-9A-Za-z]{4,}$/.test(tete) ? tete : brut;
+    }
+
     function nombre(valeur) {
         const v = I.parseMontant(valeur);
         return v == null ? 0 : v;
@@ -298,7 +317,7 @@
             // Un numéro de compte lu en nombre doit revenir en texte sans
             // notation scientifique : String(4110600400000) le fait, mais pas
             // le format d'affichage de la cellule.
-            const compte = texteBrut(col(r, 'compte'));
+            const compte = compteRepare(texteBrut(col(r, 'compte')), col(r, 'concat'));
             const debit = nombre(col(r, 'debit'));
             const credit = nombre(col(r, 'credit'));
             // Un report à nouveau porte la date d'ouverture de l'exercice, pas

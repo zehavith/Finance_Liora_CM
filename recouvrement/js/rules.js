@@ -188,9 +188,12 @@
         },
         {
             key: 'BTC_PERSO', label: 'B2C-Perso',
-            base: 'dateDebutFormation', jours: 0,
-            fallback: 'dateFinFormation', fallbackJours: 0,
-            note: 'Début de formation (aucun délai supplémentaire)',
+            // L'apprenant paie de sa poche : l'argent est appelé au démarrage.
+            // Dix jours de battement, le temps que le virement parte — en deçà,
+            // la facture n'est pas en retard et n'a rien à faire en relance.
+            base: 'dateDebutFormation', jours: 10,
+            fallback: 'dateFinFormation', fallbackJours: 10,
+            note: 'Début de formation +10 jours',
             categorie: 'B2C', perimetre: 'B2C',
             // « B2C » employé seul — le groupe « Factures payées B2C » du tableau
             // 0.1, à côté de groupes CPF, AIF, POEI, REGION — désigne le

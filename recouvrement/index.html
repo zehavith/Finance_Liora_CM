@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.31.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.31.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.31.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.31.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.31.0">
-    <link rel="stylesheet" href="styles.css?v=2.31.0">
+    <script src="../vendor/chart.umd.min.js?v=2.32.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.32.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.32.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.32.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.32.0">
+    <link rel="stylesheet" href="styles.css?v=2.32.0">
 </head>
 <body>
 
@@ -478,20 +478,33 @@
             </div>
             </div>
 
+            <!-- Les qualifications B2C, quand le périmètre B2C est retenu -->
+            <div id="qualif-b2c" hidden>
+                <div class="section-header section-header-sub">
+                    <h3>Les qualifications du portefeuille B2C</h3>
+                    <span class="fv-hint" id="qualif-b2c-hint"></span>
+                    <div class="seg seg-sm" id="seg-qualif-unite">
+                        <button class="seg-btn active" data-unite="nb">En nombre</button>
+                        <button class="seg-btn" data-unite="euros">En montant</button>
+                    </div>
+                </div>
+                <div class="charts-grid charts-grid-4" id="qualif-b2c-grid"></div>
+            </div>
+
             <div class="section-header section-acte" data-acte="2">
-                <h2><span class="acte-num">2</span>Les factures qui ont été payées</h2>
-                <span class="acte-sous">Celles qu'il a fallu relancer, et celles qui sont rentrées seules</span>
+                <h2><span class="acte-num">2</span>Les encaissements</h2>
+                <span class="acte-sous">Ce qui est rentré après relance, et ce qui est rentré sans intervention</span>
                 <button class="acte-toggle" data-acte-toggle="2" aria-expanded="true">Replier</button>
             </div>
             <div class="acte-corps" data-acte-corps="2">
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header">
-                        <h3 id="regl-titre">Factures payées après être passées par le recouvrement</h3>
+                        <h3 id="regl-titre">Encaissements après passage en recouvrement</h3>
                         <div class="chart-controls">
                             <div class="seg seg-sm" id="seg-regl-origine">
-                                <button class="seg-btn active" data-origine="recouvrement">Il a fallu les relancer</button>
-                                <button class="seg-btn" data-origine="hors">Elles sont rentrées seules</button>
+                                <button class="seg-btn active" data-origine="recouvrement">Après relance</button>
+                                <button class="seg-btn" data-origine="hors">Sans relance</button>
                             </div>
                         </div>
                     </div>
@@ -576,8 +589,11 @@
                     </div>
                     <span class="fv-hint">
                         Gagne-t-on ou perd-on du terrain ? Au-dessus de zéro, les factures tombées en
-                        retard dans le mois ; en dessous, celles encaissées. Une colonne rouge plus haute
-                        que sa jumelle verte, et le retard progresse.
+                        retard dans le mois ; en dessous, celles qui en sont sorties, c'est-à-dire
+                        <strong>encaissées après leur échéance</strong>. Une facture réglée avant son
+                        échéance n'apparaît pas : elle n'est jamais entrée en retard, elle ne peut pas
+                        en sortir. Un mois sans colonne verte signifie donc qu'aucune créance échue
+                        n'est rentrée ce mois-là — sur le périmètre affiché, filtres compris.
                     </span>
                     <div class="chart-container chart-tall">
                         <canvas id="chart-flux"></canvas>
@@ -612,10 +628,13 @@
                         </div>
                     </div>
                     <span class="fv-hint">
-                        Barres = reste à encaisser à la fin du mois (factures émises non réglées, échues ou non) ·
-                        Courbe = nombre de jours de chiffre d'affaires que ce reste à encaisser représente.
-                        La courbe s'interrompt sur les mois où l'historique chargé est trop court pour la calculer :
-                        elle mesurerait la longueur de cet historique, pas votre délai de règlement.
+                        Courbe = nombre de jours de chiffre d'affaires que représente le reste à encaisser
+                        à la fin du mois (factures émises non réglées, échues ou non). Le DSO simple rapporte
+                        cet encours au chiffre d'affaires des trois derniers mois : un seul mois de facturation
+                        est un dénominateur trop étroit, et un mois creux y produisait des milliers de jours.
+                        La courbe s'interrompt sur les mois où l'historique chargé est trop court pour la
+                        calculer, ou lorsque l'encours dépasse trois ans de facturation : elle mesurerait la
+                        longueur de cet historique, pas votre délai de règlement.
                     </span>
                     <div class="chart-container chart-tall">
                         <canvas id="chart-dso"></canvas>
@@ -689,6 +708,7 @@
                                 <button class="seg-btn" data-dim="client">Client</button>
                                 <button class="seg-btn" data-dim="proprietaire">Propriétaire</button>
                             </div>
+                            <button class="btn btn-ghost btn-sm" id="btn-aging-precision">Montants exacts</button>
                         </div>
                     </div>
                     <div class="table-wrap" id="aging-table"></div>
@@ -731,7 +751,8 @@
                                         <button class="seg-btn active" data-niveau="financement">Par financement</button>
                                         <button class="seg-btn" data-niveau="categorie">Par catégorie</button>
                                     </div>
-                                    <button class="btn btn-ghost btn-sm" id="btn-aging-gl-export">Exporter en Excel</button>
+                                    <button class="btn btn-ghost btn-sm" id="btn-aging-gl-precision">Montants exacts</button>
+                                    <button class="btn btn-primary btn-sm" id="btn-aging-gl-export">Exporter le grand livre en Excel</button>
                                 </div>
                             </div>
                             <span class="fv-hint">
@@ -746,6 +767,7 @@
                     <div class="section-header section-header-sub">
                         <h3>Les paiements à pointer</h3>
                         <span class="fv-hint">Règlements et avoirs qu'aucune facture du même lettrage ne rattache</span>
+                        <button class="btn btn-ghost btn-sm" id="btn-gl-orphelins-export">Exporter les paiements à pointer</button>
                     </div>
                     <div id="gl-orphelins-note" class="scope-note"></div>
                     <div class="table-wrap" id="gl-orphelins"></div>
@@ -774,11 +796,17 @@
                             <button class="btn btn-primary btn-sm" id="gl-regle-ajouter">Ajouter la règle</button>
                             <span class="fv-hint" id="gl-regle-apercu"></span>
                         </div>
+                        <div id="gl-regles-suggerees"></div>
                         <div class="table-wrap" id="gl-regles-table"></div>
                     </div>
                     <div class="section-header section-header-sub">
                         <h3>Les créances à classer</h3>
                         <span class="fv-hint">Aucun recoupement n'a permis de leur attribuer un financement</span>
+                        <div class="seg seg-sm" id="seg-gl-aclasser">
+                            <button class="seg-btn active" data-vue="compte">Par compte client</button>
+                            <button class="seg-btn" data-vue="ligne">Ligne à ligne</button>
+                        </div>
+                        <button class="btn btn-ghost btn-sm" id="btn-gl-aclasser-export">Exporter les créances à classer</button>
                     </div>
                     <div class="barre-selection" id="aging-gl-barre" hidden></div>
                     <div class="table-wrap" id="aging-gl-aclasser"></div>
@@ -1317,16 +1345,16 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.31.0"></script>
-<script src="js/store.js?v=2.31.0"></script>
-<script src="js/monday.js?v=2.31.0"></script>
-<script src="js/ingest.js?v=2.31.0"></script>
-<script src="js/metrics.js?v=2.31.0"></script>
-<script src="js/prelevements.js?v=2.31.0"></script>
-    <script src="js/grandlivre.js?v=2.31.0"></script>
-    <script src="js/sellsy.js?v=2.31.0"></script>
-    <script src="js/zoho.js?v=2.31.0"></script>
-<script src="js/ui.js?v=2.31.0"></script>
-<script src="app.js?v=2.31.0"></script>
+<script src="js/rules.js?v=2.32.0"></script>
+<script src="js/store.js?v=2.32.0"></script>
+<script src="js/monday.js?v=2.32.0"></script>
+<script src="js/ingest.js?v=2.32.0"></script>
+<script src="js/metrics.js?v=2.32.0"></script>
+<script src="js/prelevements.js?v=2.32.0"></script>
+    <script src="js/grandlivre.js?v=2.32.0"></script>
+    <script src="js/sellsy.js?v=2.32.0"></script>
+    <script src="js/zoho.js?v=2.32.0"></script>
+<script src="js/ui.js?v=2.32.0"></script>
+<script src="app.js?v=2.32.0"></script>
 </body>
 </html>

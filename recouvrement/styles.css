@@ -1091,6 +1091,21 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
 .regle-ordre .btn-icone:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
 .regle-ordre .btn-icone:disabled { opacity: .3; cursor: default; }
 
+/* Règles suggérées : le motif est trouvé, le financement reste à dire */
+.suggestions-regles { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.suggestion {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 10px 14px; border-radius: 8px;
+    background: var(--surface-2, rgba(255,255,255,.03));
+    border: 1px solid var(--border);
+}
+.suggestion .suggestion-motif { font-weight: 600; font-size: 13px; min-width: 240px; }
+.suggestion .fv-hint { flex: 1 1 220px; line-height: 1.5; }
+.suggestion .input { min-width: 190px; }
+
+/* Bouton minuscule, pour une action au bout d'une ligne de tableau */
+.btn-xs { padding: 2px 8px; font-size: 11px; line-height: 1.6; border-radius: 5px; }
+
 
 /* Actes du tableau de bord : le récit se voit dans la mise en page */
 .section-acte {
@@ -1170,3 +1185,9 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
 /* Le filtre principal prend sa propre ligne : sur une largeur partagée avec
    cinq autres blocs, deux puces seulement tenaient sur la ligne. */
 .filter-block-large { flex: 1 0 100%; min-width: 0; }
+
+
+/* Quatre camemberts de front : les qualifications du portefeuille B2C */
+.charts-grid-4 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.charts-grid-4 .chart-container { height: 260px; }
+.qualif-pie-vide { padding: 24px 8px; color: var(--text-muted); font-size: 12px; }

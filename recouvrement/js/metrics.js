@@ -162,6 +162,13 @@
         // borne du parcours. Sans ce test, tout ce groupe créditait le
         // recouvrement de règlements antérieurs au circuit lui-même.
         if (/avant import|entre process/.test(g)) return 'hors';
+        // « 0.1.5. Factures payées B2C » : le groupe vient de la vue BTC, et
+        // ce qu'il contient a bien été relancé. Mais le nom du groupe ne dit
+        // pas la date : une facture réglée avant son échéance n'est jamais
+        // passée par le recouvrement, quel que soit le tableau où elle finit.
+        if (/factures payees b2c|vue btc/.test(g)) {
+            return f.etat === 'Payée en retard' ? 'recouvrement' : 'hors';
+        }
         if (/recouv|relance|mise en demeure|contentieux|huissier/.test(g)) return 'recouvrement';
         return 'hors';
     }
@@ -765,9 +772,13 @@
      * DSO — délai moyen de règlement client, en jours, mois par mois.
      *
      * Deux méthodes, volontairement affichées ensemble :
-     *  · simple    : encours de fin de mois ÷ chiffre d'affaires du mois,
-     *                ramené au nombre de jours du mois. Lisible, mais très
-     *                sensible à la saisonnalité de la facturation.
+     *  · simple    : encours de fin de mois ÷ chiffre d'affaires des trois
+     *                derniers mois, ramené à leur nombre de jours. Le mois
+     *                seul donnait des valeurs absurdes — un mois presque sans
+     *                facturation faisait grimper la courbe à quatorze mille
+     *                jours, ce qui ne mesure pas un délai mais la faiblesse du
+     *                dénominateur. Trois mois lissent la saisonnalité sans
+     *                changer la définition.
      *  · count-back : on épuise l'encours de fin de mois contre le chiffre
      *                d'affaires des mois précédents, en comptant les jours.
      *                C'est la méthode retenue en credit management, plus
@@ -798,8 +809,24 @@
             const soldeFin = sum(encours, f => f.montant);
             const caMois = ca[mk] || 0;
 
-            // Méthode simple
-            const dsoSimple = caMois > 0 ? (soldeFin / caMois) * joursDuMois(mk) : null;
+            // Méthode simple, sur une fenêtre glissante de trois mois : le
+            // dénominateur d'un seul mois est trop étroit pour porter un
+            // ratio — une facturation faible y produit un DSO de plusieurs
+            // milliers de jours, qui n'a aucun sens.
+            let caFenetre = 0, joursFenetre = 0;
+            for (let j = Math.max(0, idx - 2); j <= idx; j++) {
+                caFenetre += ca[mois[j]] || 0;
+                joursFenetre += joursDuMois(mois[j]);
+            }
+            // Un encours qui dépasse plusieurs années de facturation ne dit
+            // plus rien du délai de règlement : le point est laissé vide.
+            const dsoSimpleBrut = caFenetre > 0 ? (soldeFin / caFenetre) * joursFenetre : null;
+            // Le mois en cours n'a pas fini de facturer : son chiffre d'affaires
+            // partiel gonfle le ratio d'un tiers ou plus. Le point est laissé
+            // vide plutôt que faux — le count-back, lui, reste calculable.
+            const moisEnCours = limite === mk && dateRef && dateRef < fin;
+            const dsoSimple = (dsoSimpleBrut != null && dsoSimpleBrut <= 1095 && !moisEnCours)
+                ? dsoSimpleBrut : null;
 
             // Méthode count-back : on remonte les mois jusqu'à épuiser l'encours
             let reste = soldeFin, jours = 0, k = idx, epuise = false;
