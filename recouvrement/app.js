@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.32.0';
+    const VERSION = '2.33.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -2020,8 +2020,18 @@
         { cle: 'qualification recouvrement', titre: 'Qualification recouvrement' },
     ];
 
-    /** Répartition d'une colonne de qualification : valeur → nombre et euros. */
-    function repartitionQualif(data, cle) {
+    /**
+     * Répartition d'une colonne de qualification.
+     *
+     * Trois choses par valeur, parce que le nombre seul ne dit rien : combien
+     * de factures et pour quel montant, ce qui en est déjà rentré — les mêmes
+     * colonnes existent sur le tableau des factures payées, donc la part
+     * réglée se lit —, et l'évolution des six derniers mois.
+     */
+    function repartitionQualif(data, cle, mois) {
+        const champMois = state.filtres.baseMois === 'facture' ? 'moisFacture'
+            : state.filtres.baseMois === 'paiement' ? 'moisPaiement' : 'moisEcheance';
+        const index = new Map(mois.map((m, i) => [m, i]));
         const trouve = new Map();
         let nb = 0, euros = 0, sans = 0, sansEuros = 0;
         for (const f of data) {
@@ -2033,21 +2043,47 @@
             // tableau : « Fri Nov 20 2026 » n'est pas une qualification.
             if (typeof v === 'string' && /^[A-Z][a-z]{2} [A-Z][a-z]{2} \d{2} \d{4}/.test(v)) v = null;
             if (v == null || v === '') { sans++; sansEuros += f.montant || 0; continue; }
-            const e = trouve.get(v) || { nb: 0, euros: 0 };
+            let e = trouve.get(v);
+            if (!e) { e = { label: v, nb: 0, euros: 0, nbPayees: 0, eurosPayees: 0,
+                            serie: mois.map(() => 0), serieEuros: mois.map(() => 0) }; trouve.set(v, e); }
             e.nb++; e.euros += f.montant || 0;
-            trouve.set(v, e);
+            if (f.paye) { e.nbPayees++; e.eurosPayees += f.montant || 0; }
+            const i = index.get(f[champMois]);
+            if (i != null) { e.serie[i]++; e.serieEuros[i] += f.montant || 0; }
             nb++; euros += f.montant || 0;
         }
-        const lignes = [...trouve.entries()].map(([label, e]) => ({ label, ...e }));
-        return { lignes, nb, euros, sans, sansEuros };
+        return { lignes: [...trouve.values()], nb, euros, sans, sansEuros };
+    }
+
+    /** Les n derniers mois, celui de la date d'arrêté compris. */
+    function derniersMoisSerie(n) {
+        const d = state.filtres.dateRef || new Date();
+        const out = [];
+        for (let i = n - 1; i >= 0; i--) out.push(R.monthKey(new Date(d.getFullYear(), d.getMonth() - i, 1)));
+        return out;
+    }
+
+    /** Une courbe de six points, en SVG, sans dépendance ni instance de graphique. */
+    function etincelle(serie, couleur) {
+        const max = Math.max(...serie, 1);
+        const L = 92, H = 24, pas = serie.length > 1 ? L / (serie.length - 1) : 0;
+        const pts = serie.map((v, i) => `${(i * pas).toFixed(1)},${(H - 2 - (v / max) * (H - 5)).toFixed(1)}`);
+        const dernier = pts[pts.length - 1].split(',');
+        return `<svg class="etincelle" viewBox="0 0 ${L} ${H}" width="${L}" height="${H}" aria-hidden="true">
+            <polyline points="${pts.join(' ')}" fill="none" stroke="${couleur}" stroke-width="1.6"
+                      stroke-linejoin="round" stroke-linecap="round" opacity=".85"></polyline>
+            <circle cx="${dernier[0]}" cy="${dernier[1]}" r="2.2" fill="${couleur}"></circle>
+        </svg>`;
     }
 
     /**
-     * Quatre camemberts, un par colonne de qualification.
+     * Les quatre colonnes de qualification, en classement plutôt qu'en camembert.
      *
-     * Ils ne s'affichent que sur le périmètre B2C : ces colonnes n'existent
-     * que là, et un camembert vide n'apprend rien. Au-delà de huit parts, le
-     * reste est regroupé — une couronne de trente miettes ne se lit pas.
+     * Un camembert dit une part et rien d'autre. Ce qui se demande ici, c'est
+     * combien, pour quel montant, ce qui est déjà rentré et si cela monte ou
+     * descend — quatre lectures qu'une ligne porte sans peine : une barre pour
+     * le poids, un fond vert pour la part encaissée, une courbe de six mois
+     * pour la tendance, une pastille pour l'écart au mois précédent.
      */
     function rendreQualifB2C(data) {
         const bloc = $('#qualif-b2c');
@@ -2060,70 +2096,92 @@
         $$('#seg-qualif-unite .seg-btn').forEach(b =>
             b.classList.toggle('active', b.dataset.unite === unite));
         const eur = unite === 'euros';
+        const mois = derniersMoisSerie(12);
+        const baseLabel = state.filtres.baseMois === 'facture' ? 'de facture'
+            : state.filtres.baseMois === 'paiement' ? 'de paiement' : 'd’échéance';
 
+        // Tout doit se lire sans mode d'emploi : chaque colonne porte son
+        // titre, et la phrase d'aide dit en français ce que montre chaque
+        // partie de la ligne.
         const hint = $('#qualif-b2c-hint');
-        if (hint) hint.textContent = eur
-            ? `Répartition du montant des ${U.nombre(data.length)} factures B2C du périmètre, `
-              + `par qualification Monday`
-            : `Répartition des ${U.nombre(data.length)} factures B2C du périmètre, `
-              + `par qualification Monday`;
+        if (hint) hint.innerHTML = `Ces quatre colonnes viennent de Monday. Chaque ligne est une réponse
+            possible, et vous montre combien de factures la portent.
+            <span class="qualif-legende"><span class="pastille pastille-verte"></span> déjà payées
+            <span class="pastille pastille-rouge"></span> encore dues</span>
+            La courbe suit les 12 derniers mois (mois ${baseLabel}) et la flèche compare
+            les 3 derniers mois aux 3 mois d'avant : rouge = il y en a plus qu'avant,
+            vert = il y en a moins.`;
 
         const grille = $('#qualif-b2c-grid');
         grille.innerHTML = QUALIFS_B2C.map((q, i) => `
-            <div class="chart-card">
+            <div class="chart-card qualif-card">
                 <div class="chart-header"><h3>${U.escapeHtml(q.titre)}</h3></div>
                 <span class="fv-hint" id="qualif-hint-${i}"></span>
-                <div class="chart-container"><canvas id="chart-qualif-${i}"></canvas></div>
+                <div id="qualif-liste-${i}"></div>
             </div>`).join('');
 
         QUALIFS_B2C.forEach((q, i) => {
-            const r = repartitionQualif(data, q.cle);
+            const r = repartitionQualif(data, q.cle, mois);
             const sous = $('#qualif-hint-' + i);
+            const liste = $('#qualif-liste-' + i);
             if (!r.lignes.length) {
                 if (sous) sous.textContent = 'Cette colonne n’est renseignée sur aucune facture du périmètre.';
-                U.chart('chart-qualif-' + i, videConfig('Aucune valeur'));
+                liste.innerHTML = '<p class="qualif-vide">Aucune valeur</p>';
                 return;
             }
             const valeur = l => eur ? l.euros : l.nb;
+            const payee = l => eur ? l.eurosPayees : l.nbPayees;
             const tri = r.lignes.slice().sort((a, b) => valeur(b) - valeur(a));
             const gardees = tri.slice(0, 8);
             const reste = tri.slice(8);
-            if (reste.length) gardees.push({ label: `Autres (${reste.length})`,
-                nb: X.sum(reste, l => l.nb), euros: X.sum(reste, l => l.euros) });
+            if (reste.length) gardees.push({
+                label: `Autres (${reste.length} valeurs)`,
+                nb: X.sum(reste, l => l.nb), euros: X.sum(reste, l => l.euros),
+                nbPayees: X.sum(reste, l => l.nbPayees), eurosPayees: X.sum(reste, l => l.eurosPayees),
+                serie: mois.map((_, k) => X.sum(reste, l => l.serie[k])),
+                serieEuros: mois.map((_, k) => X.sum(reste, l => l.serieEuros[k])),
+            });
 
             const total = eur ? r.euros : r.nb;
+            const max = Math.max(...gardees.map(valeur), 1);
             if (sous) sous.textContent = `${U.nombre(r.nb)} factures renseignées`
                 + (eur ? ` · ${U.euros(r.euros)}` : '')
-                + (r.sans ? ` · ${U.nombre(r.sans)} sans valeur, hors camembert` : '');
+                + (r.sans ? ` · ${U.nombre(r.sans)} sans valeur` : '');
 
-            U.chart('chart-qualif-' + i, {
-                type: 'doughnut',
-                data: {
-                    // Une légende à droite d'une carte de 280 px coupait les
-                    // libellés en plein mot. En bas, abrégés à trente
-                    // caractères, ils tiennent ; l'infobulle donne le nom
-                    // entier.
-                    labels: gardees.map(l => l.label.length > 30 ? l.label.slice(0, 29) + '…' : l.label),
-                    datasets: [{
-                        data: gardees.map(valeur),
-                        backgroundColor: gardees.map((l, k) => U.palette[k % U.palette.length]),
-                        borderWidth: 0,
-                    }],
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'bottom',
-                            labels: { boxWidth: 9, padding: 8, font: { size: 10 } } },
-                        tooltip: { callbacks: { label: c => {
-                            const v = c.raw || 0;
-                            const part = total ? (v / total) * 100 : 0;
-                            const nom = (gardees[c.dataIndex] || {}).label || c.label;
-                            return `${nom} : ${eur ? U.euros(v) : U.nombre(v)} · ${U.pourcent(part, 1)}`;
-                        } } },
-                    },
-                },
-            });
+            const entete = `<div class="qualif-ligne qualif-entete">
+                <span>Réponse</span>
+                <span>Poids · vert = payé</span>
+                <span class="qualif-val">${eur ? 'Montant' : 'Factures'}</span>
+                <span>12 derniers mois</span>
+                <span class="qualif-ecart">Évolution</span>
+            </div>`;
+            liste.innerHTML = entete + gardees.map(l => {
+                const v = valeur(l), p = payee(l);
+                const part = total ? (v / total) * 100 : 0;
+                const partPayee = v ? (p / v) * 100 : 0;
+                const serie = eur ? l.serieEuros : l.serie;
+                // Un mois contre le précédent ne dit rien à ce niveau de
+                // détail : une valeur de qualification porte quelques factures
+                // par mois, et l'écart n'est que du bruit. Trois mois contre
+                // les trois d'avant tiennent debout.
+                const somme = (a, b) => serie.slice(a, b).reduce((x, y) => x + y, 0);
+                const ecart = somme(serie.length - 3) - somme(serie.length - 6, serie.length - 3);
+                const sens = ecart > 0 ? 'hausse' : ecart < 0 ? 'baisse' : 'stable';
+                const fleche = ecart > 0 ? '▲' : ecart < 0 ? '▼' : '=';
+                const chiffre = eur ? U.eurosCourt(Math.abs(ecart)) : U.nombre(Math.abs(ecart));
+                return `<div class="qualif-ligne" title="${U.escapeHtml(l.label)} — ${U.nombre(l.nb)} factures · ${U.euros(l.euros)} · ${U.nombre(l.nbPayees)} déjà encaissées · ${U.nombre(l.nb - l.nbPayees)} encore dues">
+                    <span class="qualif-nom">${U.escapeHtml(l.label)}</span>
+                    <span class="qualif-barre">
+                        <span class="qualif-barre-fond" style="width:${(v / max) * 100}%">
+                            <span class="qualif-barre-paye" style="width:${partPayee}%"></span>
+                        </span>
+                    </span>
+                    <span class="qualif-val">${eur ? U.eurosCourt(v) : U.nombre(v)}
+                        <span class="qualif-part">${U.pourcent(part, 0)}</span></span>
+                    ${etincelle(serie, ecart >= 0 ? U.couleurs.retard : U.couleurs.paye)}
+                    <span class="qualif-ecart qualif-${sens}">${fleche} ${ecart === 0 ? '—' : chiffre}</span>
+                </div>`;
+            }).join('');
         });
     }
 

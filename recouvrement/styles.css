@@ -1187,7 +1187,45 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
 .filter-block-large { flex: 1 0 100%; min-width: 0; }
 
 
-/* Quatre camemberts de front : les qualifications du portefeuille B2C */
-.charts-grid-4 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-.charts-grid-4 .chart-container { height: 260px; }
-.qualif-pie-vide { padding: 24px 8px; color: var(--text-muted); font-size: 12px; }
+/* Les quatre colonnes de qualification du portefeuille B2C */
+.charts-grid-4 { grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); }
+.qualif-card { padding-bottom: 10px; }
+.qualif-vide { padding: 18px 4px; color: var(--text-muted); font-size: 12px; }
+.qualif-ligne {
+    display: grid; align-items: center; gap: 8px;
+    grid-template-columns: minmax(140px, 1.8fr) minmax(60px, 1fr) 74px 92px 56px;
+    padding: 6px 2px; border-bottom: 1px solid var(--border);
+    font-size: 12px;
+}
+.qualif-ligne:last-child { border-bottom: 0; }
+.qualif-entete {
+    font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--text-muted); border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+}
+.qualif-entete .qualif-val, .qualif-entete .qualif-ecart { font-weight: 400; }
+.qualif-legende { display: inline-flex; align-items: center; gap: 5px; margin: 0 6px; }
+.pastille { display: inline-block; width: 9px; height: 9px; border-radius: 3px; }
+.pastille-verte { background: #22c55e; }
+.pastille-rouge { background: var(--accent, #F47458); margin-left: 6px; }
+.qualif-nom {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--text-secondary);
+}
+.qualif-barre { display: block; height: 10px; border-radius: 5px; background: rgba(255,255,255,.06); }
+.qualif-barre-fond {
+    display: block; height: 100%; border-radius: 5px; min-width: 3px;
+    background: var(--accent, #F47458); position: relative; overflow: hidden;
+}
+/* La part déjà encaissée, en vert, dans la barre de la valeur */
+.qualif-barre-paye {
+    position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px;
+    background: #22c55e; opacity: .85;
+}
+.qualif-val { text-align: right; font-weight: 600; white-space: nowrap; }
+.qualif-part { display: block; font-weight: 400; font-size: 10px; color: var(--text-muted); }
+.etincelle { display: block; }
+.qualif-ecart { text-align: right; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.qualif-hausse { color: #ef4444; }
+.qualif-baisse { color: #22c55e; }
+.qualif-stable { color: var(--text-muted); }
