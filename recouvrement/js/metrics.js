@@ -687,12 +687,16 @@
             const k = dimFn(f) || '—';
             let row = map.get(k);
             if (!row) {
-                row = { key: k, label: labelFn ? labelFn(k, f) : k, total: 0, nb: 0 };
+                row = { key: k, label: labelFn ? labelFn(k, f) : k, total: 0, nb: 0, echu: 0, echuNb: 0 };
                 for (const b of R.AGING_BUCKETS) { row[b.key] = 0; row[b.key + '_nb'] = 0; }
                 map.set(k, row);
             }
             const b = f.bucket;
             if (b) { row[b.key] += f.montant || 0; row[b.key + '_nb']++; }
+            // Ce qui est échu et toujours dû : tout sauf la tranche « non
+            // échu ». C'est le montant en retard, celui sur lequel il y a
+            // quelque chose à faire.
+            if (f.etat === 'En retard') { row.echu += f.montant || 0; row.echuNb++; }
             row.total += f.montant || 0;
             row.nb++;
         }

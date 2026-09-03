@@ -666,6 +666,9 @@
                             ? f.ancien : (g.ancien || null),
                         libelle: f.libelle || '',
                         journal: f.journal || '',
+                        // Une facture Filiz est une alternance : le numéro le
+                        // dit — « FCT-FILIZ-DST-2025-276 ».
+                        filiz: /filiz/i.test((f.numero || '') + ' ' + (f.libelle || '')),
                         sansNumero: false,
                     });
                 }
@@ -688,6 +691,7 @@
                     ancien: g.ancien || null,
                     libelle: libelleRepresentatif(g),
                     journal: '',
+                    filiz: /filiz/i.test(libelleRepresentatif(g) || ''),
                     sansNumero: true,
                 });
             }
@@ -741,6 +745,12 @@
         { libelle: 'Le compte dit « B2C » et « Région »', motif: /\bb2c\b.*\bregion\b/, fin: 'REGION' },
         { libelle: 'Le compte dit « B2C » et « règlement direct » ou « Alma »', motif: /\bb2c\b.*(reglement direct|alma)/, fin: 'BTC_PERSO' },
         { libelle: 'Le client est Alma', motif: /^clients? - alma\b|\balma\b/, fin: 'BTC_PERSO' },
+        { libelle: 'GoCardless ou Stripe : le client paie lui-même',
+          motif: /gocardless|\bgcl\b|\bstripe\b/, fin: 'BTC_PERSO' },
+        // Des clients que vous avez nommés vous-même
+        { libelle: 'CIMES — corporate, alternance si la facture est une Filiz',
+          motif: /\bcimes\b/, fin: 'CORPORATE', arbitrage: 'corporate' },
+        { libelle: 'Mosef', motif: /\bmosef\b/, fin: 'BTC_ENTREPRISE' },
         // Institutionnels
         { libelle: 'Caisse des Dépôts, CDC, Mon Compte Formation, EDOF', motif: /caisse des depots|caisse des depot|\bcdc\b|mon compte formation|\bedof\b/, fin: 'CPF' },
         { libelle: 'Transitions Pro, Fongecif, ATpro', motif: /transitions? pro|fongecif|\batpro\b/, fin: 'TRANSITION' },
@@ -783,6 +793,41 @@
         }));
     }
 
+    /**
+     * Ce nom est-il celui d'une entreprise ou d'une institution ?
+     *
+     * Le grand livre ne dit pas qui paie. Mais « ING BANK N.V Succursale »,
+     * « Safran c/o safran finance services », « INFOVISTA HOLDING » ou
+     * « Conseil régional d'Île-de-France » ne sont pas des particuliers, et les
+     * laisser en « à classer » aux côtés de vraies inconnues n'aide personne.
+     * Le sens unique est important : ces motifs prouvent qu'il s'agit d'une
+     * personne morale ; leur absence ne prouve rien — beaucoup d'entreprises
+     * n'ont ni forme juridique ni mot repérable dans leur raison sociale.
+     */
+    const MOTIFS_ENTREPRISE = new RegExp([
+        // Formes juridiques françaises et étrangères
+        '\\b(sas|sasu|sarl|eurl|sci|scic|scop|snc|sem|spl|gie|gip|sca|scs)\\b',
+        '\\b(sa|se|nv|bv|ag|kg|oy|ab|as|aps|spa|srl|sl|plc|ltd|llc|inc|corp|gmbh|ug|pte|pty)\\b',
+        // Ce qui nomme une organisation
+        'holding|groupe|group\\b|societe|\\bste\\b|compagnie|\\bcie\\b|entreprise|etablissement',
+        'association|federation|fondation|syndicat|mutuelle|cooperative|\\bcci\\b|chambre de',
+        'banque|\\bbank\\b|assurance|assurances|credit |finance|financement|factor',
+        'conseil regional|conseil departemental|region |departement de|commune de|mairie|prefecture',
+        'ministere|universite|academie|rectorat|\\bcnrs\\b|\\binserm\\b|\\bcea\\b|hopital|chu |clinique',
+        'institut|laboratoire|agence |cabinet |consulting|conseil en|technologies|solutions|systems',
+        'services|industries|international|distribution|logistique|transports|immobilier|energie',
+        'succursale|filiale|\\bc\\/o\\b|pour le compte de',
+    ].join('|'), 'i');
+
+    // Les canaux de paiement qui n'existent que pour les particuliers.
+    const PAIEMENT_PERSO = /gocardless|\bgcl\b|\bstripe\b|receipt |txn_|\bpayout\b/;
+
+    /** Le nom désigne-t-il une personne morale ? */
+    function estEntreprise(nom) {
+        const n = R.norm(nom);
+        return !!n && MOTIFS_ENTREPRISE.test(n);
+    }
+
     /** Le financement que le libellé du compte désigne, s'il en désigne un. */
     function financementDuLibelle(libelle) {
         const n = R.norm(libelle || '');
@@ -819,6 +864,16 @@
             return montant > SEUIL_POEI ? 'POEI' : 'AIF';
         }
 
+        // Un client corporate dont le dispositif reste à préciser : la facture
+        // Filiz en fait une alternance, un type explicite l'emporte sur tout.
+        if (nom === 'corporate') {
+            if (creance.filiz) return 'CORPORATE_ALTERNANCE';
+            if (explicite) return explicite;
+            const parFacture = dit(creance);
+            if (parFacture) return parFacture;
+            return 'CORPORATE';
+        }
+
         if (nom === 'opco') {
             if (creance.filiz) return 'OPCO_ALTERNANCE';
             if (explicite === 'OPCO' || explicite === 'OPCO_ALTERNANCE') return explicite;
@@ -850,6 +905,10 @@
         const parSellsy = new Map();    // numéro de facture Sellsy → financement
         const parCompte = new Map();    // compte client → { fin: nb }
         const parTiers = new Map();     // identifiant du tiers → { fin: nb }
+        // Un même client vit sous plusieurs comptes — « Noous finance » en a
+        // deux, « ING BANK » aussi. Le nom les réunit là où le numéro les
+        // sépare : ce qui a été classé d'un côté vaut de l'autre.
+        const parNom = new Map();       // nom du client normalisé → { fin: nb }
 
         const compter = (carte, cle, fin) => {
             if (!cle || !fin) return;
@@ -857,9 +916,11 @@
             if (!m) { m = new Map(); carte.set(cle, m); }
             m.set(fin, (m.get(fin) || 0) + 1);
         };
-        const noter = (compte, fin, tiers) => {
+        const noter = (compte, fin, tiers, nom) => {
             compter(parCompte, compte, fin);
             compter(parTiers, tiers, fin);
+            const n = R.norm(nom || '');
+            if (n.length >= 4) compter(parNom, n, fin);
         };
 
         // 1. Monday : le financement y est établi par les règles métier.
@@ -917,7 +978,7 @@
             const nom = R.norm(m.client || m.nom || '');
             if (nom && !mandats.has(nom)) mandats.set(nom, v);
         }
-        return { parCle, parSellsy, parCompte, parTiers, brutSellsy, datesSellsy, mandats, noter };
+        return { parCle, parSellsy, parCompte, parTiers, parNom, brutSellsy, datesSellsy, mandats, noter };
     }
 
     /**
@@ -982,19 +1043,27 @@
             const fin = (c.cle ? idx.parCle.get(c.cle) : null) || duReferentiel(c)
                 || (parRegle && parRegle.financement)
                 || (c.cle ? idx.parSellsy.get(c.cle) : null) || propre(c);
-            if (fin) idx.noter(c.compte, fin, c.identifiantTiers);
+            if (fin) idx.noter(c.compte, fin, c.identifiantTiers, c.tiers);
         }
         for (const l of (o.historique || [])) {
             const fin = l.cle ? idx.parCle.get(l.cle) : null;
-            if (fin) idx.noter(l.compte, fin, l.identifiantTiers);
+            if (fin) idx.noter(l.compte, fin, l.identifiantTiers, l.tiers);
         }
 
-        // Une clé ne tranche que si elle ne connaît qu'un seul financement :
-        // un compte partagé entre deux dispositifs ne prouve rien.
-        const unique = (carte, cle) => {
+        // Ce qu'un client a déjà été classé ailleurs vaut pour le reste de ses
+        // créances : c'est la règle, l'exception étant le compte réellement
+        // partagé entre deux dispositifs. Un seul financement connu tranche ;
+        // plusieurs, le dominant l'emporte s'il pèse au moins les trois quarts,
+        // sinon rien n'est décidé.
+        const dominant = (carte, cle) => {
             const m = cle ? carte.get(cle) : null;
-            return (m && m.size === 1) ? [...m.keys()][0] : null;
+            if (!m || !m.size) return null;
+            if (m.size === 1) return [...m.keys()][0];
+            let total = 0, tete = null, teteNb = 0;
+            for (const [fin, nb] of m) { total += nb; if (nb > teteNb) { tete = fin; teteNb = nb; } }
+            return (teteNb / total) >= 0.75 ? tete : null;
         };
+        const unique = dominant;
 
         // Le type de client de la facturation voyage avec la créance : c'est
         // lui qui arbitre entre B2C-Entreprise et B2B sur un OPCO ou l'État.
@@ -1067,6 +1136,13 @@
             if (ancienCompte) return poser(c, ancienCompte, 'Ancien grand livre (compte client)');
             const libelle = duLibelle(c);
             if (libelle) return poser(c, libelle, 'Libellé du compte');
+            // Un règlement passé par GoCardless ou Stripe est un paiement de
+            // particulier : ces canaux ne servent qu'au financement personnel.
+            // Le libellé de l'écriture le dit — « VIR SEPA RECU /FRM … »,
+            // « Charge: Receipt: … » — même quand le compte ne dit rien.
+            if (PAIEMENT_PERSO.test(R.norm(c.libelle || ''))) {
+                return poser(c, 'BTC_PERSO', 'Réglée par GoCardless ou Stripe');
+            }
             const sellsy = c.cle ? idx.parSellsy.get(c.cle) : null;
             if (sellsy) return poser(c, sellsy, 'Type de client (facturation)');
             const fichier = propre(c);
@@ -1079,10 +1155,24 @@
             // prouve rien.
             const immatricule = !!String(c.siren == null ? '' : c.siren).trim();
             const pasPerso = f => (immatricule && (f === 'BTC_PERSO' || f === 'PERSO_ALTERNANCE')) ? null : f;
-            const tiers = pasPerso(unique(idx.parTiers, c.identifiantTiers));
+            const tiers = pasPerso(dominant(idx.parTiers, c.identifiantTiers));
             if (tiers) return poser(c, tiers, 'Identifiant du tiers');
-            const compte = pasPerso(unique(idx.parCompte, c.compte));
+            const compte = pasPerso(dominant(idx.parCompte, c.compte));
             if (compte) return poser(c, compte, 'Compte client');
+            // Le même client sous un autre numéro de compte : le nom le
+            // rattrape. C'est le cas des entreprises qui reviennent, classées
+            // une fois, non classées ailleurs.
+            const nom = pasPerso(dominant(idx.parNom, R.norm(c.tiers || '')));
+            if (nom) return poser(c, nom, 'Même client, classé ailleurs');
+            // Rien n'a nommé le dispositif. Mais le nom dit au moins à qui l'on
+            // a affaire : « ING BANK N.V », « INFOVISTA HOLDING », « Conseil
+            // régional d'Île-de-France » sont des personnes morales. Le
+            // dispositif reste à préciser — c'est le sens de « Corporate —
+            // financement à préciser » — mais la créance n'est plus une
+            // inconnue complète, et elle se range avec ses semblables.
+            if (estEntreprise(c.tiers) || immatricule) {
+                return poser(c, 'CORPORATE', 'Nom d’entreprise (financement à préciser)');
+            }
             return { ...c, financement: null, typeClient: null, origineClassement: null };
         });
     }
@@ -1391,6 +1481,7 @@
 
     global.LioraGrandLivre = {
         referentielDepuis, financementDuReferentiel, CHAMPS_REGLE, OPERATEURS, porteeDesMotifs,
+        estEntreprise,
         regleCorrespond, financementParRegles, porteeDesRegles, etiquetteRegle,
         A_CLASSER, POOL_NON_LETTRE, MOTIFS_NUMERO, numeroDepuisTexte,
         creancesOuvertes, classer, classerEcritures, ecrituresAPlat, balanceAgee, comparer,

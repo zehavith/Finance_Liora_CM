@@ -489,6 +489,20 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
 .ag-total { font-weight: 600; color: var(--text-primary); }
 .ag-zero { color: var(--text-muted); opacity: 0.5; }
 
+/* Les balances âgées portent quatorze colonnes. À l'euro près, elles
+   débordaient de l'écran et le total se lisait hors champ. Densifiées, elles
+   tiennent : mêmes chiffres, mêmes colonnes, aucun défilement à faire. */
+#aging-table .data-table,
+#aging-gl-table .data-table { font-size: 0.76rem; }
+#aging-table .data-table th,
+#aging-gl-table .data-table th { padding: 0.55rem 0.4rem; font-size: 0.66rem; letter-spacing: .02em; }
+#aging-table .data-table td,
+#aging-gl-table .data-table td { padding: 0.45rem 0.4rem; white-space: nowrap; }
+#aging-table .data-table td:first-child,
+#aging-gl-table .data-table td:first-child { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
+#aging-table .cell-mini,
+#aging-gl-table .cell-mini { display: block; font-size: 0.62rem; color: var(--text-muted); font-weight: 400; }
+
 /* Barre de proportion */
 .bar-cell {
     display: inline-block;

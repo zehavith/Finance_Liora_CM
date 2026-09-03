@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.35.0';
+    const VERSION = '2.36.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -2575,6 +2575,13 @@
 
         const cols = [
             { key: 'label', label: dim === 'financement' ? 'Financement' : dim === 'board' ? 'Tableau' : dim === 'client' ? 'Client' : 'Propriétaire' },
+            // Le montant en retard d'abord : c'est la question posée à cette
+            // page. Le détail par tranche vient après, il dit depuis quand.
+            { key: 'echu', label: 'Montant en retard', align: 'right',
+              title: 'Factures échues et toujours impayées — toutes les tranches sauf « non échu »',
+              format: (v, r) => v ? `<strong>${fmtAg(v)}</strong><span class="cell-mini">${U.nombre(r.echuNb)} factures</span>`
+                                  : '<span class="ag-zero">·</span>',
+              cls: () => 'ag-total' },
             ...R.AGING_BUCKETS.map(b => ({
                 key: b.key, label: b.label, align: 'right',
                 format: (v, row) => v ? `<span class="ag-cell" title="${row[b.key + '_nb']} factures">${fmtAg(v)}</span>` : '<span class="ag-zero">·</span>',
@@ -2584,7 +2591,10 @@
             { key: 'nb', label: 'Nb', align: 'right', format: U.nombre },
         ];
 
-        const total = { label: 'Total général', total: U.euros(X.sum(rows, r => r.total)), nb: U.nombre(X.sum(rows, r => r.nb)) };
+        const total = { label: 'Total général', total: U.euros(X.sum(rows, r => r.total)),
+            nb: U.nombre(X.sum(rows, r => r.nb)),
+            echu: `<strong>${fmtAg(X.sum(rows, r => r.echu))}</strong>`
+                + `<span class="cell-mini">${U.nombre(X.sum(rows, r => r.echuNb))} factures</span>` };
         for (const b of R.AGING_BUCKETS) total[b.key] = fmtAg(X.sum(rows, r => r[b.key]));
 
         const el = $('#aging-table');
