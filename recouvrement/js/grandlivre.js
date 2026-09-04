@@ -1336,6 +1336,138 @@
         return out;
     }
 
+    /**
+     * Les rapprochements possibles entre un paiement et les factures ouvertes.
+     *
+     * Le lettrage comptable dit ce qui est déjà pointé ; ce qui reste dans le
+     * pool non lettré d'un compte ne l'est pas, par principe — cinq mille trois
+     * cents lignes sur l'extrait de septembre. Pour chacune, on cherche la
+     * contrepartie, du plus sûr au plus incertain :
+     *
+     *  1. le numéro de facture cité dans le libellé — une preuve, pas un indice ;
+     *  2. le montant exact sur le même compte — un virement solde une facture ;
+     *  3. le montant exact chez le même client, sous un autre compte ;
+     *  4. la somme de deux ou trois factures du compte ;
+     *  5. un montant plus petit que le reste dû d'une facture : un acompte.
+     *
+     * Rien n'est pointé automatiquement : c'est une liste de propositions, avec
+     * la raison de chacune, pour que le pointage se fasse à l'œil mais vite.
+     */
+    function propositionsRapprochement(paiements, creances) {
+        const TOL = 0.01;
+        const parCompte = new Map(), parNom = new Map(), parCle = new Map();
+        for (const c of (creances || [])) {
+            if (!(c.resteDu > TOL)) continue;
+            if (c.compte) {
+                if (!parCompte.has(c.compte)) parCompte.set(c.compte, []);
+                parCompte.get(c.compte).push(c);
+            }
+            const n = R.norm(c.tiers || '');
+            if (n.length > 3) {
+                if (!parNom.has(n)) parNom.set(n, []);
+                parNom.get(n).push(c);
+            }
+            if (c.cle && !parCle.has(c.cle)) parCle.set(c.cle, c);
+        }
+        for (const liste of parCompte.values()) liste.sort((a, b) => b.resteDu - a.resteDu);
+
+        // La recherche de combinaisons est bornée : au-delà d'une vingtaine de
+        // factures ouvertes sur un compte, les sommes possibles se comptent par
+        // milliers et n'apprennent plus rien.
+        const MAX_COMBI = 20;
+        const combinaison = (liste, m) => {
+            const n = Math.min(liste.length, MAX_COMBI);
+            for (let i = 0; i < n; i++) {
+                for (let j = i + 1; j < n; j++) {
+                    if (Math.abs(liste[i].resteDu + liste[j].resteDu - m) < TOL) return [liste[i], liste[j]];
+                    for (let k = j + 1; k < n; k++) {
+                        if (Math.abs(liste[i].resteDu + liste[j].resteDu + liste[k].resteDu - m) < TOL) {
+                            return [liste[i], liste[j], liste[k]];
+                        }
+                    }
+                }
+            }
+            return null;
+        };
+
+        return (paiements || []).map(o => {
+            const m = o.credit || 0;
+            const surLeCompte = parCompte.get(o.compte) || [];
+            const cite = numeroDepuisTexte(o.libelle || '') || (o.numero || '');
+            const parNumero = cite ? parCle.get(I.factureKey(cite)) : null;
+            const exact = surLeCompte.find(c => Math.abs(c.resteDu - m) < TOL);
+            const ailleurs = (parNom.get(R.norm(o.tiers || '')) || [])
+                .filter(c => c.compte !== o.compte);
+            const exactAilleurs = ailleurs.find(c => Math.abs(c.resteDu - m) < TOL);
+            const combi = (m > TOL && surLeCompte.length > 1) ? combinaison(surLeCompte, m) : null;
+            const partiel = surLeCompte.find(c => c.resteDu > m + TOL);
+
+            let proposition = null, raison = '', force = '';
+            if (parNumero) {
+                // Citer un numéro ne suffit pas : un report à nouveau de
+                // 40 194 € citait une facture de 5 742 €. Le montant décide du
+                // degré de certitude.
+                const reste = parNumero.resteDu;
+                proposition = [parNumero];
+                if (Math.abs(reste - m) < TOL) { raison = 'Le libellé cite ce numéro, et le montant correspond'; force = 'certaine'; }
+                else if (m < reste - TOL) { raison = 'Le libellé cite ce numéro : règlement partiel'; force = 'forte'; }
+                else { raison = 'Le libellé cite ce numéro, mais le montant dépasse le reste dû'; force = 'à vérifier'; }
+            }
+            else if (exact) { proposition = [exact]; raison = 'Même montant, même compte'; force = 'forte'; }
+            else if (exactAilleurs) { proposition = [exactAilleurs]; raison = 'Même montant, même client sous un autre compte'; force = 'forte'; }
+            else if (combi) { proposition = combi; raison = 'Somme de ' + combi.length + ' factures du compte'; force = 'probable'; }
+            else if (partiel) {
+                proposition = [partiel];
+                raison = 'Le compte porte une facture plus grosse : acompte possible';
+                force = 'à vérifier';
+            }
+            else if (surLeCompte.length) { raison = 'Créances ouvertes sur le compte, aucune ne correspond'; }
+            else { raison = 'Aucune créance ouverte sur ce compte'; }
+
+            return {
+                ...o,
+                proposition, raison, force,
+                exact: proposition && proposition.length === 1 ? proposition[0] : null,
+                nbOuvertes: surLeCompte.length,
+                eurosOuverts: surLeCompte.reduce((a, c) => a + c.resteDu, 0),
+                candidates: surLeCompte.slice(0, 5),
+            };
+        });
+    }
+
+    /**
+     * L'état du pointage, mois par mois.
+     *
+     * Un stock de paiements non rapprochés ne se juge pas à son montant seul :
+     * il faut savoir s'il grossit ou s'il fond, et par rapport à quoi. Chaque
+     * mois est donc rapporté au total des règlements du mois — en nombre et en
+     * montant — et comparé au mois précédent.
+     */
+    function pointageParMois(lignes) {
+        const mois = new Map();
+        for (const l of (lignes || [])) {
+            if (l.nature !== 'reglement' && l.nature !== 'avoir') continue;
+            if (!l.date) continue;
+            const mk = R.monthKey(l.date);
+            let m = mois.get(mk);
+            if (!m) { m = { mois: mk, nb: 0, euros: 0, nbNonPointes: 0, eurosNonPointes: 0 }; mois.set(mk, m); }
+            m.nb++;
+            m.euros += l.credit || 0;
+            if (l.lettre === POOL_NON_LETTRE) { m.nbNonPointes++; m.eurosNonPointes += l.credit || 0; }
+        }
+        const out = [...mois.values()].sort((a, b) => a.mois < b.mois ? -1 : 1);
+        let prec = null;
+        for (const m of out) {
+            m.tauxNb = m.nb ? (m.nbNonPointes / m.nb) * 100 : 0;
+            m.tauxEuros = m.euros ? (m.eurosNonPointes / m.euros) * 100 : 0;
+            m.varNb = prec ? m.nbNonPointes - prec.nbNonPointes : null;
+            m.varEuros = prec ? m.eurosNonPointes - prec.eurosNonPointes : null;
+            m.varTaux = prec ? m.tauxEuros - prec.tauxEuros : null;
+            prec = m;
+        }
+        return out;
+    }
+
     function classerEcritures(lignesAPlat, creances) {
         // Le financement retenu par groupe, depuis les créances déjà classées.
         const parGroupe = new Map();
@@ -1396,7 +1528,17 @@
             lignes.push(ligne);
         }
         orphelins.sort((a, b) => (b.credit || 0) - (a.credit || 0));
-        return { lignes, orphelins, stats };
+        // Ce que la comptabilité tient pour non pointé : tout règlement ou
+        // avoir resté dans le pool non lettré de son compte. Le classement par
+        // dispositif peut être connu — le pool porte une créance — mais la
+        // ligne n'est rapprochée d'aucune facture.
+        const nonPointes = lignes
+            .filter(l => (l.nature === 'reglement' || l.nature === 'avoir')
+                && l.lettre === POOL_NON_LETTRE)
+            .sort((a, b) => (b.credit || 0) - (a.credit || 0));
+        stats.nonPointes = nonPointes.length;
+        stats.eurosNonPointes = nonPointes.reduce((a, l) => a + (l.credit || 0), 0);
+        return { lignes, orphelins, nonPointes, stats };
     }
 
     const A_CLASSER = '__A_CLASSER__';
@@ -1618,7 +1760,8 @@
         estEntreprise,
         regleCorrespond, financementParRegles, porteeDesRegles, etiquetteRegle,
         A_CLASSER, POOL_NON_LETTRE, MOTIFS_NUMERO, numeroDepuisTexte,
-        creancesOuvertes, facturesToutes, classer, classerEcritures, ecrituresAPlat, balanceAgee, comparer,
+        creancesOuvertes, facturesToutes, classer, classerEcritures, propositionsRapprochement,
+        pointageParMois, ecrituresAPlat, balanceAgee, comparer,
         dateDepuisTexte,
         MOTIFS_COMPTE, financementDuLibelle, typeDeClient, SEUIL_POEI,
         COLONNES, TOLERANCE, EST_FACTURE, EST_AVOIR,

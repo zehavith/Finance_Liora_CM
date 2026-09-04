@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.39.0';
+    const VERSION = '2.40.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -2940,7 +2940,7 @@
     function exporterOrphelins() {
         const e = state.glEcritures;
         if (!e) { U.toast('Rechargez le grand livre pour exporter les paiements à pointer.', 'error'); return; }
-        const aPointer = rapprochementsPossibles(e.orphelins);
+        const aPointer = rapprochementsPossibles(e.nonPointes || e.orphelins);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
             aPointer.length ? aPointer.map(l => ({
@@ -3049,27 +3049,71 @@
      * premier ; à défaut, les créances ouvertes du compte sont listées pour
      * que le rapprochement se fasse à l'œil.
      */
-    function rapprochementsPossibles(orphelins) {
-        const parCompte = new Map();
-        for (const c of (state.glCreances || [])) {
-            if (!c.compte || !(c.resteDu > 0)) continue;
-            const l = parCompte.get(c.compte) || [];
-            l.push(c);
-            parCompte.set(c.compte, l);
-        }
-        const TOL = 0.01;
-        return orphelins.map(o => {
-            const candidates = (parCompte.get(o.compte) || [])
-                .slice().sort((a, b) => Math.abs(b.resteDu) - Math.abs(a.resteDu));
-            const exact = candidates.filter(c => Math.abs(c.resteDu - (o.credit || 0)) < TOL);
-            return {
-                ...o,
-                exact: exact[0] || null,
-                nbOuvertes: candidates.length,
-                eurosOuverts: X.sum(candidates, c => c.resteDu),
-                candidates: candidates.slice(0, 5),
-            };
-        });
+    /**
+     * L'état du pointage : où en est le stock, et dans quel sens il va.
+     *
+     * Un montant non rapproché ne veut rien dire seul. Rapporté au total des
+     * règlements du mois, il dit si le pointage suit ; comparé au mois
+     * précédent, il dit s'il progresse.
+     */
+    function rendrePointageParMois(e) {
+        const kpi = $('#gl-pointage-kpi'), tab = $('#gl-pointage-mois');
+        if (!kpi || !tab) return;
+        const rows = GL.pointageParMois(e.lignes || []);
+        if (!rows.length) { kpi.innerHTML = ''; tab.innerHTML = ''; return; }
+
+        const total = rows.reduce((a, m) => ({
+            nb: a.nb + m.nb, euros: a.euros + m.euros,
+            nbNonPointes: a.nbNonPointes + m.nbNonPointes,
+            eurosNonPointes: a.eurosNonPointes + m.eurosNonPointes,
+        }), { nb: 0, euros: 0, nbNonPointes: 0, eurosNonPointes: 0 });
+
+        // Les douze derniers mois documentés : au-delà, la tendance se lit dans
+        // le tableau, pas dans une tuile.
+        const recents = rows.slice(-12);
+        const dernier = recents[recents.length - 1] || {};
+        const avant = recents[recents.length - 2] || null;
+        const fleche = v => v == null ? '' : (v > 0 ? '▲ ' : v < 0 ? '▼ ' : '= ');
+
+        kpi.innerHTML = [
+            tuileDetail(U.euros(total.eurosNonPointes), 'Montant non rapproché',
+                `${U.nombre(total.nbNonPointes)} règlements et avoirs`, U.couleurs.retard,
+                'restés dans le pool non lettré de leur compte'),
+            tuileDetail(U.pourcent(total.euros ? total.eurosNonPointes / total.euros * 100 : 0, 1),
+                'Part de ce qui rentre', `${U.pourcent(total.nb ? total.nbNonPointes / total.nb * 100 : 0, 1)} en nombre`,
+                U.couleurs.indigo, 'sur l’ensemble des règlements du grand livre'),
+            tuileDetail(fleche(dernier.varEuros) + U.euros(Math.abs(dernier.varEuros || 0)),
+                `Variation sur ${U.moisLabel(dernier.mois, true)}`,
+                (dernier.varNb == null ? '—' : fleche(dernier.varNb) + U.nombre(Math.abs(dernier.varNb)) + ' règlements'),
+                (dernier.varEuros || 0) > 0 ? U.couleurs.retard : U.couleurs.paye,
+                avant ? `par rapport à ${U.moisLabel(avant.mois, true)}` : 'premier mois documenté'),
+            tuileDetail(U.euros(dernier.eurosNonPointes || 0), `Non rapproché sur ${U.moisLabel(dernier.mois, true)}`,
+                `${U.nombre(dernier.nbNonPointes || 0)} sur ${U.nombre(dernier.nb || 0)} règlements · `
+                + U.pourcent(dernier.tauxEuros || 0, 1), U.couleurs.nonEchue,
+                'le mois le plus récent du grand livre'),
+        ].join('');
+
+        const ecart = (v, fmt) => v == null ? '<span class="ag-zero">·</span>'
+            : `<span class="${v > 0 ? 'cmp-mauvais' : v < 0 ? 'cmp-bon' : ''}">${fleche(v)}${fmt(Math.abs(v))}</span>`;
+        tab.innerHTML = U.table([
+            { key: 'mois', label: 'Mois', format: v => U.moisLabel(v, true) },
+            { key: 'nb', label: 'Règlements', align: 'right', format: U.nombre },
+            { key: 'nbNonPointes', label: 'Dont non rapprochés', align: 'right', format: U.nombre },
+            { key: 'euros', label: 'Montant reçu', align: 'right', format: fmtAg },
+            { key: 'eurosNonPointes', label: 'Montant non rapproché', align: 'right',
+              format: v => `<strong>${fmtAg(v)}</strong>` },
+            { key: 'tauxEuros', label: 'Part non rapprochée', align: 'right',
+              format: (v, r) => `${U.pourcent(v, 1)}<span class="cell-mini">${U.pourcent(r.tauxNb, 1)} en nombre</span>` },
+            { key: 'varEuros', label: 'Variation en montant', align: 'right', sortable: false,
+              format: v => ecart(v, x => fmtAg(x)) },
+            { key: 'varNb', label: 'Variation en nombre', align: 'right', sortable: false,
+              format: v => ecart(v, x => U.nombre(x)) },
+        ], rows.slice().reverse(), { vide: 'Aucun règlement daté.' });
+    }
+
+    /** Les propositions de rapprochement, calculées par le module comptable. */
+    function rapprochementsPossibles(paiements) {
+        return GL.propositionsRapprochement(paiements || [], state.glCreances || []);
     }
 
     /**
@@ -3093,20 +3137,36 @@
         }
         const st = e.stats;
         const totalRegl = st.reglements + st.avoirs;
+        const nonPointes = e.nonPointes || e.orphelins;
         note.innerHTML = `<p>Sur ${U.nombre(totalRegl)} règlements et avoirs du grand livre, `
-            + `<strong>${U.nombre(st.reglementsClasses)}</strong> héritent du dispositif de la facture `
-            + `qu'ils soldent. Les <strong>${U.nombre(st.reglementsOrphelins)}</strong> autres `
-            + `(${U.euros(st.eurosReglementsOrphelins)}) ne sont rattachés à aucune facture : acompte, `
-            + `virement non pointé, solde de tout compte. Ils sont listés ici pour être pointés à la main — `
-            + `les deviner fausserait la répartition de ce qui rentre.</p>`;
+            + `<strong>${U.nombre(st.nonPointes || 0)}</strong> (${U.euros(st.eurosNonPointes || 0)}) `
+            + `sont restés dans le pool non lettré de leur compte : aucune lettre ne les rattache à une `
+            + `facture, ils sont donc non pointés. Parmi eux, `
+            + `<strong>${U.nombre(st.reglementsOrphelins)}</strong> (${U.euros(st.eurosReglementsOrphelins)}) `
+            + `n'ont même aucune facture dans leur pool. Les `
+            + `${U.nombre(totalRegl - (st.nonPointes || 0))} autres portent une lettre de lettrage : `
+            + `la comptabilité les a rapprochés de la facture qu'ils soldent.</p>`;
 
-        const avecRappro = rapprochementsPossibles(e.orphelins);
-        const nbExacts = avecRappro.filter(o => o.exact).length;
-        if (nbExacts) note.innerHTML += `<p><strong>${U.nombre(nbExacts)}</strong> d'entre eux tombent `
-            + `au centime sur une créance encore ouverte du même compte : ce sont les plus faciles à `
-            + `pointer, et la colonne « Rapprochement » les nomme.</p>`;
+        rendrePointageParMois(e);
+        const avecRappro = rapprochementsPossibles(nonPointes);
+        const parForce = {};
+        for (const o of avecRappro) if (o.force) parForce[o.force] = (parForce[o.force] || 0) + 1;
+        const ordre = ['certaine', 'forte', 'probable', 'à vérifier'];
+        const trouvees = ordre.filter(f => parForce[f]);
+        if (trouvees.length) {
+            note.innerHTML += `<p>L'application propose une contrepartie pour `
+                + `<strong>${U.nombre(X.sum(trouvees, f => parForce[f]))}</strong> d'entre eux : `
+                + trouvees.map(f => `${U.nombre(parForce[f])} ${f}${parForce[f] > 1 ? 's' : ''}`).join(' · ')
+                + `. Rien n'est pointé automatiquement — la colonne « Rapprochement proposé » nomme la `
+                + `facture et la raison, et l'export en donne la liste entière.</p>`;
+        }
 
-        const liste = avecRappro.slice(0, 300);
+        // Les propositions d'abord : c'est là qu'il y a quelque chose à faire.
+        const rang = { certaine: 0, forte: 1, probable: 2, 'à vérifier': 3 };
+        const liste = avecRappro.slice()
+            .sort((a, b) => (rang[a.force] == null ? 9 : rang[a.force]) - (rang[b.force] == null ? 9 : rang[b.force])
+                || (b.credit || 0) - (a.credit || 0))
+            .slice(0, 300);
         el.innerHTML = U.table([
             { key: 'date', label: 'Date', align: 'center', format: U.dateFR },
             { key: 'tiers', label: 'Client', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
@@ -3115,11 +3175,12 @@
             { key: 'credit', label: 'Montant', align: 'right', format: U.euros },
             { key: 'nature', label: 'Nature', align: 'center',
               format: v => v === 'avoir' ? '<span class="pill pill-muted">avoir</span>' : '<span class="pill">règlement</span>' },
-            { key: '__rappro', label: 'Rapprochement', sortable: false, format: (v, r) => r.exact
-                ? `<span class="pill pill-ok" title="Même montant, même compte">${U.escapeHtml(r.exact.numero || 'créance sans numéro')}</span>`
-                : r.nbOuvertes
-                    ? `<span class="fv-hint">${U.nombre(r.nbOuvertes)} créance${r.nbOuvertes > 1 ? 's' : ''} ouverte${r.nbOuvertes > 1 ? 's' : ''} · ${U.euros(r.eurosOuverts)}</span>`
-                    : '<span class="fv-hint">aucune créance ouverte sur ce compte</span>' },
+            { key: '__rappro', label: 'Rapprochement proposé', sortable: false, format: (v, r) => r.proposition
+                ? `<span class="pill pill-ok" title="${U.escapeHtml(r.raison)}">${
+                    U.escapeHtml(r.proposition.map(c => c.numero || 'créance sans numéro').join(' + '))
+                  }</span><span class="cell-mini">${U.escapeHtml(r.raison)}</span>`
+                : `<span class="fv-hint">${U.escapeHtml(r.raison)}${r.nbOuvertes
+                    ? ` — ${U.nombre(r.nbOuvertes)} ouverte${r.nbOuvertes > 1 ? 's' : ''} · ${U.euros(r.eurosOuverts)}` : ''}</span>` },
         ], liste, { vide: 'Tous les règlements sont rattachés à une facture.' });
     }
 
@@ -3981,7 +4042,7 @@
                     'Classé par': l.origineClassement || '',
                 }))), 'Règlements');
 
-            const aPointer = rapprochementsPossibles(e.orphelins);
+            const aPointer = rapprochementsPossibles(e.nonPointes || e.orphelins);
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
                 aPointer.length ? aPointer.map(l => ({
                     'Date': l.date ? U.dateFR(l.date) : '',
@@ -3999,6 +4060,52 @@
                         + ' ' + arrondi(c.resteDu) + ' €').join(' | '),
                 })) : [{ 'Date': 'Tous les règlements sont rattachés à une facture' }]),
                 'Paiements à pointer');
+
+            // ── L'état du pointage, mois par mois ──
+            const pointage = GL.pointageParMois(e.lignes || []);
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+                pointage.length ? pointage.map(m => ({
+                    'Mois': m.mois,
+                    'Règlements et avoirs': m.nb,
+                    'Dont non rapprochés': m.nbNonPointes,
+                    'Part non rapprochée (nb)': Math.round(m.tauxNb * 10) / 10,
+                    'Montant reçu': arrondi(m.euros),
+                    'Montant non rapproché': arrondi(m.eurosNonPointes),
+                    'Part non rapprochée (€)': Math.round(m.tauxEuros * 10) / 10,
+                    'Variation en nombre': m.varNb == null ? '' : m.varNb,
+                    'Variation en montant': m.varEuros == null ? '' : arrondi(m.varEuros),
+                    'Variation de la part (points)': m.varTaux == null ? '' : Math.round(m.varTaux * 10) / 10,
+                })) : [{ 'Mois': 'Aucun règlement daté' }]),
+                'Pointage par mois');
+
+            // ── Les propositions de rapprochement, seules et triées ──
+            // Ce qui a une contrepartie identifiée, du plus sûr au plus
+            // incertain : c'est la feuille sur laquelle pointer.
+            const rang = { certaine: 0, forte: 1, probable: 2, 'à vérifier': 3 };
+            const props = aPointer.filter(l => l.proposition)
+                .sort((a, b) => rang[a.force] - rang[b.force] || (b.credit || 0) - (a.credit || 0));
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+                props.length ? props.map(l => ({
+                    'Confiance': l.force,
+                    'Raison': l.raison,
+                    'Date du paiement': l.date ? U.dateFR(l.date) : '',
+                    'N° de compte': l.compte, 'Client': l.tiers,
+                    'Libellé du paiement': l.libelle,
+                    'Journal': l.journal,
+                    'Montant du paiement': arrondi(l.credit),
+                    'Nature': l.nature === 'avoir' ? 'Avoir' : 'Règlement',
+                    'Facture(s) proposée(s)': l.proposition.map(c => c.numero || '(sans n°)').join(' + '),
+                    'Reste dû de la ou des factures': arrondi(l.proposition.reduce((a, c) => a + c.resteDu, 0)),
+                    'Écart': arrondi(l.proposition.reduce((a, c) => a + c.resteDu, 0) - (l.credit || 0)),
+                    'Échéance de la facture': l.proposition[0] && l.proposition[0].dateEcheance
+                        ? U.dateFR(l.proposition[0].dateEcheance) : '',
+                    'Financement de la facture': l.proposition[0] && l.proposition[0].financement
+                        ? R.getRule(l.proposition[0].financement, state.rules).label : '',
+                    'Compte de la facture': l.proposition[0] ? l.proposition[0].compte : '',
+                    'Créances ouvertes du compte': l.nbOuvertes,
+                    'Reste dû du compte': arrondi(l.eurosOuverts),
+                })) : [{ 'Confiance': 'Aucune proposition : rien à rapprocher' }]),
+                'Propositions de rapprochement');
         }
 
         // ── Vos règles de classement, avec ce qu'elles ont réellement fait ──
