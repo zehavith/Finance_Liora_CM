@@ -194,7 +194,11 @@
     // « DV » est une forme de numéro Zoho — leur table en compte 1 901, et ce
     // sont bien des factures. Un chiffre est exigé après le préfixe pour qu'un
     // mot commençant par ces lettres ne passe pas pour un numéro.
-    const EST_FACTURE = /^(fact|fcat|fct|fa|dv)[-_ ]?\d/i;
+    // « FCT-FILIZ-DST-2025-276 » : un dispositif s'intercale entre le préfixe
+    // et l'année. Sans cette forme, les 410 écritures Filiz de l'extrait de
+    // septembre n'étaient pas reconnues comme des factures — elles passaient en
+    // « autre écriture », donc hors de la balance et hors du classement.
+    const EST_FACTURE = /^(fact|fcat|fct|fa|dv)[-_ ]?\d|^fct(?:[-_][a-z]{2,8}){1,3}[-_]\d/i;
     // « CN » — credit note — est la forme des avoirs chez Zoho : la balance de
     // septembre en compte 89. Sans elle, ils passaient pour des règlements et
     // faisaient entrer de l'argent qui n'est jamais rentré.
@@ -629,6 +633,45 @@
      * rattaché pèse sur le solde du compte. Ils sont regroupés sous le compte
      * client, sans numéro — sinon le total comptable ne se retrouve pas.
      */
+
+    /**
+     * Une facture du grand livre, sous la forme que la classification attend.
+     *
+     * Le même objet sert aux créances encore ouvertes et à l'inventaire complet
+     * des factures : seule la part restant due change.
+     */
+    function ligneFacture(g, f, resteDu) {
+        return {
+            numero: f.numero, cle: I.factureKey(f.numero),
+            qualif: f.qualif || g.qualif || '',
+            identifiantTiers: g.identifiantTiers || '',
+            siren: g.siren || '',
+            compte: g.compte, tiers: g.tiers, lettre: g.lettre,
+            montant: f.debit,
+            resteDu,
+            // La date de la facturation prime sur la date
+            // comptable : c'est elle qui date la créance.
+            dateFacture: f.dateFacturation || f.date,
+            dateEcheance: f.dateEcheance || null,
+            // Les dates de formation ne se propagent pas d'une
+            // ligne à l'autre : un lettrage réunit plusieurs
+            // factures du même client, aux formations différentes.
+            // Les emprunter au groupe donnait à quatre factures la
+            // même fin de formation, et donc la même échéance.
+            dateDebutFormation: f.dateDebutFormation || null,
+            dateFinFormation: f.dateFinFormation || null,
+            mandatEtatFichier: f.mandatEtat || '',
+            ancien: f.ancien && (f.ancien.numero || f.ancien.tiers || f.ancien.compte)
+                ? f.ancien : (g.ancien || null),
+            libelle: f.libelle || '',
+            journal: f.journal || '',
+            // Une facture Filiz est une alternance : le numéro le
+            // dit — « FCT-FILIZ-DST-2025-276 ».
+            filiz: /filiz/i.test((f.numero || '') + ' ' + (f.libelle || '')),
+            sansNumero: false,
+        };
+    }
+
     function creancesOuvertes(lu) {
         const ouvertes = [];
         for (const g of lu.groupes) {
@@ -642,35 +685,7 @@
                 // c'est la seule répartition qui conserve le total.
                 const total = g.factures.reduce((s, f) => s + f.debit, 0) || 1;
                 for (const f of g.factures) {
-                    ouvertes.push({
-                        numero: f.numero, cle: I.factureKey(f.numero),
-                        qualif: f.qualif || g.qualif || '',
-                        identifiantTiers: g.identifiantTiers || '',
-                        siren: g.siren || '',
-                        compte: g.compte, tiers: g.tiers, lettre: g.lettre,
-                        montant: f.debit,
-                        resteDu: reste * (f.debit / total),
-                        // La date de la facturation prime sur la date
-                        // comptable : c'est elle qui date la créance.
-                        dateFacture: f.dateFacturation || f.date,
-                        dateEcheance: f.dateEcheance || null,
-                        // Les dates de formation ne se propagent pas d'une
-                        // ligne à l'autre : un lettrage réunit plusieurs
-                        // factures du même client, aux formations différentes.
-                        // Les emprunter au groupe donnait à quatre factures la
-                        // même fin de formation, et donc la même échéance.
-                        dateDebutFormation: f.dateDebutFormation || null,
-                        dateFinFormation: f.dateFinFormation || null,
-                        mandatEtatFichier: f.mandatEtat || '',
-                        ancien: f.ancien && (f.ancien.numero || f.ancien.tiers || f.ancien.compte)
-                            ? f.ancien : (g.ancien || null),
-                        libelle: f.libelle || '',
-                        journal: f.journal || '',
-                        // Une facture Filiz est une alternance : le numéro le
-                        // dit — « FCT-FILIZ-DST-2025-276 ».
-                        filiz: /filiz/i.test((f.numero || '') + ' ' + (f.libelle || '')),
-                        sansNumero: false,
-                    });
+                    ouvertes.push(ligneFacture(g, f, reste * (f.debit / total)));
                 }
             } else {
                 ouvertes.push({
@@ -697,6 +712,37 @@
             }
         }
         return ouvertes;
+    }
+
+    /**
+     * Toutes les factures du grand livre, soldées comprises.
+     *
+     * La balance âgée ne montre que ce qui reste dû ; l'export, lui, doit
+     * pouvoir rendre compte de chaque facture — ce qu'elle est devenue, sous
+     * quel dispositif elle a été classée, et à quelle date elle était exigible.
+     * Le sort du groupe de lettrage le dit : soldée par un règlement, effacée
+     * par un avoir, ou encore ouverte.
+     */
+    function facturesToutes(lu) {
+        const out = [];
+        for (const g of (lu.groupes || [])) {
+            if (!g.factures.length) continue;
+            const reste = g.soldee ? 0 : (g.debit - g.credit);
+            const total = g.factures.reduce((s, f) => s + f.debit, 0) || 1;
+            for (const f of g.factures) {
+                const l = ligneFacture(g, f, reste * (f.debit / total));
+                l.statut = g.soldee
+                    ? (g.parAvoir ? 'Soldée par un avoir' : 'Soldée par règlement')
+                    : (Math.abs(reste) < TOLERANCE ? 'Lettrage équilibré'
+                        : (g.creditReglements > TOLERANCE ? 'Partiellement réglée' : 'Ouverte'));
+                l.dateReglement = g.dateReglement || null;
+                l.dateAvoir = g.dateAvoir || null;
+                l.regle = g.creditReglements || 0;
+                l.avoir = g.creditAvoirs || 0;
+                out.push(l);
+            }
+        }
+        return out;
     }
 
     // Un groupe sans facture n'a pas de libellé unique : on retient celui de
@@ -826,6 +872,12 @@
     function estEntreprise(nom) {
         const n = R.norm(nom);
         return !!n && MOTIFS_ENTREPRISE.test(n);
+    }
+
+    /** Le motif de libellé qui a reconnu ce client, pour pouvoir le citer. */
+    function motifDuLibelle(c) {
+        const m = financementDuLibelle(c.tiers) || financementDuLibelle(c.compte);
+        return m ? m.libelle : '';
     }
 
     /** Le financement que le libellé du compte désigne, s'il en désigne un. */
@@ -1129,7 +1181,10 @@
         // classeur de trésorerie : le grand livre porte une date d'échéance,
         // mais elle vient de la facturation et ignore le dispositif. Elle reste
         // le dernier recours, quand aucune date de formation n'est connue.
-        const poser = (c, fin, origine) => {
+        // La preuve : ce qui, concrètement, a décidé du classement. Sans elle,
+        // « Ancien grand livre (identifiant du tiers) » ne se vérifie pas —
+        // avec elle, on lit la valeur qui a été reprise.
+        const poser = (c, fin, origine, preuve) => {
             const ech = R.computeEcheance(
                 { ...c, financement: fin, dateEcheanceSource: null,
                   mandatGocardless: c.mandatGocardless || !!c.mandatEtatFichier,
@@ -1137,6 +1192,7 @@
                 { rules: o.rules, prefereEcheanceMonday: false, grandLivre: true });
             return {
                 ...c, financement: fin, origineClassement: origine,
+                preuveClassement: preuve == null ? '' : String(preuve),
                 typeClient: typeDeClient(fin, c, o),
                 dateEcheance: ech.date || c.dateEcheance || null,
                 echeanceBase: ech.baseUtilisee,
@@ -1148,11 +1204,12 @@
         return ouvertes.map(brut => {
             const c = avecSellsy(brut);
             const direct = c.cle ? idx.parCle.get(c.cle) : null;
-            if (direct) return poser(c, direct, 'Facture');
+            if (direct) return poser(c, direct, 'Facture', 'Facture Monday ' + (c.numero || ''));
             const refFin = duReferentiel(c);
-            if (refFin) return poser(c, refFin, 'Référentiel qualifié');
+            if (refFin) return poser(c, refFin, 'Référentiel qualifié', 'Validé à la main sur ' + (c.numero || ''));
             const parRegle = desRegles(c);
-            if (parRegle) return poser(c, parRegle.financement, 'Règle : ' + etiquetteRegle(parRegle.regle));
+            if (parRegle) return poser(c, parRegle.financement, 'Règle : ' + etiquetteRegle(parRegle.regle),
+                etiquetteRegle(parRegle.regle));
             // L'ancien grand livre, classé à la main : c'est du travail déjà
             // fait, et il passe donc avant tout ce qui se devine. Trois
             // recherches, dans l'ordre de vos formules — le numéro de facture
@@ -1163,28 +1220,43 @@
                 return v ? R.detectFinancement(v, o.rules) : null;
             };
             const ancienNum = parAncien('numero');
-            if (ancienNum) return poser(c, ancienNum, 'Ancien grand livre (n° de facture)');
+            // Une facture Filiz est une alternance, sans exception : la marque
+            // est dans le numéro même — « FCT-FILIZ-DST-2025-276 ». L'ancien
+            // grand livre ne sert plus qu'à choisir laquelle : celle d'un OPCO,
+            // ou celle facturée à l'entreprise.
+            if (c.filiz) {
+                const dit = ancienNum || parAncien('tiers') || parAncien('compte');
+                const fin = (dit === 'OPCO' || dit === 'OPCO_ALTERNANCE') ? 'OPCO_ALTERNANCE'
+                    : (dit === 'ALTERNANCE' || dit === 'PERSO_ALTERNANCE'
+                       || dit === 'CORPORATE_ALTERNANCE') ? dit
+                    : 'CORPORATE_ALTERNANCE';
+                return poser(c, fin, 'Facture Filiz : alternance',
+                    (c.numero || 'mention « Filiz »') + (dit ? ' · ancien grand livre : ' + dit : ''));
+            }
+            if (ancienNum) return poser(c, ancienNum, 'Ancien grand livre (n° de facture)', c.ancien.numero);
             const ancienTiers = parAncien('tiers');
-            if (ancienTiers) return poser(c, ancienTiers, 'Ancien grand livre (identifiant du tiers)');
+            if (ancienTiers) return poser(c, ancienTiers, 'Ancien grand livre (identifiant du tiers)', c.ancien.tiers);
             const ancienCompte = parAncien('compte');
-            if (ancienCompte) return poser(c, ancienCompte, 'Ancien grand livre (compte client)');
+            if (ancienCompte) return poser(c, ancienCompte, 'Ancien grand livre (compte client)', c.ancien.compte);
             const libelle = duLibelle(c);
-            if (libelle) return poser(c, libelle, 'Libellé du compte');
+            if (libelle) return poser(c, libelle, 'Libellé du compte', motifDuLibelle(c));
             // Un règlement passé par GoCardless ou Stripe est un paiement de
             // particulier : ces canaux ne servent qu'au financement personnel.
             // Le libellé de l'écriture le dit — « VIR SEPA RECU /FRM … »,
             // « Charge: Receipt: … » — même quand le compte ne dit rien.
             if (PAIEMENT_PERSO.test(R.norm(c.libelle || ''))) {
-                return poser(c, 'BTC_PERSO', 'Réglée par GoCardless ou Stripe');
+                return poser(c, 'BTC_PERSO', 'Réglée par GoCardless ou Stripe',
+                    (R.norm(c.libelle || '').match(PAIEMENT_PERSO) || [''])[0]);
             }
             const sellsy = c.cle ? idx.parSellsy.get(c.cle) : null;
-            if (sellsy) return poser(c, sellsy, 'Type de client (facturation)');
+            if (sellsy) return poser(c, sellsy, 'Type de client (facturation)',
+                (c.cle ? idx.brutSellsy.get(c.cle) : '') || '');
             // La facture n'est pas chez Sellsy, mais le client y est : son type
             // vaut pour cette créance-là aussi.
             const sellsyNom = dominant(idx.parNomSellsy, R.norm(c.tiers || ''));
-            if (sellsyNom) return poser(c, sellsyNom, 'Type de client (même client chez Sellsy)');
+            if (sellsyNom) return poser(c, sellsyNom, 'Type de client (même client chez Sellsy)', c.tiers || '');
             const fichier = propre(c);
-            if (fichier) return poser(c, fichier, 'Héritée du fichier (à vérifier)');
+            if (fichier) return poser(c, fichier, 'Héritée du fichier (à vérifier)', c.qualif || '');
             // Un compte qui porte un SIREN est une entreprise immatriculée :
             // sur les 303 comptes du référentiel qui en ont un, 3 seulement
             // relèvent du financement personnel. Le déduire par propagation
@@ -1194,14 +1266,14 @@
             const immatricule = !!String(c.siren == null ? '' : c.siren).trim();
             const pasPerso = f => (immatricule && (f === 'BTC_PERSO' || f === 'PERSO_ALTERNANCE')) ? null : f;
             const tiers = pasPerso(dominant(idx.parTiers, c.identifiantTiers));
-            if (tiers) return poser(c, tiers, 'Identifiant du tiers');
+            if (tiers) return poser(c, tiers, 'Identifiant du tiers', c.identifiantTiers || '');
             const compte = pasPerso(dominant(idx.parCompte, c.compte));
-            if (compte) return poser(c, compte, 'Compte client');
+            if (compte) return poser(c, compte, 'Compte client', c.compte || '');
             // Le même client sous un autre numéro de compte : le nom le
             // rattrape. C'est le cas des entreprises qui reviennent, classées
             // une fois, non classées ailleurs.
             const nom = pasPerso(dominant(idx.parNom, R.norm(c.tiers || '')));
-            if (nom) return poser(c, nom, 'Même client, classé ailleurs');
+            if (nom) return poser(c, nom, 'Même client, classé ailleurs', c.tiers || '');
             // Rien n'a nommé le dispositif. Mais le nom dit au moins à qui l'on
             // a affaire : « ING BANK N.V », « INFOVISTA HOLDING », « Conseil
             // régional d'Île-de-France » sont des personnes morales. Le
@@ -1209,9 +1281,10 @@
             // financement à préciser » — mais la créance n'est plus une
             // inconnue complète, et elle se range avec ses semblables.
             if (estEntreprise(c.tiers) || immatricule) {
-                return poser(c, 'CORPORATE', 'Nom d’entreprise (financement à préciser)');
+                return poser(c, 'CORPORATE', 'Nom d’entreprise (financement à préciser)',
+                    immatricule ? ('SIREN ' + c.siren) : (c.tiers || ''));
             }
-            return { ...c, financement: null, typeClient: null, origineClassement: null };
+            return { ...c, financement: null, typeClient: null, origineClassement: null, preuveClassement: '' };
         });
     }
 
@@ -1249,6 +1322,14 @@
                     libelle: l.libelle, journal: l.journal, debit: l.debit, credit: l.credit,
                     compte: g.compte, tiers: g.tiers, lettre: g.lettre,
                     identifiantTiers: g.identifiantTiers || '',
+                    siren: g.siren || '',
+                    // Ce que la ligne porte en propre, pour que le grand livre
+                    // exporté se relise sans le fichier d'origine.
+                    dateEcheanceFichier: l.dateEcheance || null,
+                    dateDebutFormation: l.dateDebutFormation || null,
+                    dateFinFormation: l.dateFinFormation || null,
+                    ancien: l.ancien || null,
+                    qualif: l.qualif || '',
                 });
             }
         }
@@ -1271,7 +1352,15 @@
                         reglementsClasses: 0, reglementsOrphelins: 0, eurosReglementsOrphelins: 0 };
 
         for (const l of (lignesAPlat || [])) {
-            const source = parGroupe.get(l.cleGroupe);
+            let source = parGroupe.get(l.cleGroupe);
+            // Un règlement sans facture dans son lettrage, mais qui cite une
+            // facture Filiz, relève de l'alternance comme elle.
+            if (!source && /filiz/i.test((l.numero || '') + ' ' + (l.libelle || ''))) {
+                source = { financement: 'CORPORATE_ALTERNANCE', typeClient: 'Alternance',
+                           origineClassement: 'Facture Filiz : alternance',
+                           preuveClassement: l.numero || 'mention « Filiz »',
+                           dateEcheance: null, echeanceBase: '', echeanceMotif: '', numero: l.numero || '' };
+            }
             stats[NATURES[l.nature] || 'autres']++;
             const encaissement = l.nature === 'reglement' || l.nature === 'avoir';
             const ligne = {
@@ -1282,6 +1371,13 @@
                     ? (l.nature === 'facture' ? source.origineClassement
                         : 'Hérité de la facture du même lettrage')
                     : null,
+                // La preuve et l'échéance de la créance du même lettrage : le
+                // grand livre exporté doit pouvoir se relire seul.
+                preuveClassement: source ? (source.preuveClassement || '') : '',
+                dateEcheance: source ? (source.dateEcheance || null) : null,
+                echeanceBase: source ? (source.echeanceBase || '') : '',
+                echeanceMotif: source ? (source.echeanceMotif || '') : '',
+                numeroFacture: source ? (source.numero || '') : '',
             };
             if (ligne.financement) {
                 stats.classees++;
@@ -1522,7 +1618,7 @@
         estEntreprise,
         regleCorrespond, financementParRegles, porteeDesRegles, etiquetteRegle,
         A_CLASSER, POOL_NON_LETTRE, MOTIFS_NUMERO, numeroDepuisTexte,
-        creancesOuvertes, classer, classerEcritures, ecrituresAPlat, balanceAgee, comparer,
+        creancesOuvertes, facturesToutes, classer, classerEcritures, ecrituresAPlat, balanceAgee, comparer,
         dateDepuisTexte,
         MOTIFS_COMPTE, financementDuLibelle, typeDeClient, SEUIL_POEI,
         COLONNES, TOLERANCE, EST_FACTURE, EST_AVOIR,

@@ -1028,10 +1028,23 @@
             // profite aux factures déjà en cache, sans recharger Monday. La
             // cascade reprend celle de l'import, du plus fiable au plus
             // approximatif, en repartant des valeurs brutes conservées.
-            const finRededuit = R.detectFinancement(f.financementBrut, o.rules)
-                || R.detectFinancement(f.typeClient, o.rules)
-                || R.detectFinancement(f.groupe, o.rules)
-                || R.detectFinancement(f.board, o.rules);
+            // La source retenue est conservée : « Type de financement »,
+            // « Type de client », le groupe ou le tableau. Sans elle, un
+            // financement surprenant ne se vérifie pas.
+            const sources = [
+                ['Colonne « Type de financement »', f.financementBrut],
+                ['Colonne « Type de client »', f.typeClient],
+                ['Groupe Monday', f.groupe],
+                ['Tableau Monday', f.board],
+            ];
+            let finRededuit = null;
+            for (const [nom, valeur] of sources) {
+                const fin = R.detectFinancement(valeur, o.rules);
+                if (!fin) continue;
+                finRededuit = fin;
+                f.origineFinancement = nom + (valeur ? ' : ' + String(valeur).slice(0, 60) : '');
+                break;
+            }
             if (finRededuit) f.financement = finRededuit;
 
             // Tampon : le sas où la facture attend avant d'entrer dans le
@@ -1058,8 +1071,10 @@
             // sans numéro, elle ne vaut que pour cette ligne-là.
             f.cleManuelle = f.cle || (f.boardId + '#' + f.itemId);
             const manuel = o.financementsManuels && o.financementsManuels[f.cleManuelle];
-            if (manuel) { f.financement = manuel; f.financementManuel = true; }
-            else f.financementManuel = false;
+            if (manuel) {
+                f.financement = manuel; f.financementManuel = true;
+                f.origineFinancement = 'Corrigé à la main dans l’application';
+            } else f.financementManuel = false;
 
             // Le périmètre suit le financement, non le tableau où la facture se
             // trouve. Une facture CPF déposée sur un tableau corporate est un

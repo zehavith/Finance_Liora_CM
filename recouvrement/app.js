@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.37.1';
+    const VERSION = '2.39.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -66,6 +66,7 @@
         // → financement personnel ». Elles valent pour tous les extraits.
         reglesClassement: [],
         glCreances: [],
+        glToutes: [],       // toutes les factures du grand livre, soldées comprises
         // Les écritures du grand livre à plat, gardées pour que le classement
         // descende sur les règlements et que les non rattachés se pointent.
         glLignes: [],
@@ -227,6 +228,7 @@
         try {
             state.glLecture = await S.get('rec_gl_lecture', null);
             state.glOuvertes = (await S.get('rec_gl_ouvertes', [])) || [];
+            state.glToutes = (await S.get('rec_gl_factures', [])) || [];
             state.qualifRef = (await S.get('rec_qualif_ref', {})) || {};
             state.reglesClassement = (await S.get('rec_regles_classement', [])) || [];
             state.glLignes = ((await S.get('rec_gl_lignes', [])) || [])
@@ -2649,6 +2651,28 @@
      * compte client, et un filtre y ferait disparaître des créances que la
      * comptabilité, elle, continue de porter. Seule la date d'arrêté compte.
      */
+    /**
+     * Les sources du classement, rassemblées.
+     *
+     * La balance les utilise à chaque recalcul, l'export s'en sert pour
+     * reclasser l'inventaire complet des factures : une seule définition, donc
+     * les deux disent la même chose.
+     */
+    function optionsClassement() {
+        return {
+            referentiel: state.qualifRef,
+            regles: state.reglesClassement,
+            // Les mandats de prélèvement, ramenés au nom du client : chez un
+            // client sous mandat l'argent est appelé, donc l'échéance est la
+            // fin de la formation, sans délai de paiement.
+            mandats: clientsGocardless(),
+            factures: state.factures,
+            sellsy: lignesFacturation(),
+            historique: state.grandLivre,
+            rules: state.rules,
+        };
+    }
+
     function recalculerBalanceGL() {
         const ouvertes = (state.glOuvertes || []).map(c => ({
             ...c,
@@ -2663,18 +2687,7 @@
             return;
         }
 
-        const classees = GL.classer(ouvertes, {
-            referentiel: state.qualifRef,
-            regles: state.reglesClassement,
-            // Les mandats de prélèvement, ramenés au nom du client : chez un
-            // client sous mandat l'argent est appelé, donc l'échéance est la
-            // fin de la formation, sans délai de paiement.
-            mandats: clientsGocardless(),
-            factures: state.factures,
-            sellsy: lignesFacturation(),
-            historique: state.grandLivre,
-            rules: state.rules,
-        });
+        const classees = GL.classer(ouvertes, optionsClassement());
         state.glCreances = classees;
         // Le classement descend sur les écritures : une facture classée classe
         // son règlement et son avoir. Ce qui n'a pas de facture dans son
@@ -3766,23 +3779,56 @@
             })), 'Par compte client');
 
         // ── Détail des créances ──
+        // Comment l'échéance a été obtenue, en français : c'est la question
+        // qu'on se pose devant une date qui surprend.
+        const BASES = {
+            dateFacture: 'date de facture', dateDebutFormation: 'début de formation',
+            dateFinFormation: 'fin de formation', dateEcheanceComptable: 'échéance portée par le grand livre',
+            'colonne Monday': 'date d’échéance de Monday',
+        };
+        const surQuoi = c => {
+            if (!c.echeanceBase) return '';
+            const nom = BASES[c.echeanceBase] || c.echeanceBase;
+            const r = c.financement ? R.getRule(c.financement, state.rules) : null;
+            const regle = r && r.gl ? r.gl : r;
+            const jours = (regle && regle.base === c.echeanceBase) ? (regle.jours || 0) : null;
+            return nom + (jours ? ` + ${jours} j` : '');
+        };
         const ligneCreance = c => {
             const base = c.dateEcheance || c.dateFacture;
             const retard = base ? R.diffDays(ref, base) : null;
             return {
                 'Clé': ((c.compte || '') + ' - ' + (c.tiers || '')).trim().replace(/^- | -$/g, ''),
+                'Nature': c.sansNumero
+                    ? 'Solde sans facture (acompte, écart de règlement, avoir non imputé)'
+                    : 'Facture',
                 'Facture': c.numero || '',
                 'Client': c.tiers || '',
                 'N° de compte': c.compte || '',
                 'Identifiant tiers': c.identifiantTiers || '',
                 'Lettrage': c.lettre || '',
+                'SIREN': c.siren || '',
                 'Financement': c.financement ? R.getRule(c.financement, state.rules).label : 'À classer',
                 'Catégorie': c.financement ? R.categorieDe(c.financement, state.rules) : 'À classer',
+                'Type de client': c.typeClient || '',
                 'Classé par': c.origineClassement || '',
+                'Ce qui l’a décidé': c.preuveClassement || '',
                 'Montant facture': arrondi(c.montant),
                 'Restant dû': arrondi(c.resteDu),
                 'Date de facture': c.dateFacture ? U.dateFR(c.dateFacture) : '',
                 'Échéance': c.dateEcheance ? U.dateFR(c.dateEcheance) : '',
+                'Échéance calculée sur': surQuoi(c)
+                    || (c.sansNumero ? 'aucune échéance : l’ancienneté court depuis le dernier mouvement' : ''),
+                'Date retenue pour l’ancienneté': (c.dateEcheance || c.dateFacture)
+                    ? U.dateFR(c.dateEcheance || c.dateFacture) : '',
+                'Libellé de l’écriture': c.libelle || '',
+                'Motif particulier': c.echeanceMotif || '',
+                'Début de formation': c.dateDebutFormation ? U.dateFR(c.dateDebutFormation) : '',
+                'Fin de formation': c.dateFinFormation ? U.dateFR(c.dateFinFormation) : '',
+                'Ancien grand livre — par n° de facture': (c.ancien && c.ancien.numero) || '',
+                'Ancien grand livre — par identifiant du tiers': (c.ancien && c.ancien.tiers) || '',
+                'Ancien grand livre — par n° de compte': (c.ancien && c.ancien.compte) || '',
+                'Qualification portée par le fichier': c.qualif || '',
                 'Jours de retard': retard == null ? '' : retard,
                 'Tranche': ((R.bucketFor(retard) || {}).label) || '',
                 'Mandat de prélèvement': c.etatMandat || '',
@@ -3791,23 +3837,47 @@
                 'Numéro lu dans le libellé': c.numeroExtrait ? 'oui' : '',
             };
         };
+        // La balance âgée ne compte pas que des factures : les soldes sans
+        // facture — acomptes, écarts de règlement, avoirs non imputés — y
+        // pèsent aussi, et ils ont droit à la même justification.
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-            creances.filter(c => !c.sansNumero).map(ligneCreance)), 'Créances');
+            creances.map(ligneCreance)), 'Créances');
 
         const aClasser = creances.filter(c => !c.financement);
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
             aClasser.length ? aClasser.map(ligneCreance)
                 : [{ 'Facture': 'Aucune créance à classer' }]), 'À classer');
 
+        // ── Toutes les factures du grand livre, soldées comprises ──
+        // La balance ne montre que ce qui reste dû ; cette feuille rend compte
+        // de chaque facture lue, de ce qu'elle est devenue et de la façon dont
+        // son classement et son échéance ont été obtenus.
+        if ((state.glToutes || []).length) {
+            try {
+                const inventaire = state.glToutes.map(c => ({
+                    ...c,
+                    dateFacture: c.dateFacture ? R.parseDate(c.dateFacture) : null,
+                    dateEcheance: c.dateEcheance ? R.parseDate(c.dateEcheance) : null,
+                    dateReglement: c.dateReglement ? R.parseDate(c.dateReglement) : null,
+                    dateAvoir: c.dateAvoir ? R.parseDate(c.dateAvoir) : null,
+                }));
+                const toutes = GL.classer(inventaire, optionsClassement());
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+                    toutes.map(c => Object.assign({ 'Statut': c.statut || '' }, ligneCreance(c), {
+                        'Réglé': arrondi(c.regle || 0),
+                        'Avoir': arrondi(c.avoir || 0),
+                        'Date du règlement': c.dateReglement ? U.dateFR(c.dateReglement) : '',
+                        'Date de l’avoir': c.dateAvoir ? U.dateFR(c.dateAvoir) : '',
+                    }))), 'Toutes les factures');
+            } catch (e) {
+                console.warn('[Recouvrement] Inventaire des factures impossible', e);
+            }
+        }
+
         const sansNumero = creances.filter(c => c.sansNumero);
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-            sansNumero.length ? sansNumero.map(c => ({
-                'Clé': ((c.compte || '') + ' - ' + (c.tiers || '')).trim().replace(/^- | -$/g, ''),
-                'N° de compte': c.compte, 'Client': c.tiers,
-                'Lettrage': c.lettre, 'Restant dû': arrondi(c.resteDu),
-                'Dernier mouvement': c.dateFacture ? U.dateFR(c.dateFacture) : '',
-                'Nature': 'Acompte, écart de règlement ou crédit non rattaché',
-            })) : [{ 'N° de compte': 'Aucune écriture sans numéro' }]), 'Écritures non rattachées');
+            sansNumero.length ? sansNumero.map(ligneCreance)
+                : [{ 'N° de compte': 'Aucune écriture sans numéro' }]), 'Écritures non rattachées');
 
         // ── Confrontation avec Monday ──
         if (state.glComparaison) {
@@ -3842,6 +3912,57 @@
                 'Plafond début de formation': r.plafondDebutFormation ? 'oui' : '',
                 'À défaut': libelle[r.fallback] || r.fallback || '',
             }))), 'Règles appliquées');
+
+        // ── Le grand livre lui-même, enrichi ──
+        // Votre fichier, ligne à ligne, avec les colonnes que l'application a
+        // calculées : le dispositif, ce qui l'a décidé, l'échéance retenue et
+        // le retard. C'est la forme qui se recoupe avec votre classeur.
+        if (state.glEcritures) {
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+                state.glEcritures.lignes.map(l => {
+                    const retard = l.dateEcheance ? R.diffDays(ref, l.dateEcheance) : null;
+                    return {
+                        'Clé': ((l.compte || '') + ' - ' + (l.tiers || '')).trim().replace(/^- | -$/g, ''),
+                        'N° de compte': l.compte || '',
+                        'Client': l.tiers || '',
+                        'Identifiant tiers': l.identifiantTiers || '',
+                        'SIREN': l.siren || '',
+                        'Journal': l.journal || '',
+                        'Date': l.date ? U.dateFR(l.date) : '',
+                        'Libellé': l.libelle || '',
+                        'N° de facture': l.numero || '',
+                        'Lettrage': l.lettre || '',
+                        'Débit': arrondi(l.debit || 0),
+                        'Crédit': arrondi(l.credit || 0),
+                        'Nature': { facture: 'Facture', reglement: 'Règlement',
+                                    avoir: 'Avoir' }[l.nature] || 'Autre écriture',
+                        'Financement': l.financement
+                            ? R.getRule(l.financement, state.rules).label : 'À classer',
+                        'Catégorie': l.financement
+                            ? R.categorieDe(l.financement, state.rules) : 'À classer',
+                        'Type de client': l.typeClient || '',
+                        'Classé par': l.origineClassement || '',
+                        'Ce qui l’a décidé': l.preuveClassement || '',
+                        'Facture du lettrage': l.numeroFacture || '',
+                        'Échéance retenue': l.dateEcheance ? U.dateFR(l.dateEcheance) : '',
+                        'Échéance calculée sur': l.echeanceBase
+                            ? (({ dateFacture: 'date de facture', dateDebutFormation: 'début de formation',
+                                  dateFinFormation: 'fin de formation',
+                                  dateEcheanceComptable: 'échéance portée par le grand livre' })[l.echeanceBase]
+                                || l.echeanceBase) : '',
+                        'Motif particulier': l.echeanceMotif || '',
+                        'Échéance portée par le fichier': l.dateEcheanceFichier ? U.dateFR(l.dateEcheanceFichier) : '',
+                        'Début de formation': l.dateDebutFormation ? U.dateFR(l.dateDebutFormation) : '',
+                        'Fin de formation': l.dateFinFormation ? U.dateFR(l.dateFinFormation) : '',
+                        'Ancien grand livre — par n° de facture': (l.ancien && l.ancien.numero) || '',
+                        'Ancien grand livre — par identifiant du tiers': (l.ancien && l.ancien.tiers) || '',
+                        'Ancien grand livre — par n° de compte': (l.ancien && l.ancien.compte) || '',
+                        'Qualification portée par le fichier': l.qualif || '',
+                        'Jours de retard': retard == null ? '' : retard,
+                        'Tranche': ((R.bucketFor(retard) || {}).label) || '',
+                    };
+                })), 'Grand livre');
+        }
 
         // ── Les règlements : ce qui rentre, et par quel dispositif ──
         if (state.glEcritures) {
@@ -6233,11 +6354,13 @@
             state.glLignes = [];
             state.glEcritures = null;
             state.glCreances = [];
+            state.glToutes = [];
             state.glLecture = null;
             state.glBalance = null;
             state.glComparaison = null;
             await S.set(S.KEYS.grandLivre, []);
             await S.set('rec_gl_ouvertes', []);
+            await S.set('rec_gl_factures', []);
             await S.set('rec_gl_lignes', []);
             await S.set('rec_gl_lecture', null);
             U.toast('Grand livre retiré.', 'info');
@@ -6892,15 +7015,22 @@
             // donc le classement de ce qui rentre.
             state.glLignes = GL.ecrituresAPlat(lu);
 
+            const iso = d => (d ? d.toISOString() : null);
             state.glOuvertes = GL.creancesOuvertes(lu).map(c => ({
-                ...c,
-                dateFacture: c.dateFacture ? c.dateFacture.toISOString() : null,
-                dateEcheance: c.dateEcheance ? c.dateEcheance.toISOString() : null,
+                ...c, dateFacture: iso(c.dateFacture), dateEcheance: iso(c.dateEcheance),
+            }));
+            // L'inventaire complet des factures, soldées comprises : la balance
+            // n'en a pas besoin, l'export si — c'est lui qui doit rendre compte
+            // de chaque facture lue, de son classement et de son échéance.
+            state.glToutes = GL.facturesToutes(lu).map(c => ({
+                ...c, dateFacture: iso(c.dateFacture), dateEcheance: iso(c.dateEcheance),
+                dateReglement: iso(c.dateReglement), dateAvoir: iso(c.dateAvoir),
             }));
 
             await S.set(S.KEYS.grandLivre, state.grandLivre);
             await S.set('rec_gl_lecture', state.glLecture);
             await S.set('rec_gl_ouvertes', state.glOuvertes);
+            await S.set('rec_gl_factures', state.glToutes);
             await S.set('rec_gl_lignes', state.glLignes.map(l => ({
                 ...l, date: l.date ? l.date.toISOString() : null })));
             await S.set('rec_qualif_ref', state.qualifRef);
@@ -6968,6 +7098,15 @@
             'Fin de formation': f.dateFinFormation ? U.dateFR(f.dateFinFormation) : '',
             'Date d\'échéance': f.dateEcheance ? U.dateFR(f.dateEcheance) : '',
             'Origine échéance': f.echeanceOrigine || '',
+            // De quoi refaire le calcul à la main : la date de départ retenue,
+            // et la règle qui lui a été appliquée.
+            'Échéance calculée sur': f.echeanceBase
+                ? ({ dateFacture: 'date de facture', dateDebutFormation: 'début de formation',
+                     dateFinFormation: 'fin de formation',
+                     'colonne Monday': 'date d’échéance de Monday' }[f.echeanceBase] || f.echeanceBase)
+                : '',
+            'Échéance portée par Monday': f.dateEcheanceSource ? U.dateFR(f.dateEcheanceSource) : '',
+            'Financement déduit de': f.origineFinancement || '',
             'Règle appliquée': R.getRule(f.financement, state.rules).note || '',
             'Date de paiement': f.datePaiement ? U.dateFR(f.datePaiement) : '',
             'Date contrôle paiement': f.dateControlePaiement ? U.dateFR(f.dateControlePaiement) : '',
