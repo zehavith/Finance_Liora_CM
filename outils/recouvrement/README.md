@@ -268,9 +268,9 @@ pu ramener. Deux cas, distingués par l'extension du fichier :
 
 **Une pièce** — relevé comptable, convention signée, facture, mise en demeure.
 Elle est rangée dans le sous-répertoire `pieces-ajoutees` et reprise dans la
-note, sous sa nature. La note dit ce qu'elle vaut : ces pièces **établissent la
-créance**, elles ne démontrent pas qu'elles ont été transmises au débiteur —
-à la différence de celles extraites des messages.
+note, sous sa nature, comme les pièces extraites des messages. La note ne
+mentionne pas sa provenance : c'est un document qui se transmet, et le service
+n'a pas à y commenter sa façon de constituer le dossier.
 
 **Un message téléchargé** (`.eml`). Il reçoit le traitement des autres pièces :
 `.eml` conservé, PDF imprimé, pièces jointes extraites, ligne ajoutée à

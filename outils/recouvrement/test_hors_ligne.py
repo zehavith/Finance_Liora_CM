@@ -2328,8 +2328,8 @@ def test_pieces_versees() -> None:
     )
     verifier("grand-livre.pdf" in html and "Relevé comptable" in html,
              "la pièce versée figure dans la note")
-    verifier("ne démontrent pas qu'elles ont été transmises" in html,
-             "et la note dit ce qu'elle ne prouve pas")
+    verifier("versées au dossier par le service" not in html,
+             "la note ne commente pas la provenance de la pièce")
 
     # Un message téléchargé rejoint les échanges, avec son numéro de pièce.
     with tempfile.TemporaryDirectory() as repertoire:
