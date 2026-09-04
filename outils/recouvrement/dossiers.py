@@ -54,6 +54,10 @@ ALIAS_COLONNES = {
         "email de l apprenante", "email apprenante", "mail apprenante",
         "adresse mail", "adresse email", "adresse e mail",
         "e mail gcard", "email gcard", "mail gcard",
+        # Un export de facturation nomme l'adresse du destinataire
+        # « Email client » : c'est celle a qui la facture a ete envoyee, donc
+        # celle qui porte les echanges.
+        "email client", "e mail client", "mail client", "courriel client",
         "e mail", "email", "mail", "courriel",
         "email 2", "e mail 2", "email 3", "e mail 3", "email 4", "e mail 4",
         "autre email", "email perso", "email contact", "mail contact",
@@ -65,8 +69,10 @@ ALIAS_COLONNES = {
         # reprise : le numéro d'alors est le seul qui figure dans les échanges
         # de l'époque, et le chercher aussi évite de manquer tout un pan du
         # dossier. Le champ accepte plusieurs colonnes à la fois.
+        "numero de facture zoho", "numero facture zoho",
         "numero zoho", "reference zoho", "n zoho", "no zoho", "facture zoho",
         "ancienne facture", "ancien numero de facture", "ancien numero",
+        "facture sellsy correspondante", "facture sellsy correspondant",
         "numero sellsy", "reference sellsy", "facture sellsy",
         "facture", "factures", "invoice",
     ],
@@ -79,20 +85,26 @@ ALIAS_COLONNES = {
     # côté particuliers — d'où ces listes un peu longues.
     "montant_du": [
         "reste a devoir ttc", "reste a payer d apres le grand livre",
+        "montant du ttc", "montant restant du", "solde restant du",
         "reste a payer", "restant a payer", "reste du", "solde du", "montant du",
+        # Zoho appelle « Solde » ce qui reste a encaisser sur la facture.
+        "solde",
     ],
     "montant_total": [
         "total ttc", "total facture", "montant total", "montant facture",
-        "total ht", "montant",
+        "montant de la facture", "montant ht", "total ht", "montant",
     ],
     "date_echeance": [
         "date d echeance facture", "date echeance facture",
-        "date echeance calculee negociee", "date d echeance", "date echeance",
+        "date echeance calculee negociee",
+        "date d echeance effective", "date echeance effective",
+        "date d echeance", "date echeance",
         "date de l echeance", "date limite de paiement", "echeance",
     ],
     "formation_debut": ["debut de formation", "debut de service", "date de debut de formation"],
     "formation_fin": ["fin de formation", "fin de service", "date de fin de formation"],
     "statut": [
+        "statut de la facture", "statut facture",
         "statut creance", "statut paiement", "categorie de retard",
         "qualification recouvrement", "qualification generale", "statut initiale",
         "categorie de dette", "statut",
@@ -192,8 +204,17 @@ class ErreurDossiers(RuntimeError):
     pass
 
 
+# Les apostrophes typographiques doivent devenir des séparateurs, comme leur
+# équivalent droit. Supprimées sans être remplacées, « Date d’échéance »
+# devenait « date dechance » au lieu de « date d echeance » : la colonne
+# n'était plus reconnue par aucun intitulé, et l'échéance disparaissait de
+# tous les dossiers du fichier sans qu'un message le dise.
+APOSTROPHES = str.maketrans({c: " " for c in "‘’ʼ´`“”«»"})
+
+
 def _normaliser_entete(nom: str) -> str:
-    nom = unicodedata.normalize("NFKD", nom or "")
+    nom = _reparer_encodage(nom or "").translate(APOSTROPHES)
+    nom = unicodedata.normalize("NFKD", nom)
     nom = nom.encode("ascii", "ignore").decode("ascii").lower().strip()
     return re.sub(r"[^a-z0-9]+", " ", nom).strip()
 
@@ -656,15 +677,46 @@ def _montant(valeur: str) -> float:
     par l'espace ordinaire. N'en retirer qu'une variante faisait échouer la
     lecture en silence, et tous les montants s'affichaient à zéro.
     """
+    if isinstance(valeur, bool):
+        return 0.0
+    if isinstance(valeur, (int, float)):
+        return float(valeur)
     texte = "".join(
         caractere for caractere in str(valeur or "")
         if not caractere.isspace()
-    ).replace("€", "").replace("\u00a0", "").replace(",", ".")
+    ).replace("\u20ac", "").replace("\u00a0", "")
     # Un montant peut arriver avec son séparateur de milliers en apostrophe
-    # (« 2'500 ») ; le point reste la virgule décimale déjà convertie.
+    # (« 2'500 ») ; la virgule décimale est traitée plus bas.
     texte = texte.replace("'", "").replace("\u2019", "")
+    return _decimal(texte)
+
+
+# Un export comptable écrit « €8.000,00 » : le point sépare les milliers et la
+# virgule les décimales. Remplacer la virgule par un point sans retirer le
+# premier donnait « 8.000.00 », que Python refuse — et le montant tombait à
+# zéro sans un mot. Les deux conventions se distinguent au dernier séparateur
+# rencontré : c'est lui qui porte les décimales.
+_MILLIERS_POINTES = re.compile(r"-?\d{1,3}(?:\.\d{3})+")
+
+
+def _decimal(texte: str) -> float:
+    """Un nombre écrit à la française, à l'anglaise, ou mêlant les deux."""
+    texte = (texte or "").strip()
     if not texte:
         return 0.0
+    if "." in texte and "," in texte:
+        if texte.rfind(",") > texte.rfind("."):
+            texte = texte.replace(".", "").replace(",", ".")
+        else:
+            texte = texte.replace(",", "")
+    elif "," in texte:
+        texte = texte.replace(",", ".")
+    elif _MILLIERS_POINTES.fullmatch(texte):
+        # « 8.000 » : trois chiffres après chaque point et rien d'autre. Un
+        # montant décimal ne s'écrit pas ainsi ; un séparateur de milliers,
+        # toujours. Le doute subsiste sur « 1.500 », qui vaudrait 1,50 dans un
+        # fichier anglais — mais ces fichiers-là écrivent « 1.50 ».
+        texte = texte.replace(".", "")
     try:
         return float(texte)
     except ValueError:
@@ -861,6 +913,26 @@ def _liste(numeros: list[int]) -> str:
     return ", ".join(str(numero) for numero in numeros)
 
 
+# Un export passé par un outil qui s'est trompé d'encodage arrive avec des
+# « NumÃ©ro » et des « PayÃ©e » : de l'UTF-8 relu comme du Windows-1252. Les
+# accents y sont récupérables sans perte en refaisant le trajet à l'envers.
+# Sans cela, « NumÃ©ro » se normalise en « numaro » et la colonne n'est
+# reconnue par rien — le fichier semble alors ne contenir aucune donnée utile.
+_MOJIBAKE = ("Ã", "Â", "â€", "Ë†", "Å")
+
+
+def _reparer_encodage(texte: str) -> str:
+    if not any(marque in texte for marque in _MOJIBAKE):
+        return texte
+    try:
+        repare = texte.encode("cp1252").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return texte
+    # Le trajet inverse peut réussir sur un texte sain et le dégrader : on ne
+    # retient la réparation que si elle fait disparaître les marques.
+    return repare if not any(m in repare for m in _MOJIBAKE) else texte
+
+
 def _texte_cellule(valeur) -> str:
     """Rend une cellule Excel sous forme de texte exploitable."""
     if valeur is None:
@@ -869,7 +941,7 @@ def _texte_cellule(valeur) -> str:
         return valeur.strftime("%d/%m/%Y")
     if isinstance(valeur, float) and valeur.is_integer():
         return str(int(valeur))
-    return str(valeur).strip()
+    return _reparer_encodage(str(valeur).strip())
 
 
 def _grille_xlsx(chemin: Path) -> list[tuple[int, list[str]]]:
@@ -889,8 +961,20 @@ def _grille_xlsx(chemin: Path) -> list[tuple[int, list[str]]]:
 
     # Un classeur peut comporter plusieurs onglets : on retient celui dont
     # l'en-tête expose le plus de colonnes exploitables.
-    meilleure: list[tuple[int, list[str]]] = []
-    meilleur_score = -1
+    onglets = _onglets_xlsx(classeur)
+    classeur.close()
+    return onglets[0][1] if onglets else []
+
+
+# Un onglet dont l'en-tête ne porte ni adresse ni numéro de facture n'apprend
+# rien au rapprochement : le lire coûterait des minutes sur un classeur
+# comptable sans rien y ajouter.
+SCORE_MINIMAL_ONGLET = 2
+
+
+def _onglets_xlsx(classeur) -> list[tuple[str, list[tuple[int, list[str]]]]]:
+    """Les onglets exploitables du classeur, du mieux renseigné au moins bon."""
+    lus: list[tuple[int, str, list[tuple[int, list[str]]]]] = []
     for feuille in classeur.worksheets:
         grille = [
             (numero, [_texte_cellule(cellule) for cellule in rangee])
@@ -898,11 +982,44 @@ def _grille_xlsx(chemin: Path) -> list[tuple[int, list[str]]]:
         ]
         _index, association = _trouver_entete(grille)
         score = _score_entete(association)
-        if score > meilleur_score:
-            meilleur_score, meilleure = score, grille
+        if score > 0:
+            lus.append((score, feuille.title, grille))
+    lus.sort(key=lambda o: -o[0])
+    return [(titre, grille) for score, titre, grille in lus]
 
+
+def charger_onglets(chemin: Path) -> list[tuple[str, list[tuple[int, list[str]]]]]:
+    """Tous les onglets exploitables d'un classeur, nommés.
+
+    Un classeur comptable range la même créance sur plusieurs onglets : le
+    numéro de facture d'un côté, celui de l'ancien outil de l'autre, l'adresse
+    du client sur un troisième. N'en lire qu'un seul — fût-ce le mieux
+    renseigné — laisse sur la table ce que les autres savent.
+    """
+    if chemin.suffix.lower() not in {".xlsx", ".xlsm", ".xltx"}:
+        grille = charger_grille(chemin)
+        return [(chemin.name, grille)] if grille else []
+
+    try:
+        import openpyxl  # noqa: PLC0415
+    except ImportError as exc:
+        raise ErreurDossiers(
+            "La lecture des fichiers Excel demande openpyxl. Lancez :\n"
+            "    pip install -r requirements.txt\n"
+            "Vous pouvez sinon enregistrer le tableau au format CSV."
+        ) from exc
+
+    try:
+        classeur = openpyxl.load_workbook(chemin, data_only=True, read_only=True)
+    except Exception as exc:  # noqa: BLE001 - openpyxl lève des types variés
+        raise ErreurDossiers(f"Fichier Excel illisible ({chemin}) : {exc}") from exc
+
+    onglets = [
+        (titre, grille) for titre, grille in _onglets_xlsx(classeur)
+        if _score_entete(_trouver_entete(grille)[1]) >= SCORE_MINIMAL_ONGLET
+    ]
     classeur.close()
-    return meilleure
+    return onglets
 
 
 def _grille_csv(chemin: Path) -> list[tuple[int, list[str]]]:
@@ -999,6 +1116,7 @@ def dossiers_depuis_grille(
 
     dossiers: list[Dossier] = []
     ignorees: list[int] = []
+    illisibles: list[int] = []
     hors_sujet: list[int] = []
     references_vues: set[str] = set()
 
@@ -1035,13 +1153,27 @@ def dossiers_depuis_grille(
             if entetes[position].strip()
         }
 
+        try:
+            debut = _normaliser_date(_premier("date_debut"))
+            fin = _normaliser_date(_premier("date_fin"))
+        except ErreurDossiers:
+            # Un tableur laisse traîner des « #VALUE! » et des dates cassées.
+            # Une cellule illisible ne doit pas emporter les quinze mille
+            # lignes qui suivent : la ligne est écartée, nommée, et la lecture
+            # continue. Sans ce garde-fou, l'onglet le mieux renseigné d'un
+            # classeur comptable était rejeté en entier sur une seule cellule.
+            if not ignorer_lignes_incompletes:
+                raise
+            illisibles.append(numero)
+            continue
+
         dossier = Dossier(
             reference=_premier("reference"),
             nom=_premier("nom"),
             emails=_decouper(valeurs["email"]),
             factures=_decouper(valeurs["facture"]),
-            date_debut=_normaliser_date(_premier("date_debut")),
-            date_fin=_normaliser_date(_premier("date_fin")),
+            date_debut=debut,
+            date_fin=fin,
             ligne=numero,
             montant_du=_premier("montant_du"),
             montant_total=_premier("montant_total"),
@@ -1090,11 +1222,14 @@ def dossiers_depuis_grille(
 
         requete = dossier.requete_gmail()
         if len(requete) > LONGUEUR_MAX_REQUETE:
-            raise ErreurDossiers(
-                f"{chemin}, ligne {numero} : requête trop longue "
-                f"({len(requete)} caractères). Répartissez les adresses ou "
-                "numéros de facture sur plusieurs lignes."
-            )
+            if not ignorer_lignes_incompletes:
+                raise ErreurDossiers(
+                    f"{chemin}, ligne {numero} : requête trop longue "
+                    f"({len(requete)} caractères). Répartissez les adresses ou "
+                    "numéros de facture sur plusieurs lignes."
+                )
+            illisibles.append(numero)
+            continue
 
         dossiers.append(dossier)
 
@@ -1108,6 +1243,11 @@ def dossiers_depuis_grille(
         signaler(
             f"⚠ {len(ignorees)} ligne(s) sans adresse ni facture ignorée(s) : "
             f"ligne(s) {_liste(ignorees)}"
+        )
+    if illisibles and signaler:
+        signaler(
+            f"⚠ {len(illisibles)} ligne(s) écartée(s) — date illisible ou "
+            f"trop de critères sur une même ligne : ligne(s) {_liste(illisibles)}"
         )
 
     if not dossiers:

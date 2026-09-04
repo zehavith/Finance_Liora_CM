@@ -421,7 +421,13 @@ CHAMPS_SURVEILLES = (
 def _ajouter_references_saisies(
     liste: list[Dossier], journal: Journal, chemin_suivi: Path | None = None
 ) -> None:
-    """Ajoute aux dossiers les références saisies dans l'application."""
+    """Ajoute aux dossiers ce que l'application sait et que le tableau ignore.
+
+    Deux apports : les numéros de facture d'un outil précédent, et les
+    adresses reprises d'un export de facturation. Un tableau Monday porte
+    rarement l'adresse à qui la facture est partie ; sans elle, la recherche
+    se réduit au numéro, et tout un pan des échanges reste invisible.
+    """
     import suivi as module_suivi  # noqa: PLC0415
 
     chemin = chemin_suivi or (RACINE / "suivi-dossiers.json")
@@ -429,21 +435,37 @@ def _ajouter_references_saisies(
         return
 
     etats = module_suivi.charger(chemin)
-    ajoutees = 0
+    ajoutees, adressees = 0, 0
     for dossier in liste:
+        etat = etats.get(dossier.reference) or {}
+
         supplements = [
             reference
-            for reference in (etats.get(dossier.reference, {}).get("references") or [])
+            for reference in (etat.get("references") or [])
             if reference and reference not in dossier.factures
         ]
         if supplements:
             dossier.factures = [*dossier.factures, *supplements]
             ajoutees += len(supplements)
 
+        connues = {adresse.lower() for adresse in dossier.emails}
+        nouvelles = [
+            adresse for adresse in (etat.get("adresses") or [])
+            if adresse and adresse.lower() not in connues
+        ]
+        if nouvelles:
+            dossier.emails = [*dossier.emails, *nouvelles]
+            adressees += len(nouvelles)
+
     if ajoutees:
         journal(
             f"    {ajoutees} référence(s) saisie(s) dans l'application "
             "ajoutée(s) à la recherche"
+        )
+    if adressees:
+        journal(
+            f"    {adressees} adresse(s) reprise(s) d'un fichier de "
+            "facturation ajoutée(s) à la recherche"
         )
 
 

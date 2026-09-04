@@ -44,7 +44,7 @@ import synthese as module_synthese  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "62"
+VERSION = "63"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -302,6 +302,8 @@ class Execution:
                         self.ajouter(
                             f"Fichier de suivi appliqué : {bilan['valeurs']} "
                             f"valeur(s) sur {bilan['dossiers']} dossier(s)."
+                            + (f" Dont {bilan['adresses']} adresse(s) mail."
+                               if bilan.get("adresses") else "")
                             + (f" {bilan['sans_correspondance']} ligne(s) sans "
                                "dossier correspondant."
                                if bilan["sans_correspondance"] else "")
@@ -382,15 +384,45 @@ def complement_memorise() -> Path | None:
 
 
 def appliquer_complement(chemin: Path) -> dict:
-    """Reprend convention, diplôme, heures et échéance d'un fichier de suivi."""
-    from dossiers import charger_grille  # noqa: PLC0415
+    """Reprend d'un fichier de suivi ce qui manque aux dossiers exportés.
+
+    Tous les onglets exploitables sont lus, pas seulement le mieux renseigné :
+    un classeur comptable range le numéro de facture sur un onglet, celui de
+    l'ancien outil sur un autre et l'adresse du client sur un troisième. Le
+    résultat rendu est la somme de ce que chacun a apporté.
+    """
+    from dossiers import ErreurDossiers, charger_onglets  # noqa: PLC0415
 
     sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
-    return module_suivi.completer_depuis_grille(
-        charger_grille(chemin),
-        module_suivi.inventaire(sortie, SUIVI),
-        SUIVI,
-    )
+    bilan = {"dossiers": 0, "valeurs": 0, "adresses": 0, "lignes": 0,
+             "sans_correspondance": 0, "exemples": [], "onglets": []}
+    dernier_echec = ""
+
+    # Du moins bien renseigné au mieux : deux onglets peuvent porter la même
+    # échéance sous deux formes, et c'est celui dont les colonnes sont le
+    # mieux reconnues qui doit avoir le dernier mot.
+    for titre, grille in reversed(charger_onglets(chemin)):
+        try:
+            part = module_suivi.completer_depuis_grille(
+                grille, module_suivi.inventaire(sortie, SUIVI), SUIVI
+            )
+        except ErreurDossiers as exc:
+            # Un onglet qu'on n'arrive pas à lire n'interrompt pas les autres :
+            # ils portent souvent l'essentiel. L'échec n'est rendu que si
+            # aucun onglet n'a rien donné.
+            dernier_echec = str(exc)
+            continue
+
+        for cle in ("dossiers", "valeurs", "adresses", "lignes",
+                    "sans_correspondance"):
+            bilan[cle] += part.get(cle, 0)
+        bilan["exemples"] = (bilan["exemples"] + part.get("exemples", []))[:8]
+        if part.get("dossiers"):
+            bilan["onglets"].append(f"{titre} ({part['dossiers']})")
+
+    if not bilan["lignes"] and dernier_echec:
+        raise ErreurDossiers(dernier_echec)
+    return bilan
 
 
 def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[bool, str]:
@@ -2340,6 +2372,12 @@ async function completerDepuisFichier(evenement) {
       r.dossiers > 0,
       `${r.lignes} ligne(s) lue(s) : ${r.valeurs} valeur(s) reprise(s) sur `
       + `${r.dossiers} dossier(s).`
+      + (r.adresses
+         ? ` Dont ${r.adresses} adresse(s) mail, qui serviront au prochain `
+           + `export.`
+         : "")
+      + ((r.onglets || []).length > 1
+         ? ` Onglets utiles : ${r.onglets.join(", ")}.` : "")
       + (r.sans_correspondance
          ? ` ${r.sans_correspondance} ligne(s) sans dossier correspondant`
            + ((r.exemples || []).length

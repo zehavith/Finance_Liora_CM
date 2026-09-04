@@ -1968,12 +1968,26 @@ def test_montants_espace_insecable() -> None:
         ("1 280,50", 1280.5),
         ("", 0.0),
         ("néant", 0.0),
+        # Un export comptable écrit les milliers avec un point et les
+        # décimales avec une virgule. Lu comme du français, « €8.000,00 »
+        # devenait « 8.000.00 » : refusé par Python, donc zéro, sans un mot.
+        ("€8.000,00", 8000.0),
+        ("€5.930,00", 5930.0),
+        ("8.000", 8000.0),
+        ("1.234.567,89", 1234567.89),
+        # Et l'anglais, où le point porte les décimales.
+        ("1938.46", 1938.46),
+        ("1,234.50", 1234.5),
+        ("0.0", 0.0),
     ]
     for texte, attendu in cas:
         verifier(_montant(texte) == attendu,
                  f"« {texte} » vaut {attendu} (obtenu : {_montant(texte)})")
         verifier(module_suivi._nombre(texte) == attendu,
                  f"au suivi aussi, « {texte} » vaut {attendu}")
+
+    verifier(_montant(7188) == 7188.0 and _montant(5990.0) == 5990.0,
+             "un nombre déjà typé traverse la lecture sans dommage")
 
 
 def test_colonnes_typees_monday() -> None:
@@ -2203,6 +2217,144 @@ def test_completer_depuis_fichier() -> None:
         verifier(module_suivi.charger(chemin_zoho)["FACT-2405-00409"]
                  ["references"] == ["DV-003453"],
                  "et n'est pas ajoutée deux fois")
+
+    print("  -- factures d'un outil comptable --")
+    # Le cas réel : Monday porte le hors taxes, l'export comptable le toutes
+    # taxes, et les montants sont écrits à l'européenne. Le fichier porte en
+    # plus l'adresse à qui la facture est partie, que Monday n'a pas.
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "export"
+        sortie.mkdir()
+        (sortie / "d").mkdir()
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures;date_echeance\n"
+            "FACT-2405-00409;SAS EDEN;d;5 990 €;FACT-2405-00409;\n"
+            "FACT-2501-07706;ISE SYSTEMS;d;8 000 €;FACT-2501-07706;\n"
+            "FACT-2601-13302;JAADI PERFORM;d;2 500 €;FACT-2601-13302;\n",
+            encoding="utf-8-sig",
+        )
+        compta = Path(repertoire) / "compta.csv"
+        compta.write_text(
+            "N° de facture;Nom du client;Statut de la facture;"
+            "Montant de la facture;Solde;E-mail\n"
+            # 5 990 HT facturés 7 188 TTC : même facture, autre base.
+            "DV-003453;SAS EDEN;En retard;€7.188,00;€7.188,00;\n"
+            # Même numéro que le dossier : l'adresse le rejoint directement.
+            "FACT-2501-07706;ISE SYSTEMS;En retard;€8.000,00;€8.000,00;"
+            "sophie.attias@ise-systems.fr\n"
+            # Réglée : son nom et son montant ne doivent rapprocher personne.
+            "DV-009999;JAADI PERFORM;Payé;€2.500,00;0.0;paye@exemple.fr\n",
+            encoding="utf-8-sig",
+        )
+        chemin = Path(repertoire) / "suivi.json"
+        bilan = module_suivi.completer_depuis_grille(
+            charger_grille(compta),
+            module_suivi.inventaire(sortie, chemin),
+            chemin,
+        )
+        etat = module_suivi.charger(chemin)
+
+        verifier(etat.get("FACT-2405-00409", {}).get("references") == ["DV-003453"],
+                 f"la facture TTC rejoint le dossier HT à la TVA près "
+                 f"(obtenu : {etat.get('FACT-2405-00409', {}).get('references')})")
+        verifier(etat.get("FACT-2501-07706", {}).get("adresses")
+                 == ["sophie.attias@ise-systems.fr"],
+                 f"l'adresse du client est reprise pour la recherche "
+                 f"(obtenu : {etat.get('FACT-2501-07706', {}).get('adresses')})")
+        verifier(bilan["adresses"] == 1,
+                 f"et comptée dans le bilan (obtenu : {bilan['adresses']})")
+        verifier("FACT-2601-13302" not in etat,
+                 "une facture soldée ne se rapproche pas sur le nom et le montant")
+
+    print("  -- l'adresse reprise sert la recherche --")
+    with tempfile.TemporaryDirectory() as repertoire:
+        from dossiers import Dossier  # noqa: PLC0415
+        from export_mails import _ajouter_references_saisies  # noqa: PLC0415
+
+        chemin = Path(repertoire) / "suivi.json"
+        module_suivi.enregistrer(chemin, {"FACT-2501-07706": {
+            "adresses": ["sophie.attias@ise-systems.fr"],
+            "references": ["DV-003453"],
+        }})
+        lot = [Dossier(reference="FACT-2501-07706", nom="ISE SYSTEMS",
+                       emails=["compta@ise-systems.fr"], factures=["FACT-2501-07706"])]
+        dit: list[str] = []
+        _ajouter_references_saisies(lot, dit.append, chemin)
+        verifier(lot[0].emails == ["compta@ise-systems.fr",
+                                   "sophie.attias@ise-systems.fr"],
+                 f"l'adresse du fichier s'ajoute à celle du tableau "
+                 f"(obtenu : {lot[0].emails})")
+        verifier(lot[0].factures == ["FACT-2501-07706", "DV-003453"],
+                 "et l'ancien numéro à la liste des factures cherchées")
+        verifier(any("adresse" in ligne for ligne in dit),
+                 f"le journal le dit (obtenu : {dit})")
+
+        # Repasser ne doit pas empiler la même adresse.
+        _ajouter_references_saisies(lot, dit.append, chemin)
+        verifier(lot[0].emails.count("sophie.attias@ise-systems.fr") == 1,
+                 "sans doublon au second passage")
+
+    print("  -- un classeur comptable réel --")
+    # Trois pièges relevés sur le fichier de Liora, chacun capable d'emporter
+    # un onglet entier de quinze mille lignes.
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "export"
+        sortie.mkdir()
+        (sortie / "d").mkdir()
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures;date_echeance\n"
+            "FACT-2405-00409;SAS EDEN;d;5 990 €;FACT-2405-00409;\n"
+            # Un gros client, plusieurs factures du même montant.
+            "FACT-2406-03966;Caisse des Depots;d;1 000 €;FACT-2406-03966;\n",
+            encoding="utf-8-sig",
+        )
+        # En-tête abîmé par un aller-retour d'encodage, comme dans le fichier.
+        fichier = Path(repertoire) / "compta.csv"
+        fichier.write_text(
+            "NumÃ©ro;Client;Statut;Montant dÃ» TTC;Email client;Date dâ€™Ã©chÃ©ance\n"
+            # Une cellule de date cassée par le tableur : cette ligne perd son
+            # échéance, les suivantes doivent survivre.
+            "FACT-2405-00409;SAS EDEN;Retard;5990;eden@exemple.fr;#VALUE!\n"
+            # Deux lignes revendiquent le même dossier sur le seul couple
+            # nom + montant : aucune ne l'identifie.
+            "DV-100001;Caisse des Depots;Retard;1000;;01/03/2025\n"
+            "DV-100002;Caisse des Depots;Retard;1000;;01/03/2025\n",
+            encoding="utf-8-sig",
+        )
+        chemin = Path(repertoire) / "suivi.json"
+        bilan = module_suivi.completer_depuis_grille(
+            charger_grille(fichier),
+            module_suivi.inventaire(sortie, chemin),
+            chemin,
+        )
+        etat = module_suivi.charger(chemin)
+
+        verifier(etat.get("FACT-2405-00409", {}).get("adresses")
+                 == ["eden@exemple.fr"],
+                 f"un en-tête abîmé par l'encodage reste reconnu "
+                 f"(obtenu : {etat.get('FACT-2405-00409', {}).get('adresses')})")
+        verifier(not etat.get("FACT-2405-00409", {}).get("echeance"),
+                 "la date illisible est écartée, pas devinée")
+        verifier(bilan["dates_illisibles"] == 1,
+                 f"et comptée (obtenu : {bilan['dates_illisibles']})")
+        verifier("FACT-2406-03966" not in etat,
+                 f"deux lignes qui revendiquent le même dossier n'en "
+                 f"rapprochent aucune (obtenu : {sorted(etat)})")
+        verifier(bilan["ambigus"] == ["FACT-2406-03966"],
+                 f"le dossier disputé est nommé (obtenu : {bilan['ambigus']})")
+
+    print("  -- intitulés à l'apostrophe typographique --")
+    from dossiers import _normaliser_entete  # noqa: PLC0415
+
+    # Une apostrophe courbe supprimée sans être remplacée collait les mots :
+    # « Date d’échéance » devenait « date dechance », que rien ne reconnaît.
+    for intitule in ("Date d'échéance", "Date d’échéance", "Date d‘échéance"):
+        obtenu = _normaliser_entete(intitule)
+        verifier(obtenu == "date d echeance",
+                 f"« {intitule} » se normalise en « date d echeance » "
+                 f"(obtenu : « {obtenu} »)")
+    verifier(_normaliser_entete("NumÃ©ro") == "numero",
+             "et un intitulé abîmé par l'encodage retrouve ses accents")
 
 
 def test_recapitulatif_atomique() -> None:

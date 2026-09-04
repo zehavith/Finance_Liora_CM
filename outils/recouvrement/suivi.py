@@ -92,21 +92,16 @@ SEUIL_DORMANCE = 60
 
 
 def _nombre(valeur) -> float:
-    """Lit un montant tel qu'il sort d'un tableur : « 1 280,50 », « 680 », 42.0."""
-    if isinstance(valeur, (int, float)):
-        return float(valeur)
-    # Toutes les espaces, pas seulement l'ordinaire et l'insécable : Monday
-    # sépare les milliers par une insécable *fine*, et ne retirer que les deux
-    # premières ramenait ces montants-là à zéro.
-    texte = "".join(
-        caractere for caractere in str(valeur or "") if not caractere.isspace()
-    ).replace("€", "").replace(",", ".")
-    if not texte:
-        return 0.0
-    try:
-        return float(texte)
-    except ValueError:
-        return 0.0
+    """Lit un montant tel qu'il sort d'un tableur : « 1 280,50 », « €8.000,00 ».
+
+    Une seule lecture des montants dans toute l'application : les espaces
+    insécables de Monday et les milliers pointés des exports comptables se
+    corrigeaient jusqu'ici à deux endroits, et l'un des deux prenait toujours
+    du retard sur l'autre.
+    """
+    from dossiers import _montant  # noqa: PLC0415 - cycle
+
+    return _montant(valeur)
 
 
 def charger(chemin: Path) -> dict[str, dict]:
@@ -702,11 +697,32 @@ def completer_depuis_grille(
                 par_debiteur.setdefault((nom, centimes), dossier["reference"])
 
     suivi = charger(chemin_suivi)
-    completes, touchees = 0, 0
+    completes, touchees, adressees, illisibles = 0, 0, 0, 0
+    # Dossiers que plusieurs lignes revendiquaient sans les départager : ils
+    # sont nommés dans le bilan plutôt que rapprochés au hasard.
+    disputes: set[str] = set()
     # Les references non rapprochees sont nommees, pas seulement comptees :
     # « 164 lignes sans correspondance » ne dit pas si le fichier est le
     # mauvais ou si les numeros s'ecrivent autrement.
     sans_suite: list[str] = []
+
+    # Un gros client a des dizaines de factures du même montant. Si plusieurs
+    # lignes du fichier revendiquent le même dossier sur le seul couple
+    # nom + montant, aucune ne l'identifie : les retenir toutes empilait
+    # soixante-douze numéros sur un dossier et faisait exploser la recherche
+    # Gmail. Le rapprochement de secours n'est donc appliqué que là où il
+    # désigne un dossier sans concurrence.
+    revendique: dict[str, int] = {}
+    for ligne in lignes:
+        if any(_cle_facture(c) in par_facture
+               for c in [ligne.reference, *ligne.factures]):
+            continue
+        if _est_soldee(ligne):
+            continue
+        pretendu = _par_nom_et_montant(ligne, par_debiteur)
+        if pretendu:
+            revendique[pretendu] = revendique.get(pretendu, 0) + 1
+    ambigus = {ref for ref, nombre in revendique.items() if nombre > 1}
 
     for ligne in lignes:
         candidats = [ligne.reference] + list(ligne.factures)
@@ -715,49 +731,79 @@ def completer_depuis_grille(
              if _cle_facture(c) in par_facture),
             "",
         )
-        if not reference:
+        par_numero = bool(reference)
+        if not reference and not _est_soldee(ligne):
             reference = _par_nom_et_montant(ligne, par_debiteur)
-            if reference:
-                # Le numéro du fichier devient une référence de recherche :
-                # c'est le seul qui figure dans les échanges de l'époque.
-                entree = dict(suivi.get(reference) or {})
-                connues_ref = list(entree.get("references") or [])
-                for numero in [ligne.reference, *ligne.factures]:
-                    if numero and numero not in connues_ref:
-                        connues_ref.append(numero)
-                        completes += 1
-                entree["references"] = connues_ref
-                suivi[reference] = entree
-                touchees += 1
+            if reference in ambigus:
+                disputes.add(reference)
+                reference = ""
 
         if not reference:
             sans_suite.append(ligne.reference or (ligne.factures or [""])[0])
             continue
+
+        entree = dict(suivi.get(reference) or {})
+        avant = len(str(entree))
+
+        if not par_numero:
+            # Le numéro du fichier devient une référence de recherche : c'est
+            # le seul qui figure dans les échanges de l'époque.
+            connues_ref = list(entree.get("references") or [])
+            for numero in [ligne.reference, *ligne.factures]:
+                if numero and numero not in connues_ref:
+                    connues_ref.append(numero)
+                    completes += 1
+            if connues_ref:
+                entree["references"] = connues_ref
+
+        # L'adresse à qui la facture a été envoyée est celle qui porte les
+        # échanges. Un tableau Monday ne l'a pas toujours ; un export de
+        # facturation, si. C'est le manque le plus coûteux du dossier : sans
+        # adresse, la recherche se réduit au numéro de facture.
+        adresses = list(entree.get("adresses") or [])
+        for adresse in ligne.emails:
+            propre = adresse.strip()
+            if propre and propre.lower() not in {a.lower() for a in adresses}:
+                adresses.append(propre)
+                adressees += 1
+                completes += 1
+        if adresses:
+            entree["adresses"] = adresses
+
+        try:
+            echeance = _date_courte(ligne.date_echeance)
+        except ValueError:
+            # Un tableur laisse des « #VALUE! » et des dates à rallonge dans
+            # ses colonnes de dates. Une cellule illisible fait perdre
+            # l'échéance de cette ligne-là, pas les quinze mille suivantes.
+            echeance = ""
+            illisibles += 1
 
         apports = {
             "convention": (ligne.convention_signee or "").strip(),
             "diplome": (ligne.diplome or "").strip(),
             "heures_theoriques": (ligne.heures_theoriques or "").strip(),
             "heures_log": (ligne.heures_log or "").strip(),
-            "echeance": _date_courte(ligne.date_echeance),
+            "echeance": echeance,
         }
         apports = {cle: valeur for cle, valeur in apports.items() if valeur}
-        if not apports:
+        entree.update(apports)
+        completes += len(apports)
+
+        if len(str(entree)) == avant and not apports:
             continue
 
-        entree = dict(suivi.get(reference) or {})
-        entree.update(apports)
         entree["maj"] = datetime.now().strftime("%d/%m/%Y %H:%M")
         suivi[reference] = entree
         touchees += 1
-        completes += len(apports)
 
     if touchees:
         enregistrer(chemin_suivi, suivi)
 
-    return {"dossiers": touchees, "valeurs": completes,
+    return {"dossiers": touchees, "valeurs": completes, "adresses": adressees,
             "lignes": len(lignes), "sans_correspondance": len(sans_suite),
-            "exemples": [r for r in sans_suite[:8] if r]}
+            "exemples": [r for r in sans_suite[:8] if r],
+            "ambigus": sorted(disputes)[:8], "dates_illisibles": illisibles}
 
 
 def _cle_nom(valeur) -> str:
@@ -768,16 +814,63 @@ def _cle_nom(valeur) -> str:
     return " ".join(mot for mot in plat.replace("-", " ").split() if mot)
 
 
+# Deux outils de facturation ne portent pas toujours la même base : l'un
+# retient le hors taxes, l'autre le toutes taxes. Sur les factures de Liora
+# rapprochées à la main, le rapport est 1 dans l'immense majorité des cas — la
+# formation professionnelle est exonérée — et 1,2 sur une minorité qui ne
+# l'est pas. Ce sont les deux seuls rapports admis : ouvrir plus large
+# rapprocherait des factures sans rapport qui se trouvent voisines.
+TAUX_TVA = (1.0, 1.2)
+
+
 def _par_nom_et_montant(ligne, par_debiteur: dict[tuple[str, int], str]) -> str:
-    """Le dossier dont le débiteur et le montant coïncident, s'il y en a un."""
+    """Le dossier dont le débiteur et le montant coïncident, s'il y en a un.
+
+    Le montant du fichier peut être le TTC quand celui du dossier est le HT :
+    la comparaison se fait alors à la TVA près, jamais à l'approximation
+    près. Un écart qui ne s'explique pas par un taux de TVA connu n'est pas un
+    rapprochement, c'est une coïncidence.
+    """
     nom = _cle_nom(ligne.nom)
     if not nom:
         return ""
     for champ in ("montant_du", "montant_total"):
-        centimes = round(_nombre(getattr(ligne, champ, "")) * 100)
-        if centimes and (nom, centimes) in par_debiteur:
-            return par_debiteur[(nom, centimes)]
+        brut = _nombre(getattr(ligne, champ, ""))
+        if not brut:
+            continue
+        for taux in TAUX_TVA:
+            for centimes in (round(brut * 100), round(brut / taux * 100)):
+                if centimes and (nom, centimes) in par_debiteur:
+                    return par_debiteur[(nom, centimes)]
     return ""
+
+
+# Une facture soldée ne se rapproche pas d'un dossier en contentieux sur la
+# seule foi d'un nom et d'un montant : le débiteur a pu payer une prestation
+# et pas une autre, et lier les deux ferait porter au dossier une pièce qui
+# le contredit. Le rapprochement par numéro, lui, reste permis : il désigne
+# la facture, pas une ressemblance.
+MENTIONS_SOLDEES = ("payee", "paye", "soldee", "solde", "annulee", "annule",
+                    "avoir", "remboursee", "cloturee", "encaissee")
+
+
+def _est_soldee(ligne) -> bool:
+    """La ligne du fichier décrit-elle une facture déjà réglée ?"""
+    import synthese as module_synthese  # noqa: PLC0415 - cycle
+
+    for mention in SEPARATEURS_MULTIVALEUR.split(str(getattr(ligne, "statut", ""))):
+        plat = module_synthese._aplatir(mention)
+        if plat and plat in MENTIONS_SOLDEES:
+            return True
+
+    # Un solde explicitement à zéro face à un montant de facture non nul dit
+    # la même chose sans le mot : la facture est encaissée.
+    reste = getattr(ligne, "montant_du", "")
+    if str(reste).strip() and not _nombre(reste) and _nombre(
+        getattr(ligne, "montant_total", "")
+    ):
+        return True
+    return False
 
 
 def _cle_facture(valeur: str) -> str:
