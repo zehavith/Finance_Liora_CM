@@ -505,6 +505,12 @@
                 numero, numeroExtrait, qualif, date, debit, credit, journal,
                 libelle: String(col(r, 'libelle') || '').trim(),
                 dateEcheance: R.parseDate(col(r, 'dateEcheance')),
+                // La colonne AA du classeur n'est pas une donnée du grand livre :
+                // c'est une formule — l'échéance de la facture chez Sellsy, à
+                // défaut la date lue dans le libellé de ligne, à défaut la date
+                // d'enregistrement. Un extrait brut, sans cette colonne, doit
+                // suivre le même chemin.
+                dateEcheanceRepli: dateTexte || R.parseDate(col(r, 'dateEnregistrement')) || null,
                 // Les dates de la facturation, telles que l'extrait les porte.
                 dateDebutFormation: R.parseDate(utile(col(r, 'dateDebutFormation'))),
                 dateFinFormation: R.parseDate(utile(col(r, 'dateFinFormation'))),
@@ -730,6 +736,7 @@
             // sert de base à l'alternance corporate ; la date comptable, non.
             dateFactureFacturation: f.dateFacturation || null,
             dateEcheance: f.dateEcheance || null,
+            dateEcheanceRepli: f.dateEcheanceRepli || null,
             // Les dates de formation ne se propagent pas d'une
             // ligne à l'autre : un lettrage réunit plusieurs
             // factures du même client, aux formations différentes.
@@ -1105,10 +1112,14 @@
             // retrouve leurs dates de formation.
             const cles = [l.cle, l.cleZoho].filter(Boolean);
             if (!cles.length) continue;
-            const dates = (l.dateDebutService || l.dateFinService || l.dateFacture || l.email) ? {
+            const dates = (l.dateDebutService || l.dateFinService || l.dateFacture
+                           || l.dateEcheance || l.email) ? {
                 debut: l.dateDebutService || null,
                 fin: l.dateFinService || null,
                 facture: l.dateFacture || null,
+                // L'échéance que porte la facturation : la première branche de
+                // la colonne AA du classeur.
+                echeance: l.dateEcheance || null,
                 client: l.client || '',
                 email: l.email || '',
             } : null;
@@ -1226,7 +1237,14 @@
         const avecSellsy = c => {
             const d = c.cle ? idx.datesSellsy.get(c.cle) : null;
             const type = c.cle ? idx.brutSellsy.get(c.cle) : null;
-            if (!d && !type) return c;
+            // Même sans rien trouver à la facturation, l'échéance doit suivre
+            // la colonne AA jusqu'au bout : la date lue dans le libellé, puis
+            // la date d'enregistrement. Sortir ici privait d'échéance mille
+            // sept cents créances sur un extrait sans colonne d'échéance.
+            if (!d && !type) {
+                return c.dateEcheance ? c
+                    : { ...c, dateEcheance: c.dateEcheanceRepli || null };
+            }
             const email = (d && d.email) ? '@' + d.email : '';
             const nom = R.norm((d && d.client) || c.tiers || '');
             const gcl = (email && idx.mandats.get(email)) || (nom && idx.mandats.get(nom)) || null;
@@ -1245,6 +1263,9 @@
                     || (!c.dateEcheance && d ? d.fin : null) || null,
                 dateFactureFacturation: c.dateFactureFacturation
                     || (!c.dateEcheance && d ? d.facture : null) || null,
+                // AA : l'échéance du grand livre, sinon celle de la facturation,
+                // sinon la date lue dans le libellé, sinon l'enregistrement.
+                dateEcheance: c.dateEcheance || (d && d.echeance) || c.dateEcheanceRepli || null,
                 // Le mandat change la règle d'échéance ; le montant prélevé dit
                 // ce qui est déjà rentré par ce canal, rejets exclus.
                 mandatGocardless: !!(gcl && gcl.etat) || !!c.mandatEtatFichier,
