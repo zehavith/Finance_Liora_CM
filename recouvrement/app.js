@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.44.0';
+    const VERSION = '2.45.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -4233,6 +4233,7 @@
                         'Taux d’attribution TVA': b.tauxTva || '',
                         'Let.': l.lettre === GL.POOL_NON_LETTRE ? '' : (l.lettre || ''),
                         'Devise': b.devise || '',
+                        'Taux de change': b.tauxChange || '',
                         'Débit': arrondi(l.debit || 0),
                         'Crédit': arrondi(l.credit || 0),
                         'Balance': b.balance || '',
@@ -4242,9 +4243,16 @@
                         'SIREN': l.siren || '',
                         'Date d’enregistrement': b.dateEnregistrement ? U.dateFR(b.dateEnregistrement) : '',
                         'Auteur': b.auteur || '',
+                        'Débit en devise d’origine': b.debitDevise || '',
+                        'Crédit en devise d’origine': b.creditDevise || '',
                         'Numero de facture zoho extrait du libellé de ligne': b.numeroZoho || '',
                         'Date d’échéance': l.dateEcheanceFichier ? U.dateFR(l.dateEcheanceFichier) : '',
                         'Nb jours échus': b.nbJoursEchus || '',
+                        // Vos deux colonnes de travail, recalculées par
+                        // l'application : mêmes noms, pour que la feuille
+                        // remplace la vôtre sans rien réécrire.
+                        'Date d’échéance recalculée': l.dateEcheance ? U.dateFR(l.dateEcheance) : '',
+                        'Nb jours échus recalculée': retard == null ? '' : retard,
                         'Nature': { facture: 'Facture', reglement: 'Règlement',
                                     avoir: 'Avoir' }[l.nature] || 'Autre écriture',
                         'Financement': l.financement
@@ -4255,7 +4263,6 @@
                         'Classé par': l.origineClassement || '',
                         'Ce qui l’a décidé': l.preuveClassement || '',
                         'Facture du lettrage': l.numeroFacture || '',
-                        'Échéance retenue': l.dateEcheance ? U.dateFR(l.dateEcheance) : '',
                         'Échéance calculée sur': l.echeanceBase
                             ? (({ dateFacture: 'date de facture', dateDebutFormation: 'début de formation',
                                   dateFinFormation: 'fin de formation',
@@ -4273,11 +4280,11 @@
                         'Date de facture (facturation)': l.dateFacturation ? U.dateFR(l.dateFacturation) : '',
                         'Date de facture postérieure à la fin de formation': b.facturePosterieure || '',
                         'Mandat gocardless - Montant PAID': b.mandatPaid || '',
+                        'Mandat gocardless - Etat du mandat': b.mandatEtat || '',
                         'N° de l’avoir apparenté': b.avoirApparente || '',
                         'Commentaire': b.commentaire || '',
                         'Statut sellsy': b.statutSellsy || '',
-                        'Jours de retard': retard == null ? '' : retard,
-                        'Tranche': ((R.bucketFor(retard) || {}).label) || '',
+                        'Tranche d’ancienneté': ((R.bucketFor(retard) || {}).label) || '',
                     };
                 })), 'Grand livre');
         }
