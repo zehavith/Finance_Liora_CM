@@ -261,6 +261,29 @@ Les intitulés sont reconnus comme à l'export : `convention signé ?`,
 `Numero` pour la facture — cet intitulé étant tranché sur les valeurs, comme
 `Name`, puisqu'il désigne ailleurs un rang ou un identifiant interne.
 
+### Verser une pièce, ou un message, dans un dossier
+
+L'onglet *Documents* permet d'ajouter à un dossier ce que l'extraction n'a pas
+pu ramener. Deux cas, distingués par l'extension du fichier :
+
+**Une pièce** — relevé comptable, convention signée, facture, mise en demeure.
+Elle est rangée dans le sous-répertoire `pieces-ajoutees` et reprise dans la
+note, sous sa nature. La note dit ce qu'elle vaut : ces pièces **établissent la
+créance**, elles ne démontrent pas qu'elles ont été transmises au débiteur —
+à la différence de celles extraites des messages.
+
+**Un message téléchargé** (`.eml`). Il reçoit le traitement des autres pièces :
+`.eml` conservé, PDF imprimé, pièces jointes extraites, ligne ajoutée à
+`index.csv`. C'est ce qui le rend citable au même titre. Il prend le **numéro
+suivant**, même si sa date est antérieure : un numéro de pièce déjà attribué ne
+change jamais de sens, une note ou un courrier pouvant déjà le citer. Un
+message déjà présent au dossier est refusé plutôt que compté deux fois.
+
+Dans les deux cas, **la note de synthèse est refaite aussitôt**, à partir de
+l'index et des `.eml` conservés — aucun message n'est retéléchargé. Si elle ne
+peut pas l'être, la pièce est rangée quand même et la note se refera au
+prochain export.
+
 ### Ce que le tableau tait, le service le saisit
 
 Trois colonnes de l'onglet *État des dossiers* se remplissent à la main :

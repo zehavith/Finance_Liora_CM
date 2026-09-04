@@ -1007,6 +1007,7 @@ def construire_html(
     note_vue: str = "",
     vues: set[str] | None = None,
     textes: dict[int, str] | None = None,
+    pieces_ajoutees: list[dict] | None = None,
 ) -> str:
     constats = rediger_constats(synthese, date_export)
     contexte = rediger_contexte(dossier, synthese, date_export)
@@ -1165,6 +1166,30 @@ def construire_html(
             + "</ul><p class='chemin'>Ces documents sont stockés dans Monday et n'ont "
             "pas été téléchargés. Rappel : un document produit depuis le tableau "
             "atteste de son existence, pas de sa transmission au débiteur.</p>"
+        )
+
+    # Ce que le service verse lui-même au dossier : relevé comptable,
+    # convention signée, facture. Ces pièces ne viennent pas des messages et
+    # ne prouvent pas la transmission au débiteur — elles établissent la
+    # créance, ce qui n'est pas la même chose et doit se lire comme tel.
+    ajoutees = [p for p in (pieces_ajoutees or []) if p.get("fichier")]
+    if ajoutees:
+        par_nature: dict[str, list[str]] = {}
+        for piece in ajoutees:
+            nature = (piece.get("nature") or "Pièce versée").strip()
+            par_nature.setdefault(nature, []).append(piece.get("fichier", ""))
+        bloc_pieces += "".join(
+            f"<p class='groupe'>{html.escape(nature)}</p><ul class='constats'>"
+            + "".join(f"<li>{html.escape(nom)}</li>" for nom in noms)
+            + "</ul>"
+            for nature, noms in par_nature.items()
+        )
+        bloc_pieces += (
+            "<p class='chemin'>Ces pièces ont été versées au dossier par le "
+            "service et rangées dans le sous-répertoire "
+            "<b>pieces-ajoutees</b>. Elles établissent la créance ; à la "
+            "différence des pièces extraites des messages, elles ne "
+            "démontrent pas qu'elles ont été transmises au débiteur.</p>"
         )
 
     if not bloc_pieces:

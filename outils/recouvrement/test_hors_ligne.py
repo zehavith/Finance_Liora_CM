@@ -2284,6 +2284,109 @@ def test_colonnes_miroir_monday() -> None:
              "l'adresse d'une colonne miroir atteint la grille")
 
 
+def test_pieces_versees() -> None:
+    """Pièces versées à la main, et messages téléchargés ajoutés au dossier."""
+    print("\nPièces versées dans un dossier")
+
+    import export_mails  # noqa: PLC0415
+    import suivi as module_suivi  # noqa: PLC0415
+    import synthese as module_synthese  # noqa: PLC0415
+    from dossiers import Dossier  # noqa: PLC0415
+
+    donnees: dict[str, dict] = {}
+    module_suivi.ajouter_piece(donnees, "FACT-1", "Relevé comptable", "grand-livre.pdf")
+    module_suivi.ajouter_piece(donnees, "FACT-1", "Facture", "FACT-1.pdf")
+    verifier(len(donnees["FACT-1"]["pieces"]) == 2, "deux pièces inscrites")
+
+    # Reverser le même fichier remplace la ligne : c'est ce que fait le
+    # disque, la liste doit dire la même chose.
+    module_suivi.ajouter_piece(donnees, "FACT-1", "Convention de formation",
+                               "grand-livre.pdf")
+    pieces = donnees["FACT-1"]["pieces"]
+    verifier(len(pieces) == 2, f"un même fichier n'est pas doublé ({len(pieces)})")
+    verifier(pieces[-1]["nature"] == "Convention de formation",
+             "et sa nature est celle du dernier dépôt")
+
+    try:
+        module_suivi.ajouter_piece(donnees, "FACT-1", "Bordereau", "x.pdf")
+        verifier(False, "une nature inconnue est refusée")
+    except ValueError:
+        verifier(True, "une nature inconnue est refusée")
+
+    module_suivi.retirer_piece(donnees, "FACT-1", "FACT-1.pdf")
+    verifier([p["fichier"] for p in donnees["FACT-1"]["pieces"]] == ["grand-livre.pdf"],
+             "une pièce retirée disparaît de la liste")
+
+    # La note les reprend, dans une rubrique qui dit ce qu'elles valent.
+    html = module_synthese.construire_html(
+        dossier=Dossier(reference="FACT-1", nom="A", emails=["a@b.fr"],
+                        factures=["FACT-1"]),
+        boites=["billing@liora.io"], lignes=[],
+        synthese=module_synthese.analyser([], {}),
+        date_export=datetime(2026, 3, 1, tzinfo=timezone(timedelta(hours=1))),
+        pieces_ajoutees=[{"nature": "Relevé comptable", "fichier": "grand-livre.pdf"}],
+    )
+    verifier("grand-livre.pdf" in html and "Relevé comptable" in html,
+             "la pièce versée figure dans la note")
+    verifier("ne démontrent pas qu'elles ont été transmises" in html,
+             "et la note dit ce qu'elle ne prouve pas")
+
+    # Un message téléchargé rejoint les échanges, avec son numéro de pièce.
+    with tempfile.TemporaryDirectory() as repertoire:
+        rep = Path(repertoire) / "dossier"
+        rep.mkdir()
+        brut = (
+            "From: debiteur@exemple.fr\r\n"
+            "To: recouvrement@liora.io\r\n"
+            "Subject: Re: votre facture\r\n"
+            "Date: Wed, 12 Mar 2025 10:22:00 +0100\r\n"
+            "Message-ID: <depose@exemple.fr>\r\n"
+            "Content-Type: text/plain; charset=utf-8\r\n\r\n"
+            "Je conteste le montant reclame.\r\n"
+        ).encode("utf-8")
+
+        ligne = export_mails.verser_message(
+            rep, brut,
+            Dossier(reference="FACT-1", nom="A", emails=["debiteur@exemple.fr"],
+                    factures=["FACT-1"]),
+            {"liora.io"},
+        )
+        verifier(ligne.piece_n == 1, "le premier message déposé prend le n° 1")
+        verifier(ligne.sens == "reçu",
+                 f"son sens est déduit des domaines maison (obtenu : {ligne.sens})")
+        verifier((rep / "index.csv").exists(), "l'index du dossier est écrit")
+        verifier(any((rep / "mails").glob("*.eml")), "le .eml est conservé")
+
+        # Un second message prend le numéro suivant, même antérieur en date.
+        ancien = brut.replace(b"12 Mar 2025", b"02 Jan 2025").replace(
+            b"<depose@exemple.fr>", b"<ancien@exemple.fr>")
+        deux = export_mails.verser_message(
+            rep, ancien,
+            Dossier(reference="FACT-1", nom="A", emails=["debiteur@exemple.fr"],
+                    factures=["FACT-1"]),
+            {"liora.io"},
+        )
+        verifier(deux.piece_n == 2,
+                 "un numéro déjà attribué ne change jamais de sens")
+
+        # Le même message deux fois : refusé, plutôt que compté deux fois.
+        try:
+            export_mails.verser_message(
+                rep, brut,
+                Dossier(reference="FACT-1", nom="A", emails=["debiteur@exemple.fr"],
+                        factures=["FACT-1"]),
+                {"liora.io"},
+            )
+            verifier(False, "un message déjà présent est refusé")
+        except ErreurDossiers as exc:
+            verifier("figure déjà" in str(exc), "un message déjà présent est refusé")
+
+        lignes, textes, _b, _c = export_mails.relire_dossier(rep, rep / "index.csv")
+        verifier(len(lignes) == 2, "les deux messages sont relus depuis l'index")
+        verifier(any("conteste" in texte for texte in textes.values()),
+                 "et leur texte est relu depuis le .eml")
+
+
 def test_annuaire_entreprises() -> None:
     """Fiches publiques des débiteurs, et répartition par forme juridique."""
     print("\nAnnuaire des entreprises")
@@ -4491,6 +4594,7 @@ def main() -> int:
     test_recapitulatif_atomique()
     test_colonnes_vides_signalees()
     test_colonnes_miroir_monday()
+    test_pieces_versees()
     test_annuaire_entreprises()
     test_reponses_du_debiteur()
     test_bloc_pieces()

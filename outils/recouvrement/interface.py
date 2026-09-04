@@ -39,11 +39,12 @@ from gmail_api import ErreurGmail  # noqa: E402
 from dossiers import ErreurDossiers  # noqa: E402
 from rendu import moteur_pdf_disponible  # noqa: E402
 import suivi as module_suivi  # noqa: E402
+import synthese as module_synthese  # noqa: E402
 
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "57"
+VERSION = "58"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -392,6 +393,52 @@ def appliquer_complement(chemin: Path) -> dict:
     )
 
 
+def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[bool, str]:
+    """Réécrit la note de synthèse d'un dossier déjà exporté.
+
+    Les pièces et leur texte sont relus dans l'index et les `.eml` conservés :
+    aucun message n'est retéléchargé, et la note reste identique à celle de
+    l'export — augmentée des pièces versées depuis.
+
+    Un échec n'est jamais bloquant : la pièce est rangée dans le dossier de
+    toute façon, et une note non refaite se refait au prochain export.
+    """
+    index = repertoire / "index.csv"
+    if not index.exists():
+        return False, "index du dossier introuvable"
+
+    try:
+        from dossiers import Dossier  # noqa: PLC0415
+
+        lignes, textes, _bases, _cles = export_mails.relire_dossier(repertoire, index)
+        entree = suivi.get(dossier["reference"]) or {}
+        contenu = module_synthese.construire_html(
+            dossier=Dossier(
+                reference=dossier["reference"],
+                nom=dossier.get("nom") or "",
+                emails=[e for e in (dossier.get("emails") or "").split(" | ") if e],
+                factures=[f for f in (dossier.get("factures") or "").split(" | ") if f],
+                montant_du=str(dossier.get("montant_du") or ""),
+                montant_total=str(dossier.get("montant_total") or ""),
+                date_echeance=dossier.get("date_echeance") or "",
+            ),
+            boites=[b for b in (lire_preferences().get("boites") or "").split(",") if b],
+            lignes=lignes,
+            synthese=module_synthese.analyser(lignes, textes),
+            date_export=datetime.now().astimezone(),
+            textes=textes,
+            pieces_ajoutees=entree.get("pieces") or [],
+            vues=set(),
+        )
+    except Exception as exc:  # noqa: BLE001 - jamais bloquant
+        return False, str(exc)
+
+    from rendu import ecrire_pdf  # noqa: PLC0415
+
+    reussi, motif = ecrire_pdf(contenu, repertoire / "synthese.pdf")
+    return bool(reussi), "" if reussi else str(motif)
+
+
 def completer_annuaire(tout_refaire: bool = False) -> dict:
     """Complète les fiches publiques des débiteurs entreprises.
 
@@ -535,6 +582,11 @@ class Gestionnaire(BaseHTTPRequestHandler):
             page = PAGE.replace("__JETON__", JETON)
             page = page.replace("__MOTEUR_PDF__", moteur_pdf_disponible())
             page = page.replace("__VERSION__", VERSION)
+            page = page.replace(
+                "__NATURES_PIECES__",
+                json.dumps(list(module_suivi.NATURES_PIECES), ensure_ascii=False)
+                .replace("<", "\\u003c"),
+            )
             # Déposé une fois, réappliqué ensuite : le dire évite de le
             # redéposer à chaque export « au cas où ».
             retenu = complement_memorise()
@@ -700,6 +752,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/annuaire":
                 self._interroger_annuaire(self._corps_json())
                 return
+            if chemin == "/api/piece":
+                self._verser_piece(self._corps_json())
+                return
         except ValueError as exc:
             self._json(400, {"erreur": str(exc)})
             return
@@ -823,6 +878,95 @@ class Gestionnaire(BaseHTTPRequestHandler):
 
         resultat["memorise"] = nom
         self._json(200, resultat)
+
+    def _verser_piece(self, demande: dict) -> None:
+        """Range une pièce dans le dossier, et refait sa note de synthèse.
+
+        Le fichier est écrit sous le répertoire du dossier, jamais ailleurs :
+        le nom vient de la page, et un nom de fichier n'a pas à pouvoir
+        désigner un chemin.
+        """
+        reference = (demande.get("reference") or "").strip()
+        nature = (demande.get("nature") or "").strip()
+        nom = Path((demande.get("nom") or "").strip()).name
+        if not reference or not nom:
+            raise ValueError("Dossier ou fichier manquant.")
+
+        sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+        dossiers = {d["reference"]: d for d in module_suivi.inventaire(sortie, SUIVI)}
+        if reference not in dossiers:
+            raise ValueError(f"Dossier inconnu : {reference}")
+
+        repertoire = Path(dossiers[reference]["repertoire"])
+        cible = (repertoire / "pieces-ajoutees" / nom).resolve()
+        racine = repertoire.resolve()
+        if racine not in cible.parents:
+            raise ValueError("Nom de fichier refusé.")
+
+        try:
+            octets = base64.b64decode(demande.get("contenu") or "")
+        except ValueError as exc:
+            raise ValueError(f"Fichier illisible : {exc}") from exc
+
+        # Un message téléchargé n'est pas une pièce versée : il rejoint les
+        # échanges du dossier, avec son numéro de pièce, son PDF et ses
+        # pièces jointes. C'est ce qui le rend citable au même titre.
+        if Path(nom).suffix.lower() == ".eml":
+            versee = self._verser_message(reference, repertoire,
+                                          dossiers[reference], octets)
+        else:
+            cible = (repertoire / "pieces-ajoutees" / nom).resolve()
+            if repertoire.resolve() not in cible.parents:
+                raise ValueError("Nom de fichier refusé.")
+            cible.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                cible.write_bytes(octets)
+            except OSError as exc:
+                raise ValueError(f"Écriture impossible : {exc}") from exc
+
+            donnees = module_suivi.charger(SUIVI)
+            module_suivi.ajouter_piece(donnees, reference, nature, nom)
+            module_suivi.enregistrer(SUIVI, donnees)
+            versee = {"piece": None}
+
+        refaite, motif = _refaire_synthese(repertoire, dossiers[reference],
+                                           module_suivi.charger(SUIVI))
+        self._json(200, {"fichier": nom, "nature": nature,
+                         "synthese_refaite": refaite, "motif": motif,
+                         **versee})
+
+    def _verser_message(self, reference: str, repertoire: Path,
+                        dossier: dict, octets: bytes) -> dict:
+        from dossiers import Dossier  # noqa: PLC0415
+
+        domaines = {
+            d.strip().lower()
+            for d in (lire_preferences().get("domaines") or "").split(",")
+            if d.strip()
+        }
+        domaines |= {
+            b.split("@")[-1].strip().lower()
+            for b in (lire_preferences().get("boites") or "").split(",")
+            if "@" in b
+        }
+        try:
+            ligne = export_mails.verser_message(
+                repertoire,
+                octets,
+                Dossier(
+                    reference=reference,
+                    nom=dossier.get("nom") or "",
+                    emails=[e for e in (dossier.get("emails") or "").split(" | ") if e],
+                    factures=[f for f in (dossier.get("factures") or "").split(" | ") if f],
+                ),
+                domaines,
+            )
+        except ErreurDossiers as exc:
+            raise ValueError(str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 - remonté tel quel à l'écran
+            raise ValueError(f"Message illisible : {exc}") from exc
+        return {"piece": ligne.piece_n, "sens": ligne.sens,
+                "objet": ligne.objet}
 
     def _interroger_annuaire(self, demande: dict) -> None:
         self._json(200, completer_annuaire(
@@ -1129,6 +1273,13 @@ table.donnees th.etroite{width:26px}
   font-size:13px;color:var(--texte-2);cursor:pointer;white-space:nowrap}
 .depot-complement:hover{border-color:var(--texte-3);color:var(--texte)}
 .depot-complement input{display:none}
+#tableDocuments select.nature{font-size:11px;padding:3px 5px;max-width:135px}
+.depot-piece{display:inline-block;margin-left:5px;font-size:11.5px;
+  color:var(--accent);cursor:pointer;white-space:nowrap}
+.depot-piece:hover{text-decoration:underline}
+.depot-piece input{display:none}
+.versees{margin-top:5px;font-size:11px;color:var(--texte-3)}
+.versees span{display:block}
 .retenu{font-size:11.5px;color:var(--texte-3);max-width:230px}
 .secondaire.danger{border-color:rgba(239,68,68,.4);color:#ef6a6a}
 .secondaire.danger:hover{border-color:#ef6a6a;background:rgba(239,68,68,.08)}
@@ -2051,6 +2202,7 @@ document.querySelectorAll("nav.principal button").forEach((bouton) => {
 // ============================================================
 let DOSSIERS = [], STATUTS = [], AGREGATS = null, COURBE = null, SERVEUR = null;
 const LIGNES_A_L_ECRAN = 600;
+const NATURES_PIECES = __NATURES_PIECES__;
 let ENTREPRISES = null, ANNUAIRE_CONNU = false, ANNUAIRE_MANQUANTS = 0;
 // Une seule tentative par ouverture : si le service est injoignable, insister
 // a chaque rechargement de la liste ne le rendrait pas joignable.
@@ -2263,6 +2415,60 @@ function heuresSuivies(d) {
   return "—";
 }
 
+// Le releve comptable, la convention, la facture : ce que le service verse
+// lui-meme au dossier. Ces pieces etablissent la creance ; elles ne prouvent
+// pas la transmission au debiteur, et la note le dit.
+function piecesVersees(d) {
+  const pieces = d.pieces || [];
+  const liste = pieces.length
+    ? `<div class="versees">${pieces.map((p) =>
+        `<span title="${echapper(p.nature)} — ajoutée le ${echapper(p.ajoute_le || "")}">`
+        + `${echapper(p.fichier)}</span>`).join("")}</div>`
+    : "";
+  return `
+    <select class="nature" data-ref="${echapper(d.reference)}">
+      ${NATURES_PIECES.map((n) =>
+        `<option value="${echapper(n)}">${echapper(n)}</option>`).join("")}
+    </select>
+    <label class="depot-piece" title="Une pièce (PDF, image…) ou un message téléchargé (.eml)">Ajouter…
+      <input type="file" class="fichier-piece" data-ref="${echapper(d.reference)}"
+             accept=".pdf,.eml,.png,.jpg,.jpeg,.csv,.xlsx,.docx,.txt" />
+    </label>${liste}`;
+}
+
+async function verserPiece(evenement) {
+  const champ = evenement.target;
+  const fichier = champ.files[0];
+  if (!fichier) return;
+  const reference = champ.dataset.ref;
+  champ.value = "";
+
+  const nature = document.querySelector(
+    `select.nature[data-ref="${CSS.escape(reference)}"]`).value;
+
+  try {
+    const contenu = await new Promise((resoudre, rejeter) => {
+      const lecteur = new FileReader();
+      lecteur.onload = () => resoudre(lecteur.result.split(",")[1]);
+      lecteur.onerror = () => rejeter(new Error("Fichier illisible."));
+      lecteur.readAsDataURL(fichier);
+    });
+    const r = await api("/api/piece", {
+      reference: reference, nature: nature,
+      nom: fichier.name, contenu: contenu,
+    });
+    afficherBandeau(true, (r.piece
+        ? `Message ajouté au dossier ${reference} en pièce n° ${r.piece}`
+          + ` (${r.sens}).`
+        : `${r.nature} versée au dossier ${reference}.`)
+      + (r.synthese_refaite
+         ? " La note de synthèse a été refaite."
+         : ` La note n'a pas pu être refaite (${r.motif}) : elle le sera au`
+           + " prochain export."));
+    chargerDossiers();
+  } catch (erreur) { afficherBandeau(false, erreur.message); }
+}
+
 function rendreDocuments() {
   if (!DOSSIERS.length) { $("tableDocuments").innerHTML = messageVide(); return; }
 
@@ -2287,14 +2493,19 @@ function rendreDocuments() {
       <td>${d.a_synthese
         ? `<a class="lien" data-ouvrir="${echapper(d.repertoire)}/synthese.pdf">Note de synthèse</a>`
         : '<span class="lien inactif">pas de note</span>'}</td>
+      <td>${piecesVersees(d)}</td>
       <td><a class="lien" data-ouvrir="${echapper(d.repertoire)}">Ouvrir le répertoire</a></td>
     </tr>`).join("");
 
   $("tableDocuments").innerHTML = `<table class="donnees">
     <tr><th>Référence</th><th>Débiteur</th><th>Mails</th><th>PJ</th>
         <th>Convention</th><th>Diplôme</th><th class="num">Heures</th>
-        <th>Période</th><th>Sous-dossiers</th><th>Document</th><th></th></tr>
+        <th>Période</th><th>Sous-dossiers</th><th>Document</th>
+        <th>Pièces versées</th><th></th></tr>
     ${lignes}</table>`;
+
+  $("tableDocuments").querySelectorAll(".fichier-piece").forEach((champ) =>
+    champ.addEventListener("change", verserPiece));
 
   $("tableDocuments").querySelectorAll("[data-ouvrir]").forEach((lien) =>
     lien.addEventListener("click", async () => {

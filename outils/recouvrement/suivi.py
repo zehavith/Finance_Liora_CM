@@ -384,6 +384,9 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 "convention_signee": _oui_non(
                     etat.get("convention") or rangee.get("convention_signee")),
                 "diplome": _oui_non(etat.get("diplome") or rangee.get("diplome")),
+                # Les pièces versées à la main voyagent avec le dossier : la
+                # page les liste, et la note les reprend.
+                "pieces": [dict(p) for p in (etat.get("pieces") or [])],
                 "convention_saisie": bool(etat.get("convention")),
                 "diplome_saisi": bool(etat.get("diplome")),
                 "heures_theoriques": (
@@ -720,6 +723,54 @@ def _cle_facture(valeur: str) -> str:
     rapprochement ne doit pas échouer sur un tiret.
     """
     return "".join(c for c in str(valeur or "").lower() if c.isalnum())
+
+
+# Ce que le service verse lui-meme au dossier. La nature est choisie dans
+# cette liste plutot que saisie : elle range les pieces dans la note, et deux
+# orthographes du meme mot y feraient deux rubriques.
+NATURES_PIECES = (
+    "Relevé comptable",
+    "Convention de formation",
+    "Facture",
+    "Mise en demeure",
+    "Autre pièce",
+)
+
+
+def ajouter_piece(
+    donnees: dict[str, dict], reference: str, nature: str, fichier: str
+) -> dict:
+    """Inscrit au suivi une pièce versée à la main dans un dossier."""
+    if nature not in NATURES_PIECES:
+        raise ValueError(f"Nature de pièce inconnue : {nature}")
+    if not fichier.strip():
+        raise ValueError("Nom de fichier manquant.")
+
+    entree = dict(donnees.get(reference) or {})
+    pieces = [dict(p) for p in (entree.get("pieces") or [])]
+    # Reverser deux fois le même fichier remplace la ligne au lieu de la
+    # doubler : c'est ce que fait le disque, la liste doit dire la même chose.
+    pieces = [p for p in pieces if p.get("fichier") != fichier]
+    pieces.append({
+        "nature": nature,
+        "fichier": fichier,
+        "ajoute_le": datetime.now().strftime("%d/%m/%Y"),
+    })
+    entree["pieces"] = pieces
+    entree["maj"] = datetime.now().strftime("%d/%m/%Y %H:%M")
+    donnees[reference] = entree
+    return entree
+
+
+def retirer_piece(donnees: dict[str, dict], reference: str, fichier: str) -> dict:
+    """Retire une pièce du suivi. Le fichier lui-même est effacé par l'appelant."""
+    entree = dict(donnees.get(reference) or {})
+    entree["pieces"] = [
+        dict(p) for p in (entree.get("pieces") or [])
+        if p.get("fichier") != fichier
+    ]
+    donnees[reference] = entree
+    return entree
 
 
 def tout_effacer(

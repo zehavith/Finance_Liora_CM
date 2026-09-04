@@ -754,6 +754,81 @@ def traiter_dossier(
     return resume
 
 
+def verser_message(
+    repertoire: Path,
+    brut: bytes,
+    dossier: Dossier,
+    domaines: set[str],
+    boite: str = "déposé à la main",
+) -> LigneIndex:
+    """Verse un message téléchargé (.eml) dans un dossier déjà exporté.
+
+    Il reçoit le traitement des autres pièces — .eml conservé, PDF imprimé,
+    pièces jointes extraites, ligne d'index — sans quoi il ne serait pas
+    citable au même titre.
+
+    Il prend le numéro suivant, même si sa date est antérieure : un numéro de
+    pièce déjà attribué ne doit jamais changer de sens, une note ou un
+    courrier pouvant déjà le citer.
+    """
+    chemin_index = repertoire / "index.csv"
+    lignes, _textes, _bases, cles = (
+        relire_dossier(repertoire, chemin_index)
+        if chemin_index.exists()
+        else ([], {}, {}, set())
+    )
+
+    message = lire_message({"id": "", "threadId": "", "internalDate": None}, brut)
+    message.boites = [boite]
+
+    if message.cle_dedoublonnage in cles:
+        raise ErreurDossiers(
+            "Ce message figure déjà au dossier : son identifiant y est "
+            "présent. Rien n'a été ajouté."
+        )
+
+    numero = max((ligne.piece_n for ligne in lignes), default=0) + 1
+    base = nom_de_base(message, numero)
+    dossier_mails = repertoire / "mails"
+    dossier_pj = repertoire / "pieces-jointes"
+
+    chemin_eml = ecrire_eml(message, dossier_mails, base)
+    contenu = construire_html_message(
+        message, numero, dossier.reference or dossier.nom, boite, maintenant()
+    )
+    chemin_pdf = dossier_mails / f"{base}.pdf"
+    pdf_ok, _moteur = ecrire_pdf(contenu, chemin_pdf)
+    pieces_ecrites = ecrire_pieces_jointes(message, dossier_pj, base)
+
+    recherchable = message.texte_recherchable
+    ligne = LigneIndex(
+        piece_n=numero,
+        date=message.date,
+        sens=_sens_du_message(message, domaines),
+        expediteur=message.expediteur,
+        destinataires=message.destinataires,
+        copie=message.copie,
+        objet=message.objet,
+        nb_pieces_jointes=len(message.pieces_jointes),
+        pieces_jointes=" | ".join(pj.nom for pj in message.pieces_jointes),
+        critere="déposé à la main",
+        factures_concernees=" | ".join(dossier.factures_citees(recherchable)),
+        adresses_concernees=" | ".join(dossier.adresses_citees(message.parties)),
+        boites=boite,
+        fichier_pdf=chemin_relatif(
+            chemin_pdf if pdf_ok else chemin_pdf.with_suffix(".html"), repertoire
+        ),
+        fichier_eml=chemin_relatif(chemin_eml, repertoire),
+        dossier_pieces_jointes=(
+            chemin_relatif(dossier_pj / base, repertoire) if pieces_ecrites else ""
+        ),
+        thread_id=message.thread_id,
+        message_id=message.message_id,
+    )
+    ecrire_index_dossier(chemin_index, [*lignes, ligne])
+    return ligne
+
+
 def relire_dossier(
     repertoire: Path, chemin_index: Path
 ) -> tuple[list[LigneIndex], dict[int, str], dict[int, str], set[str]]:
