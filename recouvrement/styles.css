@@ -894,6 +894,8 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
     padding: 2rem 1rem;
 }
 .modal-overlay[hidden] { display: none; }
+.modal.modal-large { width: min(1500px, 98vw); }
+.modale-seg { margin-bottom: 12px; }
 .modal {
     background: var(--bg-secondary);
     border: 1px solid var(--border-hover);
@@ -901,6 +903,8 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
     box-shadow: var(--shadow-lg);
     width: min(1000px, 100%);
     max-height: 86vh;
+    /* Une fenêtre qui montre le grand livre a besoin de toute la largeur :
+       dix colonnes ne tiennent pas dans mille pixels. */
     display: flex;
     flex-direction: column;
     animation: modalIn 0.18s ease-out;

@@ -92,7 +92,11 @@
         }, duree || 4500);
     }
 
-    function modal(title, bodyHtml, actions) {
+    function modal(title, bodyHtml, actions, opts) {
+        const cadre = $('#modal-overlay .modal');
+        // Chaque ouverture repart d'une fenêtre de taille normale : seule
+        // celle qui le demande s'élargit.
+        if (cadre) cadre.classList.toggle('modal-large', !!(opts && opts.large));
         $('#modal-title').textContent = title;
         $('#modal-body').innerHTML = bodyHtml;
         const foot = $('#modal-foot');

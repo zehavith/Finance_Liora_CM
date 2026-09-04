@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.40.0';
+    const VERSION = '2.41.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -3656,22 +3656,159 @@
         });
     }
 
+    /**
+     * Ce qu'il y a derrière une ligne de la balance comptable.
+     *
+     * Trois lectures du même dispositif, parce qu'on n'y cherche pas la même
+     * chose : les comptes clients — qui doit, et depuis quand —, les créances
+     * une à une, et toutes les écritures du grand livre, factures et
+     * règlements confondus. Chacune s'exporte telle qu'elle est à l'écran.
+     */
     function montrerCreancesGL(row) {
-        const liste = (row.creances || []).slice()
-            .sort((a, b) => Math.abs(b.resteDu) - Math.abs(a.resteDu)).slice(0, 300);
-        U.modal(`${row.label} — ${U.euros(row.total)} sur ${U.nombre(row.nb)} créances`,
-            U.table([
+        const vue = state.ui.vueModaleGL || 'comptes';
+        const creances = (row.creances || []).slice()
+            .sort((a, b) => Math.abs(b.resteDu) - Math.abs(a.resteDu));
+        const cles = new Set(creances.map(c => c.compte).filter(Boolean));
+        const ecritures = ((state.glEcritures && state.glEcritures.lignes) || [])
+            .filter(l => l.financement === row.financement
+                || (!row.financement && cles.has(l.compte) && !l.financement));
+
+        const corps = document.createElement('div');
+        const seg = `
+            <div class="seg seg-sm modale-seg" id="seg-modale-gl">
+                <button class="seg-btn${vue === 'comptes' ? ' active' : ''}" data-vue="comptes">Par compte client</button>
+                <button class="seg-btn${vue === 'creances' ? ' active' : ''}" data-vue="creances">Créances (${U.nombre(creances.length)})</button>
+                <button class="seg-btn${vue === 'ecritures' ? ' active' : ''}" data-vue="ecritures">Écritures du grand livre (${U.nombre(ecritures.length)})</button>
+            </div>`;
+
+        let table = '';
+        if (vue === 'comptes') {
+            table = U.table(colonnesComptesGL(), comptesDuFinancement(creances),
+                { vide: 'Aucun compte.' });
+        } else if (vue === 'creances') {
+            table = U.table([
                 { key: 'numero', label: 'Facture', format: v => v ? `<span class="mono">${U.escapeHtml(v)}</span>` : '<span class="pill pill-muted">sans numéro</span>' },
                 { key: 'tiers', label: 'Client', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'compte', label: 'Compte', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
                 { key: 'resteDu', label: 'Reste dû', align: 'right', format: U.euros },
                 { key: 'retardJours', label: 'Retard', align: 'right', format: U.pastilleRetard },
                 { key: 'dateEcheance', label: 'Échéance', align: 'center', format: U.dateFR },
                 { key: 'origineClassement', label: 'Classé par', format: v => U.escapeHtml(v || '—') },
-                { key: 'montantPreleve', label: 'Prélevé', align: 'right',
-                  title: 'Somme des prélèvements GoCardless réellement sortis chez ce client — rejets exclus',
-                  format: (v, r) => v ? `${U.euros(v)}<span class="fv-hint"> · ${U.nombre(r.nbPrelevements)}</span>` : '—' },
-            ], liste, { vide: 'Aucune créance.' }),
-            [{ label: 'Fermer', primary: true }]);
+                { key: 'preuveClassement', label: 'Ce qui l’a décidé', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+            ], creances.slice(0, 400), { vide: 'Aucune créance.' });
+        } else {
+            table = U.table([
+                { key: 'date', label: 'Date', align: 'center', format: U.dateFR },
+                { key: 'journal', label: 'Journal', align: 'center', format: v => U.escapeHtml(v || '—') },
+                { key: 'numero', label: 'Pièce', format: v => v ? `<span class="mono">${U.escapeHtml(v)}</span>` : '—' },
+                { key: 'tiers', label: 'Client', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'libelle', label: 'Libellé', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'debit', label: 'Débit', align: 'right', format: v => v ? U.euros(v) : '<span class="ag-zero">·</span>' },
+                { key: 'credit', label: 'Crédit', align: 'right', format: v => v ? U.euros(v) : '<span class="ag-zero">·</span>' },
+                { key: 'lettre', label: 'Lettrage', align: 'center', format: v => v === GL.POOL_NON_LETTRE
+                    ? '<span class="pill pill-muted">non lettré</span>' : U.escapeHtml(v || '—') },
+                { key: 'nature', label: 'Nature', align: 'center', format: v => ({
+                    facture: 'Facture', reglement: 'Règlement', avoir: 'Avoir' })[v] || 'Autre' },
+                { key: 'origineClassement', label: 'Classé par', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+            ], ecritures.slice(0, 600), { vide: 'Aucune écriture.' });
+        }
+
+        const total = vue === 'ecritures'
+            ? `${U.nombre(ecritures.length)} écritures · ${U.euros(X.sum(ecritures, l => (l.debit || 0) - (l.credit || 0)))} de solde`
+            : `${U.euros(row.total)} sur ${U.nombre(row.nb)} créances`;
+        corps.innerHTML = seg
+            + (vue === 'ecritures' && ecritures.length > 600
+                ? `<p class="fv-hint">600 premières écritures affichées sur ${U.nombre(ecritures.length)} — l'export les donne toutes.</p>` : '')
+            + (vue === 'creances' && creances.length > 400
+                ? `<p class="fv-hint">400 premières créances affichées sur ${U.nombre(creances.length)} — l'export les donne toutes.</p>` : '')
+            + table;
+
+        const body = U.modal(`${row.label} — ${total}`, corps.innerHTML, [
+            { label: 'Exporter cette vue', onClick: () => exporterVueGL(row, vue, creances, ecritures), close: false },
+            { label: 'Fermer', primary: true },
+        ], { large: true });
+        $$('#seg-modale-gl .seg-btn', body).forEach(b => b.addEventListener('click', () => {
+            state.ui.vueModaleGL = b.dataset.vue;
+            montrerCreancesGL(row);
+        }));
+    }
+
+    /** Les comptes clients d'un dispositif, avec leur ancienneté. */
+    function comptesDuFinancement(creances) {
+        const parCompte = new Map();
+        for (const c of creances) {
+            const cle = c.compte || '(sans compte)';
+            let g = parCompte.get(cle);
+            if (!g) {
+                g = { compte: cle, tiers: c.tiers || '', nb: 0, resteDu: 0, echu: 0,
+                      plusAncienne: null, retardMax: null };
+                for (const b of R.AGING_BUCKETS) g[b.key] = 0;
+                parCompte.set(cle, g);
+            }
+            g.nb++;
+            g.resteDu += c.resteDu || 0;
+            if ((c.retardJours || 0) > 0) g.echu += c.resteDu || 0;
+            if (c.bucket && c.bucket !== 'crediteur') g[c.bucket] = (g[c.bucket] || 0) + (c.resteDu || 0);
+            const d = c.dateEcheance || c.dateFacture;
+            if (d && (!g.plusAncienne || d < g.plusAncienne)) g.plusAncienne = d;
+            if (c.retardJours != null && (g.retardMax == null || c.retardJours > g.retardMax)) {
+                g.retardMax = c.retardJours;
+            }
+        }
+        return [...parCompte.values()].sort((a, b) => Math.abs(b.resteDu) - Math.abs(a.resteDu));
+    }
+
+    function colonnesComptesGL() {
+        return [
+            { key: 'tiers', label: 'Client', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+            { key: 'compte', label: 'Compte', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
+            { key: 'nb', label: 'Créances', align: 'right', format: U.nombre },
+            { key: 'resteDu', label: 'Reste dû', align: 'right', format: v => `<strong>${U.euros(v)}</strong>` },
+            { key: 'echu', label: 'Dont échu', align: 'right', format: U.euros },
+            ...R.AGING_BUCKETS.filter(b => b.key !== 'nonEchu').map(b => ({
+                key: b.key, label: b.label, align: 'right',
+                format: v => v ? U.eurosCourt(v) : '<span class="ag-zero">·</span>', cls: () => 'ag-col',
+            })),
+            { key: 'retardMax', label: 'Retard max', align: 'right', format: U.pastilleRetard },
+            { key: 'plusAncienne', label: 'Plus ancienne échéance', align: 'center', format: U.dateFR },
+        ];
+    }
+
+    /** L'export de ce que la fenêtre montre, tel quel. */
+    function exporterVueGL(row, vue, creances, ecritures) {
+        const wb = XLSX.utils.book_new();
+        const nom = (row.label || 'financement').replace(/[^\w -]+/g, '').slice(0, 24);
+        if (vue === 'ecritures') {
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ecritures.map(l => ({
+                'Date': l.date ? U.dateFR(l.date) : '', 'Journal': l.journal || '',
+                'N° de compte': l.compte, 'Client': l.tiers, 'Pièce': l.numero || '',
+                'Libellé': l.libelle || '', 'Lettrage': l.lettre || '',
+                'Débit': arrondi(l.debit || 0), 'Crédit': arrondi(l.credit || 0),
+                'Nature': ({ facture: 'Facture', reglement: 'Règlement', avoir: 'Avoir' })[l.nature] || 'Autre',
+                'Financement': l.financement ? R.getRule(l.financement, state.rules).label : 'À classer',
+                'Classé par': l.origineClassement || '', 'Ce qui l’a décidé': l.preuveClassement || '',
+                'Échéance retenue': l.dateEcheance ? U.dateFR(l.dateEcheance) : '',
+            }))), 'Écritures');
+        } else if (vue === 'creances') {
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(creances.map(c => ({
+                'Facture': c.numero || '', 'Client': c.tiers, 'N° de compte': c.compte,
+                'Reste dû': arrondi(c.resteDu), 'Retard (jours)': c.retardJours == null ? '' : c.retardJours,
+                'Tranche': ((R.bucketFor(c.retardJours) || {}).label) || '',
+                'Échéance': c.dateEcheance ? U.dateFR(c.dateEcheance) : '',
+                'Classé par': c.origineClassement || '', 'Ce qui l’a décidé': c.preuveClassement || '',
+            }))), 'Créances');
+        } else {
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+                comptesDuFinancement(creances).map(g => {
+                    const o = { 'Client': g.tiers, 'N° de compte': g.compte, 'Créances': g.nb,
+                        'Reste dû': arrondi(g.resteDu), 'Dont échu': arrondi(g.echu) };
+                    for (const b of R.AGING_BUCKETS) o[b.label] = arrondi(g[b.key] || 0);
+                    o['Retard max (jours)'] = g.retardMax == null ? '' : g.retardMax;
+                    o['Plus ancienne échéance'] = g.plusAncienne ? U.dateFR(g.plusAncienne) : '';
+                    return o;
+                })), 'Comptes');
+        }
+        XLSX.writeFile(wb, `${nom}_${vue}_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
 
     function rendreComparaisonAging() {
@@ -3908,6 +4045,42 @@
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
             aClasser.length ? aClasser.map(ligneCreance)
                 : [{ 'Facture': 'Aucune créance à classer' }]), 'À classer');
+
+        // ── La balance âgée détaillée, avec ses groupes déroulants ──
+        // Une ligne par financement, et sous elle ses comptes clients, repliés.
+        // C'est la forme du classeur de trésorerie : on ouvre CPF et on voit
+        // qui doit quoi, et depuis quand.
+        {
+            const entetes = ['Financement', 'Clé', 'Restant dû', 'Total échu']
+                .concat(buckets.filter(b => b.key !== 'nonEchu').map(b => b.label))
+                .concat(['Non échu', 'Solde créditeur', 'Nb', 'Retard max (jours)', 'Plus ancienne échéance']);
+            const aoa = [entetes];
+            const niveaux = [{ level: 0 }];
+            const parFin = GL.balanceAgee(creances, ref, state.rules, 'financement');
+            for (const r of parFin.rows) {
+                const ligne = [r.label, '', arrondi(r.total), arrondi(r.echu)]
+                    .concat(buckets.filter(b => b.key !== 'nonEchu').map(b => arrondi(r.buckets[b.key])))
+                    .concat([arrondi(r.nonEchu), arrondi(r.crediteur || 0), r.nb, '', '']);
+                aoa.push(ligne);
+                niveaux.push({ level: 0 });
+                for (const g of comptesDuFinancement(r.creances || [])) {
+                    aoa.push([r.label, (g.compte + ' - ' + (g.tiers || '')).trim().replace(/ -$/, ''),
+                        arrondi(g.resteDu), arrondi(g.echu)]
+                        .concat(buckets.filter(b => b.key !== 'nonEchu').map(b => arrondi(g[b.key] || 0)))
+                        .concat([arrondi(g.nonEchu || 0), arrondi(g.resteDu < 0 ? g.resteDu : 0), g.nb,
+                            g.retardMax == null ? '' : g.retardMax,
+                            g.plusAncienne ? U.dateFR(g.plusAncienne) : '']));
+                    // Repliés à l'ouverture : c'est le « + » à côté du financement.
+                    niveaux.push({ level: 1, hidden: true });
+                }
+            }
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            ws['!rows'] = niveaux;
+            // Le total du groupe est au-dessus du détail, comme dans votre classeur.
+            ws['!outline'] = { above: true };
+            ws['!cols'] = entetes.map((h, i) => ({ wch: i === 0 ? 26 : i === 1 ? 46 : 14 }));
+            XLSX.utils.book_append_sheet(wb, ws, 'Balance âgée détaillée');
+        }
 
         // ── Toutes les factures du grand livre, soldées comprises ──
         // La balance ne montre que ce qui reste dû ; cette feuille rend compte
