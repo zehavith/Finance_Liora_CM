@@ -44,13 +44,18 @@ import synthese as module_synthese  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "64"
+VERSION = "65"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
 SUIVI = RACINE / "suivi-dossiers.json"
-# Le fichier de suivi tenu a part — convention, diplome, heures — depose une
-# fois puis reapplique apres chaque export.
+# Les fichiers de suivi tenus a part — convention, diplome, heures, mais
+# aussi les exports de facturation qui portent les adresses et les numeros
+# d'un outil precedent. Deposes une fois, reappliques apres chaque export.
+# Plusieurs coexistent : la facturation de Liora est repartie sur deux
+# outils, et n'en retenir qu'un laissait la moitie des dossiers sans adresse.
+COMPLEMENTS = RACINE / "complements-suivi"
+# L'emplacement de la version precedente, qui n'en gardait qu'un seul.
 COMPLEMENT = RACINE / "complement-suivi"
 # Fiches publiques des debiteurs entreprises, conservees pour ne pas
 # reinterroger le service de l'Etat a chaque ouverture.
@@ -291,16 +296,15 @@ class Execution:
                 code, message = 3, str(exc)
             else:
                 message = None
-                complement = complement_memorise()
-                if complement is not None and code == 0:
+                for complement in (complements_memorises() if code == 0 else []):
                     try:
                         bilan = appliquer_complement(complement)
                     except Exception as exc:  # noqa: BLE001 - jamais bloquant
                         self.ajouter(
-                            f"⚠ fichier de suivi non appliqué : {exc}")
+                            f"⚠ {complement.name} non appliqué : {exc}")
                     else:
                         self.ajouter(
-                            f"Fichier de suivi appliqué : {bilan['valeurs']} "
+                            f"{complement.name} appliqué : {bilan['valeurs']} "
                             f"valeur(s) sur {bilan['dossiers']} dossier(s)."
                             + (f" Dont {bilan['adresses']} adresse(s) mail."
                                if bilan.get("adresses") else "")
@@ -374,13 +378,55 @@ def _veiller(serveur) -> None:
             return
 
 
-def complement_memorise() -> Path | None:
-    """Le fichier de suivi déposé une fois, s'il est toujours là."""
+# Un nom de fichier vient de la page : il ne doit pas pouvoir désigner un
+# emplacement hors du répertoire prévu.
+def _nom_sur_disque(nom: str, extension: str) -> str:
+    base = Path(nom or "fichier").stem[:60]
+    propre = "".join(c if c.isalnum() or c in " -_." else "-" for c in base)
+    return (propre.strip(" .-") or "fichier") + extension
+
+
+def complements_memorises() -> list[Path]:
+    """Les fichiers de suivi déposés, dans l'ordre où ils ont été retenus.
+
+    Plusieurs coexistent : Zoho porte les numéros d'origine, Sellsy les
+    adresses, et un dossier n'est complet qu'avec les deux. Redéposer un
+    fichier du même nom le remplace, ce qui est la façon de le mettre à jour.
+    """
+    _migrer_complement_unique()
+    if not COMPLEMENTS.is_dir():
+        return []
+    retenus = (lire_preferences().get("complements") or [])
+    fichiers = {chemin.name: chemin for chemin in COMPLEMENTS.iterdir()
+                if chemin.is_file()}
+    ordonnes = [fichiers.pop(nom) for nom in retenus if nom in fichiers]
+    return ordonnes + sorted(fichiers.values())
+
+
+def _migrer_complement_unique() -> None:
+    """Reprend le fichier retenu par la version précédente."""
     nom = (lire_preferences().get("complement") or "").strip()
     if not nom:
-        return None
-    chemin = RACINE / nom
-    return chemin if chemin.exists() else None
+        return
+    ancien = RACINE / nom
+    memoriser_preferences({"complement": ""})
+    if not ancien.exists():
+        return
+    COMPLEMENTS.mkdir(parents=True, exist_ok=True)
+    destination = COMPLEMENTS / ancien.name
+    try:
+        ancien.replace(destination)
+    except OSError:
+        return
+    retenus = list(lire_preferences().get("complements") or [])
+    if destination.name not in retenus:
+        memoriser_preferences({"complements": [*retenus, destination.name]})
+
+
+def complement_memorise() -> Path | None:
+    """Le premier fichier de suivi retenu, s'il y en a un."""
+    retenus = complements_memorises()
+    return retenus[0] if retenus else None
 
 
 def appliquer_complement(chemin: Path) -> dict:
@@ -618,15 +664,18 @@ class Gestionnaire(BaseHTTPRequestHandler):
             )
             # Déposé une fois, réappliqué ensuite : le dire évite de le
             # redéposer à chaque export « au cas où ».
-            retenu = complement_memorise()
+            retenus = complements_memorises()
             page = page.replace(
                 "__COMPLEMENT__",
                 _attribut(
-                    "Fichier de suivi retenu — réappliqué après chaque export. "
-                    "Déposez-en un autre pour le remplacer."
-                    if retenu is not None
-                    else "Convention, diplôme, heures : déposé une fois, "
-                         "réappliqué après chaque export."
+                    "Fichiers retenus, réappliqués après chaque export : "
+                    + ", ".join(c.name for c in retenus)
+                    + ". Déposez-en d'autres : ils s'ajoutent. Un fichier du "
+                      "même nom remplace le précédent."
+                    if retenus
+                    else "Convention, diplôme, heures, adresses de "
+                         "facturation : déposé une fois, réappliqué après "
+                         "chaque export. Plusieurs fichiers s'ajoutent."
                 ),
             )
             preferences = lire_preferences()
@@ -886,7 +935,16 @@ class Gestionnaire(BaseHTTPRequestHandler):
         # Le fichier est conservé à côté de l'outil, et réappliqué tout seul
         # après chaque export : il n'y a aucune raison de le redéposer à
         # chaque fois. Le redéposer reste le moyen de le mettre à jour.
-        depot = COMPLEMENT.with_suffix(extension)
+        #
+        # Plusieurs fichiers coexistent, sous leur propre nom : la facturation
+        # est répartie sur deux outils, et n'en retenir qu'un laissait la
+        # moitié des dossiers sans adresse. Un fichier du même nom écrase le
+        # précédent — c'est ainsi qu'on met le sien à jour.
+        _migrer_complement_unique()
+        COMPLEMENTS.mkdir(parents=True, exist_ok=True)
+        depot = COMPLEMENTS / _nom_sur_disque(nom, extension)
+        existait = depot.exists()
+        sauvegarde = depot.read_bytes() if existait else b""
         try:
             depot.write_bytes(base64.b64decode(contenu))
         except (ValueError, OSError) as exc:
@@ -895,17 +953,19 @@ class Gestionnaire(BaseHTTPRequestHandler):
         try:
             resultat = appliquer_complement(depot)
         except ErreurDossiers as exc:
-            depot.unlink(missing_ok=True)
+            # Un fichier refusé ne doit pas emporter celui qu'il remplaçait.
+            if existait:
+                depot.write_bytes(sauvegarde)
+            else:
+                depot.unlink(missing_ok=True)
             raise ValueError(str(exc)) from exc
 
-        # Un fichier retenu en remplace un autre : deux versions du même
-        # suivi se contrediraient sans qu'on sache laquelle a parlé.
-        for ancien in RACINE.glob(f"{COMPLEMENT.name}.*"):
-            if ancien != depot:
-                ancien.unlink(missing_ok=True)
-        memoriser_preferences({"complement": depot.name})
+        retenus = [n for n in (lire_preferences().get("complements") or [])
+                   if n != depot.name]
+        memoriser_preferences({"complements": [*retenus, depot.name]})
 
         resultat["memorise"] = nom
+        resultat["retenus"] = [c.name for c in complements_memorises()]
         self._json(200, resultat)
 
     def _verser_piece(self, demande: dict) -> None:
@@ -2362,8 +2422,12 @@ async function completerDepuisFichier(evenement) {
     });
     const r = await api("/api/completer", { nom: fichier.name, contenu: contenu });
     if (r.memorise) {
-      $("etatComplement").textContent = "Fichier retenu : " + r.memorise
-        + " — réappliqué après chaque export.";
+      const retenus = r.retenus || [r.memorise];
+      $("etatComplement").textContent = retenus.length > 1
+        ? retenus.length + " fichiers retenus : " + retenus.join(", ")
+          + " — tous réappliqués après chaque export."
+        : "Fichier retenu : " + r.memorise
+          + " — réappliqué après chaque export.";
     }
     afficherBandeau(
       r.dossiers > 0,

@@ -2802,6 +2802,100 @@ def test_annuaire_entreprises() -> None:
              "les sociétés cessées sont listées, avec le montant en jeu")
 
 
+def test_resume_de_situation() -> None:
+    """La note s'ouvre sur la situation, et renvoie les échanges en annexe."""
+    print("\nRésumé de la situation et annexe")
+
+    import synthese as module_synthese  # noqa: PLC0415
+    from dossiers import Dossier  # noqa: PLC0415
+    from indexation import LigneIndex  # noqa: PLC0415
+
+    maintenant = datetime(2026, 9, 4, tzinfo=timezone.utc)
+
+    def piece(n, mois, jour, sens, objet, pj=0):
+        return LigneIndex(
+            piece_n=n, date=datetime(2024, mois, jour, 9, tzinfo=timezone.utc),
+            sens=sens, expediteur="debiteur@exemple.fr" if sens == "reçu"
+            else "recouvrement@liora.io",
+            destinataires="x@y.fr", copie="", objet=objet,
+            nb_pieces_jointes=pj, pieces_jointes="facture.pdf" if pj else "",
+            critere="FACT-2406-03723", boites="recouvrement@liora.io",
+            fichier_pdf="", fichier_eml=f"p{n}.eml",
+            dossier_pieces_jointes="", thread_id="t1", message_id=f"<m{n}>")
+
+    dossier = Dossier(
+        reference="FACT-2406-03723", nom="SAS EDEN",
+        emails=["client@exemple.fr"],
+        factures=["FACT-2406-03723", "DV-003453"],
+        montant_du="5 990 €", date_echeance="21/05/2024",
+        convention_signee="oui", diplome="non",
+    )
+    lignes = [
+        piece(1, 5, 22, "envoyé", "Facture FACT-2406-03723 - relance", 1),
+        piece(2, 6, 10, "reçu", "RE: Facture FACT-2406-03723 - relance"),
+        piece(3, 9, 3, "envoyé", "Mise en demeure - FACT-2406-03723"),
+    ]
+    textes = {
+        1: "Sauf erreur, la facture reste impayee.",
+        2: "Je conteste le montant : la formation n'a pas ete suivie.",
+        3: "Mise en demeure de payer sous huit jours.",
+    }
+    synthese = module_synthese.analyser(lignes, textes)
+    phrases = module_synthese.resumer_situation(dossier, synthese, maintenant)
+    texte = " ".join(phrases)
+
+    verifier(phrases and "SAS EDEN" in phrases[0] and "5 990" in phrases[0],
+             f"le résumé s'ouvre sur qui doit combien (obtenu : {phrases[:1]})")
+    verifier("jours de retard" in phrases[0],
+             "et depuis quand la créance est échue")
+    verifier("3 message(s)" in texte,
+             f"il dit ce que le dossier réunit (obtenu : {texte[:150]})")
+    verifier("convention de formation est signée" in texte,
+             "et si la prestation est établie")
+
+    # Les actes se lisent dans l'ordre où ils se sont produits : c'est
+    # l'enchaînement qui fait le récit.
+    rang_relance = texte.find("Relance du 22/05/2024")
+    rang_demeure = texte.find("Mise en demeure du 03/09/2024")
+    verifier(0 <= rang_relance < rang_demeure,
+             f"les actes sont chronologiques (relance {rang_relance}, "
+             f"mise en demeure {rang_demeure})")
+
+    # Ce qui manque décide de la suite : le taire serait le plus grave.
+    incomplet = Dossier(reference="D1", nom="Sans rien", emails=[])
+    manquant = " ".join(module_synthese.resumer_situation(
+        incomplet, module_synthese.analyser([], {}), maintenant))
+    verifier("À compléter avant transmission" in manquant,
+             f"un dossier lacunaire le dit (obtenu : {manquant[-160:]})")
+    verifier("aucune adresse mail connue" in manquant,
+             "en nommant ce qui manque")
+    verifier("Aucun message n'a été retrouvé" in manquant,
+             "et sans prétendre que des relances ont eu lieu")
+
+    html_note = module_synthese.construire_html(
+        dossier, ["recouvrement@liora.io"], lignes, synthese, maintenant,
+        textes=textes,
+    )
+    verifier("1. Résumé de la situation" in html_note,
+             "la note s'ouvre sur le résumé")
+    for rang, titre in enumerate(
+            ("1. Résumé de la situation", "2. Contexte",
+             "3. Contrat signé et factures", "4. Preuve des actions engagées",
+             "Annexe — Échanges de messages"), start=1):
+        verifier(titre in html_note, f"partie {rang} présente : {titre}")
+
+    # Les échanges passent en annexe : le corps de la note se transmet seul.
+    rang_annexe = html_note.find("Annexe — Échanges de messages")
+    for bloc in ("Chronologie complète", "Réponses du débiteur",
+                 "Conversations suivies"):
+        verifier(html_note.find(bloc) > rang_annexe,
+                 f"« {bloc} » est reporté en annexe")
+    verifier(html_note.find("Événements repérés") < rang_annexe,
+             "tandis que les événements repérés restent dans le corps")
+    verifier("page-break-before" in html_note,
+             "et l'annexe commence sur une nouvelle page à l'impression")
+
+
 def test_reponses_du_debiteur() -> None:
     """Ce que le débiteur a répondu, cité tel quel et daté."""
     print("\nRéponses du débiteur dans la note")
@@ -4295,7 +4389,7 @@ def test_interface() -> None:
         # Deposé une fois, il doit servir aux exports suivants sans qu'on ait
         # à le redéposer : c'est la seule façon qu'il serve vraiment.
         avant_complement = interface.lire_preferences()
-        temoins = list(interface.RACINE.glob("complement-suivi.*"))
+        temoins = {c.name for c in interface.complements_memorises()}
         try:
             contenu = (
                 "Numero;convention signé ?;Diplome reçu ?\n"
@@ -4310,25 +4404,44 @@ def test_interface() -> None:
             retenu = interface.complement_memorise()
             verifier(retenu is not None and retenu.exists(),
                      "le fichier est conservé à côté de l'outil")
-            verifier(interface.lire_preferences().get("complement") == retenu.name,
+            verifier(retenu.name.startswith("suivi_btc"),
+                     f"sous son propre nom, reconnaissable ({retenu.name})")
+            verifier(retenu.name in
+                     (interface.lire_preferences().get("complements") or []),
                      "et son nom est mémorisé")
 
             page_retenue = urllib.request.urlopen(
                 f"{base}/", timeout=10).read().decode("utf-8")
-            verifier("réappliqué après chaque export" in page_retenue,
+            verifier("réappliqué" in page_retenue,
                      "la page le dit, plutôt que de laisser redéposer à l'aveugle")
 
-            # Un second dépôt remplace le premier : deux versions du même
-            # suivi se contrediraient.
-            appeler("/api/completer", {
-                "nom": "suivi_btc.xlsx" if False else "suivi_btc.tsv",
+            # La facturation est répartie sur deux outils : Zoho porte les
+            # numéros d'origine, Sellsy les adresses, et un dossier n'est
+            # complet qu'avec les deux. Un second fichier s'ajoute au premier.
+            statut, seconde = appeler("/api/completer", {
+                "nom": "factures_zoho.csv",
                 "contenu": base64.b64encode(contenu).decode("ascii"),
             })
-            gardes = sorted(p.name for p in interface.RACINE.glob("complement-suivi.*"))
-            verifier(len(gardes) == 1, f"un seul fichier est retenu ({gardes})")
+            noms = [c.name for c in interface.complements_memorises()
+                    if c.name not in temoins]
+            verifier(len(noms) == 2,
+                     f"les deux fichiers sont retenus ensemble ({noms})")
+            verifier(sorted(seconde.get("retenus") or [])[-1].startswith("suivi"),
+                     f"et le dépôt les annonce tous "
+                     f"(obtenu : {seconde.get('retenus')})")
+
+            # Redéposer le même nom le met à jour, sans en faire un doublon.
+            appeler("/api/completer", {
+                "nom": "factures_zoho.csv",
+                "contenu": base64.b64encode(contenu).decode("ascii"),
+            })
+            noms = [c.name for c in interface.complements_memorises()
+                    if c.name not in temoins]
+            verifier(len(noms) == 2,
+                     f"un fichier du même nom remplace le sien ({noms})")
         finally:
-            for reste in interface.RACINE.glob("complement-suivi.*"):
-                if reste not in temoins:
+            for reste in interface.complements_memorises():
+                if reste.name not in temoins:
                     reste.unlink(missing_ok=True)
             interface.ecrire_preferences(avant_complement)
 
@@ -4994,6 +5107,7 @@ def main() -> int:
     test_pieces_versees()
     test_ancienne_reference_facture()
     test_annuaire_entreprises()
+    test_resume_de_situation()
     test_reponses_du_debiteur()
     test_conversations_resumees()
     test_bloc_pieces()

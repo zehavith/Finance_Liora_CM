@@ -385,10 +385,148 @@ blockquote.propos { margin: 5px 0 9px 14px; padding-left: 11px;
 .avertissement { margin-top: 22px; border-top: 1px solid #1a1a1a;
                  padding-top: 8px; font-size: 8pt; color: #444;
                  line-height: 1.4; }
+
+/* Le résumé se lit avant tout le reste : un corps un peu plus grand, un
+   interligne aéré, et rien qui distraie. */
+.resume { font-size: 11pt; line-height: 1.55; margin: 4px 0 16px; }
+.resume p { margin: 0 0 7px; }
+
+/* L'annexe commence sur une nouvelle page à l'impression : le corps de la
+   note se transmet seul, et le détail des échanges suit sans s'y mêler. */
+.annexe { margin-top: 30px; border-top: 2px solid #1a1a1a; padding-top: 14px; }
+@media print { .annexe { page-break-before: always; } }
 """
 
 
 FORMATS_DATE_TABLEAU = ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%y")
+
+
+def resumer_situation(
+    dossier,
+    synthese: Synthese,
+    reference_temps: datetime,
+    pieces_ajoutees: list[dict] | None = None,
+) -> list[str]:
+    """La situation du dossier en quelques phrases, avant le détail.
+
+    Ce que lit d'abord quelqu'un qui ouvre la note : qui doit combien, depuis
+    combien de temps, ce qui a été réclamé, ce que le débiteur a répondu, si
+    la prestation est établie, et ce qui manque encore. Chaque phrase est
+    tirée des sections qui suivent — le résumé n'affirme rien qu'elles ne
+    disent, et se tait sur ce qu'on ignore.
+    """
+    maintenant = reference_temps.replace(tzinfo=None)
+    phrases: list[str] = []
+
+    # Qui, combien, depuis quand.
+    debiteur = (dossier.nom or "").strip() or "Le débiteur"
+    du = montant_lisible(dossier.montant_du) or montant_lisible(dossier.montant_total)
+    echeance = _date_tableau(dossier.date_echeance)
+    retard = (maintenant - echeance).days if echeance is not None else None
+
+    if du and retard is not None and retard > 0:
+        phrases.append(
+            f"{debiteur} reste devoir {du}, échus le "
+            f"{echeance:%d/%m/%Y}, soit {retard} jours de retard."
+        )
+    elif du and echeance is not None:
+        phrases.append(
+            f"{debiteur} doit {du}, à échéance du {echeance:%d/%m/%Y}."
+        )
+    elif du:
+        phrases.append(
+            f"{debiteur} reste devoir {du} ; le tableau de suivi ne porte "
+            "aucune échéance."
+        )
+    else:
+        phrases.append(
+            f"{debiteur} : aucun montant n'est renseigné au tableau de suivi."
+        )
+
+    # Ce qui a été réclamé, et sur quelle durée.
+    if synthese.nb_pieces:
+        periode = ""
+        if synthese.premier and synthese.dernier:
+            periode = (f" entre le {synthese.premier:%d/%m/%Y} et le "
+                       f"{synthese.dernier:%d/%m/%Y}")
+        phrases.append(
+            f"Le dossier réunit {synthese.nb_pieces} message(s){periode}, "
+            f"dont {synthese.nb_envoyes} adressé(s) au débiteur."
+        )
+    else:
+        phrases.append(
+            "Aucun message n'a été retrouvé dans les boîtes interrogées : "
+            "la relance n'est pas établie par ce dossier."
+        )
+
+    # Les actes qui comptent devant un juge, dans l'ordre où ils se sont
+    # produits : c'est l'enchaînement qui fait le récit, pas la liste.
+    ACTES = ("Envoi de facture", "Relance", "Mise en demeure",
+             "Transmission au contentieux", "Contestation",
+             "Annonce de paiement", "Échéancier évoqué",
+             "Difficultés financières invoquées")
+    marquants = [ev for ev in
+                 (synthese.premier_evenement(libelle) for libelle in ACTES)
+                 if ev is not None]
+    # Les dates des pièces portent un fuseau, celles du tableau non : les
+    # comparer telles quelles lève une erreur au moment le plus visible.
+    marquants.sort(key=lambda ev: ev.date.replace(tzinfo=None))
+    for acte in marquants:
+        phrases.append(
+            f"{acte.libelle} du {acte.date:%d/%m/%Y} (pièce n° {acte.piece})."
+        )
+
+    # Ce que le débiteur a répondu, ou son silence.
+    if synthese.derniere_reponse is not None:
+        depuis = (maintenant - synthese.derniere_reponse.replace(tzinfo=None)).days
+        phrases.append(
+            f"Dernière réponse du débiteur le "
+            f"{synthese.derniere_reponse:%d/%m/%Y}"
+            + (f", il y a {depuis} jours" if depuis > 0 else "")
+            + f" (pièce n° {synthese.piece_derniere_reponse})."
+        )
+    elif synthese.nb_recus:
+        phrases.append(
+            "Les messages reçus sont tous des notifications automatiques : "
+            "le débiteur n'a jamais répondu personnellement."
+        )
+    elif synthese.nb_pieces:
+        phrases.append("Le débiteur n'a répondu à aucun message.")
+
+    # L'exécution de la prestation : c'est ce qu'on oppose à « je n'ai rien
+    # reçu », et son absence est une faiblesse du dossier, à dire.
+    convention = _oui_non(dossier.convention_signee)
+    diplome = _oui_non(dossier.diplome)
+    if convention is True:
+        phrases.append(
+            "La convention de formation est signée : l'engagement du "
+            "débiteur est établi."
+            + (" Le diplôme a été délivré." if diplome is True else "")
+        )
+    elif convention is False:
+        phrases.append(
+            "Aucune convention signée n'est enregistrée : l'engagement du "
+            "débiteur devra être établi autrement."
+        )
+
+    # Ce qui manque, dit franchement : c'est ce qui décide de la suite.
+    manques: list[str] = []
+    if not dossier.emails:
+        manques.append("aucune adresse mail connue pour ce débiteur")
+    if not du:
+        manques.append("le montant dû")
+    if echeance is None:
+        manques.append("la date d'échéance")
+    if convention is None:
+        manques.append("l'état de la convention")
+    if not synthese.nb_pieces_jointes and not (pieces_ajoutees or []):
+        manques.append("la facture et les pièces justificatives")
+    if manques:
+        phrases.append(
+            "À compléter avant transmission : " + ", ".join(manques) + "."
+        )
+
+    return phrases
 
 
 def montant_lisible(valeur: str) -> str:
@@ -1110,6 +1248,7 @@ def construire_html(
     constats = rediger_constats(synthese, date_export)
     contexte = rediger_contexte(dossier, synthese, date_export)
     echanges = resumer_echanges(dossier, synthese, date_export)
+    situation = resumer_situation(dossier, synthese, date_export, pieces_ajoutees)
     pieces = classer_pieces_jointes(lignes)
 
     trajet = parcours(dossier)
@@ -1305,13 +1444,18 @@ def construire_html(
 <table class="identite">{rangees_identite}</table>
 {f'<p class="chemin">{html.escape(note_vue)}</p>' if note_vue else ''}
 
-<h2>1. Contexte</h2>
+<h2>1. Résumé de la situation</h2>
+<div class="resume">
+{''.join(f'<p>{html.escape(phrase)}</p>' for phrase in situation)}
+</div>
+
+<h2>2. Contexte</h2>
 {bloc_contexte}
 
-<h2>2. Contrat signé et factures</h2>
+<h2>3. Contrat signé et factures</h2>
 {bloc_pieces}
 
-<h2>3. Preuve des actions engagées</h2>
+<h2>4. Preuve des actions engagées</h2>
 <table class="chiffres"><tr>{rangees_chiffres}</tr></table>
 
 {_bloc_repartition(dossier, lignes, vues if vues is not None else {"factures"})}
@@ -1321,32 +1465,40 @@ def construire_html(
 {''.join(f'<li>{html.escape(constat)}</li>' for constat in constats)}
 </ul>
 
-{_bloc_avec_titre("Conversations suivies",
-                  _bloc_conversations(lignes, textes or {}))}
-
-<h3>Réponses du débiteur</h3>
-{_bloc_reponses(lignes, textes or {})}
-
 <h3>Événements repérés</h3>
 {bloc_evenements}
 
-<h3>Chronologie complète des échanges</h3>
-<table>
-<tr><th>Pièce</th><th>Date</th><th>Sens</th><th>Objet</th><th></th></tr>
-{''.join(_rangee_chronologie(ligne) for ligne in lignes)}
-</table>
-
 <div class="avertissement">
-<b>Portée de ce document.</b> Les montants, dates de formation, statuts et
-notes de la partie 1 sont recopiés du tableau de suivi. Les parties 2 et 3
-sont établies à partir des seuls messages extraits des boîtes citées
-ci-dessus, sans autre source. Les événements sont repérés par correspondance
+<b>Portée de ce document.</b> Le résumé de la partie 1 ne fait que reprendre ce
+qu'établissent les parties suivantes ; il ne s'y ajoute rien. Les montants,
+dates de formation, statuts et notes de la partie 2 sont recopiés du tableau
+de suivi. Les parties 3 et 4, ainsi que l'annexe, sont établies à partir des
+seuls messages extraits des boîtes citées ci-dessus, sans autre source. Les événements sont repérés par correspondance
 de formulations dans l'objet et le corps des messages : la liste peut être
 incomplète, et un message rédigé autrement peut ne pas avoir été reconnu. La
 nature des pièces jointes est déduite de leur nom de fichier. Chaque constat
 renvoie à un numéro de pièce, à vérifier dans le message d'origine avant toute
 utilisation. Ce document ne constitue pas une analyse juridique et doit être
 relu avant transmission.{note_doublons}
+</div>
+
+<div class="annexe">
+<h2>Annexe — Échanges de messages</h2>
+<p class="chemin">Le détail des échanges est reporté ici pour ne pas alourdir
+la note. Chaque numéro de pièce renvoie au message d'origine, conservé dans le
+dossier.</p>
+
+{_bloc_avec_titre("A. Conversations suivies",
+                  _bloc_conversations(lignes, textes or {}))}
+
+<h3>B. Réponses du débiteur</h3>
+{_bloc_reponses(lignes, textes or {})}
+
+<h3>C. Chronologie complète</h3>
+<table>
+<tr><th>Pièce</th><th>Date</th><th>Sens</th><th>Objet</th><th></th></tr>
+{''.join(_rangee_chronologie(ligne) for ligne in lignes)}
+</table>
 </div>
 </body></html>
 """
