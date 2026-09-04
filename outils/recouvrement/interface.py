@@ -44,7 +44,7 @@ import synthese as module_synthese  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "63"
+VERSION = "64"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -386,43 +386,40 @@ def complement_memorise() -> Path | None:
 def appliquer_complement(chemin: Path) -> dict:
     """Reprend d'un fichier de suivi ce qui manque aux dossiers exportés.
 
-    Tous les onglets exploitables sont lus, pas seulement le mieux renseigné :
-    un classeur comptable range le numéro de facture sur un onglet, celui de
-    l'ancien outil sur un autre et l'adresse du client sur un troisième. Le
-    résultat rendu est la somme de ce que chacun a apporté.
+    Un seul onglet est retenu : celui dont les colonnes sont le mieux
+    reconnues. Verser dans l'application tout ce qu'un classeur comptable
+    contient — grand livre, avoirs, alternance — y ferait entrer des milliers
+    de lignes sans rapport avec les dossiers en contentieux. Les autres
+    onglets sont nommés dans le bilan, pour qu'un mauvais choix se voie.
     """
     from dossiers import ErreurDossiers, charger_onglets  # noqa: PLC0415
 
     sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
-    bilan = {"dossiers": 0, "valeurs": 0, "adresses": 0, "lignes": 0,
-             "sans_correspondance": 0, "exemples": [], "onglets": []}
-    dernier_echec = ""
+    onglets = charger_onglets(chemin)
+    if not onglets:
+        raise ErreurDossiers(
+            f"Aucun onglet exploitable dans {chemin.name} : il faut au minimum "
+            "une colonne « numéro de facture » ou « email »."
+        )
 
-    # Du moins bien renseigné au mieux : deux onglets peuvent porter la même
-    # échéance sous deux formes, et c'est celui dont les colonnes sont le
-    # mieux reconnues qui doit avoir le dernier mot.
-    for titre, grille in reversed(charger_onglets(chemin)):
+    dernier_echec = ""
+    for rang, (titre, grille) in enumerate(onglets):
         try:
-            part = module_suivi.completer_depuis_grille(
+            bilan = module_suivi.completer_depuis_grille(
                 grille, module_suivi.inventaire(sortie, SUIVI), SUIVI
             )
         except ErreurDossiers as exc:
-            # Un onglet qu'on n'arrive pas à lire n'interrompt pas les autres :
-            # ils portent souvent l'essentiel. L'échec n'est rendu que si
-            # aucun onglet n'a rien donné.
+            # Un onglet illisible ne condamne pas le fichier : on passe au
+            # suivant, et l'échec n'est rendu que si aucun ne se laisse lire.
             dernier_echec = str(exc)
             continue
 
-        for cle in ("dossiers", "valeurs", "adresses", "lignes",
-                    "sans_correspondance"):
-            bilan[cle] += part.get(cle, 0)
-        bilan["exemples"] = (bilan["exemples"] + part.get("exemples", []))[:8]
-        if part.get("dossiers"):
-            bilan["onglets"].append(f"{titre} ({part['dossiers']})")
+        bilan["onglet"] = titre
+        bilan["ecartes"] = [autre for autre, _ in onglets if autre != titre]
+        del rang
+        return bilan
 
-    if not bilan["lignes"] and dernier_echec:
-        raise ErreurDossiers(dernier_echec)
-    return bilan
+    raise ErreurDossiers(dernier_echec or f"{chemin.name} illisible.")
 
 
 def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[bool, str]:
@@ -2376,8 +2373,10 @@ async function completerDepuisFichier(evenement) {
          ? ` Dont ${r.adresses} adresse(s) mail, qui serviront au prochain `
            + `export.`
          : "")
-      + ((r.onglets || []).length > 1
-         ? ` Onglets utiles : ${r.onglets.join(", ")}.` : "")
+      + ((r.ecartes || []).length
+         ? ` Onglet utilisé : « ${r.onglet} ». Non lus : `
+           + `${r.ecartes.join(", ")}.`
+         : "")
       + (r.sans_correspondance
          ? ` ${r.sans_correspondance} ligne(s) sans dossier correspondant`
            + ((r.exemples || []).length

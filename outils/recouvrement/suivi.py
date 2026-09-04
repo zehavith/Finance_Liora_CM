@@ -688,6 +688,8 @@ def completer_depuis_grille(
     # facture émise sous un autre outil ne partage aucun numéro avec celle du
     # tableau — mais elle porte le même débiteur et la même somme, et deux
     # dossiers distincts qui coïncideraient sur les deux sont improbables.
+    connus = {d["reference"]: d for d in references_connues}
+
     par_debiteur: dict[tuple[str, int], str] = {}
     for dossier in references_connues:
         nom = _cle_nom(dossier.get("nom"))
@@ -701,6 +703,9 @@ def completer_depuis_grille(
     # Dossiers que plusieurs lignes revendiquaient sans les départager : ils
     # sont nommés dans le bilan plutôt que rapprochés au hasard.
     disputes: set[str] = set()
+    # Dossiers auxquels le fichier voulait attacher plus de numéros que la
+    # recherche Gmail n'en supporte.
+    debordements: set[str] = set()
     # Les references non rapprochees sont nommees, pas seulement comptees :
     # « 164 lignes sans correspondance » ne dit pas si le fichier est le
     # mauvais ou si les numeros s'ecrivent autrement.
@@ -745,16 +750,32 @@ def completer_depuis_grille(
         entree = dict(suivi.get(reference) or {})
         avant = len(str(entree))
 
-        if not par_numero:
-            # Le numéro du fichier devient une référence de recherche : c'est
-            # le seul qui figure dans les échanges de l'époque.
-            connues_ref = list(entree.get("references") or [])
-            for numero in [ligne.reference, *ligne.factures]:
-                if numero and numero not in connues_ref:
-                    connues_ref.append(numero)
-                    completes += 1
-            if connues_ref:
-                entree["references"] = connues_ref
+        # Tout numéro de la ligne que le dossier ignore devient une référence
+        # de recherche — y compris quand c'est un autre numéro de la même
+        # ligne qui a permis le rapprochement. C'est le cas courant : le
+        # fichier porte côte à côte le numéro Sellsy, qui identifie le
+        # dossier, et le numéro Zoho, qui est le seul à figurer dans les
+        # échanges de l'époque. Ne retenir que le premier laissait justement
+        # de côté celui qu'on cherche.
+        del par_numero
+        connues_ref = list(entree.get("references") or [])
+        deja = {_cle_facture(c) for c in connues_ref}
+        deja |= {_cle_facture(c) for c in _numeros_du_dossier(reference, connus)}
+        for numero in [ligne.reference, *ligne.factures]:
+            cle = _cle_facture(numero)
+            if not cle or cle in deja:
+                continue
+            if len(connues_ref) >= MAXIMUM_REFERENCES:
+                # Au-delà, la requête Gmail devient trop longue et le dossier
+                # ramènerait n'importe quoi. Mieux vaut chercher sur les
+                # numéros sûrs que sur tous.
+                debordements.add(reference)
+                break
+            connues_ref.append(numero)
+            deja.add(cle)
+            completes += 1
+        if connues_ref:
+            entree["references"] = connues_ref
 
         # L'adresse à qui la facture a été envoyée est celle qui porte les
         # échanges. Un tableau Monday ne l'a pas toujours ; un export de
@@ -803,7 +824,8 @@ def completer_depuis_grille(
     return {"dossiers": touchees, "valeurs": completes, "adresses": adressees,
             "lignes": len(lignes), "sans_correspondance": len(sans_suite),
             "exemples": [r for r in sans_suite[:8] if r],
-            "ambigus": sorted(disputes)[:8], "dates_illisibles": illisibles}
+            "ambigus": sorted(disputes)[:8], "dates_illisibles": illisibles,
+            "debordements": sorted(debordements)[:8]}
 
 
 def _cle_nom(valeur) -> str:
@@ -871,6 +893,19 @@ def _est_soldee(ligne) -> bool:
     ):
         return True
     return False
+
+
+# Au-delà, la requête Gmail dépasse ce que le service accepte. Douze numéros
+# couvrent largement un dossier groupé ; c'est un garde-fou, pas une limite
+# qu'un dossier normal rencontre.
+MAXIMUM_REFERENCES = 12
+
+
+def _numeros_du_dossier(reference: str, connus: dict[str, dict]) -> list[str]:
+    """Les numéros que le dossier porte déjà, depuis le récapitulatif."""
+    dossier = connus.get(reference) or {}
+    factures = str(dossier.get("factures") or "").split("|")
+    return [reference, *(f.strip() for f in factures if f.strip())]
 
 
 def _cle_facture(valeur: str) -> str:

@@ -2343,6 +2343,83 @@ def test_completer_depuis_fichier() -> None:
         verifier(bilan["ambigus"] == ["FACT-2406-03966"],
                  f"le dossier disputé est nommé (obtenu : {bilan['ambigus']})")
 
+    print("  -- un export de factures Zoho --")
+    # Le cas d'usage réel : le fichier porte côte à côte le numéro Sellsy, qui
+    # identifie le dossier, et le numéro Zoho, qui est le seul à figurer dans
+    # les échanges de l'époque. Retenir le premier sans le second laisserait
+    # justement de côté celui qu'on cherche.
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "export"
+        sortie.mkdir()
+        (sortie / "d").mkdir()
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures;date_echeance\n"
+            "FACT-2406-03723;Serruya Aaron;d;5 100 €;FACT-2406-03723;\n",
+            encoding="utf-8-sig",
+        )
+        zoho = Path(repertoire) / "zoho.csv"
+        zoho.write_text(
+            "N° de facture;Nom du client;Statut de la facture;"
+            "Montant de la facture;Solde;Date d’échéance;E-mail;"
+            "Facture sellsy correspondante\n"
+            "FA-550-3689-2;Serruya Aaron;En retard;€5.100,00;€5.100,00;"
+            "2024-05-21;aaronserruya3105@gmail.com;FACT-2406-03723\n",
+            encoding="utf-8-sig",
+        )
+        chemin = Path(repertoire) / "suivi.json"
+        bilan = module_suivi.completer_depuis_grille(
+            charger_grille(zoho),
+            module_suivi.inventaire(sortie, chemin),
+            chemin,
+        )
+        entree = module_suivi.charger(chemin).get("FACT-2406-03723", {})
+
+        verifier(entree.get("references") == ["FA-550-3689-2"],
+                 f"le numéro Zoho est retenu bien que le rapprochement se soit "
+                 f"fait sur le numéro Sellsy (obtenu : {entree.get('references')})")
+        verifier(entree.get("adresses") == ["aaronserruya3105@gmail.com"],
+                 f"l'adresse suit (obtenu : {entree.get('adresses')})")
+        verifier(entree.get("echeance") == "21/05/2024",
+                 f"l'échéance aussi (obtenu : {entree.get('echeance')})")
+        verifier(bilan["dossiers"] == 1 and bilan["adresses"] == 1,
+                 "et le bilan les compte")
+
+        # Le numéro qui identifie déjà le dossier ne se réécrit pas en
+        # référence de recherche : il y est déjà.
+        verifier("FACT-2406-03723" not in (entree.get("references") or []),
+                 "sans réécrire le numéro que le dossier porte déjà")
+
+    print("  -- garde-fou sur le nombre de références --")
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "export"
+        sortie.mkdir()
+        (sortie / "d").mkdir()
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures;date_echeance\n"
+            "FACT-2405-00409;SAS EDEN;d;5 990 €;FACT-2405-00409;\n",
+            encoding="utf-8-sig",
+        )
+        # Vingt lignes qui désignent toutes le même dossier par son numéro :
+        # chacune apporte le sien, et la requête Gmail exploserait.
+        lignes_csv = ["N° de facture;Facture sellsy correspondante"]
+        lignes_csv += [f"DV-{9000 + i};FACT-2405-00409" for i in range(20)]
+        gros = Path(repertoire) / "gros.csv"
+        gros.write_text("\n".join(lignes_csv) + "\n", encoding="utf-8-sig")
+
+        chemin = Path(repertoire) / "suivi.json"
+        bilan = module_suivi.completer_depuis_grille(
+            charger_grille(gros),
+            module_suivi.inventaire(sortie, chemin),
+            chemin,
+        )
+        gardees = module_suivi.charger(chemin)["FACT-2405-00409"]["references"]
+        verifier(len(gardees) == module_suivi.MAXIMUM_REFERENCES,
+                 f"le nombre de références est plafonné "
+                 f"(obtenu : {len(gardees)})")
+        verifier(bilan["debordements"] == ["FACT-2405-00409"],
+                 f"et le dossier concerné est nommé "
+                 f"(obtenu : {bilan['debordements']})")
+
     print("  -- intitulés à l'apostrophe typographique --")
     from dossiers import _normaliser_entete  # noqa: PLC0415
 
