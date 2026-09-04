@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.45.0';
+    const VERSION = '2.46.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -4279,11 +4279,15 @@
                         'Date de fin de formation': l.dateFinFormation ? U.dateFR(l.dateFinFormation) : '',
                         'Date de facture (facturation)': l.dateFacturation ? U.dateFR(l.dateFacturation) : '',
                         'Date de facture postérieure à la fin de formation': b.facturePosterieure || '',
-                        'Mandat gocardless - Montant PAID': b.mandatPaid || '',
-                        'Mandat gocardless - Etat du mandat': b.mandatEtat || '',
-                        'N° de l’avoir apparenté': b.avoirApparente || '',
+                        // Là où votre fichier ne porte rien, l'application
+                        // remplit depuis les exports : GoCardless, les avoirs du
+                        // lettrage, et le statut de la facture chez Sellsy.
+                        'Mandat gocardless - Montant PAID': b.mandatPaid
+                            || (l.montantPreleve ? arrondi(l.montantPreleve) : ''),
+                        'Mandat gocardless - Etat du mandat': b.mandatEtat || l.etatMandat || '',
+                        'N° de l’avoir apparenté': b.avoirApparente || l.avoirsDuGroupe || '',
                         'Commentaire': b.commentaire || '',
-                        'Statut sellsy': b.statutSellsy || '',
+                        'Statut sellsy': b.statutSellsy || l.statutSellsy || '',
                         'Tranche d’ancienneté': ((R.bucketFor(retard) || {}).label) || '',
                     };
                 })), 'Grand livre');

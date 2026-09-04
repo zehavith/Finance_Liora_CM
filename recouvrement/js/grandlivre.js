@@ -1105,6 +1105,16 @@
             m.set(fin, (m.get(fin) || 0) + 1);
         }
 
+        // Le statut que la facturation donne à la facture — « Payée »,
+        // « Envoyée », « Annulée ». Votre colonne AW le cherche de la même
+        // façon ; l'application l'a sous la main dès que Sellsy est chargé.
+        const statutsSellsy = new Map();
+        for (const l of (o.sellsy || [])) {
+            const st = l.statutLabel || l.statut || '';
+            if (!st) continue;
+            for (const k of [l.cle, l.cleZoho]) if (k && !statutsSellsy.has(k)) statutsSellsy.set(k, st);
+        }
+
         // Le « Type de client » brut de la facturation, pour les arbitrages
         // qui ne peuvent pas se satisfaire d'un financement déduit.
         const brutSellsy = new Map();
@@ -1148,7 +1158,8 @@
             const nom = R.norm(m.client || m.nom || '');
             if (nom && !mandats.has(nom)) mandats.set(nom, v);
         }
-        return { parCle, parSellsy, parCompte, parTiers, parNom, parNomSellsy, brutSellsy, datesSellsy, mandats, noter };
+        return { parCle, parSellsy, parCompte, parTiers, parNom, parNomSellsy, brutSellsy,
+                 datesSellsy, statutsSellsy, mandats, noter };
     }
 
     /**
@@ -1258,6 +1269,7 @@
             return {
                 ...c,
                 typeClientSellsy: type || c.typeClientSellsy,
+                statutSellsy: (c.cle ? idx.statutsSellsy.get(c.cle) : '') || c.statutSellsy || '',
                 // Les colonnes AO, AP et AQ du classeur sont cette recherche-là :
                 // le numéro de facture dans la base Sellsy, puis dans celle de
                 // Zoho. L'extrait les porte déjà calculées — ce sont elles qui
@@ -1584,6 +1596,15 @@
             if (!parGroupe.has(cle)) parGroupe.set(cle, c);
         }
 
+        // Les avoirs de chaque lettrage : votre colonne AU va les chercher dans
+        // les bases Sellsy et Zoho ; le grand livre les a sous la main.
+        const avoirsParGroupe = new Map();
+        for (const l of (lignesAPlat || [])) {
+            if (l.nature !== 'avoir' || !l.numero) continue;
+            const e = avoirsParGroupe.get(l.cleGroupe);
+            avoirsParGroupe.set(l.cleGroupe, e ? (e + ' / ' + l.numero) : l.numero);
+        }
+
         const lignes = [], orphelins = [];
         const NATURES = { facture: 'factures', reglement: 'reglements', avoir: 'avoirs', autre: 'autres' };
         const stats = { factures: 0, reglements: 0, avoirs: 0, autres: 0,
@@ -1613,6 +1634,13 @@
                 // La preuve et l'échéance de la créance du même lettrage : le
                 // grand livre exporté doit pouvoir se relire seul.
                 preuveClassement: source ? (source.preuveClassement || '') : '',
+                // Ce que la facturation et GoCardless disent de la facture :
+                // vos colonnes AS, AT et AW, remplies depuis les exports plutôt
+                // que laissées vides.
+                statutSellsy: source ? (source.statutSellsy || '') : '',
+                etatMandat: source ? (source.etatMandat || '') : '',
+                montantPreleve: source ? (source.montantPreleve || 0) : 0,
+                avoirsDuGroupe: avoirsParGroupe.get(l.cleGroupe) || '',
                 dateEcheance: source ? (source.dateEcheance || null) : null,
                 echeanceBase: source ? (source.echeanceBase || '') : '',
                 echeanceMotif: source ? (source.echeanceMotif || '') : '',
