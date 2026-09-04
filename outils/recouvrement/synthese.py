@@ -583,6 +583,80 @@ def rediger_execution(dossier) -> list[str]:
     return lignes
 
 
+# En dessous, ce n'est pas une conversation mais un message isolé : le
+# résumer n'apprendrait rien de plus que la chronologie.
+MINIMUM_PAR_FIL = 2
+
+
+def _bloc_avec_titre(titre: str, contenu: str) -> str:
+    """Un titre qui n'annoncerait rien vaut mieux tu."""
+    return f"<h3>{html.escape(titre)}</h3>\n{contenu}" if contenu else ""
+
+
+def _bloc_conversations(lignes_index: list[LigneIndex],
+                        textes: dict[int, str]) -> str:
+    """Les échanges regroupés par conversation, chacun résumé.
+
+    Une relance et sa réponse forment un fil : les lire séparément dans la
+    chronologie oblige à reconstituer de tête qui a répondu à quoi. Le résumé
+    dit qui parle, sur quelle durée, et ce que le débiteur a répondu en
+    dernier — cité, jamais reformulé.
+    """
+    fils: dict[str, list[LigneIndex]] = {}
+    for ligne in lignes_index:
+        cle = (ligne.thread_id or "").strip() or f"seul-{ligne.piece_n}"
+        fils.setdefault(cle, []).append(ligne)
+
+    suivis = [
+        sorted(pieces, key=lambda p: p.date)
+        for pieces in fils.values()
+        if len(pieces) >= MINIMUM_PAR_FIL
+    ]
+    if not suivis:
+        return ""
+
+    suivis.sort(key=lambda pieces: pieces[0].date)
+    blocs = []
+    for pieces in suivis:
+        premier, dernier = pieces[0], pieces[-1]
+        recus = [p for p in pieces if p.sens == "reçu"]
+        envoyes = [p for p in pieces if p.sens == "envoyé"]
+        jours = (dernier.date - premier.date).days
+
+        detail = (
+            f"{len(pieces)} messages du {premier.date:%d/%m/%Y} au "
+            f"{dernier.date:%d/%m/%Y}"
+            + (f", soit {jours} jours" if jours else "")
+            + f" — {len(envoyes)} émis par Liora, {len(recus)} reçu(s). "
+            f"Pièces n° {pieces[0].piece_n} à n° {pieces[-1].piece_n}."
+        )
+
+        derniere = recus[-1] if recus else None
+        if derniere is None:
+            suite = ("Le débiteur n'a pas répondu dans cette conversation.")
+            citation = ""
+        else:
+            suite = (
+                f"Dernière réponse du débiteur le {derniere.date:%d/%m/%Y} "
+                f"(pièce n° {derniere.piece_n})."
+            )
+            extrait = _extrait_lisible(textes.get(derniere.piece_n, ""))
+            citation = (
+                f'<blockquote class="propos">« {html.escape(extrait)} »</blockquote>'
+                if extrait else ""
+            )
+
+        blocs.append(
+            f"<p class='groupe'>{html.escape(premier.objet or '(sans objet)')}</p>"
+            f"<p>{html.escape(detail)} {html.escape(suite)}</p>{citation}"
+        )
+
+    return (
+        f"<p>{len(suivis)} conversation(s) suivie(s) dans ce dossier.</p>"
+        + "".join(blocs)
+    )
+
+
 def _bloc_reponses(lignes_index: list[LigneIndex], textes: dict[int, str]) -> str:
     """Les réponses du débiteur, une par une, datées et citées.
 
@@ -1246,6 +1320,9 @@ def construire_html(
 <ul class="constats">
 {''.join(f'<li>{html.escape(constat)}</li>' for constat in constats)}
 </ul>
+
+{_bloc_avec_titre("Conversations suivies",
+                  _bloc_conversations(lignes, textes or {}))}
 
 <h3>Réponses du débiteur</h3>
 {_bloc_reponses(lignes, textes or {})}

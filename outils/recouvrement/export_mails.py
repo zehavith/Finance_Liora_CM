@@ -418,6 +418,35 @@ CHAMPS_SURVEILLES = (
 )
 
 
+def _ajouter_references_saisies(
+    liste: list[Dossier], journal: Journal, chemin_suivi: Path | None = None
+) -> None:
+    """Ajoute aux dossiers les références saisies dans l'application."""
+    import suivi as module_suivi  # noqa: PLC0415
+
+    chemin = chemin_suivi or (RACINE / "suivi-dossiers.json")
+    if not chemin.exists():
+        return
+
+    etats = module_suivi.charger(chemin)
+    ajoutees = 0
+    for dossier in liste:
+        supplements = [
+            reference
+            for reference in (etats.get(dossier.reference, {}).get("references") or [])
+            if reference and reference not in dossier.factures
+        ]
+        if supplements:
+            dossier.factures = [*dossier.factures, *supplements]
+            ajoutees += len(supplements)
+
+    if ajoutees:
+        journal(
+            f"    {ajoutees} référence(s) saisie(s) dans l'application "
+            "ajoutée(s) à la recherche"
+        )
+
+
 def _signaler_colonnes_vides(lignes: list[Dossier], journal: Journal) -> None:
     if not lignes:
         return
@@ -1492,6 +1521,12 @@ def executer(
                 ignorer_lignes_incompletes=options.ignorer_lignes_incompletes,
                 signaler=journal,
             )
+
+        # Les références saisies à la main dans l'application rejoignent
+        # celles du tableau : une facture émise sous un outil précédent garde
+        # son numéro d'alors dans les échanges de l'époque, et ce numéro
+        # n'est nulle part dans Monday.
+        _ajouter_references_saisies(liste, journal)
 
         if options.filtre_colonne and options.filtre_valeur:
             liste = filtrer_par_colonne(

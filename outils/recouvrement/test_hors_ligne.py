@@ -2154,6 +2154,56 @@ def test_completer_depuis_fichier() -> None:
         )
         verifier(deux["dossiers"] == 2, "un second passage est sans effet de bord")
 
+    print("  -- rapprochement par raison sociale et montant --")
+    # Une facture émise sous un autre outil ne partage aucun numéro avec celle
+    # du tableau. Elle porte le même débiteur et la même somme : c'est par là
+    # qu'on la retrouve. Répertoire à part : ce cas réécrit le récapitulatif.
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "export"
+        sortie.mkdir()
+        (sortie / "d").mkdir()
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures;date_echeance\n"
+            "FACT-2405-00409;SAS EDEN;d;5 990 €;FACT-2405-00409;\n"
+            "FACT-2601-13302;JAADI PERFORM;d;2 500 €;FACT-2601-13302;\n",
+            encoding="utf-8-sig",
+        )
+        zoho = Path(repertoire) / "zoho.csv"
+        zoho.write_text(
+            "Numero;Client;Montant\n"
+            # Même raison sociale, même montant, numéro d'un autre outil.
+            "DV-003453;SAS EDEN;5990\n"
+            # Même nom mais montant différent : ce n'est pas la même facture.
+            "DV-009999;JAADI PERFORM;99\n",
+            encoding="utf-8-sig",
+        )
+        chemin_zoho = Path(repertoire) / "suivi-zoho.json"
+        bilan = module_suivi.completer_depuis_grille(
+            charger_grille(zoho),
+            module_suivi.inventaire(sortie, chemin_zoho),
+            chemin_zoho,
+        )
+        verifier(bilan["dossiers"] == 1,
+                 f"un seul dossier rapproché (obtenu : {bilan['dossiers']})")
+        verifier(bilan["sans_correspondance"] == 1,
+                 "le montant qui ne colle pas n'est pas rapproché de force")
+        etat = module_suivi.charger(chemin_zoho)
+        verifier(etat["FACT-2405-00409"]["references"] == ["DV-003453"],
+                 f"l'ancien numéro devient une référence de recherche "
+                 f"(obtenu : {etat.get('FACT-2405-00409', {}).get('references')})")
+        verifier("FACT-2601-13302" not in etat,
+                 "le dossier au montant différent reste intact")
+
+        # Un second passage ne doit pas dupliquer la référence trouvée.
+        module_suivi.completer_depuis_grille(
+            charger_grille(zoho),
+            module_suivi.inventaire(sortie, chemin_zoho),
+            chemin_zoho,
+        )
+        verifier(module_suivi.charger(chemin_zoho)["FACT-2405-00409"]
+                 ["references"] == ["DV-003453"],
+                 "et n'est pas ajoutée deux fois")
+
 
 def test_recapitulatif_atomique() -> None:
     """Le récapitulatif ne doit jamais être lu à moitié écrit."""
@@ -2593,6 +2643,57 @@ def test_reponses_du_debiteur() -> None:
         [ligne(1, "envoyé", "recouvrement@liora.io")], {})
     verifier("Aucune réponse du débiteur" in muet,
              "l'absence de réponse est dite, et non passée sous silence")
+
+
+def test_conversations_resumees() -> None:
+    """Les échanges d'un même fil, regroupés et résumés."""
+    print("\nConversations suivies")
+
+    import synthese as module_synthese  # noqa: PLC0415
+
+    def ligne(n, jour, sens, fil, objet="Facture FACT-1"):
+        return LigneIndex(
+            piece_n=n,
+            date=datetime(2025, 3, jour, 10, 0, tzinfo=timezone(timedelta(hours=1))),
+            sens=sens,
+            expediteur="a@b.fr" if sens == "reçu" else "recouvrement@liora.io",
+            destinataires="x@y.fr", copie="", objet=objet, nb_pieces_jointes=0,
+            pieces_jointes="", critere="adresse", boites="recouvrement@liora.io",
+            fichier_pdf="", fichier_eml="", dossier_pieces_jointes="",
+            thread_id=fil, message_id=f"<m{n}>")
+
+    lignes = [
+        ligne(1, 3, "envoyé", "T1"),
+        ligne(2, 8, "reçu", "T1"),
+        ligne(3, 14, "envoyé", "T1"),
+        # Un fil sans réponse : il compte quand même comme conversation.
+        ligne(4, 20, "envoyé", "T2", "Mise en demeure"),
+        ligne(5, 22, "envoyé", "T2", "Mise en demeure"),
+        # Un message isolé n'est pas une conversation.
+        ligne(6, 25, "envoyé", "T3", "Pour information"),
+    ]
+    textes = {2: "Je conteste le montant reclame."}
+
+    bloc = module_synthese._bloc_conversations(lignes, textes)
+    verifier("2 conversation(s)" in bloc,
+             f"le message isolé n'en est pas une (obtenu : {bloc[:60]!r})")
+    verifier("3 messages du 03/03/2025 au 14/03/2025" in bloc,
+             "le fil est daté de bout en bout")
+    verifier("soit 11 jours" in bloc, "et sa durée donnée")
+    verifier("Pièces n° 1 à n° 3" in bloc,
+             "les pièces du fil sont citées par leur numéro")
+    verifier("2 émis par Liora, 1 reçu(s)" in bloc, "le sens est compté")
+    verifier("Je conteste le montant reclame." in bloc,
+             "la dernière réponse du débiteur est citée")
+    verifier("pas répondu dans cette conversation" in bloc,
+             "un fil resté sans réponse le dit")
+    verifier("Pour information" not in bloc,
+             "le message isolé ne figure pas")
+
+    verifier(module_synthese._bloc_conversations([], {}) == "",
+             "sans échange, aucun bloc n'est produit")
+    verifier(module_synthese._bloc_avec_titre("Conversations", "") == "",
+             "un titre qui n'annoncerait rien est tu")
 
 
 def test_bloc_pieces() -> None:
@@ -4665,6 +4766,7 @@ def main() -> int:
     test_ancienne_reference_facture()
     test_annuaire_entreprises()
     test_reponses_du_debiteur()
+    test_conversations_resumees()
     test_bloc_pieces()
     test_execution_formation()
     test_suppression_dossiers()

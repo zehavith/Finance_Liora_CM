@@ -44,6 +44,9 @@ ALIAS_COLONNES = {
         "nom et prenom de l apprenant", "nom de l apprenante", "nom de l apprenant",
         "nom apprenante", "nom apprenant", "apprenante", "apprenant", "stagiaire",
         "raison sociale", "raison social",
+        # Un export de facturation nomme le débiteur « Client » : il vient
+        # après les intitulés explicites, qui restent prioritaires.
+        "nom du client", "nom client", "client", "debiteur",
         "nom prenom", "prenom nom", "nom",
         "name", "item", "element", "titre",
     ],

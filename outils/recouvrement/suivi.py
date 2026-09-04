@@ -9,6 +9,7 @@ ailleurs. La correspondance se fait sur la référence du dossier.
 from __future__ import annotations
 
 import csv
+import re
 import shutil
 import json
 from datetime import datetime
@@ -170,6 +171,7 @@ def mettre_a_jour(
     convention: str | None = None,
     diplome: str | None = None,
     echeance: str | None = None,
+    references: str | None = None,
 ) -> dict:
     if statut is not None and statut not in CLES_STATUTS:
         raise ValueError(f"Statut inconnu : {statut}")
@@ -204,6 +206,20 @@ def mettre_a_jour(
                 entree[champ] = texte
             else:
                 entree.pop(champ, None)
+    # Une prestation facturée sous un outil précédent garde son numéro
+    # d'alors dans les échanges de l'époque. Ce numéro n'est nulle part dans
+    # le tableau : il se saisit ici, et sert à la recherche comme les autres.
+    if references is not None:
+        propres = [
+            morceau.strip()
+            for morceau in SEPARATEURS_MULTIVALEUR.split(references)
+            if morceau.strip()
+        ]
+        if propres:
+            entree["references"] = propres
+        else:
+            entree.pop("references", None)
+
     if echeance is not None:
         texte = _date_courte(echeance)
         if texte:
@@ -387,6 +403,7 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 # Les pièces versées à la main voyagent avec le dossier : la
                 # page les liste, et la note les reprend.
                 "pieces": [dict(p) for p in (etat.get("pieces") or [])],
+                "references": list(etat.get("references") or []),
                 "convention_saisie": bool(etat.get("convention")),
                 "diplome_saisi": bool(etat.get("diplome")),
                 "heures_theoriques": (
@@ -672,6 +689,18 @@ def completer_depuis_grille(
             if cle.strip():
                 par_facture.setdefault(_cle_facture(cle), dossier["reference"])
 
+    # Rapprochement de secours : même raison sociale et même montant. Une
+    # facture émise sous un autre outil ne partage aucun numéro avec celle du
+    # tableau — mais elle porte le même débiteur et la même somme, et deux
+    # dossiers distincts qui coïncideraient sur les deux sont improbables.
+    par_debiteur: dict[tuple[str, int], str] = {}
+    for dossier in references_connues:
+        nom = _cle_nom(dossier.get("nom"))
+        for champ in ("montant_du", "montant_total"):
+            centimes = round(_nombre(dossier.get(champ)) * 100)
+            if nom and centimes:
+                par_debiteur.setdefault((nom, centimes), dossier["reference"])
+
     suivi = charger(chemin_suivi)
     completes, touchees = 0, 0
     # Les references non rapprochees sont nommees, pas seulement comptees :
@@ -686,6 +715,21 @@ def completer_depuis_grille(
              if _cle_facture(c) in par_facture),
             "",
         )
+        if not reference:
+            reference = _par_nom_et_montant(ligne, par_debiteur)
+            if reference:
+                # Le numéro du fichier devient une référence de recherche :
+                # c'est le seul qui figure dans les échanges de l'époque.
+                entree = dict(suivi.get(reference) or {})
+                connues_ref = list(entree.get("references") or [])
+                for numero in [ligne.reference, *ligne.factures]:
+                    if numero and numero not in connues_ref:
+                        connues_ref.append(numero)
+                        completes += 1
+                entree["references"] = connues_ref
+                suivi[reference] = entree
+                touchees += 1
+
         if not reference:
             sans_suite.append(ligne.reference or (ligne.factures or [""])[0])
             continue
@@ -716,6 +760,26 @@ def completer_depuis_grille(
             "exemples": [r for r in sans_suite[:8] if r]}
 
 
+def _cle_nom(valeur) -> str:
+    """La raison sociale, réduite à ce qui l'identifie."""
+    import synthese as module_synthese  # noqa: PLC0415 - cycle
+
+    plat = module_synthese._aplatir(valeur)
+    return " ".join(mot for mot in plat.replace("-", " ").split() if mot)
+
+
+def _par_nom_et_montant(ligne, par_debiteur: dict[tuple[str, int], str]) -> str:
+    """Le dossier dont le débiteur et le montant coïncident, s'il y en a un."""
+    nom = _cle_nom(ligne.nom)
+    if not nom:
+        return ""
+    for champ in ("montant_du", "montant_total"):
+        centimes = round(_nombre(getattr(ligne, champ, "")) * 100)
+        if centimes and (nom, centimes) in par_debiteur:
+            return par_debiteur[(nom, centimes)]
+    return ""
+
+
 def _cle_facture(valeur: str) -> str:
     """Un numéro de facture, réduit à ce qui l'identifie.
 
@@ -728,6 +792,10 @@ def _cle_facture(valeur: str) -> str:
 # Ce que le service verse lui-meme au dossier. La nature est choisie dans
 # cette liste plutot que saisie : elle range les pieces dans la note, et deux
 # orthographes du meme mot y feraient deux rubriques.
+# « DV-003453, FA-2024-0153 » : plusieurs références se saisissent d'un coup,
+# séparées comme partout ailleurs dans l'application.
+SEPARATEURS_MULTIVALEUR = re.compile(r"[|,;]")
+
 NATURES_PIECES = (
     "Relevé comptable",
     "Convention de formation",
