@@ -46,7 +46,7 @@
             // de septembre y met le début de formation, sans délai. Les deux
             // suivis ne mesurent pas la même chose — l'un le travail de relance,
             // l'autre le solde du compte — et gardent chacun sa règle.
-            gl: { base: 'dateDebutFormation', jours: 0 },
+            gl: { base: 'dateFinFormation', jours: 60 },
             note: "Date de facture +30 jours, sans dépasser début de formation +30 jours"
                 + " — au grand livre : début de formation",
             categorie: 'B2C - Entreprise', perimetre: 'Corporate',
@@ -67,7 +67,7 @@
             base: 'dateFacture', jours: 30,
             fallback: 'dateDebutFormation', fallbackJours: 30,
             plafondDebutFormation: true,
-            gl: { base: 'dateFinFormation', jours: 30 },
+            gl: { base: 'dateFactureFacturation', jours: 30 },
             note: 'Date de facture +30 jours',
             categorie: 'Alternance', perimetre: 'Corporate',
             match: ['corporate alternance', 'corporate-alternance'],
@@ -92,7 +92,7 @@
             key: 'B2B', label: 'B2B',
             base: 'dateFinFormation', jours: 30,
             fallback: 'dateFacture', fallbackJours: 30,
-            gl: { base: 'dateDebutFormation', jours: 0 },
+            gl: { base: 'dateFinFormation', jours: 60 },
             note: 'Fin de formation +30 jours — au grand livre : début de formation',
             categorie: 'B2B', perimetre: 'Corporate',
             match: ['b2b', 'btob', 'entreprise', 'corporate'],
@@ -103,6 +103,7 @@
             fallback: 'dateFacture', fallbackJours: 30,
             note: 'Fin de formation +30 jours', categorie: 'Alternance', perimetre: 'Corporate',
             match: ['alternance', 'apprentissage', 'contrat pro'],
+            gl: { base: 'dateFinFormation', jours: 30 },
         },
         {
             key: 'TRANSITION', label: 'Transition Pro',
@@ -110,7 +111,7 @@
             fallback: 'dateFacture', fallbackJours: 60,
             note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
             match: ['transition pro', 'transitions pro', 'transition', 'ptp', 'projet de transition', 'atpro', 'associations transitions pro'],
-            gl: { base: 'dateDebutFormation', jours: 0 },
+            gl: { base: 'dateFinFormation', jours: 60 },
         },
         {
             key: 'REGION', label: 'Region',
@@ -118,7 +119,7 @@
             fallback: 'dateFacture', fallbackJours: 60,
             note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
             match: ['region', 'conseil regional', 'regional'],
-            gl: { base: 'dateDebutFormation', jours: 0 },
+            gl: { base: 'dateFinFormation', jours: 60 },
         },
         {
             // L'AIF est une aide de France Travail : son type de client est
@@ -155,6 +156,7 @@
             categorie: 'B2C - Entreprise', typesPossibles: ['B2C - Entreprise', 'B2B'],
             perimetre: 'Corporate',
             match: ['etat', 'public etat', 'ministere', 'prefecture'],
+            gl: { base: 'dateFinFormation', jours: 30 },
         },
         {
             // « Interne », « Interne - UE » : le vocabulaire de Zoho pour les
@@ -166,7 +168,7 @@
             fallback: 'dateFacture', fallbackJours: 60,
             note: 'Fin de formation +60 jours', categorie: 'Interco', perimetre: 'Corporate',
             match: ['interco', 'intercompany', 'inter co', 'intra groupe', 'interne', 'interne ue', 'intra groupe', 'inter societe'],
-            gl: { base: 'dateFacture', jours: 60 },
+            gl: { base: 'dateFinFormation', jours: 60 },
         },
         {
             key: 'DST_ALLEMAGNE', label: 'Interne - DST Allemagne',
@@ -174,7 +176,7 @@
             fallback: 'dateFacture', fallbackJours: 60,
             note: 'Fin de formation +60 jours', categorie: 'Interco', perimetre: 'Corporate',
             match: ['dst allemagne', 'interne dst allemagne', 'dst', 'allemagne', 'germany', 'bu1 germany'],
-            gl: { base: 'dateFacture', jours: 60 },
+            gl: { base: 'dateFinFormation', jours: 60 },
         },
         {
             key: 'OPCO', label: 'OPCO',
@@ -184,7 +186,7 @@
             categorie: 'B2C - Entreprise', typesPossibles: ['B2C - Entreprise', 'B2B'],
             perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco', 'akto', 'atlas', 'uniformation', 'ocapiat', 'constructys', 'afdas', 'opcommerce', 'l opcommerce', 'opco ep', 'opco 2i', 'opco mobilites', 'opco sante'],
-            gl: { base: 'dateFinFormation', jours: 60 },
+            gl: { base: 'dateFinFormation', jours: 30 },
         },
         {
             // Un OPCO qui finance une alternance : même payeur, autre dispositif.
@@ -194,7 +196,7 @@
             note: 'Fin de formation +30 jours — pas de recouvrement OPCO, suivi du retard uniquement',
             categorie: 'Alternance', perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco alternance', 'opco-alternance'],
-            gl: { base: 'dateFinFormation', jours: 60 },
+            gl: { base: 'dateFinFormation', jours: 30 },
         },
         {
             key: 'BTC_PERSO', label: 'B2C-Perso',
@@ -510,13 +512,17 @@
         // d'avance : c'est une régularisation, et le délai court depuis son
         // émission. Sans cela, une formation terminée en 2024 refacturée en
         // 2026 ressortait échue depuis deux ans le jour de son émission.
-        // Une facture émise après la fin de la formation ne reçoit pas de
-        // traitement particulier : le classeur de trésorerie n'en fait pas, et
-        // sur l'extrait de septembre la correction expliquait à elle seule
-        // 1 073 écarts avec la colonne « Date d'échéance recalculée » — soixante
-        // jours trop tard à chaque fois. La règle du dispositif s'applique donc
-        // telle quelle, et l'échéance portée par le grand livre rattrape les
-        // lignes dont les dates de formation manquent.
+        // Première ligne de la formule du classeur : SI(AR="oui" ; AQ+60 ; …).
+        // AR vaut « oui » quand la date de facture de la facturation dépasse la
+        // fin de formation — une prestation refacturée après coup. La base est
+        // alors la date de facture *de la facturation*, pas celle de l'écriture
+        // comptable : les confondre décalait mille lignes de soixante jours.
+        if (gl && inv.dateFactureFacturation && inv.dateFinFormation
+            && inv.dateFactureFacturation > inv.dateFinFormation) {
+            return { date: addDays(inv.dateFactureFacturation, 60), origine: 'Règle', regle: rule,
+                     baseUtilisee: 'dateFactureFacturation',
+                     motif: 'Facture postérieure à la fin de formation' };
+        }
         // Un mandat de prélèvement change la mécanique : l'argent est appelé,
         // il n'y a pas de délai de paiement à accorder. L'échéance est la fin
         // de la formation, sans rien ajouter.

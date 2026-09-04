@@ -108,6 +108,20 @@
         ancienTypeParTiers:  ['type de client depuis identifiant du tiers'],
         ancienSousParCompte: ['sous categorie type de client depuis ancien gd livre'],
         ancienTypeParCompte: ['type de client depuis ancien gd livre'],
+
+        // ── Les colonnes que l'application n'exploite pas, mais que l'export
+        //    doit rendre : votre grand livre doit se relire tel quel.
+        numeroPiece:  ['n de piece', 'numero de piece'],
+        auteur:       ['auteur'],
+        categories:   ['categories analytiques', 'categorie analytique'],
+        balance:      ['balance'],
+        devise:       ['devise'],
+        tauxTva:      ['taux d attribution tva', 'taux de tva'],
+        nbJoursEchus: ['nb jours echus'],
+        avoirApparente: ['n de l avoir apparente', 'numero de l avoir apparente'],
+        commentaire:  ['commentaire'],
+        statutSellsy: ['statut sellsy'],
+        facturePosterieure: ['date de facture posterieur a date de fin de formation'],
     };
 
     /** Une valeur de tableur qui ne dit rien : vide, #N/A, tiret. */
@@ -353,6 +367,12 @@
 
         const sansColonneNumero = !mapping.numero;
         const groupes = new Map();
+        // Les colonnes AO, AP et AQ du classeur sont renseignées ligne à ligne
+        // par recherche du numéro de facture : la même facture les porte sur
+        // son écriture de vente comme sur ses règlements. 2 566 des 3 402
+        // lignes datées sont des règlements — sans cette table, les dates de la
+        // facture restaient sur des lignes qui ne sont pas elle.
+        const datesParNumero = new Map();
         let ignorees = 0, numerosExtraits = 0;
         for (const r of rows) {
             const lettre = lettreDe(col(r, 'lettrage'));
@@ -431,6 +451,22 @@
             g.debit += debit;
             g.credit += credit;
 
+            // Avant tout regroupement : ce que cette ligne sait des dates de sa
+            // facture, mis en commun pour toutes les lignes du même numéro.
+            const cleNum = numero ? I.factureKey(numero) : null;
+            if (cleNum) {
+                const dDeb = R.parseDate(utile(col(r, 'dateDebutFormation')));
+                const dFin = R.parseDate(utile(col(r, 'dateFinFormation')));
+                const dFac = R.parseDate(utile(col(r, 'dateFactureFacturation')));
+                if (dDeb || dFin || dFac) {
+                    const e = datesParNumero.get(cleNum) || {};
+                    if (dDeb && !e.debut) e.debut = dDeb;
+                    if (dFin && !e.fin) e.fin = dFin;
+                    if (dFac && !e.facture) e.facture = dFac;
+                    datesParNumero.set(cleNum, e);
+                }
+            }
+
             const journal = String(col(r, 'journal') || '').trim();
             // Ce que l'ancien grand livre, déjà classé à la main, dit de cette
             // écriture : par numéro de facture d'abord, puis par identifiant du
@@ -442,7 +478,30 @@
                 tiers:  utile(col(r, 'ancienSousParTiers'))  || utile(col(r, 'ancienTypeParTiers')),
                 compte: utile(col(r, 'ancienSousParCompte')) || utile(col(r, 'ancienTypeParCompte')),
             };
+            // Tout ce que la ligne porte et que l'application n'utilise pas :
+            // conservé tel quel pour que l'export rende votre fichier entier.
+            const brut = {
+                numeroPiece: texteBrut(col(r, 'numeroPiece')),
+                libellePiece: String(col(r, 'libelle') || '').trim(),
+                libelleLigne: String(col(r, 'libelleLigne') || '').trim(),
+                dateEnregistrement: R.parseDate(col(r, 'dateEnregistrement')),
+                auteur: String(col(r, 'auteur') || '').trim(),
+                categories: String(col(r, 'categories') || '').trim(),
+                balance: utile(col(r, 'balance')),
+                devise: String(col(r, 'devise') || '').trim(),
+                tauxTva: utile(col(r, 'tauxTva')),
+                nbJoursEchus: utile(col(r, 'nbJoursEchus')),
+                avoirApparente: utile(col(r, 'avoirApparente')),
+                commentaire: String(col(r, 'commentaire') || '').trim(),
+                statutSellsy: utile(col(r, 'statutSellsy')),
+                facturePosterieure: utile(col(r, 'facturePosterieure')),
+                mandatPaid: utile(col(r, 'mandatPaid')),
+                typeClientFichier: String(col(r, 'typeClient') || '').trim(),
+                sousCategorieFichier: String(col(r, 'sousCategorie') || '').trim(),
+                numeroZoho: texteBrut(col(r, 'numeroExtrait')),
+            };
             const ligne = {
+                brut,
                 numero, numeroExtrait, qualif, date, debit, credit, journal,
                 libelle: String(col(r, 'libelle') || '').trim(),
                 dateEcheance: R.parseDate(col(r, 'dateEcheance')),
@@ -536,7 +595,21 @@
             }
         }
 
-        return { lignes: resultats, groupes: [...groupes.values()], ignorees,
+        // Les dates connues d'une facture valent pour toutes ses écritures.
+        for (const g of groupes.values()) {
+            for (const liste of [g.factures, g.reglements, g.avoirs, g.autres || []]) {
+                for (const l of liste) {
+                    const k = l.numero ? I.factureKey(l.numero) : null;
+                    const e = k ? datesParNumero.get(k) : null;
+                    if (!e) continue;
+                    if (!l.dateDebutFormation && e.debut) l.dateDebutFormation = e.debut;
+                    if (!l.dateFinFormation && e.fin) l.dateFinFormation = e.fin;
+                    if (!l.dateFacturation && e.facture) l.dateFacturation = e.facture;
+                }
+            }
+        }
+
+        return { lignes: resultats, groupes: [...groupes.values()], ignorees, datesParNumero,
                  numerosExtraits, comptable: true };
     }
 
@@ -652,6 +725,10 @@
             // La date de la facturation prime sur la date
             // comptable : c'est elle qui date la créance.
             dateFacture: f.dateFacturation || f.date,
+            // La date de facture de la facturation — la colonne AQ du classeur.
+            // C'est elle qui décide de la refacturation après formation et qui
+            // sert de base à l'alternance corporate ; la date comptable, non.
+            dateFactureFacturation: f.dateFacturation || null,
             dateEcheance: f.dateEcheance || null,
             // Les dates de formation ne se propagent pas d'une
             // ligne à l'autre : un lettrage réunit plusieurs
@@ -1156,18 +1233,18 @@
             return {
                 ...c,
                 typeClientSellsy: type || c.typeClientSellsy,
-                // Les dates que porte l'extrait lui-même font foi : c'est sur
-                // elles que la colonne « Date d'échéance recalculée » du
-                // classeur est bâtie. Celles de la facturation ne servent qu'à
-                // défaut de tout — ni dates dans l'extrait, ni échéance
-                // comptable. Les faire passer avant l'échéance du grand livre
-                // appliquerait la règle du dispositif à des milliers de lignes
-                // que le classeur laisse à leur date comptable : la balance
-                // cesserait de se recouper avec lui.
+                // Les colonnes AO, AP et AQ du classeur sont cette recherche-là :
+                // le numéro de facture dans la base Sellsy, puis dans celle de
+                // Zoho. L'extrait les porte déjà calculées — ce sont elles qui
+                // font foi, pour que la balance se recoupe avec le classeur.
+                // La facturation ne complète que ce que l'extrait ignore et que
+                // l'échéance comptable ne rattrape pas.
                 dateDebutFormation: c.dateDebutFormation
                     || (!c.dateEcheance && d ? d.debut : null) || null,
                 dateFinFormation: c.dateFinFormation
                     || (!c.dateEcheance && d ? d.fin : null) || null,
+                dateFactureFacturation: c.dateFactureFacturation
+                    || (!c.dateEcheance && d ? d.facture : null) || null,
                 // Le mandat change la règle d'échéance ; le montant prélevé dit
                 // ce qui est déjà rentré par ce canal, rejets exclus.
                 mandatGocardless: !!(gcl && gcl.etat) || !!c.mandatEtatFichier,
@@ -1323,6 +1400,8 @@
                     compte: g.compte, tiers: g.tiers, lettre: g.lettre,
                     identifiantTiers: g.identifiantTiers || '',
                     siren: g.siren || '',
+                    brut: l.brut || null,
+                    dateFacturation: l.dateFacturation || null,
                     // Ce que la ligne porte en propre, pour que le grand livre
                     // exporté se relise sans le fichier d'origine.
                     dateEcheanceFichier: l.dateEcheance || null,
@@ -1635,6 +1714,11 @@
                       label: !c.financement ? 'À classer'
                           : parCategorie ? cle : R.getRule(c.financement, rules).label,
                       total: 0, echu: 0, nonEchu: 0, nb: 0, crediteur: 0, nbCrediteur: 0,
+                      // « Nb » compte les créances, et une créance n'est pas
+                      // toujours une facture : un solde sans facture — acompte,
+                      // écart de règlement — en est une aussi. Les deux sont
+                      // donc comptés à part.
+                      nbFactures: 0, nbSansFacture: 0,
                       buckets: {}, creances: [] };
                 for (const b of R.AGING_BUCKETS) l.buckets[b.key] = 0;
                 lignes.set(cle, l);
@@ -1645,6 +1729,7 @@
             const bucket = R.bucketFor(retard) || R.AGING_BUCKETS[0];
 
             l.nb++;
+            if (c.sansNumero) l.nbSansFacture++; else l.nbFactures++;
             l.total += c.resteDu;
             // Un solde créditeur — acompte, trop-perçu, avoir non imputé — n'est
             // pas une créance vieillie : c'est de l'argent déjà reçu. Le ranger
@@ -1670,11 +1755,12 @@
         });
 
         const total = { label: 'TOTAL', cle: '__TOTAL__', total: 0, echu: 0, nonEchu: 0, nb: 0,
-                        crediteur: 0, nbCrediteur: 0, buckets: {} };
+                        crediteur: 0, nbCrediteur: 0, nbFactures: 0, nbSansFacture: 0, buckets: {} };
         for (const b of R.AGING_BUCKETS) total.buckets[b.key] = 0;
         for (const r of rows) {
             total.total += r.total; total.echu += r.echu; total.nonEchu += r.nonEchu; total.nb += r.nb;
             total.crediteur += r.crediteur; total.nbCrediteur += r.nbCrediteur;
+            total.nbFactures += r.nbFactures; total.nbSansFacture += r.nbSansFacture;
             for (const b of R.AGING_BUCKETS) total.buckets[b.key] += r.buckets[b.key];
         }
 

@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.41.0';
+    const VERSION = '2.43.0';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
@@ -2544,6 +2544,26 @@
      * il se recoupe avec la comptabilité. Les deux servent, à des moments
      * différents — le choix se fait donc, et il se conserve.
      */
+    /**
+     * Combien de lignes du grand livre chaque dispositif porte.
+     *
+     * « Nb » compte les créances ; une créance n'est pas une ligne. Une facture
+     * réglée en trois fois en occupe quatre, et c'est ce nombre-là qu'on
+     * retrouve en filtrant le grand livre.
+     */
+    function compterLignesGL() {
+        const par = new Map();
+        const e = state.glEcritures;
+        if (!e) return par;
+        const niveau = state.ui.glNiveau || 'financement';
+        for (const l of e.lignes) {
+            const cle = !l.financement ? GL.A_CLASSER
+                : niveau === 'categorie' ? R.categorieDe(l.financement, state.rules) : l.financement;
+            par.set(cle, (par.get(cle) || 0) + 1);
+        }
+        return par;
+    }
+
     function fmtAg(v) {
         return state.options.montantsExacts ? U.euros(v) : U.eurosCourt(v);
     }
@@ -2910,12 +2930,23 @@
               format: v => v ? `<span class="ag-cell">${fmtAg(v)}</span>` : '<span class="ag-zero">·</span>',
               cls: () => 'ag-col' },
             { key: 'total', label: 'Total', align: 'right', format: U.euros, cls: () => 'ag-total' },
-            { key: 'nb', label: 'Nb', align: 'right', format: U.nombre },
+            { key: 'nb', label: 'Créances', align: 'right',
+              title: 'Créances ouvertes : les factures, et les soldes sans facture (acomptes, écarts de règlement)',
+              format: (v, r) => `${U.nombre(v)}<span class="cell-mini">${U.nombre(r.nbFactures)} facture${r.nbFactures > 1 ? 's' : ''}${
+                  r.nbSansFacture ? ' · ' + U.nombre(r.nbSansFacture) + ' sans facture' : ''}</span>` },
+            { key: 'nbLignes', label: 'Lignes du grand livre', align: 'right',
+              title: 'Toutes les écritures de ce dispositif : factures, règlements, avoirs et autres',
+              format: v => v ? U.nombre(v) : '<span class="ag-zero">·</span>' },
         ];
-        const rows = b.rows.map(r => ({ ...r, ...r.buckets }));
+        const lignesParFin = compterLignesGL();
+        const rows = b.rows.map(r => ({ ...r, ...r.buckets,
+            nbLignes: lignesParFin.get(r.cle) || lignesParFin.get(r.financement) || 0 }));
         const total = { label: 'TOTAL', echu: fmtAg(b.total.echu),
             crediteur: fmtAg(b.total.crediteur),
-            total: U.euros(b.total.total), nb: U.nombre(b.total.nb) };
+            total: U.euros(b.total.total),
+            nb: `${U.nombre(b.total.nb)}<span class="cell-mini">${U.nombre(b.total.nbFactures)} factures`
+                + `${b.total.nbSansFacture ? ' · ' + U.nombre(b.total.nbSansFacture) + ' sans facture' : ''}</span>`,
+            nbLignes: U.nombre(X.sum(rows, r => r.nbLignes)) };
         for (const bk of buckets) total[bk.key] = fmtAg(b.total.buckets[bk.key]);
 
         const el = $('#aging-gl-table');
@@ -3741,13 +3772,15 @@
             let g = parCompte.get(cle);
             if (!g) {
                 g = { compte: cle, tiers: c.tiers || '', nb: 0, resteDu: 0, echu: 0,
+                      nbFactures: 0, nbSansFacture: 0, nonEchu: 0,
                       plusAncienne: null, retardMax: null };
                 for (const b of R.AGING_BUCKETS) g[b.key] = 0;
                 parCompte.set(cle, g);
             }
             g.nb++;
+            if (c.sansNumero) g.nbSansFacture++; else g.nbFactures++;
             g.resteDu += c.resteDu || 0;
-            if ((c.retardJours || 0) > 0) g.echu += c.resteDu || 0;
+            if ((c.retardJours || 0) > 0) g.echu += c.resteDu || 0; else g.nonEchu += c.resteDu || 0;
             if (c.bucket && c.bucket !== 'crediteur') g[c.bucket] = (g[c.bucket] || 0) + (c.resteDu || 0);
             const d = c.dateEcheance || c.dateFacture;
             if (d && (!g.plusAncienne || d < g.plusAncienne)) g.plusAncienne = d;
@@ -3905,6 +3938,18 @@
         const creances = state.glCreances;
         const ref = state.filtres.dateRef;
 
+        // Les lignes du grand livre par dispositif : « Nb » compte des créances,
+        // pas des écritures, et les deux se demandent.
+        const lignesGL = new Map();
+        if (state.glEcritures) {
+            for (const l of state.glEcritures.lignes) {
+                for (const cle of [l.financement || GL.A_CLASSER,
+                                   l.financement ? R.categorieDe(l.financement, state.rules) : GL.A_CLASSER]) {
+                    lignesGL.set(cle, (lignesGL.get(cle) || 0) + 1);
+                }
+            }
+        }
+
         // ── Une ligne de synthèse, dans l'ordre des colonnes du classeur ──
         const ligneSynthese = (r, colonne) => {
             const o = {};
@@ -3915,7 +3960,10 @@
             o['Non échu'] = arrondi(r.nonEchu);
             o['Solde créditeur'] = arrondi(r.crediteur || 0);
             o['Total'] = arrondi(r.total);
-            o['Nb'] = r.nb;
+            o['Nb de créances'] = r.nb;
+            o['Dont factures'] = r.nbFactures || 0;
+            o['Dont soldes sans facture'] = r.nbSansFacture || 0;
+            o['Lignes du grand livre'] = lignesGL.get(r.cle) || lignesGL.get(r.financement) || '';
             return o;
         };
         const feuilleSynthese = (niveau, colonne, nom) => {
@@ -3981,7 +4029,9 @@
         // qu'on se pose devant une date qui surprend.
         const BASES = {
             dateFacture: 'date de facture', dateDebutFormation: 'début de formation',
-            dateFinFormation: 'fin de formation', dateEcheanceComptable: 'échéance portée par le grand livre',
+            dateFinFormation: 'fin de formation',
+            dateFactureFacturation: 'date de facture de la facturation',
+            dateEcheanceComptable: 'échéance portée par le grand livre',
             'colonne Monday': 'date d’échéance de Monday',
         };
         const surQuoi = c => {
@@ -4053,14 +4103,25 @@
         {
             const entetes = ['Financement', 'Clé', 'Restant dû', 'Total échu']
                 .concat(buckets.filter(b => b.key !== 'nonEchu').map(b => b.label))
-                .concat(['Non échu', 'Solde créditeur', 'Nb', 'Retard max (jours)', 'Plus ancienne échéance']);
+                .concat(['Non échu', 'Solde créditeur', 'Nb de créances', 'Dont factures',
+                         'Dont soldes sans facture', 'Lignes du grand livre',
+                         'Retard max (jours)', 'Plus ancienne échéance']);
             const aoa = [entetes];
             const niveaux = [{ level: 0 }];
             const parFin = GL.balanceAgee(creances, ref, state.rules, 'financement');
+            const lignesParCompte = new Map();
+            if (state.glEcritures) {
+                for (const l of state.glEcritures.lignes) {
+                    if (!l.compte) continue;
+                    lignesParCompte.set(l.compte, (lignesParCompte.get(l.compte) || 0) + 1);
+                }
+            }
             for (const r of parFin.rows) {
                 const ligne = [r.label, '', arrondi(r.total), arrondi(r.echu)]
                     .concat(buckets.filter(b => b.key !== 'nonEchu').map(b => arrondi(r.buckets[b.key])))
-                    .concat([arrondi(r.nonEchu), arrondi(r.crediteur || 0), r.nb, '', '']);
+                    .concat([arrondi(r.nonEchu), arrondi(r.crediteur || 0), r.nb,
+                        r.nbFactures || 0, r.nbSansFacture || 0,
+                        lignesGL.get(r.cle) || lignesGL.get(r.financement) || '', '', '']);
                 aoa.push(ligne);
                 niveaux.push({ level: 0 });
                 for (const g of comptesDuFinancement(r.creances || [])) {
@@ -4068,6 +4129,8 @@
                         arrondi(g.resteDu), arrondi(g.echu)]
                         .concat(buckets.filter(b => b.key !== 'nonEchu').map(b => arrondi(g[b.key] || 0)))
                         .concat([arrondi(g.nonEchu || 0), arrondi(g.resteDu < 0 ? g.resteDu : 0), g.nb,
+                            g.nbFactures || 0, g.nbSansFacture || 0,
+                            lignesParCompte.get(g.compte) || '',
                             g.retardMax == null ? '' : g.retardMax,
                             g.plusAncienne ? U.dateFR(g.plusAncienne) : '']));
                     // Repliés à l'ouverture : c'est le « + » à côté du financement.
@@ -4155,19 +4218,33 @@
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
                 state.glEcritures.lignes.map(l => {
                     const retard = l.dateEcheance ? R.diffDays(ref, l.dateEcheance) : null;
+                    const b = l.brut || {};
                     return {
                         'Clé': ((l.compte || '') + ' - ' + (l.tiers || '')).trim().replace(/^- | -$/g, ''),
+                        'Solde': arrondi((l.debit || 0) - (l.credit || 0)),
                         'N° de compte': l.compte || '',
-                        'Client': l.tiers || '',
-                        'Identifiant tiers': l.identifiantTiers || '',
-                        'SIREN': l.siren || '',
+                        'Libellé de compte': l.tiers || '',
+                        'Date de facture': l.date ? U.dateFR(l.date) : '',
                         'Journal': l.journal || '',
-                        'Date': l.date ? U.dateFR(l.date) : '',
-                        'Libellé': l.libelle || '',
+                        'Libellé de pièce': b.libellePiece || l.libelle || '',
+                        'Libellé de ligne': b.libelleLigne || '',
+                        'N° de pièce': b.numeroPiece || '',
                         'N° de facture': l.numero || '',
-                        'Lettrage': l.lettre || '',
+                        'Taux d’attribution TVA': b.tauxTva || '',
+                        'Let.': l.lettre === GL.POOL_NON_LETTRE ? '' : (l.lettre || ''),
+                        'Devise': b.devise || '',
                         'Débit': arrondi(l.debit || 0),
                         'Crédit': arrondi(l.credit || 0),
+                        'Balance': b.balance || '',
+                        'Catégories analytiques': b.categories || '',
+                        'Identifiant du tiers': l.identifiantTiers || '',
+                        'Tiers': l.tiers || '',
+                        'SIREN': l.siren || '',
+                        'Date d’enregistrement': b.dateEnregistrement ? U.dateFR(b.dateEnregistrement) : '',
+                        'Auteur': b.auteur || '',
+                        'Numero de facture zoho extrait du libellé de ligne': b.numeroZoho || '',
+                        'Date d’échéance': l.dateEcheanceFichier ? U.dateFR(l.dateEcheanceFichier) : '',
+                        'Nb jours échus': b.nbJoursEchus || '',
                         'Nature': { facture: 'Facture', reglement: 'Règlement',
                                     avoir: 'Avoir' }[l.nature] || 'Autre écriture',
                         'Financement': l.financement
@@ -4182,16 +4259,23 @@
                         'Échéance calculée sur': l.echeanceBase
                             ? (({ dateFacture: 'date de facture', dateDebutFormation: 'début de formation',
                                   dateFinFormation: 'fin de formation',
+                                  dateFactureFacturation: 'date de facture de la facturation',
                                   dateEcheanceComptable: 'échéance portée par le grand livre' })[l.echeanceBase]
                                 || l.echeanceBase) : '',
                         'Motif particulier': l.echeanceMotif || '',
-                        'Échéance portée par le fichier': l.dateEcheanceFichier ? U.dateFR(l.dateEcheanceFichier) : '',
-                        'Début de formation': l.dateDebutFormation ? U.dateFR(l.dateDebutFormation) : '',
-                        'Fin de formation': l.dateFinFormation ? U.dateFR(l.dateFinFormation) : '',
+                        'Type de client (fichier)': b.typeClientFichier || '',
+                        'Sous catégorie de type de client (fichier)': b.sousCategorieFichier || '',
                         'Ancien grand livre — par n° de facture': (l.ancien && l.ancien.numero) || '',
                         'Ancien grand livre — par identifiant du tiers': (l.ancien && l.ancien.tiers) || '',
                         'Ancien grand livre — par n° de compte': (l.ancien && l.ancien.compte) || '',
-                        'Qualification portée par le fichier': l.qualif || '',
+                        'Date de debut de formation': l.dateDebutFormation ? U.dateFR(l.dateDebutFormation) : '',
+                        'Date de fin de formation': l.dateFinFormation ? U.dateFR(l.dateFinFormation) : '',
+                        'Date de facture (facturation)': l.dateFacturation ? U.dateFR(l.dateFacturation) : '',
+                        'Date de facture postérieure à la fin de formation': b.facturePosterieure || '',
+                        'Mandat gocardless - Montant PAID': b.mandatPaid || '',
+                        'N° de l’avoir apparenté': b.avoirApparente || '',
+                        'Commentaire': b.commentaire || '',
+                        'Statut sellsy': b.statutSellsy || '',
                         'Jours de retard': retard == null ? '' : retard,
                         'Tranche': ((R.bucketFor(retard) || {}).label) || '',
                     };
@@ -7044,9 +7128,18 @@
                         const r = matrice[i] || [];
                         if (!r.some(c => String(c == null ? '' : c).trim())) continue;
                         const o = {};
+                        // Deux colonnes peuvent porter le même nom — le grand
+                        // livre de septembre a deux « Date de facture », la
+                        // comptable et celle de la facturation. Garder la
+                        // première et jeter la seconde faisait disparaître
+                        // 3 436 dates. Elles sont suffixées, comme le fait
+                        // n'importe quel lecteur de CSV.
+                        const vus = {};
                         for (let c = 0; c < entete.length; c++) {
-                            const nom = entete[c] || ('Colonne ' + (c + 1));
-                            if (!(nom in o)) o[nom] = r[c] == null ? '' : r[c];
+                            let nom = entete[c] || ('Colonne ' + (c + 1));
+                            if (vus[nom] != null) { vus[nom]++; nom = nom + '_' + vus[nom]; }
+                            else vus[nom] = 0;
+                            o[nom] = r[c] == null ? '' : r[c];
                         }
                         lignes.push(o);
                     }
@@ -7383,6 +7476,7 @@
             'Échéance calculée sur': f.echeanceBase
                 ? ({ dateFacture: 'date de facture', dateDebutFormation: 'début de formation',
                      dateFinFormation: 'fin de formation',
+                     dateFactureFacturation: 'date de facture de la facturation',
                      'colonne Monday': 'date d’échéance de Monday' }[f.echeanceBase] || f.echeanceBase)
                 : '',
             'Échéance portée par Monday': f.dateEcheanceSource ? U.dateFR(f.dateEcheanceSource) : '',
