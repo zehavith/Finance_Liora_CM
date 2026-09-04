@@ -2412,6 +2412,26 @@ def test_pieces_versees() -> None:
                  "et leur texte est relu depuis le .eml")
 
 
+def test_ancienne_reference_facture() -> None:
+    """Une facture emise sous un autre outil garde son numero d'alors."""
+    print("\nAncien numéro de facture")
+
+    from dossiers import dossiers_depuis_grille  # noqa: PLC0415
+
+    grille = [
+        (1, ["N° Facture", "Numero Zoho", "E-mail"]),
+        (2, ["FACT-2405-00409", "INV-2023-0088", "a@b.fr"]),
+    ]
+    dossier = dossiers_depuis_grille(grille, "tableau Monday 42")[0]
+    verifier(dossier.factures == ["FACT-2405-00409", "INV-2023-0088"],
+             f"les deux numéros sont retenus (obtenu : {dossier.factures})")
+
+    requete = dossier.requete_gmail()
+    verifier('"INV-2023-0088"' in requete,
+             "l'ancien numéro est cherché comme le nouveau")
+    verifier('"FACT-2405-00409"' in requete, "et le nouveau ne disparaît pas")
+
+
 def test_annuaire_entreprises() -> None:
     """Fiches publiques des débiteurs, et répartition par forme juridique."""
     print("\nAnnuaire des entreprises")
@@ -2520,6 +2540,28 @@ def test_reponses_du_debiteur() -> None:
     verifier("facture est echue" not in extrait,
              "l'historique cité en réponse ne l'est pas")
     verifier("Cordialement" not in extrait, "ni la formule de politesse")
+
+    # Beaucoup de messages n'ont aucune version texte : les citer sans les
+    # depouiller ferait figurer « <meta http-equiv » dans la note.
+    depouille = module_synthese._extrait_lisible(
+        '<html><head><meta http-equiv="content-type" content="text/html"></head>'
+        '<body dir="auto"><div dir="ltr">Bonjour</div>'
+        '<div dir="ltr">Je n&#39;ai pas fait la formation.</div>'
+        '<div dir="ltr"><br><blockquote type="cite">Le 10 nov. 2025, '
+        'Recouvrement a ecrit : votre facture est echue</blockquote></div>'
+        "</body></html>"
+    )
+    verifier("Je n'ai pas fait la formation." in depouille,
+             f"le propos est extrait du HTML (obtenu : {depouille!r})")
+    verifier("<" not in depouille and "http-equiv" not in depouille,
+             "et aucune balise n'y subsiste")
+    verifier("votre facture est echue" not in depouille,
+             "la citation du fil, en blockquote, est écartée")
+
+    # Un message sans balise n'a pas a passer par le depouillement.
+    verifier(module_synthese._extrait_lisible("Je conteste. 5 < 10 euros dus.")
+             == "Je conteste. 5 < 10 euros dus.",
+             "un texte contenant « < » n'est pas pris pour du HTML")
 
     verifier(module_synthese._extrait_lisible("") == "",
              "un message sans texte ne produit aucun extrait")
@@ -4620,6 +4662,7 @@ def main() -> int:
     test_colonnes_vides_signalees()
     test_colonnes_miroir_monday()
     test_pieces_versees()
+    test_ancienne_reference_facture()
     test_annuaire_entreprises()
     test_reponses_du_debiteur()
     test_bloc_pieces()

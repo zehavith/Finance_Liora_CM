@@ -627,6 +627,26 @@ def _bloc_reponses(lignes_index: list[LigneIndex], textes: dict[int, str]) -> st
 LONGUEUR_EXTRAIT = 320
 
 
+def _texte_depuis_html(brut: str) -> str:
+    """Le texte d'un message qui n'existe qu'en HTML.
+
+    Beaucoup de messages n'ont aucune version texte : les citer sans les
+    dépouiller ferait figurer « <meta http-equiv="content-type" » dans la
+    note, à la place de ce que le débiteur a écrit.
+    """
+    texte = re.sub(r"(?is)<(script|style|head)\b.*?</\1>", " ", brut)
+    # L'historique du fil est cité dans un blockquote : il s'arrête là.
+    texte = re.split(r"(?i)<blockquote", texte)[0]
+    texte = re.sub(r"(?i)<(br|/div|/p|/tr|/li)\s*/?>", "\n", texte)
+    texte = re.sub(r"(?s)<[^>]+>", " ", texte)
+    return html.unescape(texte)
+
+
+# Un message sans balise n'a pas à passer par le dépouillement : « 5 < 10 »
+# n'est pas du HTML, et le traiter comme tel effacerait la moitié de la phrase.
+BALISE_HTML = re.compile(r"(?is)<(html|body|div|p|br|table|span|meta)\b")
+
+
 def _extrait_lisible(texte: str) -> str:
     """Les premières phrases utiles d'un message, citations et signature ôtées.
 
@@ -634,8 +654,12 @@ def _extrait_lisible(texte: str) -> str:
     reprendre ferait citer nos propres relances comme si le débiteur les avait
     écrites.
     """
+    brut = texte or ""
+    if BALISE_HTML.search(brut):
+        brut = _texte_depuis_html(brut)
+
     utiles: list[str] = []
-    for ligne in (texte or "").splitlines():
+    for ligne in brut.splitlines():
         propre = ligne.strip()
         if not propre or propre.startswith(">"):
             continue

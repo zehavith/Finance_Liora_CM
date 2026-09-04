@@ -261,6 +261,21 @@ Les intitulés sont reconnus comme à l'export : `convention signé ?`,
 `Numero` pour la facture — cet intitulé étant tranché sur les valeurs, comme
 `Name`, puisqu'il désigne ailleurs un rang ou un identifiant interne.
 
+### Une facture émise sous un autre outil
+
+Une même prestation a pu être facturée sous un outil précédent — Zoho, Sellsy —
+avant la reprise. Le numéro d'alors est **le seul qui figure dans les échanges
+de l'époque**, et chercher uniquement le numéro actuel manque tout ce pan du
+dossier.
+
+Les colonnes `Numero Zoho`, `Reference Zoho`, `Ancienne facture`,
+`Numero Sellsy` et leurs variantes sont donc reconnues **en plus** de la
+colonne de facture habituelle : les deux numéros sont cherchés, et les
+échanges des deux époques se retrouvent dans le même dossier.
+
+Si la colonne porte un autre intitulé chez vous, il suffit de l'ajouter à la
+liste `ALIAS_COLONNES["facture"]` de `dossiers.py`.
+
 ### Verser une pièce, ou un message, dans un dossier
 
 L'onglet *Documents* permet d'ajouter à un dossier ce que l'extraction n'a pas

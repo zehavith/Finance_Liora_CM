@@ -58,6 +58,13 @@ ALIAS_COLONNES = {
     "facture": [
         "reference facture", "numero de facture", "numero facture", "n de facture",
         "n facture", "no facture", "num facture", "facture n",
+        # Une même prestation a pu être facturée sous un autre outil avant la
+        # reprise : le numéro d'alors est le seul qui figure dans les échanges
+        # de l'époque, et le chercher aussi évite de manquer tout un pan du
+        # dossier. Le champ accepte plusieurs colonnes à la fois.
+        "numero zoho", "reference zoho", "n zoho", "no zoho", "facture zoho",
+        "ancienne facture", "ancien numero de facture", "ancien numero",
+        "numero sellsy", "reference sellsy", "facture sellsy",
         "facture", "factures", "invoice",
     ],
     "date_debut": ["date de debut", "date debut", "debut", "depuis"],
