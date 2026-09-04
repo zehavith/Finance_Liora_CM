@@ -1104,11 +1104,18 @@
             return {
                 ...c,
                 typeClientSellsy: type || c.typeClientSellsy,
-                // Les dates que porte l'extrait lui-même passent avant celles
-                // de la facturation : c'est sur elles que votre colonne
-                // « Date d'échéance recalculée » est bâtie.
-                dateDebutFormation: c.dateDebutFormation || (d && d.debut) || null,
-                dateFinFormation: c.dateFinFormation || (d && d.fin) || null,
+                // Les dates que porte l'extrait lui-même font foi : c'est sur
+                // elles que la colonne « Date d'échéance recalculée » du
+                // classeur est bâtie. Celles de la facturation ne servent qu'à
+                // défaut de tout — ni dates dans l'extrait, ni échéance
+                // comptable. Les faire passer avant l'échéance du grand livre
+                // appliquerait la règle du dispositif à des milliers de lignes
+                // que le classeur laisse à leur date comptable : la balance
+                // cesserait de se recouper avec lui.
+                dateDebutFormation: c.dateDebutFormation
+                    || (!c.dateEcheance && d ? d.debut : null) || null,
+                dateFinFormation: c.dateFinFormation
+                    || (!c.dateEcheance && d ? d.fin : null) || null,
                 // Le mandat change la règle d'échéance ; le montant prélevé dit
                 // ce qui est déjà rentré par ce canal, rejets exclus.
                 mandatGocardless: !!(gcl && gcl.etat) || !!c.mandatEtatFichier,

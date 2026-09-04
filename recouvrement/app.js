@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.37.0';
+    const VERSION = '2.37.1';
     const VERSION_DATE = '2 septembre 2026';
 
     const R = window.LioraRules;
