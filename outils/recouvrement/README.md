@@ -266,7 +266,11 @@ Les intitulés sont reconnus comme à l'export : `convention signé ?`,
 L'onglet *Documents* permet d'ajouter à un dossier ce que l'extraction n'a pas
 pu ramener. Deux cas, distingués par l'extension du fichier :
 
-**Une pièce** — relevé comptable, convention signée, facture, mise en demeure.
+**Une pièce** — relevé comptable, convention signée, diplôme, facture, mise en
+demeure. Verser la convention ou le diplôme **renseigne la colonne
+correspondante** de l'onglet *État des dossiers* : la pièce est au dossier, il
+n'y a pas lieu de redemander si elle existe. Retirée, la réponse repart avec
+elle — à moins qu'une autre pièce de même nature ne la porte encore.
 Elle est rangée dans le sous-répertoire `pieces-ajoutees` et reprise dans la
 note, sous sa nature, comme les pièces extraites des messages. La note ne
 mentionne pas sa provenance : c'est un document qui se transmet, et le service

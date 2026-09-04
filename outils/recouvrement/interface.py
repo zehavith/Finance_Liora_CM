@@ -44,7 +44,7 @@ import synthese as module_synthese  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "59"
+VERSION = "60"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -927,7 +927,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
             donnees = module_suivi.charger(SUIVI)
             module_suivi.ajouter_piece(donnees, reference, nature, nom)
             module_suivi.enregistrer(SUIVI, donnees)
-            versee = {"piece": None}
+            versee = {
+                "piece": None,
+                "repond": {"convention": "Convention", "diplome": "Diplôme"}.get(
+                    module_suivi.NATURES_QUI_REPONDENT.get(nature, ""), ""
+                ),
+            }
 
         refaite, motif = _refaire_synthese(repertoire, dossiers[reference],
                                            module_suivi.charger(SUIVI))
@@ -2460,7 +2465,8 @@ async function verserPiece(evenement) {
     afficherBandeau(true, (r.piece
         ? `Message ajouté au dossier ${reference} en pièce n° ${r.piece}`
           + ` (${r.sens}).`
-        : `${r.nature} versée au dossier ${reference}.`)
+        : `${r.nature} versée au dossier ${reference}.`
+          + (r.repond ? ` La colonne ${r.repond} passe à « oui ».` : ""))
       + (r.synthese_refaite
          ? " La note de synthèse a été refaite."
          : ` La note n'a pas pu être refaite (${r.motif}) : elle le sera au`

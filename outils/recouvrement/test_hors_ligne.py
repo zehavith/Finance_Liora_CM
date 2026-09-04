@@ -2317,6 +2317,31 @@ def test_pieces_versees() -> None:
     verifier([p["fichier"] for p in donnees["FACT-1"]["pieces"]] == ["grand-livre.pdf"],
              "une pièce retirée disparaît de la liste")
 
+    print("  -- une pièce versée répond pour sa colonne --")
+    # Verser la convention signée répond à « la convention est-elle signée ? » :
+    # la pièce est là. Redemander serait faire répondre deux fois.
+    repondu: dict[str, dict] = {}
+    module_suivi.ajouter_piece(repondu, "FACT-2", "Convention de formation", "c.pdf")
+    verifier(repondu["FACT-2"].get("convention") == "oui",
+             "verser la convention renseigne la colonne Convention")
+    module_suivi.ajouter_piece(repondu, "FACT-2", "Diplôme", "d.pdf")
+    verifier(repondu["FACT-2"].get("diplome") == "oui",
+             "verser le diplôme renseigne la colonne Diplôme")
+    module_suivi.ajouter_piece(repondu, "FACT-2", "Relevé comptable", "r.pdf")
+    verifier(repondu["FACT-2"].get("convention") == "oui",
+             "une pièce d'une autre nature ne touche à rien")
+
+    # Retirée, la pièce reprend sa réponse — sauf si une autre la porte.
+    module_suivi.ajouter_piece(repondu, "FACT-2", "Convention de formation", "c2.pdf")
+    module_suivi.retirer_piece(repondu, "FACT-2", "c.pdf")
+    verifier(repondu["FACT-2"].get("convention") == "oui",
+             "une seconde convention au dossier maintient la réponse")
+    module_suivi.retirer_piece(repondu, "FACT-2", "c2.pdf")
+    verifier("convention" not in repondu["FACT-2"],
+             "la dernière retirée, la convention n'est plus établie")
+    verifier(repondu["FACT-2"].get("diplome") == "oui",
+             "et le diplôme n'est pas emporté au passage")
+
     # La note les reprend, dans une rubrique qui dit ce qu'elles valent.
     html = module_synthese.construire_html(
         dossier=Dossier(reference="FACT-1", nom="A", emails=["a@b.fr"],

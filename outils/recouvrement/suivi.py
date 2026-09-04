@@ -731,10 +731,20 @@ def _cle_facture(valeur: str) -> str:
 NATURES_PIECES = (
     "Relevé comptable",
     "Convention de formation",
+    "Diplôme",
     "Facture",
     "Mise en demeure",
     "Autre pièce",
 )
+
+# Verser la convention signée répond à la question « la convention est-elle
+# signée ? » : la pièce est là, sur le disque. Laisser la colonne à « non
+# renseigné » obligerait à répondre une seconde fois à ce qu'on vient
+# d'établir.
+NATURES_QUI_REPONDENT = {
+    "Convention de formation": "convention",
+    "Diplôme": "diplome",
+}
 
 
 def ajouter_piece(
@@ -757,18 +767,36 @@ def ajouter_piece(
         "ajoute_le": datetime.now().strftime("%d/%m/%Y"),
     })
     entree["pieces"] = pieces
+    champ = NATURES_QUI_REPONDENT.get(nature)
+    if champ:
+        entree[champ] = "oui"
     entree["maj"] = datetime.now().strftime("%d/%m/%Y %H:%M")
     donnees[reference] = entree
     return entree
 
 
 def retirer_piece(donnees: dict[str, dict], reference: str, fichier: str) -> dict:
-    """Retire une pièce du suivi. Le fichier lui-même est effacé par l'appelant."""
+    """Retire une pièce du suivi. Le fichier lui-même est effacé par l'appelant.
+
+    La réponse que la pièce apportait est retirée avec elle, à moins qu'une
+    autre pièce de même nature ne la porte encore : la convention n'est plus
+    établie une fois la seule pièce qui l'établissait sortie du dossier.
+    """
     entree = dict(donnees.get(reference) or {})
-    entree["pieces"] = [
+    retirees = [p for p in (entree.get("pieces") or []) if p.get("fichier") == fichier]
+    restantes = [
         dict(p) for p in (entree.get("pieces") or [])
         if p.get("fichier") != fichier
     ]
+    entree["pieces"] = restantes
+
+    for piece in retirees:
+        champ = NATURES_QUI_REPONDENT.get(piece.get("nature") or "")
+        if champ and not any(
+            p.get("nature") == piece.get("nature") for p in restantes
+        ):
+            entree.pop(champ, None)
+
     donnees[reference] = entree
     return entree
 
