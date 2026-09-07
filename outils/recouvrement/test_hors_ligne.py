@@ -3205,6 +3205,45 @@ def test_pieces_citees_une_fois() -> None:
              "reste cité")
 
 
+def test_colonnes_du_suivi_a_la_main() -> None:
+    """Les intitulés du suivi tenu à la main, tels qu'ils sont écrits."""
+    print("\nColonnes du suivi « publipostage »")
+
+    from dossiers import ALIAS_COLONNES, _normaliser_entete  # noqa: PLC0415
+
+    def champ_de(intitule):
+        plat = _normaliser_entete(intitule)
+        return next((c for c, alias in ALIAS_COLONNES.items() if plat in alias), "")
+
+    attendus = [
+        ("Email client sur sellsy", "email"),
+        ("Montant reste à charge TTC", "montant_du"),
+        ("Chèque de caution", "commentaire"),
+        ("Probabilité de récupération", "statut"),
+        ("Qualification", "statut"),
+        ("Nb d'heure Theorique", "heures_theoriques"),
+        ("Heure de Log", "heures_log"),
+        ("convention signé ?", "convention_signee"),
+        ("Diplome reçu ?", "diplome"),
+    ]
+    for intitule, champ in attendus:
+        obtenu = champ_de(intitule)
+        verifier(obtenu == champ,
+                 f"« {intitule} » → {champ} (obtenu : {obtenu or 'rien'})")
+
+    # La colonne voisine ne porte pas d'adresses mais des mentions de
+    # traitement : la rattacher ferait chercher « Non traité » dans Gmail.
+    verifier(champ_de("email gocardless sur gcl") == "",
+             f"« email gocardless sur gcl » n'est pas prise pour une adresse "
+             f"(obtenu : {champ_de('email gocardless sur gcl') or 'rien'})")
+
+    # Une colonne « Date » ne doit pas devenir une borne de recherche : elle
+    # exclurait tout ce qui suit, c'est-à-dire les relances.
+    verifier(champ_de("Date") == "",
+             f"une colonne « Date » ne borne pas la recherche "
+             f"(obtenu : {champ_de('Date') or 'rien'})")
+
+
 def test_extrait_zoho_de_bout_en_bout() -> None:
     """Un extrait Zoho seul suffit à faire chercher les anciens numéros."""
     print("\nExtrait Zoho : de l'import à la requête Gmail")
@@ -5942,6 +5981,7 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_pieces_citees_une_fois()
+    test_colonnes_du_suivi_a_la_main()
     test_extrait_zoho_de_bout_en_bout()
     test_fils_completes()
     test_note_interne_au_propre()

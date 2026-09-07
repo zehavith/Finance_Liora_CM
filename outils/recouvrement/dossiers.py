@@ -58,6 +58,13 @@ ALIAS_COLONNES = {
         # « Email client » : c'est celle a qui la facture a ete envoyee, donc
         # celle qui porte les echanges.
         "email client", "e mail client", "mail client", "courriel client",
+        # Intitulés du suivi tenu à la main : l'adresse y est nommée par
+        # l'outil d'où elle vient. Rien de générique ici — la colonne voisine
+        # « email gocardless sur gcl » ne porte pas d'adresses mais des
+        # mentions de traitement, et la rattacher ferait chercher « Non
+        # traité » dans Gmail.
+        "email client sur sellsy", "mail client sur sellsy",
+        "adresse client sellsy", "email sellsy", "mail sellsy",
         "e mail", "email", "mail", "courriel",
         "email 2", "e mail 2", "email 3", "e mail 3", "email 4", "e mail 4",
         "autre email", "email perso", "email contact", "mail contact",
@@ -86,6 +93,8 @@ ALIAS_COLONNES = {
     "montant_du": [
         "reste a devoir ttc", "reste a payer d apres le grand livre",
         "montant du ttc", "montant restant du", "solde restant du",
+        "montant reste a charge ttc", "reste a charge ttc",
+        "montant reste a charge", "reste a charge",
         "reste a payer", "restant a payer", "reste du", "solde du", "montant du",
         # Zoho appelle « Solde » ce qui reste a encaisser sur la facture.
         "solde",
@@ -107,12 +116,17 @@ ALIAS_COLONNES = {
         "statut de la facture", "statut facture",
         "statut creance", "statut paiement", "categorie de retard",
         "qualification recouvrement", "qualification generale", "statut initiale",
+        "probabilite de recuperation", "qualification",
         "categorie de dette", "statut",
     ],
     "commentaire": [
         "commentaire contentieux", "commentaire recouvrement", "commentaire general",
         "commentaire post echeance", "commentaire pre echance",
-        "commentaire pre echeance", "nv commentaires", "commentaire",
+        "commentaire pre echeance", "nv commentaires",
+        # Ce que le service note du moyen de paiement : « pas de chèque de
+        # caution », « chèque encaissé puis rejeté ». C'est du contexte, et
+        # il a sa place dans la note interne.
+        "cheque de caution", "commentaire",
     ],
     # Ce que le suivi sait de l'exécution de la formation. Devant un tribunal,
     # une convention signée et des heures suivies établissent que la
