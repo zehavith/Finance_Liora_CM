@@ -1758,6 +1758,7 @@ def construire_html(
     vues: set[str] | None = None,
     textes: dict[int, str] | None = None,
     pieces_ajoutees: list[dict] | None = None,
+    date_note: datetime | None = None,
 ) -> str:
     constats = rediger_constats(synthese, date_export)
     contexte = rediger_contexte(dossier, synthese, date_export)
@@ -1777,6 +1778,13 @@ def construire_html(
         ("Boîtes interrogées", ", ".join(boites)),
         ("Date d'extraction", date_export.strftime("%d/%m/%Y à %H:%M")),
     ]
+    # Une note refaite portait la date du jour comme date d'extraction, ce qui
+    # était faux — aucun message n'avait été relu — et surtout indiscernable :
+    # rien ne disait si le fichier ouvert était celui d'avant ou celui d'après.
+    # Deux dates, chacune la sienne.
+    if date_note is not None:
+        identite.append(
+            ("Note rédigée le", date_note.strftime("%d/%m/%Y à %H:%M")))
     if trajet["contentieux"]:
         identite.insert(
             3, ("Passé au contentieux le", f"{trajet['contentieux']:%d/%m/%Y}")

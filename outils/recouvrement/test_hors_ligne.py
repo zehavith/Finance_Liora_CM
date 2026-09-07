@@ -10,6 +10,7 @@ installation pour vérifier que le poste est correctement équipé :
 
 from __future__ import annotations
 
+import inspect
 import io
 import json
 import shutil
@@ -3296,6 +3297,101 @@ console.log(JSON.stringify({{
     # reprendre au clic suivant.
     verifier("CHOISIS.has(d.reference)" in page,
              "les cases cochées survivent au tri")
+
+
+def test_absents_de_l_export() -> None:
+    """Une facture du tableau que l'export n'a pas ramenée est nommée."""
+    import interface as module_interface  # noqa: PLC0415
+    import suivi as module_suivi  # noqa: PLC0415
+
+    print("\nFactures du tableau absentes de l'export")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "sortie"
+        (sortie / "a").mkdir(parents=True)
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures;date_echeance\n"
+            "FACT-2405-00111;A;a;1 €;FACT-2405-00111;\n",
+            encoding="utf-8-sig",
+        )
+        # « Numero » ne dit rien de son contenu : la colonne est reconnue sur
+        # ses valeurs, d'où des numéros réalistes plutôt que « FACT-A ».
+        grille = [
+            (1, ["Numero", "Passage en contentieux"]),
+            (2, ["FACT-2405-00111", "Mise en demeure transmise"]),
+            (3, ["FACT-2405-00222", "Transmis au service contentieux"]),
+            (4, ["FACT-2405-00333", "Transmis au service contentieux"]),
+        ]
+        chemin = Path(repertoire) / "suivi.json"
+        bilan = module_suivi.completer_depuis_grille(
+            grille, module_suivi.inventaire(sortie, chemin), chemin)
+
+        # Le compte existait déjà ; ce sont les noms qui manquaient, et sans
+        # eux « pourquoi je ne retrouve pas ce dossier » restait sans réponse.
+        verifier(bilan["sans_correspondance"] == 2,
+                 f"deux lignes sans dossier ({bilan['sans_correspondance']})")
+        verifier(bilan["absents"] == ["FACT-2405-00222", "FACT-2405-00333"],
+                 f"et elles sont nommées ({bilan['absents']})")
+
+    page = module_interface.PAGE
+    verifier("function blocAbsentsDuSuivi" in page,
+             "la page les affiche dans l'état des dossiers")
+    # Recoupé avec la liste plutôt que cru sur parole : un export plus récent
+    # a pu ramener depuis un dossier que le fichier disait absent.
+    verifier("connus.has(reduireNumero(r))" in page,
+             "après recoupement avec les dossiers réellement exportés")
+    verifier("relancez un export en les incluant" in page,
+             "en disant quoi faire pour les faire entrer")
+
+
+def test_note_refaite_datee_et_recopiee() -> None:
+    """Une note refaite se voit, et suit l'export dans sa copie."""
+    import interface as module_interface  # noqa: PLC0415
+    import synthese as module_synthese  # noqa: PLC0415
+
+    print("\nNote refaite : datation et copie")
+
+    # Une note refaite portait la date du jour comme date d'extraction. C'était
+    # faux — aucun message n'est relu — et surtout indiscernable : rien ne
+    # disait si le fichier ouvert était celui d'avant ou celui d'après.
+    signature = inspect.signature(module_synthese.construire_html)
+    verifier("date_note" in signature.parameters,
+             "la note peut porter sa propre date de rédaction")
+    verifier("Note rédigée le" in Path("synthese.py").read_text(encoding="utf-8"),
+             "et l'annonce sous son nom")
+    source = Path("interface.py").read_text(encoding="utf-8")
+    verifier("date_export=datetime.fromtimestamp(" in source,
+             "refaire une note garde la date d'extraction de l'export")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "sortie"
+        dossier = sortie / "eden"
+        dossier.mkdir(parents=True)
+        (dossier / "synthese.pdf").write_bytes(b"%PDF-1.4 neuf\n")
+        (dossier / "synthese.version").write_text("99", encoding="utf-8")
+        copie = Path(repertoire) / "sharepoint"
+        (copie / "eden").mkdir(parents=True)
+        (copie / "eden" / "synthese.pdf").write_bytes(b"%PDF-1.4 vieux\n")
+
+        faites = module_interface.recopier_note(dossier, sortie, copie)
+        verifier(faites == 2, f"la note et sa marque sont reportées ({faites})")
+        verifier((copie / "eden" / "synthese.pdf").read_bytes()
+                 == b"%PDF-1.4 neuf\n",
+                 "et la copie porte bien la note refaite, non l'ancienne")
+
+        # Un PDF que la réécriture a retiré doit l'être de la copie aussi :
+        # l'y laisser rendrait l'ancienne note plus visible que la nouvelle.
+        (dossier / "synthese.pdf").unlink()
+        (dossier / "synthese.html").write_text("<p>note</p>", encoding="utf-8")
+        module_interface.recopier_note(dossier, sortie, copie)
+        verifier(not (copie / "eden" / "synthese.pdf").exists(),
+                 "un PDF retiré à la source est retiré de la copie")
+        verifier((copie / "eden" / "synthese.html").exists(),
+                 "et le HTML qui le remplace y est déposé")
+
+        # Sans copie configurée, il ne se passe rien du tout.
+        verifier(module_interface.recopier_note(dossier, sortie, None) == 0,
+                 "sans second emplacement, rien n'est copié")
 
 
 def test_refaire_notes_choisies() -> None:
@@ -6718,6 +6814,8 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_tri_des_colonnes()
+    test_absents_de_l_export()
+    test_note_refaite_datee_et_recopiee()
     test_refaire_notes_choisies()
     test_barre_toujours_presente()
     test_note_perimee()

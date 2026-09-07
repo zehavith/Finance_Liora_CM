@@ -1031,6 +1031,11 @@ def completer_depuis_grille(
     return {"dossiers": touchees, "valeurs": completes, "adresses": adressees,
             "lignes": len(lignes), "sans_correspondance": len(sans_suite),
             "exemples": [r for r in sans_suite[:8] if r],
+            # La liste entière, et non huit exemples : c'est elle qui répond
+            # à « j'ai trois dossiers transmis, pourquoi je ne les retrouve
+            # pas ? ». Ils sont dans le tableau, pas dans l'export — et
+            # jusqu'ici rien ne le disait.
+            "absents": [r for r in sans_suite if r][:MAXIMUM_ABSENTS],
             "ambigus": sorted(disputes)[:8], "dates_illisibles": illisibles,
             "etapes": etapes,
             "debordements": sorted(debordements)[:8]}
@@ -1107,6 +1112,11 @@ def _est_soldee(ligne) -> bool:
 # couvrent largement un dossier groupé ; c'est un garde-fou, pas une limite
 # qu'un dossier normal rencontre.
 MAXIMUM_REFERENCES = 12
+
+# Les factures du tableau qu'aucun dossier exporté ne porte. On les nomme
+# toutes, dans la limite d'une liste encore lisible : un classeur comptable
+# entier en compterait des milliers, et la page n'aurait plus rien à dire.
+MAXIMUM_ABSENTS = 300
 
 
 def _numeros_du_dossier(reference: str, connus: dict[str, dict]) -> list[str]:

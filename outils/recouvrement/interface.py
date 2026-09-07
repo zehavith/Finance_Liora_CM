@@ -23,6 +23,7 @@ import html
 import os
 import json
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -513,6 +514,11 @@ def appliquer_complements_si_besoin() -> dict:
     """
     preferences = lire_preferences()
     vus = dict(preferences.get("complements_appliques") or {})
+    # Les factures que le fichier connaît et que l'export ne porte pas, tenues
+    # par fichier : elles ne sont recalculées qu'au réexamen de celui-ci, et
+    # les perdre entre deux ouvertures de la page laisserait la question
+    # « pourquoi je ne retrouve pas ce dossier » sans réponse.
+    absents = dict(preferences.get("absents_suivi") or {})
     bilan = {"fichiers": 0, "dossiers": 0, "adresses": 0, "etapes": 0}
 
     for fichier in complements_memorises():
@@ -539,13 +545,76 @@ def appliquer_complements_si_besoin() -> dict:
             vus[fichier.name] = empreinte
             continue
         vus[fichier.name] = empreinte
+        absents[fichier.name] = list(part.get("absents") or [])
         bilan["fichiers"] += 1
         for cle in ("dossiers", "adresses", "etapes"):
             bilan[cle] += part.get(cle, 0)
 
-    if vus != (preferences.get("complements_appliques") or {}):
-        memoriser_preferences({"complements_appliques": vus})
+    # Un fichier oublié ne doit plus peser sur la page.
+    absents = {nom: refs for nom, refs in absents.items() if nom in vus}
+    if (vus != (preferences.get("complements_appliques") or {})
+            or absents != (preferences.get("absents_suivi") or {})):
+        memoriser_preferences({"complements_appliques": vus,
+                               "absents_suivi": absents})
+    bilan["absents"] = absents
     return bilan
+
+
+def absents_du_suivi() -> list[str]:
+    """Les factures que les fichiers de suivi connaissent, sans dossier.
+
+    L'application ne sait que ce que l'export lui a apporté. Une facture que
+    le tableau porte et que l'export n'a pas ramenée n'existe nulle part dans
+    la page — ni dans la liste, ni dans la recherche — et rien ne disait
+    pourquoi. Les nommer permet de savoir qu'il faut les inclure au prochain
+    export, plutôt que de croire l'application en défaut.
+    """
+    listes = (lire_preferences().get("absents_suivi") or {}).values()
+    vues, ordonnees = set(), []
+    for references in listes:
+        for reference in references:
+            texte = str(reference).strip()
+            if texte and texte not in vues:
+                vues.add(texte)
+                ordonnees.append(texte)
+    return ordonnees
+
+
+FICHIERS_NOTE = ("synthese.pdf", "synthese.html", "synthese.version")
+
+
+def recopier_note(repertoire: Path, sortie: Path, destination: Path | None) -> int:
+    """Reporte la note refaite dans la copie de l'export, si elle existe.
+
+    L'export est recopié vers un second emplacement — un SharePoint, le plus
+    souvent — au moment où il se termine. Refaire une note ne touchait que
+    l'original : on ouvrait la copie, on y retrouvait mot pour mot la note
+    d'avant, et rien n'expliquait pourquoi la correction demandée semblait
+    n'avoir servi à rien.
+
+    Un PDF que la réécriture a retiré — faute de moteur, ou parce qu'il était
+    ouvert ailleurs — est retiré de la copie aussi : l'y laisser rendrait
+    l'ancienne note plus visible que la nouvelle.
+    """
+    if destination is None:
+        return 0
+    copies = 0
+    for nom in FICHIERS_NOTE:
+        origine = repertoire / nom
+        arrivee = destination / repertoire.relative_to(sortie) / nom
+        try:
+            if not origine.exists():
+                arrivee.unlink(missing_ok=True)
+                continue
+            arrivee.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(export_mails._chemin_long(origine),
+                         export_mails._chemin_long(arrivee))
+            copies += 1
+        except OSError:
+            # Une copie impossible ne remet pas la note en cause : elle est
+            # écrite, et c'est l'original qui fait foi.
+            continue
+    return copies
 
 
 def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[bool, str]:
@@ -594,7 +663,13 @@ def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[boo
             boites=[b for b in (lire_preferences().get("boites") or "").split(",") if b],
             lignes=lignes,
             synthese=module_synthese.analyser(lignes, textes),
-            date_export=datetime.now().astimezone(),
+            # La date d'extraction est celle de l'export, pas celle du jour :
+            # refaire la note ne relit aucun message, et la dater d'aujourd'hui
+            # affirmait une fraîcheur qu'elle n'a pas. L'index est écrit au
+            # moment de l'export : sa date est la bonne.
+            date_export=datetime.fromtimestamp(
+                index.stat().st_mtime).astimezone(),
+            date_note=datetime.now().astimezone(),
             textes=textes,
             pieces_ajoutees=entree.get("pieces") or [],
             vues=set(),
@@ -884,6 +959,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                     1 for d in dossiers if d["reference"] not in annuaire
                 ),
                 "statuts": module_suivi.STATUTS,
+                "absents_suivi": absents_du_suivi(),
                 "sortie": str(racine),
             })
             return
@@ -1112,9 +1188,12 @@ class Gestionnaire(BaseHTTPRequestHandler):
             for reference in ((demande or {}).get("references") or [])
             if str(reference).strip()
         }
-        sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+        preferences = lire_preferences()
+        sortie = Path(preferences.get("sortie") or sortie_par_defaut())
+        copie = (preferences.get("copie_vers") or "").strip()
+        destination = Path(copie) if copie else None
         suivi = module_suivi.charger(SUIVI)
-        refaites, echecs, motifs = 0, 0, []
+        refaites, echecs, motifs, recopiees = 0, 0, [], 0
         inconnues = sorted(voulues - {
             d["reference"] for d in module_suivi.inventaire(sortie, SUIVI)
         })
@@ -1128,12 +1207,14 @@ class Gestionnaire(BaseHTTPRequestHandler):
             reussi, motif = _refaire_synthese(repertoire, dossier, suivi)
             if reussi:
                 refaites += 1
+                recopiees += bool(recopier_note(repertoire, sortie, destination))
                 continue
             # Sans moteur PDF, la note est refaite en HTML : c'est un succès
             # partiel, pas un échec. Seul ce qui empêche d'écrire la note en
             # est un.
             if (repertoire / "synthese.html").exists():
                 refaites += 1
+                recopiees += bool(recopier_note(repertoire, sortie, destination))
             else:
                 echecs += 1
                 if len(motifs) < 3:
@@ -1141,7 +1222,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
 
         self._json(200, {"refaites": refaites, "echecs": echecs,
                          "motifs": motifs, "choisies": len(voulues),
-                         "inconnues": inconnues[:8]})
+                         "inconnues": inconnues[:8], "recopiees": recopiees,
+                         "copie_vers": str(destination) if destination else ""})
 
     def _oublier_complements(self) -> None:
         """Retire les fichiers de suivi retenus.
@@ -1584,6 +1666,15 @@ table.donnees th:not(.triee) button.tri:hover .sens::after{content:"\2195";
 .perimee{color:#c9862a;font-size:11px;white-space:nowrap}
 p.aide.perimees{color:#c9862a;border-left:2px solid #c9862a;padding-left:10px;
   margin:0 0 13px}
+/* Repliee par defaut : c'est une reponse a une question qu'on ne se pose pas
+   tous les jours, et deroulee elle prendrait la place du tableau. */
+details.absents{margin-top:16px;border:1px solid var(--bord);border-radius:8px;
+  padding:10px 13px;background:rgba(255,255,255,.02)}
+details.absents summary{cursor:pointer;font-size:12px;color:var(--texte-2)}
+details.absents summary:hover{color:var(--texte)}
+details.absents ul{margin:8px 0 0;padding-left:20px;font-size:12px;
+  color:var(--texte-2);columns:3;column-gap:22px}
+details.absents li{break-inside:avoid}
 .defilable{overflow-x:auto}
 .barre-selection{display:flex;align-items:center;gap:13px;margin-bottom:13px}
 .barre-selection span{font-size:12px;color:var(--texte-3)}
@@ -2285,6 +2376,9 @@ async function refaireNotes() {
       + (r.echecs
          ? ` ${r.echecs} en échec : ${(r.motifs || []).join(" ; ")}.`
          : "")
+      // La copie était laissée en l'état : on ouvrait le SharePoint et on y
+      // retrouvait la note d'avant, sans que rien ne l'explique.
+      + (r.recopiees ? ` ${r.recopiees} reportée(s) dans ${r.copie_vers}.` : "")
       + " Les messages, eux, ne changent qu'en relançant un export.");
     // Le travail demandé est fait : garder les cases cochées ferait refaire
     // les mêmes au clic suivant, en croyant en refaire d'autres.
@@ -2617,6 +2711,10 @@ let DOSSIERS = [], STATUTS = [], AGREGATS = null, COURBE = null, SERVEUR = null;
 const LIGNES_A_L_ECRAN = 600;
 const NATURES_PIECES = __NATURES_PIECES__;
 let ENTREPRISES = null, ANNUAIRE_CONNU = false, ANNUAIRE_MANQUANTS = 0;
+// Les factures que le tableau de suivi connait et que l'export n'a pas
+// ramenees. Elles n'existent nulle part dans la page — ni dans la liste,
+// ni dans la recherche — et rien ne disait pourquoi.
+let ABSENTS_SUIVI = [];
 // Une seule tentative par ouverture : si le service est injoignable, insister
 // a chaque rechargement de la liste ne le rendrait pas joignable.
 let annuaireTente = false;
@@ -2644,6 +2742,7 @@ async function chargerDossiers() {
   ENTREPRISES = donnees.entreprises || null;
   ANNUAIRE_CONNU = Boolean(donnees.annuaire_connu);
   ANNUAIRE_MANQUANTS = donnees.annuaire_manquants || 0;
+  ABSENTS_SUIVI = donnees.absents_suivi || [];
   $("cheminSortie").textContent = donnees.sortie;
   rendreDocuments();
   rendreSuivi();
@@ -3270,6 +3369,39 @@ function rendreDocuments() {
     }));
 }
 
+// Le tableau de suivi porte des factures que l'export n'a pas ramenées. Elles
+// n'existent nulle part dans la page — ni dans la liste, ni dans la recherche
+// — et rien ne disait pourquoi : on cherchait un dossier qu'on savait avoir,
+// on ne le trouvait pas, et l'application paraissait en défaut alors qu'elle
+// n'en avait simplement jamais entendu parler.
+function blocAbsentsDuSuivi() {
+  // Recoupé avec la liste plutôt que cru sur parole : un export plus récent a
+  // pu ramener depuis un dossier que le fichier disait absent.
+  const connus = new Set(DOSSIERS.map((d) => reduireNumero(d.reference)));
+  DOSSIERS.forEach((d) => (d.factures || "").split("|")
+    .forEach((f) => connus.add(reduireNumero(f))));
+  const manquants = ABSENTS_SUIVI
+    .filter((r) => !connus.has(reduireNumero(r)));
+  if (!manquants.length) return "";
+
+  const PLAFOND = 40;
+  const listes = manquants.slice(0, PLAFOND)
+    .map((r) => `<li>${echapper(r)}</li>`).join("");
+  return `
+    <details class="absents">
+      <summary>${manquants.length} facture(s) de votre tableau de suivi
+        ne sont dans aucun dossier exporté</summary>
+      <p class="aide">L'application ne connaît que ce que l'export lui a
+         apporté : ces factures-là n'ont jamais été ramenées, et c'est
+         pourquoi la recherche ne les trouve pas. Pour les faire entrer,
+         relancez un export en les incluant — depuis Monday, ou depuis un
+         export où elles figurent.</p>
+      <ul>${listes}</ul>
+      ${manquants.length > PLAFOND
+        ? `<p class="aide">et ${manquants.length - PLAFOND} autre(s).</p>` : ""}
+    </details>`;
+}
+
 // -- onglet État des dossiers
 function rendreSuivi() {
   // La barre est rendue même sans aucun dossier. Elle disparaissait avec la
@@ -3328,6 +3460,7 @@ function rendreSuivi() {
     ${DOSSIERS.length
       ? (retenus.length ? "" : messageAucuneCorrespondance())
       : messageVide()}
+    ${blocAbsentsDuSuivi()}
     <div class="defilable"${retenus.length ? "" : " hidden"}><table class="donnees">
     ${entetesTriables(COLONNES_SUIVI, "suivi")}
     ${lignes}</table></div><div id="detailDossier"></div>`;
