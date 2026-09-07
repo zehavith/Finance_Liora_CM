@@ -3205,6 +3205,62 @@ def test_pieces_citees_une_fois() -> None:
              "reste cité")
 
 
+def test_refaire_les_notes() -> None:
+    """Les notes se refont sans retourner sur Gmail."""
+    print("\nRéécriture des notes de synthèse")
+
+    import interface as module_interface  # noqa: PLC0415
+    from indexation import LigneIndex, ecrire_index_dossier  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        racine = Path(repertoire)
+        sortie = racine / "export"
+        dossier = sortie / "FACT-2405-00409_sas-eden"
+        dossier.mkdir(parents=True)
+        ecrire_index_dossier(dossier / "index.csv", [LigneIndex(
+            piece_n=1, date=datetime(2024, 5, 20, 9, tzinfo=timezone.utc),
+            sens="envoyé", expediteur="r@liora.io", destinataires="c@x.fr",
+            copie="", objet="Facture FACT-2405-00409", nb_pieces_jointes=0,
+            pieces_jointes="", critere="facture", boites="r@liora.io",
+            fichier_pdf="", fichier_eml="", dossier_pieces_jointes="",
+            thread_id="t", message_id="<1>")])
+        # Une note écrite par une version précédente de l'outil.
+        (dossier / "synthese.html").write_text("<html>ANCIENNE NOTE</html>",
+                                               encoding="utf-8")
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures\n"
+            "FACT-2405-00409;SAS EDEN;FACT-2405-00409_sas-eden;5 990 €;"
+            "FACT-2405-00409\n", encoding="utf-8-sig")
+
+        anciennes = (module_interface.RACINE, module_interface.SUIVI,
+                     module_interface.PREFERENCES)
+        module_interface.RACINE = racine
+        module_interface.SUIVI = racine / "suivi.json"
+        module_interface.PREFERENCES = racine / "prefs.json"
+        try:
+            module_interface.ecrire_preferences({"sortie": str(sortie)})
+            reussi, motif = module_interface._refaire_synthese(
+                dossier,
+                {"reference": "FACT-2405-00409", "nom": "SAS EDEN",
+                 "montant_du": "5 990 €", "factures": "FACT-2405-00409",
+                 "emails": ""},
+                {})
+            note = (dossier / "synthese.html").read_text(encoding="utf-8")
+            verifier("ANCIENNE NOTE" not in note,
+                     "la note d'avant est remplacée")
+            verifier("1. Résumé de la situation" in note,
+                     f"par une note au format courant (obtenu : {note[:60]!r})")
+            del reussi, motif
+        finally:
+            (module_interface.RACINE, module_interface.SUIVI,
+             module_interface.PREFERENCES) = anciennes
+
+    # Les messages, eux, ne changent qu'en relançant un export : la page doit
+    # le dire, sans quoi on croirait la recherche refaite.
+    verifier("ne changent qu'en relançant un export" in module_interface.PAGE,
+             "la page distingue refaire les notes de refaire la recherche")
+
+
 def test_colonnes_du_suivi_a_la_main() -> None:
     """Les intitulés du suivi tenu à la main, tels qu'ils sont écrits."""
     print("\nColonnes du suivi « publipostage »")
@@ -5199,6 +5255,7 @@ def test_interface() -> None:
             ('id="listerTableaux"', "bouton de listage des tableaux"),
             ('id="chercheTableau"', "recherche dans les tableaux"),
             ('id="chercheSuivi"', "recherche dans l'état des dossiers"),
+            ('id="refaireNotes"', "bouton de réécriture des notes"),
             ('data-champ="contexte"', "saisie du contexte d'un dossier"),
             ('id="chercheDocuments"', "recherche dans les documents"),
             ('id="filtreColonne"', "colonne de filtrage"),
@@ -6071,6 +6128,7 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_pieces_citees_une_fois()
+    test_refaire_les_notes()
     test_colonnes_du_suivi_a_la_main()
     test_extrait_zoho_de_bout_en_bout()
     test_fils_completes()

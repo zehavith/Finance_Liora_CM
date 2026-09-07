@@ -44,7 +44,7 @@ import synthese as module_synthese  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "82"
+VERSION = "83"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -862,6 +862,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/piece":
                 self._verser_piece(self._corps_json())
                 return
+            if chemin == "/api/refaire-notes":
+                self._refaire_notes()
+                return
         except ValueError as exc:
             self._json(400, {"erreur": str(exc)})
             return
@@ -996,6 +999,42 @@ class Gestionnaire(BaseHTTPRequestHandler):
         resultat["memorise"] = nom
         resultat["retenus"] = [c.name for c in complements_memorises()]
         self._json(200, resultat)
+
+    def _refaire_notes(self) -> None:
+        """Réécrit toutes les notes de synthèse, sans retourner sur Gmail.
+
+        Les pièces et leur texte sont relus dans l'index et les `.eml`
+        conservés : aucun message n'est retéléchargé. C'est ce qui permet de
+        profiter d'une note refondue sans refaire l'export, qui prend une
+        heure là où ceci prend quelques secondes.
+
+        Ce qui a été trouvé dans Gmail ne change pas pour autant : pour cela,
+        il faut bien relancer un export.
+        """
+        sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+        suivi = module_suivi.charger(SUIVI)
+        refaites, echecs, motifs = 0, 0, []
+
+        for dossier in module_suivi.inventaire(sortie, SUIVI):
+            repertoire = sortie / dossier["repertoire"]
+            if not repertoire.is_dir():
+                continue
+            reussi, motif = _refaire_synthese(repertoire, dossier, suivi)
+            if reussi:
+                refaites += 1
+                continue
+            # Sans moteur PDF, la note est refaite en HTML : c'est un succès
+            # partiel, pas un échec. Seul ce qui empêche d'écrire la note en
+            # est un.
+            if (repertoire / "synthese.html").exists():
+                refaites += 1
+            else:
+                echecs += 1
+                if len(motifs) < 3:
+                    motifs.append(f"{dossier['reference']} : {motif}")
+
+        self._json(200, {"refaites": refaites, "echecs": echecs,
+                         "motifs": motifs})
 
     def _oublier_complements(self) -> None:
         """Retire les fichiers de suivi retenus.
@@ -1626,6 +1665,8 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <input type="search" id="chercheDocuments" autocomplete="off"
              placeholder="Facture, adresse mail, nom…" />
       <span class="compte-recherche" id="compteDocuments"></span>
+      <button class="secondaire" id="refaireNotes"
+              title="Réécrit les notes à partir des messages déjà au dossier, sans retourner sur Gmail. Quelques secondes.">Refaire les notes</button>
     </div>
     <div id="tableDocuments"></div>
   </section>
@@ -2065,6 +2106,30 @@ $("chercheTableau").addEventListener("input", rendreTableaux);
 ["chercheSuivi", "chercheDocuments"].forEach((id) => {
   if ($(id)) $(id).addEventListener("input", chercherDossiers);
 });
+
+async function refaireNotes() {
+  if (!DOSSIERS.length) {
+    afficherBandeau(false, "Aucun dossier : lancez d'abord un export.");
+    return;
+  }
+  const bouton = $("refaireNotes");
+  bouton.disabled = true;
+  const avant = bouton.textContent;
+  bouton.textContent = "Notes en cours…";
+  try {
+    const r = await api("/api/refaire-notes", {});
+    afficherBandeau(r.echecs === 0,
+      `${r.refaites} note(s) refaite(s) à partir des messages déjà au dossier.`
+      + (r.echecs
+         ? ` ${r.echecs} en échec : ${(r.motifs || []).join(" ; ")}.`
+         : "")
+      + " Les messages, eux, ne changent qu'en relançant un export.");
+    chargerDossiers();
+  } catch (erreur) { afficherBandeau(false, erreur.message); }
+  finally { bouton.disabled = false; bouton.textContent = avant; }
+}
+
+if ($("refaireNotes")) $("refaireNotes").addEventListener("click", refaireNotes);
 
 function tableauxCoches() {
   return Array.from(TABLEAUX_COCHES).join(",");
