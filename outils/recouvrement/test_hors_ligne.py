@@ -2883,6 +2883,26 @@ def test_pieces_citees_une_fois() -> None:
              f"et un document unique garde le singulier "
              f"(obtenu : {classees['Contrat / convention']})")
 
+    # Le même fichier téléchargé depuis Monday et déjà extrait d'un message
+    # est un seul document, pas deux : la facture figurait une troisième fois
+    # sous « Documents issus du tableau de suivi ».
+    from dossiers import Dossier  # noqa: PLC0415
+
+    dossier = Dossier(reference="FACT-2405-00409", nom="SAS EDEN",
+                      montant_du="5 990 €")
+    note = module_synthese.construire_html(
+        dossier, ["b@liora.io"], lignes,
+        module_synthese.analyser(lignes, {}),
+        datetime(2026, 9, 7, tzinfo=timezone.utc),
+        documents_monday=["FACT-2405-00409.pdf", "Convention EDEN.pdf"],
+        textes={})
+    verifier(note.count("FACT-2405-00409.pdf") == 1,
+             f"la facture n'est citée qu'une fois dans toute la note "
+             f"(obtenu : {note.count('FACT-2405-00409.pdf')})")
+    verifier("Convention EDEN.pdf" in note,
+             "mais un document du tableau que les messages ne portent pas "
+             "reste cité")
+
 
 def test_extrait_zoho_de_bout_en_bout() -> None:
     """Un extrait Zoho seul suffit à faire chercher les anciens numéros."""

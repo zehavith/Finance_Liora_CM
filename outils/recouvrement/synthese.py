@@ -1766,7 +1766,18 @@ def construire_html(
             "sous-répertoire <b>pieces-jointes</b> du dossier, rangés par pièce.</p>"
         )
 
-    telecharges = list(documents_monday or [])
+    # Le même fichier téléchargé depuis Monday et déjà extrait d'un message
+    # ne se cite pas deux fois : c'est un seul document. On garde la version
+    # extraite des échanges, qui est la plus forte des deux — elle établit
+    # que la pièce a été transmise au débiteur, pas seulement qu'elle existe.
+    deja_extraites = {
+        aplatir(nom.rsplit(" (", 1)[0])
+        for _libelle, noms in pieces for nom in noms
+    }
+    telecharges = [
+        nom for nom in (documents_monday or [])
+        if aplatir(nom) not in deja_extraites
+    ]
     liens = [lien for lien in getattr(dossier, "liens", []) if lien]
 
     if telecharges:
