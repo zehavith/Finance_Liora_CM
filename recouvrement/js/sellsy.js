@@ -183,6 +183,39 @@
         for (const [champ, alias] of Object.entries(ALIAS_SELLSY))
             retenir(champ, trouverColonnePartielle(entetes.filter(h => !pris.has(h)), alias));
 
+        // ── Le champ personnalisé qui dit l'alternance ──
+        //
+        // Sellsy laisse ajouter des champs à une facture, et c'est là que vit
+        // le type de contrat : « Alternance », « Contrat de
+        // professionnalisation », « Apprentissage ». Le champ porte le nom que
+        // vous lui avez donné — l'application ne peut pas le deviner — alors
+        // elle regarde ce que contiennent les colonnes qu'elle n'a pas su
+        // placer, et retient celle qui parle d'alternance.
+        //
+        // Une colonne n'est retenue que si elle le dit sans jamais dire autre
+        // chose : au moins une valeur qui parle d'alternance, et aucune valeur
+        // qui soit une date, un montant ou un numéro. Sinon un libellé de
+        // formation contenant le mot suffirait à tout basculer.
+        const MOTIF_ALTERNANCE = /alternan|apprenti|professionnalisation|contrat pro|\bproa\b/i;
+        const colonneAlternance = (() => {
+            const libres = entetes.filter(h => !pris.has(h));
+            let meilleure = null, meilleurNb = 0;
+            for (const col of libres) {
+                const vals = rows.map(r => String(r[col] == null ? '' : r[col]).trim()).filter(Boolean);
+                if (vals.length < 5) continue;
+                const nb = vals.filter(v => MOTIF_ALTERNANCE.test(v)).length;
+                if (!nb) continue;
+                // Une colonne de dates ou de montants ne décrit pas un contrat.
+                const chiffres = vals.filter(v => /^[\d\s.,\/-]+$/.test(v)).length;
+                if (chiffres > vals.length * 0.2) continue;
+                // Et un champ de contrat ne prend que quelques valeurs.
+                if (new Set(vals).size > 40) continue;
+                if (nb > meilleurNb) { meilleurNb = nb; meilleure = col; }
+            }
+            return meilleure;
+        })();
+        if (colonneAlternance) mapping.alternance = colonneAlternance;
+
         const lignes = [];
         let ignorees = 0;
         for (const r of rows) {
@@ -201,6 +234,12 @@
 
             lignes.push({
                 cle, numero, cleZoho, numeroZoho,
+                // Le contrat en alternance, tel que votre champ personnalisé
+                // le nomme. Vide quand l'export ne porte pas la colonne — et
+                // rien ne change alors, l'alternance se lit au numéro Filiz.
+                alternance: colonneAlternance
+                    ? MOTIF_ALTERNANCE.test(String(r[colonneAlternance] || '')) : false,
+                alternanceTexte: colonneAlternance ? String(r[colonneAlternance] || '').trim() : '',
                 email: mapping.email ? String(r[mapping.email] || '').trim().toLowerCase() : '',
                 client: mapping.client ? String(r[mapping.client] || '').trim() : '',
                 montant,
@@ -238,6 +277,9 @@
             if (!prec.typeClient) prec.typeClient = l.typeClient;
             if (!prec.dateDebutService) prec.dateDebutService = l.dateDebutService;
             if (!prec.dateFinService) prec.dateFinService = l.dateFinService;
+            if (!prec.alternance && l.alternance) {
+                prec.alternance = true; prec.alternanceTexte = l.alternanceTexte;
+            }
         }
 
         return { lignes: [...parCle.values()], mapping, entetes, ignorees };

@@ -1012,8 +1012,17 @@
         // France Travail : le type est POEI, la sous-catégorie s'arbitre.
         { libelle: 'Pôle emploi, France Travail', motif: /pole emploi|pole emploie|france travail|\bdr pole\b/, fin: 'AIF', arbitrage: 'poleEmploi' },
         // OPCO : la sous-catégorie s'arbitre entre OPCO et OPCO - Alternance.
-        { libelle: 'Un OPCO (Akto, Afdas, Atlas, Uniformation, Ocapiat, Constructys, Intergros, ANFA, Opcommerce)',
-          motif: /\bopco\b|\bakto\b|\bafdas\b|\batlas\b|uniformation|ocapiat|constructys|intergros|\banfa\b|opcommerce/,
+        // Les onze OPCO issus de la réforme de 2019 : AFDAS, AKTO, Atlas,
+        // Constructys, OCAPIAT, OPCO 2i, OPCO EP, OPCO Mobilités, OPCO Santé,
+        // Uniformation, L'Opcommerce. « OPCO » suffit pour ceux qui le portent
+        // dans leur nom ; les autres sont nommés un par un.
+        //
+        // Les anciens noms comptent autant : le grand livre en garde la trace
+        // sur les factures d'avant la réforme, et un OPCA d'hier reste l'OPCO
+        // d'aujourd'hui — Fafih et Opcalia sont devenus AKTO, Fafiec est
+        // devenu Atlas, Intergros L'Opcommerce, l'ANFA Mobilités.
+        { libelle: 'Un OPCO (les 11, plus les anciens OPCA : Fafih, Opcalia, Agefos, Forco, Fafiec…)',
+          motif: /\bopco\b|opco\s*2\s*i|opco2i|\bakto\b|\bafdas\b|\batlas\b|uniformation|ocapiat|constructys|intergros|\banfa\b|opcommerce|\bfafih\b|opcalia|\bagefos\b|\bforco\b|opcalim|\bfafsea\b|\bfafiec\b|opcabaia|\bfaf\.?tt\b|\buniformation\b|\bopcaim\b/,
           fin: 'OPCO', arbitrage: 'opco' },
         // Les entités du groupe sont de l'interco. « Interne - DST Allemagne »
         // est la sous-catégorie de la seule filiale allemande : elle se nomme,
@@ -1109,6 +1118,22 @@
      */
     const SEUIL_POEI = 7000;
 
+    /**
+     * La facture est-elle une alternance ?
+     *
+     * Deux façons de le savoir, celles que vous employez : le numéro de
+     * facture quand c'est une Filiz, et le champ personnalisé de Sellsy quand
+     * c'est une « FACT-… ». Le second n'existe que si votre export porte la
+     * colonne ; sans elle, seul le numéro parle.
+     */
+    function estAlternance(creance, o) {
+        if (!creance) return false;
+        if (creance.filiz) return true;
+        const s = o && o.alternanceSellsy;
+        if (!s || !s.size) return false;
+        return !!(creance.cle && s.has(creance.cle));
+    }
+
     function arbitrer(nom, creance, o) {
         // Ce que la facturation dit de cette facture, et à défaut de ce client :
         // les deux index sont passés par classer(), qui les a construits.
@@ -1159,18 +1184,40 @@
         // Un client corporate dont le dispositif reste à préciser : la facture
         // Filiz en fait une alternance, un type explicite l'emporte sur tout.
         if (nom === 'corporate') {
-            if (creance.filiz) return 'CORPORATE_ALTERNANCE';
+            if (creance.filiz || estAlternance(creance, o)) return 'CORPORATE_ALTERNANCE';
             if (explicite) return explicite;
             return dit(creance) || ditDuClient(creance) || 'CORPORATE';
         }
 
         if (nom === 'opco') {
-            if (creance.filiz) return 'OPCO_ALTERNANCE';
+            // Un OPCO finance deux choses très différentes : le plan de
+            // développement des compétences — une formation ordinaire, facturée
+            // à l'OPCO — et l'alternance, prise en charge au niveau fixé par la
+            // branche. Le payeur est le même dans les deux cas : ce n'est donc
+            // pas lui qui tranche.
             if (explicite === 'OPCO' || explicite === 'OPCO_ALTERNANCE') return explicite;
             const parFacture = dit(creance) || ditDuClient(creance);
             if (parFacture === 'OPCO' || parFacture === 'OPCO_ALTERNANCE') return parFacture;
+            // Ce que la facturation écrit en clair. « Alternance » ne se trouve
+            // que sur des alternances — 47 fois sur 47 dans votre ancien grand
+            // livre, jamais sur un plan de développement. À l'inverse « B2B »
+            // désigne un plan 21 fois sur 23.
+            // Le champ personnalisé de la facture, quand l'export le porte :
+            // c'est lui qui dit l'alternance sur une facture « FACT-… », comme
+            // le numéro Filiz la dit sur les autres.
+            if (estAlternance(creance, o)) return 'OPCO_ALTERNANCE';
+            const brut = R.norm(dutBrut(creance) || '');
+            if (/alternance|apprenti|professionnalisation/.test(brut)) return 'OPCO_ALTERNANCE';
+            if (/b2b|entreprise/.test(brut)) return 'OPCO';
             if (parFacture === 'ALTERNANCE' || parFacture === 'CORPORATE_ALTERNANCE') return 'OPCO_ALTERNANCE';
-            return 'OPCO_ALTERNANCE';
+            // La facture Filiz désigne une alternance — c'est la règle que vous
+            // avez donnée. Elle passe après la facturation, qui est plus
+            // précise : votre ancien grand livre range 59 factures Filiz payées
+            // par un OPCO en OPCO tout court.
+            if (creance.filiz) return 'OPCO_ALTERNANCE';
+            // Et à défaut de tout, l'OPCO simple : c'est le cas le plus
+            // fréquent quand rien ne dit « alternance ».
+            return 'OPCO';
         }
         return null;
     }
@@ -1261,6 +1308,14 @@
         // sont elles qui font l'échéance. Sans elles, la balance âgée vieillit
         // sur la date de facture, qui ne dit rien du dispositif.
         const datesSellsy = new Map();
+        // Les factures que le champ personnalisé de Sellsy déclare en
+        // alternance. C'est la source la plus sûre pour les factures « FACT-… »,
+        // là où le numéro Filiz le dit pour les autres.
+        const alternanceSellsy = new Set();
+        for (const l of (o.sellsy || [])) {
+            if (!l.alternance) continue;
+            for (const k of [l.cle, l.cleZoho]) if (k) alternanceSellsy.add(k);
+        }
         for (const l of (o.sellsy || [])) {
             // Deux clés pour la même facture : son numéro Sellsy, et son numéro
             // Zoho quand elle en a un. Les factures « FA-… » ne sont plus
@@ -1309,7 +1364,7 @@
             if (nom && !mandats.has(nom)) mandats.set(nom, v);
         }
         return { parCle, parSellsy, parCompte, parTiers, parNom, parNomSellsy, brutSellsy,
-                 datesSellsy, statutsSellsy, mandats, noter };
+                 datesSellsy, statutsSellsy, alternanceSellsy, mandats, noter };
     }
 
     /**
@@ -1357,7 +1412,7 @@
         // porté par la facture, et à défaut celui du client.
         const oArb = Object.assign({}, o, {
             parCleSellsy: idx.parSellsy, parNomSellsy: idx.parNomSellsy,
-            brutSellsy: idx.brutSellsy });
+            brutSellsy: idx.brutSellsy, alternanceSellsy: idx.alternanceSellsy });
         const duLibelle = c => {
             const m = financementDuLibelle(c.tiers) || financementDuLibelle(c.compte);
             if (!m) return null;
@@ -1504,12 +1559,24 @@
             // ou celle facturée à l'entreprise.
             if (c.filiz) {
                 const dit = ancienNum || parAncien('tiers') || parAncien('compte');
+                // Qui paie tranche quand l'ancien grand livre se tait : une
+                // alternance réglée par un OPCO est une OPCO - Alternance, une
+                // alternance facturée à l'entreprise est une Corporate.
+                // Sanofi, Safran et la SNCF paient les leurs directement ;
+                // AKTO, Atlas et OPCO 2i paient les leurs. Sur un extrait brut,
+                // sans vos colonnes, c'est la seule chose qui le dise — et sans
+                // elle 165 alternances d'OPCO passaient pour des Corporate.
+                const paye = financementDuLibelle(c.tiers) || financementDuLibelle(c.compte);
+                const parPayeur = paye && (paye.fin === 'OPCO' || paye.fin === 'OPCO_ALTERNANCE')
+                    ? 'OPCO_ALTERNANCE' : null;
                 const fin = (dit === 'OPCO' || dit === 'OPCO_ALTERNANCE') ? 'OPCO_ALTERNANCE'
                     : (dit === 'ALTERNANCE' || dit === 'PERSO_ALTERNANCE'
                        || dit === 'CORPORATE_ALTERNANCE') ? dit
-                    : 'CORPORATE_ALTERNANCE';
+                    : parPayeur || 'CORPORATE_ALTERNANCE';
                 return poser(c, fin, 'Facture Filiz : alternance',
-                    (c.numero || 'mention « Filiz »') + (dit ? ' · ancien grand livre : ' + dit : ''));
+                    (c.numero || 'mention « Filiz »')
+                    + (dit ? ' · ancien grand livre : ' + dit
+                           : (parPayeur ? ' · payée par un OPCO : ' + (c.tiers || c.compte) : '')));
             }
             if (ancienNum) return poser(c, ancienNum, 'Ancien grand livre (n° de facture)', c.ancien.numero);
             const ancienTiers = parAncien('tiers');
