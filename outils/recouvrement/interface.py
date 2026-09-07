@@ -44,7 +44,7 @@ import synthese as module_synthese  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "76"
+VERSION = "77"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -577,6 +577,9 @@ def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str
     boites = (demande.get("boites") or "").strip()
     if boites:
         arguments += ["--boites", boites]
+    copie = (demande.get("copie_vers") or "").strip()
+    if copie:
+        arguments += ["--copier-vers", copie]
     if demande.get("simulation"):
         arguments.append("--simulation")
     if demande.get("ignorer_lignes_incompletes"):
@@ -721,6 +724,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
             ).replace(
                 "__SORTIE__",
                 _attribut(preferences.get("sortie", str(sortie_par_defaut()))),
+            ).replace(
+                "__COPIE_VERS__", _attribut(preferences.get("copie_vers", ""))
             )
             # Le fichier importé reste sur le disque, mais un navigateur ne
             # peut pas repeupler un champ de fichier : sans ce rappel, rouvrir
@@ -870,9 +875,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
         """
         valeurs = {
             cle: str(demande.get(cle) or "").strip()
-            for cle in ("boites", "sortie", "domaines", "seulement",
-                        "filtre_colonne", "filtre_valeur", "tableau",
-                        "groupes")
+            for cle in ("boites", "sortie", "copie_vers", "domaines",
+                        "seulement", "filtre_colonne", "filtre_valeur",
+                        "tableau", "groupes")
             if cle in demande
         }
 
@@ -1262,6 +1267,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
         memoriser_preferences({
             "boites": demande.get("boites", ""),
             "sortie": sortie,
+            "copie_vers": (demande.get("copie_vers") or "").strip(),
             "domaines": (demande.get("domaines") or "").strip(),
             "filtre_colonne": (demande.get("filtre_colonne") or "").strip(),
             "filtre_valeur": (demande.get("filtre_valeur") or "").strip(),
@@ -1755,6 +1761,16 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <input type="text" id="sortie" value="__SORTIE__" />
     </div>
     <div>
+      <label for="copieVers">Copier les dossiers vers (SharePoint, OneDrive) —
+        facultatif</label>
+      <input type="text" id="copieVers" value="__COPIE_VERS__"
+             placeholder="C:\Users\vous\INSEEC\Site - Documents partages\..." />
+      <p class="note">La copie a lieu <b>à la fin</b> de l'export, jamais
+         pendant : la synchronisation ne dispute alors aucun fichier à
+         l'export. Indiquez le chemin local du dossier synchronisé, pas
+         l'adresse https:// du site.</p>
+    </div>
+    <div>
       <label for="jetonMonday">Jeton Monday — pour télécharger factures et conventions</label>
       <input type="text" id="jetonMonday" placeholder="__ETAT_MONDAY__" />
     </div>
@@ -2070,9 +2086,9 @@ majBouton();
 
 // Enregistrement automatique : à la saisie (différé) et à la fermeture de la
 // page. Une page fermée sans avoir lancé d'export ne perd plus rien.
-const CHAMPS_REGLAGES = ["boites", "sortie", "domaines", "seulement",
-                         "filtreColonne", "filtreValeur", "groupes",
-                         "jetonMonday"];
+const CHAMPS_REGLAGES = ["boites", "sortie", "copieVers", "domaines",
+                         "seulement", "filtreColonne", "filtreValeur",
+                         "groupes", "jetonMonday"];
 let minuterieReglages = null;
 
 function reglages() {
@@ -2080,6 +2096,7 @@ function reglages() {
   Object.keys(CASES).forEach((id) => { if ($(id)) options[id] = $(id).checked; });
   return {
     boites: $("boites").value, sortie: $("sortie").value,
+    copie_vers: $("copieVers").value,
     domaines: $("domaines").value, seulement: $("seulement").value,
     filtre_colonne: $("filtreColonne").value,
     filtre_valeur: $("filtreValeur").value,
@@ -2676,6 +2693,17 @@ function etatOuiNon(valeur, oui, non) {
   return '<span class="etat inconnu">— non renseigné</span>';
 }
 
+// Le relevé comptable est une pièce versée à la main, pas une colonne du
+// tableau Monday : son état se lit dans les pièces du dossier. Il se présente
+// comme la convention et le diplôme — c'est la même question posée au
+// dossier : la pièce est-elle là ?
+function etatPiece(dossier, nature, present, absent) {
+  const versee = (dossier.pieces || []).find((p) => p.nature === nature);
+  if (!versee) return '<span class="etat non">✕ ' + absent + "</span>";
+  return '<span class="etat oui" title="' + echapper(versee.fichier) + '">✓ '
+    + present + "</span>";
+}
+
 function heuresSuivies(d) {
   const prevu = parseFloat(String(d.heures_theoriques || "").replace(",", "."));
   const fait = parseFloat(String(d.heures_log || "").replace(",", "."));
@@ -2764,6 +2792,7 @@ function rendreDocuments() {
       <td class="num">${d.nb_pieces_jointes}</td>
       <td>${etatOuiNon(d.convention_signee, "signée", "non signée")}</td>
       <td>${etatOuiNon(d.diplome, "reçu", "non reçu")}</td>
+      <td>${etatPiece(d, "Relevé comptable", "versé", "absent")}</td>
       <td class="num">${heuresSuivies(d)}</td>
       <td>${d.premier_mail || "—"} → ${d.dernier_mail || "—"}</td>
       <td>${[
@@ -2781,12 +2810,13 @@ function rendreDocuments() {
       <td><a class="lien" data-ouvrir="${echapper(d.repertoire)}">Ouvrir le répertoire</a></td>
     </tr>`).join("");
 
-  $("tableDocuments").innerHTML = `<table class="donnees">
+  $("tableDocuments").innerHTML = `<div class="defilable"><table class="donnees">
     <tr><th>Référence</th><th>Débiteur</th><th>Mails</th><th>PJ</th>
-        <th>Convention</th><th>Diplôme</th><th class="num">Heures</th>
+        <th>Convention</th><th>Diplôme</th><th>Relevé bancaire</th>
+        <th class="num">Heures</th>
         <th>Période</th><th>Sous-dossiers</th><th>Document</th>
         <th>Pièces versées</th><th></th></tr>
-    ${lignes}</table>`;
+    ${lignes}</table></div>`;
 
   $("tableDocuments").querySelectorAll(".fichier-piece").forEach((champ) =>
     champ.addEventListener("change", verserPiece));

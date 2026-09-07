@@ -2844,6 +2844,93 @@ def test_annuaire_entreprises() -> None:
              "les sociétés cessées sont listées, avec le montant en jeu")
 
 
+def test_copie_vers_sharepoint() -> None:
+    """Les dossiers produits sont recopiés vers un second emplacement."""
+    print("\nCopie vers un dossier synchronisé")
+
+    import export_mails  # noqa: PLC0415
+    from dossiers import ErreurDossiers  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        racine = Path(repertoire)
+        source = racine / "recouvrement-export"
+        piece = source / "FACT-2405-00409_sas-eden" / "pieces-jointes" / "piece-03"
+        piece.mkdir(parents=True)
+        (piece / "Devis signe Sofiane.pdf").write_bytes(b"DEVIS")
+        (source / "FACT-2405-00409_sas-eden" / "synthese.pdf").write_bytes(b"PDF")
+        (source / "_recapitulatif.csv").write_text("reference\n", encoding="utf-8")
+
+        # Le chemin d'une bibliothèque SharePoint synchronisée : 188
+        # caractères avant même le nom du dossier. Windows s'arrête à 260.
+        cible = (racine / "INSEEC"
+                 / "DST-EquipeFinance - Documents partages"
+                 / "05. Cash Management (CM) et Recouvrement"
+                 / "Contentieux - Dossier Zehavith Tordjman"
+                 / "Dossiers créés par l'application contentieux")
+        destination = export_mails.verifier_destination_copie(str(cible))
+        verifier(destination.is_dir(), "le dossier de destination est créé")
+
+        journal: list[str] = []
+        echecs = export_mails.copier_export(source, destination, journal.append)
+        verifier(echecs == 0, f"aucun échec de copie (obtenu : {echecs})")
+        verifier(any("4 fichier(s) copié(s)" in ligne for ligne in journal)
+                 or any("3 fichier(s) copié(s)" in ligne for ligne in journal),
+                 f"le journal dit combien (obtenu : {journal})")
+
+        recopie = (destination / "FACT-2405-00409_sas-eden" / "pieces-jointes"
+                   / "piece-03" / "Devis signe Sofiane.pdf")
+        verifier(recopie.exists() and recopie.read_bytes() == b"DEVIS",
+                 "l'arborescence et le contenu sont conservés")
+
+        # Un export refait recopie par-dessus sans se plaindre.
+        (source / "FACT-2405-00409_sas-eden" / "synthese.pdf").write_bytes(b"PDF v2")
+        export_mails.copier_export(source, destination, lambda _l: None)
+        verifier((destination / "FACT-2405-00409_sas-eden" / "synthese.pdf")
+                 .read_bytes() == b"PDF v2",
+                 "un second export met la copie à jour")
+
+    # L'adresse du site n'est pas un dossier : collée telle quelle, elle
+    # créerait un répertoire « https: » et l'export s'y copierait en silence.
+    for adresse in ("https://inseecadmin.sharepoint.com/sites/DST-EquipeFinance",
+                    "http://exemple.fr/dossier"):
+        try:
+            export_mails.verifier_destination_copie(adresse)
+            verifier(False, f"adresse web refusée ({adresse[:40]})")
+        except ErreurDossiers as exc:
+            verifier("pas un dossier du poste" in str(exc),
+                     f"l'adresse web est refusée, et l'on dit quoi faire "
+                     f"({adresse[:34]}…)")
+
+    # La ligne de commande et la page la transmettent.
+    options = export_mails.analyser_arguments(
+        ["--dossiers", "x.csv", "--copier-vers", "D:\\Partage"])
+    verifier(options.copier_vers == "D:\\Partage",
+             f"l'option existe (obtenu : {options.copier_vers!r})")
+
+    import interface as module_interface  # noqa: PLC0415
+
+    arguments, _sortie = module_interface.construire_arguments(
+        {"copie_vers": "D:\\Partage"}, Path("x.csv"))
+    verifier("--copier-vers" in arguments
+             and arguments[arguments.index("--copier-vers") + 1] == "D:\\Partage",
+             f"et la page la transmet (obtenu : {arguments})")
+    verifier('id="copieVers"' in module_interface.PAGE,
+             "le champ figure dans la page")
+    verifier("copieVers" in module_interface.PAGE.split("CHAMPS_REGLAGES")[1][:200],
+             "et il est mémorisé d'une session à l'autre")
+
+    # La table des documents reste dans sa carte, comme celle de l'état des
+    # dossiers : sans conteneur défilant, elle débordait de la page.
+    verifier('.innerHTML = `<div class="defilable"><table class="donnees">'
+             in module_interface.PAGE,
+             "la table des documents défile dans sa carte, comme celle de "
+             "l'état des dossiers")
+    verifier("Relevé bancaire" in module_interface.PAGE,
+             "la colonne du relevé bancaire figure au tableau des documents")
+    verifier("function etatPiece" in module_interface.PAGE,
+             "et son état se lit dans les pièces versées")
+
+
 def test_pieces_citees_une_fois() -> None:
     """Un document est cité une fois, avec les pièces où il figure."""
     print("\nPièces jointes regroupées par document")
@@ -5636,6 +5723,7 @@ def main() -> int:
     test_pieces_versees()
     test_ancienne_reference_facture()
     test_annuaire_entreprises()
+    test_copie_vers_sharepoint()
     test_pieces_citees_une_fois()
     test_extrait_zoho_de_bout_en_bout()
     test_fils_completes()

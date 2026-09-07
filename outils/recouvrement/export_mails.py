@@ -349,6 +349,18 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     analyseur.add_argument(
+        "--copier-vers",
+        default="",
+        help=(
+            "Copie les dossiers produits vers un second emplacement une fois "
+            "l'export terminé — un dossier SharePoint ou OneDrive "
+            "synchronisé, par exemple. La copie a lieu à la fin et jamais "
+            "pendant : la synchronisation ne dispute alors aucun fichier à "
+            "l'export. Indiquez le chemin local du dossier synchronisé, pas "
+            "l'adresse https:// du site."
+        ),
+    )
+    analyseur.add_argument(
         "--sans-fils-complets",
         dest="fils_complets",
         action="store_false",
@@ -429,6 +441,104 @@ CHAMPS_SURVEILLES = (
     ("emails", "adresse mail"),
     ("montant_du", "montant du"),
 )
+
+
+# Une copie vers un dossier synchronisé — SharePoint, OneDrive — se fait à la
+# fin, jamais pendant. Un export écrit des milliers de petits fichiers ; la
+# synchronisation qui tourne en même temps verrouille ceux qu'on est en train
+# d'écrire, et l'export tombe après quarante minutes de travail. En copiant
+# une fois tout écrit, la synchronisation n'a plus rien à disputer.
+# Prefixe qui leve la limite de 260 caracteres des chemins Windows.
+PREFIXE_LONG = '\\\\?\\'
+DEBUT_UNC = '\\\\'
+
+
+def _chemin_long(chemin: Path) -> str:
+    """Le chemin sous une forme que Windows accepte au-dela de 260 caracteres.
+
+    Un dossier SharePoint synchronise fait a lui seul 180 caracteres ; avec
+    le nom du dossier, le sous-repertoire des pieces jointes et le nom du
+    fichier, la limite est atteinte. Le prefixe des chemins longs la leve.
+    """
+    resolu = chemin.resolve()
+    if sys.platform != "win32":
+        return str(resolu)
+    texte = str(resolu)
+    if texte.startswith(PREFIXE_LONG):
+        return texte
+    if texte.startswith(DEBUT_UNC):
+        # Un partage reseau garde son prefixe propre.
+        return PREFIXE_LONG + "UNC" + texte[1:]
+    return PREFIXE_LONG + texte
+
+def verifier_destination_copie(chemin: str) -> Path:
+    """Contrôle la destination avant l'export, pas après.
+
+    Découvrir au bout d'une heure que le dossier n'existe pas, ou qu'on n'y
+    écrit pas, coûte l'heure entière.
+    """
+    brut = chemin.strip()
+    # Une adresse de site n'est pas un dossier : collee telle quelle, elle
+    # creerait un repertoire nomme « https: » et l'export s'y copierait sans
+    # que rien ne le signale. C'est le chemin du dossier synchronise qu'il
+    # faut, celui qu'on voit dans l'explorateur.
+    if brut.lower().startswith(("http://", "https://")):
+        quoi = ("l'adresse du site SharePoint"
+                if "sharepoint.com" in brut.lower() else "une adresse web")
+        raise ErreurDossiers(
+            "« " + brut[:80] + " » est " + quoi + ", pas un dossier du "
+            "poste.\n"
+            "Synchronisez la bibliotheque (bouton « Synchroniser » sur la page "
+            "SharePoint), puis ouvrez le dossier dans l'explorateur Windows et "
+            "copiez le chemin de la barre d'adresse. Il commence par "
+            "C:" + chr(92) + "Users" + chr(92) + "…"
+        )
+
+    cible = Path(brut).expanduser()
+    try:
+        cible.mkdir(parents=True, exist_ok=True)
+        temoin = cible / ".liora-ecriture-possible"
+        temoin.write_text("", encoding="utf-8")
+        temoin.unlink()
+    except OSError as exc:
+        raise ErreurDossiers(
+            f"Copie impossible vers « {chemin} » : {exc}\n"
+            "Si c'est un dossier SharePoint, indiquez le chemin local du "
+            "dossier synchronisé (celui qui commence par C:\\Users\\…), "
+            "et non l'adresse https:// du site."
+        ) from exc
+    return cible
+
+
+def copier_export(source: Path, destination: Path, journal: Journal) -> int:
+    """Copie l'export terminé vers un second emplacement. Jamais bloquant.
+
+    Un échec de copie ne remet pas l'export en cause : les dossiers sont sur
+    le disque, complets. Il est dit, avec son motif, et l'on peut recopier.
+    """
+    copies, echecs, premiers_motifs = 0, 0, []
+    for origine in sorted(source.rglob("*")):
+        if origine.is_dir():
+            continue
+        relatif = origine.relative_to(source)
+        arrivee = destination / relatif
+        try:
+            arrivee.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(_chemin_long(origine), _chemin_long(arrivee))
+            copies += 1
+        except OSError as exc:
+            echecs += 1
+            if len(premiers_motifs) < 3:
+                premiers_motifs.append(f"{relatif} : {exc}")
+
+    if copies:
+        journal(f"{copies} fichier(s) copié(s) vers {destination}")
+    if echecs:
+        journal(
+            f"⚠ {echecs} fichier(s) non copié(s) — l'export local reste "
+            "complet. Motifs : " + " ; ".join(premiers_motifs)
+        )
+    return echecs
 
 
 def _ajouter_references_saisies(
@@ -1664,6 +1774,14 @@ def executer(
             for adresse in (options.boites or "").split(",")
             if adresse.strip()
         ]
+        # La destination de copie est controlee avant d'ouvrir la moindre
+        # boite : decouvrir au bout d'une heure qu'elle n'existe pas, ou
+        # qu'on n'y ecrit pas, couterait l'heure entiere.
+        destination_copie = None
+        if (options.copier_vers or "").strip():
+            destination_copie = verifier_destination_copie(options.copier_vers)
+            journal(f"Copie prévue vers : {destination_copie}")
+
         sources = ouvrir_sources(
             boites=boites,
             fichier_credentials=options.credentials,
@@ -1765,6 +1883,11 @@ def executer(
             journal(f"⚠ {echecs} dossier(s) en échec — voir _recapitulatif.csv.")
         if not options.simulation:
             journal(f"Résultat dans : {racine_sortie.resolve()}")
+
+        if destination_copie is not None and not options.simulation:
+            journal("")
+            journal(f"Copie vers {destination_copie} …")
+            copier_export(racine_sortie, destination_copie, journal)
 
         return 1 if echecs else 0
 
