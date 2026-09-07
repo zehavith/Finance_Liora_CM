@@ -1113,6 +1113,11 @@
         // Ce que la facturation dit de cette facture, et à défaut de ce client :
         // les deux index sont passés par classer(), qui les a construits.
         const dit = c => (c && c.cle && o.parCleSellsy) ? o.parCleSellsy.get(c.cle) : null;
+        // Le « Type de client » tel que la facturation l'écrit, sans passer par
+        // la détection de dispositif : « POEI » et « B2C » ne se ramènent pas
+        // au même financement, mais ils tranchent l'un comme l'autre.
+        const dutBrut = c => (c && c.cle && o.brutSellsy ? o.brutSellsy.get(c.cle) : null)
+            || (c && c.typeClientSellsy) || '';
         const ditDuClient = c => {
             const m = (c && o.parNomSellsy) ? o.parNomSellsy.get(R.norm(c.tiers || '')) : null;
             if (!m || !m.size) return null;
@@ -1128,7 +1133,25 @@
             if (explicite === 'POEI' || explicite === 'AIF') return explicite;
             const parFacture = dit(creance) || ditDuClient(creance);
             if (parFacture === 'POEI' || parFacture === 'AIF') return parFacture;
-            // Sinon le montant tranche : au-delà du seuil c'est une POEI.
+
+            // C'est la facturation qui tranche, et elle le fait presque
+            // toujours. Sur les 424 factures France Travail que votre ancien
+            // grand livre a classées, le « Type de client » de Sellsy dit
+            // « POEI » 269 fois — dont 266 sont bien des POEI — et « B2C »
+            // 140 fois, dont 140 sont des AIF, sans une exception. C'est le
+            // dispositif même : la POEI passe par l'employeur, l'AIF est une
+            // aide accordée à la personne.
+            const brut = R.norm(dutBrut(creance) || '');
+            if (brut) {
+                if (/poei/.test(brut)) return 'POEI';
+                if (/\baif\b/.test(brut)) return 'AIF';
+                // Un particulier chez France Travail, c'est une AIF.
+                if (/b2c|btc|perso/.test(brut)) return 'AIF';
+            }
+
+            // À défaut seulement, le montant. Il ne sépare que trois fois sur
+            // quatre — une AIF à 8 490 € coexiste avec une POEI à 8 459 € —
+            // mais il vaut mieux qu'un tirage au sort.
             const montant = Math.abs(creance.montant != null ? creance.montant : creance.resteDu || 0);
             return montant > SEUIL_POEI ? 'POEI' : 'AIF';
         }
@@ -1333,7 +1356,8 @@
         // Les arbitrages ont besoin de ce que sait la facturation : le type
         // porté par la facture, et à défaut celui du client.
         const oArb = Object.assign({}, o, {
-            parCleSellsy: idx.parSellsy, parNomSellsy: idx.parNomSellsy });
+            parCleSellsy: idx.parSellsy, parNomSellsy: idx.parNomSellsy,
+            brutSellsy: idx.brutSellsy });
         const duLibelle = c => {
             const m = financementDuLibelle(c.tiers) || financementDuLibelle(c.compte);
             if (!m) return null;
