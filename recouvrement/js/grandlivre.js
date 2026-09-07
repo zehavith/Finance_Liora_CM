@@ -1142,7 +1142,18 @@
             } : null;
             for (const k of cles) {
                 if (l.typeClient && !brutSellsy.has(k)) brutSellsy.set(k, l.typeClient);
-                if (dates && !datesSellsy.has(k)) datesSellsy.set(k, dates);
+                if (!dates) continue;
+                const prec = datesSellsy.get(k);
+                if (!prec) { datesSellsy.set(k, { ...dates }); continue; }
+                // Deux sources pour la même facture : Sellsy et Zoho. Aucune
+                // ne remplace l'autre, chacune comble ce que l'autre laisse
+                // vide — c'est la cascade de votre classeur, qui cherche
+                // l'e-mail dans Sellsy!F, puis Sellsy!L, puis Zoho!L. Sans ce
+                // complément, une ligne Sellsy sans e-mail bloquait celui de
+                // Zoho, et le mandat de prélèvement restait introuvable.
+                for (const champ of Object.keys(dates)) {
+                    if (!prec[champ] && dates[champ]) prec[champ] = dates[champ];
+                }
             }
         }
         // Les clients sous mandat de prélèvement : chez eux l'argent est appelé

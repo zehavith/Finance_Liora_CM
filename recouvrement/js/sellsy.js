@@ -87,7 +87,7 @@
      */
     const ALIAS_SELLSY = {
         numero:     ['numero', 'num', 'reference', 'ref', 'numero de document', 'document', 'piece'],
-        client:     ['client', 'tiers', 'societe', 'nom du tiers', 'raison sociale'],
+        client:     ['nom du client', 'client', 'tiers', 'societe', 'nom du tiers', 'raison sociale'],
         // L'e-mail joint la facturation aux prélèvements : c'est la clé du
         // classeur de trésorerie pour retrouver le mandat GoCardless d'un
         // client, et elle ne souffre pas des variantes d'orthographe d'un nom.
@@ -100,12 +100,22 @@
         // Sellsy nomme les dates de formation « début » et « fin de service ».
         // Ce sont elles que les règles d'échéance attendent : les récupérer vaut
         // mieux que de recopier l'échéance calculée par Sellsy.
-        dateDebutFormation: ['debut de service', 'date de debut de service', 'debut service'],
-        dateFinFormation: ['fin de service', 'date de fin de service', 'fin service'],
-        // La correspondance Sellsy ↔ Zoho, portée par l'export Sellsy lui-même.
+        // Zoho nomme les mêmes colonnes « Debut / Fin formation ».
+        dateDebutFormation: ['debut de service', 'date de debut de service', 'debut service',
+                             'debut formation', 'date de debut de formation'],
+        dateFinFormation: ['fin de service', 'date de fin de service', 'fin service',
+                           'fin formation', 'date de fin de formation'],
+        // La correspondance Sellsy ↔ Zoho, portée par l'un ou l'autre export.
         // Les factures « FA-… » ne sont plus émises, mais elles vivent encore au
         // grand livre : c'est par ce numéro qu'on retrouve leurs dates.
-        numeroZoho: ['numero de facture zoho', 'facture zoho', 'numero zoho'],
+        //
+        // Le champ est la « seconde clé » de la facture, pas un numéro Zoho au
+        // sens strict : dans l'export Sellsy il porte le numéro Zoho, dans
+        // l'export Zoho il porte la facture Sellsy correspondante. Dans les
+        // deux cas il désigne la même facture sous l'autre numéro, et c'est
+        // par là que les dates, l'e-mail et le statut se rejoignent.
+        numeroZoho: ['numero de facture zoho', 'facture zoho', 'numero zoho',
+                     'facture sellsy correspondante', 'numero de facture sellsy'],
         statut:     ['statut', 'status', 'etat', 'etat du paiement', 'statut de paiement'],
     };
 
