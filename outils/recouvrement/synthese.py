@@ -424,6 +424,7 @@ def _recit_contexte(
     dossier,
     synthese: Synthese,
     reference_temps: datetime,
+    lignes: list[LigneIndex] | None = None,
 ) -> str:
     """Ce qui s'est passé, raconté d'un trait.
 
@@ -459,22 +460,42 @@ def _recit_contexte(
     elif diplome is False:
         faits_execution.append("n'a pas obtenu son diplôme")
 
+    # Sur une facture d'entreprise, celui qui suit la formation et celui qui
+    # doit payer sont deux personnes différentes. Écrire « L'apprenant n'a pas
+    # payé » désigne alors la mauvaise partie — et devant un tribunal, c'est
+    # l'employeur qui est assigné, pas le stagiaire.
+    corpo = _debiteur_est_une_entreprise(dossier)
+    # Le tableau ne dit rien de la convention, mais une pièce du dossier peut
+    # l'établir : un devis signé au nom de l'apprenant vaut engagement.
+    piece_engagement = ""
+    if convention is not True:
+        piece_engagement = convention_dans_les_pieces(
+            lignes or [], dossier.apprenant_forme()
+            if hasattr(dossier, "apprenant_forme") else "")
+
     if faits_execution:
-        phrases.append("L'apprenant " + _enumerer(faits_execution) + ".")
+        sujet = "L'apprenant" if not corpo else "La formation a été suivie"
+        if corpo:
+            phrases.append(
+                "La formation a été suivie" + _suite_corpo(faits_execution) + "."
+            )
+        else:
+            phrases.append(sujet + " " + _enumerer(faits_execution) + ".")
     elif convention is True:
         phrases.append("La convention de formation a été signée par le débiteur.")
 
     # Les heures font leur propre phrase : les glisser dans l'énumération
     # ci-dessus y introduisait des virgules, et l'ensemble ne se lisait plus.
+    qui = "L'apprenant s'est" if corpo else "Il s'est"
     if suivies and theoriques:
         part = round(100 * suivies / theoriques)
         phrases.append(
-            f"Il s'est connecté {_nombre_heures(suivies)} sur les "
+            f"{qui} connecté {_nombre_heures(suivies)} sur les "
             f"{_nombre_heures(theoriques)} prévues, soit {part} % du volume "
             "horaire."
         )
     elif suivies:
-        phrases.append(f"Il s'est connecté {_nombre_heures(suivies)}.")
+        phrases.append(f"{qui} connecté {_nombre_heures(suivies)}.")
 
     # 2. Le défaut de paiement, et ce qui a été tenté.
     du = montant_lisible(dossier.montant_du) or montant_lisible(dossier.montant_total)
@@ -482,7 +503,11 @@ def _recit_contexte(
     relances = synthese.evenements_de("Relance")
     demeures = synthese.evenements_de("Mise en demeure")
 
-    defaut = "Il n'a pas payé" if faits_execution else "Le débiteur n'a pas payé"
+    if corpo:
+        defaut = f"{dossier.nom.strip()} n'a pas payé" if dossier.nom.strip() \
+            else "Le débiteur n'a pas payé"
+    else:
+        defaut = "Il n'a pas payé" if faits_execution else "Le débiteur n'a pas payé"
     if du and echeance is not None:
         defaut += f" les {du} dus depuis le {echeance:%d/%m/%Y}"
     elif du:
@@ -514,24 +539,35 @@ def _recit_contexte(
     # 4. Son attitude : ce qu'il a répondu, promis, ou pas.
     promesses = synthese.evenements_de("Annonce de paiement")
     contestations = synthese.evenements_de("Contestation")
+    sujet_payeur = "Le débiteur" if corpo else "Il"
     if promesses:
         phrases.append(
-            f"Il a annoncé un règlement le {promesses[-1].date:%d/%m/%Y} "
+            f"{sujet_payeur} a annoncé un règlement le "
+            f"{promesses[-1].date:%d/%m/%Y} "
             "(pièce n° " + str(promesses[-1].piece) + "), qui n'est jamais parvenu."
         )
     if contestations:
+        # Affirmer qu'aucun justificatif n'a été produit alors que le message
+        # en portait un serait faux, et c'est le genre d'erreur qui se paie à
+        # l'audience. On regarde donc si la pièce contestée était jointe.
+        appuyee = any(
+            ligne.piece_n == contestations[0].piece and ligne.nb_pieces_jointes
+            for ligne in (lignes or [])
+        )
         phrases.append(
-            f"Il conteste le montant depuis le {contestations[0].date:%d/%m/%Y} "
-            f"(pièce n° {contestations[0].piece}), sans avoir produit "
-            "de justificatif."
+            f"{sujet_payeur} conteste le montant depuis le "
+            f"{contestations[0].date:%d/%m/%Y} "
+            f"(pièce n° {contestations[0].piece})"
+            + (", pièce à l'appui." if appuyee
+               else ", sans avoir produit de justificatif.")
         )
     if synthese.derniere_reponse is None and synthese.nb_pieces:
-        phrases.append("Il n'a répondu à aucun de nos messages.")
+        phrases.append(f"{sujet_payeur} n'a répondu à aucun de nos messages.")
     elif synthese.derniere_reponse is not None:
         silence = (maintenant - synthese.derniere_reponse.replace(tzinfo=None)).days
         if silence > 30 and not contestations and not promesses:
             phrases.append(
-                f"Sa dernière réponse remonte au "
+                "Sa dernière réponse remonte au "
                 f"{synthese.derniere_reponse:%d/%m/%Y}, il y a {silence} jours."
             )
 
@@ -542,6 +578,12 @@ def _recit_contexte(
             f"Une mise en demeure lui a été adressée le "
             f"{demeures[-1].date:%d/%m/%Y}"
             + (f", restée sans effet depuis {depuis} jours." if depuis > 0 else ".")
+        )
+
+    if piece_engagement:
+        phrases.append(
+            f"L'engagement est établi par une pièce du dossier — "
+            f"« {piece_engagement} » —, à vérifier avant transmission."
         )
 
     # Ce que le service sait et que l'outil ne peut pas savoir : appels
@@ -563,6 +605,46 @@ def _accorder(combien: int, singulier: str, pluriel: str = "") -> str:
     if combien == 1:
         return f"une {singulier}" if singulier[0] not in "aeiouéèh" else f"une {singulier}"
     return f"{combien} {pluriel or singulier + 's'}"
+
+
+def _debiteur_est_une_entreprise(dossier) -> bool:
+    """Le débiteur est-il une société plutôt que l'apprenant lui-même ?
+
+    Sur une facture d'entreprise, celui qui suit la formation et celui qui
+    doit payer sont deux personnes différentes : écrire « L'apprenant n'a pas
+    payé » désigne alors la mauvaise partie, et c'est l'employeur qui sera
+    assigné. La forme juridique dans la raison sociale tranche ; à défaut, on
+    considère qu'il s'agit d'un particulier, qui est le cas courant.
+    """
+    import entreprises as module_entreprises  # noqa: PLC0415 - cycle
+
+    nom = (getattr(dossier, "nom", "") or "").strip()
+    if not nom:
+        return False
+    return module_entreprises.ressemble_a_une_societe(nom)
+
+
+def _suite_corpo(faits: list[str]) -> str:
+    """« La formation a été suivie du … au …, et le diplôme délivré. »
+
+    Les faits sont écrits pour un sujet « L'apprenant » ; sur un dossier
+    d'entreprise, la phrase change de sujet et ils doivent suivre.
+    """
+    reecrits = []
+    for fait in faits:
+        if fait.startswith("a suivi la formation du "):
+            reecrits.append(fait[len("a suivi la formation"):].strip())
+        elif fait.startswith("a terminé sa formation le "):
+            reecrits.append("et achevée le " + fait.split("le ", 1)[1])
+        elif fait == "a reçu son diplôme":
+            reecrits.append("et le diplôme délivré")
+        elif fait == "n'a pas obtenu son diplôme":
+            reecrits.append("mais le diplôme n'a pas été délivré")
+        elif fait == "a suivi la formation":
+            continue
+        else:
+            reecrits.append(fait)
+    return (" " + " ".join(reecrits)) if reecrits else ""
 
 
 def _enumerer(elements: list[str]) -> str:
@@ -587,6 +669,7 @@ def resumer_situation(
     synthese: Synthese,
     reference_temps: datetime,
     pieces_ajoutees: list[dict] | None = None,
+    lignes: list[LigneIndex] | None = None,
 ) -> list[tuple[str, str]]:
     """Les quatre points du résumé, chacun sous son intitulé."""
     maintenant = reference_temps.replace(tzinfo=None)
@@ -610,7 +693,7 @@ def resumer_situation(
         )
 
     # 2. Contexte.
-    contexte = _recit_contexte(dossier, synthese, reference_temps)
+    contexte = _recit_contexte(dossier, synthese, reference_temps, lignes)
 
     # 3. Contrat signé et factures.
     versees = [p for p in (pieces_ajoutees or []) if p.get("fichier")]
@@ -788,6 +871,73 @@ OUI = {"oui", "o", "yes", "y", "1", "x", "vrai", "true", "signe", "signee",
        "recu", "recue", "obtenu", "obtenue", "fait", "faite", "ok"}
 NON = {"non", "n", "no", "0", "faux", "false", "pas signe", "pas signee",
        "non signe", "non signee", "pas recu", "non recu", "aucun", "neant"}
+
+
+# Une note de tableau s'écrit par ajouts successifs : chaque intervention
+# colle sa phrase à la précédente, souvent sans séparateur. Le résultat est
+# illisible dans un document qui part chez un avocat. On le remet au propre
+# sans rien réécrire : découpage, majuscules, ponctuation. Aucun mot n'est
+# changé, aucun n'est retiré — la note reste opposable telle qu'elle a été
+# tenue.
+OUVERTURES = (
+    "relance faite", "relance mail", "relance", "en attente", "dit que",
+    "devis", "pas de", "doit etre", "doit être", "piece d identite",
+    "pièce d'identité", "a relancer", "à relancer", "vu avec", "appel",
+    "mail envoye", "mail envoyé", "sans reponse", "sans réponse",
+    "demande de", "reçu", "recu", "signe", "signé", "non signe", "non signé",
+)
+
+
+def mettre_au_propre(note: str) -> list[str]:
+    """Une note de tableau, rendue lisible : une ligne par intervention."""
+    texte = " ".join(str(note or "").split())
+    if not texte:
+        return []
+
+    # Les entrées d'une même note sont séparées par des tirets, des
+    # points-virgules ou des retours à la ligne déjà aplatis.
+    morceaux = re.split(r"\s*[-–—;•]\s+|\s+[-–—]\s*", texte)
+
+    # Deux entrées collées sans séparateur : « …par l'apprenantrelance faite ».
+    # On ne coupe que devant une formule qui ouvre visiblement une entrée, et
+    # seulement si ce qui précède est un mot collé — jamais au milieu d'un mot
+    # ordinaire.
+    decoupes: list[str] = []
+    for morceau in morceaux:
+        reste = morceau.strip()
+        while reste:
+            coupe = _premiere_ouverture(reste)
+            if coupe is None:
+                decoupes.append(reste)
+                break
+            decoupes.append(reste[:coupe].strip())
+            reste = reste[coupe:].strip()
+
+    propres: list[str] = []
+    for entree in decoupes:
+        entree = entree.strip(" .,;:")
+        if not entree:
+            continue
+        entree = entree[0].upper() + entree[1:]
+        propres.append(entree + ".")
+    return propres
+
+
+def _premiere_ouverture(texte: str) -> int | None:
+    """Position d'une entrée collée à la précédente, s'il y en a une."""
+    plat = aplatir(texte)
+    for ouverture in OUVERTURES:
+        depart = 0
+        while True:
+            position = plat.find(aplatir(ouverture), depart)
+            if position <= 0:
+                break
+            avant = plat[position - 1]
+            # Collée à un mot, pas précédée d'une espace ni d'un séparateur.
+            if avant.isalpha() and position < len(plat) - 3:
+                return position
+            depart = position + 1
+    return None
 
 
 def _oui_non(valeur: str) -> bool | None:
@@ -1185,6 +1335,47 @@ CATEGORIES_PIECES = (
 )
 
 
+# Un devis signé au nom de l'apprenant vaut engagement : c'est la pièce qu'on
+# oppose à « je n'ai jamais rien signé ». Le service le sait et le compte comme
+# une convention ; l'outil doit le voir aussi, sans quoi la note annonce
+# « aucune convention » alors que la preuve est au dossier.
+MOTS_ENGAGEMENT = ("convention", "contrat", "devis", "bon de commande",
+                   "bon pour accord", "signe", "signee", "signature")
+
+
+def convention_dans_les_pieces(lignes: list[LigneIndex], apprenant: str = "") -> str:
+    """Le nom d'une pièce qui établit l'engagement, s'il y en a une.
+
+    Le nom du fichier suffit : il n'est pas ouvert. Un « devis signé » nommé
+    ainsi est une pièce du dossier ; ce qu'il contient reste à vérifier avant
+    transmission, et la note le dit.
+    """
+    plat_apprenant = aplatir(apprenant) if apprenant else ""
+    mots_apprenant = [m for m in plat_apprenant.split() if len(m) > 2]
+
+    for ligne in lignes:
+        for nom in (ligne.pieces_jointes or "").split(" | "):
+            nom = nom.strip()
+            if not nom:
+                continue
+            plat = aplatir(nom)
+            if not any(mot in plat for mot in MOTS_ENGAGEMENT):
+                continue
+            # Le nom de l'apprenant dans le fichier lève le doute : « devis
+            # signé Benallaoua » désigne ce dossier-ci et pas un autre. À
+            # défaut, une pièce nommée « convention » ou « contrat » suffit ;
+            # un simple « devis » sans nom, non — un devis non signé ne
+            # prouve aucun engagement.
+            if mots_apprenant and all(mot in plat for mot in mots_apprenant):
+                return nom
+            if any(mot in plat for mot in ("convention", "contrat")):
+                return nom
+            if "sign" in plat and any(
+                    mot in plat for mot in ("devis", "bon de commande")):
+                return nom
+    return ""
+
+
 def classer_pieces_jointes(lignes: list[LigneIndex]) -> list[tuple[str, list[str]]]:
     """Regroupe les pièces jointes par nature, d'après leur nom de fichier."""
     groupes: dict[str, list[str]] = {}
@@ -1404,7 +1595,8 @@ def construire_html(
     constats = rediger_constats(synthese, date_export)
     contexte = rediger_contexte(dossier, synthese, date_export)
     echanges = resumer_echanges(dossier, synthese, date_export)
-    situation = resumer_situation(dossier, synthese, date_export, pieces_ajoutees)
+    situation = resumer_situation(
+        dossier, synthese, date_export, pieces_ajoutees, lignes)
     pieces = classer_pieces_jointes(lignes)
 
     trajet = parcours(dossier)
@@ -1516,11 +1708,15 @@ def construire_html(
 
     bloc_contexte += _bloc_parcours(dossier)
 
-    if dossier.commentaire:
+    entrees_note = mettre_au_propre(dossier.commentaire)
+    if entrees_note:
         bloc_contexte += (
             '<div class="interne"><b>Note interne du tableau de suivi</b> — '
-            "reproduite telle quelle, à relire avant transmission :<br />"
-            f"« {html.escape(dossier.commentaire)} »</div>"
+            "reprise sans qu'aucun mot en soit changé, à relire avant "
+            "transmission :"
+            "<ul class='constats'>"
+            + "".join(f"<li>{html.escape(entree)}</li>" for entree in entrees_note)
+            + "</ul></div>"
         )
 
     # Trois sources indépendantes, cumulables : les pièces extraites des

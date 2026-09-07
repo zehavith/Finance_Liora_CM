@@ -312,6 +312,37 @@ class Dossier:
         morceaux.append(slug(self.nom or (self.emails[0] if self.emails else "dossier"), 40))
         return "_".join(m for m in morceaux if m)
 
+    # Intitulés qui désignent la personne formée, par opposition à celle qui
+    # paye. Sur un dossier d'entreprise, les deux diffèrent, et c'est le nom
+    # de l'apprenant qui figure dans l'objet des échanges — jamais celui de
+    # la société.
+    COLONNES_APPRENANT = (
+        "nom prenom de l apprenant", "nom prenom de l apprenante",
+        "nom prenom apprenant", "nom prenom apprenante",
+        "nom et prenom de l apprenant", "nom de l apprenante",
+        "nom de l apprenant", "nom apprenante", "nom apprenant",
+        "apprenante", "apprenant", "stagiaire", "salarie", "beneficiaire",
+    )
+
+    def apprenant_forme(self) -> str:
+        """Le nom de la personne formée, s'il diffère de celui du débiteur.
+
+        Sur une facture d'entreprise, l'objet des messages porte « Formation
+        Untel » et jamais la raison sociale : sans ce nom, tout un pan de la
+        correspondance reste introuvable. Lu dans les colonnes du tableau,
+        sans toucher à la résolution des colonnes, qui est délicate.
+        """
+        connu = _normaliser_entete(self.nom)
+        for intitule in self.COLONNES_APPRENANT:
+            valeur = (self.colonnes.get(intitule) or "").strip()
+            if not valeur or _normaliser_entete(valeur) == connu:
+                continue
+            # Un nom, pas un identifiant : deux mots au moins, et des lettres.
+            mots = [m for m in valeur.replace("-", " ").split() if len(m) > 1]
+            if len(mots) >= 2 and any(c.isalpha() for c in valeur):
+                return " ".join(valeur.split())
+        return ""
+
     def requete_gmail(self) -> str:
         """Assemble la requête Gmail : adresse mail (en-têtes ET corps) OU
         numéro de facture (corps ET nom de pièce jointe)."""
@@ -329,7 +360,19 @@ class Dossier:
         for facture in self.factures:
             for forme in variantes_facture(facture):
                 termes.append(f'"{forme}"')
-                termes.append(f"filename:{forme}")
+                # Guillemets obligatoires : « filename:FACT 2405 00409 » se lit
+                # « filename:FACT ET 2405 ET 00409 » chez Gmail, ce qui ne
+                # cherche plus le nom de fichier voulu. La barre oblique pose
+                # le même problème. Sans cela, une facture jointe sous un nom
+                # écrit avec des espaces n'était jamais retrouvée.
+                termes.append(f'filename:"{forme}"')
+
+        # Le nom de la personne formée n'est ajouté que s'il y a déjà un
+        # critère sûr : seul, il ramènerait des homonymes, et un dossier ne
+        # doit jamais reposer sur lui. Il élargit, il ne fonde pas.
+        apprenant = self.apprenant_forme()
+        if termes and apprenant:
+            termes.append(f'"{apprenant}"')
 
         if not termes:
             raise ErreurDossiers(
@@ -370,6 +413,9 @@ class Dossier:
             trouves.append("adresse")
         if any(facture.lower() in texte_message for facture in self.factures):
             trouves.append("facture")
+        apprenant = self.apprenant_forme().lower()
+        if apprenant and apprenant in texte_message:
+            trouves.append("apprenant")
         return "+".join(trouves) if trouves else "indirect"
 
     def factures_citees(self, texte_message: str) -> list[str]:
@@ -1185,8 +1231,11 @@ def dossiers_depuis_grille(
             # Normalisée dès la lecture : Monday date en ISO, un tableur en
             # français, et la suite ne doit pas avoir à connaître les deux.
             date_echeance=_normaliser_date_lisible(_premier("date_echeance")),
-            formation_debut=_premier("formation_debut"),
-            formation_fin=_premier("formation_fin"),
+            # Normalisées comme l'échéance : Monday date en ISO, un tableur
+            # en français, et « du 2023-07-04 au 2024-05-30 » dans une note
+            # qui part chez un avocat ne se lit pas.
+            formation_debut=_normaliser_date_lisible(_premier("formation_debut")),
+            formation_fin=_normaliser_date_lisible(_premier("formation_fin")),
             statut=" · ".join(valeurs["statut"]),
             commentaire=" · ".join(valeurs["commentaire"]),
             convention_signee=_premier("convention_signee"),

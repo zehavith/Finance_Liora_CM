@@ -109,7 +109,15 @@ def test_dossiers() -> None:
     verifier("from:marie.dupont@exemple.fr" in requete, "requête : critère expéditeur")
     verifier("to:marie.dupont@exemple.fr" in requete, "requête : critère destinataire")
     verifier('"FA-2024-0153"' in requete, "requête : numéro de facture en texte")
-    verifier("filename:FA-2024-0153" in requete, "requête : numéro de facture en pièce jointe")
+    verifier('filename:"FA-2024-0153"' in requete,
+             "requête : numéro de facture en pièce jointe, entre guillemets")
+    # Sans guillemets, « filename:FA 2024 0153 » se lit chez Gmail comme trois
+    # conditions ET : le nom de fichier voulu n'est plus cherché.
+    corps_requete = requete[requete.index("(") + 1:requete.rindex(")")]
+    verifier(all(terme.endswith('"') for terme in corps_requete.split(" OR ")
+                 if terme.startswith("filename:")),
+             f"requête : aucun terme filename: laissé sans guillemets "
+             f"(fautifs : {[x for x in corps_requete.split(' OR ') if x.startswith('filename:') and not x.endswith(chr(34))]})")
     verifier("after:2023/09/01" in requete, "requête : borne de date convertie pour Gmail")
 
     # Les deux critères sont réunis par OU, jamais par ET : connaître
@@ -2836,6 +2844,49 @@ def test_annuaire_entreprises() -> None:
              "les sociétés cessées sont listées, avec le montant en jeu")
 
 
+def test_note_interne_au_propre() -> None:
+    """Une note de tableau écrite par ajouts, rendue lisible."""
+    print("\nMise au propre de la note interne")
+
+    import synthese as module_synthese  # noqa: PLC0415
+
+    # La note réelle d'un dossier : des entrées empilées, séparées par des
+    # tirets, et deux collées l'une à l'autre faute de séparateur.
+    note = ("relance mail - demande de l'apc, celui-ci n'a pas été retrouvé "
+            "chez l'opcommerce - devis a été signé par l'apprenant - pas de "
+            "convention - pièce d'identité du proprio de eden pour preuve - "
+            "doit être payé par l'apprenantrelance faite - dit que c l'opco "
+            "qui devait regul, en attente d'un retour de sa part - relance faite")
+    entrees = module_synthese.mettre_au_propre(note)
+
+    verifier(len(entrees) == 9,
+             f"chaque intervention fait sa ligne (obtenu : {len(entrees)})")
+    verifier(entrees[0] == "Relance mail.",
+             f"majuscule et point final (obtenu : {entrees[0]!r})")
+    verifier("Doit être payé par l'apprenant." in entrees,
+             f"deux entrées collées sont séparées (obtenu : {entrees})")
+    verifier("Relance faite." in entrees,
+             "et la seconde retrouve son sens")
+
+    # Rien n'est réécrit : la note reste opposable telle qu'elle a été tenue.
+    recompose = " ".join(entrees).lower()
+    for mot in ("opcommerce", "opco", "regul", "proprio", "apc"):
+        verifier(mot in recompose,
+                 f"« {mot} » est conservé tel quel, sans correction")
+
+    verifier(module_synthese.mettre_au_propre("") == [],
+             "une note vide ne produit rien")
+    verifier(module_synthese.mettre_au_propre("relance faite") == ["Relance faite."],
+             "une note d'une seule ligne traverse sans dommage")
+
+    # Un mot ordinaire ne doit pas être coupé au milieu sous prétexte qu'il
+    # contient une formule d'ouverture.
+    verifier(module_synthese.mettre_au_propre("montant relancé le 3") ==
+             ["Montant relancé le 3."],
+             f"aucune coupure au milieu d'une phrase ordinaire (obtenu : "
+             f"{module_synthese.mettre_au_propre('montant relancé le 3')})")
+
+
 def test_contexte_saisi() -> None:
     """Ce que le service sait et qu'aucun tableau ne porte."""
     print("\nContexte saisi à la main")
@@ -2958,12 +3009,27 @@ def test_resume_de_situation() -> None:
     # qui recoit le dossier.
     contexte = par_titre["Contexte"]
     print(f"     contexte obtenu : {contexte}")
-    verifier("L'apprenant a suivi la formation" in contexte,
-             "2. le récit s'ouvre sur l'exécution de la formation")
-    verifier("n'a pas obtenu son diplôme" in contexte,
+    verifier(contexte.startswith("La formation a été suivie"),
+             f"2. le récit s'ouvre sur l'exécution de la formation "
+             f"(obtenu : {contexte[:90]})")
+    verifier("le diplôme n'a pas été délivré" in contexte,
              "et dit ce qu'il en est du diplôme")
-    verifier("Il n'a pas payé" in contexte and "5 990" in contexte,
-             "puis le défaut de paiement")
+    # SAS EDEN est une société : c'est elle qui doit, pas l'apprenant. Écrire
+    # « L'apprenant n'a pas payé » désignerait la mauvaise partie, et devant
+    # un tribunal c'est l'employeur qui est assigné.
+    verifier("SAS EDEN n'a pas payé" in contexte and "5 990" in contexte,
+             f"puis le défaut de paiement, imputé au débiteur qui doit "
+             f"(obtenu : {contexte[90:200]})")
+    verifier("L'apprenant n'a pas payé" not in contexte,
+             "et jamais à l'apprenant sur une facture d'entreprise")
+
+    # Sur un dossier de particulier, l'apprenant est le débiteur, et le récit
+    # doit le dire ainsi.
+    particulier = dict(module_synthese.resumer_situation(
+        replace(dossier, nom="Benallaoua Sofiane"), synthese, maintenant))["Contexte"]
+    verifier("L'apprenant a suivi la formation" in particulier
+             and "Il n'a pas payé" in particulier,
+             f"un particulier reste « l'apprenant » (obtenu : {particulier[:110]})")
     verifier("malgré une relance" in contexte or "malgré 2 relance" in contexte,
              f"et ce qui a été tenté (obtenu : {contexte[:200]})")
     verifier("conteste le montant depuis le 10/06/2024" in contexte,
@@ -5285,6 +5351,7 @@ def main() -> int:
     test_pieces_versees()
     test_ancienne_reference_facture()
     test_annuaire_entreprises()
+    test_note_interne_au_propre()
     test_contexte_saisi()
     test_recherche_dossiers()
     test_resume_de_situation()
