@@ -1859,13 +1859,8 @@ def construire_html(
 qu'établissent les parties suivantes ; il ne s'y ajoute rien. Les montants,
 dates de formation, statuts et notes de la partie 2 sont recopiés du tableau
 de suivi. Les parties 3 et 4, ainsi que l'annexe, sont établies à partir des
-seuls messages extraits des boîtes citées ci-dessus, sans autre source. Les événements sont repérés par correspondance
-de formulations dans l'objet et le corps des messages : la liste peut être
-incomplète, et un message rédigé autrement peut ne pas avoir été reconnu. La
-nature des pièces jointes est déduite de leur nom de fichier. Chaque constat
-renvoie à un numéro de pièce, à vérifier dans le message d'origine avant toute
-utilisation. Ce document ne constitue pas une analyse juridique et doit être
-relu avant transmission.{note_doublons}
+seuls messages extraits des boîtes citées ci-dessus, sans autre
+source.{note_doublons}
 </div>
 
 <div class="annexe">
