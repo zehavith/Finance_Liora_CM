@@ -626,6 +626,36 @@ def _signaler_colonnes_vides(lignes: list[Dossier], journal: Journal) -> None:
         )
 
 
+def _journaliser_requete(dossier: Dossier, journal: Journal) -> None:
+    """Dit ce qui est cherché, et surtout dans quelles bornes.
+
+    La requête est tronquée : depuis qu'elle essaie toutes les écritures du
+    numéro, elle fait deux mille caractères et noierait le reste du journal.
+    Elle figure en entier au récapitulatif, colonne « requete_gmail ».
+
+    Mais les bornes de date sont ajoutées à la fin de la requête, et c'est
+    exactement ce que la troncature emportait. Un dossier borné sans qu'on le
+    voie cherche dans une fenêtre trop étroite, et l'on conclut que le message
+    n'existe pas. Elles sont donc dites à part.
+    """
+    requete = dossier.requete_gmail()
+    apercu = requete if len(requete) <= 220 else requete[:217] + "…"
+    journal(f"    requête : {apercu}")
+
+    if not (dossier.date_debut or dossier.date_fin):
+        return
+
+    depuis = dossier.date_debut.replace("/", "-") if dossier.date_debut else "—"
+    jusqu = dossier.date_fin.replace("/", "-") if dossier.date_fin else "—"
+    journal(f"    ⚠ recherche bornée : du {depuis} au {jusqu}")
+    if dossier.date_fin:
+        journal(
+            "      les messages postérieurs à cette date sont exclus, y "
+            "compris les relances. Videz la colonne de date de fin du tableau "
+            "pour chercher sans borne."
+        )
+
+
 def traiter_dossier(
     dossier: Dossier,
     sources: SourcesGmail,
@@ -634,11 +664,7 @@ def traiter_dossier(
     journal: Journal,
 ) -> ResumeDossier:
     requete = dossier.requete_gmail()
-    # Tronquée : depuis qu'elle essaie toutes les écritures du numéro, elle
-    # fait deux mille caractères et noie le reste du journal. Elle figure en
-    # entier au récapitulatif, colonne « requete_gmail ».
-    apercu = requete if len(requete) <= 220 else requete[:217] + "…"
-    journal(f"    requête : {apercu}")
+    _journaliser_requete(dossier, journal)
     resume = ResumeDossier(
         reference=dossier.reference,
         nom=dossier.nom,

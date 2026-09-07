@@ -493,6 +493,17 @@ def _recit_contexte(
 
     # Les heures font leur propre phrase : les glisser dans l'énumération
     # ci-dessus y introduisait des virgules, et l'ensemble ne se lisait plus.
+    # La feuille d'émargement établit la présence effective, séance par séance
+    # et signature à l'appui : c'est la pièce la plus forte du dossier sur
+    # l'exécution, et sa place est ici, avec les faits qu'elle prouve.
+    emargement = _emargement_du_dossier(lignes or [])
+    if emargement:
+        phrases.append(
+            "La feuille d'émargement " + _de(emargement["apprenant"])
+            + f", du {emargement['debut']} au {emargement['fin']}, "
+            "figure au dossier."
+        )
+
     qui = "L'apprenant s'est" if corpo else "Il s'est"
     if suivies and theoriques:
         part = round(100 * suivies / theoriques)
@@ -593,6 +604,8 @@ def _recit_contexte(
             f"« {piece_engagement} »."
         )
 
+
+
     # Ce que le service sait et que l'outil ne peut pas savoir : appels
     # téléphoniques, chèque de caution, encaissements. Saisi dans
     # l'application, repris ici tel quel.
@@ -652,6 +665,25 @@ def _suite_corpo(faits: list[str]) -> str:
         else:
             reecrits.append(fait)
     return (" " + " ".join(reecrits)) if reecrits else ""
+
+
+def _emargement_du_dossier(lignes: list[LigneIndex]) -> dict | None:
+    """La feuille d'émargement du dossier, s'il en porte une."""
+    for ligne in lignes:
+        for nom in (ligne.pieces_jointes or "").split(" | "):
+            trouve = lire_emargement(nom.strip())
+            if trouve is not None:
+                return trouve
+    return None
+
+
+def _de(nom: str) -> str:
+    """« de Marie », « d'Anas » — l'élision, que l'oreille attend."""
+    propre = (nom or "").strip()
+    if not propre:
+        return ""
+    premiere = aplatir(propre)[:1]
+    return ("d'" if premiere in "aeiouy" else "de ") + propre
 
 
 def _enumerer(elements: list[str]) -> str:
@@ -1347,6 +1379,33 @@ def parcours(dossier) -> dict:
     return resume
 
 
+# Une feuille d'émargement ne porte le mot nulle part : elle est nommée du
+# nom de l'apprenant suivi des deux dates de la formation, et d'un
+# identifiant. C'est sa forme qui la désigne, pas un mot-clé.
+#   Anas_AIT_BELAID_02_09_2024_31_12_2025_880ceucmlwnozdz_1.pdf
+#
+# La pièce vaut son pesant : elle établit la présence effective, séance par
+# séance, signature à l'appui — bien davantage que des heures de connexion.
+MOTIF_EMARGEMENT = re.compile(
+    r"^(?P<qui>.+?)_(?P<d1>\d{2})_(?P<m1>\d{2})_(?P<a1>\d{4})"
+    r"_(?P<d2>\d{2})_(?P<m2>\d{2})_(?P<a2>\d{4})(?:_|\.)",
+    re.IGNORECASE,
+)
+
+
+def lire_emargement(nom: str) -> dict | None:
+    """L'apprenant et la période que porte le nom d'une feuille d'émargement."""
+    trouve = MOTIF_EMARGEMENT.match((nom or "").strip())
+    if trouve is None:
+        return None
+    return {
+        "apprenant": " ".join(trouve.group("qui").replace("_", " ").split()),
+        "debut": f"{trouve['d1']}/{trouve['m1']}/{trouve['a1']}",
+        "fin": f"{trouve['d2']}/{trouve['m2']}/{trouve['a2']}",
+        "fichier": nom,
+    }
+
+
 CATEGORIES_PIECES = (
     ("Contrat / convention", ("convention", "contrat", "cgv", "devis", "bon de commande")),
     ("Facture / avoir", ("facture", "fact-", "fact_", "avoir", "invoice")),
@@ -1412,17 +1471,21 @@ def classer_pieces_jointes(lignes: list[LigneIndex]) -> list[tuple[str, list[str
             if not nom:
                 continue
             plat = aplatir(nom)
-            categorie = "Autre document"
-            for libelle, motifs in CATEGORIES_PIECES:
-                if any(motif in plat for motif in motifs):
-                    categorie = libelle
-                    break
+            if lire_emargement(nom) is not None:
+                categorie = "Feuille d'émargement"
+            else:
+                categorie = "Autre document"
+                for libelle, motifs in CATEGORIES_PIECES:
+                    if any(motif in plat for motif in motifs):
+                        categorie = libelle
+                        break
             documents = groupes.setdefault(categorie, {})
             _affiche, numeros = documents.setdefault(plat, (nom, []))
             if ligne.piece_n not in numeros:
                 numeros.append(ligne.piece_n)
 
-    ordre = [libelle for libelle, _ in CATEGORIES_PIECES] + ["Autre document"]
+    ordre = ([libelle for libelle, _ in CATEGORIES_PIECES]
+             + ["Feuille d'émargement", "Autre document"])
     return [
         (libelle, [
             f"{nom} ({_pieces_citees(numeros)})"

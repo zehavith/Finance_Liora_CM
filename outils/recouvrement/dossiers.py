@@ -373,6 +373,10 @@ class Dossier:
         apprenant = self.apprenant_forme()
         if termes and apprenant:
             termes.append(f'"{apprenant}"')
+            # Une feuille d'émargement est nommée du nom de l'apprenant, sans
+            # qu'il figure nécessairement dans le message. Le chercher aussi
+            # dans le nom des pièces jointes la ramène.
+            termes.append(f'filename:"{apprenant}"')
 
         if not termes:
             raise ErreurDossiers(

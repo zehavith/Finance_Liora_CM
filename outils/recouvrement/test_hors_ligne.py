@@ -2844,6 +2844,94 @@ def test_annuaire_entreprises() -> None:
              "les sociétés cessées sont listées, avec le montant en jeu")
 
 
+def test_feuille_emargement() -> None:
+    """La feuille d'émargement est reconnue à la forme de son nom."""
+    print("\nFeuilles d'émargement")
+
+    import synthese as module_synthese  # noqa: PLC0415
+    from dossiers import Dossier  # noqa: PLC0415
+    from indexation import LigneIndex  # noqa: PLC0415
+
+    # Le nom réel d'une feuille Edusign : l'apprenant, les deux dates de la
+    # formation, un identifiant. Le mot « émargement » n'y figure nulle part.
+    reel = "Anas_AIT_BELAID_02_09_2024_31_12_2025_880ceucmlwnozdz_1.pdf"
+    lue = module_synthese.lire_emargement(reel)
+    verifier(lue is not None, "le nom réel est reconnu")
+    verifier(lue["apprenant"] == "Anas AIT BELAID",
+             f"l'apprenant en est tiré (obtenu : {lue['apprenant']!r})")
+    verifier(lue["debut"] == "02/09/2024" and lue["fin"] == "31/12/2025",
+             f"et la période (obtenu : {lue['debut']} → {lue['fin']})")
+
+    # Ce qui n'a pas cette forme n'en est pas une : un faux positif ferait
+    # annoncer une preuve de présence qui n'existe pas.
+    for autre in ("FACT-2405-00409.pdf", "Devis signe Sofiane.pdf",
+                  "Rib BNP Datascientest (1).pdf", "releve_2024_01_x.pdf"):
+        verifier(module_synthese.lire_emargement(autre) is None,
+                 f"« {autre} » n'est pas pris pour un émargement")
+
+    def piece(numero, jointes):
+        return LigneIndex(
+            piece_n=numero, date=datetime(2024, 5, numero, tzinfo=timezone.utc),
+            sens="reçu", expediteur="a@b.fr", destinataires="c@d.fr", copie="",
+            objet="Formation", nb_pieces_jointes=1, pieces_jointes=jointes,
+            critere="apprenant", boites="b", fichier_pdf="", fichier_eml="",
+            dossier_pieces_jointes="", thread_id="t", message_id=f"<{numero}>")
+
+    lignes = [piece(1, "FACT-2405-00409.pdf"), piece(2, reel)]
+    classees = dict(module_synthese.classer_pieces_jointes(lignes))
+    verifier("Feuille d'émargement" in classees,
+             f"elle a sa propre rubrique (obtenu : {sorted(classees)})")
+    verifier(classees["Feuille d'émargement"] == [f"{reel} (pièce n° 2)"],
+             "et y figure sous son nom")
+
+    # Elle établit la présence effective : c'est la pièce la plus forte du
+    # dossier sur l'exécution, et le contexte la dit.
+    dossier = Dossier(reference="FACT-2405-00409", nom="SAS EDEN",
+                      montant_du="5 990 €", date_echeance="30/05/2024")
+    contexte = dict(module_synthese.resumer_situation(
+        dossier, module_synthese.analyser(lignes, {}),
+        datetime(2026, 9, 7, tzinfo=timezone.utc), None, lignes))["Contexte"]
+    verifier("feuille d'émargement d'Anas AIT BELAID" in contexte,
+             f"le contexte la cite, élision comprise (obtenu : {contexte[:150]})")
+    verifier("du 02/09/2024 au 31/12/2025" in contexte,
+             "avec la période qu'elle couvre")
+
+    # Une feuille d'émargement porte le nom de l'apprenant, pas le numéro de
+    # facture : la chercher dans le nom des pièces jointes la ramène.
+    avec_apprenant = Dossier(
+        reference="FACT-2405-00409", nom="SAS EDEN",
+        factures=["FACT-2405-00409"],
+        colonnes={"entreprise": "SAS EDEN",
+                  "nom prenom de l apprenant": "Anas AIT BELAID"})
+    requete = avec_apprenant.requete_gmail()
+    verifier('filename:"Anas AIT BELAID"' in requete,
+             "le nom de l'apprenant est cherché dans les pièces jointes")
+
+    # Les bornes de date sont ajoutees a la fin de la requete : c'est
+    # exactement ce que la troncature du journal emportait. Un dossier borne
+    # sans qu'on le voie cherche dans une fenetre trop etroite, et l'on
+    # conclut que le message n'existe pas.
+    import export_mails  # noqa: PLC0415
+
+    borne = Dossier(reference="F", nom="X", emails=["a@b.fr"],
+                    factures=["FACT-2405-00409"],
+                    date_debut="2024/09/02", date_fin="2025/12/31")
+    dit: list[str] = []
+    export_mails._journaliser_requete(borne, dit.append)
+    trace = "\n".join(dit)
+    verifier("recherche bornée : du 2024-09-02 au 2025-12-31" in trace,
+             f"les bornes de date sont dites, hors de la requête tronquée "
+             f"(obtenu : {dit})")
+    verifier("les messages postérieurs à cette date sont exclus" in trace,
+             "et l'on dit ce que cela coûte")
+
+    sans_borne: list[str] = []
+    export_mails._journaliser_requete(
+        Dossier(reference="F", nom="X", factures=["FACT-1"]), sans_borne.append)
+    verifier(not any("bornée" in ligne for ligne in sans_borne),
+             "un dossier sans borne ne déclenche aucun avertissement")
+
+
 def test_copie_vers_sharepoint() -> None:
     """Les dossiers produits sont recopiés vers un second emplacement."""
     print("\nCopie vers un dossier synchronisé")
@@ -5723,6 +5811,7 @@ def main() -> int:
     test_pieces_versees()
     test_ancienne_reference_facture()
     test_annuaire_entreprises()
+    test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_pieces_citees_une_fois()
     test_extrait_zoho_de_bout_en_bout()
