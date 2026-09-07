@@ -2464,6 +2464,48 @@ def test_completer_depuis_fichier() -> None:
                  f"et le dossier concerné est nommé "
                  f"(obtenu : {bilan['debordements']})")
 
+    print("  -- une facture écrite deux fois dans le fichier --")
+    with tempfile.TemporaryDirectory() as repertoire:
+        # Une même facture figure sur deux lignes du tableau, qui se
+        # contredisent : la seconde est la plus récente et fait foi.
+        sortie = Path(repertoire) / "sortie"
+        (sortie / "d").mkdir(parents=True)
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures;date_echeance\n"
+            "FACT-2410-06038;Thomas De Oliveira;d;4 660 €;FACT-2410-06038;\n",
+            encoding="utf-8-sig",
+        )
+        double = Path(repertoire) / "double.csv"
+        double.write_text(
+            "Numero;Passage en contentieux;Email client sur sellsy;"
+            "Date d'échéance;convention signé ?\n"
+            "FACT-2410-06038;Mise en demeure transmise;"
+            "thomas.deo@icloud.com;2024-10-15;\n"
+            "FACT-2410-06038;à transmettre au service contentieux;;;oui\n",
+            encoding="utf-8-sig",
+        )
+
+        chemin = Path(repertoire) / "suivi.json"
+        module_suivi.completer_depuis_grille(
+            charger_grille(double),
+            module_suivi.inventaire(sortie, chemin),
+            chemin,
+        )
+        entree = module_suivi.charger(chemin)["FACT-2410-06038"]
+        verifier(entree["statut"] == "non-transmis",
+                 f"sur une contradiction, la dernière ligne fait foi "
+                 f"(obtenu : {entree['statut']!r})")
+        verifier(entree.get("convention") == "oui",
+                 "ce qu'elle ajoute est repris")
+        # Une case vide n'est pas une contradiction, c'est une absence : la
+        # dernière ligne n'efface pas ce que la première a renseigné, sans
+        # quoi une ligne courte ferait perdre l'adresse et l'échéance.
+        verifier(entree.get("echeance") == "15/10/2024",
+                 f"une case vide n'efface pas l'échéance déjà reprise "
+                 f"(obtenu : {entree.get('echeance')!r})")
+        verifier(entree.get("adresses") == ["thomas.deo@icloud.com"],
+                 f"ni l'adresse (obtenu : {entree.get('adresses')!r})")
+
     print("  -- intitulés à l'apostrophe typographique --")
     from dossiers import _normaliser_entete  # noqa: PLC0415
 
