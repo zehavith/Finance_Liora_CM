@@ -38,6 +38,17 @@ STATUTS = [
      "couleur": "#6da7ec", "icone": "", "famille": "cours"},
     {"cle": "tribunal-en-cours", "libelle": "Procédure via tribunaux en cours",
      "couleur": "#b7d3f6", "icone": "", "famille": "cours"},
+    # Le tableau du service dit « ne peut pas passer en contentieux » —
+    # montant trop faible, pas de convention, formation pas faite, délai
+    # dépassé. Ce n'est pas encore un abandon : la décision n'est pas prise,
+    # et la créance reste due. C'est un dossier à trancher, et le distinguer
+    # de l'abandon permet de savoir ce qui attend une décision.
+    #
+    # Il n'est donc ni clôturé ni gagné ni perdu : son montant reste compté
+    # parmi les créances en cours. Ambre, hors de la rampe bleue des étapes :
+    # ce n'est pas une étape de plus, c'est un dossier de côté.
+    {"cle": "abandon-possible", "libelle": "Possible abandon de la créance",
+     "couleur": "#c9862a", "icone": "?", "famille": "suspens"},
     {"cle": "cloture-recouvrement", "libelle": "Clôturé via recouvrement",
      "couleur": "#0ca30c", "icone": "✓", "famille": "gagne"},
     {"cle": "tribunal-gagne",
@@ -74,7 +85,12 @@ CLES_STATUTS = {statut["cle"] for statut in STATUTS}
 STATUT_INITIAL = "non-transmis"
 ORDRE_STATUTS = {statut["cle"]: rang for rang, statut in enumerate(STATUTS)}
 FAMILLES = {statut["cle"]: statut["famille"] for statut in STATUTS}
-CLOTURES = {cle for cle, famille in FAMILLES.items() if famille != "cours"}
+# Clôturé veut dire « on n'y revient plus » : gagné ou perdu. Un dossier en
+# suspens attend une décision, sa créance est toujours due, et il compte donc
+# parmi les dossiers en cours.
+CLOTURES = {cle for cle, famille in FAMILLES.items()
+            if famille in ("gagne", "perdu")}
+EN_SUSPENS = {cle for cle, famille in FAMILLES.items() if famille == "suspens"}
 GAGNES = {cle for cle, famille in FAMILLES.items() if famille == "gagne"}
 PERDUS = {cle for cle, famille in FAMILLES.items() if famille == "perdu"}
 
@@ -640,6 +656,8 @@ def courbe_par_mois(dossiers: list[dict], mois_max: int = 24) -> dict:
          "famille": statut["famille"]}
         for statut in STATUTS if statut["famille"] == "cours"
     ] + [
+        {"cle": "suspens", "libelle": "Possible abandon — à trancher",
+         "couleur": "#c9862a", "icone": "?", "famille": "suspens"},
         {"cle": "gagne", "libelle": "Clôturé — montant récupéré",
          "couleur": "#0ca30c", "icone": "✓", "famille": "gagne"},
         {"cle": "perdu", "libelle": "Clôturé — montant perdu",
@@ -687,8 +705,11 @@ ETAPES_DU_TABLEAU = (
     ("transmis au service contentieux", "transmis-contentieux"),
     ("mise en demeure transmise", "transmission-en-cours"),
     ("a transmettre au service contentieux", STATUT_INITIAL),
-    ("ne peut pas passer en contentieux", "abandon"),
-    ("ne peut pas passer  en contentieux", "abandon"),
+    # « Ne peut pas passer en contentieux » n'est pas une décision d'abandon :
+    # c'est le constat qu'une voie est fermée. Le dossier attend qu'on
+    # tranche, et la créance reste due entre-temps.
+    ("ne peut pas passer en contentieux", "abandon-possible"),
+    ("ne peut pas passer  en contentieux", "abandon-possible"),
 )
 
 

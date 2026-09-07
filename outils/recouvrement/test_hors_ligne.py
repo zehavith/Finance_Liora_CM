@@ -3256,15 +3256,19 @@ def test_colonnes_du_suivi_a_la_main() -> None:
         ("Transmis au service contentieux", "transmis-contentieux"),
         ("Mise en demeure transmise", "transmission-en-cours"),
         ("à transmettre au service contentieux", "non-transmis"),
-        # Cinq motifs différents, une seule décision : le service renonce.
+        # Cinq motifs différents, un même constat : la voie du contentieux
+        # est fermée. Ce n'est pas encore un abandon — la décision n'est pas
+        # prise, et la créance reste due entre-temps.
         ("Formation pas faite/peu faite - Ne peut pas passer en contentieux",
-         "abandon"),
-        ("Montant trop faible - Ne peut pas passer en contentieux", "abandon"),
-        ("Perdu / Ne peut pas passer en contentieux", "abandon"),
+         "abandon-possible"),
+        ("Montant trop faible - Ne peut pas passer en contentieux",
+         "abandon-possible"),
+        ("Perdu / Ne peut pas passer en contentieux", "abandon-possible"),
         # Deux espaces dans l'original : la comparaison ne doit pas s'y perdre.
-        ("Pas de convention - Ne peut pas passer  en contentieux", "abandon"),
+        ("Pas de convention - Ne peut pas passer  en contentieux",
+         "abandon-possible"),
         ("Délai de 2 ans dépassé - Ne peut pas passer en contentieux",
-         "abandon"),
+         "abandon-possible"),
         ("", ""),
         ("une mention inconnue", ""),
     ]
@@ -3305,7 +3309,7 @@ def test_colonnes_du_suivi_a_la_main() -> None:
             module_suivi.inventaire(sortie, chemin), chemin)
         apres_import = module_suivi.charger(chemin)
 
-        verifier(apres_import["FACT-2501-07581"]["statut"] == "abandon",
+        verifier(apres_import["FACT-2501-07581"]["statut"] == "abandon-possible",
                  f"l'étape du tableau est reprise "
                  f"(obtenu : {apres_import['FACT-2501-07581'].get('statut')})")
         verifier("Montant trop faible" in (apres_import["FACT-2501-07581"].get("note") or ""),
@@ -5983,12 +5987,22 @@ def test_suivi() -> None:
 
         print("\n  -- couleurs des états --")
         cles = [s["cle"] for s in module_suivi.STATUTS]
-        verifier(len(set(cles)) == 9, f"neuf étapes distinctes (obtenu : {len(set(cles))})")
+        verifier(len(set(cles)) == 10,
+                 f"dix étapes distinctes (obtenu : {len(set(cles))})")
+        # Un dossier « possible abandon » attend une décision : sa créance est
+        # toujours due, il n'est donc ni clôturé, ni gagné, ni perdu.
+        verifier("abandon-possible" not in module_suivi.CLOTURES
+                 and "abandon-possible" not in module_suivi.PERDUS,
+                 "un possible abandon n'est ni clôturé ni perdu")
+        verifier("abandon-possible" in module_suivi.EN_SUSPENS,
+                 "il est en suspens, et sa créance compte parmi celles en cours")
+        verifier("abandon" in module_suivi.PERDUS,
+                 "l'abandon décidé, lui, reste une créance perdue")
         issues = [s for s in module_suivi.STATUTS
-                  if s["famille"] in ("gagne", "perdu")]
+                  if s["famille"] in ("gagne", "perdu", "suspens")]
         verifier(
             all(s["icone"] for s in issues),
-            "les quatre issues portent une icône, la couleur ne suffisant pas "
+            "les cinq issues portent une icône, la couleur ne suffisant pas "
             "à les distinguer en vision deutan",
         )
         # Deux issues peuvent partager la couleur de leur famille — le vert des
