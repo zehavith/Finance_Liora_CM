@@ -1208,7 +1208,18 @@
             // développement des compétences — une formation ordinaire, facturée
             // à l'OPCO — et l'alternance, prise en charge au niveau fixé par la
             // branche. Le payeur est le même dans les deux cas : ce n'est donc
-            // pas lui qui tranche.
+            // pas lui qui tranche. Ce qui tranche, c'est la facture.
+            //
+            // Une Filiz payée par un OPCO donne « Alternance » en type de
+            // client et « OPCO - Alternance » en sous-catégorie : votre règle,
+            // sans exception. Elle passe avant tout le reste, y compris avant
+            // l'ancien grand livre — qui range 59 de ces factures en « OPCO »
+            // tout court, une trace ancienne que la règle corrige.
+            if (creance.filiz) return 'OPCO_ALTERNANCE';
+            // Le champ personnalisé de la facture, quand l'export le porte :
+            // c'est lui qui dit l'alternance sur une facture « FACT-… », comme
+            // le numéro Filiz la dit sur les autres.
+            if (estAlternance(creance, o)) return 'OPCO_ALTERNANCE';
             if (explicite === 'OPCO' || explicite === 'OPCO_ALTERNANCE') return explicite;
             const parFacture = dit(creance) || ditDuClient(creance);
             if (parFacture === 'OPCO' || parFacture === 'OPCO_ALTERNANCE') return parFacture;
@@ -1216,19 +1227,10 @@
             // que sur des alternances — 47 fois sur 47 dans votre ancien grand
             // livre, jamais sur un plan de développement. À l'inverse « B2B »
             // désigne un plan 21 fois sur 23.
-            // Le champ personnalisé de la facture, quand l'export le porte :
-            // c'est lui qui dit l'alternance sur une facture « FACT-… », comme
-            // le numéro Filiz la dit sur les autres.
-            if (estAlternance(creance, o)) return 'OPCO_ALTERNANCE';
             const brut = R.norm(dutBrut(creance) || '');
             if (/alternance|apprenti|professionnalisation/.test(brut)) return 'OPCO_ALTERNANCE';
             if (/b2b|entreprise/.test(brut)) return 'OPCO';
             if (parFacture === 'ALTERNANCE' || parFacture === 'CORPORATE_ALTERNANCE') return 'OPCO_ALTERNANCE';
-            // La facture Filiz désigne une alternance — c'est la règle que vous
-            // avez donnée. Elle passe après la facturation, qui est plus
-            // précise : votre ancien grand livre range 59 factures Filiz payées
-            // par un OPCO en OPCO tout court.
-            if (creance.filiz) return 'OPCO_ALTERNANCE';
             // Et à défaut de tout, l'OPCO simple : c'est le cas le plus
             // fréquent quand rien ne dit « alternance ».
             return 'OPCO';
@@ -1287,9 +1289,15 @@
             // Un champ personnalisé qui nomme le dispositif passe devant le
             // « Type de client » : il est écrit facture par facture, là où le
             // type décrit le client.
-            const fin = R.detectFinancement(l.financementPersonnalise, o.rules)
+            let fin = R.detectFinancement(l.financementPersonnalise, o.rules)
                 || R.detectFinancement(l.typeClient, o.rules);
             if (!fin) continue;
+            // « Alternance » tout court ne dit pas qui paie. Chez une
+            // entreprise — Safran, Bosch, Worldline, la MGEN — c'est une
+            // Corporate - Alternance : votre ancien grand livre les range ainsi
+            // 27 fois sur 27. L'OPCO, lui, est reconnu à son nom et n'arrive
+            // pas jusqu'ici.
+            if (fin === 'ALTERNANCE' && estEntreprise(l.client)) fin = 'CORPORATE_ALTERNANCE';
             for (const k of [l.cle, l.cleZoho]) {
                 if (k && !parCle.has(k) && !parSellsy.has(k)) parSellsy.set(k, fin);
             }
@@ -1536,6 +1544,15 @@
         // « Ancien grand livre (identifiant du tiers) » ne se vérifie pas —
         // avec elle, on lit la valeur qui a été reprise.
         const poser = (c, fin, origine, preuve) => {
+            // « Alternance » tout court ne dit pas qui paie. Payée par une
+            // personne morale — un nom d'entreprise, ou simplement un SIREN au
+            // grand livre — c'est une Corporate - Alternance : votre ancien
+            // grand livre les range ainsi sans exception. L'OPCO, lui, est
+            // reconnu à son nom bien avant d'arriver ici.
+            if (fin === 'ALTERNANCE'
+                && (estEntreprise(c.tiers) || String(c.siren || '').trim())) {
+                fin = 'CORPORATE_ALTERNANCE';
+            }
             const ech = R.computeEcheance(
                 { ...c, financement: fin, dateEcheanceSource: null,
                   mandatGocardless: c.mandatGocardless || !!c.mandatEtatFichier,
