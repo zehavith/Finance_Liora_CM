@@ -3346,15 +3346,17 @@ def test_resume_de_situation() -> None:
     for rang, titre in enumerate(
             ("1. Résumé de la situation", "2. Détail du dossier",
              "3. Contrat signé et factures", "4. Preuve des actions engagées",
-             "Annexe — Échanges de messages"), start=1):
+             "Annexe — Conversations"), start=1):
         verifier(titre in html_note, f"partie {rang} présente : {titre}")
 
     # Les échanges passent en annexe : le corps de la note se transmet seul.
-    rang_annexe = html_note.find("Annexe — Échanges de messages")
-    for bloc in ("Chronologie complète", "Réponses du débiteur",
-                 "Conversations suivies"):
+    rang_annexe = html_note.find("Annexe — Conversations")
+    for bloc in ("Suite des échanges", "Réponses du débiteur"):
         verifier(html_note.find(bloc) > rang_annexe,
                  f"« {bloc} » est reporté en annexe")
+    # La chronologie faisait doublon avec les événements repérés, juste avant.
+    verifier("Chronologie complète" not in html_note,
+             "la chronologie ne figure plus : les événements la précèdent déjà")
     verifier(html_note.find("Événements repérés") < rang_annexe,
              "tandis que les événements repérés restent dans le corps")
     verifier("page-break-before" in html_note,
@@ -3424,8 +3426,14 @@ def test_reponses_du_debiteur() -> None:
     verifier("une réponse du débiteur figure" in bloc,
              f"seules les réponses reçues sont comptées, et accordées "
              f"(obtenu : {bloc[:70]!r})")
-    verifier("debiteur@exemple.fr" in bloc and "Je conteste le montant." in bloc,
-             "l'auteur et son propos figurent")
+    verifier("debiteur@exemple.fr" in bloc,
+             "l'auteur de la réponse figure")
+    # Le propos est cité plus haut, à sa place dans la conversation : le
+    # répéter ici ferait lire deux fois la même chose.
+    verifier("Je conteste le montant." not in bloc,
+             "et non son propos, déjà cité dans la conversation")
+    verifier("citées plus haut" in bloc or "citée plus haut" in bloc,
+             f"le tableau dit où le lire (obtenu : {bloc[:130]!r})")
     verifier("recouvrement@liora.io" not in bloc,
              "nos propres envois ne figurent pas parmi les réponses")
 
@@ -3465,8 +3473,16 @@ def test_conversations_resumees() -> None:
     textes = {2: "Je conteste le montant reclame."}
 
     bloc = module_synthese._bloc_conversations(lignes, textes)
-    verifier("2 conversations suivies" in bloc,
-             f"le message isolé n'en est pas une (obtenu : {bloc[:60]!r})")
+    # L'annexe remplace la chronologie : elle ne doit rien laisser de côté,
+    # pas même un message isolé qui ne forme pas vraiment un fil.
+    verifier("3 conversations figurent" in bloc,
+             f"toutes les conversations figurent, isolés compris "
+             f"(obtenu : {bloc[:70]!r})")
+    verifier("Pour information" in bloc,
+             "le message isolé n'est plus perdu")
+    verifier("Message unique du 25/03/2025" in bloc,
+             f"et se présente comme tel (obtenu : "
+             f"{bloc[bloc.find('Pour information'):][:90]!r})")
     verifier("3 messages du 03/03/2025 au 14/03/2025" in bloc,
              "le fil est daté de bout en bout")
     verifier("soit 11 jours" in bloc, "et sa durée donnée")
@@ -3476,11 +3492,16 @@ def test_conversations_resumees() -> None:
              f"le sens est compté, au singulier quand il n'y en a qu'un "
              f"(obtenu : {bloc[bloc.find('émis par Liora') - 20:][:60]!r})")
     verifier("Je conteste le montant reclame." in bloc,
-             "la dernière réponse du débiteur est citée")
-    verifier("pas répondu dans cette conversation" in bloc,
-             "un fil resté sans réponse le dit")
-    verifier("Pour information" not in bloc,
-             "le message isolé ne figure pas")
+             "le propos du débiteur est cité à sa place dans le fil")
+    verifier("2 émis par Liora, 0 reçu." in bloc,
+             f"un fil resté sans réponse se lit à son décompte "
+             f"(obtenu : {bloc[bloc.find('Mise en demeure'):][:120]!r})")
+
+    # Chaque message a sa ligne, avec sa date et son sens : c'est ce qui
+    # permet de retirer la chronologie sans rien perdre.
+    for numero in range(1, 7):
+        verifier(f"pièce n° {numero} ·" in bloc,
+                 f"la pièce n° {numero} figure dans l'annexe")
 
     verifier(module_synthese._bloc_conversations([], {}) == "",
              "sans échange, aucun bloc n'est produit")

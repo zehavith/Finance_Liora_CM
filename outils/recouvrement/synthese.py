@@ -410,6 +410,13 @@ blockquote.propos { margin: 5px 0 9px 14px; padding-left: 11px;
 .resume li { margin: 0 0 9px; padding-left: 3px; }
 .resume li b { font-variant: small-caps; letter-spacing: 0.2px; }
 
+/* Un échange se lit comme une réplique : l'en-tête discret, le propos en
+   retrait. Le liséré tient la colonne sur toute la conversation. */
+.echange { margin: 0 0 10px 2px; }
+.entete-echange { font-size: 8.5pt; color: #555; margin: 0 0 2px;
+                  letter-spacing: 0.2px; }
+.echange blockquote.propos { margin-top: 2px; }
+
 /* L'annexe commence sur une nouvelle page à l'impression : le corps de la
    note se transmet seul, et le détail des échanges suit sans s'y mêler. */
 .annexe { margin-top: 30px; border-top: 2px solid #1a1a1a; padding-top: 14px; }
@@ -1032,23 +1039,22 @@ def _bloc_avec_titre(titre: str, contenu: str) -> str:
 
 def _bloc_conversations(lignes_index: list[LigneIndex],
                         textes: dict[int, str]) -> str:
-    """Les échanges regroupés par conversation, chacun résumé.
+    """Les échanges, conversation par conversation, dans leur suite.
 
-    Une relance et sa réponse forment un fil : les lire séparément dans la
-    chronologie oblige à reconstituer de tête qui a répondu à quoi. Le résumé
-    dit qui parle, sur quelle durée, et ce que le débiteur a répondu en
-    dernier — cité, jamais reformulé.
+    Une relance et sa réponse forment un fil : les lire séparément oblige à
+    reconstituer de tête qui a répondu à quoi. Chaque message est donc rendu
+    à sa place dans sa conversation, avec ce qui y a été dit — cité, jamais
+    reformulé.
+
+    Toutes les conversations figurent, y compris celles d'un seul message :
+    l'annexe remplace la chronologie, elle ne doit rien laisser de côté.
     """
     fils: dict[str, list[LigneIndex]] = {}
     for ligne in lignes_index:
         cle = (ligne.thread_id or "").strip() or f"seul-{ligne.piece_n}"
         fils.setdefault(cle, []).append(ligne)
 
-    suivis = [
-        sorted(pieces, key=lambda p: p.date)
-        for pieces in fils.values()
-        if len(pieces) >= MINIMUM_PAR_FIL
-    ]
+    suivis = [sorted(pieces, key=lambda p: p.date) for pieces in fils.values()]
     if not suivis:
         return ""
 
@@ -1060,39 +1066,51 @@ def _bloc_conversations(lignes_index: list[LigneIndex],
         envoyes = [p for p in pieces if p.sens == "envoyé"]
         jours = (dernier.date - premier.date).days
 
-        detail = (
-            f"{len(pieces)} messages du {premier.date:%d/%m/%Y} au "
-            f"{dernier.date:%d/%m/%Y}"
-            + (f", soit {jours} jours" if jours else "")
-            + f" — {len(envoyes)} émis par Liora, {len(recus)} "
-            + ("reçus" if len(recus) > 1 else "reçu") + ". "
-            f"Pièces n° {pieces[0].piece_n} à n° {pieces[-1].piece_n}."
-        )
-
-        derniere = recus[-1] if recus else None
-        if derniere is None:
-            suite = ("Le débiteur n'a pas répondu dans cette conversation.")
-            citation = ""
-        else:
-            suite = (
-                f"Dernière réponse du débiteur le {derniere.date:%d/%m/%Y} "
-                f"(pièce n° {derniere.piece_n})."
+        if len(pieces) == 1:
+            detail = (
+                f"Message unique du {premier.date:%d/%m/%Y}, "
+                f"pièce n° {premier.piece_n}."
             )
-            extrait = _extrait_lisible(textes.get(derniere.piece_n, ""))
-            citation = (
+        else:
+            detail = (
+                f"{len(pieces)} messages du {premier.date:%d/%m/%Y} au "
+                f"{dernier.date:%d/%m/%Y}"
+                + (f", soit {jours} jours" if jours else "")
+                + f" — {len(envoyes)} émis par Liora, {len(recus)} "
+                + ("reçus" if len(recus) > 1 else "reçu") + ". "
+                f"Pièces n° {premier.piece_n} à n° {dernier.piece_n}."
+            )
+
+        echanges = []
+        for piece in pieces:
+            auteur = piece.expediteur or "—"
+            entete = (
+                f"pièce n° {piece.piece_n} · {piece.date:%d/%m/%Y} · "
+                f"{piece.sens} · {auteur}"
+                + (f" · {piece.nb_pieces_jointes} PJ"
+                   if piece.nb_pieces_jointes else "")
+            )
+            extrait = _extrait_lisible(textes.get(piece.piece_n, ""))
+            corps = (
                 f'<blockquote class="propos">« {html.escape(extrait)} »</blockquote>'
-                if extrait else ""
+                if extrait
+                else '<p class="chemin">Message sans texte exploitable — '
+                     "voir le fichier d'origine.</p>"
+            )
+            echanges.append(
+                f'<div class="echange"><p class="entete-echange">'
+                f"{html.escape(entete)}</p>{corps}</div>"
             )
 
         blocs.append(
             f"<p class='groupe'>{html.escape(premier.objet or '(sans objet)')}</p>"
-            f"<p>{html.escape(detail)} {html.escape(suite)}</p>{citation}"
+            f"<p>{html.escape(detail)}</p>" + "".join(echanges)
         )
 
     return (
         f"<p>{_accorder(len(suivis), 'conversation')} "
-        + ("suivies" if len(suivis) > 1 else "suivie")
-        + " dans ce dossier.</p>"
+        + ("figurent" if len(suivis) > 1 else "figure")
+        + " au dossier, dans l'ordre où elles se sont tenues.</p>"
         + "".join(blocs)
     )
 
@@ -1115,27 +1133,25 @@ def _bloc_reponses(lignes_index: list[LigneIndex], textes: dict[int, str]) -> st
 
     rangees = []
     for ligne in recues:
-        extrait = _extrait_lisible(textes.get(ligne.piece_n, ""))
-        citation = (
-            f'<blockquote class="propos">« {html.escape(extrait)} »</blockquote>'
-            if extrait else ""
-        )
         rangees.append(
             "<tr>"
             f'<td class="piece-num">n° {ligne.piece_n}</td>'
             f"<td>{ligne.date:%d/%m/%Y}</td>"
             f"<td>{html.escape(ligne.expediteur)}</td>"
-            f"<td>{html.escape(ligne.objet or '(sans objet)')}{citation}</td>"
+            f"<td>{html.escape(ligne.objet or '(sans objet)')}</td>"
             "</tr>"
         )
 
+    # Le propos lui-même est cité plus haut, à sa place dans la conversation :
+    # le répéter ici ferait lire deux fois la même chose. Ce tableau sert à
+    # retrouver d'un coup d'œil ce qui vient du débiteur, dans un dossier qui
+    # peut compter quarante messages.
     return (
         f"<p>{_accorder(len(recues), 'réponse')} du débiteur "
         + ("figurent" if len(recues) > 1 else "figure")
-        + " au dossier. "
-        "Les extraits sont reproduits tels quels.</p>"
+        + " au dossier, citées plus haut dans leur conversation.</p>"
         "<table><tr><th>Pièce</th><th>Date</th><th>De</th>"
-        f"<th>Objet et extrait</th></tr>{''.join(rangees)}</table>"
+        f"<th>Objet</th></tr>{''.join(rangees)}</table>"
     )
 
 
@@ -1875,22 +1891,15 @@ source.{note_doublons}
 </div>
 
 <div class="annexe">
-<h2>Annexe — Échanges de messages</h2>
-<p class="chemin">Le détail des échanges est reporté ici pour ne pas alourdir
-la note. Chaque numéro de pièce renvoie au message d'origine, conservé dans le
-dossier.</p>
+<h2>Annexe — Conversations</h2>
+<p class="chemin">Les échanges sont reportés ici pour ne pas alourdir la note.
+Chaque numéro de pièce renvoie au message d'origine, conservé dans le dossier.</p>
 
-{_bloc_avec_titre("A. Conversations suivies",
+{_bloc_avec_titre("A. Suite des échanges",
                   _bloc_conversations(lignes, textes or {}))}
 
 <h3>B. Réponses du débiteur</h3>
 {_bloc_reponses(lignes, textes or {})}
-
-<h3>C. Chronologie complète</h3>
-<table>
-<tr><th>Pièce</th><th>Date</th><th>Sens</th><th>Objet</th><th></th></tr>
-{''.join(_rangee_chronologie(ligne) for ligne in lignes)}
-</table>
 </div>
 </body></html>
 """
