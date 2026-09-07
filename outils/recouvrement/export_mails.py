@@ -435,7 +435,7 @@ def _ajouter_references_saisies(
         return
 
     etats = module_suivi.charger(chemin)
-    ajoutees, adressees = 0, 0
+    ajoutees, adressees, saisies = 0, 0, 0
     for dossier in liste:
         etat = etats.get(dossier.reference) or {}
 
@@ -447,6 +447,19 @@ def _ajouter_references_saisies(
         if supplements:
             dossier.factures = [*dossier.factures, *supplements]
             ajoutees += len(supplements)
+
+        # Ce que le service a saisi dans l'application l'emporte sur ce que le
+        # tableau porte : c'est une correction délibérée, faite en connaissance
+        # du dossier. Sans cette reprise, la convention cochée à la main et le
+        # contexte écrit à la main n'atteignaient jamais la note.
+        for champ, cle in (("convention_signee", "convention"),
+                           ("diplome", "diplome"),
+                           ("date_echeance", "echeance"),
+                           ("contexte", "contexte")):
+            saisi = str(etat.get(cle) or "").strip()
+            if saisi:
+                setattr(dossier, champ, saisi)
+                saisies += 1
 
         connues = {adresse.lower() for adresse in dossier.emails}
         nouvelles = [
@@ -466,6 +479,11 @@ def _ajouter_references_saisies(
         journal(
             f"    {adressees} adresse(s) reprise(s) d'un fichier de "
             "facturation ajoutée(s) à la recherche"
+        )
+    if saisies:
+        journal(
+            f"    {saisies} valeur(s) saisie(s) dans l'application reprise(s) "
+            "dans les notes de synthèse"
         )
 
 

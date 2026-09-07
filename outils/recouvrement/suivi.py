@@ -164,6 +164,7 @@ def mettre_a_jour(
     horodatage: str | None = None,
     date_etape: str | None = None,
     convention: str | None = None,
+    contexte: str | None = None,
     diplome: str | None = None,
     echeance: str | None = None,
     references: str | None = None,
@@ -194,7 +195,11 @@ def mettre_a_jour(
     # valeurs se saisissent donc à la main, et l'emportent ensuite sur ce que
     # l'export a lu : une chaîne vide efface la saisie et rend la main au
     # tableau, elle ne vaut pas « non ».
-    for champ, valeur in (("convention", convention), ("diplome", diplome)):
+    # Le contexte est du texte libre, pas un oui/non : ce que le service sait
+    # et qu'aucun tableau ne porte — appels sans réponse, chèque de caution
+    # encaissé puis rejeté, arrangement verbal non tenu.
+    for champ, valeur in (("convention", convention), ("diplome", diplome),
+                          ("contexte", contexte)):
         if valeur is not None:
             texte = str(valeur).strip()
             if texte:
@@ -403,6 +408,7 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 # la recherche au même titre que celles du tableau, et sont
                 # souvent les seules connues du dossier.
                 "adresses": list(etat.get("adresses") or []),
+                "contexte": etat.get("contexte") or "",
                 "convention_saisie": bool(etat.get("convention")),
                 "diplome_saisi": bool(etat.get("diplome")),
                 "heures_theoriques": (

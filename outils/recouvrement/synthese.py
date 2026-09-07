@@ -76,6 +76,18 @@ EVENEMENTS = [
         "difficulte financiere", "difficultes financieres", "situation financiere difficile",
         "sans emploi", "au chomage", "perte d emploi", "je ne peux pas payer",
     ), sens="reçu"),
+    # Un paiement revenu impayé n'est pas un défaut de paiement ordinaire :
+    # le débiteur a donné un moyen de paiement qui n'a pas été honoré. Devant
+    # un juge, c'est le fait le plus parlant du dossier.
+    Motif("Rejet de paiement", (
+        "cheque rejete", "cheque impaye", "cheque sans provision",
+        "prelevement rejete", "prelevement impaye", "prelevement refuse",
+        "paiement rejete", "paiement refuse", "paiement non abouti",
+        "virement rejete", "rejet de prelevement", "rejet bancaire",
+        "provision insuffisante", "sans provision", "opposition au cheque",
+        "compte non approvisionne", "impaye bancaire", "carte refusee",
+        "echeance rejetee", "echeance impayee",
+    )),
     Motif("Relance", (
         "relance", "rappel", "reste impayee", "reste impaye", "demeure impayee",
         "toujours pas recu", "sans reponse de votre part", "non regle",
@@ -212,10 +224,11 @@ def rediger_constats(synthese: Synthese, reference_temps: datetime) -> list[str]
         return ["Aucun message n'a été retrouvé pour ce dossier."]
 
     constats.append(
-        f"Le dossier réunit {synthese.nb_pieces} pièce(s), "
+        f"Le dossier réunit {_accorder(synthese.nb_pieces, 'pièce')}, "
         f"du {synthese.premier:%d/%m/%Y} au {synthese.dernier:%d/%m/%Y} "
         f"(soit {synthese.duree_jours} jours), dont {synthese.nb_envoyes} "
-        f"message(s) émis par Liora et {synthese.nb_recus} reçu(s)."
+        f"message{'s' if synthese.nb_envoyes > 1 else ''} émis par Liora et "
+        f"{synthese.nb_recus} reçu{'s' if synthese.nb_recus > 1 else ''}."
     )
 
     # Un dossier de recouvrement sans un seul message sortant n'existe pas :
@@ -242,7 +255,9 @@ def rediger_constats(synthese: Synthese, reference_temps: datetime) -> list[str]
     if relances:
         pieces = ", ".join(f"n° {ev.piece}" for ev in relances)
         constats.append(
-            f"{len(relances)} relance(s) ont été adressées à l'apprenante "
+            f"{_accorder(len(relances), 'relance')} "
+            f"{'ont' if len(relances) > 1 else 'a'} été adressée"
+            f"{'s' if len(relances) > 1 else ''} à l'apprenante "
             f"(pièces {pieces}), la dernière le {relances[-1].date:%d/%m/%Y}."
         )
     else:
@@ -272,7 +287,9 @@ def rediger_constats(synthese: Synthese, reference_temps: datetime) -> list[str]
         ]
         if posterieures:
             constats.append(
-                f"{len(posterieures)} relance(s) sont restées sans réponse depuis "
+                f"{_accorder(len(posterieures), 'relance')} "
+                f"{'sont restées' if len(posterieures) > 1 else 'est restée'} "
+                "sans réponse depuis "
                 "cette date."
             )
     else:
@@ -388,8 +405,10 @@ blockquote.propos { margin: 5px 0 9px 14px; padding-left: 11px;
 
 /* Le résumé se lit avant tout le reste : un corps un peu plus grand, un
    interligne aéré, et rien qui distraie. */
-.resume { font-size: 11pt; line-height: 1.55; margin: 4px 0 16px; }
-.resume p { margin: 0 0 7px; }
+.resume { font-size: 10.5pt; line-height: 1.55; margin: 4px 0 16px;
+          padding-left: 19px; }
+.resume li { margin: 0 0 9px; padding-left: 3px; }
+.resume li b { font-variant: small-caps; letter-spacing: 0.2px; }
 
 /* L'annexe commence sur une nouvelle page à l'impression : le corps de la
    note se transmet seul, et le détail des échanges suit sans s'y mêler. */
@@ -401,132 +420,258 @@ blockquote.propos { margin: 5px 0 9px 14px; padding-left: 11px;
 FORMATS_DATE_TABLEAU = ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y/%m/%d", "%d/%m/%y")
 
 
+def _recit_contexte(
+    dossier,
+    synthese: Synthese,
+    reference_temps: datetime,
+) -> str:
+    """Ce qui s'est passé, raconté d'un trait.
+
+    Un dossier se transmet avec un paragraphe qui se lit, pas avec une liste
+    de faits juxtaposés : celui qui le reçoit doit comprendre l'affaire en
+    trois phrases. Chaque affirmation vient d'un fait établi ailleurs dans la
+    note — et ce que l'outil ignore, il ne l'invente pas : le service le
+    complète lui-même dans le champ « Contexte » de l'application.
+    """
+    maintenant = reference_temps.replace(tzinfo=None)
+    phrases: list[str] = []
+
+    # 1. L'exécution de la prestation. C'est ce qu'on oppose d'abord à
+    #    « je n'ai rien reçu », donc ce par quoi le récit commence.
+    convention = _oui_non(dossier.convention_signee)
+    diplome = _oui_non(dossier.diplome)
+    theoriques = _heures(dossier.heures_theoriques)
+    suivies = _heures(dossier.heures_log)
+
+    faits_execution: list[str] = []
+    if dossier.formation_debut and dossier.formation_fin:
+        faits_execution.append(
+            f"a suivi la formation du {dossier.formation_debut} "
+            f"au {dossier.formation_fin}"
+        )
+    elif dossier.formation_fin:
+        faits_execution.append(f"a terminé sa formation le {dossier.formation_fin}")
+    elif convention is True or diplome is True or suivies:
+        faits_execution.append("a suivi la formation")
+
+    if diplome is True:
+        faits_execution.append("a reçu son diplôme")
+    elif diplome is False:
+        faits_execution.append("n'a pas obtenu son diplôme")
+
+    if faits_execution:
+        phrases.append("L'apprenant " + _enumerer(faits_execution) + ".")
+    elif convention is True:
+        phrases.append("La convention de formation a été signée par le débiteur.")
+
+    # Les heures font leur propre phrase : les glisser dans l'énumération
+    # ci-dessus y introduisait des virgules, et l'ensemble ne se lisait plus.
+    if suivies and theoriques:
+        part = round(100 * suivies / theoriques)
+        phrases.append(
+            f"Il s'est connecté {_nombre_heures(suivies)} sur les "
+            f"{_nombre_heures(theoriques)} prévues, soit {part} % du volume "
+            "horaire."
+        )
+    elif suivies:
+        phrases.append(f"Il s'est connecté {_nombre_heures(suivies)}.")
+
+    # 2. Le défaut de paiement, et ce qui a été tenté.
+    du = montant_lisible(dossier.montant_du) or montant_lisible(dossier.montant_total)
+    echeance = _date_tableau(dossier.date_echeance)
+    relances = synthese.evenements_de("Relance")
+    demeures = synthese.evenements_de("Mise en demeure")
+
+    defaut = "Il n'a pas payé" if faits_execution else "Le débiteur n'a pas payé"
+    if du and echeance is not None:
+        defaut += f" les {du} dus depuis le {echeance:%d/%m/%Y}"
+    elif du:
+        defaut += f" les {du} dus"
+    if len(relances) > 1:
+        defaut += (
+            f", malgré {_accorder(len(relances), 'relance')} entre le "
+            f"{relances[0].date:%d/%m/%Y} et le {relances[-1].date:%d/%m/%Y}"
+        )
+    elif relances:
+        defaut += f", malgré une relance le {relances[0].date:%d/%m/%Y}"
+    phrases.append(defaut + ".")
+
+    # 3. Le paiement revenu impayé : le fait le plus parlant du dossier.
+    rejets = synthese.evenements_de("Rejet de paiement")
+    if len(rejets) == 1:
+        phrases.append(
+            f"Un paiement a été rejeté le {rejets[0].date:%d/%m/%Y} "
+            f"(pièce n° {rejets[0].piece}), et le reste à charge n'a pas été "
+            "régularisé depuis."
+        )
+    elif rejets:
+        dates = ", ".join(f"{ev.date:%d/%m/%Y}" for ev in rejets[:4])
+        phrases.append(
+            f"{len(rejets)} paiements ont été rejetés ({dates}), et le reste "
+            "à charge n'a pas été régularisé depuis."
+        )
+
+    # 4. Son attitude : ce qu'il a répondu, promis, ou pas.
+    promesses = synthese.evenements_de("Annonce de paiement")
+    contestations = synthese.evenements_de("Contestation")
+    if promesses:
+        phrases.append(
+            f"Il a annoncé un règlement le {promesses[-1].date:%d/%m/%Y} "
+            "(pièce n° " + str(promesses[-1].piece) + "), qui n'est jamais parvenu."
+        )
+    if contestations:
+        phrases.append(
+            f"Il conteste le montant depuis le {contestations[0].date:%d/%m/%Y} "
+            f"(pièce n° {contestations[0].piece}), sans avoir produit "
+            "de justificatif."
+        )
+    if synthese.derniere_reponse is None and synthese.nb_pieces:
+        phrases.append("Il n'a répondu à aucun de nos messages.")
+    elif synthese.derniere_reponse is not None:
+        silence = (maintenant - synthese.derniere_reponse.replace(tzinfo=None)).days
+        if silence > 30 and not contestations and not promesses:
+            phrases.append(
+                f"Sa dernière réponse remonte au "
+                f"{synthese.derniere_reponse:%d/%m/%Y}, il y a {silence} jours."
+            )
+
+    # 5. Où en est le dossier aujourd'hui.
+    if demeures:
+        depuis = (maintenant - demeures[-1].date.replace(tzinfo=None)).days
+        phrases.append(
+            f"Une mise en demeure lui a été adressée le "
+            f"{demeures[-1].date:%d/%m/%Y}"
+            + (f", restée sans effet depuis {depuis} jours." if depuis > 0 else ".")
+        )
+
+    # Ce que le service sait et que l'outil ne peut pas savoir : appels
+    # téléphoniques, chèque de caution, encaissements. Saisi dans
+    # l'application, repris ici tel quel.
+    saisi = (getattr(dossier, "contexte", "") or "").strip()
+    if saisi:
+        phrases.append(saisi if saisi.endswith((".", "!", "?")) else saisi + ".")
+
+    return " ".join(phrases)
+
+
+def _accorder(combien: int, singulier: str, pluriel: str = "") -> str:
+    """« 2 relances », « une relance » — jamais « 1 relance(s) ».
+
+    Le « (s) » d'un texte engendré se voit à la première lecture, et la note
+    se transmet à un avocat. Le compte est connu : l'accord se fait.
+    """
+    if combien == 1:
+        return f"une {singulier}" if singulier[0] not in "aeiouéèh" else f"une {singulier}"
+    return f"{combien} {pluriel or singulier + 's'}"
+
+
+def _enumerer(elements: list[str]) -> str:
+    """« a, b et c » — une énumération qui se lit, pas une liste."""
+    if not elements:
+        return ""
+    if len(elements) == 1:
+        return elements[0]
+    return ", ".join(elements[:-1]) + " et " + elements[-1]
+
+
+def _nombre_heures(valeur: float) -> str:
+    entier = int(valeur)
+    return f"{entier} h" if valeur == entier else f"{valeur:.1f} h".replace(".", ",")
+
+
+# Le résumé reprend les quatre points sous lesquels un dossier se transmet au
+# service contentieux. Les intitulés sont ceux du service, et l'ordre aussi :
+# la note doit pouvoir être lue par quelqu'un qui attend ce format-là.
 def resumer_situation(
     dossier,
     synthese: Synthese,
     reference_temps: datetime,
     pieces_ajoutees: list[dict] | None = None,
-) -> list[str]:
-    """La situation du dossier en quelques phrases, avant le détail.
-
-    Ce que lit d'abord quelqu'un qui ouvre la note : qui doit combien, depuis
-    combien de temps, ce qui a été réclamé, ce que le débiteur a répondu, si
-    la prestation est établie, et ce qui manque encore. Chaque phrase est
-    tirée des sections qui suivent — le résumé n'affirme rien qu'elles ne
-    disent, et se tait sur ce qu'on ignore.
-    """
+) -> list[tuple[str, str]]:
+    """Les quatre points du résumé, chacun sous son intitulé."""
     maintenant = reference_temps.replace(tzinfo=None)
-    phrases: list[str] = []
 
-    # Qui, combien, depuis quand.
-    debiteur = (dossier.nom or "").strip() or "Le débiteur"
-    du = montant_lisible(dossier.montant_du) or montant_lisible(dossier.montant_total)
+    # 1. Montant.
+    du = montant_lisible(dossier.montant_du)
+    total = montant_lisible(dossier.montant_total)
+    if du and total and du != total:
+        montant = f"{du} restant dus sur {total} facturés"
+    elif du or total:
+        montant = du or total
+    else:
+        montant = "non renseigné au tableau de suivi"
+
     echeance = _date_tableau(dossier.date_echeance)
-    retard = (maintenant - echeance).days if echeance is not None else None
+    if echeance is not None:
+        retard = (maintenant - echeance).days
+        montant += (
+            f" — échus le {echeance:%d/%m/%Y}, soit {retard} jours de retard"
+            if retard > 0 else f" — à échéance du {echeance:%d/%m/%Y}"
+        )
 
-    if du and retard is not None and retard > 0:
-        phrases.append(
-            f"{debiteur} reste devoir {du}, échus le "
-            f"{echeance:%d/%m/%Y}, soit {retard} jours de retard."
-        )
-    elif du and echeance is not None:
-        phrases.append(
-            f"{debiteur} doit {du}, à échéance du {echeance:%d/%m/%Y}."
-        )
-    elif du:
-        phrases.append(
-            f"{debiteur} reste devoir {du} ; le tableau de suivi ne porte "
-            "aucune échéance."
-        )
+    # 2. Contexte.
+    contexte = _recit_contexte(dossier, synthese, reference_temps)
+
+    # 3. Contrat signé et factures.
+    versees = [p for p in (pieces_ajoutees or []) if p.get("fichier")]
+    extraites = synthese.nb_pieces_jointes
+    detail = []
+    if extraites:
+        detail.append(f"{_accorder(extraites, 'pièce')} "
+                      + ("extraites" if extraites > 1 else "extraite")
+                      + " des échanges")
+    if versees:
+        detail.append(f"{_accorder(len(versees), 'pièce')} "
+                      + ("versées" if len(versees) > 1 else "versée")
+                      + " au dossier")
+    if detail:
+        contrat = "voir pièces jointes — " + _enumerer(detail)
     else:
-        phrases.append(
-            f"{debiteur} : aucun montant n'est renseigné au tableau de suivi."
+        contrat = (
+            "aucune pièce au dossier. Le contrat signé et la facture sont à "
+            "joindre avant transmission"
         )
 
-    # Ce qui a été réclamé, et sur quelle durée.
-    if synthese.nb_pieces:
-        periode = ""
-        if synthese.premier and synthese.dernier:
-            periode = (f" entre le {synthese.premier:%d/%m/%Y} et le "
-                       f"{synthese.dernier:%d/%m/%Y}")
-        phrases.append(
-            f"Le dossier réunit {synthese.nb_pieces} message(s){periode}, "
-            f"dont {synthese.nb_envoyes} adressé(s) au débiteur."
+    # 4. Preuve des actions engagées.
+    actions: list[str] = []
+    relances = synthese.evenements_de("Relance")
+    if relances:
+        actions.append(_accorder(len(relances), "relance"))
+    for libelle, singulier, pluriel in (
+        ("Mise en demeure", "mise en demeure", "mises en demeure"),
+        ("Transmission au contentieux", "transmission au contentieux",
+         "transmissions au contentieux"),
+    ):
+        combien = len(synthese.evenements_de(libelle))
+        if combien:
+            actions.append(_accorder(combien, singulier, pluriel))
+    preuve = "voir pièces jointes"
+    if actions:
+        preuve += " — " + _enumerer(actions)
+    if synthese.nb_envoyes:
+        preuve += (
+            f", sur {synthese.nb_envoyes} message"
+            + ("s adressés" if synthese.nb_envoyes > 1 else " adressé")
+            + " au débiteur"
         )
-    else:
-        phrases.append(
-            "Aucun message n'a été retrouvé dans les boîtes interrogées : "
-            "la relance n'est pas établie par ce dossier."
+    rejets = synthese.evenements_de("Rejet de paiement")
+    if rejets:
+        preuve += (
+            f". Paiements refusés, détaillés en annexe : "
+            + ", ".join(f"le {ev.date:%d/%m/%Y} (pièce n° {ev.piece})" for ev in rejets)
         )
-
-    # Les actes qui comptent devant un juge, dans l'ordre où ils se sont
-    # produits : c'est l'enchaînement qui fait le récit, pas la liste.
-    ACTES = ("Envoi de facture", "Relance", "Mise en demeure",
-             "Transmission au contentieux", "Contestation",
-             "Annonce de paiement", "Échéancier évoqué",
-             "Difficultés financières invoquées")
-    marquants = [ev for ev in
-                 (synthese.premier_evenement(libelle) for libelle in ACTES)
-                 if ev is not None]
-    # Les dates des pièces portent un fuseau, celles du tableau non : les
-    # comparer telles quelles lève une erreur au moment le plus visible.
-    marquants.sort(key=lambda ev: ev.date.replace(tzinfo=None))
-    for acte in marquants:
-        phrases.append(
-            f"{acte.libelle} du {acte.date:%d/%m/%Y} (pièce n° {acte.piece})."
-        )
-
-    # Ce que le débiteur a répondu, ou son silence.
-    if synthese.derniere_reponse is not None:
-        depuis = (maintenant - synthese.derniere_reponse.replace(tzinfo=None)).days
-        phrases.append(
-            f"Dernière réponse du débiteur le "
-            f"{synthese.derniere_reponse:%d/%m/%Y}"
-            + (f", il y a {depuis} jours" if depuis > 0 else "")
-            + f" (pièce n° {synthese.piece_derniere_reponse})."
-        )
-    elif synthese.nb_recus:
-        phrases.append(
-            "Les messages reçus sont tous des notifications automatiques : "
-            "le débiteur n'a jamais répondu personnellement."
-        )
-    elif synthese.nb_pieces:
-        phrases.append("Le débiteur n'a répondu à aucun message.")
-
-    # L'exécution de la prestation : c'est ce qu'on oppose à « je n'ai rien
-    # reçu », et son absence est une faiblesse du dossier, à dire.
-    convention = _oui_non(dossier.convention_signee)
-    diplome = _oui_non(dossier.diplome)
-    if convention is True:
-        phrases.append(
-            "La convention de formation est signée : l'engagement du "
-            "débiteur est établi."
-            + (" Le diplôme a été délivré." if diplome is True else "")
-        )
-    elif convention is False:
-        phrases.append(
-            "Aucune convention signée n'est enregistrée : l'engagement du "
-            "débiteur devra être établi autrement."
+    elif not synthese.nb_pieces:
+        preuve = (
+            "aucun message retrouvé dans les boîtes interrogées : la relance "
+            "n'est pas établie par ce dossier"
         )
 
-    # Ce qui manque, dit franchement : c'est ce qui décide de la suite.
-    manques: list[str] = []
-    if not dossier.emails:
-        manques.append("aucune adresse mail connue pour ce débiteur")
-    if not du:
-        manques.append("le montant dû")
-    if echeance is None:
-        manques.append("la date d'échéance")
-    if convention is None:
-        manques.append("l'état de la convention")
-    if not synthese.nb_pieces_jointes and not (pieces_ajoutees or []):
-        manques.append("la facture et les pièces justificatives")
-    if manques:
-        phrases.append(
-            "À compléter avant transmission : " + ", ".join(manques) + "."
-        )
-
-    return phrases
+    return [
+        ("Montant", montant),
+        ("Contexte", contexte),
+        ("Contrat signé et factures", contrat),
+        ("Preuve des actions engagées", preuve),
+    ]
 
 
 def montant_lisible(valeur: str) -> str:
@@ -765,7 +910,8 @@ def _bloc_conversations(lignes_index: list[LigneIndex],
             f"{len(pieces)} messages du {premier.date:%d/%m/%Y} au "
             f"{dernier.date:%d/%m/%Y}"
             + (f", soit {jours} jours" if jours else "")
-            + f" — {len(envoyes)} émis par Liora, {len(recus)} reçu(s). "
+            + f" — {len(envoyes)} émis par Liora, {len(recus)} "
+            + ("reçus" if len(recus) > 1 else "reçu") + ". "
             f"Pièces n° {pieces[0].piece_n} à n° {pieces[-1].piece_n}."
         )
 
@@ -790,7 +936,9 @@ def _bloc_conversations(lignes_index: list[LigneIndex],
         )
 
     return (
-        f"<p>{len(suivis)} conversation(s) suivie(s) dans ce dossier.</p>"
+        f"<p>{_accorder(len(suivis), 'conversation')} "
+        + ("suivies" if len(suivis) > 1 else "suivie")
+        + " dans ce dossier.</p>"
         + "".join(blocs)
     )
 
@@ -828,7 +976,9 @@ def _bloc_reponses(lignes_index: list[LigneIndex], textes: dict[int, str]) -> st
         )
 
     return (
-        f"<p>{len(recues)} réponse(s) du débiteur figurent au dossier. "
+        f"<p>{_accorder(len(recues), 'réponse')} du débiteur "
+        + ("figurent" if len(recues) > 1 else "figure")
+        + " au dossier. "
         "Les extraits sont reproduits tels quels.</p>"
         "<table><tr><th>Pièce</th><th>Date</th><th>De</th>"
         f"<th>Objet et extrait</th></tr>{''.join(rangees)}</table>"
@@ -907,7 +1057,9 @@ def resumer_echanges(dossier, synthese: Synthese, reference_temps: datetime) -> 
     relances = [ev for ev in synthese.evenements_de("Relance") if ev.sens == "envoyé"]
     if relances:
         lignes.append(
-            f"{len(relances)} relance(s) ont été adressées au débiteur, du "
+            f"{_accorder(len(relances), 'relance')} "
+            + ("ont été adressées" if len(relances) > 1 else "a été adressée")
+            + " au débiteur, du "
             f"{relances[0].date:%d/%m/%Y} au {relances[-1].date:%d/%m/%Y}."
         )
 
@@ -919,7 +1071,11 @@ def resumer_echanges(dossier, synthese: Synthese, reference_temps: datetime) -> 
             f"Sa dernière réponse remonte au {synthese.derniere_reponse:%d/%m/%Y}"
         )
         if posterieures:
-            phrase += f" ; les {len(posterieures)} relance(s) suivantes sont restées sans réponse"
+            phrase += (
+                f" ; {_accorder(len(posterieures), 'relance')} "
+                + ("suivantes sont restées" if len(posterieures) > 1
+                   else "suivante est restée")
+                + " sans réponse")
         lignes.append(phrase + ".")
 
     echeancier = synthese.premier_evenement("Échéancier évoqué")
@@ -1255,8 +1411,10 @@ def construire_html(
 
     identite = [
         ("Débiteur", dossier.nom or "—"),
-        ("Adresse(s) mail", " | ".join(dossier.emails) or "—"),
-        ("Facture(s)", " | ".join(dossier.factures) or "—"),
+        ("Adresses mail" if len(dossier.emails) > 1 else "Adresse mail",
+         " | ".join(dossier.emails) or "—"),
+        ("Factures" if len(dossier.factures) > 1 else "Facture",
+         " | ".join(dossier.factures) or "—"),
         ("Boîtes interrogées", ", ".join(boites)),
         ("Date d'extraction", date_export.strftime("%d/%m/%Y à %H:%M")),
     ]
@@ -1315,7 +1473,9 @@ def construire_html(
     note_doublons = ""
     if synthese.doublons_ecartes:
         note_doublons = (
-            f" {synthese.doublons_ecartes} message(s) présents dans plusieurs "
+            f" {synthese.doublons_ecartes} message"
+            f"{'s présents' if synthese.doublons_ecartes > 1 else ' présent'} "
+            "dans plusieurs "
             "boîtes n'ont été retenus qu'une fois."
         )
 
@@ -1445,11 +1605,12 @@ def construire_html(
 {f'<p class="chemin">{html.escape(note_vue)}</p>' if note_vue else ''}
 
 <h2>1. Résumé de la situation</h2>
-<div class="resume">
-{''.join(f'<p>{html.escape(phrase)}</p>' for phrase in situation)}
-</div>
+<ol class="resume">
+{''.join(f'<li><b>{html.escape(titre)}</b> : {html.escape(corps)}</li>'
+         for titre, corps in situation)}
+</ol>
 
-<h2>2. Contexte</h2>
+<h2>2. Détail du dossier</h2>
 {bloc_contexte}
 
 <h2>3. Contrat signé et factures</h2>

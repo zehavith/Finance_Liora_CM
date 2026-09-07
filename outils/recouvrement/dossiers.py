@@ -279,6 +279,11 @@ class Dossier:
     diplome: str = ""
     heures_theoriques: str = ""
     heures_log: str = ""
+    # Ce que le service sait et qu'aucun tableau ne porte : appels
+    # téléphoniques restés sans réponse, chèque de caution encaissé puis
+    # rejeté, arrangement verbal non tenu. Saisi dans l'application, repris
+    # tel quel au contexte de la note.
+    contexte: str = ""
 
     # Toutes les colonnes de la ligne d'origine, intitulés normalisés. Sert au
     # filtrage sur une colonne que l'outil n'exploite pas par ailleurs.

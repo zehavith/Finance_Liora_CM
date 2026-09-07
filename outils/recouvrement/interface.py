@@ -44,7 +44,7 @@ import synthese as module_synthese  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "67"
+VERSION = "68"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -495,7 +495,21 @@ def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[boo
                 factures=[f for f in (dossier.get("factures") or "").split(" | ") if f],
                 montant_du=str(dossier.get("montant_du") or ""),
                 montant_total=str(dossier.get("montant_total") or ""),
-                date_echeance=dossier.get("date_echeance") or "",
+                date_echeance=entree.get("echeance")
+                or dossier.get("date_echeance") or "",
+                # Refaire la note ne doit pas l'amputer : sans ces valeurs,
+                # verser une pièce faisait disparaître l'exécution de la
+                # formation et le contexte saisi de la note refaite.
+                formation_debut=str(dossier.get("formation_debut") or ""),
+                formation_fin=str(dossier.get("formation_fin") or ""),
+                statut=str(dossier.get("statut_tableau") or ""),
+                commentaire=str(dossier.get("commentaire") or ""),
+                convention_signee=entree.get("convention")
+                or str(dossier.get("convention_signee") or ""),
+                diplome=entree.get("diplome") or str(dossier.get("diplome") or ""),
+                heures_theoriques=str(dossier.get("heures_theoriques") or ""),
+                heures_log=str(dossier.get("heures_log") or ""),
+                contexte=entree.get("contexte") or "",
             ),
             boites=[b for b in (lire_preferences().get("boites") or "").split(",") if b],
             lignes=lignes,
@@ -1270,6 +1284,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 note=demande.get("note"),
                 date_etape=demande.get("date_etape"),
                 convention=demande.get("convention"),
+                contexte=demande.get("contexte"),
                 diplome=demande.get("diplome"),
                 echeance=demande.get("echeance"),
             )
@@ -1503,6 +1518,7 @@ table.donnees td:first-child{min-width:170px}
 #tableSuivi select{max-width:186px}
 #tableSuivi input.frais{width:48px}
 #tableSuivi input.note{min-width:96px}
+#tableSuivi input.contexte{min-width:190px}
 /* « 14/07/2024 » a 13,5 px et 12 px de marge interne de chaque cote : en
    dessous de 112 px, l'annee est coupee sans que rien ne le signale. */
 #tableSuivi input.echeance{width:112px;text-align:center;padding-left:6px;
@@ -2813,6 +2829,10 @@ function rendreSuivi() {
           value="${d.frais ? d.frais : ""}" placeholder="0" /> €</td>
       <td><input class="note" data-champ="note" type="text"
           value="${echapper(d.note)}" placeholder="Référence avocat, audience…" /></td>
+      <td><input class="contexte" data-champ="contexte" type="text"
+          value="${echapper(d.contexte || "")}"
+          title="Ce que l'outil ne peut pas savoir : appels sans réponse, chèque de caution encaissé puis rejeté, arrangement verbal non tenu. Repris tel quel au point 2 de la note."
+          placeholder="Ne répond pas au téléphone, chèque rejeté…" /></td>
       <td class="num" style="font-size:12px">${d.duree_jours === null ||
           d.duree_jours === undefined ? "—" : d.duree_jours + " j"}</td>
       <td><a class="lien" data-detail="${echapper(d.reference)}">Parcours</a></td>
@@ -2836,7 +2856,7 @@ function rendreSuivi() {
     <tr><th class="etroite"></th><th>Dossier</th><th class="num">Montant dû</th>
         <th class="num">Échéance</th><th class="num">Retard</th>
         <th>Convention</th><th>Diplôme</th><th>État</th>
-        <th class="num">Frais engagés</th><th>Note</th>
+        <th class="num">Frais engagés</th><th>Note</th><th>Contexte</th>
         <th class="num">Durée</th><th></th><th>Modifié</th></tr>
     ${lignes}</table></div><div id="detailDossier"></div>`;
 

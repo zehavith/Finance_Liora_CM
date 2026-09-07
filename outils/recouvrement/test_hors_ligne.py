@@ -2294,6 +2294,30 @@ def test_completer_depuis_fichier() -> None:
         verifier(lot[0].emails.count("sophie.attias@ise-systems.fr") == 1,
                  "sans doublon au second passage")
 
+        # Ce qui est saisi dans l'application doit atteindre la note. Sans
+        # cette reprise, cocher « convention signée » ou écrire le contexte
+        # ne changeait rien au document produit — la saisie ne servait à rien.
+        module_suivi.enregistrer(chemin, {"FACT-2501-07706": {
+            "convention": "oui", "diplome": "non", "echeance": "15/03/2024",
+            "contexte": "Il ne répond pas au téléphone",
+        }})
+        lot2 = [Dossier(reference="FACT-2501-07706", nom="ISE SYSTEMS",
+                        factures=["FACT-2501-07706"], convention_signee="",
+                        date_echeance="01/01/2020")]
+        dit2: list[str] = []
+        _ajouter_references_saisies(lot2, dit2.append, chemin)
+        verifier(lot2[0].convention_signee == "oui",
+                 f"la convention saisie atteint le dossier "
+                 f"(obtenu : {lot2[0].convention_signee!r})")
+        verifier(lot2[0].diplome == "non", "le diplôme saisi aussi")
+        verifier(lot2[0].date_echeance == "15/03/2024",
+                 f"l'échéance saisie l'emporte sur celle du tableau "
+                 f"(obtenu : {lot2[0].date_echeance})")
+        verifier(lot2[0].contexte == "Il ne répond pas au téléphone",
+                 f"et le contexte écrit à la main (obtenu : {lot2[0].contexte!r})")
+        verifier(any("saisie" in ligne for ligne in dit2),
+                 f"le journal le dit (obtenu : {dit2})")
+
     print("  -- un classeur comptable réel --")
     # Trois pièges relevés sur le fichier de Liora, chacun capable d'emporter
     # un onglet entier de quinze mille lignes.
@@ -2802,6 +2826,32 @@ def test_annuaire_entreprises() -> None:
              "les sociétés cessées sont listées, avec le montant en jeu")
 
 
+def test_contexte_saisi() -> None:
+    """Ce que le service sait et qu'aucun tableau ne porte."""
+    print("\nContexte saisi à la main")
+
+    import suivi as module_suivi  # noqa: PLC0415
+
+    print("  -- le contexte saisi se conserve --")
+    with tempfile.TemporaryDirectory() as repertoire:
+        chemin = Path(repertoire) / "suivi.json"
+        etats = module_suivi.charger(chemin)
+        module_suivi.mettre_a_jour(
+            etats, "FACT-1",
+            contexte="Il ne répond pas au téléphone. Chèque de caution rejeté",
+        )
+        module_suivi.enregistrer(chemin, etats)
+        relu = module_suivi.charger(chemin)["FACT-1"]
+        verifier(relu["contexte"].startswith("Il ne répond pas"),
+                 f"le contexte est enregistré (obtenu : {relu.get('contexte')!r})")
+
+        # Une chaîne vide l'efface, comme les autres saisies : elle ne vaut
+        # pas « pas de contexte connu ».
+        module_suivi.mettre_a_jour(etats, "FACT-1", contexte="")
+        verifier("contexte" not in etats["FACT-1"],
+                 "et une saisie vidée le retire plutôt que de garder l'ancien")
+
+
 def test_recherche_dossiers() -> None:
     """Retrouver un dossier par sa facture, son adresse ou son nom."""
     print("\nRecherche dans les dossiers")
@@ -2846,6 +2896,7 @@ def test_resume_de_situation() -> None:
     print("\nRésumé de la situation et annexe")
 
     import synthese as module_synthese  # noqa: PLC0415
+    from dataclasses import replace  # noqa: PLC0415
     from dossiers import Dossier  # noqa: PLC0415
     from indexation import LigneIndex  # noqa: PLC0415
 
@@ -2880,36 +2931,83 @@ def test_resume_de_situation() -> None:
         3: "Mise en demeure de payer sous huit jours.",
     }
     synthese = module_synthese.analyser(lignes, textes)
-    phrases = module_synthese.resumer_situation(dossier, synthese, maintenant)
-    texte = " ".join(phrases)
+    points = module_synthese.resumer_situation(dossier, synthese, maintenant)
+    par_titre = dict(points)
 
-    verifier(phrases and "SAS EDEN" in phrases[0] and "5 990" in phrases[0],
-             f"le résumé s'ouvre sur qui doit combien (obtenu : {phrases[:1]})")
-    verifier("jours de retard" in phrases[0],
-             "et depuis quand la créance est échue")
-    verifier("3 message(s)" in texte,
-             f"il dit ce que le dossier réunit (obtenu : {texte[:150]})")
-    verifier("convention de formation est signée" in texte,
-             "et si la prestation est établie")
+    verifier([titre for titre, _ in points] == [
+        "Montant", "Contexte", "Contrat signé et factures",
+        "Preuve des actions engagées"],
+        f"les quatre points du service, dans leur ordre "
+        f"(obtenu : {[t for t, _ in points]})")
 
-    # Les actes se lisent dans l'ordre où ils se sont produits : c'est
-    # l'enchaînement qui fait le récit.
-    rang_relance = texte.find("Relance du 22/05/2024")
-    rang_demeure = texte.find("Mise en demeure du 03/09/2024")
-    verifier(0 <= rang_relance < rang_demeure,
-             f"les actes sont chronologiques (relance {rang_relance}, "
-             f"mise en demeure {rang_demeure})")
+    verifier("5 990" in par_titre["Montant"]
+             and "jours de retard" in par_titre["Montant"],
+             f"1. le montant et son retard (obtenu : {par_titre['Montant']})")
 
-    # Ce qui manque décide de la suite : le taire serait le plus grave.
-    incomplet = Dossier(reference="D1", nom="Sans rien", emails=[])
-    manquant = " ".join(module_synthese.resumer_situation(
-        incomplet, module_synthese.analyser([], {}), maintenant))
-    verifier("À compléter avant transmission" in manquant,
-             f"un dossier lacunaire le dit (obtenu : {manquant[-160:]})")
-    verifier("aucune adresse mail connue" in manquant,
-             "en nommant ce qui manque")
-    verifier("Aucun message n'a été retrouvé" in manquant,
-             "et sans prétendre que des relances ont eu lieu")
+    # 2. Le contexte se lit d'un trait : c'est le point que lit d'abord celui
+    # qui recoit le dossier.
+    contexte = par_titre["Contexte"]
+    print(f"     contexte obtenu : {contexte}")
+    verifier("L'apprenant a suivi la formation" in contexte,
+             "2. le récit s'ouvre sur l'exécution de la formation")
+    verifier("n'a pas obtenu son diplôme" in contexte,
+             "et dit ce qu'il en est du diplôme")
+    verifier("Il n'a pas payé" in contexte and "5 990" in contexte,
+             "puis le défaut de paiement")
+    verifier("malgré une relance" in contexte or "malgré 2 relance" in contexte,
+             f"et ce qui a été tenté (obtenu : {contexte[:200]})")
+    verifier("conteste le montant depuis le 10/06/2024" in contexte,
+             "l'attitude du débiteur est rapportée, datée")
+    verifier("mise en demeure lui a été adressée le 03/09/2024" in contexte,
+             "et le dossier situé à sa dernière étape")
+    verifier(". " in contexte and not contexte.startswith("•"),
+             "le tout en phrases, pas en liste")
+
+    verifier("voir pièces jointes" in par_titre["Contrat signé et factures"],
+             f"3. renvoie aux pièces "
+             f"(obtenu : {par_titre['Contrat signé et factures']})")
+    verifier("relance" in par_titre["Preuve des actions engagées"],
+             f"4. compte les actions engagées "
+             f"(obtenu : {par_titre['Preuve des actions engagées']})")
+
+    # Un paiement revenu impayé est le fait le plus parlant du dossier : il
+    # doit figurer au contexte comme à la preuve des actions.
+    lignes_rejet = [*lignes, piece(4, 10, 2, "reçu", "Prélèvement rejeté")]
+    textes_rejet = {**textes, 4: "Votre prelevement a ete rejete faute de provision."}
+    avec_rejet = dict(module_synthese.resumer_situation(
+        dossier, module_synthese.analyser(lignes_rejet, textes_rejet), maintenant))
+    verifier("rejeté" in avec_rejet["Contexte"],
+             f"un paiement rejeté figure au contexte "
+             f"(obtenu : {avec_rejet['Contexte'][-170:]})")
+    verifier("Paiements refusés" in avec_rejet["Preuve des actions engagées"],
+             f"et les paiements refusés sont listés au point 4 "
+             f"(obtenu : {avec_rejet['Preuve des actions engagées']})")
+
+    # Ce que l'outil ne peut pas savoir — appels téléphoniques, chèque de
+    # caution — est saisi dans l'application et repris tel quel.
+    dossier_saisi = replace(
+        dossier,
+        contexte="Il ne répond pas au téléphone. Son chèque de caution a été "
+                 "encaissé puis rejeté",
+    )
+    complete = dict(module_synthese.resumer_situation(
+        dossier_saisi, synthese, maintenant))["Contexte"]
+    verifier("Il ne répond pas au téléphone." in complete,
+             f"le contexte saisi rejoint le récit (obtenu : {complete[-140:]})")
+    verifier(complete.rstrip().endswith("rejeté."),
+             "et se termine proprement, point final ajouté au besoin")
+
+    # Un dossier vide ne doit rien affirmer.
+    vide = dict(module_synthese.resumer_situation(
+        Dossier(reference="D1", nom="Sans rien", emails=[]),
+        module_synthese.analyser([], {}), maintenant))
+    verifier("non renseigné" in vide["Montant"],
+             f"sans montant, le point 1 le dit (obtenu : {vide['Montant']})")
+    verifier("aucune pièce au dossier" in vide["Contrat signé et factures"],
+             "sans pièce, le point 3 le dit")
+    verifier("aucun message retrouvé" in vide["Preuve des actions engagées"],
+             f"sans message, le point 4 ne prétend aucune relance "
+             f"(obtenu : {vide['Preuve des actions engagées']})")
 
     html_note = module_synthese.construire_html(
         dossier, ["recouvrement@liora.io"], lignes, synthese, maintenant,
@@ -2918,7 +3016,7 @@ def test_resume_de_situation() -> None:
     verifier("1. Résumé de la situation" in html_note,
              "la note s'ouvre sur le résumé")
     for rang, titre in enumerate(
-            ("1. Résumé de la situation", "2. Contexte",
+            ("1. Résumé de la situation", "2. Détail du dossier",
              "3. Contrat signé et factures", "4. Preuve des actions engagées",
              "Annexe — Échanges de messages"), start=1):
         verifier(titre in html_note, f"partie {rang} présente : {titre}")
@@ -2995,7 +3093,9 @@ def test_reponses_du_debiteur() -> None:
          ligne(2, "reçu", "debiteur@exemple.fr")],
         {2: "Je conteste le montant."},
     )
-    verifier("1 réponse(s)" in bloc, "seules les réponses reçues sont comptées")
+    verifier("une réponse du débiteur figure" in bloc,
+             f"seules les réponses reçues sont comptées, et accordées "
+             f"(obtenu : {bloc[:70]!r})")
     verifier("debiteur@exemple.fr" in bloc and "Je conteste le montant." in bloc,
              "l'auteur et son propos figurent")
     verifier("recouvrement@liora.io" not in bloc,
@@ -3037,14 +3137,16 @@ def test_conversations_resumees() -> None:
     textes = {2: "Je conteste le montant reclame."}
 
     bloc = module_synthese._bloc_conversations(lignes, textes)
-    verifier("2 conversation(s)" in bloc,
+    verifier("2 conversations suivies" in bloc,
              f"le message isolé n'en est pas une (obtenu : {bloc[:60]!r})")
     verifier("3 messages du 03/03/2025 au 14/03/2025" in bloc,
              "le fil est daté de bout en bout")
     verifier("soit 11 jours" in bloc, "et sa durée donnée")
     verifier("Pièces n° 1 à n° 3" in bloc,
              "les pièces du fil sont citées par leur numéro")
-    verifier("2 émis par Liora, 1 reçu(s)" in bloc, "le sens est compté")
+    verifier("2 émis par Liora, 1 reçu." in bloc,
+             f"le sens est compté, au singulier quand il n'y en a qu'un "
+             f"(obtenu : {bloc[bloc.find('émis par Liora') - 20:][:60]!r})")
     verifier("Je conteste le montant reclame." in bloc,
              "la dernière réponse du débiteur est citée")
     verifier("pas répondu dans cette conversation" in bloc,
@@ -4328,6 +4430,7 @@ def test_interface() -> None:
             ('id="listerTableaux"', "bouton de listage des tableaux"),
             ('id="chercheTableau"', "recherche dans les tableaux"),
             ('id="chercheSuivi"', "recherche dans l'état des dossiers"),
+            ('data-champ="contexte"', "saisie du contexte d'un dossier"),
             ('id="chercheDocuments"', "recherche dans les documents"),
             ('id="filtreColonne"', "colonne de filtrage"),
             ('id="filtreValeur"', "valeur de filtrage"),
@@ -5172,6 +5275,7 @@ def main() -> int:
     test_pieces_versees()
     test_ancienne_reference_facture()
     test_annuaire_entreprises()
+    test_contexte_saisi()
     test_recherche_dossiers()
     test_resume_de_situation()
     test_reponses_du_debiteur()
