@@ -349,6 +349,19 @@ def analyser_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     analyseur.add_argument(
+        "--sans-fils-complets",
+        dest="fils_complets",
+        action="store_false",
+        default=True,
+        help=(
+            "N'ajoute pas les autres messages des conversations trouvées. "
+            "Par défaut, un fil dont un seul message cite le numéro de "
+            "facture est repris en entier : la réponse du débiteur ne "
+            "reprend ni le numéro ni l'objet, et c'est souvent la pièce qui "
+            "décide du dossier."
+        ),
+    )
+    analyseur.add_argument(
         "--max-adresses-decouvertes",
         type=int,
         default=5,
@@ -637,6 +650,29 @@ def traiter_dossier(
             resume.emails = " | ".join(dossier.emails)
             resume.adresses_decouvertes = " | ".join(trouvees)
             resume.requete = dossier.requete_gmail()
+
+    # Gmail rend des messages, pas des conversations : un fil dont un seul
+    # message cite le numéro ne remontait que celui-là, et la réponse du
+    # débiteur — qui ne reprend ni le numéro ni l'objet — restait invisible.
+    # On complète donc les fils touchés, après la découverte d'adresses pour
+    # que ceux qu'elle a ramenés en profitent aussi.
+    if options.fils_complets and messages:
+        suite = sources.identifiants_des_fils(
+            messages, inclure_spam_corbeille=not options.sans_spam
+        )
+        if suite:
+            connus = {message.id for message in messages if message.id}
+            neufs = [paire for paire in suite if paire[1] not in connus]
+            if neufs:
+                complements, _ = sources.messages(neufs)
+                messages, doubles_fils = _fusionner_messages(messages, complements)
+                doublons += doubles_fils
+                gagnes = len(complements)
+                if gagnes > 0:
+                    journal(
+                        f"    {gagnes} message(s) ajouté(s) en suivant les "
+                        "conversations trouvées"
+                    )
 
     resume.doublons_ecartes = doublons
 

@@ -190,6 +190,28 @@ class ClientGmail:
             self._adresse = self.boite
         return self._adresse
 
+    def identifiants_des_fils(
+        self, fils: list[str], inclure_spam_corbeille: bool = True
+    ) -> list[str]:
+        """Identifiants de tous les messages de ces conversations."""
+        identifiants: list[str] = []
+        for fil in fils:
+            try:
+                reponse = (
+                    self._service.users()
+                    .threads()
+                    .get(userId="me", id=fil, format="minimal")
+                    .execute(num_retries=NB_RETENTATIVES)
+                )
+            except self._http_error:
+                # Un fil devenu illisible — message supprimé, droits changés —
+                # ne doit pas interrompre le dossier : les autres continuent.
+                continue
+            for message in reponse.get("messages", []):
+                if message.get("id"):
+                    identifiants.append(message["id"])
+        return identifiants
+
     def rechercher_identifiants(
         self,
         requete: str,
@@ -269,6 +291,39 @@ class SourcesGmail:
         return {
             adresse.split("@")[-1].lower() for adresse in self.adresses if "@" in adresse
         }
+
+    def identifiants_des_fils(
+        self, messages, inclure_spam_corbeille: bool = True
+    ) -> list[tuple[ClientGmail, str]]:
+        """Tous les messages des conversations déjà touchées.
+
+        Gmail rend des messages, pas des conversations. Un fil où un seul
+        message cite le numéro de facture ne remontait donc que celui-là : la
+        réponse du débiteur, qui ne reprend ni le numéro ni l'objet d'origine,
+        restait invisible alors qu'elle est le plus souvent la pièce
+        décisive. On complète donc chaque fil touché.
+        """
+        par_adresse = {client.adresse_boite: client for client in self.clients}
+        fils_par_client: dict[int, tuple[ClientGmail, set[str]]] = {}
+
+        for message in messages:
+            fil = getattr(message, "thread_id", "")
+            if not fil:
+                continue
+            for boite in getattr(message, "boites", []):
+                client = par_adresse.get(boite)
+                if client is None:
+                    continue
+                fils_par_client.setdefault(id(client), (client, set()))[1].add(fil)
+
+        trouves: list[tuple[ClientGmail, str]] = []
+        for client, fils in fils_par_client.values():
+            lire = getattr(client, "identifiants_des_fils", None)
+            if lire is None:
+                continue
+            for identifiant in lire(sorted(fils), inclure_spam_corbeille):
+                trouves.append((client, identifiant))
+        return trouves
 
     def identifiants_dossier(
         self, requete: str, inclure_spam_corbeille: bool = True, plafond: int | None = None

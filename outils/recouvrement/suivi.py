@@ -46,6 +46,18 @@ STATUTS = [
     {"cle": "tribunal-perdu",
      "libelle": "Procédure via tribunaux clôturée — montant perdu",
      "couleur": "#d03b3b", "icone": "✕", "famille": "perdu"},
+    # Renoncer est une décision du service, pas l'issue d'une procédure : elle
+    # se prend à n'importe quelle étape, souvent sans qu'aucun tribunal ait
+    # été saisi — créance trop faible pour les frais, débiteur radié,
+    # insolvabilité établie. La distinguer de la défaite judiciaire permet de
+    # savoir ce qu'on abandonne de soi-même, et de le chiffrer.
+    #
+    # Même rouge que la défaite judiciaire, comme les deux clôtures favorables
+    # partagent le vert : c'est la famille qui porte la couleur. L'icône et le
+    # libellé les séparent, y compris en vision deutan où le rouge et le vert
+    # se confondent.
+    {"cle": "abandon", "libelle": "Abandon de la créance",
+     "couleur": "#d03b3b", "icone": "⊘", "famille": "perdu"},
 ]
 
 # Les états de la première version de l'outil, pour ne pas perdre le suivi

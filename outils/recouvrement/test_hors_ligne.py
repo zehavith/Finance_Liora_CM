@@ -2844,6 +2844,118 @@ def test_annuaire_entreprises() -> None:
              "les sociétés cessées sont listées, avec le montant en jeu")
 
 
+def test_fils_completes() -> None:
+    """Un fil dont un seul message cite le numéro est repris en entier."""
+    print("\nConversations reprises en entier")
+
+    import export_mails  # noqa: PLC0415
+    from gmail_api import SourcesGmail  # noqa: PLC0415
+
+    # Le cas réel du dossier SAS EDEN : la facture part avec le numéro en
+    # objet, l'entreprise répond sur un autre objet et sans le numéro, et
+    # c'est cette réponse-là qui conteste la signature du devis.
+    class ClientFil:
+        adresse_boite = "billing@liora.io"
+
+        MESSAGES = {
+            "m1": {
+                "id": "m1", "threadId": "T1",
+                "objet": "Facture FACT-2405-00409 - formation",
+                "de": "billing@liora.io", "a": "edenmarket2017@gmail.com",
+                "texte": "Veuillez trouver la facture FACT-2405-00409.",
+            },
+            "m2": {
+                "id": "m2", "threadId": "T1",
+                "objet": "Re: Formation Benallaoua sofiane",
+                "de": "edenmarket2017@gmail.com", "a": "billing@liora.io",
+                "texte": "La signature sur le devis ne correspond pas a la mienne.",
+            },
+            "m3": {
+                "id": "m3", "threadId": "T2",
+                "objet": "Sans rapport", "de": "x@ailleurs.fr",
+                "a": "billing@liora.io", "texte": "Bonjour.",
+            },
+        }
+
+        def rechercher_identifiants(self, requete, inclure_spam_corbeille=True,
+                                    plafond=None):
+            # Seul m1 porte le numéro : c'est tout ce que Gmail rendrait.
+            return ["m1"] if "FACT-2405-00409" in requete else []
+
+        def identifiants_des_fils(self, fils, inclure_spam_corbeille=True):
+            return [m["id"] for m in self.MESSAGES.values()
+                    if m["threadId"] in set(fils)]
+
+        def recuperer_messages(self, identifiants):
+            from message import MessageMail  # noqa: PLC0415
+            rendus = []
+            for identifiant in identifiants:
+                donnees = self.MESSAGES[identifiant]
+                rendus.append(MessageMail(
+                    id=donnees["id"], thread_id=donnees["threadId"],
+                    date=datetime(2025, 10, 30, 12, tzinfo=timezone.utc),
+                    expediteur=donnees["de"], destinataires=donnees["a"],
+                    copie="", copie_cachee="", objet=donnees["objet"],
+                    corps_texte=donnees["texte"], corps_html="",
+                    pieces_jointes=[], boites=[self.adresse_boite],
+                    message_id=f"<{identifiant}@exemple>",
+                ))
+            return rendus
+
+    sources = SourcesGmail([ClientFil()])
+    vraies = export_mails.ouvrir_sources
+    export_mails.ouvrir_sources = lambda **_: sources
+    try:
+        with tempfile.TemporaryDirectory() as repertoire:
+            racine = Path(repertoire)
+            fichier = racine / "dossiers.csv"
+            fichier.write_text(
+                "reference;nom;facture\nEDEN;SAS EDEN;FACT-2405-00409\n",
+                encoding="utf-8")
+            sortie = racine / "export"
+            journal: list[str] = []
+            code = export_mails.executer(
+                export_mails.analyser_arguments([
+                    "--dossiers", str(fichier), "--sortie", str(sortie),
+                    "--sans-decouverte-adresses",
+                ]),
+                relais=journal.append)
+            verifier(code == 0, "code de sortie 0")
+
+            repertoires = sorted(c.name for c in sortie.iterdir() if c.is_dir())
+            verifier(len(repertoires) == 1,
+                     f"un répertoire pour le dossier (obtenu : {repertoires})")
+            index = _lire_index(sortie / repertoires[0] / "index.csv")
+            objets = [ligne["objet"] for ligne in index]
+            verifier(len(index) == 2,
+                     f"les deux messages du fil sont au dossier "
+                     f"(obtenu : {len(index)} — {objets})")
+            verifier(any("Benallaoua" in objet for objet in objets),
+                     f"dont la réponse qui ne cite aucun numéro (obtenu : {objets})")
+            verifier(not any("Sans rapport" in objet for objet in objets),
+                     "et rien d'un fil que rien ne rattachait au dossier")
+            verifier(any("en suivant les conversations" in ligne
+                         for ligne in journal),
+                     f"le journal dit ce qui a été ajouté "
+                     f"(obtenu : {[l for l in journal if 'message' in l][:3]})")
+
+            # L'option existe pour s'en passer, et alors le fil n'est pas suivi.
+            sortie2 = racine / "export2"
+            export_mails.executer(
+                export_mails.analyser_arguments([
+                    "--dossiers", str(fichier), "--sortie", str(sortie2),
+                    "--sans-decouverte-adresses", "--sans-fils-complets",
+                ]),
+                relais=lambda _l: None)
+            dossier2 = next(c for c in sortie2.iterdir() if c.is_dir())
+            seul = _lire_index(dossier2 / "index.csv")
+            verifier(len(seul) == 1,
+                     f"sans l'option, seul le message trouvé est repris "
+                     f"(obtenu : {len(seul)})")
+    finally:
+        export_mails.ouvrir_sources = vraies
+
+
 def test_note_interne_au_propre() -> None:
     """Une note de tableau écrite par ajouts, rendue lisible."""
     print("\nMise au propre de la note interne")
@@ -5294,12 +5406,24 @@ def test_suivi() -> None:
 
         print("\n  -- couleurs des états --")
         cles = [s["cle"] for s in module_suivi.STATUTS]
-        verifier(len(set(cles)) == 8, f"huit étapes distinctes (obtenu : {len(set(cles))})")
+        verifier(len(set(cles)) == 9, f"neuf étapes distinctes (obtenu : {len(set(cles))})")
+        issues = [s for s in module_suivi.STATUTS
+                  if s["famille"] in ("gagne", "perdu")]
         verifier(
-            all(s["icone"] for s in module_suivi.STATUTS
-                if s["famille"] in ("gagne", "perdu")),
-            "les trois issues portent une icône, la couleur ne suffisant pas "
+            all(s["icone"] for s in issues),
+            "les quatre issues portent une icône, la couleur ne suffisant pas "
             "à les distinguer en vision deutan",
+        )
+        # Deux issues peuvent partager la couleur de leur famille — le vert des
+        # clôtures favorables, le rouge des créances perdues — mais jamais
+        # l'icône : c'est elle qui les sépare quand la couleur ne le fait pas.
+        icones = [s["icone"] for s in issues]
+        verifier(len(set(icones)) == len(icones),
+                 f"et chacune la sienne (obtenu : {icones})")
+        verifier(
+            "abandon" in module_suivi.PERDUS
+            and "abandon" in module_suivi.CLOTURES,
+            "l'abandon de créance clôt le dossier et compte comme non recouvré",
         )
         cours = [s["couleur"] for s in module_suivi.STATUTS if s["famille"] == "cours"]
         verifier(
@@ -5351,6 +5475,7 @@ def main() -> int:
     test_pieces_versees()
     test_ancienne_reference_facture()
     test_annuaire_entreprises()
+    test_fils_completes()
     test_note_interne_au_propre()
     test_contexte_saisi()
     test_recherche_dossiers()
