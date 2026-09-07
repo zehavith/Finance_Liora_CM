@@ -399,6 +399,10 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 # page les liste, et la note les reprend.
                 "pieces": [dict(p) for p in (etat.get("pieces") or [])],
                 "references": list(etat.get("references") or []),
+                # Adresses reprises d'un export de facturation : elles servent
+                # la recherche au même titre que celles du tableau, et sont
+                # souvent les seules connues du dossier.
+                "adresses": list(etat.get("adresses") or []),
                 "convention_saisie": bool(etat.get("convention")),
                 "diplome_saisi": bool(etat.get("diplome")),
                 "heures_theoriques": (

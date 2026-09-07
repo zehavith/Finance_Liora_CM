@@ -2802,6 +2802,45 @@ def test_annuaire_entreprises() -> None:
              "les sociétés cessées sont listées, avec le montant en jeu")
 
 
+def test_recherche_dossiers() -> None:
+    """Retrouver un dossier par sa facture, son adresse ou son nom."""
+    print("\nRecherche dans les dossiers")
+
+    import interface as module_interface  # noqa: PLC0415
+
+    page = module_interface.PAGE
+
+    # La recherche est portée par la page, pas par le serveur : elle doit
+    # donc s'y trouver en entier, et chaque morceau est vérifié nommément —
+    # une insertion ratée dans le gabarit ne se voit pas à l'exécution.
+    for morceau, quoi in (
+        ("function dossiersFiltres", "le filtre"),
+        ("function correspond", "la comparaison d'un dossier au terme"),
+        ("function reduireNumero", "la comparaison des numéros sans ponctuation"),
+        ("dossier.factures", "la recherche porte sur les factures"),
+        ("dossier.emails", "et sur les adresses du tableau"),
+        ("dossier.adresses", "et sur celles reprises de la facturation"),
+        ("dossier.references", "et sur les numéros d'un outil précédent"),
+        ("dossier.nom", "et sur le nom du débiteur"),
+        ("majCompteRecherche", "le décompte des dossiers retenus"),
+        ("messageAucuneCorrespondance", "le message quand rien ne correspond"),
+        ("chercherDossiers", "la saisie relie les deux onglets"),
+    ):
+        verifier(morceau in page, f"{quoi} figure dans la page ({morceau})")
+
+    # Les deux onglets partagent un même terme : trouver un dossier dans l'un
+    # puis passer à l'autre est le geste courant.
+    verifier(page.count('placeholder="Facture, adresse mail, nom…"') == 2,
+             "les deux onglets portent une barre de recherche")
+    verifier("rendreSuivi();" in page and "rendreDocuments();" in page,
+             "et la saisie redessine les deux")
+
+    # « Tout effacer » porte sur tous les dossiers, filtre ou non : le taire
+    # laisserait croire qu'il ne retire que ce qui est affiché.
+    verifier("Une recherche est en cours" in page,
+             "« Tout effacer » avertit qu'il ignore le filtre")
+
+
 def test_resume_de_situation() -> None:
     """La note s'ouvre sur la situation, et renvoie les échanges en annexe."""
     print("\nRésumé de la situation et annexe")
@@ -4288,6 +4327,8 @@ def test_interface() -> None:
             ('id="tableau"', "choix du tableau Monday"),
             ('id="listerTableaux"', "bouton de listage des tableaux"),
             ('id="chercheTableau"', "recherche dans les tableaux"),
+            ('id="chercheSuivi"', "recherche dans l'état des dossiers"),
+            ('id="chercheDocuments"', "recherche dans les documents"),
             ('id="filtreColonne"', "colonne de filtrage"),
             ('id="filtreValeur"', "valeur de filtrage"),
             ('data-volet="voletMonday"', "volet Monday en direct"),
@@ -5131,6 +5172,7 @@ def main() -> int:
     test_pieces_versees()
     test_ancienne_reference_facture()
     test_annuaire_entreprises()
+    test_recherche_dossiers()
     test_resume_de_situation()
     test_reponses_du_debiteur()
     test_conversations_resumees()

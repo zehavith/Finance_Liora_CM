@@ -44,7 +44,7 @@ import synthese as module_synthese  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "66"
+VERSION = "67"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -1401,6 +1401,11 @@ table.donnees th.etroite{width:26px}
 .depot-piece input{display:none}
 .versees{margin-top:5px;font-size:11px;color:var(--texte-3)}
 .versees span{display:block}
+.recherche-dossiers{display:flex;align-items:center;gap:11px;margin-bottom:13px}
+/* Plus specifique que la regle generale des champs, qui suit et prendrait
+   sinon toute la largeur. */
+.recherche-dossiers input[type=search]{width:370px;max-width:100%}
+.compte-recherche{font-size:12px;color:var(--texte-3);white-space:nowrap}
 .retenu{font-size:11.5px;color:var(--texte-3);max-width:230px}
 .lien-oubli{font-size:11.5px;color:var(--accent);cursor:pointer;white-space:nowrap}
 .lien-oubli:hover{text-decoration:underline}
@@ -1507,9 +1512,16 @@ table.donnees input.note{min-width:170px}
 .detail td{padding:4px 6px;font-size:12.5px}
 .detail input[type=text]{width:110px;padding:4px 6px;font-size:12.5px}
 label{display:block;font-size:12px;color:var(--texte-2);margin-bottom:5px}
-input[type=text]{width:100%;background:var(--champ);border:1px solid var(--bord);
+input[type=text],input[type=search]{width:100%;background:var(--champ);
+  border:1px solid var(--bord);
   border-radius:9px;padding:10px 12px;color:var(--texte);font-size:13.5px;font-family:inherit}
-input[type=text]:focus{outline:none;border-color:var(--bord-actif)}
+input[type=text]:focus,input[type=search]:focus{outline:none;border-color:var(--bord-actif)}
+/* La croix d'effacement du navigateur est noire sur fond sombre : on la
+   rend a la couleur du texte plutot que de la laisser invisible. */
+input[type=search]::-webkit-search-cancel-button{
+  -webkit-appearance:none;height:13px;width:13px;cursor:pointer;
+  background:var(--texte-3);
+  -webkit-mask:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M3 3l10 10M13 3L3 13' stroke='black' stroke-width='2.4' fill='none'/></svg>") center/contain no-repeat}
 .case{display:flex;gap:9px;align-items:flex-start;margin-bottom:11px;cursor:pointer}
 .case input{margin:3px 0 0;accent-color:var(--accent);flex-shrink:0}
 .case span b{display:block;font-size:13px;color:var(--texte)}
@@ -1572,6 +1584,11 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <h2>État des dossiers</h2>
     <p class="aide">L'avancement et les frais sont enregistrés au fur et à mesure,
        à côté de l'outil. Refaire un export ne les efface pas.</p>
+    <div class="recherche-dossiers">
+      <input type="search" id="chercheSuivi" autocomplete="off"
+             placeholder="Facture, adresse mail, nom…" />
+      <span class="compte-recherche" id="compteSuivi"></span>
+    </div>
     <div id="tableSuivi"></div>
   </section>
 </div>
@@ -1581,6 +1598,11 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <h2>Documents produits</h2>
     <p class="aide">Un répertoire par dossier, dans <b id="cheminSortie">—</b>.
        Cliquez pour ouvrir la note de synthèse ou le répertoire complet.</p>
+    <div class="recherche-dossiers">
+      <input type="search" id="chercheDocuments" autocomplete="off"
+             placeholder="Facture, adresse mail, nom…" />
+      <span class="compte-recherche" id="compteDocuments"></span>
+    </div>
     <div id="tableDocuments"></div>
   </section>
 </div>
@@ -2006,6 +2028,9 @@ function rendreTableaux() {
 }
 
 $("chercheTableau").addEventListener("input", rendreTableaux);
+["chercheSuivi", "chercheDocuments"].forEach((id) => {
+  if ($(id)) $(id).addEventListener("input", chercherDossiers);
+});
 
 function tableauxCoches() {
   return Array.from(TABLEAUX_COCHES).join(",");
@@ -2515,6 +2540,12 @@ async function toutEffacer() {
   if (!total) { afficherBandeau(false, "Il n'y a rien à effacer."); return; }
 
   if (!confirm(`Retirer les ${total} dossiers de la liste ?\n\n`
+      + (RECHERCHE.trim()
+         ? `⚠ Une recherche est en cours (« ${RECHERCHE.trim()} ») : elle `
+           + "n'y change rien. Ce sont bien les "
+           + total + " dossiers qui seront retirés, pas seulement ceux "
+           + "affichés.\n\n"
+         : "")
       + "Elle se reconstitue en relançant un export.")) return;
 
   const fichiers = confirm(
@@ -2543,6 +2574,67 @@ async function toutEffacer() {
       + ".");
     chargerDossiers();
   } catch (erreur) { afficherBandeau(false, erreur.message); }
+}
+
+// Une recherche unique pour les deux onglets : trouver un dossier dans
+// « État des dossiers » puis passer aux « Documents » sans le reperdre est le
+// geste courant, et deux filtres indépendants obligeraient à le retaper.
+let RECHERCHE = "";
+
+// Un numéro se cite de dix façons — « FACT-2405-00409 », « FACT2405 00409 »,
+// « fact 2405 00409 ». La recherche ne doit pas échouer sur un tiret.
+function reduire(valeur) {
+  return String(valeur || "").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function reduireNumero(valeur) {
+  return reduire(valeur).replace(/[^a-z0-9]/g, "");
+}
+
+function correspond(dossier, terme) {
+  const champs = [dossier.reference, dossier.nom, dossier.emails,
+                  dossier.factures, dossier.references, dossier.adresses,
+                  dossier.note].join(" ");
+  if (reduire(champs).includes(reduire(terme))) return true;
+  // Le terme peut être un numéro écrit autrement que dans le tableau.
+  const numero = reduireNumero(terme);
+  return numero.length >= 3 && reduireNumero(champs).includes(numero);
+}
+
+function dossiersFiltres() {
+  const terme = RECHERCHE.trim();
+  if (!terme) return DOSSIERS;
+  // Plusieurs mots : tous doivent correspondre, pour affiner plutôt
+  // qu'élargir. « eden 00409 » ne ramène que ce dossier-là.
+  const mots = terme.split(/\s+/).filter(Boolean);
+  return DOSSIERS.filter((d) => mots.every((mot) => correspond(d, mot)));
+}
+
+function majCompteRecherche(visibles) {
+  const texte = !RECHERCHE.trim()
+    ? (DOSSIERS.length ? `${DOSSIERS.length} dossier(s).` : "")
+    : `${visibles} dossier(s) sur ${DOSSIERS.length}.`;
+  ["compteSuivi", "compteDocuments"].forEach((id) => {
+    if ($(id)) $(id).textContent = texte;
+  });
+}
+
+function messageAucuneCorrespondance() {
+  return '<p class="vide">Aucun dossier ne correspond à « '
+    + echapper(RECHERCHE.trim())
+    + ' ».<br />La recherche porte sur le numéro de facture, l\'adresse mail, '
+    + "le nom du débiteur et la note.</p>";
+}
+
+function chercherDossiers(evenement) {
+  RECHERCHE = evenement.target.value;
+  // Les deux champs disent la même chose : le filtre est commun.
+  ["chercheSuivi", "chercheDocuments"].forEach((id) => {
+    if ($(id) && $(id) !== evenement.target) $(id).value = RECHERCHE;
+  });
+  rendreSuivi();
+  rendreDocuments();
 }
 
 function messageVide() {
@@ -2636,9 +2728,19 @@ async function verserPiece(evenement) {
 }
 
 function rendreDocuments() {
-  if (!DOSSIERS.length) { $("tableDocuments").innerHTML = messageVide(); return; }
+  if (!DOSSIERS.length) {
+    $("tableDocuments").innerHTML = messageVide();
+    majCompteRecherche(0);
+    return;
+  }
+  const retenus = dossiersFiltres();
+  majCompteRecherche(retenus.length);
+  if (!retenus.length) {
+    $("tableDocuments").innerHTML = messageAucuneCorrespondance();
+    return;
+  }
 
-  const lignes = DOSSIERS.map((d) => `
+  const lignes = retenus.map((d) => `
     <tr>
       <td><b>${echapper(d.reference)}</b></td>
       <td>${echapper(d.nom)}</td>
@@ -2682,13 +2784,19 @@ function rendreDocuments() {
 
 // -- onglet État des dossiers
 function rendreSuivi() {
-  if (!DOSSIERS.length) { $("tableSuivi").innerHTML = messageVide(); return; }
+  if (!DOSSIERS.length) {
+    $("tableSuivi").innerHTML = messageVide();
+    majCompteRecherche(0);
+    return;
+  }
+  const retenus = dossiersFiltres();
+  majCompteRecherche(retenus.length);
 
   const options = (choisi) => STATUTS.map((s) =>
     `<option value="${s.cle}"${s.cle === choisi ? " selected" : ""}>` +
     `${s.icone ? s.icone + " " : ""}${echapper(s.libelle)}</option>`).join("");
 
-  const lignes = DOSSIERS.map((d) => `
+  const lignes = retenus.map((d) => `
     <tr data-reference="${echapper(d.reference)}">
       <td><input type="checkbox" class="choix" data-ref="${echapper(d.reference)}" /></td>
       <td class="dossier"><b>${echapper(d.reference)}</b><br />
@@ -2723,7 +2831,8 @@ function rendreSuivi() {
       <button class="secondaire danger" id="toutEffacer">Tout effacer…</button>
       <span id="compteChoix">Cochez les dossiers à retirer de la liste.</span>
     </div>
-    <div class="defilable"><table class="donnees">
+    ${retenus.length ? "" : messageAucuneCorrespondance()}
+    <div class="defilable"${retenus.length ? "" : " hidden"}><table class="donnees">
     <tr><th class="etroite"></th><th>Dossier</th><th class="num">Montant dû</th>
         <th class="num">Échéance</th><th class="num">Retard</th>
         <th>Convention</th><th>Diplôme</th><th>État</th>
