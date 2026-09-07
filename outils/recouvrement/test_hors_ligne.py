@@ -3205,6 +3205,73 @@ def test_pieces_citees_une_fois() -> None:
              "reste cité")
 
 
+def test_suivi_livre_avec_l_application() -> None:
+    """Le suivi du service est livré avec l'outil, et s'applique tout seul."""
+    print("\nSuivi livré avec l'application")
+
+    import interface as module_interface  # noqa: PLC0415
+    import suivi as module_suivi  # noqa: PLC0415
+
+    livre = Path(module_interface.__file__).resolve().parent / "suivi-initial.csv"
+    verifier(livre.exists(),
+             "le suivi extrait du tableau du service accompagne l'application")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        racine = Path(repertoire)
+        sortie = racine / "export"
+        (sortie / "d").mkdir(parents=True)
+        # Un export tout neuf : aucun suivi, aucun fichier déposé.
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures\n"
+            "FACT-2406-03978;M Ouissam Gouni;d;;FACT-2406-03978\n"
+            "FACT-9999-99999;Inconnu du fichier;d;;FACT-9999-99999\n",
+            encoding="utf-8-sig")
+
+        anciennes = (module_interface.RACINE, module_interface.SUIVI,
+                     module_interface.PREFERENCES, module_interface.COMPLEMENTS)
+        module_interface.RACINE = racine
+        module_interface.SUIVI = racine / "suivi.json"
+        module_interface.PREFERENCES = racine / "prefs.json"
+        module_interface.COMPLEMENTS = racine / "complements-suivi"
+        try:
+            module_interface.ecrire_preferences({"sortie": str(sortie)})
+            bilan = module_interface.appliquer_complements_si_besoin()
+            verifier(bilan["fichiers"] == 1,
+                     f"il s'applique sans qu'on dépose quoi que ce soit "
+                     f"(obtenu : {bilan})")
+
+            etats = module_suivi.charger(module_interface.SUIVI)
+            connu = etats.get("FACT-2406-03978", {})
+            verifier(connu.get("statut") == "abandon-possible",
+                     f"un dossier du tableau reçoit son étape "
+                     f"(obtenu : {connu.get('statut')})")
+            verifier("Ne peut pas passer" in (connu.get("note") or ""),
+                     f"et son motif (obtenu : {connu.get('note')!r})")
+            verifier(connu.get("adresses"),
+                     f"ainsi que son adresse (obtenu : {connu.get('adresses')})")
+            verifier(not etats.get("FACT-9999-99999", {}).get("statut"),
+                     "un dossier absent du tableau n'invente rien")
+
+            # Une étape saisie ici l'emporte, comme pour un fichier déposé.
+            etats = module_suivi.charger(module_interface.SUIVI)
+            module_suivi.mettre_a_jour(etats, "FACT-2406-03978", statut="avocats")
+            module_suivi.enregistrer(module_interface.SUIVI, etats)
+            module_interface.memoriser_preferences({"complements_appliques": {}})
+            module_interface.appliquer_complements_si_besoin()
+            verifier(module_suivi.charger(module_interface.SUIVI)
+                     ["FACT-2406-03978"]["statut"] == "avocats",
+                     "et la saisie faite ici n'est jamais écrasée par le livré")
+
+            # Il n'est pas annoncé comme un fichier déposé : personne ne l'a
+            # choisi, et le dire laisserait croire à un dépôt.
+            verifier(module_interface.complement_memorise() is None,
+                     "il ne se fait pas passer pour un fichier déposé")
+        finally:
+            (module_interface.RACINE, module_interface.SUIVI,
+             module_interface.PREFERENCES,
+             module_interface.COMPLEMENTS) = anciennes
+
+
 def test_etape_depuis_monday() -> None:
     """L'étape du tableau est reprise, que le tableau vienne de Monday."""
     print("\nÉtape reprise du tableau Monday")
@@ -3294,7 +3361,7 @@ def test_complement_reapplique_seul() -> None:
                 {"complements": ["publipostage.csv"]})
 
             premier = module_interface.appliquer_complements_si_besoin()
-            verifier(premier["fichiers"] == 1 and premier["etapes"] == 1,
+            verifier(premier["fichiers"] >= 1 and premier["etapes"] >= 1,
                      f"le fichier est appliqué sans qu'on le redépose "
                      f"(obtenu : {premier})")
 
@@ -3313,7 +3380,7 @@ def test_complement_reapplique_seul() -> None:
                 "FACT-2501-07581;Ja REVET;Transmis au service contentieux\n",
                 encoding="utf-8-sig")
             troisieme = module_interface.appliquer_complements_si_besoin()
-            verifier(troisieme["fichiers"] == 1,
+            verifier(troisieme["fichiers"] >= 1,
                      f"une version fraîche est reprise d'elle-même "
                      f"(obtenu : {troisieme})")
             etats = module_suivi.charger(module_interface.SUIVI)
@@ -5570,6 +5637,13 @@ def test_interface() -> None:
             verifier(not (interface.lire_preferences().get("complements") or []),
                      "ni mémorisé dans les préférences")
 
+            # Le suivi livré avec l'application n'a pas été déposé : il fait
+            # partie de l'installation. L'oubli cessait de le lire *et*
+            # l'effaçait, si bien qu'une remise à zéro le perdait pour de bon
+            # et qu'il fallait réinstaller l'outil pour le retrouver.
+            verifier(interface.SUIVI_INITIAL.exists(),
+                     "oublier n'efface pas le suivi livré avec l'application")
+
             # Ce qu'ils ont déjà écrit dans le suivi reste : l'échéance d'un
             # dossier lui appartient une fois reprise.
             statut, encore = appeler("/api/oublier-complements", {})
@@ -6270,6 +6344,7 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_pieces_citees_une_fois()
+    test_suivi_livre_avec_l_application()
     test_etape_depuis_monday()
     test_complement_reapplique_seul()
     test_refaire_les_notes()

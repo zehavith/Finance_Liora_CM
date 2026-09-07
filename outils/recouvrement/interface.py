@@ -44,7 +44,7 @@ import synthese as module_synthese  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "85"
+VERSION = "86"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -55,6 +55,12 @@ SUIVI = RACINE / "suivi-dossiers.json"
 # Plusieurs coexistent : la facturation de Liora est repartie sur deux
 # outils, et n'en retenir qu'un laissait la moitie des dossiers sans adresse.
 COMPLEMENTS = RACINE / "complements-suivi"
+# Le suivi du service, livré avec l'application : les étapes, les adresses et
+# les échéances du tableau tenu à la main, extraites une fois pour toutes. Il
+# évite d'avoir à déposer un fichier pour retrouver ce qui est déjà connu, et
+# se comporte comme un fichier déposé — les saisies faites ici l'emportent
+# toujours sur lui.
+SUIVI_INITIAL = RACINE / "suivi-initial.csv"
 # L'emplacement de la version precedente, qui n'en gardait qu'un seul.
 COMPLEMENT = RACINE / "complement-suivi"
 # Fiches publiques des debiteurs entreprises, conservees pour ne pas
@@ -396,13 +402,30 @@ def complements_memorises() -> list[Path]:
     fichier du même nom le remplace, ce qui est la façon de le mettre à jour.
     """
     _migrer_complement_unique()
+    # Le suivi livré avec l'application vient en premier : ce que la personne
+    # a déposé elle-même est plus récent, et doit donc s'appliquer après.
+    livre = [SUIVI_INITIAL] if suivi_livre_actif() else []
     if not COMPLEMENTS.is_dir():
-        return []
+        return livre
     retenus = (lire_preferences().get("complements") or [])
     fichiers = {chemin.name: chemin for chemin in COMPLEMENTS.iterdir()
                 if chemin.is_file()}
     ordonnes = [fichiers.pop(nom) for nom in retenus if nom in fichiers]
-    return ordonnes + sorted(fichiers.values())
+    return livre + ordonnes + sorted(fichiers.values())
+
+
+def suivi_livre_actif() -> bool:
+    """Dit si le suivi livré avec l'application doit encore être appliqué.
+
+    Ce fichier fait partie de l'installation : on ne l'efface jamais, sans
+    quoi une simple remise à zéro le ferait disparaître pour de bon et il
+    faudrait réinstaller l'outil pour le retrouver. Y renoncer est donc une
+    préférence, pas une suppression — et redéposer un fichier n'a rien à voir
+    avec lui.
+    """
+    if not SUIVI_INITIAL.exists():
+        return False
+    return not lire_preferences().get("suivi_livre_ecarte")
 
 
 def _migrer_complement_unique() -> None:
@@ -426,9 +449,14 @@ def _migrer_complement_unique() -> None:
 
 
 def complement_memorise() -> Path | None:
-    """Le premier fichier de suivi retenu, s'il y en a un."""
-    retenus = complements_memorises()
-    return retenus[0] if retenus else None
+    """Le premier fichier de suivi *déposé*, s'il y en a un.
+
+    Le suivi livré avec l'application n'en est pas : il n'a pas été choisi,
+    et l'annoncer comme « fichier retenu » laisserait croire qu'un dépôt a eu
+    lieu.
+    """
+    deposes = [c for c in complements_memorises() if c != SUIVI_INITIAL]
+    return deposes[0] if deposes else None
 
 
 def appliquer_complement(chemin: Path) -> dict:
@@ -487,9 +515,18 @@ def appliquer_complements_si_besoin() -> dict:
 
     for fichier in complements_memorises():
         try:
-            empreinte = f"{fichier.stat().st_mtime_ns}-{fichier.stat().st_size}"
+            etat = fichier.stat()
         except OSError:
             continue
+        # Le récapitulatif entre dans l'empreinte : un export qui ajoute des
+        # dossiers doit leur appliquer ce que le fichier sait déjà, sans quoi
+        # seuls les dossiers présents au premier passage en profiteraient.
+        try:
+            recap = (Path(preferences.get("sortie") or sortie_par_defaut())
+                     / "_recapitulatif.csv").stat().st_mtime_ns
+        except OSError:
+            recap = 0
+        empreinte = f"{etat.st_mtime_ns}-{etat.st_size}-{recap}"
         if vus.get(fichier.name) == empreinte:
             continue
         try:
@@ -1099,13 +1136,19 @@ class Gestionnaire(BaseHTTPRequestHandler):
         """
         oublies = []
         for fichier in complements_memorises():
+            if fichier == SUIVI_INITIAL:
+                # Le suivi livré n'a pas été déposé : il appartient à
+                # l'installation. On cesse de le relire, on ne l'efface pas.
+                oublies.append(fichier.name)
+                continue
             try:
                 fichier.unlink()
             except OSError:
                 continue
             oublies.append(fichier.name)
         memoriser_preferences({"complements": [], "complement": "",
-                               "complements_appliques": {}})
+                               "complements_appliques": {},
+                               "suivi_livre_ecarte": True})
         self._json(200, {"oublies": oublies, "retenus": []})
 
     def _verser_piece(self, demande: dict) -> None:
