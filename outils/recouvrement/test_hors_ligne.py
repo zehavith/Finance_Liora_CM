@@ -112,6 +112,16 @@ def test_dossiers() -> None:
     verifier("filename:FA-2024-0153" in requete, "requête : numéro de facture en pièce jointe")
     verifier("after:2023/09/01" in requete, "requête : borne de date convertie pour Gmail")
 
+    # Les deux critères sont réunis par OU, jamais par ET : connaître
+    # l'adresse ne doit pas restreindre la recherche aux messages qui portent
+    # aussi le numéro. Un dossier qui a une adresse cherche quand même sur sa
+    # facture, et inversement — sinon la moitié des échanges reste invisible.
+    verifier(" AND " not in requete and " OR " in requete,
+             "requête : adresse OU facture, jamais l'une exigeant l'autre")
+    debut = requete.index("marie.dupont@exemple.fr")
+    verifier(requete.index('"FA-2024-0153"') > debut,
+             "requête : les deux critères figurent ensemble dans la même requête")
+
     verifier(len(liste[1].emails) == 2, "deux adresses sur un même dossier")
     verifier(len(liste[2].factures) == 2, "deux factures sur un même dossier")
     verifier(
