@@ -1024,6 +1024,20 @@
         { libelle: 'Un OPCO (les 11, plus les anciens OPCA : Fafih, Opcalia, Agefos, Forco, Fafiec…)',
           motif: /\bopco\b|opco\s*2\s*i|opco2i|\bakto\b|\bafdas\b|\batlas\b|uniformation|ocapiat|constructys|intergros|\banfa\b|opcommerce|\bfafih\b|opcalia|\bagefos\b|\bforco\b|opcalim|\bfafsea\b|\bfafiec\b|opcabaia|\bfaf\.?tt\b|\buniformation\b|\bopcaim\b/,
           fin: 'OPCO', arbitrage: 'opco' },
+        // Le secteur public : communes, mairies, métropoles, ministères,
+        // hôpitaux publics, établissements et instituts nationaux, missions
+        // locales, chambres de métiers. Ce sont vos ETAT — ceux dont la facture
+        // se dépose sur Chorus Pro, le plus souvent en fin de formation, ce qui
+        // est précisément pourquoi leur échéance court depuis la fin de
+        // formation et non depuis la date de facture.
+        //
+        // Cette règle vient après les dispositifs nommés : un Conseil régional
+        // finance une Région, la Caisse des Dépôts un CPF, France Travail une
+        // POEI. Une commune qui achète une formation pour ses agents, elle,
+        // n'entre dans aucun dispositif : c'est l'État qui paie.
+        { libelle: 'Le secteur public : commune, mairie, métropole, ministère, hôpital, institut national',
+          motif: /\bcommune\b|communaute (de communes|d agglomeration)|\bmairie\b|\bmarie de [a-z]|\bville de [a-z]|\bmetropole\b|ministere|\bprefecture\b|\brectorat\b|\bacademie de\b|conseil departemental|\bdepartement de\b|etablissement public|\bcentre hospitalier\b|\bchu\b|\bccas\b|\bcias\b|\bsdis\b|institut national|\binserm\b|\bcnrs\b|\bonisep\b|mission locale|chambre de metiers|services de l etat|centre scientifique et technique/,
+          fin: 'ETAT' },
         // Les entités du groupe sont de l'interco. « Interne - DST Allemagne »
         // est la sous-catégorie de la seule filiale allemande : elle se nomme,
         // les autres non.
@@ -1270,7 +1284,11 @@
         //    validé à la main : Sellsy décrit un client, le référentiel tranche
         //    une facture.
         for (const l of (o.sellsy || [])) {
-            const fin = R.detectFinancement(l.typeClient, o.rules);
+            // Un champ personnalisé qui nomme le dispositif passe devant le
+            // « Type de client » : il est écrit facture par facture, là où le
+            // type décrit le client.
+            const fin = R.detectFinancement(l.financementPersonnalise, o.rules)
+                || R.detectFinancement(l.typeClient, o.rules);
             if (!fin) continue;
             for (const k of [l.cle, l.cleZoho]) {
                 if (k && !parCle.has(k) && !parSellsy.has(k)) parSellsy.set(k, fin);
@@ -1850,6 +1868,38 @@
             avoirsParGroupe.set(l.cleGroupe, e ? (e + ' / ' + l.numero) : l.numero);
         }
 
+        // Ce que le rapprochement sait, au-delà du lettrage.
+        //
+        // Un règlement peut citer sa facture dans le libellé sans être lettré
+        // avec elle : le rapprochement est bon, la comptabilité ne l'a pas
+        // encore acté. Cette facture-là fait foi — son dispositif et son
+        // échéance sont ceux du règlement.
+        const parFacture = new Map();
+        for (const c of (creances || [])) {
+            if (!c.cle || !c.financement) continue;
+            if (!parFacture.has(c.cle)) parFacture.set(c.cle, c);
+        }
+        // Et à défaut de facture nommée, le compte client : quand toutes ses
+        // factures connues relèvent du même dispositif, ses règlements en
+        // relèvent aussi. C'est le classement, pas l'échéance : sans facture
+        // désignée, aucune date n'est due.
+        const parCompteUnanime = (() => {
+            const compte = new Map();
+            for (const c of (creances || [])) {
+                if (!c.financement || !c.compte) continue;
+                const m = compte.get(c.compte) || new Map();
+                m.set(c.financement, (m.get(c.financement) || 0) + 1);
+                compte.set(c.compte, m);
+            }
+            const out = new Map();
+            for (const [k, m] of compte) {
+                let tete = null, teteNb = 0, total = 0;
+                for (const [f, n] of m) { total += n; if (n > teteNb) { teteNb = n; tete = f; } }
+                if (total >= 2 && teteNb / total >= 0.9) out.set(k, tete);
+            }
+            return out;
+        })();
+
         const lignes = [], orphelins = [];
         const NATURES = { facture: 'factures', reglement: 'reglements', avoir: 'avoirs', autre: 'autres' };
         const stats = { factures: 0, reglements: 0, avoirs: 0, autres: 0,
@@ -1858,6 +1908,13 @@
 
         for (const l of (lignesAPlat || [])) {
             let source = parGroupe.get(l.cleGroupe);
+            // La facture que la ligne nomme, quand le lettrage n'en donne pas.
+            // Elle apporte tout : le dispositif, l'échéance, la preuve.
+            if (!source && l.numero) {
+                const f = parFacture.get(I.factureKey(l.numero));
+                if (f) source = { ...f, origineClassement: 'Facture citée par la ligne',
+                                  preuveClassement: l.numero };
+            }
             // Un règlement sans facture dans son lettrage, mais qui cite une
             // facture Filiz, relève de l'alternance comme elle.
             if (!source && /filiz/i.test((l.numero || '') + ' ' + (l.libelle || ''))) {
@@ -1865,6 +1922,17 @@
                            origineClassement: 'Facture Filiz : alternance',
                            preuveClassement: l.numero || 'mention « Filiz »',
                            dateEcheance: null, echeanceBase: '', echeanceMotif: '', numero: l.numero || '' };
+            }
+            // Enfin le compte client, quand il ne connaît qu'un dispositif.
+            // Le classement suit ; l'échéance, non — aucune facture n'est
+            // désignée, il n'y a donc pas de date à laquelle ce règlement
+            // aurait été dû.
+            if (!source) {
+                const fin = parCompteUnanime.get(l.compte);
+                if (fin) source = { financement: fin, typeClient: null,
+                                    origineClassement: 'Financement unanime du compte client',
+                                    preuveClassement: 'toutes les factures connues de ' + (l.compte || ''),
+                                    dateEcheance: null, echeanceBase: '', echeanceMotif: '', numero: '' };
             }
             stats[NATURES[l.nature] || 'autres']++;
             const encaissement = l.nature === 'reglement' || l.nature === 'avoir';
@@ -1874,7 +1942,11 @@
                 typeClient: source ? source.typeClient : null,
                 origineClassement: source
                     ? (l.nature === 'facture' ? source.origineClassement
-                        : 'Hérité de la facture du même lettrage')
+                        : (source.origineClassement === 'Facture citée par la ligne'
+                           || source.origineClassement === 'Financement unanime du compte client'
+                           || source.origineClassement === 'Facture Filiz : alternance')
+                            ? source.origineClassement
+                            : 'Hérité de la facture du même lettrage')
                     : null,
                 // La preuve et l'échéance de la créance du même lettrage : le
                 // grand livre exporté doit pouvoir se relire seul.

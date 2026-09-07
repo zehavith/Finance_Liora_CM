@@ -216,6 +216,30 @@
         })();
         if (colonneAlternance) mapping.alternance = colonneAlternance;
 
+        // Toutes les autres colonnes que l'application n'a pas su placer sont
+        // conservées telles quelles. Ce sont vos champs personnalisés : ils ne
+        // servent peut-être à rien à l'application, mais ils décrivent la
+        // facture, et les perdre à l'import interdirait de s'en servir plus
+        // tard — pour classer, pour retrouver un dossier, pour comprendre une
+        // ligne. Ils ressortent dans les exports, sous leur nom d'origine.
+        const colonnesLibres = entetes.filter(h => !pris.has(h) && h !== colonneAlternance);
+
+        // Un champ personnalisé peut aussi nommer le dispositif de financement
+        // — « CPF », « OPCO », « Transition Pro ». Celui qui le fait pour au
+        // moins la moitié des factures renseignées est retenu comme tel.
+        const colonneFinancement = (() => {
+            let meilleure = null, meilleurTaux = 0;
+            for (const col of colonnesLibres) {
+                const vals = rows.map(r => String(r[col] == null ? '' : r[col]).trim()).filter(Boolean);
+                if (vals.length < 20 || new Set(vals).size > 40) continue;
+                const nb = vals.filter(v => R.detectFinancement(v)).length;
+                const taux = nb / vals.length;
+                if (taux >= 0.5 && taux > meilleurTaux) { meilleurTaux = taux; meilleure = col; }
+            }
+            return meilleure;
+        })();
+        if (colonneFinancement) mapping.financementPersonnalise = colonneFinancement;
+
         const lignes = [];
         let ignorees = 0;
         for (const r of rows) {
@@ -240,6 +264,15 @@
                 alternance: colonneAlternance
                     ? MOTIF_ALTERNANCE.test(String(r[colonneAlternance] || '')) : false,
                 alternanceTexte: colonneAlternance ? String(r[colonneAlternance] || '').trim() : '',
+                // Le dispositif nommé par un champ personnalisé, s'il y en a un.
+                financementPersonnalise: colonneFinancement
+                    ? String(r[colonneFinancement] || '').trim() : '',
+                // Et tous vos autres champs, sous leur nom.
+                champs: colonnesLibres.reduce((o, c) => {
+                    const v = String(r[c] == null ? '' : r[c]).trim();
+                    if (v) o[c] = v;
+                    return o;
+                }, {}),
                 email: mapping.email ? String(r[mapping.email] || '').trim().toLowerCase() : '',
                 client: mapping.client ? String(r[mapping.client] || '').trim() : '',
                 montant,
@@ -279,6 +312,10 @@
             if (!prec.dateFinService) prec.dateFinService = l.dateFinService;
             if (!prec.alternance && l.alternance) {
                 prec.alternance = true; prec.alternanceTexte = l.alternanceTexte;
+            }
+            if (!prec.financementPersonnalise) prec.financementPersonnalise = l.financementPersonnalise;
+            for (const [k, v] of Object.entries(l.champs || {})) {
+                if (!prec.champs[k]) prec.champs[k] = v;
             }
         }
 
