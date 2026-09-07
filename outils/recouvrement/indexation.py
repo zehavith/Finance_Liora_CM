@@ -228,5 +228,35 @@ def ecrire_index_dossier(chemin: Path, lignes: list[LigneIndex]) -> None:
     _ecrire_csv(chemin, COLONNES_INDEX, [ligne.en_rangee() for ligne in lignes])
 
 
+def lire_recapitulatif(chemin: Path) -> list[dict[str, str]]:
+    """Les rangées déjà écrites, ou rien si le fichier n'existe pas encore."""
+    try:
+        texte = chemin.read_text(encoding="utf-8-sig")
+    except OSError:
+        return []
+    return [dict(rangee)
+            for rangee in csv.DictReader(texte.splitlines(), delimiter=";")
+            if (rangee.get("reference") or "").strip()]
+
+
 def ecrire_recapitulatif(chemin: Path, resumes: list[ResumeDossier]) -> None:
-    _ecrire_csv(chemin, COLONNES_RECAP, [resume.en_rangee() for resume in resumes])
+    """Écrit le récapitulatif, en gardant les dossiers qu'il portait déjà.
+
+    Le fichier était remplacé par les seuls dossiers de la passe en cours.
+    Une recherche ponctuelle — un dossier — effaçait donc de la liste les
+    cinquante-deux autres, qui restaient pourtant sur le disque, complets,
+    avec leurs pièces versées. Rien n'était perdu, mais plus rien ne se
+    voyait, ce qui revient au même quand on cherche un dossier.
+
+    Un dossier retraité remplace sa rangée : c'est la passe en cours qui dit
+    la vérité sur lui. Les autres sont reconduits tels quels.
+    """
+    # Réduites aux colonnes du jour : un récapitulatif écrit par une version
+    # antérieure peut en porter d'autres, et le réécrire tel quel échouerait.
+    rangees = {
+        rangee["reference"]: {cle: rangee.get(cle, "") for cle in COLONNES_RECAP}
+        for rangee in lire_recapitulatif(chemin)
+    }
+    for resume in resumes:
+        rangees[resume.reference] = resume.en_rangee()
+    _ecrire_csv(chemin, COLONNES_RECAP, list(rangees.values()))

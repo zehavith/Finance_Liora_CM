@@ -2546,11 +2546,36 @@ def test_recapitulatif_atomique() -> None:
         restes = [f.name for f in Path(repertoire).iterdir() if "en-cours" in f.name]
         verifier(not restes, f"aucun fichier provisoire ne reste ({restes})")
 
-        # Une réécriture plus courte remplace l'ancienne, sans en garder la fin.
+        # Une passe plus courte ne fait pas disparaître les autres dossiers.
+        # Le fichier était remplacé par les seuls dossiers de la passe : une
+        # recherche ponctuelle effaçait de la liste les cinquante-deux autres,
+        # qui restaient pourtant sur le disque avec leurs pièces versées.
         module_indexation.ecrire_recapitulatif(chemin, [resume(i) for i in range(3)])
         lues = chemin.read_text(encoding="utf-8-sig").strip().split("\n")
-        verifier(len(lues) == 4,
-                 f"la réécriture remplace tout le fichier (obtenu : {len(lues)})")
+        verifier(len(lues) == 41,
+                 f"une passe d'un dossier n'efface pas les autres "
+                 f"(obtenu : {len(lues)} lignes)")
+
+        # Un dossier retraité remplace sa rangée : la passe en cours dit la
+        # vérité sur lui, et il ne doit pas figurer deux fois.
+        module_indexation.ecrire_recapitulatif(chemin, [
+            module_indexation.ResumeDossier(
+                reference="FACT-2", nom="Debiteur corrige", emails="a@b.fr",
+                factures="FACT-2", requete="q", repertoire="d2", nb_mails=9),
+        ])
+        rangees = module_indexation.lire_recapitulatif(chemin)
+        verifier(len(rangees) == 40,
+                 f"sans doublon (obtenu : {len(rangees)} dossiers)")
+        corrige = [r for r in rangees if r["reference"] == "FACT-2"]
+        verifier(len(corrige) == 1 and corrige[0]["nom"] == "Debiteur corrige",
+                 f"et c'est la rangée fraîche qui reste ({corrige})")
+
+        # Vider la liste reste possible : c'est « Tout effacer » qui le fait,
+        # en retirant le fichier, non un export plus court.
+        chemin.unlink()
+        module_indexation.ecrire_recapitulatif(chemin, [resume(0)])
+        verifier(len(module_indexation.lire_recapitulatif(chemin)) == 1,
+                 "un récapitulatif retiré repart d'une liste vide")
 
 
 def test_colonnes_vides_signalees() -> None:
@@ -3298,6 +3323,63 @@ console.log(JSON.stringify({{
     # reprendre au clic suivant.
     verifier("CHOISIS.has(d.reference)" in page,
              "les cases cochées survivent au tri")
+
+
+def test_retrouver_les_dossiers_du_disque() -> None:
+    """Un dossier tombé de la liste se retrouve sans refaire d'export."""
+    import export_mails as module_export  # noqa: PLC0415
+    import indexation as module_indexation  # noqa: PLC0415
+    import interface as module_interface  # noqa: PLC0415
+
+    print("\nRetrouver les dossiers restés sur le disque")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        racine = Path(repertoire) / "export"
+        for reference in ("FACT-2405-00409", "FACT-2411-06955"):
+            dossier = racine / reference
+            dossier.mkdir(parents=True)
+            (dossier / "index.csv").write_text(
+                "piece_n;date;heure;sens;expediteur;destinataires;copie;objet;"
+                "nb_pieces_jointes;pieces_jointes;critere;factures_concernees;"
+                "adresses_concernees;boites;fichier_pdf;fichier_eml\n"
+                f"1;21/05/2024;09:30;envoyé;a@liora.io;client@x.fr;;Relance;"
+                f"1;facture.pdf;;{reference};client@x.fr;a@liora.io;p.pdf;p.eml\n",
+                encoding="utf-8-sig",
+            )
+        # Le récapitulatif ne porte plus que le dernier dossier traité.
+        module_indexation.ecrire_recapitulatif(
+            racine / "_recapitulatif.csv",
+            [module_indexation.ResumeDossier(
+                reference="FACT-2411-06955", nom="Djiala", emails="client@x.fr",
+                factures="FACT-2411-06955", requete="q",
+                repertoire="FACT-2411-06955", nb_mails=1)],
+        )
+
+        lignes: list[str] = []
+        nombre = module_export.retrouver_dossiers(racine, lignes.append)
+        verifier(nombre == 1, f"le dossier manquant est retrouvé ({nombre})")
+
+        rangees = {r["reference"]: r for r in module_indexation.lire_recapitulatif(
+            racine / "_recapitulatif.csv")}
+        verifier(sorted(rangees) == ["FACT-2405-00409", "FACT-2411-06955"],
+                 f"la liste porte de nouveau les deux ({sorted(rangees)})")
+        retrouve = rangees["FACT-2405-00409"]
+        verifier(retrouve["nb_mails"] == "1" and retrouve["factures"]
+                 == "fact-2405-00409",
+                 f"avec ce que l'index sait dire de lui ({retrouve['factures']}, "
+                 f"{retrouve['nb_mails']} message)")
+        # Celui qui était déjà là n'est pas retouché : sa rangée vient de
+        # l'export, plus complète que ce que le disque seul peut redire.
+        verifier(rangees["FACT-2411-06955"]["nom"] == "Djiala",
+                 "et celui qui y était garde sa raison sociale")
+
+        # Rejouer ne crée pas de doublon ni ne réécrit ce qui est là.
+        verifier(module_export.retrouver_dossiers(racine, lignes.append) == 0,
+                 "rejouer ne retrouve plus rien : la liste est complète")
+
+    page = module_interface.PAGE
+    verifier('id="retrouver"' in page and '"/api/retrouver"' in page,
+             "la page offre de retrouver les dossiers du disque")
 
 
 def test_arreter_un_export() -> None:
@@ -6903,6 +6985,7 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_tri_des_colonnes()
+    test_retrouver_les_dossiers_du_disque()
     test_arreter_un_export()
     test_absents_de_l_export()
     test_note_refaite_datee_et_recopiee()

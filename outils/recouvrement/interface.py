@@ -1045,6 +1045,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/refaire-notes":
                 self._refaire_notes(self._corps_json())
                 return
+            if chemin == "/api/retrouver":
+                self._retrouver_dossiers()
+                return
             if chemin == "/api/arreter":
                 entendu = EXECUTION.demander_arret()
                 self._json(200, {"arrete": entendu})
@@ -1191,6 +1194,23 @@ class Gestionnaire(BaseHTTPRequestHandler):
         resultat["memorise"] = nom
         resultat["retenus"] = [c.name for c in complements_memorises()]
         self._json(200, resultat)
+
+    def _retrouver_dossiers(self) -> None:
+        """Remet à la liste les dossiers présents sur le disque.
+
+        Rien n'est retéléchargé et rien n'est écrasé : on relit les
+        répertoires déjà constitués, et l'on rend à la liste ceux qu'elle ne
+        porte plus.
+        """
+        sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+        lignes: list[str] = []
+        try:
+            nombre = export_mails.retrouver_dossiers(sortie, lignes.append)
+        except OSError as exc:
+            self._json(400, {"erreur": f"Lecture impossible de {sortie} : {exc}"})
+            return
+        self._json(200, {"retrouves": nombre, "lignes": lignes,
+                         "sortie": str(sortie)})
 
     def _refaire_notes(self, demande: dict | None = None) -> None:
         """Réécrit les notes de synthèse, sans retourner sur Gmail.
@@ -2965,6 +2985,28 @@ async function completerDepuisFichier(evenement) {
   } catch (erreur) { afficherBandeau(false, erreur.message); }
 }
 
+// Le recapitulatif etait remplace par les seuls dossiers de la derniere
+// passe : une recherche ponctuelle effacait de la liste les cinquante-deux
+// autres. Ils etaient toujours sur le disque, complets, avec leurs pieces
+// versees — mais plus rien ne se voyait, ce qui revient au meme.
+async function retrouverDossiers() {
+  const bouton = $("retrouver");
+  bouton.disabled = true;
+  const avant = bouton.textContent;
+  bouton.textContent = "Lecture du disque…";
+  try {
+    const r = await api("/api/retrouver", {});
+    afficherBandeau(true, r.retrouves
+      ? `${r.retrouves} dossier(s) remis à la liste depuis ${r.sortie}. `
+        + "Leurs messages et leurs pièces versées sont intacts ; la raison "
+        + "sociale et le montant reviendront au prochain export."
+      : `Aucun dossier à retrouver dans ${r.sortie} : la liste est déjà `
+        + "complète.");
+    chargerDossiers();
+  } catch (erreur) { afficherBandeau(false, erreur.message); }
+  finally { bouton.disabled = false; bouton.textContent = avant; }
+}
+
 async function toutEffacer() {
   const total = DOSSIERS.length;
   if (!total) { afficherBandeau(false, "Il n'y a rien à effacer."); return; }
@@ -3508,6 +3550,8 @@ function rendreSuivi() {
       <span id="etatComplement" class="retenu">__COMPLEMENT__</span>
       <a id="oublierComplements" class="lien-oubli" hidden
          title="Les fichiers cessent d'être relus. Ce qu'ils ont déjà renseigné reste dans les dossiers.">oublier</a>
+      <button class="secondaire" id="retrouver"
+              title="Relit les répertoires déjà sur le disque et rend à la liste ceux qui n'y figurent plus. Rien n'est retéléchargé, rien n'est écrasé.">Retrouver les dossiers du disque</button>
       <button class="secondaire danger" id="toutEffacer"${
         DOSSIERS.length ? "" : " disabled"}>Tout effacer…</button>
       <span id="compteChoix">Cochez les dossiers à retirer de la liste.</span>
@@ -3526,6 +3570,7 @@ function rendreSuivi() {
     coche.addEventListener("change", majSelection));
   $("supprimer").addEventListener("click", supprimerChoisis);
   $("toutEffacer").addEventListener("click", toutEffacer);
+  $("retrouver").addEventListener("click", retrouverDossiers);
   $("complement").addEventListener("change", completerDepuisFichier);
   $("oublierComplements").dataset.noms = COMPLEMENTS_RETENUS.join("|");
   majOubliComplements(COMPLEMENTS_RETENUS);

@@ -52,6 +52,7 @@ from indexation import (  # noqa: E402
     ResumeDossier,
     ecrire_index_dossier,
     ecrire_recapitulatif,
+    lire_recapitulatif,
 )
 from message import (  # noqa: E402
     FUSEAU_PAR_DEFAUT,
@@ -1078,6 +1079,70 @@ def verser_message(
     )
     ecrire_index_dossier(chemin_index, [*lignes, ligne])
     return ligne
+
+
+def retrouver_dossiers(racine_sortie: Path, journal=None) -> int:
+    """Remet au récapitulatif les dossiers présents sur le disque.
+
+    Le récapitulatif était remplacé par les seuls dossiers de la dernière
+    passe : une recherche ponctuelle effaçait de la liste les cinquante-deux
+    autres. Rien n'était perdu — les répertoires, les messages, les pièces
+    versées étaient tous là — mais plus rien ne se voyait, ce qui revient au
+    même quand on cherche un dossier.
+
+    Reconstitué depuis ce qui est sur le disque : chaque répertoire portant un
+    `index.csv` redonne ses comptes, ses dates et ses factures. Ce que seul le
+    tableau savait — la raison sociale, le montant — ne s'invente pas et
+    revient au prochain export ; le dossier, lui, est de nouveau là.
+    """
+    dire = journal or (lambda _message: None)
+    existants = {r["reference"] for r in lire_recapitulatif(
+        racine_sortie / "_recapitulatif.csv")}
+    retrouves: list[ResumeDossier] = []
+
+    for index in sorted(racine_sortie.glob("*/index.csv")):
+        repertoire = index.parent
+        try:
+            lignes, _textes, _bases, _cles = relire_dossier(repertoire, index)
+        except (OSError, ValueError) as exc:
+            dire(f"    ⚠ {repertoire.name} illisible : {exc}")
+            continue
+
+        from synthese import (  # noqa: PLC0415 - import tardif, cycle
+            adresses_de_ligne, factures_de_ligne,
+        )
+
+        factures, adresses = set(), set()
+        for ligne in lignes:
+            factures |= factures_de_ligne(ligne)
+            adresses |= adresses_de_ligne(ligne)
+        # La référence est le nom du répertoire : c'est lui que l'application
+        # rouvre, et le faire diverger rendrait les liens inertes.
+        reference = repertoire.name
+        if reference in existants:
+            continue
+        dates = [ligne.date for ligne in lignes if ligne.date]
+        retrouves.append(ResumeDossier(
+            reference=reference,
+            nom="",
+            emails=" | ".join(sorted(adresses)),
+            factures=" | ".join(sorted(factures)),
+            requete="",
+            repertoire=reference,
+            statut="retrouvé sur le disque",
+            nb_mails=len(lignes),
+            nb_recus=sum(1 for l in lignes if l.sens == "reçu"),
+            nb_envoyes=sum(1 for l in lignes if l.sens == "envoyé"),
+            nb_pieces_jointes=sum(l.nb_pieces_jointes or 0 for l in lignes),
+            dates=dates,
+        ))
+
+    if retrouves:
+        ecrire_recapitulatif(racine_sortie / "_recapitulatif.csv", retrouves)
+        dire(f"{len(retrouves)} dossier(s) remis à la liste depuis le disque.")
+    else:
+        dire("Aucun dossier à retrouver : la liste est déjà complète.")
+    return len(retrouves)
 
 
 def relire_dossier(
