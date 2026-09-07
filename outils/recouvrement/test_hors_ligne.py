@@ -2844,6 +2844,85 @@ def test_annuaire_entreprises() -> None:
              "les sociétés cessées sont listées, avec le montant en jeu")
 
 
+def test_extrait_zoho_de_bout_en_bout() -> None:
+    """Un extrait Zoho seul suffit à faire chercher les anciens numéros."""
+    print("\nExtrait Zoho : de l'import à la requête Gmail")
+
+    import suivi as module_suivi  # noqa: PLC0415
+    from dossiers import Dossier, charger_grille  # noqa: PLC0415
+    from export_mails import _ajouter_references_saisies  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        racine = Path(repertoire)
+        sortie = racine / "export"
+        sortie.mkdir()
+        (sortie / "d").mkdir()
+        # Les dossiers tels que Monday les donne : numéro Sellsy, montant HT.
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures;date_echeance\n"
+            "FACT-2405-00409;SAS EDEN;d;5 990 €;FACT-2405-00409;30/05/2024\n"
+            "FACT-2406-03723;Serruya Aaron;d;5 100 €;FACT-2406-03723;21/05/2024\n"
+            "FACT-9999-00000;AUTRE SARL;d;1 234 €;FACT-9999-00000;\n",
+            encoding="utf-8-sig")
+
+        # L'extrait Zoho, aux intitulés de l'outil et aux valeurs réelles.
+        extrait = racine / "Factures_Zoho_impayees.csv"
+        extrait.write_text(
+            "N° de facture;Nom du client;Statut de la facture;"
+            "Montant de la facture;Solde;Date d\u2019échéance;E-mail;"
+            "Facture sellsy correspondante\n"
+            # Rien en face côté Sellsy, et 7 188 TTC contre 5 990 HT.
+            "DV-003453;SAS EDEN;En retard;7188;7188;2024-05-30;;\n"
+            # Le numéro Sellsy est renseigné : rapprochement direct.
+            "FA-550-3689-2;Serruya Aaron;En retard;5100;5100;2024-05-21;"
+            "aaronserruya3105@gmail.com;FACT-2406-03723\n"
+            # Soldée : elle ne doit rapprocher personne.
+            "DV-009999;AUTRE SARL;Payé;1234;0;2023-01-01;;\n",
+            encoding="utf-8-sig")
+
+        suivi = racine / "suivi.json"
+        bilan = module_suivi.completer_depuis_grille(
+            charger_grille(extrait),
+            module_suivi.inventaire(sortie, suivi),
+            suivi)
+        etats = module_suivi.charger(suivi)
+
+        verifier(etats.get("FACT-2405-00409", {}).get("references")
+                 == ["DV-003453"],
+                 f"le numéro Zoho rejoint le dossier malgré l'écart de TVA "
+                 f"(obtenu : {etats.get('FACT-2405-00409', {}).get('references')})")
+        verifier(etats.get("FACT-2406-03723", {}).get("references")
+                 == ["FA-550-3689-2"],
+                 "et par la colonne « Facture sellsy correspondante » quand "
+                 "elle est renseignée")
+        verifier(etats.get("FACT-2406-03723", {}).get("adresses")
+                 == ["aaronserruya3105@gmail.com"],
+                 "l'adresse de l'extrait suit")
+        verifier("FACT-9999-00000" not in etats,
+                 f"une facture soldée ne rapproche personne "
+                 f"(obtenu : {sorted(etats)})")
+        verifier(bilan["dossiers"] == 2,
+                 f"deux dossiers complétés (obtenu : {bilan['dossiers']})")
+
+        # Les numéros saisis rejoignent la recherche du prochain export.
+        lot = [Dossier(reference="FACT-2405-00409", nom="SAS EDEN",
+                       factures=["FACT-2405-00409"],
+                       emails=["sufyen.b@gmail.com"],
+                       colonnes={"entreprise": "SAS EDEN",
+                                 "nom prenom de l apprenant": "Benallaoua Sofiane"})]
+        _ajouter_references_saisies(lot, lambda _l: None, suivi)
+        verifier(lot[0].factures == ["FACT-2405-00409", "DV-003453"],
+                 f"le dossier cherche les deux numéros "
+                 f"(obtenu : {lot[0].factures})")
+
+        requete = lot[0].requete_gmail()
+        for terme in ('"FACT-2405-00409"', '"DV-003453"',
+                      'filename:"DV-003453"', '"Benallaoua Sofiane"',
+                      'from:sufyen.b@gmail.com'):
+            verifier(terme in requete,
+                     f"la requête Gmail porte {terme}")
+
+
 def test_fils_completes() -> None:
     """Un fil dont un seul message cite le numéro est repris en entier."""
     print("\nConversations reprises en entier")
@@ -5475,6 +5554,7 @@ def main() -> int:
     test_pieces_versees()
     test_ancienne_reference_facture()
     test_annuaire_entreprises()
+    test_extrait_zoho_de_bout_en_bout()
     test_fils_completes()
     test_note_interne_au_propre()
     test_contexte_saisi()
