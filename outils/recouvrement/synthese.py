@@ -582,8 +582,8 @@ def _recit_contexte(
 
     if piece_engagement:
         phrases.append(
-            f"L'engagement est établi par une pièce du dossier — "
-            f"« {piece_engagement} » —, à vérifier avant transmission."
+            f"L'engagement est établi par une pièce du dossier : "
+            f"« {piece_engagement} »."
         )
 
     # Ce que le service sait et que l'outil ne peut pas savoir : appels
