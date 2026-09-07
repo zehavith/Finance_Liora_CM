@@ -44,7 +44,7 @@ import synthese as module_synthese  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "78"
+VERSION = "79"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -2765,8 +2765,7 @@ async function verserPiece(evenement) {
           + (r.repond ? ` La colonne ${r.repond} passe à « oui ».` : ""))
       + (r.synthese_refaite
          ? " La note de synthèse a été refaite."
-         : ` La note n'a pas pu être refaite (${r.motif}) : elle le sera au`
-           + " prochain export."));
+         : ` La note a été refaite, mais pas au format PDF : ${r.motif}.`));
     chargerDossiers();
   } catch (erreur) { afficherBandeau(false, erreur.message); }
 }
@@ -2804,7 +2803,8 @@ function rendreDocuments() {
           : "",
       ].filter(Boolean).join(" · ") || '<span class="lien inactif">aucun</span>'}</td>
       <td>${d.a_synthese
-        ? `<a class="lien" data-ouvrir="${echapper(d.repertoire)}/synthese.pdf">Note de synthèse</a>`
+        ? `<a class="lien" data-ouvrir="${echapper(d.repertoire)}/`
+          + `${echapper(d.fichier_synthese || "synthese.pdf")}">Note de synthèse</a>`
         : '<span class="lien inactif">pas de note</span>'}</td>
       <td>${piecesVersees(d)}</td>
       <td><a class="lien" data-ouvrir="${echapper(d.repertoire)}">Ouvrir le répertoire</a></td>

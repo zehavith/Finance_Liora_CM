@@ -462,7 +462,28 @@ def ecrire_pdf(contenu_html: str, chemin_pdf: Path) -> tuple[bool, str]:
 
     # Dernier recours : on garde la page HTML, imprimable manuellement.
     chemin_html_temp.write_text(contenu_html, encoding="utf-8")
-    return False, "html"
+
+    # Et l'on retire le PDF précédent, s'il y en avait un. Le laisser en place
+    # est le pire des cas : il porte l'ancienne version, l'application y
+    # renvoie, et l'on croit que la pièce déposée n'a pas été prise en compte
+    # alors qu'elle figure dans la page HTML fraîchement écrite.
+    if chemin_pdf.exists():
+        try:
+            chemin_pdf.unlink()
+        except OSError:
+            # Sous Windows, un PDF ouvert dans un lecteur ne peut être ni
+            # réécrit ni supprimé. C'est la cause la plus fréquente, et la
+            # seule que l'on puisse nommer avec certitude.
+            return False, (
+                "le PDF est ouvert dans un autre programme — fermez-le, puis "
+                "redéposez la pièce. La note à jour est dans synthese.html"
+            )
+        return False, (
+            "aucun moteur PDF disponible — la note à jour est dans "
+            "synthese.html, à côté du PDF retiré"
+        )
+
+    return False, "aucun moteur PDF disponible — note écrite en HTML"
 
 
 # --------------------------------------------------------------------------

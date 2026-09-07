@@ -152,6 +152,9 @@ class Synthese:
     piece_derniere_reponse: int | None = None
     evenements: list[Evenement] = field(default_factory=list)
     doublons_ecartes: int = 0
+    # Messages venus du même débiteur mais nommant d'autres factures : au
+    # dossier, mais hors des comptes qui établissent cette créance-ci.
+    autres_factures: list = field(default_factory=list)
 
     def evenements_de(self, libelle: str) -> list[Evenement]:
         return [ev for ev in self.evenements if ev.libelle == libelle]
@@ -176,11 +179,29 @@ class Synthese:
         return (reference - date).days
 
 
-def analyser(lignes: list[LigneIndex], textes: dict[int, str], doublons: int = 0) -> Synthese:
-    """Construit la synthèse à partir de l'index et du texte de chaque pièce."""
-    synthese = Synthese(nb_pieces=len(lignes), doublons_ecartes=doublons)
+def concerne_une_autre_facture(ligne: LigneIndex) -> bool:
+    """Le message a-t-il été rattaché à une autre facture du même débiteur ?
 
-    for ligne in lignes:
+    Chercher par adresse ramène tout ce qui vient du débiteur. Un message qui
+    ne nomme que d'autres factures ne prouve rien de cette créance-ci :
+    le compter parmi les relances ferait état d'une diligence qui portait
+    sur autre chose.
+    """
+    return (ligne.critere or "").startswith("autre facture")
+
+
+def analyser(lignes: list[LigneIndex], textes: dict[int, str], doublons: int = 0) -> Synthese:
+    """Construit la synthèse à partir de l'index et du texte de chaque pièce.
+
+    Les messages rattachés à une autre facture du même débiteur en sont
+    écartés : ils restent au dossier, consultables, mais ne comptent pas
+    parmi ce qui établit cette créance-ci.
+    """
+    retenues = [l for l in lignes if not concerne_une_autre_facture(l)]
+    synthese = Synthese(nb_pieces=len(retenues), doublons_ecartes=doublons)
+    synthese.autres_factures = [l for l in lignes if concerne_une_autre_facture(l)]
+
+    for ligne in retenues:
         synthese.nb_pieces_jointes += ligne.nb_pieces_jointes
         if synthese.premier is None or ligne.date < synthese.premier:
             synthese.premier = ligne.date
@@ -1083,6 +1104,8 @@ def _bloc_conversations(lignes_index: list[LigneIndex],
     """
     fils: dict[str, list[LigneIndex]] = {}
     for ligne in lignes_index:
+        if concerne_une_autre_facture(ligne):
+            continue
         cle = (ligne.thread_id or "").strip() or f"seul-{ligne.piece_n}"
         fils.setdefault(cle, []).append(ligne)
 
@@ -1147,6 +1170,41 @@ def _bloc_conversations(lignes_index: list[LigneIndex],
     )
 
 
+def _bloc_autres_factures(lignes_index: list[LigneIndex]) -> str:
+    """Les messages du débiteur qui nomment d'autres factures que la nôtre.
+
+    Chercher par adresse les ramène forcément. Les fondre au dossier ferait
+    citer devant un juge une pièce qui parle d'une autre créance ; les
+    supprimer ferait perdre ce qu'on a vu passer. Ils sont donc là, à part,
+    avec le numéro qui les rattache ailleurs.
+    """
+    ecartes = [l for l in lignes_index if concerne_une_autre_facture(l)]
+    if not ecartes:
+        return ""
+
+    rangees = "".join(
+        "<tr>"
+        f'<td class="piece-num">n° {ligne.piece_n}</td>'
+        f"<td>{ligne.date:%d/%m/%Y}</td>"
+        f"<td>{html.escape(ligne.expediteur)}</td>"
+        f"<td>{html.escape(ligne.objet or '(sans objet)')}</td>"
+        f"<td>{html.escape((ligne.critere or '').split(': ', 1)[-1])}</td>"
+        "</tr>"
+        for ligne in ecartes
+    )
+    return (
+        f"<p>{_accorder(len(ecartes), 'message')} du même débiteur "
+        + ("nomment" if len(ecartes) > 1 else "nomme")
+        + " d'autres factures que celle de ce dossier. "
+        + ("Ils sont" if len(ecartes) > 1 else "Il est")
+        + " conservé" + ("s" if len(ecartes) > 1 else "")
+        + " dans le répertoire, mais ne comptent pas parmi les pièces qui "
+        "établissent cette créance.</p>"
+        "<table><tr><th>Pièce</th><th>Date</th><th>De</th><th>Objet</th>"
+        f"<th>Facture citée</th></tr>{rangees}</table>"
+    )
+
+
 def _bloc_reponses(lignes_index: list[LigneIndex], textes: dict[int, str]) -> str:
     """Les réponses du débiteur, une par une, datées et citées.
 
@@ -1156,7 +1214,8 @@ def _bloc_reponses(lignes_index: list[LigneIndex], textes: dict[int, str]) -> st
     numérotée. Chaque extrait est cité tel quel — jamais reformulé, sans quoi
     il ne prouverait plus rien.
     """
-    recues = [ligne for ligne in lignes_index if ligne.sens == "reçu"]
+    recues = [ligne for ligne in lignes_index
+              if ligne.sens == "reçu" and not concerne_une_autre_facture(ligne)]
     if not recues:
         return (
             "<p>Aucune réponse du débiteur ne figure dans les échanges "
@@ -1963,6 +2022,9 @@ Chaque numéro de pièce renvoie au message d'origine, conservé dans le dossier
 
 <h3>B. Réponses du débiteur</h3>
 {_bloc_reponses(lignes, textes or {})}
+
+{_bloc_avec_titre("C. Messages écartés — autres factures du même débiteur",
+                  _bloc_autres_factures(lignes))}
 </div>
 </body></html>
 """

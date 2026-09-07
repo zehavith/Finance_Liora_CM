@@ -165,6 +165,20 @@ REFERENCE_PROBABLE = re.compile(r"\d{3,}")
 _MOTIFS_REFERENCE: dict[str, re.Pattern] = {}
 
 
+# Une référence de facture : des lettres, un séparateur, des chiffres. Assez
+# précis pour ne pas prendre une date, un numéro de téléphone ou un IBAN pour
+# une facture — chacun de ces cas est éprouvé.
+MOTIF_REFERENCE_QUELCONQUE = re.compile(
+    r"(?<![0-9a-z])[a-z]{2,6}[-_./ ]?\d{3,}(?:[-_./]\d{1,})*(?![0-9a-z])",
+    re.IGNORECASE,
+)
+
+
+def _cle_reference(valeur: str) -> str:
+    """Un numéro réduit à ce qui l'identifie, ponctuation ôtée."""
+    return "".join(c for c in str(valeur or "").lower() if c.isalnum())
+
+
 def _motif_reference(valeur: str) -> re.Pattern:
     """Motif de reconnaissance d'un numéro de facture dans un texte.
 
@@ -421,6 +435,51 @@ class Dossier:
         if apprenant and apprenant in texte_message:
             trouves.append("apprenant")
         return "+".join(trouves) if trouves else "indirect"
+
+    def references_etrangeres(self, texte_message: str) -> list[str]:
+        """Les numéros de facture cités qui ne sont pas ceux de ce dossier.
+
+        Chercher par adresse ramène tout ce qui vient du débiteur, y compris
+        ce qui concerne ses autres factures. Un message qui nomme
+        « FACT-2409-05275 » alors que le dossier porte sur
+        « FACT-2405-00409 » ne parle pas de cette créance-ci : le verser au
+        dossier ferait citer devant un juge une pièce qui parle d'autre
+        chose.
+
+        Un numéro doit avoir la forme d'une référence — des lettres, un
+        séparateur, des chiffres — sans quoi une date ou un numéro de
+        téléphone passerait pour une facture.
+        """
+        connues = {
+            _cle_reference(forme)
+            for facture in self.factures
+            for forme in variantes_facture(facture)
+        }
+        connues |= {_cle_reference(self.reference)} if self.reference else set()
+
+        etrangeres: list[str] = []
+        for trouve in MOTIF_REFERENCE_QUELCONQUE.finditer(texte_message or ""):
+            brut = trouve.group(0).strip()
+            if _cle_reference(brut) in connues:
+                continue
+            if brut not in etrangeres:
+                etrangeres.append(brut)
+        return etrangeres
+
+    def concerne_une_autre_facture(self, texte_message: str) -> list[str]:
+        """Le message ne parle-t-il que d'autres factures du même débiteur ?
+
+        Un message qui cite aussi la facture du dossier le concerne : deux
+        créances se règlent souvent dans le même échange. Seul celui qui n'en
+        nomme aucune des nôtres est à mettre de côté.
+        """
+        # Les appelants passent un texte déjà mis en minuscules ; le refaire
+        # ici rend la fonction sûre pour qui l'appellerait autrement, et le
+        # coût est nul.
+        plat = (texte_message or "").lower()
+        if self.factures_citees(plat):
+            return []
+        return self.references_etrangeres(plat)
 
     def factures_citees(self, texte_message: str) -> list[str]:
         """Numéros de facture réellement nommés dans le message.

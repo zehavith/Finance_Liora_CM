@@ -436,7 +436,14 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                     _nombre(rangee.get("sous_dossiers_adresses"))
                 ),
                 "repertoire": str(repertoire),
-                "a_synthese": (repertoire / "synthese.pdf").exists(),
+                # Le PDF quand il existe, la page HTML sinon : quand le PDF
+                # n'a pas pu être réécrit, c'est le HTML qui porte la note à
+                # jour, et c'est lui qu'il faut ouvrir.
+                "a_synthese": ((repertoire / "synthese.pdf").exists()
+                               or (repertoire / "synthese.html").exists()),
+                "fichier_synthese": (
+                    "synthese.pdf" if (repertoire / "synthese.pdf").exists()
+                    else "synthese.html"),
                 "a_index": (repertoire / "index.csv").exists(),
                 # État de suivi
                 "statut": statut,

@@ -2844,6 +2844,132 @@ def test_annuaire_entreprises() -> None:
              "les sociétés cessées sont listées, avec le montant en jeu")
 
 
+def test_note_perimee_retiree() -> None:
+    """Un PDF qui n'a pas pu être réécrit ne doit pas passer pour à jour."""
+    print("\nNote de synthèse périmée")
+
+    from rendu import ecrire_pdf  # noqa: PLC0415
+    import suivi as module_suivi  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        racine = Path(repertoire)
+        pdf = racine / "synthese.pdf"
+        pdf.write_bytes(b"%PDF ancienne version")
+
+        # Sans moteur PDF, la note est écrite en HTML. Laisser le PDF
+        # précédent est le pire des cas : l'application y renvoie, il porte
+        # l'ancienne version, et l'on croit que la pièce déposée n'a pas été
+        # prise en compte alors qu'elle figure dans la page fraîche.
+        reussi, motif = ecrire_pdf("<html><body>note à jour</body></html>", pdf)
+        verifier(not reussi, "sans moteur PDF, l'écriture du PDF échoue")
+        verifier(not pdf.exists(),
+                 "et le PDF périmé est retiré plutôt que laissé en place")
+        verifier((racine / "synthese.html").read_text(encoding="utf-8")
+                 == "<html><body>note à jour</body></html>",
+                 "la note à jour est dans la page HTML")
+        verifier("HTML" in motif and "moteur" in motif,
+                 f"le motif dit ce qui s'est passé (obtenu : {motif!r})")
+
+    # L'application ouvre la note qui existe réellement.
+    with tempfile.TemporaryDirectory() as repertoire:
+        racine = Path(repertoire)
+        sortie = racine / "export"
+        (sortie / "dos").mkdir(parents=True)
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire\nA;Débiteur;dos\n", encoding="utf-8-sig")
+
+        inventaire = module_suivi.inventaire(sortie, racine / "suivi.json")
+        verifier(not inventaire[0]["a_synthese"],
+                 "sans note, rien n'est proposé")
+
+        (sortie / "dos" / "synthese.html").write_text("x", encoding="utf-8")
+        inventaire = module_suivi.inventaire(sortie, racine / "suivi.json")
+        verifier(inventaire[0]["a_synthese"]
+                 and inventaire[0]["fichier_synthese"] == "synthese.html",
+                 f"la page HTML est proposée quand elle est seule "
+                 f"(obtenu : {inventaire[0].get('fichier_synthese')})")
+
+        (sortie / "dos" / "synthese.pdf").write_bytes(b"%PDF")
+        inventaire = module_suivi.inventaire(sortie, racine / "suivi.json")
+        verifier(inventaire[0]["fichier_synthese"] == "synthese.pdf",
+                 "et le PDF reprend la main dès qu'il existe")
+
+    import interface as module_interface  # noqa: PLC0415
+
+    verifier("fichier_synthese" in module_interface.PAGE,
+             "la page ouvre le fichier que le dossier porte vraiment")
+
+
+def test_messages_autre_facture() -> None:
+    """Un message du même débiteur sur une autre facture est mis à part."""
+    print("\nMessages concernant une autre facture")
+
+    import synthese as module_synthese  # noqa: PLC0415
+    from dossiers import Dossier  # noqa: PLC0415
+    from indexation import LigneIndex  # noqa: PLC0415
+
+    dossier = Dossier(reference="FACT-2405-00409", nom="SAS EDEN",
+                      emails=["compta@eden.fr"], factures=["FACT-2405-00409"],
+                      montant_du="5 990 €")
+
+    # Chercher par adresse ramène tout ce qui vient du débiteur.
+    cas = [
+        ("Votre facture FACT-2405-00409 reste impayee.", [], "la nôtre"),
+        ("Concernant la facture FACT-2409-05275, pouvez-vous regulariser ?",
+         ["fact-2409-05275"], "une autre"),
+        ("Les factures FACT-2405-00409 et FACT-2409-05275 sont dues.",
+         [], "les deux : le dossier est concerné"),
+        ("Bonjour, je vous confirme la reception.", [], "aucune : générique"),
+        ("Le 19/12/2024 a 13h00 — montant 5 990,00 EUR, tel 07.55.52.08.49",
+         [], "ni date ni téléphone ne passent pour une facture"),
+    ]
+    for texte, attendu, quoi in cas:
+        obtenu = dossier.concerne_une_autre_facture(texte)
+        verifier(obtenu == attendu,
+                 f"{quoi} → {attendu or 'gardé'} (obtenu : {obtenu})")
+
+    def piece(numero, critere, sens="reçu"):
+        return LigneIndex(
+            piece_n=numero, date=datetime(2024, 5, numero, tzinfo=timezone.utc),
+            sens=sens, expediteur="compta@eden.fr", destinataires="r@liora.io",
+            copie="", objet=f"Message {numero}", nb_pieces_jointes=0,
+            pieces_jointes="", critere=critere, boites="b", fichier_pdf="",
+            fichier_eml="", dossier_pieces_jointes="", thread_id=f"t{numero}",
+            message_id=f"<{numero}>")
+
+    lignes = [
+        piece(1, "adresse+facture", "envoyé"),
+        piece(2, "adresse"),
+        piece(3, "autre facture : FACT-2409-05275"),
+    ]
+    synthese = module_synthese.analyser(lignes, {})
+    verifier(synthese.nb_pieces == 2,
+             f"le message d'une autre facture ne compte pas parmi les pièces "
+             f"(obtenu : {synthese.nb_pieces})")
+    verifier(len(synthese.autres_factures) == 1,
+             "mais il est retenu à part, non perdu")
+
+    note = module_synthese.construire_html(
+        dossier, ["r@liora.io"], lignes, synthese,
+        datetime(2026, 9, 7, tzinfo=timezone.utc), textes={})
+    verifier("Messages écartés — autres factures du même débiteur" in note,
+             "la note les liste sous leur propre titre")
+    verifier("FACT-2409-05275" in note,
+             "en nommant la facture qui les rattache ailleurs")
+    verifier("ne comptent pas parmi les pièces qui établissent cette créance"
+             in note,
+             "et dit pourquoi ils sont à part")
+
+    # Ils ne se glissent ni dans les conversations ni dans les réponses.
+    conversations = module_synthese._bloc_conversations(lignes, {})
+    verifier("Message 3" not in conversations,
+             f"ils ne figurent pas parmi les conversations "
+             f"(obtenu : {conversations[:80]!r})")
+    reponses = module_synthese._bloc_reponses(lignes, {})
+    verifier("une réponse du débiteur" in reponses,
+             f"une seule réponse est comptée, pas deux (obtenu : {reponses[:60]!r})")
+
+
 def test_feuille_emargement() -> None:
     """La feuille d'émargement est reconnue à la forme de son nom."""
     print("\nFeuilles d'émargement")
@@ -5811,6 +5937,8 @@ def main() -> int:
     test_pieces_versees()
     test_ancienne_reference_facture()
     test_annuaire_entreprises()
+    test_note_perimee_retiree()
+    test_messages_autre_facture()
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_pieces_citees_une_fois()

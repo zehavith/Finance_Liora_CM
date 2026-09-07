@@ -865,6 +865,11 @@ def traiter_dossier(
 
         recherchable = message.texte_recherchable
         parties = message.parties
+        # Chercher par adresse ramene tout ce qui vient du debiteur, y compris
+        # ce qui concerne ses autres factures. Ces messages-la sont marques
+        # plutot que fondus dans le dossier : la note les met a part, et rien
+        # n'est perdu.
+        autres_factures = dossier.concerne_une_autre_facture(recherchable)
         lignes.append(
             LigneIndex(
                 piece_n=numero,
@@ -876,7 +881,11 @@ def traiter_dossier(
                 objet=message.objet,
                 nb_pieces_jointes=len(message.pieces_jointes),
                 pieces_jointes=" | ".join(pj.nom for pj in message.pieces_jointes),
-                critere=dossier.criteres_trouves(recherchable),
+                critere=(
+                    "autre facture : " + ", ".join(autres_factures)
+                    if autres_factures
+                    else dossier.criteres_trouves(recherchable)
+                ),
                 factures_concernees=" | ".join(dossier.factures_citees(recherchable)),
                 adresses_concernees=" | ".join(dossier.adresses_citees(parties)),
                 boites=" | ".join(message.boites),
