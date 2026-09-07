@@ -3205,6 +3205,73 @@ def test_pieces_citees_une_fois() -> None:
              "reste cité")
 
 
+def test_complement_reapplique_seul() -> None:
+    """Le fichier retenu se réapplique tout seul dès qu'il change."""
+    print("\nRéapplication automatique du fichier de suivi")
+
+    import interface as module_interface  # noqa: PLC0415
+    import suivi as module_suivi  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        racine = Path(repertoire)
+        sortie = racine / "export"
+        (sortie / "d").mkdir(parents=True)
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures\n"
+            "FACT-2501-07581;Ja REVET;d;1750 €;FACT-2501-07581\n",
+            encoding="utf-8-sig")
+
+        anciennes = (module_interface.RACINE, module_interface.SUIVI,
+                     module_interface.PREFERENCES, module_interface.COMPLEMENTS)
+        module_interface.RACINE = racine
+        module_interface.SUIVI = racine / "suivi.json"
+        module_interface.PREFERENCES = racine / "prefs.json"
+        module_interface.COMPLEMENTS = racine / "complements-suivi"
+        try:
+            module_interface.ecrire_preferences({"sortie": str(sortie)})
+            module_interface.COMPLEMENTS.mkdir()
+            fichier = module_interface.COMPLEMENTS / "publipostage.csv"
+            fichier.write_text(
+                "Numero;Client;Passage en contentieux\n"
+                "FACT-2501-07581;Ja REVET;"
+                "Montant trop faible - Ne peut pas passer en contentieux\n",
+                encoding="utf-8-sig")
+            module_interface.memoriser_preferences(
+                {"complements": ["publipostage.csv"]})
+
+            premier = module_interface.appliquer_complements_si_besoin()
+            verifier(premier["fichiers"] == 1 and premier["etapes"] == 1,
+                     f"le fichier est appliqué sans qu'on le redépose "
+                     f"(obtenu : {premier})")
+
+            # Inchangé : on ne relit pas un classeur de trente mille lignes
+            # à chaque ouverture de la page.
+            second = module_interface.appliquer_complements_si_besoin()
+            verifier(second["fichiers"] == 0,
+                     f"un fichier inchangé n'est pas relu (obtenu : {second})")
+
+            # Une version fraîche déposée au même endroit est reprise seule.
+            import time  # noqa: PLC0415
+
+            time.sleep(0.01)
+            fichier.write_text(
+                "Numero;Client;Passage en contentieux\n"
+                "FACT-2501-07581;Ja REVET;Transmis au service contentieux\n",
+                encoding="utf-8-sig")
+            troisieme = module_interface.appliquer_complements_si_besoin()
+            verifier(troisieme["fichiers"] == 1,
+                     f"une version fraîche est reprise d'elle-même "
+                     f"(obtenu : {troisieme})")
+            etats = module_suivi.charger(module_interface.SUIVI)
+            verifier(etats["FACT-2501-07581"]["statut"] == "transmis-contentieux",
+                     f"et l'étape suit (obtenu : "
+                     f"{etats['FACT-2501-07581'].get('statut')})")
+        finally:
+            (module_interface.RACINE, module_interface.SUIVI,
+             module_interface.PREFERENCES,
+             module_interface.COMPLEMENTS) = anciennes
+
+
 def test_refaire_les_notes() -> None:
     """Les notes se refont sans retourner sur Gmail."""
     print("\nRéécriture des notes de synthèse")
@@ -3378,6 +3445,27 @@ def test_colonnes_du_suivi_a_la_main() -> None:
                  f"(obtenu : {apres_import['FACT-2405-03070'].get('statut')})")
         verifier(bilan["etapes"] == 1,
                  f"le bilan compte les étapes reprises (obtenu : {bilan['etapes']})")
+
+        # Le tableau évolue : le dossier passe au contentieux. L'étape que le
+        # tableau avait posée doit suivre — sinon il faudrait tout ressaisir.
+        fichier.write_text(
+            "Numero;Client;Passage en contentieux\n"
+            "FACT-2501-07581;Ja REVET;Transmis au service contentieux\n"
+            "FACT-2405-03070;Jihane El gasmi;Transmis au service contentieux\n",
+            encoding="utf-8-sig")
+        module_suivi.completer_depuis_grille(
+            charger_grille(fichier),
+            module_suivi.inventaire(sortie, chemin), chemin)
+        suite = module_suivi.charger(chemin)
+        verifier(suite["FACT-2501-07581"]["statut"] == "transmis-contentieux",
+                 f"une étape venue du tableau se met à jour depuis le tableau "
+                 f"(obtenu : {suite['FACT-2501-07581'].get('statut')})")
+        verifier(suite["FACT-2405-03070"]["statut"] == "avocats",
+                 f"celle posée à la main ne bouge toujours pas "
+                 f"(obtenu : {suite['FACT-2405-03070'].get('statut')})")
+        verifier(len(suite["FACT-2501-07581"].get("historique") or []) == 2,
+                 f"le passage d'une étape à l'autre est daté "
+                 f"(obtenu : {suite['FACT-2501-07581'].get('historique')})")
 
 
 def test_extrait_zoho_de_bout_en_bout() -> None:
@@ -6128,6 +6216,7 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_pieces_citees_une_fois()
+    test_complement_reapplique_seul()
     test_refaire_les_notes()
     test_colonnes_du_suivi_a_la_main()
     test_extrait_zoho_de_bout_en_bout()

@@ -44,7 +44,7 @@ import synthese as module_synthese  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "83"
+VERSION = "84"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -470,6 +470,45 @@ def appliquer_complement(chemin: Path) -> dict:
     raise ErreurDossiers(dernier_echec or f"{chemin.name} illisible.")
 
 
+def appliquer_complements_si_besoin() -> dict:
+    """Réapplique les fichiers de suivi retenus, quand ils ont changé.
+
+    Un fichier déposé une fois vaut pour toujours : chaque fois qu'on en
+    dépose une version fraîche au même endroit — ou qu'on met à jour celui
+    qui est retenu — l'application le reprend d'elle-même, sans qu'il faille
+    repasser par « Compléter depuis un fichier ».
+
+    La date de dernière application est mémorisée par fichier : sans elle,
+    chaque ouverture de la page relirait un classeur de trente mille lignes.
+    """
+    preferences = lire_preferences()
+    vus = dict(preferences.get("complements_appliques") or {})
+    bilan = {"fichiers": 0, "dossiers": 0, "adresses": 0, "etapes": 0}
+
+    for fichier in complements_memorises():
+        try:
+            empreinte = f"{fichier.stat().st_mtime_ns}-{fichier.stat().st_size}"
+        except OSError:
+            continue
+        if vus.get(fichier.name) == empreinte:
+            continue
+        try:
+            part = appliquer_complement(fichier)
+        except Exception:  # noqa: BLE001 - jamais bloquant pour l'affichage
+            # Un fichier devenu illisible ne doit pas empêcher la liste de
+            # s'afficher. Il sera signalé au prochain dépôt manuel.
+            vus[fichier.name] = empreinte
+            continue
+        vus[fichier.name] = empreinte
+        bilan["fichiers"] += 1
+        for cle in ("dossiers", "adresses", "etapes"):
+            bilan[cle] += part.get(cle, 0)
+
+    if vus != (preferences.get("complements_appliques") or {}):
+        memoriser_preferences({"complements_appliques": vus})
+    return bilan
+
+
 def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[bool, str]:
     """Réécrit la note de synthèse d'un dossier déjà exporté.
 
@@ -781,6 +820,11 @@ class Gestionnaire(BaseHTTPRequestHandler):
             racine = Path(lire_preferences().get("sortie") or sortie_par_defaut())
             import entreprises as module_entreprises  # noqa: PLC0415
 
+            # Le fichier de suivi retenu s'applique tout seul dès qu'il a
+            # changé : redéposer le même fichier à chaque mise à jour était
+            # une corvée, et l'oublier laissait la liste en retard sur ce que
+            # le service sait déjà.
+            appliquer_complements_si_besoin()
             dossiers = module_suivi.inventaire(racine, SUIVI)
             annuaire = module_entreprises.charger_annuaire(ANNUAIRE)
             # La fiche publique voyage avec le dossier : la page en a besoin
@@ -996,6 +1040,14 @@ class Gestionnaire(BaseHTTPRequestHandler):
                    if n != depot.name]
         memoriser_preferences({"complements": [*retenus, depot.name]})
 
+        # Le fichier vient d'être appliqué : on note son empreinte pour que la
+        # page ne le relise pas aussitôt. Il le sera de nouveau, tout seul, à
+        # la première version différente déposée au même nom.
+        vus = dict(lire_preferences().get("complements_appliques") or {})
+        etat = depot.stat()
+        vus[depot.name] = f"{etat.st_mtime_ns}-{etat.st_size}"
+        memoriser_preferences({"complements_appliques": vus})
+
         resultat["memorise"] = nom
         resultat["retenus"] = [c.name for c in complements_memorises()]
         self._json(200, resultat)
@@ -1052,7 +1104,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
             except OSError:
                 continue
             oublies.append(fichier.name)
-        memoriser_preferences({"complements": [], "complement": ""})
+        memoriser_preferences({"complements": [], "complement": "",
+                               "complements_appliques": {}})
         self._json(200, {"oublies": oublies, "retenus": []})
 
     def _verser_piece(self, demande: dict) -> None:

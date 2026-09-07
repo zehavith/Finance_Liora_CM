@@ -884,21 +884,33 @@ def completer_depuis_grille(
         # L'étape écrite dans le tableau du service est reprise, mais jamais
         # par-dessus une étape posée à la main dans l'application : celle-ci
         # est plus récente et plus sûre, et l'écraser effacerait un travail.
-        etape = etape_depuis_tableau(getattr(ligne, "etape", ""))
-        if etape and not entree.get("statut") and not entree.get("historique"):
+        brut_etape = " ".join(str(getattr(ligne, "etape", "")).split())
+        etape = etape_depuis_tableau(brut_etape)
+        # On reprend l'étape du tableau tant que personne n'y a touché ici :
+        # soit le dossier n'a aucune étape, soit celle qu'il porte est
+        # exactement celle que ce même tableau avait posée. Une étape saisie
+        # dans l'application, elle, ne se laisse jamais écraser — elle est
+        # plus récente et plus sûre.
+        posee_par_le_tableau = (
+            entree.get("etape_tableau")
+            and entree.get("statut") == etape_depuis_tableau(entree["etape_tableau"])
+        )
+        vierge = not entree.get("statut") and not entree.get("historique")
+        if etape and (vierge or posee_par_le_tableau) and entree.get("statut") != etape:
             entree["statut"] = etape
-            entree["historique"] = [{
-                "statut": etape,
-                "date": datetime.now().strftime("%d/%m/%Y"),
-            }]
+            entree["historique"] = [
+                *(entree.get("historique") or []),
+                {"statut": etape, "date": datetime.now().strftime("%d/%m/%Y")},
+            ]
             etapes += 1
             completes += 1
+        if etape:
+            entree["etape_tableau"] = brut_etape
             # Le motif de la décision vaut d'être conservé : « montant trop
             # faible », « pas de convention » expliquent l'abandon, et sans
             # eux la liste des dossiers abandonnés est incompréhensible.
-            motif = " ".join(str(getattr(ligne, "etape", "")).split())
-            if motif and not entree.get("note"):
-                entree["note"] = motif
+            if brut_etape and not entree.get("note"):
+                entree["note"] = brut_etape
 
         apports = {
             "convention": (ligne.convention_signee or "").strip(),
