@@ -55,6 +55,12 @@
         if (a('interval_unit', 'intervalle') || (a('start_date') && a('count'))) return 'abonnements';
         if (a('given_name', 'family_name', 'prenom', 'nom_de_famille')) return 'clients';
         if (a('scheme') && a('links_customer')) return 'mandats';
+        // Les versements : ce que GoCardless a viré sur le compte en banque,
+        // après ses frais. Le fichier ne parle d'aucun client — il parle du
+        // compte créditeur — et se reconnaît à sa date d'arrivée en banque.
+        if (a('arrival_date', 'date_d_arrivee')
+            && a('links_creditor', 'links_creditor_bank_account')) return 'versements';
+        if (a('arrival_date') && a('total_payment_amount')) return 'versements';
         // Repli : un export de paiements sans charge_date reste reconnaissable
         if (a('links_mandate') && a('amount') && a('status')) return 'paiements';
         if (a('email') && a('id')) return 'clients';
@@ -145,6 +151,108 @@
             dateDebut: R.parseDate(champ(r, 'start_date')),
             dateFin: R.parseDate(champ(r, 'end_date')),
         })).filter(a => a.id);
+    }
+
+    /**
+     * Les versements GoCardless : l'argent qui arrive réellement en banque.
+     *
+     * Un versement n'est pas un prélèvement. GoCardless encaisse les
+     * prélèvements un par un, retient ses frais, et vire le net au compte de
+     * l'entreprise en un seul virement. C'est ce virement que la banque voit,
+     * et c'est lui qu'il faut retrouver au grand livre — pas la somme des
+     * prélèvements, qui ne tombera jamais juste tant que les frais ne sont pas
+     * déduits.
+     *
+     * `montant` est le net reçu, `montantBrut` le total prélevé aux clients,
+     * et la différence, ce que GoCardless a gardé.
+     */
+    function normaliserVersements(rows) {
+        return rows.map(r => {
+            const net = I.parseMontant(champ(r, 'amount', 'montant'));
+            const brut = I.parseMontant(champ(r, 'total_payment_amount', 'montant_total'));
+            const frais = ['transaction_fee_debit', 'app_fee_debit', 'surcharge_fee_debit', 'tax_debit']
+                .reduce((s, c) => s + (I.parseMontant(champ(r, c)) || 0), 0);
+            const avoirs = ['transaction_fee_credit', 'app_fee_credit', 'surcharge_fee_credit', 'tax_credit']
+                .reduce((s, c) => s + (I.parseMontant(champ(r, c)) || 0), 0);
+            return {
+                id: champ(r, 'id'),
+                reference: champ(r, 'reference'),
+                montant: net,
+                montantBrut: brut != null ? brut : net,
+                frais: Math.round((frais - avoirs) * 100) / 100,
+                devise: champ(r, 'currency', 'devise') || 'EUR',
+                statut: champ(r, 'status', 'statut'),
+                dateCreation: R.parseDate(champ(r, 'created_at')),
+                dateArrivee: R.parseDate(champ(r, 'arrival_date', 'date_d_arrivee')),
+                compteBancaire: champ(r, 'links.creditor_bank_account', 'links_creditor_bank_account'),
+                creancier: champ(r, 'links.creditor', 'links_creditor'),
+            };
+        }).filter(v => v.id || v.montant != null);
+    }
+
+    /**
+     * Les versements, mois par mois et compte bancaire par compte bancaire.
+     *
+     * Ce que la trésorerie cherche : combien est arrivé, combien GoCardless a
+     * gardé, et sur quel compte. Le taux de frais se lit d'un coup d'œil —
+     * s'il dérive, c'est que la nature des prélèvements a changé, les rejets
+     * et les représentations coûtant plus cher.
+     */
+    function analyserVersements(versements) {
+        const v = versements || [];
+        const net = v.reduce((s, x) => s + (x.montant || 0), 0);
+        const brut = v.reduce((s, x) => s + (x.montantBrut || 0), 0);
+        const frais = v.reduce((s, x) => s + (x.frais || 0), 0);
+        const parMois = new Map(), parCompte = new Map();
+        for (const x of v) {
+            const d = x.dateArrivee || x.dateCreation;
+            const k = d ? d.toISOString().slice(0, 7) : 'sans date';
+            const m = parMois.get(k) || { mois: k, nb: 0, net: 0, brut: 0, frais: 0 };
+            m.nb++; m.net += x.montant || 0; m.brut += x.montantBrut || 0; m.frais += x.frais || 0;
+            parMois.set(k, m);
+            const c = parCompte.get(x.compteBancaire) || { compte: x.compteBancaire, nb: 0, net: 0 };
+            c.nb++; c.net += x.montant || 0;
+            parCompte.set(x.compteBancaire, c);
+        }
+        const dates = v.map(x => x.dateArrivee || x.dateCreation).filter(Boolean).sort((a, b) => a - b);
+        return {
+            nb: v.length,
+            net: Math.round(net * 100) / 100,
+            brut: Math.round(brut * 100) / 100,
+            frais: Math.round(frais * 100) / 100,
+            tauxFrais: brut ? frais / brut : 0,
+            premiere: dates[0] || null,
+            derniere: dates[dates.length - 1] || null,
+            parMois: [...parMois.values()].sort((a, b) => a.mois.localeCompare(b.mois)),
+            parCompte: [...parCompte.values()].sort((a, b) => b.net - a.net),
+        };
+    }
+
+    /**
+     * Les versements, confrontés à ce que le grand livre en dit.
+     *
+     * Pennylane recopie la référence du versement dans le libellé des
+     * écritures de prélèvement — « … payment_paid_out DSTTRAINING-JRGX2Z ».
+     * Un versement dont la référence n'apparaît nulle part au grand livre est
+     * un virement reçu que la comptabilité n'a pas ventilé : il est donc à
+     * chercher, et c'est de l'argent encaissé qui ne solde encore aucune
+     * facture.
+     */
+    function rapprocherVersements(versements, refsGrandLivre) {
+        const connues = refsGrandLivre instanceof Set
+            ? refsGrandLivre : new Set(refsGrandLivre || []);
+        const norm = r => String(r || '').trim().toUpperCase();
+        const trouves = [], absents = [];
+        for (const v of (versements || [])) {
+            (connues.has(norm(v.reference)) ? trouves : absents).push(v);
+        }
+        const somme = l => Math.round(l.reduce((s, x) => s + (x.montant || 0), 0) * 100) / 100;
+        return {
+            nbTrouves: trouves.length, euroTrouves: somme(trouves),
+            nbAbsents: absents.length, euroAbsents: somme(absents),
+            absents: absents.sort((a, b) => (b.dateArrivee || 0) - (a.dateArrivee || 0)),
+            part: (versements && versements.length) ? trouves.length / versements.length : 0,
+        };
     }
 
     /**
@@ -528,6 +636,7 @@
     global.LioraPrelevements = {
         STATUTS, LIBELLE_STATUT, classerStatut, detecterType, champ,
         normaliserPaiements, normaliserClients, normaliserMandats, normaliserAbonnements,
+        normaliserVersements, analyserVersements, rapprocherVersements,
         cleApprenant, construireApprenants, analyserApprenant,
         detecterUniteMontant, appliquerUnite,
         statistiques, survie, distributionRang, echecsParMois, motifsEchec, qualite,

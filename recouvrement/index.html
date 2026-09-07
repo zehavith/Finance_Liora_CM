@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.47.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.47.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.47.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.47.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.47.0">
-    <link rel="stylesheet" href="styles.css?v=2.47.0">
+    <script src="../vendor/chart.umd.min.js?v=2.48.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.48.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.48.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.48.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.48.0">
+    <link rel="stylesheet" href="styles.css?v=2.48.0">
 </head>
 <body>
 
@@ -947,6 +947,9 @@
                 <p>
                     Déposez ci-dessous les exports du tableau de bord GoCardless. Les fichiers sont
                     reconnus automatiquement à leurs colonnes — l'ordre et le nombre n'importent pas.
+                    Deux lectures sont possibles, indépendantes l'une de l'autre : <strong>Payouts</strong>
+                    seul suffit à voir ce qui est arrivé en banque ; <strong>Payments</strong> et
+                    <strong>Customers</strong> ouvrent le détail apprenant par apprenant.
                 </p>
                 <div class="besoin-grid">
                     <div class="besoin besoin-requis">
@@ -965,6 +968,13 @@
                         <strong>Mandates</strong><span>utile</span>
                         <p>Fait le lien entre prélèvement et apprenant si Payments ne le porte pas.</p>
                     </div>
+                    <div class="besoin">
+                        <strong>Payouts</strong><span>trésorerie</span>
+                        <p>Les virements que GoCardless vous a faits : le net arrivé en banque, le
+                           brut prélevé aux clients et les frais retenus. Il se lit seul, sans aucun
+                           autre fichier, et c'est le seul montant que le relevé bancaire confirme —
+                           la somme des prélèvements, elle, ne s'y retrouvera jamais.</p>
+                    </div>
                 </div>
                 <div class="upload-zone upload-zone-sm" id="prlv-drop">
                     <p class="upload-text">Glissez vos exports GoCardless ici</p>
@@ -974,6 +984,32 @@
             </div>
 
             <div id="prlv-contenu" hidden>
+                <!-- Ce qui est arrivé en banque. Lisible sans aucun autre
+                     fichier : l'export Payouts se suffit à lui-même. -->
+                <div id="prlv-versements" hidden>
+                    <div class="recup-grid" id="prlv-vers-kpi"></div>
+                    <p class="aide-bloc" id="prlv-vers-aide"></p>
+                    <div class="charts-grid">
+                        <div class="chart-card chart-wide">
+                            <div class="chart-header">
+                                <h3>Ce que GoCardless a viré en banque, mois par mois</h3>
+                                <button class="btn btn-ghost btn-sm" id="btn-vers-export">Exporter</button>
+                            </div>
+                            <span class="fv-hint">
+                                En barres, le net réellement crédité sur le compte. La ligne, c'est la
+                                part que GoCardless a retenue au passage (frais de transaction et taxe).
+                            </span>
+                            <div class="chart-container chart-tall"><canvas id="chart-versements"></canvas></div>
+                        </div>
+                    </div>
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header"><h3>Versements et grand livre</h3></div>
+                        <span class="fv-hint" id="prlv-vers-rappro"></span>
+                        <div class="table-wrap" id="prlv-vers-table"></div>
+                    </div>
+                </div>
+
+                <div id="prlv-detail">
                 <div class="table-toolbar">
                     <div class="seg" id="seg-prlv-fenetre">
                         <button class="seg-btn active" data-fenetre="0">Tout l'historique</button>
@@ -1066,7 +1102,8 @@
                         <input type="file" id="prlv-file-input-2" accept=".csv,.xlsx,.xls" multiple hidden>
                     </div>
                 </div>
-            </div>
+                </div><!-- /prlv-detail -->
+            </div><!-- /prlv-contenu -->
         </div>
     </div>
 
@@ -1368,16 +1405,16 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.47.0"></script>
-<script src="js/store.js?v=2.47.0"></script>
-<script src="js/monday.js?v=2.47.0"></script>
-<script src="js/ingest.js?v=2.47.0"></script>
-<script src="js/metrics.js?v=2.47.0"></script>
-<script src="js/prelevements.js?v=2.47.0"></script>
-    <script src="js/grandlivre.js?v=2.47.0"></script>
-    <script src="js/sellsy.js?v=2.47.0"></script>
-    <script src="js/zoho.js?v=2.47.0"></script>
-<script src="js/ui.js?v=2.47.0"></script>
-<script src="app.js?v=2.47.0"></script>
+<script src="js/rules.js?v=2.48.0"></script>
+<script src="js/store.js?v=2.48.0"></script>
+<script src="js/monday.js?v=2.48.0"></script>
+<script src="js/ingest.js?v=2.48.0"></script>
+<script src="js/metrics.js?v=2.48.0"></script>
+<script src="js/prelevements.js?v=2.48.0"></script>
+    <script src="js/grandlivre.js?v=2.48.0"></script>
+    <script src="js/sellsy.js?v=2.48.0"></script>
+    <script src="js/zoho.js?v=2.48.0"></script>
+<script src="js/ui.js?v=2.48.0"></script>
+<script src="app.js?v=2.48.0"></script>
 </body>
 </html>

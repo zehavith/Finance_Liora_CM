@@ -363,6 +363,44 @@
      *   et il n'y a plus rien à relancer ;
      * — partiellement réglée : le groupe ne se solde pas, il reste dû.
      */
+    /**
+     * Ce que le libellé d'une écriture dit du prélèvement GoCardless.
+     *
+     * Pennylane recopie dans le libellé de ligne la référence du prélèvement
+     * telle que GoCardless la fournit :
+     *
+     *   « Nadia … FACT-2504-09170 MD003RX8BFJW25 payment_paid_out DSTTRAINING-JRGX2Z »
+     *
+     * Trois informations y sont, que le classeur de trésorerie va chercher
+     * dans un export séparé : l'identifiant du mandat — c'est la colonne AT,
+     * « le client est-il prélevé ? » —, le sort du prélèvement — c'est le
+     * filtre « paid_out » de la colonne AS —, et la référence du versement,
+     * qui relie l'écriture au virement réellement reçu en banque.
+     *
+     * Les lire ici évite de dépendre d'un export GoCardless : le grand livre
+     * les porte déjà, et il fait foi.
+     */
+    const MANDAT_GCL = /\bMD[0-9A-Z]{8,}\b/;
+    const STATUT_GCL = /\bpayment_(paid_out|failed|charged_back|cancelled|confirmed|submitted|pending_submission)\b/i;
+    const VERSEMENT_GCL = /\b([A-Z][A-Z0-9]{3,}-[A-Z0-9]{5,})\b/;
+
+    function tracesGocardless(texte) {
+        const t = String(texte || '');
+        if (!t) return null;
+        const m = MANDAT_GCL.exec(t);
+        const st = STATUT_GCL.exec(t);
+        if (!m && !st) return null;
+        // La référence du versement n'a de sens qu'accompagnée du reste :
+        // seule, la forme « XXXX-YYYYY » attraperait n'importe quel numéro
+        // de facture.
+        const v = VERSEMENT_GCL.exec(t.replace(MANDAT_GCL, ' '));
+        return {
+            mandat: m ? m[0] : '',
+            statut: st ? st[1].toLowerCase() : '',
+            versement: v ? v[1] : '',
+        };
+    }
+
     function lireComptable(rows, mapping, opts) {
         const o = opts || {};
         const connus = o.numerosConnus;
@@ -376,6 +414,11 @@
         // lignes datées sont des règlements — sans cette table, les dates de la
         // facture restaient sur des lignes qui ne sont pas elle.
         const datesParNumero = new Map();
+        // Ce que le grand livre sait des prélèvements, compte client par
+        // compte client : les mandats vus, ce qui est réellement sorti en
+        // « paid_out », et les rejets. C'est la matière des colonnes AT et AS
+        // du classeur, mais prise à la source comptable.
+        const prelevements = new Map();
         let ignorees = 0, numerosExtraits = 0;
         for (const r of rows) {
             const lettre = lettreDe(col(r, 'lettrage'));
@@ -507,6 +550,27 @@
                 sousCategorieFichier: String(col(r, 'sousCategorie') || '').trim(),
                 numeroZoho: texteBrut(col(r, 'numeroExtrait')),
             };
+            // Les traces GoCardless que porte le libellé : mandat, sort du
+            // prélèvement, référence du versement reçu en banque.
+            const gcl = tracesGocardless(brut.libelleLigne + ' ' + brut.libellePiece);
+            if (gcl) {
+                brut.mandatId = gcl.mandat;
+                brut.statutPrelevement = gcl.statut;
+                brut.refVersement = gcl.versement;
+                let p = prelevements.get(compte);
+                if (!p) {
+                    p = { mandats: new Set(), versements: new Set(), paidOut: 0,
+                          nbPaidOut: 0, rejets: 0, nbRejets: 0, nbLignes: 0 };
+                    prelevements.set(compte, p);
+                }
+                p.nbLignes++;
+                if (gcl.mandat) p.mandats.add(gcl.mandat);
+                if (gcl.versement) p.versements.add(gcl.versement);
+                if (gcl.statut === 'paid_out') { p.paidOut += credit; p.nbPaidOut++; }
+                else if (gcl.statut === 'failed' || gcl.statut === 'charged_back') {
+                    p.rejets += debit || credit; p.nbRejets++;
+                }
+            }
             const ligne = {
                 brut,
                 numero, numeroExtrait, qualif, date, debit, credit, journal,
@@ -623,7 +687,7 @@
         }
 
         return { lignes: resultats, groupes: [...groupes.values()], ignorees, datesParNumero,
-                 numerosExtraits, comptable: true };
+                 prelevements, numerosExtraits, comptable: true };
     }
 
     // ──────────────────────────────────────────────
@@ -659,7 +723,8 @@
                 dateFacture: null, dateEcheance: null, avoirs: [],
             });
         }
-        return { lignes, groupes: [], ignorees: rows.length - lignes.length, comptable: false };
+        return { lignes, groupes: [], ignorees: rows.length - lignes.length,
+                 prelevements: new Map(), comptable: false };
     }
 
     /**
@@ -763,6 +828,47 @@
         };
     }
 
+    /**
+     * Ce que le grand livre sait des prélèvements du compte, posé sur chaque
+     * créance.
+     *
+     * Le mandat appartient au client, pas à la facture : dès qu'une écriture
+     * du compte porte un identifiant de mandat, le client est prélevé, et
+     * toutes ses factures arrivent à échéance à la fin de la formation — c'est
+     * la deuxième branche de votre colonne AC. Le montant « paid_out » est
+     * celui de votre colonne AS, mais lu au grand livre plutôt que dans un
+     * export GoCardless : ce sont les mêmes prélèvements, du côté comptable.
+     */
+    function poserPrelevements(liste, prelevements) {
+        if (!prelevements || !prelevements.size) return liste;
+        for (const c of liste) {
+            const p = prelevements.get(c.compte);
+            if (!p) continue;
+            c.mandatGclLivre = p.mandats.size > 0;
+            c.mandatsLivre = [...p.mandats].join(' · ');
+            c.preleveLivre = p.paidOut;
+            c.nbPrelevementsLivre = p.nbPaidOut;
+            c.rejetsLivre = p.rejets;
+            c.nbRejetsLivre = p.nbRejets;
+            c.versementsLivre = [...p.versements].join(' · ');
+        }
+        return liste;
+    }
+
+    /**
+     * Les références de versement GoCardless citées par le grand livre.
+     *
+     * Elles servent à savoir quel virement reçu a été ventilé en comptabilité
+     * et lequel ne l'a pas encore été.
+     */
+    function referencesVersement(lu) {
+        const out = new Set();
+        for (const p of ((lu && lu.prelevements) || new Map()).values()) {
+            for (const r of p.versements) out.add(String(r).trim().toUpperCase());
+        }
+        return out;
+    }
+
     function creancesOuvertes(lu) {
         const ouvertes = [];
         for (const g of lu.groupes) {
@@ -802,7 +908,7 @@
                 });
             }
         }
-        return ouvertes;
+        return poserPrelevements(ouvertes, lu.prelevements);
     }
 
     /**
@@ -833,7 +939,7 @@
                 out.push(l);
             }
         }
-        return out;
+        return poserPrelevements(out, lu.prelevements);
     }
 
     // Un groupe sans facture n'a pas de libellé unique : on retient celui de
@@ -1298,10 +1404,20 @@
                 dateEcheance: c.dateEcheance || (d && d.echeance) || c.dateEcheanceRepli || null,
                 // Le mandat change la règle d'échéance ; le montant prélevé dit
                 // ce qui est déjà rentré par ce canal, rejets exclus.
+                // Le mandat qui décide de l'échéance est celui que vous
+                // retenez : l'export GoCardless retrouvé par l'e-mail, ou la
+                // colonne de mandat de votre extrait.
+                //
+                // Le grand livre en connaît d'autres — il cite l'identifiant du
+                // mandat dans le libellé de 1 316 écritures — mais les prendre
+                // pour argent comptant éloigne la balance de votre classeur :
+                // la concordance d'échéance tombe de 96 % à 92 %. Ils sont donc
+                // montrés et exportés, sans changer l'échéance : c'est à vous
+                // de trancher, pas à l'application de décider en silence.
                 mandatGocardless: !!(gcl && gcl.etat) || !!c.mandatEtatFichier,
                 etatMandat: gcl ? gcl.etat : '',
-                montantPreleve: gcl ? gcl.preleve : 0,
-                nbPrelevements: gcl ? gcl.nb : 0,
+                montantPreleve: (gcl && gcl.preleve) || c.preleveLivre || 0,
+                nbPrelevements: (gcl && gcl.nb) || c.nbPrelevementsLivre || 0,
             };
         };
 
@@ -1913,7 +2029,7 @@
         estEntreprise,
         regleCorrespond, financementParRegles, porteeDesRegles, etiquetteRegle,
         A_CLASSER, POOL_NON_LETTRE, MOTIFS_NUMERO, numeroDepuisTexte,
-        creancesOuvertes, facturesToutes, classer, classerEcritures, propositionsRapprochement,
+        creancesOuvertes, facturesToutes, referencesVersement, classer, classerEcritures, propositionsRapprochement,
         pointageParMois, ecrituresAPlat, balanceAgee, comparer,
         dateDepuisTexte,
         MOTIFS_COMPTE, financementDuLibelle, typeDeClient, SEUIL_POEI,

@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.47.0';
+    const VERSION = '2.48.0';
     const VERSION_DATE = '7 septembre 2026';
 
     const R = window.LioraRules;
@@ -75,7 +75,8 @@
         glComparaison: null,
 
         // Prélèvements GoCardless
-        gcl: { paiements: [], clients: [], mandats: [], abonnements: [], fichiers: [], unite: null },
+        gcl: { paiements: [], clients: [], mandats: [], abonnements: [], versements: [],
+               fichiers: [], unite: null },
         derniereActualisation: null,
         chargementEnCours: false,
         apprenants: [],
@@ -215,11 +216,15 @@
 
         try {
             const gcl = await S.get(S.KEYS.gocardless, null);
-            if (gcl && gcl.paiements && gcl.paiements.length) {
-                state.gcl.paiements = gcl.paiements.map(revivreGcl);
+            // Un export de versements seul est légitime : il ne parle d'aucun
+            // apprenant, mais il dit ce qui est arrivé en banque.
+            if (gcl && ((gcl.paiements && gcl.paiements.length)
+                        || (gcl.versements && gcl.versements.length))) {
+                state.gcl.paiements = (gcl.paiements || []).map(revivreGcl);
                 state.gcl.clients = (gcl.clients || []).map(revivreGcl);
                 state.gcl.mandats = (gcl.mandats || []).map(revivreGcl);
                 state.gcl.abonnements = (gcl.abonnements || []).map(revivreGcl);
+                state.gcl.versements = (gcl.versements || []).map(revivreGcl);
                 state.gcl.fichiers = gcl.fichiers || [];
                 recalculerPrelevements();
             }
@@ -4288,6 +4293,12 @@
                         'N° de l’avoir apparenté': b.avoirApparente || l.avoirsDuGroupe || '',
                         'Commentaire': b.commentaire || '',
                         'Statut sellsy': b.statutSellsy || l.statutSellsy || '',
+                        // Ce que la ligne dit elle-même du prélèvement : le
+                        // libellé Pennylane porte l'identifiant du mandat, le
+                        // sort du prélèvement et la référence du virement reçu.
+                        'Mandat cité par la ligne': b.mandatId || '',
+                        'Sort du prélèvement': b.statutPrelevement || '',
+                        'Référence du versement reçu': b.refVersement || '',
                         'Tranche d’ancienneté': ((R.bucketFor(retard) || {}).label) || '',
                     };
                 })), 'Grand livre');
@@ -5029,10 +5040,29 @@
     }
 
     function rendrePrelevements() {
-        const charge = state.apprenants.length > 0;
+        // Deux lectures indépendantes. Les versements disent ce qui est arrivé
+        // en banque : ils se lisent sans aucun autre fichier. Le reste — la
+        // survie des abonnements, les rejets, les apprenants — demande l'export
+        // Payments. Avoir l'un sans l'autre est normal, et l'onglet doit alors
+        // montrer ce qu'il a, pas une page vide.
+        const versements = state.gcl.versements || [];
+        const charge = state.apprenants.length > 0 || versements.length > 0;
         $('#prlv-vide').hidden = charge;
         $('#prlv-contenu').hidden = !charge;
+        rendreVersements(versements);
         if (!charge) { $('#prlv-badge').textContent = ''; return; }
+
+        const detail = state.apprenants.length > 0;
+        for (const id of ['#prlv-kpi', '#prlv-notes', '#prlv-detail']) {
+            const el = $(id);
+            if (el) el.hidden = !detail;
+        }
+        if (!detail) {
+            const a = PR.analyserVersements(versements);
+            $('#prlv-badge').textContent =
+                `${U.nombre(a.nb)} versements reçus · ${U.euros(a.net)}`;
+            return;
+        }
 
         const st = PR.statistiques(state.apprenants, state.gclRetenus || state.gcl.paiements);
         $('#prlv-badge').textContent =
@@ -5057,6 +5087,162 @@
         rendreChartEchecsMois();
         rendreTableApprenants();
         rendreQualitePrelevements();
+    }
+
+    /**
+     * Ce que GoCardless a viré en banque.
+     *
+     * Cette lecture ne dépend d'aucun autre fichier : l'export Payouts se
+     * suffit à lui-même, et c'est le seul chiffre que la banque confirme. Il
+     * ne faut pas le confondre avec la somme des prélèvements : GoCardless
+     * encaisse client par client, retient ses frais, puis vire le net en un
+     * seul virement. C'est ce virement-là que la comptabilité doit retrouver.
+     */
+    function rendreVersements(versements) {
+        const bloc = $('#prlv-versements');
+        if (!bloc) return;
+        bloc.hidden = !(versements && versements.length);
+        if (bloc.hidden) return;
+
+        const a = PR.analyserVersements(versements);
+        state.versementsAnalyse = a;
+
+        const tuile = o => `
+            <div class="recup-card">
+                <span class="recup-bar" style="background:${o.couleur}"></span>
+                <span class="recup-taux">${o.valeur}</span>
+                <span class="recup-label">${U.escapeHtml(o.label)}</span>
+                <span class="recup-value">${o.detail}</span>
+                <span class="recup-sub">${U.escapeHtml(o.sub)}</span>
+            </div>`;
+
+        $('#prlv-vers-kpi').innerHTML = [
+            tuile({
+                couleur: U.couleurs.paye,
+                valeur: U.euros(a.net),
+                label: 'Arrivé sur le compte en banque',
+                detail: `${U.nombre(a.nb)} virements`,
+                sub: 'Net de frais — le montant que la banque a crédité',
+            }),
+            tuile({
+                couleur: U.couleurs.inconnu,
+                valeur: U.euros(a.brut),
+                label: 'Prélevé aux clients',
+                detail: 'avant frais',
+                sub: 'La somme des prélèvements encaissés par GoCardless',
+            }),
+            tuile({
+                couleur: U.couleurs.retard,
+                valeur: U.euros(a.frais),
+                label: 'Gardé par GoCardless',
+                detail: U.pourcent(a.tauxFrais * 100, 2) + ' du prélevé',
+                sub: 'Frais de transaction et taxe',
+            }),
+            tuile({
+                couleur: U.couleurs.nonEchue,
+                valeur: U.nombre(a.parCompte.length),
+                label: a.parCompte.length > 1 ? 'Comptes bancaires crédités' : 'Compte bancaire crédité',
+                detail: a.premiere ? U.dateFR(a.premiere) + ' → ' + U.dateFR(a.derniere) : '',
+                sub: a.parCompte.map(c => `${c.compte} : ${U.euros(c.net)}`).join(' · '),
+            }),
+        ].join('');
+
+        $('#prlv-vers-aide').innerHTML =
+            "<strong>Comment lire ces quatre chiffres.</strong> GoCardless prélève vos clients un par "
+            + "un, garde ses frais, puis vous vire le reste en un seul virement — un « versement ». "
+            + `Sur toute la période, ${U.euros(a.brut)} ont été prélevés aux clients, `
+            + `${U.euros(a.frais)} sont restés chez GoCardless (${U.pourcent(a.tauxFrais * 100, 2)}), et `
+            + `${U.euros(a.net)} sont arrivés sur le compte. C'est ce dernier montant, et lui seul, `
+            + "que la banque montre : chercher la somme des prélèvements sur le relevé ne donnera "
+            + "jamais rien.";
+
+        rendreChartVersements(a);
+        rendreRapprochementVersements(versements);
+    }
+
+    /** Le net crédité chaque mois, et la part gardée par GoCardless. */
+    function rendreChartVersements(a) {
+        const mois = a.parMois.filter(m => m.mois !== 'sans date');
+        if (!mois.length) { U.chart('chart-versements', videConfig('Aucun versement daté')); return; }
+        U.chart('chart-versements', {
+            data: {
+                labels: mois.map(m => U.moisLabel(m.mois, true)),
+                datasets: [
+                    { type: 'bar', label: 'Net reçu en banque', yAxisID: 'y',
+                      data: mois.map(m => Math.round(m.net)),
+                      backgroundColor: U.couleurs.paye, borderRadius: 3 },
+                    { type: 'line', label: 'Part gardée par GoCardless', yAxisID: 'y2',
+                      data: mois.map(m => (m.brut ? m.frais / m.brut : 0)),
+                      borderColor: U.couleurs.retard, backgroundColor: U.couleurs.retard,
+                      tension: 0.3, pointRadius: 2, borderWidth: 2 },
+                ],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: c => c.dataset.yAxisID === 'y2'
+                                ? 'Frais : ' + U.pourcent(c.parsed.y * 100, 2)
+                                : 'Net reçu : ' + U.euros(c.parsed.y),
+                        },
+                    },
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { callback: v => U.euros(v) } },
+                    y2: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false },
+                          ticks: { callback: v => U.pourcent(v * 100, 1) } },
+                },
+            },
+        });
+    }
+
+    /**
+     * Quels versements le grand livre a-t-il ventilés ?
+     *
+     * Pennylane recopie la référence du versement dans le libellé des
+     * écritures de prélèvement. Un versement dont la référence ne figure nulle
+     * part dans le grand livre chargé n'y a pas été ventilé — sous réserve que
+     * le grand livre chargé soit complet, ce que l'extrait des créances
+     * ouvertes n'est pas.
+     */
+    function rendreRapprochementVersements(versements) {
+        const note = $('#prlv-vers-rappro');
+        const table = $('#prlv-vers-table');
+        if (!note || !table) return;
+        const refs = state.glLecture ? new Set(state.glLecture.refsVersement || []) : new Set();
+        if (!refs.size) {
+            note.innerHTML = "Chargez le grand livre dans l'onglet <em>Données</em> pour savoir quels "
+                + "de ces virements la comptabilité a déjà ventilés : Pennylane en recopie la "
+                + "référence dans le libellé des écritures de prélèvement.";
+            table.innerHTML = '';
+            return;
+        }
+        const r = PR.rapprocherVersements(versements, refs);
+        note.innerHTML =
+            `<strong>${U.nombre(r.nbTrouves)} versements sur ${U.nombre(versements.length)}</strong> `
+            + `(${U.pourcent(r.part * 100, 0)}, ${U.euros(r.euroTrouves)}) sont cités par le grand livre chargé. `
+            + `Les ${U.nombre(r.nbAbsents)} autres (${U.euros(r.euroAbsents)}) n'y apparaissent pas. `
+            + "<em>Attention à la lecture</em> : un extrait limité aux créances ouvertes ne contient "
+            + "pas les écritures lettrées, donc une absence n'y prouve pas qu'un virement n'a pas été "
+            + "ventilé. Sur un grand livre complet, en revanche, elle le prouve.";
+        table.innerHTML = U.table([
+            { key: 'reference', label: 'Référence du virement' },
+            { key: 'date', label: 'Arrivé en banque' },
+            { key: 'net', label: 'Net reçu', align: 'right' },
+            { key: 'brut', label: 'Prélevé aux clients', align: 'right' },
+            { key: 'frais', label: 'Frais GoCardless', align: 'right' },
+            { key: 'compte', label: 'Compte bancaire' },
+        ], r.absents.slice(0, 300).map(v => ({
+            reference: v.reference || v.id,
+            date: v.dateArrivee ? U.dateFR(v.dateArrivee) : '—',
+            net: U.euros(v.montant),
+            brut: U.euros(v.montantBrut),
+            frais: U.euros(v.frais),
+            compte: v.compteBancaire || '—',
+        })), { vide: 'Tous les versements sont cités par le grand livre chargé.' });
     }
 
     function rendreKpiPrelevements(st) {
@@ -7288,12 +7474,14 @@
                     case 'clients':     recus.clients = PR.normaliserClients(rows); break;
                     case 'mandats':     recus.mandats = PR.normaliserMandats(rows); break;
                     case 'abonnements': recus.abonnements = PR.normaliserAbonnements(rows); break;
+                    case 'versements':  recus.versements = PR.normaliserVersements(rows); break;
                 }
                 journal.push(`${file.name} : ${type} — ${U.nombre(rows.length)} lignes`);
             }
 
             if (!Object.keys(recus).length) {
-                U.toast("Aucun export GoCardless reconnu. Attendus : Payments, Customers, Subscriptions, Mandates.", 'error', 9000);
+                U.toast("Aucun export GoCardless reconnu. Attendus : Payments, Customers, "
+                    + "Subscriptions, Mandates, Payouts.", 'error', 9000);
                 return;
             }
 
@@ -7306,7 +7494,11 @@
             await sauverGoCardless();
             proposerReprise();
 
-            if (!g.paiements.length) {
+            if (!g.paiements.length && g.versements.length) {
+                U.toast(`${U.nombre(g.versements.length)} versements reçus en banque. `
+                    + "Pour le détail apprenant par apprenant, ajoutez l'export Payments "
+                    + "et l'export Customers.", 'success', 9000);
+            } else if (!g.paiements.length) {
                 U.toast("Aucun prélèvement chargé : l'export Payments est indispensable.", 'error', 9000);
             } else {
                 U.toast(`${U.nombre(state.apprenants.length)} apprenants reconstitués sur `
@@ -7326,6 +7518,7 @@
                 clients: g.clients.map(serialiser),
                 mandats: g.mandats.map(serialiser),
                 abonnements: g.abonnements.map(serialiser),
+                versements: g.versements.map(serialiser),
                 fichiers: g.fichiers,
             });
         } catch (e) { console.warn('[Recouvrement] Sauvegarde GoCardless impossible', e); }
@@ -7374,7 +7567,11 @@
                 dateEcheance: l.dateEcheance ? l.dateEcheance.toISOString() : null,
                 dateAvoir: l.dateAvoir ? l.dateAvoir.toISOString() : null,
             }));
-            state.glLecture = { ...lu.stats, fichier: file.name };
+            // Les références des versements GoCardless que le grand livre cite :
+            // c'est par elles que l'export Payouts se rapproche de la
+            // comptabilité, virement par virement.
+            state.glLecture = { ...lu.stats, fichier: file.name,
+                                refsVersement: [...GL.referencesVersement(lu)] };
 
             // Ce que ce fichier sait classer entre dans le référentiel, sans
             // jamais l'effacer : chaque extrait qualifié enrichit le suivant.
@@ -7609,6 +7806,64 @@
         const nom = `Suivi_Recouvrement_Liora_${new Date().toISOString().slice(0, 10)}.xlsx`;
         XLSX.writeFile(wb, nom);
         U.toast('Export Excel généré.', 'success');
+    }
+
+    /**
+     * Les versements GoCardless, en trois feuilles.
+     *
+     * Le détail virement par virement pour pointer le relevé bancaire, la
+     * synthèse mensuelle pour suivre les frais, et la liste de ce que le grand
+     * livre chargé ne cite pas — la piste des virements encore à ventiler.
+     */
+    function exporterVersements() {
+        const v = state.gcl.versements || [];
+        if (!v.length) { U.toast('Aucun versement à exporter.', 'error'); return; }
+        const a = PR.analyserVersements(v);
+        const wb = XLSX.utils.book_new();
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(v.map(x => ({
+            'Référence du virement': x.reference || '',
+            'Identifiant GoCardless': x.id,
+            'Arrivé en banque': x.dateArrivee ? U.dateFR(x.dateArrivee) : '',
+            'Créé le': x.dateCreation ? U.dateFR(x.dateCreation) : '',
+            'Net reçu (€)': x.montant,
+            'Prélevé aux clients (€)': x.montantBrut,
+            'Frais GoCardless (€)': x.frais,
+            'Devise': x.devise,
+            'Statut': x.statut,
+            'Compte bancaire': x.compteBancaire,
+        }))), 'Versements');
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(a.parMois.map(m => ({
+            'Mois': m.mois,
+            'Nombre de virements': m.nb,
+            'Net reçu (€)': Math.round(m.net * 100) / 100,
+            'Prélevé aux clients (€)': Math.round(m.brut * 100) / 100,
+            'Frais GoCardless (€)': Math.round(m.frais * 100) / 100,
+            'Part des frais': m.brut ? +(m.frais / m.brut).toFixed(4) : '',
+        }))), 'Par mois');
+
+        const refs = state.glLecture ? new Set(state.glLecture.refsVersement || []) : new Set();
+        const r = PR.rapprocherVersements(v, refs);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            refs.size
+                ? r.absents.map(x => ({
+                    'Référence du virement': x.reference || x.id,
+                    'Arrivé en banque': x.dateArrivee ? U.dateFR(x.dateArrivee) : '',
+                    'Net reçu (€)': x.montant,
+                    'Prélevé aux clients (€)': x.montantBrut,
+                    'Frais GoCardless (€)': x.frais,
+                    'Compte bancaire': x.compteBancaire,
+                    'Lecture': "Référence absente du grand livre chargé — à confirmer sur un "
+                        + "grand livre complet, un extrait de créances ouvertes ne portant pas "
+                        + "les écritures lettrées",
+                }))
+                : [{ 'Lecture': "Aucun grand livre chargé : le rapprochement n'a pas pu être fait." }]
+        ), 'À ventiler');
+
+        const nom = `Versements_GoCardless_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        XLSX.writeFile(wb, nom);
+        U.toast(`${U.nombre(v.length)} versements exportés — ${nom}`, 'success', 7000);
     }
 
     function exporterApprenants() {
@@ -7960,6 +8215,8 @@
             debPrlv = setTimeout(() => { state.ui.prlvRecherche = e.target.value; rendrePrelevements(); }, 250);
         });
         $('#btn-prlv-export').addEventListener('click', exporterApprenants);
+        const btnVers = $('#btn-vers-export');
+        if (btnVers) btnVers.addEventListener('click', exporterVersements);
 
         // ── Navigation ──
         $$('.nav-tab').forEach(t => t.addEventListener('click', () => ouvrirOnglet(t.dataset.tab)));
