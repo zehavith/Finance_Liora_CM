@@ -679,6 +679,37 @@ def courbe_par_mois(dossiers: list[dict], mois_max: int = 24) -> dict:
 # Ce qu'un fichier de suivi apporte a un dossier deja exporte. La colonne
 # d'origine n'a pas a etre nommee ici : les intitules sont reconnus par le
 # meme mecanisme que pour l'export.
+# L'étape écrite dans le tableau du service, traduite en étape de l'outil.
+# Les cinq motifs de « ne peut pas passer en contentieux » disent tous la même
+# chose : le service renonce. C'est un abandon de créance, et le motif est
+# conservé tel quel — c'est lui qui justifie la décision.
+ETAPES_DU_TABLEAU = (
+    ("transmis au service contentieux", "transmis-contentieux"),
+    ("mise en demeure transmise", "transmission-en-cours"),
+    ("a transmettre au service contentieux", STATUT_INITIAL),
+    ("ne peut pas passer en contentieux", "abandon"),
+    ("ne peut pas passer  en contentieux", "abandon"),
+)
+
+
+def etape_depuis_tableau(valeur: str) -> str:
+    """L'étape de l'outil que désigne la mention du tableau, s'il y en a une.
+
+    Comparaison sur le texte mis à plat, et par appartenance : le tableau
+    écrit « Pas de convention - Ne peut pas passer  en contentieux », avec
+    deux espaces et un motif devant. C'est la fin de la phrase qui décide.
+    """
+    import synthese as module_synthese  # noqa: PLC0415 - cycle
+
+    plat = module_synthese._aplatir(valeur)
+    if not plat:
+        return ""
+    for mention, etape in ETAPES_DU_TABLEAU:
+        if mention in plat:
+            return etape
+    return ""
+
+
 CHAMPS_COMPLETABLES = ("convention_signee", "diplome", "heures_theoriques",
                        "heures_log", "date_echeance")
 
@@ -728,7 +759,7 @@ def completer_depuis_grille(
                 par_debiteur.setdefault((nom, centimes), dossier["reference"])
 
     suivi = charger(chemin_suivi)
-    completes, touchees, adressees, illisibles = 0, 0, 0, 0
+    completes, touchees, adressees, illisibles, etapes = 0, 0, 0, 0, 0
     # Dossiers que plusieurs lignes revendiquaient sans les départager : ils
     # sont nommés dans le bilan plutôt que rapprochés au hasard.
     disputes: set[str] = set()
@@ -829,6 +860,25 @@ def completer_depuis_grille(
             echeance = ""
             illisibles += 1
 
+        # L'étape écrite dans le tableau du service est reprise, mais jamais
+        # par-dessus une étape posée à la main dans l'application : celle-ci
+        # est plus récente et plus sûre, et l'écraser effacerait un travail.
+        etape = etape_depuis_tableau(getattr(ligne, "etape", ""))
+        if etape and not entree.get("statut") and not entree.get("historique"):
+            entree["statut"] = etape
+            entree["historique"] = [{
+                "statut": etape,
+                "date": datetime.now().strftime("%d/%m/%Y"),
+            }]
+            etapes += 1
+            completes += 1
+            # Le motif de la décision vaut d'être conservé : « montant trop
+            # faible », « pas de convention » expliquent l'abandon, et sans
+            # eux la liste des dossiers abandonnés est incompréhensible.
+            motif = " ".join(str(getattr(ligne, "etape", "")).split())
+            if motif and not entree.get("note"):
+                entree["note"] = motif
+
         apports = {
             "convention": (ligne.convention_signee or "").strip(),
             "diplome": (ligne.diplome or "").strip(),
@@ -854,6 +904,7 @@ def completer_depuis_grille(
             "lignes": len(lignes), "sans_correspondance": len(sans_suite),
             "exemples": [r for r in sans_suite[:8] if r],
             "ambigus": sorted(disputes)[:8], "dates_illisibles": illisibles,
+            "etapes": etapes,
             "debordements": sorted(debordements)[:8]}
 
 

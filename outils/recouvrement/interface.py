@@ -44,7 +44,7 @@ import synthese as module_synthese  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "80"
+VERSION = "81"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -308,6 +308,8 @@ class Execution:
                             f"valeur(s) sur {bilan['dossiers']} dossier(s)."
                             + (f" Dont {bilan['adresses']} adresse(s) mail."
                                if bilan.get("adresses") else "")
+                            + (f" {bilan['etapes']} étape(s) reprise(s) du "
+                               "tableau." if bilan.get("etapes") else "")
                             + (f" {bilan['sans_correspondance']} ligne(s) sans "
                                "dossier correspondant."
                                if bilan["sans_correspondance"] else "")
@@ -2553,6 +2555,10 @@ async function completerDepuisFichier(evenement) {
       + (r.adresses
          ? ` Dont ${r.adresses} adresse(s) mail, qui serviront au prochain `
            + `export.`
+         : "")
+      + (r.etapes
+         ? ` ${r.etapes} dossier(s) ont repris l'étape inscrite au tableau `
+           + `(les étapes déjà saisies ici sont conservées).`
          : "")
       + ((r.ecartes || []).length
          ? ` Onglet utilisé : « ${r.onglet} ». Non lus : `

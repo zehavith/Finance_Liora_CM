@@ -3243,6 +3243,82 @@ def test_colonnes_du_suivi_a_la_main() -> None:
              f"une colonne « Date » ne borne pas la recherche "
              f"(obtenu : {champ_de('Date') or 'rien'})")
 
+    print("  -- l'étape écrite dans le tableau --")
+    import suivi as module_suivi  # noqa: PLC0415
+
+    verifier(champ_de("Passage en contentieux") == "etape",
+             "la colonne « Passage en contentieux » est reconnue")
+    verifier(champ_de("Montant reçu") == "montant_recu",
+             "et « Montant reçu » aussi")
+
+    # Les huit valeurs réelles de la colonne, telles qu'elles sont écrites.
+    attendus = [
+        ("Transmis au service contentieux", "transmis-contentieux"),
+        ("Mise en demeure transmise", "transmission-en-cours"),
+        ("à transmettre au service contentieux", "non-transmis"),
+        # Cinq motifs différents, une seule décision : le service renonce.
+        ("Formation pas faite/peu faite - Ne peut pas passer en contentieux",
+         "abandon"),
+        ("Montant trop faible - Ne peut pas passer en contentieux", "abandon"),
+        ("Perdu / Ne peut pas passer en contentieux", "abandon"),
+        # Deux espaces dans l'original : la comparaison ne doit pas s'y perdre.
+        ("Pas de convention - Ne peut pas passer  en contentieux", "abandon"),
+        ("Délai de 2 ans dépassé - Ne peut pas passer en contentieux",
+         "abandon"),
+        ("", ""),
+        ("une mention inconnue", ""),
+    ]
+    for valeur, etape in attendus:
+        obtenu = module_suivi.etape_depuis_tableau(valeur)
+        verifier(obtenu == etape,
+                 f"« {valeur[:44] or '(vide)'} » → {etape or 'rien'} "
+                 f"(obtenu : {obtenu or 'rien'})")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        from dossiers import charger_grille  # noqa: PLC0415
+
+        racine = Path(repertoire)
+        sortie = racine / "export"
+        sortie.mkdir()
+        (sortie / "d").mkdir()
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;factures\n"
+            "FACT-2501-07581;Ja REVET;d;FACT-2501-07581\n"
+            "FACT-2405-03070;Jihane El gasmi;d;FACT-2405-03070\n",
+            encoding="utf-8-sig")
+        fichier = racine / "publipostage.csv"
+        fichier.write_text(
+            "Numero;Client;Passage en contentieux\n"
+            "FACT-2501-07581;Ja REVET;"
+            "Montant trop faible - Ne peut pas passer en contentieux\n"
+            "FACT-2405-03070;Jihane El gasmi;Transmis au service contentieux\n",
+            encoding="utf-8-sig")
+
+        chemin = racine / "suivi.json"
+        # Une étape posée à la main : elle ne doit pas être écrasée.
+        etats = module_suivi.charger(chemin)
+        module_suivi.mettre_a_jour(etats, "FACT-2405-03070", statut="avocats")
+        module_suivi.enregistrer(chemin, etats)
+
+        bilan = module_suivi.completer_depuis_grille(
+            charger_grille(fichier),
+            module_suivi.inventaire(sortie, chemin), chemin)
+        apres_import = module_suivi.charger(chemin)
+
+        verifier(apres_import["FACT-2501-07581"]["statut"] == "abandon",
+                 f"l'étape du tableau est reprise "
+                 f"(obtenu : {apres_import['FACT-2501-07581'].get('statut')})")
+        verifier("Montant trop faible" in (apres_import["FACT-2501-07581"].get("note") or ""),
+                 f"avec le motif, sans lequel un abandon est incompréhensible "
+                 f"(obtenu : {apres_import['FACT-2501-07581'].get('note')!r})")
+        verifier(apres_import["FACT-2501-07581"].get("historique"),
+                 "et l'étape est datée, comme une étape saisie")
+        verifier(apres_import["FACT-2405-03070"]["statut"] == "avocats",
+                 f"une étape posée à la main n'est jamais écrasée "
+                 f"(obtenu : {apres_import['FACT-2405-03070'].get('statut')})")
+        verifier(bilan["etapes"] == 1,
+                 f"le bilan compte les étapes reprises (obtenu : {bilan['etapes']})")
+
 
 def test_extrait_zoho_de_bout_en_bout() -> None:
     """Un extrait Zoho seul suffit à faire chercher les anciens numéros."""

@@ -112,7 +112,19 @@ ALIAS_COLONNES = {
     ],
     "formation_debut": ["debut de formation", "debut de service", "date de debut de formation"],
     "formation_fin": ["fin de formation", "fin de service", "date de fin de formation"],
+    # L'étape où le service a placé le dossier, dans son propre tableau. Elle
+    # ne se confond pas avec le statut de la facture : « Montant trop faible —
+    # ne peut pas passer en contentieux » est une décision, pas un état de
+    # paiement.
+    "etape": [
+        "passage en contentieux", "etape contentieux", "statut contentieux",
+        "passage contentieux", "etat du contentieux",
+    ],
+    "montant_recu": [
+        "montant recu", "montant encaisse", "deja paye", "montant regle",
+    ],
     "statut": [
+        "qualification generale pour dispach monday",
         "statut de la facture", "statut facture",
         "statut creance", "statut paiement", "categorie de retard",
         "qualification recouvrement", "qualification generale", "statut initiale",
@@ -298,6 +310,11 @@ class Dossier:
     formation_debut: str = ""
     formation_fin: str = ""
     statut: str = ""
+    # L'étape où le service a placé le dossier dans son propre tableau, et ce
+    # qu'il a déjà encaissé. Repris tels quels : ce sont des décisions et des
+    # faits, pas des déductions de l'outil.
+    etape: str = ""
+    montant_recu: str = ""
     commentaire: str = ""
     liens: list[str] = field(default_factory=list)
     # Exécution de la formation, telle que le suivi la connaît. Sert la note
@@ -1314,6 +1331,8 @@ def dossiers_depuis_grille(
             formation_debut=_normaliser_date_lisible(_premier("formation_debut")),
             formation_fin=_normaliser_date_lisible(_premier("formation_fin")),
             statut=" · ".join(valeurs["statut"]),
+            etape=_premier("etape"),
+            montant_recu=_premier("montant_recu"),
             commentaire=" · ".join(valeurs["commentaire"]),
             convention_signee=_premier("convention_signee"),
             diplome=_premier("diplome"),
