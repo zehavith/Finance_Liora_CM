@@ -1634,8 +1634,21 @@ lors de la génération des PDF ; elles apparaissent en tant que mention
 
 
 def executer(
-    options: argparse.Namespace, relais: Callable[[str], None] | None = None
+    options: argparse.Namespace,
+    relais: Callable[[str], None] | None = None,
+    arret: Callable[[], bool] | None = None,
 ) -> int:
+    """Constitue les dossiers. `arret` est consulté entre deux dossiers.
+
+    Un export dure une heure et ne pouvait pas s'arrêter : lancé par erreur —
+    sur le mauvais tableau, ou en repartant lire Monday quand on ne voulait
+    qu'une facture — il fallait le laisser aller au bout ou fermer la fenêtre,
+    ce qui laissait le travail à moitié fait sans que rien le dise.
+
+    L'arrêt est demandé, pas imposé : le dossier en cours va à son terme, et
+    le récapitulatif est écrit pour ce qui a été fait. Un dossier laissé à
+    demi serait pire qu'un export plus court.
+    """
     verifier_environnement()
     fuseau_applique = definir_fuseau(options.fuseau)
 
@@ -1863,7 +1876,17 @@ def executer(
                 fuseau_applique,
             )
 
+        interrompu = False
         for position, dossier in enumerate(liste, start=1):
+            if arret is not None and arret():
+                interrompu = True
+                journal(
+                    f"⏹ Arrêt demandé — {position - 1} dossier(s) sur "
+                    f"{len(liste)} traités. Les dossiers déjà constitués "
+                    "restent sur le disque, avec leur récapitulatif ; "
+                    "« Reprendre » repartira d'ici."
+                )
+                break
             etiquette = dossier.nom or (dossier.emails[0] if dossier.emails else "")
             journal(f"[{position}/{len(liste)}] {dossier.reference} — {etiquette}")
             try:
@@ -1906,7 +1929,11 @@ def executer(
         vides = [r.reference for r in resumes if r.statut == "aucun message"]
         pdf_rates = sum(r.pdf_en_echec for r in resumes)
 
-        journal(f"Terminé : {total_mails} message(s), {total_pj} pièce(s) jointe(s).")
+        journal(
+            (f"Arrêté : {total_mails} message(s), {total_pj} pièce(s) jointe(s)."
+             if interrompu
+             else f"Terminé : {total_mails} message(s), {total_pj} pièce(s) jointe(s).")
+        )
 
         total_sous = sum(r.sous_dossiers_factures for r in resumes)
         if total_sous:

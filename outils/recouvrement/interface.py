@@ -256,12 +256,25 @@ class Execution:
 
     def __init__(self):
         self._verrou = threading.Lock()
+        # Un export dure une heure. Lance par erreur, il fallait le laisser
+        # aller au bout ou fermer la fenetre : l'arret se demande, le dossier
+        # en cours va a son terme, et le recapitulatif est ecrit pour ce qui a
+        # ete fait.
+        self._arret = threading.Event()
         self.lignes: list[str] = []
         self.en_cours = False
         self.termine = False
         self.code: int | None = None
         self.erreur: str | None = None
         self.sortie: str = ""
+
+    def demander_arret(self) -> bool:
+        """Demande l'arret. Vrai si un export tournait pour l'entendre."""
+        with self._verrou:
+            if not self.en_cours:
+                return False
+            self._arret.set()
+            return True
 
     def ajouter(self, message: str) -> None:
         with self._verrou:
@@ -277,6 +290,7 @@ class Execution:
                 "code": self.code,
                 "erreur": self.erreur,
                 "sortie": self.sortie,
+                "arret_demande": self._arret.is_set(),
             }
 
     def lancer(self, arguments: list[str], sortie: str) -> None:
@@ -289,11 +303,13 @@ class Execution:
             self.code = None
             self.erreur = None
             self.sortie = sortie
+            self._arret.clear()
 
         def travail() -> None:
             try:
                 options = export_mails.analyser_arguments(arguments)
-                code = export_mails.executer(options, relais=self.ajouter)
+                code = export_mails.executer(
+                    options, relais=self.ajouter, arret=self._arret.is_set)
             except (ErreurDossiers, ErreurGmail) as exc:
                 self.ajouter(f"Erreur : {exc}")
                 code, message = 2, str(exc)
@@ -756,13 +772,18 @@ def construire_arguments(demande: dict, chemin_dossiers: Path) -> tuple[list[str
     if domaines:
         arguments += ["--domaines-internes", domaines]
 
-    tableau = (demande.get("tableau") or "").strip()
-    if tableau:
-        arguments += ["--tableau-monday", tableau]
+    # Le tableau Monday n'est passé qu'en mode Monday. La page envoie toujours
+    # tout ce qu'elle a sous la main : une recherche ponctuelle emportait donc
+    # le tableau coché la veille, et l'export repartait lire Monday au lieu de
+    # chercher la seule facture demandée — sans qu'on puisse l'arrêter.
+    if str(demande.get("mode") or "") == "monday":
+        tableau = (demande.get("tableau") or "").strip()
+        if tableau:
+            arguments += ["--tableau-monday", tableau]
 
-    groupes = (demande.get("groupes") or "").strip()
-    if groupes:
-        arguments += ["--groupes-monday", groupes]
+        groupes = (demande.get("groupes") or "").strip()
+        if groupes:
+            arguments += ["--groupes-monday", groupes]
 
     regles = (demande.get("regimes_echeance") or "").strip()
     if regles:
@@ -1023,6 +1044,10 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 return
             if chemin == "/api/refaire-notes":
                 self._refaire_notes(self._corps_json())
+                return
+            if chemin == "/api/arreter":
+                entendu = EXECUTION.demander_arret()
+                self._json(200, {"arrete": entendu})
                 return
         except ValueError as exc:
             self._json(400, {"erreur": str(exc)})
@@ -1592,7 +1617,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
 PAGE = r"""<!DOCTYPE html>
 <html lang="fr"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Export recouvrement</title>
+<title>Export contentieux</title>
 <style>
 :root{
   --accent:#F47458; --accent-fonce:#e05a40;
@@ -1846,7 +1871,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 <body>
 <header>
   <span class="logo">Liora</span>
-  <span class="titre">Export recouvrement</span>
+  <span class="titre">Export contentieux</span>
   <span class="moteur">Version __VERSION__ &nbsp;·&nbsp; Moteur PDF : __MOTEUR_PDF__</span>
 </header>
 <nav class="principal">
@@ -1909,7 +1934,9 @@ button:disabled{opacity:.45;cursor:not-allowed}
   </div>
   <p class="note"><b>Tester d'abord</b> compte ce qui sera traité sans rien
      écrire sur le disque. <b>Lancer l'export</b> constitue les dossiers.</p>
-  <div id="etat"><div class="rond"></div><span id="texteEtat">Export en cours…</span></div>
+  <div id="etat"><div class="rond"></div><span id="texteEtat">Export en cours…</span>
+    <button class="secondaire danger" id="arreter"
+            title="Le dossier en cours va à son terme, puis l'export s'arrête. Ce qui est déjà constitué reste sur le disque, et « Reprendre » repartira d'ici.">Arrêter</button></div>
   <div class="bandeau" id="bandeau"></div>
   <div id="journal" hidden></div>
 </section>
@@ -2595,6 +2622,8 @@ async function demarrer(simulation) {
 function suivreExport(simulation) {
   $("texteEtat").textContent = simulation
     ? "Test en cours…" : "Export en cours…";
+  $("arreter").disabled = false;
+  $("arreter").textContent = "Arrêter";
   $("etat").classList.add("visible");
   $("lancer").disabled = true;
   $("tester").disabled = true;
@@ -2621,6 +2650,25 @@ async function reprendreSuiviEnCours() {
   afficherBandeau(true, "Un export est en cours : la page a repris son suivi.");
 }
 
+// Un export dure une heure. Lance par erreur — sur le mauvais tableau, ou en
+// repartant lire Monday quand on ne voulait qu'une facture — il fallait le
+// laisser aller au bout ou fermer la fenetre, ce qui laissait le travail a
+// moitie fait sans que rien le dise.
+$("arreter").addEventListener("click", async () => {
+  if (!confirm("Arrêter l'export en cours ?\n\n"
+      + "Le dossier en cours de traitement va à son terme, puis l'export "
+      + "s'arrête. Les dossiers déjà constitués restent sur le disque, avec "
+      + "leur récapitulatif.\n\nLa case « Reprendre » repartira d'ici.")) return;
+  $("arreter").disabled = true;
+  $("arreter").textContent = "Arrêt demandé…";
+  try { await api("/api/arreter", {}); }
+  catch (erreur) {
+    afficherBandeau(false, erreur.message);
+    $("arreter").disabled = false;
+    $("arreter").textContent = "Arrêter";
+  }
+});
+
 $("ouvrir").addEventListener("click", async () => {
   try { await api("/api/ouvrir", { chemin: $("sortie").value }); }
   catch (erreur) { afficherBandeau(false, erreur.message); }
@@ -2634,6 +2682,13 @@ async function rafraichir() {
 
   EXPORT_EN_COURS = Boolean(etat.en_cours);
   majBandeauExport();
+
+  if (etat.arret_demande && !$("arreter").disabled) {
+    // L'arret a pu etre demande depuis un autre onglet, ou avant que la page
+    // ne reprenne son suivi : l'ecran doit le dire quand meme.
+    $("arreter").disabled = true;
+    $("arreter").textContent = "Arrêt demandé…";
+  }
 
   if (etat.lignes.length) {
     position = etat.total;
@@ -4062,7 +4117,7 @@ def demarrer(port: int = 0, ouvrir: bool = True, veille: bool = False) -> Thread
     serveur = ThreadingHTTPServer(("127.0.0.1", port), Gestionnaire)
     adresse = f"http://127.0.0.1:{serveur.server_address[1]}/"
 
-    print("Interface d'export recouvrement")
+    print("Interface d'export contentieux")
     print(f"  {adresse}")
     print("  Laissez cette fenêtre ouverte pendant l'utilisation.")
     print("  Ctrl+C pour arrêter.\n")

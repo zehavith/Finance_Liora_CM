@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
@@ -3299,6 +3300,78 @@ console.log(JSON.stringify({{
              "les cases cochées survivent au tri")
 
 
+def test_arreter_un_export() -> None:
+    """Un export lancé par erreur peut être arrêté."""
+    import interface as module_interface  # noqa: PLC0415
+
+    print("\nArrêt d'un export en cours")
+
+    execution = module_interface.Execution()
+    verifier(execution.demander_arret() is False,
+             "sans export en cours, il n'y a rien à arrêter")
+
+    # L'arrêt est demandé, pas imposé : le dossier en cours va à son terme.
+    # Un dossier laissé à demi serait pire qu'un export plus court.
+    vus: list[int] = []
+    depart, fini = threading.Event(), threading.Event()
+
+    def faux_executer(_options, relais=None, arret=None):
+        depart.set()
+        for numero in range(1, 51):
+            if arret is not None and arret():
+                relais(f"⏹ Arrêt demandé — {numero - 1} dossier(s) traités.")
+                break
+            vus.append(numero)
+            relais(f"[{numero}/50] FACT-{numero}")
+            time.sleep(0.02)
+        fini.set()
+        return 0
+
+    vrai_executer = module_interface.export_mails.executer
+    module_interface.export_mails.executer = faux_executer
+    try:
+        execution.lancer(["--dossiers", "x.csv", "--sortie", "s"], "s")
+        depart.wait(5)
+        time.sleep(0.1)
+        verifier(execution.demander_arret() is True,
+                 "un export en cours entend la demande")
+        fini.wait(5)
+        verifier(len(vus) < 50,
+                 f"il s'arrête avant la fin ({len(vus)} dossier(s) sur 50)")
+        verifier(vus == list(range(1, len(vus) + 1)),
+                 "sans sauter de dossier : il s'arrête, il ne saute pas")
+        etat = execution.etat(0)
+        verifier(any("Arrêt demandé" in ligne for ligne in etat["lignes"]),
+                 "et le journal dit où il en était")
+    finally:
+        module_interface.export_mails.executer = vrai_executer
+
+    # Le fil de l'export finit son travail après la boucle : on attend qu'il
+    # se soit vraiment rendu avant d'en relancer un.
+    for _ in range(200):
+        if not execution.etat(0)["en_cours"]:
+            break
+        time.sleep(0.05)
+
+    # Un export suivant repart d'un drapeau propre, sans quoi il s'arrêterait
+    # aussitôt sans qu'on comprenne pourquoi.
+    execution._arret.set()
+    module_interface.export_mails.executer = lambda *a, **k: 0
+    try:
+        execution.lancer(["--dossiers", "x.csv", "--sortie", "s"], "s")
+        time.sleep(0.2)
+        verifier(execution.etat(0)["arret_demande"] is False,
+                 "l'export suivant repart sans arrêt en attente")
+    finally:
+        module_interface.export_mails.executer = vrai_executer
+
+    page = module_interface.PAGE
+    verifier('id="arreter"' in page and '"/api/arreter"' in page,
+             "la page offre d'arrêter pendant l'export")
+    verifier("arret_demande" in page,
+             "et le dit même si la demande vient d'ailleurs")
+
+
 def test_absents_de_l_export() -> None:
     """Une facture du tableau que l'export n'a pas ramenée est nommée."""
     import interface as module_interface  # noqa: PLC0415
@@ -5917,7 +5990,7 @@ def test_interface() -> None:
     try:
         with urllib.request.urlopen(f"{base}/", timeout=10) as reponse:  # noqa: S310
             page = reponse.read().decode("utf-8")
-        verifier("Export recouvrement" in page, "la page est servie")
+        verifier("Export contentieux" in page, "la page est servie")
 
         # Une insertion ratée dans le gabarit ne se voit pas à l'exécution :
         # la page s'affiche, le champ manque, et l'option devient inatteignable.
@@ -6159,7 +6232,7 @@ def test_interface() -> None:
         # Une case ajoutée à la page mais oubliée dans la ligne de commande ne
         # se voit pas : elle se coche, et ne change rien.
         args, _ = interface.construire_arguments(
-            {"tableau": "42", "sous_elements": True,
+            {"mode": "monday", "tableau": "42", "sous_elements": True,
              "filtre_colonne": "Etape process recouvrement",
              "filtre_valeur": "contentieux"},
             Path("dossiers.csv"),
@@ -6168,9 +6241,25 @@ def test_interface() -> None:
                  "la case des sous-éléments atteint la ligne de commande")
         verifier("--tableau-monday" in args and "--filtre-colonne" in args,
                  "le tableau et son filtre l'atteignent aussi")
-        sans, _ = interface.construire_arguments({"tableau": "42"}, Path("d.csv"))
+        sans, _ = interface.construire_arguments(
+            {"mode": "monday", "tableau": "42"}, Path("d.csv"))
         verifier("--avec-sous-elements" not in sans,
                  "décochée, elle n'ajoute rien")
+
+        # La page envoie toujours tout ce qu'elle a sous la main. Une recherche
+        # ponctuelle emportait le tableau coché la veille, et l'export repartait
+        # lire Monday au lieu de chercher la seule facture demandée.
+        ponctuel, _ = interface.construire_arguments(
+            {"mode": "manuel", "tableau": "42", "groupes": "topics"},
+            Path("d.csv"))
+        verifier("--tableau-monday" not in ponctuel
+                 and "--groupes-monday" not in ponctuel,
+                 f"une recherche ponctuelle ne repart pas lire Monday "
+                 f"({ponctuel})")
+        depuis_fichier, _ = interface.construire_arguments(
+            {"tableau": "42"}, Path("d.csv"))
+        verifier("--tableau-monday" not in depuis_fichier,
+                 "un export déposé non plus : le fichier fait foi")
         verifier("souselements" in interface.CASES_MEMORISEES,
                  "la case est mémorisée d'une session à l'autre")
 
@@ -6814,6 +6903,7 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_tri_des_colonnes()
+    test_arreter_un_export()
     test_absents_de_l_export()
     test_note_refaite_datee_et_recopiee()
     test_refaire_notes_choisies()

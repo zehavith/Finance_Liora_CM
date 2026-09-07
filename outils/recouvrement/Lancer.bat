@@ -1,5 +1,5 @@
 @echo off
-REM Lance l'interface graphique de l'outil d'export recouvrement.
+REM Lance l'interface graphique de l'outil d'export contentieux.
 REM Se double-clique depuis l'Explorateur : aucune commande a taper.
 chcp 65001 >nul
 cd /d "%~dp0"
