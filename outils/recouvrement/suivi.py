@@ -1263,6 +1263,11 @@ def agreger(dossiers: list[dict]) -> dict:
     en_cours = [d for d in dossiers if d["statut"] not in CLOTURES]
     gagnes = [d for d in dossiers if d["statut"] in GAGNES]
     perdus = [d for d in dossiers if d["statut"] in PERDUS]
+    # Les dossiers dont on peut renoncer à la créance sans que ce soit décidé.
+    # Ils attendent un arbitrage, et savoir quelle part du portefeuille est
+    # dans cet état est la question à laquelle il faut répondre — un nombre
+    # brut ne dit pas s'il s'agit d'un cas isolé ou du tiers du travail.
+    suspens = [d for d in dossiers if d["statut"] in EN_SUSPENS]
     clotures = gagnes + perdus
     durees = [d["duree_jours"] for d in dossiers if d.get("duree_jours") is not None]
 
@@ -1278,6 +1283,14 @@ def agreger(dossiers: list[dict]) -> dict:
         "solidite": solidite(dossiers),
         "nb_gagnes": len(gagnes),
         "nb_perdus": len(perdus),
+        "nb_abandon_possible": len(suspens),
+        "montant_abandon_possible": sum(d["montant_du"] for d in suspens),
+        # Rapportée à tout le portefeuille, et non aux seuls dossiers clos :
+        # un possible abandon n'est pas une issue, c'est une décision qui
+        # reste à prendre sur un dossier toujours ouvert.
+        "part_abandon_possible": (
+            round(100 * len(suspens) / len(dossiers)) if dossiers else None
+        ),
         # Sur les seuls dossiers clos : un taux calculé sur l'ensemble ferait
         # passer pour des échecs les dossiers simplement encore en cours.
         "taux_reussite": (

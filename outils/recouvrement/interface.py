@@ -44,7 +44,7 @@ import synthese as module_synthese  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "86"
+VERSION = "87"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -1545,6 +1545,22 @@ table.donnees td{padding:9px 8px;border-bottom:1px solid rgba(99,102,241,.07);
 table.donnees tr:hover td{background:rgba(255,255,255,.02)}
 table.donnees .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 table.donnees th.etroite{width:26px}
+/* L'en-tete est un bouton, mais il doit rester un en-tete a l'oeil : meme
+   graisse, meme casse, meme couleur. Seul le survol dit qu'on peut cliquer. */
+table.donnees th button.tri{background:none;border:0;padding:0;margin:0;
+  font:inherit;color:inherit;text-transform:inherit;letter-spacing:inherit;
+  cursor:pointer;display:inline-flex;align-items:center;gap:3px}
+table.donnees th button.tri:hover{color:var(--texte)}
+table.donnees th button.tri:focus-visible{outline:2px solid var(--accent);
+  outline-offset:2px;border-radius:3px}
+/* La colonne triee est la seule eclairee : sans cela, la fleche seule se
+   perd dans quatorze en-tetes de meme couleur. */
+table.donnees th.triee button.tri{color:var(--texte)}
+table.donnees th.triee .sens{color:var(--accent);font-size:12px}
+/* Rien ne dit qu'un en-tete se clique tant qu'on n'a pas essaye. La double
+   fleche apparait au survol, sur les seules colonnes non triees. */
+table.donnees th:not(.triee) button.tri:hover .sens::after{content:"\2195";
+  font-size:11px;opacity:.45}
 .defilable{overflow-x:auto}
 .barre-selection{display:flex;align-items:center;gap:13px;margin-bottom:13px}
 .barre-selection span{font-size:12px;color:var(--texte-3)}
@@ -2615,9 +2631,16 @@ function troisEtats(valeur) {
   ).join("");
 }
 
+// Les cases cochées survivent au réaffichage. Trier par montant pour repérer
+// les gros dossiers puis en cocher quelques-uns est le geste même : les
+// perdre au clic suivant obligerait à tout reprendre.
+const CHOISIS = new Set();
+
 function majSelection() {
   const choisis = Array.from(document.querySelectorAll(".choix"))
     .filter((c) => c.checked);
+  CHOISIS.clear();
+  choisis.forEach((coche) => CHOISIS.add(coche.dataset.ref));
   const bouton = $("supprimer");
   if (!bouton) return;
   bouton.disabled = choisis.length === 0;
@@ -2837,6 +2860,169 @@ function chercherDossiers(evenement) {
   rendreDocuments();
 }
 
+// -- tri par colonne
+//
+// Les dossiers arrivaient dans l'ordre de l'export, qui ne répond à aucune
+// question. « Qui doit le plus », « à qui manque-t-il une convention »,
+// « lesquels traînent depuis le plus longtemps » se lisaient en parcourant
+// la liste entière à l'œil. Chaque en-tête devient un bouton.
+//
+// L'état est tenu par tableau et non partagé comme la recherche : les
+// colonnes ne sont pas les mêmes des deux côtés, et trier les documents par
+// période n'a pas d'équivalent dans l'état des dossiers.
+const TRI = { suivi: { colonne: "", sens: 1 },
+              documents: { colonne: "", sens: 1 } };
+
+// Une valeur absente descend en bas dans les deux sens. Une échéance vide
+// n'est ni la plus proche ni la plus lointaine, et la voir coiffer le
+// tableau au premier clic ferait douter du tri tout entier.
+const VIDE = Symbol("vide");
+
+function valeurTexte(valeur) {
+  return reduire(valeur).trim() || VIDE;
+}
+
+function valeurNombre(valeur) {
+  if (valeur === null || valeur === undefined || valeur === "") return VIDE;
+  const nombre = Number(valeur);
+  return isNaN(nombre) ? VIDE : nombre;
+}
+
+// « 21/05/2024 », « 21/05/2024 09:30 » ou la forme ISO du récapitulatif :
+// comparées comme des nombres, une date mal rangée ne pouvant se rattraper.
+function valeurDate(valeur) {
+  const texte = String(valeur || "").trim();
+  const fr = texte.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\D+(\d{2}):(\d{2}))?/);
+  if (fr) return Number(fr[3] + fr[2] + fr[1] + (fr[4] || "00") + (fr[5] || "00"));
+  const iso = texte.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return Number(iso[1] + iso[2] + iso[3] + "0000");
+  return VIDE;
+}
+
+// Oui / non / non renseigné. L'ordre suit la question qu'on se pose en
+// cliquant — « à qui manque-t-il une convention ? ». Le manque vient donc
+// en premier, et le non-renseigné entre les deux : il reste à vérifier.
+function valeurTroisEtats(valeur) {
+  if (valeur === false) return 0;
+  if (valeur === true) return 2;
+  return 1;
+}
+
+// Les états suivent l'ordre du parcours, pas l'alphabet : « transmis »
+// avant « au tribunal » avant « clôturé » dit quelque chose, « abandon,
+// clôturé, transmis » ne dit rien.
+function valeurEtat(cle) {
+  const rang = STATUTS.findIndex((s) => s.cle === cle);
+  return rang < 0 ? STATUTS.length : rang;
+}
+
+const COLONNES_SUIVI = [
+  { titre: "", classe: "etroite" },
+  { titre: "Dossier", cle: "dossier", valeur: (d) => valeurTexte(d.reference) },
+  { titre: "Montant dû", classe: "num", cle: "montant", sens: -1,
+    valeur: (d) => valeurNombre(d.montant_du) },
+  { titre: "Échéance", classe: "num", cle: "echeance",
+    valeur: (d) => valeurDate(d.date_echeance) },
+  { titre: "Retard", classe: "num", cle: "retard", sens: -1,
+    valeur: (d) => valeurNombre(d.anciennete_jours) },
+  { titre: "Convention", cle: "convention",
+    valeur: (d) => valeurTroisEtats(d.convention_signee) },
+  { titre: "Diplôme", cle: "diplome",
+    valeur: (d) => valeurTroisEtats(d.diplome) },
+  { titre: "État", cle: "etat", valeur: (d) => valeurEtat(d.statut) },
+  { titre: "Frais engagés", classe: "num", cle: "frais", sens: -1,
+    valeur: (d) => valeurNombre(d.frais) },
+  { titre: "Note", cle: "note", valeur: (d) => valeurTexte(d.note) },
+  { titre: "Contexte", cle: "contexte", valeur: (d) => valeurTexte(d.contexte) },
+  { titre: "Durée", classe: "num", cle: "duree", sens: -1,
+    valeur: (d) => valeurNombre(d.duree_jours) },
+  { titre: "" },
+  { titre: "Modifié", cle: "maj", sens: -1, valeur: (d) => valeurDate(d.maj) },
+];
+
+const COLONNES_DOCUMENTS = [
+  { titre: "Référence", cle: "reference", valeur: (d) => valeurTexte(d.reference) },
+  { titre: "Débiteur", cle: "debiteur", valeur: (d) => valeurTexte(d.nom) },
+  { titre: "Mails", cle: "mails", sens: -1, valeur: (d) => valeurNombre(d.nb_mails) },
+  { titre: "PJ", cle: "pj", sens: -1,
+    valeur: (d) => valeurNombre(d.nb_pieces_jointes) },
+  { titre: "Convention", cle: "convention",
+    valeur: (d) => valeurTroisEtats(d.convention_signee) },
+  { titre: "Diplôme", cle: "diplome", valeur: (d) => valeurTroisEtats(d.diplome) },
+  { titre: "Relevé bancaire", cle: "releve",
+    valeur: (d) => valeurTroisEtats(aPiece(d, "Relevé comptable")) },
+  { titre: "Heures", classe: "num", cle: "heures", sens: -1,
+    valeur: (d) => valeurNombre(
+      String(d.heures_log || "").replace(",", ".")) },
+  { titre: "Période", cle: "periode", sens: -1,
+    valeur: (d) => valeurDate(d.dernier_mail) },
+  { titre: "Sous-dossiers", cle: "sous", sens: -1,
+    valeur: (d) => valeurNombre(d.sous_dossiers) },
+  // Une note de synthèse est là ou elle ne l'est pas : trier dessus met en
+  // haut les dossiers pour lesquels il n'y a rien à transmettre.
+  { titre: "Document", cle: "document", valeur: (d) => (d.a_synthese ? 1 : 0) },
+  { titre: "Pièces versées", cle: "pieces", sens: -1,
+    valeur: (d) => valeurNombre((d.pieces || []).length) },
+  { titre: "" },
+];
+
+function entetesTriables(colonnes, table) {
+  const etat = TRI[table];
+  return "<tr>" + colonnes.map((colonne) => {
+    const classes = [colonne.classe, etat.colonne === colonne.cle ? "triee" : ""]
+      .filter(Boolean).join(" ");
+    const ouvre = `<th${classes ? ` class="${classes}"` : ""}>`;
+    if (!colonne.cle) return ouvre + echapper(colonne.titre) + "</th>";
+    const sens = etat.colonne === colonne.cle
+      ? (etat.sens > 0 ? " ↑" : " ↓") : "";
+    return ouvre
+      + `<button type="button" class="tri" data-table="${table}"`
+      + ` data-tri="${colonne.cle}" title="Trier par `
+      + `${echapper(colonne.titre.toLowerCase())} — recliquer inverse l'ordre">`
+      + `${echapper(colonne.titre)}<span class="sens">${sens}</span>`
+      + "</button></th>";
+  }).join("") + "</tr>";
+}
+
+function trier(liste, colonnes, table) {
+  const etat = TRI[table];
+  const colonne = colonnes.find((c) => c.cle === etat.colonne);
+  if (!colonne) return liste;
+  // Copie : DOSSIERS garde l'ordre de l'export, qui est aussi celui du
+  // récapitulatif. Le tri est une façon de regarder, pas de réécrire.
+  return liste.slice().sort((a, b) => {
+    const ga = colonne.valeur(a), gb = colonne.valeur(b);
+    if (ga === VIDE || gb === VIDE) {
+      return ga === gb ? 0 : (ga === VIDE ? 1 : -1);
+    }
+    if (ga === gb) return 0;
+    return (ga > gb ? 1 : -1) * etat.sens;
+  });
+}
+
+function basculerTri(evenement) {
+  const bouton = evenement.currentTarget;
+  const table = bouton.dataset.table;
+  const colonnes = table === "suivi" ? COLONNES_SUIVI : COLONNES_DOCUMENTS;
+  const colonne = colonnes.find((c) => c.cle === bouton.dataset.tri);
+  const etat = TRI[table];
+  if (etat.colonne === bouton.dataset.tri) {
+    etat.sens = -etat.sens;
+  } else {
+    // Le premier clic prend le sens utile : les gros montants et les longs
+    // retards en haut, les noms de A à Z, les échéances de la plus ancienne
+    // à la plus récente. Personne ne cherche le plus petit impayé d'abord.
+    etat.colonne = bouton.dataset.tri;
+    etat.sens = colonne && colonne.sens ? colonne.sens : 1;
+  }
+  if (table === "suivi") rendreSuivi(); else rendreDocuments();
+}
+
+function brancherTri(zone) {
+  zone.querySelectorAll("button.tri").forEach((bouton) =>
+    bouton.addEventListener("click", basculerTri));
+}
+
 function messageVide() {
   return '<p class="vide">Aucun export trouvé dans le dossier de destination.' +
     "<br />Lancez un export depuis l'onglet « Export » — les dossiers produits " +
@@ -2864,6 +3050,10 @@ function etatOuiNon(valeur, oui, non) {
 // tableau Monday : son état se lit dans les pièces du dossier. Il se présente
 // comme la convention et le diplôme — c'est la même question posée au
 // dossier : la pièce est-elle là ?
+function aPiece(dossier, nature) {
+  return (dossier.pieces || []).some((p) => p.nature === nature);
+}
+
 function etatPiece(dossier, nature, present, absent) {
   const versee = (dossier.pieces || []).find((p) => p.nature === nature);
   if (!versee) return '<span class="etat non">✕ ' + absent + "</span>";
@@ -2950,7 +3140,7 @@ function rendreDocuments() {
     return;
   }
 
-  const lignes = retenus.map((d) => `
+  const lignes = trier(retenus, COLONNES_DOCUMENTS, "documents").map((d) => `
     <tr>
       <td><b>${echapper(d.reference)}</b></td>
       <td>${echapper(d.nom)}</td>
@@ -2978,13 +3168,10 @@ function rendreDocuments() {
     </tr>`).join("");
 
   $("tableDocuments").innerHTML = `<div class="defilable"><table class="donnees">
-    <tr><th>Référence</th><th>Débiteur</th><th>Mails</th><th>PJ</th>
-        <th>Convention</th><th>Diplôme</th><th>Relevé bancaire</th>
-        <th class="num">Heures</th>
-        <th>Période</th><th>Sous-dossiers</th><th>Document</th>
-        <th>Pièces versées</th><th></th></tr>
+    ${entetesTriables(COLONNES_DOCUMENTS, "documents")}
     ${lignes}</table></div>`;
 
+  brancherTri($("tableDocuments"));
   $("tableDocuments").querySelectorAll(".fichier-piece").forEach((champ) =>
     champ.addEventListener("change", verserPiece));
 
@@ -3009,9 +3196,10 @@ function rendreSuivi() {
     `<option value="${s.cle}"${s.cle === choisi ? " selected" : ""}>` +
     `${s.icone ? s.icone + " " : ""}${echapper(s.libelle)}</option>`).join("");
 
-  const lignes = retenus.map((d) => `
+  const lignes = trier(retenus, COLONNES_SUIVI, "suivi").map((d) => `
     <tr data-reference="${echapper(d.reference)}">
-      <td><input type="checkbox" class="choix" data-ref="${echapper(d.reference)}" /></td>
+      <td><input type="checkbox" class="choix" data-ref="${echapper(d.reference)}"
+          ${CHOISIS.has(d.reference) ? "checked" : ""} /></td>
       <td class="dossier"><b>${echapper(d.reference)}</b><br />
           <span style="color:var(--texte-3)">${echapper(d.nom)}</span></td>
       <td class="num">${euro(d.montant_du)}</td>
@@ -3050,12 +3238,10 @@ function rendreSuivi() {
     </div>
     ${retenus.length ? "" : messageAucuneCorrespondance()}
     <div class="defilable"${retenus.length ? "" : " hidden"}><table class="donnees">
-    <tr><th class="etroite"></th><th>Dossier</th><th class="num">Montant dû</th>
-        <th class="num">Échéance</th><th class="num">Retard</th>
-        <th>Convention</th><th>Diplôme</th><th>État</th>
-        <th class="num">Frais engagés</th><th>Note</th><th>Contexte</th>
-        <th class="num">Durée</th><th></th><th>Modifié</th></tr>
+    ${entetesTriables(COLONNES_SUIVI, "suivi")}
     ${lignes}</table></div><div id="detailDossier"></div>`;
+
+  brancherTri($("tableSuivi"));
 
   $("tableSuivi").querySelectorAll(".choix").forEach((coche) =>
     coche.addEventListener("change", majSelection));
@@ -3249,9 +3435,10 @@ function rendreEntreprises() {
 
   const alerte = e.cessees.length ? `
     <p class="aide" style="margin-top:15px"><b class="etat non">
-      ✕ ${e.cessees.length} société(s) cessée(s) au répertoire</b> —
-      ${euro(e.montant_cesse)} en jeu. Un recouvrement y est compromis :
-      à vérifier avant d'engager des frais.</p>
+      ✕ ${e.cessees.length} société(s) ayant cessé leur activité</b> —
+      ${euro(e.montant_cesse)} en jeu. Radiées ou fermées d'après l'annuaire
+      public : il n'y a plus d'entreprise en face pour payer, et un
+      recouvrement y est compromis. À vérifier avant d'engager des frais.</p>
     <ul class="cessees">${e.cessees.map((c) => `
       <li>${echapper(c.reference)} · ${echapper(c.nom)} · ${euro(c.montant)}
         ${c.fiche ? `<a class="lien" href="${echapper(c.fiche)}"
@@ -3266,7 +3453,11 @@ function rendreEntreprises() {
        ou raison sociale différente de celle du tableau.</p>
     <div class="defilable"><table class="donnees">
       <tr><th>Forme</th><th class="num">Dossiers</th>
-          <th class="num">Montant dû</th><th class="num">dont cessées</th></tr>
+          <th class="num">Montant dû</th>
+          <th class="num" title="Sociétés dont l'annuaire public dit qu'elles
+ont cessé leur activité : radiées ou fermées. Il n'y a plus d'entreprise en
+face pour payer, et engager des frais sur ces dossiers est rarement utile."
+              >dont fermées</th></tr>
       ${rangees}</table></div>
     ${alerte}
     <div class="boutons" style="margin-top:16px">
@@ -3524,6 +3715,13 @@ function rendreBord() {
     ["Dossiers en souffrance", a.dormants.length,
      `sans mouvement depuis plus de ${a.seuil_dormance} jours`,
      a.dormants.length ? "#fab219" : ""],
+    // La part, pas seulement le nombre : cinq dossiers sur cinquante-trois
+    // et cinq sur huit n'appellent pas la même décision.
+    ["Possible abandon",
+     a.part_abandon_possible === null ? "—" : a.part_abandon_possible + " %",
+     `${a.nb_abandon_possible} dossier(s) · ${euro(a.montant_abandon_possible)} `
+     + "à trancher",
+     a.nb_abandon_possible ? "#c9862a" : "", a.nb_abandon_possible ? "?" : ""],
   ];
 
   $("tuilesBord").innerHTML = tuiles.map(([lib, val, sous, couleur, icone]) => `
@@ -3578,6 +3776,7 @@ function recalculer() {
   const somme = (f) => DOSSIERS.filter(f).reduce((t, d) => t + d.montant_du, 0);
   const gagnes = DOSSIERS.filter((d) => est(d, "gagne"));
   const perdus = DOSSIERS.filter((d) => est(d, "perdu"));
+  const suspens = DOSSIERS.filter((d) => est(d, "suspens"));
   const durees = DOSSIERS.map((d) => d.duree_jours)
     .filter((v) => v !== null && v !== undefined).sort((a, b) => a - b);
   return {
@@ -3588,6 +3787,12 @@ function recalculer() {
     montant_gagne: somme((d) => est(d, "gagne")),
     montant_perdu: somme((d) => est(d, "perdu")),
     nb_gagnes: gagnes.length, nb_perdus: perdus.length,
+    nb_abandon_possible: suspens.length,
+    montant_abandon_possible: somme((d) => est(d, "suspens")),
+    // Sur tout le portefeuille : un possible abandon n'est pas une issue,
+    // c'est une décision qui reste à prendre sur un dossier encore ouvert.
+    part_abandon_possible: DOSSIERS.length
+      ? Math.round(100 * suspens.length / DOSSIERS.length) : null,
     nb_sans_tribunal: DOSSIERS.filter((d) => d.statut === "cloture-recouvrement").length,
     nb_au_tribunal: DOSSIERS.filter((d) => d.statut === "tribunal-gagne").length,
     duree_mediane: durees.length ? durees[Math.floor(durees.length / 2)] : null,

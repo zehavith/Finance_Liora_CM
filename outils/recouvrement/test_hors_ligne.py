@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -3143,6 +3145,149 @@ def test_copie_vers_sharepoint() -> None:
              "la colonne du relevé bancaire figure au tableau des documents")
     verifier("function etatPiece" in module_interface.PAGE,
              "et son état se lit dans les pièces versées")
+
+
+def _comparateur_de_tri() -> str:
+    """Le tri de la page, isolé pour être exécuté hors du navigateur.
+
+    Découpé dans la page plutôt que recopié : une copie finirait par ne plus
+    dire la même chose que ce qui tourne réellement chez la personne.
+    """
+    import interface as module_interface  # noqa: PLC0415
+
+    page = module_interface.PAGE
+    debut = page.index("function reduire(valeur)")
+    reduire = page[debut:page.index("function reduireNumero")]
+    tri = page[page.index("// -- tri par colonne"):page.index("function brancherTri")]
+    return reduire + tri
+
+
+def test_tri_des_colonnes() -> None:
+    """Chaque en-tête trie, et le premier clic prend le sens utile."""
+    import interface as module_interface  # noqa: PLC0415
+
+    print("\nTri par colonne")
+
+    page = module_interface.PAGE
+    verifier("entetesTriables(COLONNES_SUIVI" in page,
+             "les en-têtes de l'état des dossiers sont des boutons")
+    verifier("entetesTriables(COLONNES_DOCUMENTS" in page,
+             "ceux des documents aussi")
+    verifier("trier(retenus, COLONNES_SUIVI" in page
+             and "trier(retenus, COLONNES_DOCUMENTS" in page,
+             "et les deux tableaux passent par le tri")
+    # Le tri est une façon de regarder : il ne réécrit pas l'ordre de l'export.
+    verifier("liste.slice().sort" in page,
+             "la liste d'origine n'est jamais réordonnée sur place")
+
+    node = shutil.which("node") or shutil.which("nodejs")
+    if not node:
+        print("  --   node absent : le comparateur n'est pas exécuté ici")
+        return
+
+    dossiers = [
+        {"reference": "FACT-B", "montant_du": 5990.0, "date_echeance": "",
+         "anciennete_jours": None, "convention_signee": None, "statut": "clos"},
+        {"reference": "FACT-A", "montant_du": 12490.0,
+         "date_echeance": "05/01/2023", "anciennete_jours": 1300,
+         "convention_signee": False, "statut": "non-transmis"},
+        {"reference": "FACT-C", "montant_du": 5674.17,
+         "date_echeance": "12/03/2024", "anciennete_jours": 900,
+         "convention_signee": True, "statut": "non-transmis"},
+    ]
+    programme = _comparateur_de_tri() + f"""
+const STATUTS = [{{cle: "non-transmis"}}, {{cle: "clos"}}];
+const DOSSIERS = {json.dumps(dossiers, ensure_ascii=False)};
+const ordre = (cle, clics) => {{
+  TRI.suivi = {{colonne: "", sens: 1}};
+  const colonne = COLONNES_SUIVI.find((c) => c.cle === cle);
+  for (let i = 0; i < clics; i += 1) {{
+    if (TRI.suivi.colonne === cle) TRI.suivi.sens = -TRI.suivi.sens;
+    else {{ TRI.suivi.colonne = cle; TRI.suivi.sens = colonne.sens || 1; }}
+  }}
+  return trier(DOSSIERS, COLONNES_SUIVI, "suivi").map((d) => d.reference);
+}};
+console.log(JSON.stringify({{
+  montant: ordre("montant", 1), montant2: ordre("montant", 2),
+  dossier: ordre("dossier", 1), echeance: ordre("echeance", 1),
+  retard: ordre("retard", 1), convention: ordre("convention", 1),
+  etat: ordre("etat", 1), aucun: ordre("montant", 0),
+}}));
+"""
+    with tempfile.TemporaryDirectory() as dossier:
+        script = Path(dossier) / "tri.js"
+        script.write_text(programme, encoding="utf-8")
+        sortie = subprocess.run([node, str(script)], capture_output=True,
+                                text=True, timeout=60)
+    verifier(sortie.returncode == 0,
+             f"le comparateur s'exécute sans erreur ({sortie.stderr[:300]})")
+    obtenu = json.loads(sortie.stdout)
+
+    # Personne ne cherche le plus petit impayé d'abord.
+    verifier(obtenu["montant"] == ["FACT-A", "FACT-B", "FACT-C"],
+             f"le premier clic met les gros montants en haut ({obtenu['montant']})")
+    verifier(obtenu["montant2"] == ["FACT-C", "FACT-B", "FACT-A"],
+             f"recliquer inverse l'ordre ({obtenu['montant2']})")
+    verifier(obtenu["dossier"] == ["FACT-A", "FACT-B", "FACT-C"],
+             f"les noms partent de A ({obtenu['dossier']})")
+    verifier(obtenu["etat"] == ["FACT-A", "FACT-C", "FACT-B"],
+             f"les états suivent le parcours, pas l'alphabet ({obtenu['etat']})")
+
+    # Une valeur absente n'est ni la plus grande ni la plus petite : la voir
+    # coiffer le tableau ferait douter du tri tout entier.
+    verifier(obtenu["echeance"] == ["FACT-A", "FACT-C", "FACT-B"],
+             f"l'échéance la plus ancienne vient en tête, la vide en bas "
+             f"({obtenu['echeance']})")
+    verifier(obtenu["retard"][-1] == "FACT-B",
+             f"un retard inconnu reste en bas ({obtenu['retard']})")
+
+    # « À qui manque-t-il une convention ? » est la question qu'on se pose en
+    # cliquant : le manque vient donc en premier.
+    verifier(obtenu["convention"] == ["FACT-A", "FACT-B", "FACT-C"],
+             f"les conventions manquantes remontent, le non-renseigné entre "
+             f"les deux ({obtenu['convention']})")
+
+    verifier(obtenu["aucun"] == ["FACT-B", "FACT-A", "FACT-C"],
+             f"sans tri, l'ordre de l'export est gardé ({obtenu['aucun']})")
+
+    # Trier puis cocher est le geste même : perdre les cases obligerait à tout
+    # reprendre au clic suivant.
+    verifier("CHOISIS.has(d.reference)" in page,
+             "les cases cochées survivent au tri")
+
+
+def test_part_abandon_possible() -> None:
+    """La part du portefeuille laissée en suspens, pas seulement le nombre."""
+    import interface as module_interface  # noqa: PLC0415
+    import suivi as module_suivi  # noqa: PLC0415
+
+    print("\nPart des possibles abandons")
+
+    dossiers = [
+        {"reference": f"F{i}", "statut": statut, "montant_du": 1000.0,
+         "frais": 0.0, "duree_jours": None, "date_echeance": "",
+         "anciennete_jours": None, "mise_en_demeure": ""}
+        for i, statut in enumerate(
+            ["abandon-possible", "abandon-possible", "non-transmis",
+             "transmis-contentieux"])
+    ]
+    chiffres = module_suivi.agreger(dossiers)
+    verifier(chiffres["nb_abandon_possible"] == 2,
+             f"deux dossiers en possible abandon ({chiffres['nb_abandon_possible']})")
+    verifier(chiffres["part_abandon_possible"] == 50,
+             f"soit la moitié du portefeuille ({chiffres['part_abandon_possible']} %)")
+    verifier(chiffres["montant_abandon_possible"] == 2000.0,
+             f"et {chiffres['montant_abandon_possible']} € à trancher")
+
+    # Rapportée à tout le portefeuille : un possible abandon n'est pas une
+    # issue, c'est une décision qui reste à prendre sur un dossier ouvert.
+    verifier(module_suivi.agreger([])["part_abandon_possible"] is None,
+             "sans aucun dossier, aucune part n'est inventée")
+
+    page = module_interface.PAGE
+    verifier("Possible abandon" in page, "la tuile figure au tableau de bord")
+    verifier("part_abandon_possible: DOSSIERS.length" in page,
+             "et la page la recalcule elle-même quand une étape change")
 
 
 def test_pieces_citees_une_fois() -> None:
@@ -6343,6 +6488,8 @@ def main() -> int:
     test_messages_autre_facture()
     test_feuille_emargement()
     test_copie_vers_sharepoint()
+    test_tri_des_colonnes()
+    test_part_abandon_possible()
     test_pieces_citees_une_fois()
     test_suivi_livre_avec_l_application()
     test_etape_depuis_monday()
