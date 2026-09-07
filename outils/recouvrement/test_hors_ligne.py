@@ -2844,6 +2844,46 @@ def test_annuaire_entreprises() -> None:
              "les sociétés cessées sont listées, avec le montant en jeu")
 
 
+def test_pieces_citees_une_fois() -> None:
+    """Un document est cité une fois, avec les pièces où il figure."""
+    print("\nPièces jointes regroupées par document")
+
+    import synthese as module_synthese  # noqa: PLC0415
+    from indexation import LigneIndex  # noqa: PLC0415
+
+    def piece(numero, jointes):
+        return LigneIndex(
+            piece_n=numero, date=datetime(2024, 5, numero, tzinfo=timezone.utc),
+            sens="envoyé", expediteur="a@b.fr", destinataires="c@d.fr", copie="",
+            objet="Relance", nb_pieces_jointes=1, pieces_jointes=jointes,
+            critere="facture", boites="b", fichier_pdf="", fichier_eml="",
+            dossier_pieces_jointes="", thread_id="t", message_id=f"<{numero}>")
+
+    # La même facture jointe à sept relances : elle donnait sept lignes
+    # identiques, et la liste ne disait plus quels documents composent le
+    # dossier, seulement combien de fois ils ont été envoyés.
+    lignes = [piece(n, "FACT-2405-00409.pdf") for n in (1, 3, 4, 6, 9)]
+    lignes += [piece(n, "FACT-2405-00409.pdf | Rib BNP Datascientest (1).pdf")
+               for n in (2, 5)]
+    lignes.append(piece(7, "Devis signe Sofiane.pdf"))
+
+    classees = dict(module_synthese.classer_pieces_jointes(lignes))
+    factures = classees["Facture / avoir"]
+    verifier(len(factures) == 1,
+             f"une seule ligne pour la facture (obtenu : {factures})")
+    verifier(factures[0]
+             == "FACT-2405-00409.pdf (pièces n° 1, 2, 3, 4, 5, 6 et 9)",
+             f"avec toutes ses pièces citées (obtenu : {factures[0]})")
+    verifier(classees["Autre document"]
+             == ["Rib BNP Datascientest (1).pdf (pièces n° 2 et 5)"],
+             f"deux occurrences se lisent « pièces n° 2 et 5 » "
+             f"(obtenu : {classees['Autre document']})")
+    verifier(classees["Contrat / convention"]
+             == ["Devis signe Sofiane.pdf (pièce n° 7)"],
+             f"et un document unique garde le singulier "
+             f"(obtenu : {classees['Contrat / convention']})")
+
+
 def test_extrait_zoho_de_bout_en_bout() -> None:
     """Un extrait Zoho seul suffit à faire chercher les anciens numéros."""
     print("\nExtrait Zoho : de l'import à la requête Gmail")
@@ -3183,7 +3223,8 @@ def test_resume_de_situation() -> None:
         3: "Mise en demeure de payer sous huit jours.",
     }
     synthese = module_synthese.analyser(lignes, textes)
-    points = module_synthese.resumer_situation(dossier, synthese, maintenant)
+    points = module_synthese.resumer_situation(
+        dossier, synthese, maintenant, lignes=lignes)
     par_titre = dict(points)
 
     verifier([titre for titre, _ in points] == [
@@ -5554,6 +5595,7 @@ def main() -> int:
     test_pieces_versees()
     test_ancienne_reference_facture()
     test_annuaire_entreprises()
+    test_pieces_citees_une_fois()
     test_extrait_zoho_de_bout_en_bout()
     test_fils_completes()
     test_note_interne_au_propre()

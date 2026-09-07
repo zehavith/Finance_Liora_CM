@@ -697,7 +697,11 @@ def resumer_situation(
 
     # 3. Contrat signé et factures.
     versees = [p for p in (pieces_ajoutees or []) if p.get("fichier")]
-    extraites = synthese.nb_pieces_jointes
+    # Des documents, pas des envois : la même facture jointe à sept relances
+    # est une pièce au dossier, pas sept. C'est le décompte qu'attend celui
+    # qui vérifie ce que le dossier contient.
+    extraites = sum(len(noms)
+                    for _libelle, noms in classer_pieces_jointes(lignes or []))
     detail = []
     if extraites:
         detail.append(f"{_accorder(extraites, 'pièce')} "
@@ -1377,8 +1381,15 @@ def convention_dans_les_pieces(lignes: list[LigneIndex], apprenant: str = "") ->
 
 
 def classer_pieces_jointes(lignes: list[LigneIndex]) -> list[tuple[str, list[str]]]:
-    """Regroupe les pièces jointes par nature, d'après leur nom de fichier."""
-    groupes: dict[str, list[str]] = {}
+    """Regroupe les pièces jointes par nature, d'après leur nom de fichier.
+
+    Un document est cité une fois, avec les pièces où il figure. La même
+    facture jointe à sept relances donnait sept lignes identiques : la liste
+    ne disait plus quels documents composent le dossier, seulement combien de
+    fois ils ont été envoyés — ce qui se lit déjà dans la chronologie.
+    """
+    # {catégorie: {clé du fichier: (nom affiché, [numéros de pièce])}}
+    groupes: dict[str, dict[str, tuple[str, list[int]]]] = {}
     for ligne in lignes:
         for nom in (ligne.pieces_jointes or "").split(" | "):
             nom = nom.strip()
@@ -1390,10 +1401,28 @@ def classer_pieces_jointes(lignes: list[LigneIndex]) -> list[tuple[str, list[str
                 if any(motif in plat for motif in motifs):
                     categorie = libelle
                     break
-            groupes.setdefault(categorie, []).append(f"{nom} (pièce n° {ligne.piece_n})")
+            documents = groupes.setdefault(categorie, {})
+            _affiche, numeros = documents.setdefault(plat, (nom, []))
+            if ligne.piece_n not in numeros:
+                numeros.append(ligne.piece_n)
 
     ordre = [libelle for libelle, _ in CATEGORIES_PIECES] + ["Autre document"]
-    return [(libelle, groupes[libelle]) for libelle in ordre if libelle in groupes]
+    return [
+        (libelle, [
+            f"{nom} ({_pieces_citees(numeros)})"
+            for nom, numeros in groupes[libelle].values()
+        ])
+        for libelle in ordre if libelle in groupes
+    ]
+
+
+def _pieces_citees(numeros: list[int]) -> str:
+    """« pièce n° 3 », « pièces n° 1, 2 et 9 » — jamais « pièce n° 1, 2 »."""
+    numeros = sorted(numeros)
+    if len(numeros) == 1:
+        return f"pièce n° {numeros[0]}"
+    liste = ", ".join(str(numero) for numero in numeros[:-1])
+    return f"pièces n° {liste} et {numeros[-1]}"
 
 
 def _valeurs_de_ligne(valeur: str | None) -> set[str]:
