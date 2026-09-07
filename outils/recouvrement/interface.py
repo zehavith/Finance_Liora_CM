@@ -44,7 +44,7 @@ import synthese as module_synthese  # noqa: E402
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
 # mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "65"
+VERSION = "66"
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -666,6 +666,11 @@ class Gestionnaire(BaseHTTPRequestHandler):
             # redéposer à chaque export « au cas où ».
             retenus = complements_memorises()
             page = page.replace(
+                "__COMPLEMENTS_RETENUS__",
+                json.dumps([c.name for c in retenus], ensure_ascii=False)
+                .replace("<", "\\u003c"),
+            )
+            page = page.replace(
                 "__COMPLEMENT__",
                 _attribut(
                     "Fichiers retenus, réappliqués après chaque export : "
@@ -827,6 +832,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/completer":
                 self._completer_depuis_fichier(self._corps_json())
                 return
+            if chemin == "/api/oublier-complements":
+                self._oublier_complements()
+                return
             if chemin == "/api/annuaire":
                 self._interroger_annuaire(self._corps_json())
                 return
@@ -967,6 +975,25 @@ class Gestionnaire(BaseHTTPRequestHandler):
         resultat["memorise"] = nom
         resultat["retenus"] = [c.name for c in complements_memorises()]
         self._json(200, resultat)
+
+    def _oublier_complements(self) -> None:
+        """Retire les fichiers de suivi retenus.
+
+        Un fichier déposé était réappliqué après chaque export sans qu'aucun
+        moyen ne permette d'y renoncer : le déposer engageait pour de bon.
+        Ce que le fichier a déjà écrit dans le suivi reste — l'échéance et
+        l'adresse d'un dossier sont à lui maintenant — mais plus rien n'est
+        relu, et rien de nouveau n'en viendra.
+        """
+        oublies = []
+        for fichier in complements_memorises():
+            try:
+                fichier.unlink()
+            except OSError:
+                continue
+            oublies.append(fichier.name)
+        memoriser_preferences({"complements": [], "complement": ""})
+        self._json(200, {"oublies": oublies, "retenus": []})
 
     def _verser_piece(self, demande: dict) -> None:
         """Range une pièce dans le dossier, et refait sa note de synthèse.
@@ -1375,6 +1402,8 @@ table.donnees th.etroite{width:26px}
 .versees{margin-top:5px;font-size:11px;color:var(--texte-3)}
 .versees span{display:block}
 .retenu{font-size:11.5px;color:var(--texte-3);max-width:230px}
+.lien-oubli{font-size:11.5px;color:var(--accent);cursor:pointer;white-space:nowrap}
+.lien-oubli:hover{text-decoration:underline}
 .secondaire.danger{border-color:rgba(239,68,68,.4);color:#ef6a6a}
 .secondaire.danger:hover{border-color:#ef6a6a;background:rgba(239,68,68,.08)}
 .etat{white-space:nowrap;font-size:12px}
@@ -2408,6 +2437,34 @@ async function supprimerChoisis() {
 // Le tableau Monday ne porte pas tout : la convention, le diplome et les
 // heures vivent souvent dans un fichier de suivi tenu a part. Les reprendre
 // vaut mieux que de les ressaisir cinquante fois.
+const COMPLEMENTS_RETENUS = __COMPLEMENTS_RETENUS__;
+
+function majOubliComplements(retenus) {
+  const lien = $("oublierComplements");
+  if (!lien) return;
+  lien.hidden = !(retenus && retenus.length);
+  lien.textContent = retenus && retenus.length > 1
+    ? `oublier ces ${retenus.length} fichiers` : "oublier ce fichier";
+}
+
+async function oublierComplements() {
+  const retenus = $("oublierComplements").dataset.noms || "";
+  if (!confirm(
+      "Ces fichiers ne seront plus relus après les exports :\n\n"
+      + retenus.split("|").join("\n")
+      + "\n\nCe qu'ils ont déjà renseigné dans les dossiers reste en place.")) {
+    return;
+  }
+  try {
+    const r = await api("/api/oublier-complements", {});
+    majOubliComplements([]);
+    $("etatComplement").textContent = "";
+    afficherBandeau(true, r.oublies.length
+      ? `${r.oublies.length} fichier(s) oublié(s) : ${r.oublies.join(", ")}.`
+      : "Il n'y avait aucun fichier retenu.");
+  } catch (erreur) { afficherBandeau(false, erreur.message); }
+}
+
 async function completerDepuisFichier(evenement) {
   const fichier = evenement.target.files[0];
   if (!fichier) return;
@@ -2428,6 +2485,8 @@ async function completerDepuisFichier(evenement) {
           + " — tous réappliqués après chaque export."
         : "Fichier retenu : " + r.memorise
           + " — réappliqué après chaque export.";
+      $("oublierComplements").dataset.noms = retenus.join("|");
+      majOubliComplements(retenus);
     }
     afficherBandeau(
       r.dossiers > 0,
@@ -2659,6 +2718,8 @@ function rendreSuivi() {
         <input type="file" id="complement" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xltx" />
       </label>
       <span id="etatComplement" class="retenu">__COMPLEMENT__</span>
+      <a id="oublierComplements" class="lien-oubli" hidden
+         title="Les fichiers cessent d'être relus. Ce qu'ils ont déjà renseigné reste dans les dossiers.">oublier</a>
       <button class="secondaire danger" id="toutEffacer">Tout effacer…</button>
       <span id="compteChoix">Cochez les dossiers à retirer de la liste.</span>
     </div>
@@ -2675,6 +2736,9 @@ function rendreSuivi() {
   $("supprimer").addEventListener("click", supprimerChoisis);
   $("toutEffacer").addEventListener("click", toutEffacer);
   $("complement").addEventListener("change", completerDepuisFichier);
+  $("oublierComplements").dataset.noms = COMPLEMENTS_RETENUS.join("|");
+  majOubliComplements(COMPLEMENTS_RETENUS);
+  $("oublierComplements").addEventListener("click", oublierComplements);
   majSelection();
 
   $("tableSuivi").querySelectorAll("[data-detail]").forEach((lien) =>

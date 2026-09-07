@@ -4439,6 +4439,30 @@ def test_interface() -> None:
                     if c.name not in temoins]
             verifier(len(noms) == 2,
                      f"un fichier du même nom remplace le sien ({noms})")
+
+            # Un fichier déposé engageait pour de bon : il était réappliqué
+            # après chaque export sans qu'aucun moyen ne permette d'y
+            # renoncer. C'est le contraire d'un outil qu'on maîtrise.
+            page_retenue = urllib.request.urlopen(
+                f"{base}/", timeout=10).read().decode("utf-8")
+            verifier('id="oublierComplements"' in page_retenue,
+                     "la page offre de les oublier")
+            verifier("factures_zoho.csv" in page_retenue,
+                     "en nommant ce qui est retenu")
+
+            statut, oubli = appeler("/api/oublier-complements", {})
+            verifier(len(oubli.get("oublies") or []) >= 2,
+                     f"les fichiers sont retirés (obtenu : {oubli.get('oublies')})")
+            verifier(interface.complements_memorises() == [],
+                     "plus rien n'est retenu")
+            verifier(not (interface.lire_preferences().get("complements") or []),
+                     "ni mémorisé dans les préférences")
+
+            # Ce qu'ils ont déjà écrit dans le suivi reste : l'échéance d'un
+            # dossier lui appartient une fois reprise.
+            statut, encore = appeler("/api/oublier-complements", {})
+            verifier(encore.get("oublies") == [],
+                     "oublier deux fois de suite ne casse rien")
         finally:
             for reste in interface.complements_memorises():
                 if reste.name not in temoins:
