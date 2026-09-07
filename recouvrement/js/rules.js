@@ -508,27 +508,35 @@
         // Ils ne valent que pour la balance âgée comptable : c'est la règle du
         // classeur de trésorerie, pas celle du suivi de relance.
         //
+        // Le mandat de prélèvement passe avant tout le reste.
+        //
+        // Chez un client prélevé, l'argent est appelé automatiquement : il n'y
+        // a aucun délai de paiement à accorder, et l'échéance est la fin de la
+        // formation, sans rien ajouter. C'est la colonne AT du classeur.
+        //
+        // Le classeur teste AR avant AT ; ici c'est l'inverse, à votre
+        // demande : « les GoCardless sont prioritaires, date d'échéance fin de
+        // formation ». Une facture de régularisation émise après la formation
+        // ne change rien au fait que le client est prélevé — le prélèvement,
+        // lui, ne s'arrête pas pour attendre soixante jours.
+        if (gl && inv.mandatGocardless && inv.dateFinFormation) {
+            return { date: stripTime(inv.dateFinFormation), origine: 'Règle', regle: rule,
+                     baseUtilisee: 'dateFinFormation', motif: 'Mandat de prélèvement en place' };
+        }
         // Une facture émise APRÈS la fin de la formation n'est pas une facture
         // d'avance : c'est une régularisation, et le délai court depuis son
         // émission. Sans cela, une formation terminée en 2024 refacturée en
         // 2026 ressortait échue depuis deux ans le jour de son émission.
-        // Première ligne de la formule du classeur : SI(AR="oui" ; AQ+60 ; …).
-        // AR vaut « oui » quand la date de facture de la facturation dépasse la
-        // fin de formation — une prestation refacturée après coup. La base est
-        // alors la date de facture *de la facturation*, pas celle de l'écriture
-        // comptable : les confondre décalait mille lignes de soixante jours.
+        // C'est la première ligne de la formule du classeur :
+        // SI(AR="oui" ; AQ+60 ; …). AR vaut « oui » quand la date de facture de
+        // la facturation dépasse la fin de formation. La base est alors la date
+        // de facture *de la facturation*, pas celle de l'écriture comptable :
+        // les confondre décalait mille lignes de soixante jours.
         if (gl && inv.dateFactureFacturation && inv.dateFinFormation
             && inv.dateFactureFacturation > inv.dateFinFormation) {
             return { date: addDays(inv.dateFactureFacturation, 60), origine: 'Règle', regle: rule,
                      baseUtilisee: 'dateFactureFacturation',
                      motif: 'Facture postérieure à la fin de formation' };
-        }
-        // Un mandat de prélèvement change la mécanique : l'argent est appelé,
-        // il n'y a pas de délai de paiement à accorder. L'échéance est la fin
-        // de la formation, sans rien ajouter.
-        if (gl && inv.mandatGocardless && inv.dateFinFormation) {
-            return { date: stripTime(inv.dateFinFormation), origine: 'Règle', regle: rule,
-                     baseUtilisee: 'dateFinFormation', motif: 'Mandat de prélèvement en place' };
         }
 
         // La base de la règle d'abord. Puis, s'il y en a une, l'échéance que
