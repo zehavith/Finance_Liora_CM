@@ -1041,7 +1041,13 @@
         // Les entités du groupe sont de l'interco. « Interne - DST Allemagne »
         // est la sous-catégorie de la seule filiale allemande : elle se nomme,
         // les autres non.
-        { libelle: 'DST Allemagne (GmbH)', motif: /dst (germany|allemagne)|datascientest germany|\bgmbh\b/, fin: 'DST_ALLEMAGNE' },
+        // La filiale allemande du groupe. « GmbH » seul ne suffit pas : c'est
+        // la forme juridique de toutes les sociétés allemandes, et elle rangeait
+        // Allianz Global Investors et Allianz Technology dans l'interco du
+        // groupe. Il faut le nom du groupe avec.
+        { libelle: 'DST Allemagne (DataScientest GmbH)',
+          motif: /dst (germany|allemagne)|datascientest (germany|allemagne)|(dst|datascientest)[^a-z]*gmbh/,
+          fin: 'DST_ALLEMAGNE' },
         { libelle: 'Une autre entité du groupe (DST Espagne, UK, Inc)', motif: /\bdst\b|datascientest (spain|espagne|uk|inc)/, fin: 'INTERCO' },
     ];
 
