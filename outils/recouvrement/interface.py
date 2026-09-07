@@ -946,7 +946,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 self._verser_piece(self._corps_json())
                 return
             if chemin == "/api/refaire-notes":
-                self._refaire_notes()
+                self._refaire_notes(self._corps_json())
                 return
         except ValueError as exc:
             self._json(400, {"erreur": str(exc)})
@@ -1091,8 +1091,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
         resultat["retenus"] = [c.name for c in complements_memorises()]
         self._json(200, resultat)
 
-    def _refaire_notes(self) -> None:
-        """Réécrit toutes les notes de synthèse, sans retourner sur Gmail.
+    def _refaire_notes(self, demande: dict | None = None) -> None:
+        """Réécrit les notes de synthèse, sans retourner sur Gmail.
 
         Les pièces et leur texte sont relus dans l'index et les `.eml`
         conservés : aucun message n'est retéléchargé. C'est ce qui permet de
@@ -1101,12 +1101,27 @@ class Gestionnaire(BaseHTTPRequestHandler):
 
         Ce qui a été trouvé dans Gmail ne change pas pour autant : pour cela,
         il faut bien relancer un export.
+
+        Sans références, toutes les notes sont refaites. Avec, ces
+        dossiers-là seulement : sur deux cents dossiers dont trois viennent
+        de changer, refaire les deux cents pour trois est une attente
+        qu'aucune raison ne justifie.
         """
+        voulues = {
+            str(reference).strip()
+            for reference in ((demande or {}).get("references") or [])
+            if str(reference).strip()
+        }
         sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
         suivi = module_suivi.charger(SUIVI)
         refaites, echecs, motifs = 0, 0, []
+        inconnues = sorted(voulues - {
+            d["reference"] for d in module_suivi.inventaire(sortie, SUIVI)
+        })
 
         for dossier in module_suivi.inventaire(sortie, SUIVI):
+            if voulues and dossier["reference"] not in voulues:
+                continue
             repertoire = sortie / dossier["repertoire"]
             if not repertoire.is_dir():
                 continue
@@ -1125,7 +1140,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
                     motifs.append(f"{dossier['reference']} : {motif}")
 
         self._json(200, {"refaites": refaites, "echecs": echecs,
-                         "motifs": motifs})
+                         "motifs": motifs, "choisies": len(voulues),
+                         "inconnues": inconnues[:8]})
 
     def _oublier_complements(self) -> None:
         """Retire les fichiers de suivi retenus.
@@ -2226,23 +2242,53 @@ $("chercheTableau").addEventListener("input", rendreTableaux);
   if ($(id)) $(id).addEventListener("input", chercherDossiers);
 });
 
+// Les dossiers dont on veut refaire la note. Sur deux cents dossiers dont
+// trois viennent de changer, refaire les deux cents pour trois est une
+// attente qu'aucune raison ne justifie.
+//
+// Sélection propre à cet onglet : les cases de « État des dossiers »
+// commandent une suppression, et un même geste ne doit pas pouvoir
+// déclencher l'une pour l'autre.
+const CHOIX_NOTES = new Set();
+
+function majChoixNotes() {
+  const cases = Array.from(document.querySelectorAll(".choix-note"));
+  CHOIX_NOTES.clear();
+  cases.filter((c) => c.checked).forEach((c) => CHOIX_NOTES.add(c.dataset.ref));
+  const bouton = $("refaireNotes");
+  if (!bouton) return;
+  bouton.textContent = CHOIX_NOTES.size
+    ? `Refaire ${CHOIX_NOTES.size} note(s)` : "Refaire les notes";
+  bouton.title = CHOIX_NOTES.size
+    ? "Réécrit les notes des dossiers cochés, à partir des messages déjà au "
+      + "dossier. Sans retourner sur Gmail."
+    : "Réécrit toutes les notes à partir des messages déjà au dossier, sans "
+      + "retourner sur Gmail. Cochez des dossiers pour n'en refaire que "
+      + "certains.";
+}
+
 async function refaireNotes() {
   if (!DOSSIERS.length) {
     afficherBandeau(false, "Aucun dossier : lancez d'abord un export.");
     return;
   }
+  const choisis = Array.from(CHOIX_NOTES);
   const bouton = $("refaireNotes");
   bouton.disabled = true;
   const avant = bouton.textContent;
   bouton.textContent = "Notes en cours…";
   try {
-    const r = await api("/api/refaire-notes", {});
+    const r = await api("/api/refaire-notes", { references: choisis });
     afficherBandeau(r.echecs === 0,
-      `${r.refaites} note(s) refaite(s) à partir des messages déjà au dossier.`
+      `${r.refaites} note(s) refaite(s) à partir des messages déjà au dossier`
+      + (choisis.length ? `, sur les ${choisis.length} dossier(s) cochés.` : ".")
       + (r.echecs
          ? ` ${r.echecs} en échec : ${(r.motifs || []).join(" ; ")}.`
          : "")
       + " Les messages, eux, ne changent qu'en relançant un export.");
+    // Le travail demandé est fait : garder les cases cochées ferait refaire
+    // les mêmes au clic suivant, en croyant en refaire d'autres.
+    CHOIX_NOTES.clear();
     chargerDossiers();
   } catch (erreur) { afficherBandeau(false, erreur.message); }
   finally { bouton.disabled = false; bouton.textContent = avant; }
@@ -2948,6 +2994,7 @@ const COLONNES_SUIVI = [
 ];
 
 const COLONNES_DOCUMENTS = [
+  { titre: "", classe: "etroite" },
   { titre: "Référence", cle: "reference", valeur: (d) => valeurTexte(d.reference) },
   { titre: "Débiteur", cle: "debiteur", valeur: (d) => valeurTexte(d.nom) },
   { titre: "Mails", cle: "mails", sens: -1, valeur: (d) => valeurNombre(d.nb_mails) },
@@ -3149,6 +3196,10 @@ function rendreDocuments() {
 
   const lignes = trier(retenus, COLONNES_DOCUMENTS, "documents").map((d) => `
     <tr>
+      <td><input type="checkbox" class="choix-note"
+          data-ref="${echapper(d.reference)}"
+          ${CHOIX_NOTES.has(d.reference) ? "checked" : ""}
+          title="Refaire la note de ce dossier seulement." /></td>
       <td><b>${echapper(d.reference)}</b></td>
       <td>${echapper(d.nom)}</td>
       <td class="num">${d.nb_mails}</td>
@@ -3187,8 +3238,10 @@ function rendreDocuments() {
   const avertissement = perimees ? `
     <p class="aide perimees">↻ ${perimees} note(s) de synthèse ont été écrites
        avant les derniers changements enregistrés — échéance, convention,
-       contexte ou étape. « Refaire les notes » les réécrit à partir des
-       messages déjà au dossier, sans retourner sur Gmail.</p>` : "";
+       contexte ou étape. Elles se réécrivent à partir des messages déjà au
+       dossier, sans retourner sur Gmail.
+       <a class="lien" id="cocherPerimees">cocher ces ${perimees} dossiers</a></p>`
+    : "";
 
   $("tableDocuments").innerHTML = avertissement
     + `<div class="defilable"><table class="donnees">
@@ -3196,6 +3249,17 @@ function rendreDocuments() {
     ${lignes}</table></div>`;
 
   brancherTri($("tableDocuments"));
+  $("tableDocuments").querySelectorAll(".choix-note").forEach((coche) =>
+    coche.addEventListener("change", majChoixNotes));
+  if ($("cocherPerimees")) {
+    $("cocherPerimees").addEventListener("click", () => {
+      DOSSIERS.filter((d) => d.note_perimee)
+        .forEach((d) => CHOIX_NOTES.add(d.reference));
+      rendreDocuments();
+    });
+  }
+  majChoixNotes();
+
   $("tableDocuments").querySelectorAll(".fichier-piece").forEach((champ) =>
     champ.addEventListener("change", verserPiece));
 
@@ -3208,12 +3272,12 @@ function rendreDocuments() {
 
 // -- onglet État des dossiers
 function rendreSuivi() {
-  if (!DOSSIERS.length) {
-    $("tableSuivi").innerHTML = messageVide();
-    majCompteRecherche(0);
-    return;
-  }
-  const retenus = dossiersFiltres();
+  // La barre est rendue même sans aucun dossier. Elle disparaissait avec la
+  // liste, or c'est précisément quand la liste est vide ou fausse qu'on
+  // cherche « Tout effacer » et « Compléter depuis un fichier » : les seuls
+  // boutons qui remettent l'application d'aplomb s'en allaient avec le
+  // problème qu'ils servent à régler.
+  const retenus = DOSSIERS.length ? dossiersFiltres() : [];
   majCompteRecherche(retenus.length);
 
   const options = (choisi) => STATUTS.map((s) =>
@@ -3257,10 +3321,13 @@ function rendreSuivi() {
       <span id="etatComplement" class="retenu">__COMPLEMENT__</span>
       <a id="oublierComplements" class="lien-oubli" hidden
          title="Les fichiers cessent d'être relus. Ce qu'ils ont déjà renseigné reste dans les dossiers.">oublier</a>
-      <button class="secondaire danger" id="toutEffacer">Tout effacer…</button>
+      <button class="secondaire danger" id="toutEffacer"${
+        DOSSIERS.length ? "" : " disabled"}>Tout effacer…</button>
       <span id="compteChoix">Cochez les dossiers à retirer de la liste.</span>
     </div>
-    ${retenus.length ? "" : messageAucuneCorrespondance()}
+    ${DOSSIERS.length
+      ? (retenus.length ? "" : messageAucuneCorrespondance())
+      : messageVide()}
     <div class="defilable"${retenus.length ? "" : " hidden"}><table class="donnees">
     ${entetesTriables(COLONNES_SUIVI, "suivi")}
     ${lignes}</table></div><div id="detailDossier"></div>`;

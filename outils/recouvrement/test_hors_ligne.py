@@ -3298,6 +3298,109 @@ console.log(JSON.stringify({{
              "les cases cochées survivent au tri")
 
 
+def test_refaire_notes_choisies() -> None:
+    """On refait la note des dossiers cochés, pas celle des deux cents."""
+    import interface as module_interface  # noqa: PLC0415
+
+    print("\nRefaire les notes des seuls dossiers choisis")
+
+    class _Sortie:
+        """Un gestionnaire réduit à ce que la route utilise : sa réponse."""
+
+        def __init__(self) -> None:
+            self.reponse: dict = {}
+
+        def _json(self, _code: int, corps: dict) -> None:
+            self.reponse = corps
+
+        _refaire_notes = module_interface.Gestionnaire._refaire_notes
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "sortie"
+        for nom in ("a", "b", "c"):
+            (sortie / nom).mkdir(parents=True)
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures;date_echeance\n"
+            "FACT-A;A;a;1 €;FACT-A;\nFACT-B;B;b;1 €;FACT-B;\n"
+            "FACT-C;C;c;1 €;FACT-C;\n",
+            encoding="utf-8-sig",
+        )
+
+        faites: list[str] = []
+        vrai_refaire = module_interface._refaire_synthese
+        vraies_preferences = module_interface.lire_preferences
+        module_interface._refaire_synthese = (
+            lambda _rep, dossier, _suivi: (faites.append(dossier["reference"]),
+                                           (True, ""))[1])
+        module_interface.lire_preferences = lambda: {"sortie": str(sortie)}
+        try:
+            gestionnaire = _Sortie()
+            gestionnaire._refaire_notes({"references": ["FACT-C", "FACT-A"]})
+            verifier(sorted(faites) == ["FACT-A", "FACT-C"],
+                     f"seules les notes cochées sont refaites ({sorted(faites)})")
+            verifier(gestionnaire.reponse["refaites"] == 2,
+                     f"et le compte le dit ({gestionnaire.reponse['refaites']})")
+
+            # Sans rien de coché, le bouton garde son sens d'origine : tout.
+            faites.clear()
+            gestionnaire._refaire_notes({})
+            verifier(sorted(faites) == ["FACT-A", "FACT-B", "FACT-C"],
+                     f"sans sélection, toutes les notes sont refaites "
+                     f"({sorted(faites)})")
+
+            # Une référence qui n'existe plus est nommée plutôt que comptée
+            # comme faite : sinon « 0 note refaite » resterait inexpliqué.
+            faites.clear()
+            gestionnaire._refaire_notes({"references": ["FACT-Z"]})
+            verifier(faites == [] and gestionnaire.reponse["inconnues"] == ["FACT-Z"],
+                     f"un dossier inconnu est signalé "
+                     f"({gestionnaire.reponse.get('inconnues')})")
+        finally:
+            module_interface._refaire_synthese = vrai_refaire
+            module_interface.lire_preferences = vraies_preferences
+
+    page = module_interface.PAGE
+    verifier("CHOIX_NOTES" in page and "choix-note" in page,
+             "la page offre de cocher les dossiers du tableau des documents")
+    verifier('api("/api/refaire-notes", { references: choisis })' in page,
+             "et transmet la sélection")
+    # Les cases de « État des dossiers » commandent une suppression : un même
+    # geste ne doit pas pouvoir déclencher l'une pour l'autre.
+    verifier("CHOIX_NOTES" in page and "const CHOISIS" in page
+             and "CHOISIS.has" in page,
+             "les deux sélections restent distinctes")
+    verifier('id="cocherPerimees"' in page,
+             "et les notes en retard se cochent d'un clic")
+
+
+def test_barre_toujours_presente() -> None:
+    """La barre d'outils reste là quand la liste est vide."""
+    import interface as module_interface  # noqa: PLC0415
+
+    print("\nBarre d'outils de l'état des dossiers")
+
+    page = module_interface.PAGE
+    rendu = page[page.index("function rendreSuivi()"):
+                 page.index("// -- onglet Tableau de bord")]
+
+    # Elle s'en allait avec la liste, or c'est justement quand la liste est
+    # vide ou fausse qu'on cherche « Tout effacer » et « Compléter depuis un
+    # fichier » : les boutons qui remettent l'application d'aplomb
+    # disparaissaient avec le problème qu'ils servent à régler.
+    verifier("$(\"tableSuivi\").innerHTML = messageVide();" not in rendu,
+             "la liste vide ne remplace plus tout le contenu de l'onglet")
+    verifier('id="toutEffacer"' in rendu and 'id="complement"' in rendu,
+             "la barre est rendue dans tous les cas")
+    verifier("? (retenus.length ? \"\" : messageAucuneCorrespondance())" in rendu
+             and ": messageVide()}" in rendu,
+             "et le message « aucun export » prend la place du tableau, "
+             "pas celle de la barre")
+    # Effacer ce qui n'existe pas n'a pas de sens : le bouton est là pour
+    # qu'on le trouve, grisé pour qu'il ne promette rien.
+    verifier('DOSSIERS.length ? "" : " disabled"' in rendu,
+             "« Tout effacer » est visible mais grisé sans aucun dossier")
+
+
 def test_note_perimee() -> None:
     """Une note écrite avant le dernier changement est signalée."""
     import interface as module_interface  # noqa: PLC0415
@@ -6615,6 +6718,8 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_tri_des_colonnes()
+    test_refaire_notes_choisies()
+    test_barre_toujours_presente()
     test_note_perimee()
     test_part_abandon_possible()
     test_pieces_citees_une_fois()
