@@ -3205,6 +3205,60 @@ def test_pieces_citees_une_fois() -> None:
              "reste cité")
 
 
+def test_etape_depuis_monday() -> None:
+    """L'étape du tableau est reprise, que le tableau vienne de Monday."""
+    print("\nÉtape reprise du tableau Monday")
+
+    import suivi as module_suivi  # noqa: PLC0415
+    from dossiers import Dossier  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        suivi = Path(repertoire) / "suivi.json"
+        lot = [
+            Dossier(reference="FACT-1", nom="A", factures=["FACT-1"],
+                    etape="Montant trop faible - Ne peut pas passer en contentieux"),
+            Dossier(reference="FACT-2", nom="B", factures=["FACT-2"],
+                    etape="Transmis au service contentieux"),
+            Dossier(reference="FACT-3", nom="C", factures=["FACT-3"], etape=""),
+        ]
+        # Une étape posée à la main : elle doit résister à l'export suivant.
+        etats = module_suivi.charger(suivi)
+        module_suivi.mettre_a_jour(etats, "FACT-2", statut="avocats")
+        module_suivi.enregistrer(suivi, etats)
+
+        reprises = module_suivi.reprendre_etapes_du_tableau(lot, suivi)
+        apres_export = module_suivi.charger(suivi)
+        verifier(reprises == 1,
+                 f"une seule étape reprise (obtenu : {reprises})")
+        verifier(apres_export["FACT-1"]["statut"] == "abandon-possible",
+                 f"celle du dossier vierge (obtenu : "
+                 f"{apres_export['FACT-1'].get('statut')})")
+        verifier("Montant trop faible" in (apres_export["FACT-1"].get("note") or ""),
+                 "avec son motif")
+        verifier(apres_export["FACT-2"]["statut"] == "avocats",
+                 f"l'étape saisie à la main est intacte (obtenu : "
+                 f"{apres_export['FACT-2'].get('statut')})")
+        verifier("FACT-3" not in apres_export
+                 or not apres_export["FACT-3"].get("statut"),
+                 "un dossier sans étape au tableau n'en reçoit pas")
+
+        # Le tableau évolue : l'étape qu'il avait posée suit.
+        lot[0].etape = "Transmis au service contentieux"
+        module_suivi.reprendre_etapes_du_tableau(lot, suivi)
+        suite = module_suivi.charger(suivi)
+        verifier(suite["FACT-1"]["statut"] == "transmis-contentieux",
+                 f"l'étape du tableau se met à jour (obtenu : "
+                 f"{suite['FACT-1'].get('statut')})")
+        verifier(suite["FACT-2"]["statut"] == "avocats",
+                 "et la saisie à la main reste intacte")
+
+    import export_mails  # noqa: PLC0415
+
+    verifier("reprendre_etapes_du_tableau" in
+             Path(export_mails.__file__).read_text(encoding="utf-8"),
+             "l'export Monday la reprend aussi, pas seulement l'import fichier")
+
+
 def test_complement_reapplique_seul() -> None:
     """Le fichier retenu se réapplique tout seul dès qu'il change."""
     print("\nRéapplication automatique du fichier de suivi")
@@ -6216,6 +6270,7 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_pieces_citees_une_fois()
+    test_etape_depuis_monday()
     test_complement_reapplique_seul()
     test_refaire_les_notes()
     test_colonnes_du_suivi_a_la_main()

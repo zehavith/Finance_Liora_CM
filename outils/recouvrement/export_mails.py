@@ -1749,6 +1749,21 @@ def executer(
         # n'est nulle part dans Monday.
         _ajouter_references_saisies(liste, journal)
 
+        # Le tableau porte souvent l'etape du dossier — « a transmettre au
+        # service contentieux », « montant trop faible, ne peut pas passer ».
+        # La ressaisir a la main dans l'application n'aurait aucun sens : elle
+        # est reprise ici, sans jamais ecraser une etape posee a la main.
+        if not options.simulation:
+            import suivi as module_suivi  # noqa: PLC0415
+
+            reprises = module_suivi.reprendre_etapes_du_tableau(
+                liste, RACINE / "suivi-dossiers.json")
+            if reprises:
+                journal(
+                    f"    {reprises} etape(s) reprise(s) du tableau "
+                    "(les etapes deja saisies ici sont conservees)"
+                )
+
         if options.filtre_colonne and options.filtre_valeur:
             liste = filtrer_par_colonne(
                 liste, options.filtre_colonne, options.filtre_valeur,

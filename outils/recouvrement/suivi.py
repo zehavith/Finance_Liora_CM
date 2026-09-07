@@ -735,6 +735,64 @@ CHAMPS_COMPLETABLES = ("convention_signee", "diplome", "heures_theoriques",
                        "heures_log", "date_echeance")
 
 
+def reprendre_etape(entree: dict, brut: str) -> bool:
+    """Applique au dossier l'étape que son tableau lui donne.
+
+    Vrai si l'étape a changé. La règle est la même d'où que vienne le
+    tableau — un fichier de suivi ou Monday : on reprend l'étape tant que
+    personne n'y a touché dans l'application, c'est-à-dire tant que le
+    dossier n'en a aucune, ou qu'il porte exactement celle que ce même
+    tableau avait posée. Une étape saisie à la main est plus récente et plus
+    sûre : elle ne se laisse jamais écraser.
+    """
+    brut = " ".join(str(brut or "").split())
+    etape = etape_depuis_tableau(brut)
+    if not etape:
+        return False
+
+    posee_par_le_tableau = (
+        entree.get("etape_tableau")
+        and entree.get("statut") == etape_depuis_tableau(entree["etape_tableau"])
+    )
+    vierge = not entree.get("statut") and not entree.get("historique")
+    change = (vierge or posee_par_le_tableau) and entree.get("statut") != etape
+
+    if change:
+        entree["statut"] = etape
+        entree["historique"] = [
+            *(entree.get("historique") or []),
+            {"statut": etape, "date": datetime.now().strftime("%d/%m/%Y")},
+        ]
+        # Le motif vaut d'être conservé : « montant trop faible », « pas de
+        # convention » expliquent la décision, et sans eux la liste des
+        # dossiers mis de côté est incompréhensible.
+        if brut and not entree.get("note"):
+            entree["note"] = brut
+    entree["etape_tableau"] = brut
+    return change
+
+
+def reprendre_etapes_du_tableau(dossiers, chemin_suivi: Path) -> int:
+    """Reprend les étapes que le tableau donne, pour tout un lot de dossiers.
+
+    Sert au chemin Monday : le tableau y porte souvent l'étape du dossier, et
+    la ressaisir à la main dans l'application n'aurait aucun sens.
+    """
+    etats = charger(chemin_suivi)
+    changes = 0
+    for dossier in dossiers:
+        brut = getattr(dossier, "etape", "")
+        if not brut:
+            continue
+        entree = dict(etats.get(dossier.reference) or {})
+        if reprendre_etape(entree, brut):
+            changes += 1
+        etats[dossier.reference] = entree
+    if changes:
+        enregistrer(chemin_suivi, etats)
+    return changes
+
+
 def completer_depuis_grille(
     grille: list[tuple[int, list[str]]],
     references_connues: list[dict],
@@ -884,34 +942,12 @@ def completer_depuis_grille(
         # L'étape écrite dans le tableau du service est reprise, mais jamais
         # par-dessus une étape posée à la main dans l'application : celle-ci
         # est plus récente et plus sûre, et l'écraser effacerait un travail.
-        brut_etape = " ".join(str(getattr(ligne, "etape", "")).split())
-        etape = etape_depuis_tableau(brut_etape)
-        # On reprend l'étape du tableau tant que personne n'y a touché ici :
-        # soit le dossier n'a aucune étape, soit celle qu'il porte est
-        # exactement celle que ce même tableau avait posée. Une étape saisie
-        # dans l'application, elle, ne se laisse jamais écraser — elle est
-        # plus récente et plus sûre.
-        posee_par_le_tableau = (
-            entree.get("etape_tableau")
-            and entree.get("statut") == etape_depuis_tableau(entree["etape_tableau"])
-        )
-        vierge = not entree.get("statut") and not entree.get("historique")
-        if etape and (vierge or posee_par_le_tableau) and entree.get("statut") != etape:
-            entree["statut"] = etape
-            entree["historique"] = [
-                *(entree.get("historique") or []),
-                {"statut": etape, "date": datetime.now().strftime("%d/%m/%Y")},
-            ]
+        if reprendre_etape(entree, getattr(ligne, "etape", "")):
             etapes += 1
             completes += 1
-        if etape:
-            entree["etape_tableau"] = brut_etape
             # Le motif de la décision vaut d'être conservé : « montant trop
             # faible », « pas de convention » expliquent l'abandon, et sans
             # eux la liste des dossiers abandonnés est incompréhensible.
-            if brut_etape and not entree.get("note"):
-                entree["note"] = brut_etape
-
         apports = {
             "convention": (ligne.convention_signee or "").strip(),
             "diplome": (ligne.diplome or "").strip(),
