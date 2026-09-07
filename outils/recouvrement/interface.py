@@ -43,8 +43,10 @@ import synthese as module_synthese  # noqa: E402
 
 RACINE = Path(__file__).resolve().parent
 # Affiché dans l'en-tête. Au téléphone, savoir quelle version tourne vaut
-# mieux que deviner d'après la présence d'un champ à l'écran.
-VERSION = "87"
+# mieux que deviner d'après la présence d'un champ à l'écran. Tenu dans son
+# propre module : chaque note de synthèse en est marquée, et l'application
+# repère ainsi celles qu'une version antérieure a écrites.
+from version import VERSION  # noqa: E402, PLC0415
 PREFERENCES = RACINE / "interface-preferences.json"
 # Le suivi vit à côté de l'outil, pas dans l'export : refaire un export
 # ne doit pas effacer l'état d'avancement des dossiers.
@@ -600,9 +602,9 @@ def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[boo
     except Exception as exc:  # noqa: BLE001 - jamais bloquant
         return False, str(exc)
 
-    from rendu import ecrire_pdf  # noqa: PLC0415
+    from rendu import ecrire_synthese  # noqa: PLC0415
 
-    reussi, motif = ecrire_pdf(contenu, repertoire / "synthese.pdf")
+    reussi, motif = ecrire_synthese(contenu, repertoire / "synthese.pdf")
     return bool(reussi), "" if reussi else str(motif)
 
 
@@ -1561,6 +1563,11 @@ table.donnees th.triee .sens{color:var(--accent);font-size:12px}
    fleche apparait au survol, sur les seules colonnes non triees. */
 table.donnees th:not(.triee) button.tri:hover .sens::after{content:"\2195";
   font-size:11px;opacity:.45}
+/* Une note ecrite avant le dernier changement : ni une erreur ni un echec,
+   un retard qu'un bouton rattrape. Ambre, comme ce qui attend une decision. */
+.perimee{color:#c9862a;font-size:11px;white-space:nowrap}
+p.aide.perimees{color:#c9862a;border-left:2px solid #c9862a;padding-left:10px;
+  margin:0 0 13px}
 .defilable{overflow-x:auto}
 .barre-selection{display:flex;align-items:center;gap:13px;margin-bottom:13px}
 .barre-selection span{font-size:12px;color:var(--texte-3)}
@@ -3162,12 +3169,29 @@ function rendreDocuments() {
       <td>${d.a_synthese
         ? `<a class="lien" data-ouvrir="${echapper(d.repertoire)}/`
           + `${echapper(d.fichier_synthese || "synthese.pdf")}">Note de synthèse</a>`
+          + (d.note_perimee
+             ? `<br /><span class="perimee" title="Le suivi de ce dossier a `
+               + `changé le ${echapper(d.maj)}, après que la note a été `
+               + `écrite. « Refaire les notes » la remet à jour sans `
+               + `retourner sur Gmail.">↻ à refaire</span>` : "")
         : '<span class="lien inactif">pas de note</span>'}</td>
       <td>${piecesVersees(d)}</td>
       <td><a class="lien" data-ouvrir="${echapper(d.repertoire)}">Ouvrir le répertoire</a></td>
     </tr>`).join("");
 
-  $("tableDocuments").innerHTML = `<div class="defilable"><table class="donnees">
+  // Le cas courant : un fichier de suivi appliqué après coup renseigne d'un
+  // coup l'échéance et le contexte de cent cinquante dossiers, dont les
+  // notes datent de l'export. Rien ne le disait, et la note ouverte paraissait
+  // simplement fausse.
+  const perimees = DOSSIERS.filter((d) => d.note_perimee).length;
+  const avertissement = perimees ? `
+    <p class="aide perimees">↻ ${perimees} note(s) de synthèse ont été écrites
+       avant les derniers changements enregistrés — échéance, convention,
+       contexte ou étape. « Refaire les notes » les réécrit à partir des
+       messages déjà au dossier, sans retourner sur Gmail.</p>` : "";
+
+  $("tableDocuments").innerHTML = avertissement
+    + `<div class="defilable"><table class="donnees">
     ${entetesTriables(COLONNES_DOCUMENTS, "documents")}
     ${lignes}</table></div>`;
 

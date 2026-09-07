@@ -15,6 +15,8 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from version import VERSION
+
 # Étapes de la procédure, dans l'ordre où un dossier les traverse.
 #
 # Les cinq étapes en cours forment une rampe ordinale d'une seule teinte
@@ -376,6 +378,62 @@ def _lire_recapitulatif(chemin: Path) -> list[dict]:
     return list(csv.DictReader(texte.splitlines(), delimiter=";"))
 
 
+# Une minute de battement : « maj » est daté à la minute, si bien qu'une note
+# écrite dans la même minute que l'enregistrement paraîtrait périmée de
+# cinquante-neuf secondes. Signaler à tort use le signal.
+BATTEMENT_NOTE = 60
+
+
+def note_perimee(repertoire: Path, etat: dict) -> bool:
+    """Vrai si la note de synthèse ne dit plus ce qu'elle dirait aujourd'hui.
+
+    Deux façons de vieillir, et la seconde est la plus trompeuse.
+
+    Le suivi a bougé depuis. Ce qui entre dans la note — échéance,
+    convention, diplôme, contexte, note interne, étape — est justement ce que
+    le suivi enregistre, et chaque enregistrement est daté : comparer les
+    deux dates suffit, là où relire la note pour la comparer à ce qu'on
+    écrirait aujourd'hui reviendrait à la refaire pour savoir s'il faut la
+    refaire. Le cas courant n'est pas une saisie oubliée, c'est un fichier de
+    suivi appliqué après coup, qui renseigne l'échéance et le contexte de
+    cent cinquante dossiers dont les notes datent de l'export.
+
+    L'outil a changé depuis. La même facture jointe à sept relances tenait
+    sept lignes avant qu'on ne regroupe les pièces par document : la note
+    s'ouvre, paraît intacte, et l'on croit la correction perdue alors qu'elle
+    n'a simplement jamais été appliquée à ce fichier-là. Chaque note écrite
+    porte donc la version qui l'a écrite, à côté d'elle.
+    """
+    ecrites = [(repertoire / nom).stat().st_mtime
+               for nom in ("synthese.pdf", "synthese.html")
+               if (repertoire / nom).exists()]
+    if not ecrites:
+        return False
+
+    marque = repertoire / "synthese.version"
+    try:
+        version = marque.read_text(encoding="utf-8").strip()
+    except OSError:
+        # Pas de marque : la note vient d'une version antérieure à la marque
+        # elle-même, donc d'avant celle qui tourne.
+        return True
+    if version != VERSION:
+        return True
+
+    enregistre = _horodatage(etat.get("maj") or "")
+    if enregistre is None:
+        return False
+    return enregistre.timestamp() > max(ecrites) + BATTEMENT_NOTE
+
+
+def _horodatage(valeur: str) -> datetime | None:
+    """« 07/09/2026 15:12 » tel que le suivi l'écrit, ou rien."""
+    try:
+        return datetime.strptime(str(valeur).strip(), "%d/%m/%Y %H:%M")
+    except ValueError:
+        return None
+
+
 def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
     """Croise ce que l'export a produit avec l'état de suivi de chaque dossier.
 
@@ -460,6 +518,7 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 "fichier_synthese": (
                     "synthese.pdf" if (repertoire / "synthese.pdf").exists()
                     else "synthese.html"),
+                "note_perimee": note_perimee(repertoire, etat),
                 "a_index": (repertoire / "index.csv").exists(),
                 # État de suivi
                 "statut": statut,

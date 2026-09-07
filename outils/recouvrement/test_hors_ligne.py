@@ -3179,7 +3179,7 @@ def test_copie_vers_sharepoint() -> None:
 
     # La table des documents reste dans sa carte, comme celle de l'état des
     # dossiers : sans conteneur défilant, elle débordait de la page.
-    verifier('.innerHTML = `<div class="defilable"><table class="donnees">'
+    verifier('+ `<div class="defilable"><table class="donnees">'
              in module_interface.PAGE,
              "la table des documents défile dans sa carte, comme celle de "
              "l'état des dossiers")
@@ -3296,6 +3296,90 @@ console.log(JSON.stringify({{
     # reprendre au clic suivant.
     verifier("CHOISIS.has(d.reference)" in page,
              "les cases cochées survivent au tri")
+
+
+def test_note_perimee() -> None:
+    """Une note écrite avant le dernier changement est signalée."""
+    import interface as module_interface  # noqa: PLC0415
+    import suivi as module_suivi  # noqa: PLC0415
+
+    print("\nNotes de synthèse en retard sur le suivi")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "sortie"
+        dossier = sortie / "d"
+        dossier.mkdir(parents=True)
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures;date_echeance\n"
+            "FACT-2405-00409;SAS EDEN;d;5 990 €;FACT-2405-00409;\n",
+            encoding="utf-8-sig",
+        )
+        note = dossier / "synthese.pdf"
+        note.write_bytes(b"%PDF-1.4\n")
+        marque = dossier / "synthese.version"
+        marque.write_text(module_suivi.VERSION, encoding="utf-8")
+
+        chemin = Path(repertoire) / "suivi.json"
+        etat = module_suivi.charger(chemin)
+        etat["FACT-2405-00409"] = {"statut": "non-transmis"}
+
+        # Une note écrite après le dernier enregistrement est à jour.
+        hier = datetime.now() - timedelta(days=1)
+        etat["FACT-2405-00409"]["maj"] = hier.strftime("%d/%m/%Y %H:%M")
+        module_suivi.enregistrer(chemin, etat)
+        obtenu = module_suivi.inventaire(sortie, chemin)[0]
+        verifier(obtenu["note_perimee"] is False,
+                 "une note plus récente que le suivi n'est pas signalée")
+
+        # Le cas courant : un fichier de suivi appliqué après coup renseigne
+        # l'échéance et le contexte de dossiers dont les notes datent de
+        # l'export.
+        demain = datetime.now() + timedelta(days=1)
+        etat["FACT-2405-00409"]["maj"] = demain.strftime("%d/%m/%Y %H:%M")
+        module_suivi.enregistrer(chemin, etat)
+        obtenu = module_suivi.inventaire(sortie, chemin)[0]
+        verifier(obtenu["note_perimee"] is True,
+                 "une note antérieure au dernier changement est signalée")
+
+        # Signaler à tort use le signal : « maj » est daté à la minute, et une
+        # note écrite dans la même minute paraîtrait périmée de 59 secondes.
+        juste_avant = datetime.now() - timedelta(seconds=30)
+        etat["FACT-2405-00409"]["maj"] = juste_avant.strftime("%d/%m/%Y %H:%M")
+        module_suivi.enregistrer(chemin, etat)
+        obtenu = module_suivi.inventaire(sortie, chemin)[0]
+        verifier(obtenu["note_perimee"] is False,
+                 "la minute d'écriture du suivi ne suffit pas à périmer la note")
+
+        # Une note ne vieillit pas que par le suivi : elle vieillit aussi
+        # parce que l'outil a change. La meme facture jointe a sept relances
+        # tenait sept lignes avant qu'on ne regroupe les pieces par document,
+        # et la note s'ouvrait sans rien dire de son age.
+        etat["FACT-2405-00409"]["maj"] = hier.strftime("%d/%m/%Y %H:%M")
+        module_suivi.enregistrer(chemin, etat)
+        marque.write_text("12", encoding="utf-8")
+        obtenu = module_suivi.inventaire(sortie, chemin)[0]
+        verifier(obtenu["note_perimee"] is True,
+                 "une note écrite par une version antérieure est signalée")
+
+        marque.unlink()
+        obtenu = module_suivi.inventaire(sortie, chemin)[0]
+        verifier(obtenu["note_perimee"] is True,
+                 "une note sans marque de version aussi : elle est plus "
+                 "ancienne que la marque elle-même")
+
+        # Un dossier sans note n'a rien à refaire : il n'a rien.
+        note.unlink()
+        etat["FACT-2405-00409"]["maj"] = demain.strftime("%d/%m/%Y %H:%M")
+        module_suivi.enregistrer(chemin, etat)
+        obtenu = module_suivi.inventaire(sortie, chemin)[0]
+        verifier(obtenu["note_perimee"] is False,
+                 "un dossier sans note n'est pas dit en retard")
+
+    page = module_interface.PAGE
+    verifier("d.note_perimee" in page and "à refaire" in page,
+             "la page marque les notes à refaire")
+    verifier("aide perimees" in page,
+             "et les annonce en tête du tableau des documents")
 
 
 def test_part_abandon_possible() -> None:
@@ -6531,6 +6615,7 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_tri_des_colonnes()
+    test_note_perimee()
     test_part_abandon_possible()
     test_pieces_citees_une_fois()
     test_suivi_livre_avec_l_application()

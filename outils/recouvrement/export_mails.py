@@ -67,6 +67,7 @@ from rendu import (  # noqa: E402
     ecrire_eml,
     ecrire_pdf,
     ecrire_pieces_jointes,
+    ecrire_synthese,
     moteur_pdf_disponible,
     nom_de_base,
     verifier_environnement,
@@ -969,7 +970,7 @@ def traiter_dossier(
             # doit exister.
             vues=set(vues),
         )
-        if not ecrire_pdf(contenu, repertoire / "synthese.pdf")[0]:
+        if not ecrire_synthese(contenu, repertoire / "synthese.pdf")[0]:
             resume.pdf_en_echec += 1
 
     for vue in vues:
@@ -1406,7 +1407,7 @@ def _ecrire_sous_dossiers(
                 # répertoires qui n'existent pas à son niveau.
                 vues=set(),
             )
-            if not ecrire_pdf(contenu, cible / "synthese.pdf")[0]:
+            if not ecrire_synthese(contenu, cible / "synthese.pdf")[0]:
                 resume.pdf_en_echec += 1
 
     return len(sous_dossiers)

@@ -19,11 +19,13 @@ import subprocess
 import sys
 import tempfile
 import unicodedata
+
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import unquote
 
 from message import MessageMail, PieceJointe
+from version import VERSION
 
 # Balises entièrement supprimées (contenu compris).
 BALISES_INTERDITES = {"script", "iframe", "object", "embed", "applet", "noscript"}
@@ -437,6 +439,31 @@ def moteur_pdf_disponible() -> str:
     except ImportError:
         pass
     return "aucun (les pièces seront conservées en HTML)"
+
+
+def ecrire_synthese(contenu_html: str, chemin_pdf: Path) -> tuple[bool, str]:
+    """Écrit la note de synthèse, et la marque de la version qui l'a écrite.
+
+    Une note ne vieillit pas seulement parce que le suivi a changé : elle
+    vieillit aussi parce que l'outil a changé. La même facture jointe à sept
+    relances tenait sept lignes avant qu'on ne regroupe les pièces par
+    document, et la note écrite hier ne dit plus ce que la note écrite
+    aujourd'hui dirait. Rien ne le montrait : la note s'ouvrait, semblait
+    intacte, et l'on croyait la correction perdue.
+
+    La marque est un fichier à côté, et non une mention dans la note : la
+    note part au débiteur ou à l'avocat, et le numéro de version de l'outil
+    n'y a rien à faire.
+    """
+    reussi, motif = ecrire_pdf(contenu_html, chemin_pdf)
+    marque = chemin_pdf.with_suffix(".version")
+    try:
+        marque.write_text(VERSION, encoding="utf-8")
+    except OSError:
+        # Une marque qu'on n'a pas pu écrire fait croire la note ancienne :
+        # elle sera proposée une fois de trop à refaire, jamais une de moins.
+        pass
+    return reussi, motif
 
 
 def ecrire_pdf(contenu_html: str, chemin_pdf: Path) -> tuple[bool, str]:
