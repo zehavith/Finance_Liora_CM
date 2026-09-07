@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.48.0';
+    const VERSION = '2.49.0';
     const VERSION_DATE = '7 septembre 2026';
 
     const R = window.LioraRules;
@@ -3731,6 +3731,20 @@
                 { key: 'dateEcheance', label: 'Échéance', align: 'center', format: U.dateFR },
                 { key: 'origineClassement', label: 'Classé par', format: v => U.escapeHtml(v || '—') },
                 { key: 'preuveClassement', label: 'Ce qui l’a décidé', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                // La situation GoCardless, à côté de l'échéance qu'elle décide.
+                { key: c => c.etatMandat || c.mandatEtatFichier || '', label: 'Mandat',
+                  title: "L'état du mandat de prélèvement, et d'où on le tient : votre colonne, "
+                       + "l'export GoCardless, ou le libellé de l'écriture au grand livre.",
+                  format: (v, c) => v
+                    ? `<span class="pill pill-ok" title="${U.escapeHtml(v + ' — ' + (c.origineMandat || 'Export GoCardless')
+                        + (c.mandatsLivre ? ' : ' + c.mandatsLivre : ''))}">prélevé</span>`
+                    : '<span class="ag-zero">·</span>' },
+                { key: c => c.montantPreleve || c.preleveLivre || 0, label: 'Prélevé (paid_out)',
+                  align: 'right', title: 'Ce qui est réellement rentré par GoCardless sur ce compte client.',
+                  format: v => v ? U.euros(v) : '<span class="ag-zero">·</span>' },
+                { key: c => c.rejetsLivre || 0, label: 'Rejets', align: 'right',
+                  title: 'Prélèvements rejetés ou contre-passés sur ce compte client.',
+                  format: v => v ? `<span class="pill pill-danger">${U.euros(v)}</span>` : '<span class="ag-zero">·</span>' },
             ], creances.slice(0, 400), { vide: 'Aucune créance.' });
         } else {
             table = U.table([
@@ -3826,6 +3840,12 @@
                 'Financement': l.financement ? R.getRule(l.financement, state.rules).label : 'À classer',
                 'Classé par': l.origineClassement || '', 'Ce qui l’a décidé': l.preuveClassement || '',
                 'Échéance retenue': l.dateEcheance ? U.dateFR(l.dateEcheance) : '',
+                'Mandat cité par la ligne': (l.brut && l.brut.mandatId) || '',
+                'Sort du prélèvement': (l.brut && l.brut.statutPrelevement) || '',
+                'Référence du versement reçu': (l.brut && l.brut.refVersement) || '',
+                'État du mandat du compte': l.gclCompte ? l.gclCompte.etat : '',
+                'Prélevé (paid_out) sur ce compte': l.gclCompte ? arrondi(l.gclCompte.paid) : '',
+                'Rejets sur ce compte': l.gclCompte ? arrondi(l.gclCompte.rejets) : '',
             }))), 'Écritures');
         } else if (vue === 'creances') {
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(creances.map(c => ({
@@ -3834,6 +3854,13 @@
                 'Tranche': ((R.bucketFor(c.retardJours) || {}).label) || '',
                 'Échéance': c.dateEcheance ? U.dateFR(c.dateEcheance) : '',
                 'Classé par': c.origineClassement || '', 'Ce qui l’a décidé': c.preuveClassement || '',
+                'Mandat de prélèvement': c.etatMandat || c.mandatEtatFichier || '',
+                'Origine du mandat': c.origineMandat || (c.etatMandat ? 'Export GoCardless' : ''),
+                'Mandats cités au grand livre': c.mandatsLivre || '',
+                'Prélevé (paid_out)': (c.montantPreleve || c.preleveLivre)
+                    ? arrondi(c.montantPreleve || c.preleveLivre) : '',
+                'Rejets sur ce compte': c.rejetsLivre ? arrondi(c.rejetsLivre) : '',
+                'Versements reçus pour ce compte': c.versementsLivre || '',
             }))), 'Créances');
         } else {
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
@@ -4084,9 +4111,18 @@
                 'Qualification portée par le fichier': c.qualif || '',
                 'Jours de retard': retard == null ? '' : retard,
                 'Tranche': ((R.bucketFor(retard) || {}).label) || '',
-                'Mandat de prélèvement': c.etatMandat || '',
-                'Prélevé (paid_out)': c.montantPreleve ? arrondi(c.montantPreleve) : '',
-                'Nb de prélèvements': c.nbPrelevements || '',
+                // La situation GoCardless de la créance, dite en entier : l'état
+                // du mandat, d'où on le tient, ce qui est réellement rentré par
+                // ce canal et ce qui a été rejeté.
+                'Mandat de prélèvement': c.etatMandat || c.mandatEtatFichier || '',
+                'Origine du mandat': c.origineMandat || (c.etatMandat ? 'Export GoCardless' : ''),
+                'Mandats cités au grand livre': c.mandatsLivre || '',
+                'Prélevé (paid_out)': (c.montantPreleve || c.preleveLivre)
+                    ? arrondi(c.montantPreleve || c.preleveLivre) : '',
+                'Nb de prélèvements': c.nbPrelevements || c.nbPrelevementsLivre || '',
+                'Rejets sur ce compte': c.rejetsLivre ? arrondi(c.rejetsLivre) : '',
+                'Nb de rejets': c.nbRejetsLivre || '',
+                'Versements reçus pour ce compte': c.versementsLivre || '',
                 'Numéro lu dans le libellé': c.numeroExtrait ? 'oui' : '',
             };
         };
@@ -4224,6 +4260,8 @@
                 state.glEcritures.lignes.map(l => {
                     const retard = l.dateEcheance ? R.diffDays(ref, l.dateEcheance) : null;
                     const b = l.brut || {};
+                    // Ce que le compte du client dit du prélèvement GoCardless.
+                    const gc = l.gclCompte || null;
                     return {
                         'Clé': ((l.compte || '') + ' - ' + (l.tiers || '')).trim().replace(/^- | -$/g, ''),
                         'Solde': arrondi((l.debit || 0) - (l.credit || 0)),
@@ -4287,9 +4325,18 @@
                         // Là où votre fichier ne porte rien, l'application
                         // remplit depuis les exports : GoCardless, les avoirs du
                         // lettrage, et le statut de la facture chez Sellsy.
+                        // Vos deux colonnes. Là où votre fichier les laisse
+                        // vides, elles sont remplies depuis ce que le grand
+                        // livre dit lui-même du prélèvement ; l'origine, juste
+                        // à côté, dit laquelle des deux on lit.
                         'Mandat gocardless - Montant PAID': b.mandatPaid
+                            || (gc && gc.paid ? arrondi(gc.paid) : '')
                             || (l.montantPreleve ? arrondi(l.montantPreleve) : ''),
-                        'Mandat gocardless - Etat du mandat': b.mandatEtat || l.etatMandat || '',
+                        'Mandat gocardless - Etat du mandat': b.mandatEtat || l.etatMandat
+                            || (gc ? gc.etat : ''),
+                        'Origine de l’état du mandat': b.mandatEtat ? 'Votre colonne'
+                            : (l.etatMandat ? 'Export GoCardless'
+                               : (gc ? 'Grand livre (libellé de l’écriture)' : '')),
                         'N° de l’avoir apparenté': b.avoirApparente || l.avoirsDuGroupe || '',
                         'Commentaire': b.commentaire || '',
                         'Statut sellsy': b.statutSellsy || l.statutSellsy || '',
@@ -4299,6 +4346,15 @@
                         'Mandat cité par la ligne': b.mandatId || '',
                         'Sort du prélèvement': b.statutPrelevement || '',
                         'Référence du versement reçu': b.refVersement || '',
+                        // Et ce que le compte du client dit dans son ensemble :
+                        // de quoi juger la situation GoCardless d'un coup d'œil,
+                        // sans quitter la ligne.
+                        'Mandats du compte': gc ? gc.mandats : '',
+                        'Prélevé (paid_out) sur ce compte': gc ? arrondi(gc.paid) : '',
+                        'Nb de prélèvements encaissés': gc ? gc.nbPaid : '',
+                        'Rejets sur ce compte': gc ? arrondi(gc.rejets) : '',
+                        'Nb de rejets': gc ? gc.nbRejets : '',
+                        'Versements reçus pour ce compte': gc ? gc.versements : '',
                         'Tranche d’ancienneté': ((R.bucketFor(retard) || {}).label) || '',
                     };
                 })), 'Grand livre');

@@ -851,6 +851,16 @@
             c.rejetsLivre = p.rejets;
             c.nbRejetsLivre = p.nbRejets;
             c.versementsLivre = [...p.versements].join(' · ');
+            // Vos deux colonnes, remplies là où elles étaient vides. Ce que
+            // vous avez saisi n'est jamais écrasé : l'origine le dit, ligne par
+            // ligne, pour que la différence se voie.
+            c.origineMandat = c.mandatEtatFichier ? 'Votre colonne'
+                : (c.mandatGclLivre ? 'Grand livre (libellé de l’écriture)' : '');
+            if (!c.mandatEtatFichier && c.mandatGclLivre) {
+                c.mandatEtatFichier = 'actif — ' + p.mandats.size
+                    + (p.mandats.size > 1 ? ' mandats cités' : ' mandat cité') + ' au grand livre';
+            }
+            c.mandatPaidLivre = p.paidOut;
         }
         return liste;
     }
@@ -1557,6 +1567,22 @@
      */
     function ecrituresAPlat(lu) {
         const out = [];
+        const prel = lu.prelevements || new Map();
+        // Ce que le compte du client dit du prélèvement, reporté sur chacune de
+        // ses écritures : le mandat appartient au client, pas à l'écriture, et
+        // c'est ainsi que votre colonne « État du mandat » se lit.
+        const duCompte = compte => {
+            const p = prel.get(compte);
+            if (!p || !p.mandats.size) return null;
+            return {
+                etat: 'actif — ' + p.mandats.size
+                    + (p.mandats.size > 1 ? ' mandats cités' : ' mandat cité') + ' au grand livre',
+                mandats: [...p.mandats].join(' · '),
+                paid: p.paidOut, nbPaid: p.nbPaidOut,
+                rejets: p.rejets, nbRejets: p.nbRejets,
+                versements: [...p.versements].join(' · '),
+            };
+        };
         for (const g of (lu.groupes || [])) {
             const nature = [['facture', g.factures], ['reglement', g.reglements],
                             ['avoir', g.avoirs], ['autre', g.autres || []]];
@@ -1568,6 +1594,7 @@
                     identifiantTiers: g.identifiantTiers || '',
                     siren: g.siren || '',
                     brut: l.brut || null,
+                    gclCompte: duCompte(g.compte),
                     dateFacturation: l.dateFacturation || null,
                     // Ce que la ligne porte en propre, pour que le grand livre
                     // exporté se relise sans le fichier d'origine.
