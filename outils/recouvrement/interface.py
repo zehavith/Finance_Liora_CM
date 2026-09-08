@@ -4314,6 +4314,11 @@ function rendreBord() {
      `${a.nb_sans_tribunal} sans tribunal · ${a.nb_au_tribunal} au tribunal`,
      "#0ca30c", "✓"],
     ["Perdu", euro(a.montant_perdu), `${a.nb_perdus} dossier(s) perdu(s)`, "#d03b3b", "✕"],
+    // Un dossier a moitie paye n'est pas un dossier perdu, et « Recouvre » ne
+    // compte que les dossiers clos : sans cette tuile, le portefeuille parait
+    // plus mauvais qu'il n'est.
+    ["Déjà encaissé", euro(a.montant_recu),
+     `${a.nb_partiellement_regles} dossier(s) ont reçu un paiement partiel`, ""],
     ["Taux de réussite", a.taux_reussite === null ? "—" : a.taux_reussite + " %",
      "sur les dossiers clôturés", ""],
     ["Durée médiane", a.duree_mediane === null ? "—" : a.duree_mediane + " j",
@@ -4396,6 +4401,8 @@ function recalculer() {
     montant_gagne: somme((d) => est(d, "gagne")),
     montant_perdu: somme((d) => est(d, "perdu")),
     nb_gagnes: gagnes.length, nb_perdus: perdus.length,
+    montant_recu: DOSSIERS.reduce((t, d) => t + (d.montant_recu || 0), 0),
+    nb_partiellement_regles: DOSSIERS.filter((d) => (d.montant_recu || 0) > 0).length,
     nb_abandon_possible: suspens.length,
     montant_abandon_possible: somme((d) => est(d, "suspens")),
     // Sur tout le portefeuille : un possible abandon n'est pas une issue,

@@ -572,7 +572,12 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 "montant_renseigne": bool(
                     str(rangee.get("montant_du") or "").strip()),
                 "montant_total": _nombre(rangee.get("montant_total")),
-                "montant_recu": _nombre(rangee.get("montant_recu")),
+                # Ce que le tableau de suivi dit l'emporte sur ce que
+                # l'export a ramené : c'est lui qui tient les encaissements.
+                "montant_recu": _nombre(
+                    etat.get("montant_recu") or rangee.get("montant_recu")),
+                "montant_prorata": _nombre(
+                    etat.get("montant_prorata") or rangee.get("montant_prorata")),
                 "nb_mails": int(_nombre(rangee.get("nb_mails"))),
                 "nb_pieces_jointes": int(_nombre(rangee.get("nb_pieces_jointes"))),
                 "premier_mail": (rangee.get("premier_mail") or "").strip(),
@@ -1129,6 +1134,14 @@ def completer_depuis_grille(
             "heures_theoriques": (ligne.heures_theoriques or "").strip(),
             "heures_log": (ligne.heures_log or "").strip(),
             "echeance": echeance,
+            # L'argent que le tableau connaît et que l'export ne peut pas
+            # deviner : ce qui a déjà été encaissé, et ce qui serait dû au
+            # seul prorata des heures suivies. Sans ces deux-là, déposer le
+            # fichier laissait la note réclamer une somme que le tableau
+            # savait partiellement payée.
+            "montant_recu": (getattr(ligne, "montant_recu", "") or "").strip(),
+            "montant_prorata": (
+                getattr(ligne, "montant_prorata", "") or "").strip(),
         }
         apports = {cle: valeur for cle, valeur in apports.items() if valeur}
         entree.update(apports)
@@ -1468,6 +1481,13 @@ def agreger(dossiers: list[dict]) -> dict:
         "solidite": solidite(dossiers),
         "nb_gagnes": len(gagnes),
         "nb_perdus": len(perdus),
+        # Ce qui a deja ete encaisse sur les creances encore ouvertes. Un
+        # dossier a moitie paye n'est pas un dossier perdu, et « Recouvre » ne
+        # comptait que les dossiers clos : le portefeuille paraissait plus
+        # mauvais qu'il n'est.
+        "montant_recu": sum(d.get("montant_recu") or 0.0 for d in dossiers),
+        "nb_partiellement_regles": sum(
+            1 for d in dossiers if (d.get("montant_recu") or 0) > 0),
         "nb_abandon_possible": len(suspens),
         "montant_abandon_possible": sum(d["montant_du"] for d in suspens),
         # Rapportée à tout le portefeuille, et non aux seuls dossiers clos :

@@ -122,6 +122,16 @@ ALIAS_COLONNES = {
     ],
     "montant_recu": [
         "montant recu", "montant encaisse", "deja paye", "montant regle",
+        "montant percu", "somme encaissee", "montant paye",
+    ],
+    # Ce qui serait du si l'on ne comptait que les heures effectivement
+    # suivies. C'est l'argument que le debiteur oppose — « je n'ai fait que la
+    # moitie de la formation » — et le service le calcule deja dans son
+    # tableau : la note doit le porter plutot que le laisser surgir en face.
+    "montant_prorata": [
+        "montant du au prorata des heures faites",
+        "montant du au prorata", "montant au prorata",
+        "prorata des heures faites", "montant prorata",
     ],
     "statut": [
         "qualification generale pour dispach monday",
@@ -365,6 +375,7 @@ class Dossier:
     # faits, pas des déductions de l'outil.
     etape: str = ""
     montant_recu: str = ""
+    montant_prorata: str = ""
     commentaire: str = ""
     liens: list[str] = field(default_factory=list)
     # Exécution de la formation, telle que le suivi la connaît. Sert la note
@@ -1389,6 +1400,7 @@ def dossiers_depuis_grille(
             statut=" · ".join(valeurs["statut"]),
             etape=_premier("etape"),
             montant_recu=_premier("montant_recu"),
+            montant_prorata=_premier("montant_prorata"),
             commentaire=" · ".join(valeurs["commentaire"]),
             convention_signee=_premier("convention_signee"),
             diplome=_premier("diplome"),

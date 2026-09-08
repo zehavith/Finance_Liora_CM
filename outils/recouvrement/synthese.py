@@ -752,6 +752,13 @@ def resumer_situation(
     else:
         montant = "non renseigné au tableau de suivi"
 
+    # Ce qui serait dû au seul prorata des heures suivies. Le débiteur oppose
+    # « je n'ai fait que la moitié de la formation » ; le service a déjà fait
+    # ce calcul dans son tableau. L'écrire, c'est arriver avec la réponse.
+    prorata = montant_lisible(getattr(dossier, "montant_prorata", ""))
+    if prorata and prorata != du:
+        montant += f" ({prorata} au seul prorata des heures suivies)"
+
     echeance = _date_tableau(dossier.date_echeance)
     if echeance is not None:
         retard = (maintenant - echeance).days

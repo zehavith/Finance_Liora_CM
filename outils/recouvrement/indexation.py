@@ -53,6 +53,7 @@ COLONNES_RECAP = [
     "montant_du",
     "montant_total",
     "montant_recu",
+    "montant_prorata",
     # Colonnes de tri pour arbitrer sur l'ensemble des dossiers d'un coup d'œil.
     "mise_en_demeure",
     "contestation",
@@ -146,6 +147,7 @@ class ResumeDossier:
     montant_du: str = ""
     montant_total: str = ""
     montant_recu: str = ""
+    montant_prorata: str = ""
     mise_en_demeure: str = ""
     contestation: str = ""
     echeancier: str = ""
@@ -185,6 +187,7 @@ class ResumeDossier:
             "montant_du": self.montant_du,
             "montant_total": self.montant_total,
             "montant_recu": self.montant_recu,
+            "montant_prorata": self.montant_prorata,
             "mise_en_demeure": self.mise_en_demeure,
             "contestation": self.contestation,
             "echeancier": self.echeancier,

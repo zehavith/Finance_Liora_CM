@@ -3651,6 +3651,7 @@ def test_montant_deja_regle() -> None:
     """Ce que le débiteur a déjà payé figure au point 1 de la note."""
     import dossiers as module_dossiers  # noqa: PLC0415
     import indexation as module_indexation  # noqa: PLC0415
+    import interface as module_interface  # noqa: PLC0415
     import synthese as module_synthese  # noqa: PLC0415
 
     print("\nMontant déjà réglé")
@@ -3671,6 +3672,63 @@ def test_montant_deja_regle() -> None:
     # payée — et c'est la première chose qu'un débiteur oppose.
     verifier("1 500,00 € déjà réglés" in points[0][1],
              f"la note dit ce qui a déjà été payé ({points[0][1][:90]})")
+
+    # « Je n'ai fait que la moitié de la formation » est l'argument que le
+    # débiteur oppose ; le service a déjà fait ce calcul dans son tableau.
+    champs["montant_prorata"] = "3245"
+    points = module_synthese.resumer_situation(
+        module_dossiers.Dossier(**champs), module_synthese.analyser([], {}),
+        datetime(2026, 9, 8, tzinfo=timezone.utc), [], [])
+    verifier("3 245,00 € au seul prorata des heures suivies" in points[0][1],
+             f"et ce qui serait dû au prorata des heures ({points[0][1][:110]})")
+    verifier("montant_prorata" in module_indexation.COLONNES_RECAP,
+             "que le récapitulatif porte aussi")
+
+    # Un dossier à moitié payé n'est pas un dossier perdu, et « Recouvré » ne
+    # compte que les dossiers clos : le portefeuille paraissait plus mauvais
+    # qu'il n'est.
+    import suivi as module_suivi  # noqa: PLC0415
+    commun = dict(frais=0.0, duree_jours=None, date_echeance="",
+                  anciennete_jours=None, mise_en_demeure="")
+    chiffres = module_suivi.agreger([
+        dict(reference="A", statut="non-transmis", montant_du=4990.0,
+             montant_recu=1500.0, **commun),
+        dict(reference="B", statut="non-transmis", montant_du=2000.0,
+             montant_recu=800.0, **commun),
+        dict(reference="C", statut="non-transmis", montant_du=3730.0,
+             montant_recu=0.0, **commun),
+    ])
+    verifier(chiffres["montant_recu"] == 2300.0,
+             f"le tableau de bord totalise ce qui est déjà encaissé "
+             f"({chiffres['montant_recu']})")
+    verifier(chiffres["nb_partiellement_regles"] == 2,
+             f"sur deux dossiers ({chiffres['nb_partiellement_regles']})")
+    verifier("Déjà encaissé" in module_interface.PAGE,
+             "et la tuile figure au tableau de bord")
+
+    # Le fichier de suivi doit apporter ces colonnes : sans elles, le déposer
+    # laissait la note réclamer une somme que le tableau savait payée.
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "export"
+        (sortie / "d").mkdir(parents=True)
+        module_indexation.ecrire_recapitulatif(sortie / "_recapitulatif.csv", [
+            module_indexation.ResumeDossier(
+                reference="FACT-2405-00409", nom="SAS EDEN", emails="c@x.fr",
+                factures="FACT-2405-00409", requete="q", repertoire="d",
+                montant_du="4 990,00 €")])
+        chemin = Path(repertoire) / "suivi.json"
+        module_suivi.completer_depuis_grille([
+            (1, ["Numero", "Email client sur sellsy", "Montant reçu",
+                 "Montant dû au prorata des heures faites", "Heure de Log"]),
+            (2, ["FACT-2405-00409", "c@x.fr", "1 500,00 €", "3 245,00 €", "214"]),
+        ], module_suivi.inventaire(sortie, chemin), chemin)
+        repris = module_suivi.inventaire(sortie, chemin)[0]
+        verifier(repris["montant_recu"] == 1500.0,
+                 f"le montant reçu vient du fichier ({repris['montant_recu']})")
+        verifier(repris["montant_prorata"] == 3245.0,
+                 f"le prorata aussi ({repris['montant_prorata']})")
+        verifier(repris["heures_log"] == "214",
+                 f"et les heures de log ({repris['heures_log']})")
 
 
 def test_sauvegarde_du_suivi() -> None:

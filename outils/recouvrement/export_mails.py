@@ -593,7 +593,11 @@ def _ajouter_references_saisies(
         for champ, cle in (("convention_signee", "convention"),
                            ("diplome", "diplome"),
                            ("date_echeance", "echeance"),
-                           ("contexte", "contexte")):
+                           ("contexte", "contexte"),
+                           ("montant_recu", "montant_recu"),
+                           ("montant_prorata", "montant_prorata"),
+                           ("heures_theoriques", "heures_theoriques"),
+                           ("heures_log", "heures_log")):
             saisi = str(etat.get(cle) or "").strip()
             if saisi:
                 setattr(dossier, champ, saisi)
@@ -692,6 +696,7 @@ def traiter_dossier(
         # Ce que le debiteur a deja regle : la note doit le dire, sans quoi
         # elle reclame une somme que le tableau sait deja partiellement payee.
         montant_recu=dossier.montant_recu,
+        montant_prorata=dossier.montant_prorata,
         date_echeance=dossier.date_echeance,
         convention_signee=dossier.convention_signee,
         diplome=dossier.diplome,
