@@ -24,6 +24,7 @@ Voir README.md pour la mise en place de l'accès Gmail.
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sys
 from collections.abc import Callable
@@ -82,6 +83,12 @@ from rendu import (  # noqa: E402
     slug,
     verifier_environnement,
 )
+
+# Au-dela, un message n'est plus une correspondance mais une diffusion. Une
+# relance de recouvrement compte quelques destinataires ; un fil de
+# comptabilite adresse a une promotion en compte des dizaines.
+SEUIL_DIFFUSION = 15
+MOTIF_ADRESSE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 
 RACINE = Path(__file__).resolve().parent
 
@@ -802,6 +809,12 @@ def traiter_dossier(
 
     messages, doublons = sources.messages(identifiants)
 
+    # Les adresses relevées dans les messages eux-mêmes, à distinguer de
+    # celles que le tableau donnait : une adresse trouvée dans un fil de
+    # diffusion y figure par construction, et s'en servir pour juger ce fil
+    # légitime reviendrait à se donner raison tout seul.
+    adresses_decouvertes: set[str] = set()
+
     if options.decouvrir_adresses and dossier.factures:
         trouvees, supplementaires = _decouvrir_adresses(
             dossier, messages, sources, options, journal
@@ -822,6 +835,7 @@ def traiter_dossier(
             # vue par adresse est demandée, y ouvrir leur sous-dossier.
             dossier.emails += trouvees
             resume.emails = " | ".join(dossier.emails)
+            adresses_decouvertes = set(trouvees)
             resume.adresses_decouvertes = " | ".join(trouvees)
             resume.requete = dossier.requete_gmail()
 
@@ -917,6 +931,29 @@ def traiter_dossier(
         # plutot que fondus dans le dossier : la note les met a part, et rien
         # n'est perdu.
         autres_factures = dossier.concerne_une_autre_facture(recherchable)
+        # Un message adresse a trente personnes dont le debiteur ne fait pas
+        # partie n'est pas une correspondance sur sa facture : c'est une liste
+        # de diffusion ou son numero apparait par hasard — un fil de
+        # comptabilite, une annonce a une promotion entiere. Il entrait au
+        # dossier et y versait les echanges d'autres apprenants.
+        #
+        # On ne l'ecarte que si l'on connait au moins une adresse du debiteur :
+        # sans elle, rien ne permet de dire qu'il n'y figure pas.
+        # « parties » est une chaîne d'en-têtes : on y compte les adresses,
+        # pas les caractères.
+        adresses_du_message = set(MOTIF_ADRESSE.findall(parties))
+        # Le rapprochement se fait sur les seules adresses que le tableau
+        # donnait : une adresse relevée dans un fil de diffusion y figure par
+        # construction, et s'en servir pour juger ce fil légitime reviendrait
+        # à se donner raison tout seul.
+        connues = [a for a in dossier.emails if a not in adresses_decouvertes]
+        citees = {a.lower() for a in dossier.adresses_citees(parties)}
+        diffusion = (
+            bool(connues)
+            and not autres_factures
+            and len(adresses_du_message) > SEUIL_DIFFUSION
+            and not (citees - {a.lower() for a in adresses_decouvertes})
+        )
         lignes.append(
             LigneIndex(
                 piece_n=numero,
@@ -931,6 +968,8 @@ def traiter_dossier(
                 critere=(
                     "autre facture : " + ", ".join(autres_factures)
                     if autres_factures
+                    else f"diffusion : {len(adresses_du_message)} destinataires, sans le débiteur"
+                    if diffusion
                     else dossier.criteres_trouves(recherchable)
                 ),
                 factures_concernees=" | ".join(dossier.factures_citees(recherchable)),

@@ -181,14 +181,18 @@ class Synthese:
 
 
 def concerne_une_autre_facture(ligne: LigneIndex) -> bool:
-    """Le message a-t-il été rattaché à une autre facture du même débiteur ?
+    """Le message parle-t-il d'autre chose que de cette créance ?
 
-    Chercher par adresse ramène tout ce qui vient du débiteur. Un message qui
-    ne nomme que d'autres factures ne prouve rien de cette créance-ci :
-    le compter parmi les relances ferait état d'une diligence qui portait
-    sur autre chose.
+    Deux cas, écartés de la même façon. Chercher par adresse ramène tout ce
+    qui vient du débiteur : un message qui ne nomme que d'autres factures ne
+    prouve rien de cette créance-ci, et le compter parmi les relances ferait
+    état d'une diligence qui portait sur autre chose.
+
+    Et chercher par numéro ramène les listes de diffusion où ce numéro
+    apparaît par hasard — un fil de comptabilité adressé à trente personnes
+    dont le débiteur ne fait pas partie. Celui-là ne prouve rien non plus.
     """
-    return (ligne.critere or "").startswith("autre facture")
+    return (ligne.critere or "").startswith(("autre facture", "diffusion"))
 
 
 def analyser(lignes: list[LigneIndex], textes: dict[int, str], doublons: int = 0) -> Synthese:

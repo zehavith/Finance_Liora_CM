@@ -3607,6 +3607,47 @@ def test_document_monday_verrouille() -> None:
          module_monday.identifiant) = vrais
 
 
+def test_fil_de_diffusion_ecarte() -> None:
+    """Un message à trente personnes sans le débiteur n'est pas sa correspondance."""
+    import export_mails as module_export  # noqa: PLC0415
+    import synthese as module_synthese  # noqa: PLC0415
+
+    print("\nFils de diffusion")
+
+    verifier(module_export.SEUIL_DIFFUSION == 15,
+             f"le seuil est de quinze destinataires "
+             f"({module_export.SEUIL_DIFFUSION})")
+
+    # « parties » est une chaîne d'en-têtes : compter ses caractères donnait
+    # « 976 destinataires » et écartait jusqu'aux vraies relances.
+    entetes = "recouvrement@liora.io sufyen.b@gmail.com"
+    verifier(len(module_export.MOTIF_ADRESSE.findall(entetes)) == 2,
+             "les adresses sont comptées, pas les caractères")
+
+    # Le message écarté rejoint ceux d'une autre facture : au dossier,
+    # consultable, mais hors de ce qui établit la créance.
+    ligne = LigneIndex(
+        piece_n=1, date=datetime(2024, 5, 21), sens="reçu",
+        expediteur="billing@datascientest.com", destinataires="promo",
+        copie="", objet="Datascientest-Comptabilité", nb_pieces_jointes=0,
+        pieces_jointes="", critere="diffusion : 41 destinataires, sans le débiteur",
+        boites="b", fichier_pdf="", fichier_eml="", dossier_pieces_jointes="",
+        thread_id="t", message_id="m")
+    verifier(module_synthese.concerne_une_autre_facture(ligne),
+             "il est mis à part comme un message d'une autre facture")
+    synthese = module_synthese.analyser([ligne], {})
+    verifier(synthese.nb_pieces == 0 and len(synthese.autres_factures) == 1,
+             f"et ne compte pas parmi les pièces "
+             f"({synthese.nb_pieces} retenue(s))")
+
+    # Le rapprochement se fait sur les adresses du tableau : une adresse
+    # relevée dans le fil lui-même y figure par construction, et s'en servir
+    # pour juger ce fil légitime reviendrait à se donner raison tout seul.
+    source = Path("export_mails.py").read_text(encoding="utf-8")
+    verifier("citees - {a.lower() for a in adresses_decouvertes}" in source,
+             "sans compter les adresses découvertes dans le fil")
+
+
 def test_heures_de_l_emargement() -> None:
     """Les heures écrites dans l'émargement, et rien de deviné."""
     import facture_pdf as module_facture  # noqa: PLC0415
@@ -7642,6 +7683,7 @@ def main() -> int:
     test_fil_trop_long_ecarte()
     test_csv_ouvert_dans_excel()
     test_document_monday_verrouille()
+    test_fil_de_diffusion_ecarte()
     test_heures_de_l_emargement()
     test_montant_deja_regle()
     test_sauvegarde_du_suivi()
