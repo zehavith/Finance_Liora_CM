@@ -3608,6 +3608,41 @@ def test_document_monday_verrouille() -> None:
          module_monday.identifiant) = vrais
 
 
+def test_autre_facture_partage_le_prefixe() -> None:
+    """Une « autre facture » doit ressembler à une facture du débiteur."""
+    import dossiers as module_dossiers  # noqa: PLC0415
+
+    print("\nAutres factures : le bruit n'en est pas")
+
+    champs = {c: (p.default if p.default is not inspect.Parameter.empty else "")
+              for c, p in inspect.signature(module_dossiers.Dossier).parameters.items()}
+    champs.update(reference="FACT-2405-00409", nom="SAS EDEN",
+                  emails=["c@x.fr"], factures=["FACT-2405-00409", "DV-003453"])
+    dossier = module_dossiers.Dossier(**champs)
+
+    # Le cas réel : la note annonçait « facture citée : cjhw907,
+    # fr32918167313, apt104, vs4404 » — un numéro de TVA et du bruit
+    # d'en-tête — et mettait à part un message parfaitement pertinent.
+    # Se tromper ici coûte une pièce du dossier.
+    bruit = "cjhw907, fr32918167313, apt104, vs4404"
+    verifier(dossier.references_etrangeres(bruit) == [],
+             f"le bruit n'est pas pris pour des factures "
+             f"({dossier.references_etrangeres(bruit)})")
+    verifier(dossier.concerne_une_autre_facture(bruit) == [],
+             "et le message qui le porte n'est pas mis à part")
+
+    # Une autre facture du même débiteur porte le préfixe de ses factures.
+    for texte, attendu in (("relance FACT-2409-05275", "FACT-2409-05275"),
+                           ("avoir DV-004120", "DV-004120")):
+        verifier(dossier.references_etrangeres(texte) == [attendu],
+                 f"« {attendu} » reste reconnue comme une autre facture")
+
+    # Un message qui cite la nôtre nous concerne, quoi qu'il cite d'autre.
+    verifier(dossier.concerne_une_autre_facture(
+        "TVA FR32918167313 — facture FACT-2405-00409") == [],
+        "un message citant notre facture n'est jamais mis à part")
+
+
 def test_reclasser_un_dossier_deja_constitue() -> None:
     """Un dossier pollué se corrige sans refaire une heure d'export."""
     import indexation as module_indexation  # noqa: PLC0415
@@ -7884,6 +7919,7 @@ def main() -> int:
     test_fil_trop_long_ecarte()
     test_csv_ouvert_dans_excel()
     test_document_monday_verrouille()
+    test_autre_facture_partage_le_prefixe()
     test_reclasser_un_dossier_deja_constitue()
     test_adresse_qui_parle_de_notre_facture()
     test_mails_recuperes_expliques()

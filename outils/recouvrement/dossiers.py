@@ -260,6 +260,17 @@ def ressemble_a_une_facture(valeur: str) -> bool:
     return lettres.lower() not in (PREFIXES_TECHNIQUES | MOIS_ABREGES)
 
 
+def _prefixe_reference(valeur: str) -> str:
+    """Les lettres de tête d'une référence : « FACT-2405-00409 » → « fact »."""
+    lettres = ""
+    for caractere in str(valeur or "").strip():
+        if caractere.isalpha():
+            lettres += caractere
+        elif lettres or caractere.isdigit():
+            break
+    return lettres.lower()
+
+
 def _cle_reference(valeur: str) -> str:
     """Un numéro réduit à ce qui l'identifie, ponctuation ôtée."""
     return "".join(c for c in str(valeur or "").lower() if c.isalnum())
@@ -549,9 +560,27 @@ class Dossier:
         }
         connues |= {_cle_reference(self.reference)} if self.reference else set()
 
+        # Une autre facture du débiteur porte le préfixe de ses factures à
+        # lui : « FACT-… », « DV-… ». Sans cette exigence, la moindre suite
+        # lettres-chiffres passait pour une facture — « fr32918167313 » est un
+        # numéro de TVA, « apt104 » et « vs4404 » du bruit d'en-tête — et un
+        # message parfaitement pertinent était mis à part parce qu'il « ne
+        # parlait que d'autres factures » qui n'existaient pas.
+        #
+        # Se tromper ici coûte une pièce du dossier : mieux vaut garder un
+        # message de trop que d'en écarter un sur une lecture inventée.
+        prefixes = {
+            _prefixe_reference(forme)
+            for facture in [*self.factures, self.reference]
+            for forme in ([facture] if facture else [])
+            if _prefixe_reference(forme)
+        }
+
         etrangeres: list[str] = []
         for trouve in MOTIF_REFERENCE_QUELCONQUE.finditer(texte_message or ""):
             brut = trouve.group(0).strip()
+            if prefixes and _prefixe_reference(brut) not in prefixes:
+                continue
             # « iso-8859-1 », « groups/13606280 » : la plomberie du message a
             # la forme d'une référence sans en être une, et un message écarté
             # « parce qu'il parle d'une autre facture » qui n'existe pas est
