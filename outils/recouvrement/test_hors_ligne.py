@@ -3418,6 +3418,20 @@ def test_retrouver_les_dossiers_du_disque() -> None:
     verifier('id="retrouver"' in page and '"/api/retrouver"' in page,
              "la page offre de retrouver les dossiers du disque")
 
+    # Un bouton rangé sous un titre qu'il faut d'abord déplier est un bouton
+    # qu'on ne trouve pas : il était dans le bloc replié des factures absentes.
+    bloc = page[page.index("function blocAbsentsDuSuivi"):
+                page.index("// -- onglet État des dossiers")]
+    verifier("data-retrouver" in bloc[:bloc.index("<details")],
+             "et le propose hors du bloc repliable, non dedans")
+    verifier("data-retrouver" in page[page.index("function messageVide"):
+                                      page.index("function pastilleStatut")],
+             "y compris là où la liste est vide, qui est où on le cherche")
+    # Sans retour à la ligne, un bouton de plus était poussé hors de l'écran.
+    verifier("flex-wrap:wrap" in page[page.index(".barre-selection{"):
+                                      page.index(".barre-selection span")],
+             "la barre revient à la ligne plutôt que de pousser un bouton dehors")
+
 
 def test_arreter_un_export() -> None:
     """Un export lancé par erreur peut être arrêté."""

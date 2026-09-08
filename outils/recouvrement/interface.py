@@ -1713,7 +1713,9 @@ p.aide.perimees{color:#c9862a;border-left:2px solid #c9862a;padding-left:10px;
   margin:0 0 13px}
 /* Repliee par defaut : c'est une reponse a une question qu'on ne se pose pas
    tous les jours, et deroulee elle prendrait la place du tableau. */
-details.absents{margin-top:16px;border:1px solid var(--bord);border-radius:8px;
+p.aide.rattrapage{margin-top:16px}
+p.aide.rattrapage button{margin-left:4px}
+details.absents{margin-top:10px;border:1px solid var(--bord);border-radius:8px;
   padding:10px 13px;background:rgba(255,255,255,.02)}
 details.absents summary{cursor:pointer;font-size:12px;color:var(--texte-2)}
 details.absents summary:hover{color:var(--texte)}
@@ -1721,7 +1723,8 @@ details.absents ul{margin:8px 0 0;padding-left:20px;font-size:12px;
   color:var(--texte-2);columns:3;column-gap:22px}
 details.absents li{break-inside:avoid}
 .defilable{overflow-x:auto}
-.barre-selection{display:flex;align-items:center;gap:13px;margin-bottom:13px}
+.barre-selection{display:flex;flex-wrap:wrap;align-items:center;gap:13px;
+  margin-bottom:13px}
 .barre-selection span{font-size:12px;color:var(--texte-3)}
 .depot-complement{border:1px solid var(--bord);border-radius:9px;padding:9px 14px;
   font-size:13px;color:var(--texte-2);cursor:pointer;white-space:nowrap}
@@ -3001,8 +3004,8 @@ async function completerDepuisFichier(evenement) {
 // passe : une recherche ponctuelle effacait de la liste les cinquante-deux
 // autres. Ils etaient toujours sur le disque, complets, avec leurs pieces
 // versees — mais plus rien ne se voyait, ce qui revient au meme.
-async function retrouverDossiers() {
-  const bouton = $("retrouver");
+async function retrouverDossiers(evenement) {
+  const bouton = (evenement && evenement.currentTarget) || $("retrouver");
   bouton.disabled = true;
   const avant = bouton.textContent;
   bouton.textContent = "Lecture du disque…";
@@ -3288,7 +3291,13 @@ function brancherTri(zone) {
 function messageVide() {
   return '<p class="vide">Aucun export trouvé dans le dossier de destination.' +
     "<br />Lancez un export depuis l'onglet « Export » — les dossiers produits " +
-    "apparaîtront ici.</p>";
+    "apparaîtront ici." +
+    // C'est ici qu'on cherche quand la liste s'est vidée : proposer la
+    // récupération ailleurs revient à ne pas la proposer.
+    '<br /><br />Si des dossiers ont déjà été constitués sur le disque, ils se ' +
+    'récupèrent sans refaire d\'export : ' +
+    '<button class="secondaire" data-retrouver="1">Retrouver les dossiers ' +
+    'du disque</button></p>';
 }
 
 function pastilleStatut(cle) {
@@ -3496,7 +3505,13 @@ function blocAbsentsDuSuivi() {
   const PLAFOND = 40;
   const listes = manquants.slice(0, PLAFOND)
     .map((r) => `<li>${echapper(r)}</li>`).join("");
+  // Hors du bloc repliable, et non dedans : un bouton range sous un titre
+  // qu'il faut d'abord deplier est un bouton qu'on ne trouve pas.
   return `
+    <p class="aide rattrapage">Des dossiers déjà constitués sur le disque ne
+       figurent plus dans la liste ? Ils se récupèrent sans refaire d'export :
+       <button class="secondaire" data-retrouver="1">Retrouver les dossiers du
+       disque</button></p>
     <details class="absents">
       <summary>${manquants.length} facture(s) de votre tableau de suivi
         ne sont dans aucun dossier exporté</summary>
@@ -3582,7 +3597,11 @@ function rendreSuivi() {
     coche.addEventListener("change", majSelection));
   $("supprimer").addEventListener("click", supprimerChoisis);
   $("toutEffacer").addEventListener("click", toutEffacer);
-  $("retrouver").addEventListener("click", retrouverDossiers);
+  // Le bouton figure a plusieurs endroits — la barre, le bloc des factures
+  // absentes, le message de liste vide — parce qu'on le cherche la ou le
+  // probleme se voit, pas la ou il a ete range.
+  $("tableSuivi").querySelectorAll("#retrouver, [data-retrouver]")
+    .forEach((bouton) => bouton.addEventListener("click", retrouverDossiers));
   $("complement").addEventListener("change", completerDepuisFichier);
   $("oublierComplements").dataset.noms = COMPLEMENTS_RETENUS.join("|");
   majOubliComplements(COMPLEMENTS_RETENUS);
