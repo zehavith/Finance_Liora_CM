@@ -3268,6 +3268,25 @@ def test_filtre_par_etat() -> None:
              in page,
              "et tient sur une seule ligne")
 
+    # Cocher deux cents dossiers un par un pour refaire deux cents notes
+    # n'est pas un geste : une case en tête de colonne coche tout.
+    verifier("function caseToutChoisir" in page
+             and 'class="tout-choisir"' in page,
+             "une case d'en-tête coche tous les dossiers")
+    verifier('entete: caseToutChoisir("choix")' in page
+             and 'entete: caseToutChoisir("choix-note")' in page,
+             "aux deux tableaux : suppression et notes à refaire")
+    verifier("brancherToutChoisir($(\"tableSuivi\"), majSelection)" in page
+             and "brancherToutChoisir($(\"tableDocuments\"), majChoixNotes)" in page,
+             "et chaque tableau garde son compte à jour")
+    # Elle coche ce que le tableau montre : filtrée sur « possible abandon »,
+    # elle ne doit pas ramener les deux cents autres avec elle.
+    verifier('table.querySelectorAll("." + maitresse.dataset.cible)' in page,
+             "elle ne coche que les dossiers affichés")
+    verifier("maitresse.indeterminate = coches > 0 && coches < cases.length"
+             in page,
+             "et dit « certains » quand une partie seulement est cochée")
+
 
 def test_tri_des_colonnes() -> None:
     """Chaque en-tête trie, et le premier clic prend le sens utile."""

@@ -2069,6 +2069,9 @@ table.donnees td{padding:9px 8px;border-bottom:1px solid rgba(99,102,241,.07);
 table.donnees tr:hover td{background:rgba(255,255,255,.02)}
 table.donnees .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 table.donnees th.etroite{width:26px}
+/* La case « tout selectionner » vit dans l'en-tete, ou tout le reste est en
+   petites capitales grises : sans cela elle passait pour un ornement. */
+table.donnees th.etroite input[type=checkbox]{cursor:pointer;vertical-align:middle}
 /* L'en-tete est un bouton, mais il doit rester un en-tete a l'oeil : meme
    graisse, meme casse, meme couleur. Seul le survol dit qu'on peut cliquer. */
 table.donnees th button.tri{background:none;border:0;padding:0;margin:0;
@@ -2847,6 +2850,39 @@ $("chercheTableau").addEventListener("input", rendreTableaux);
 // commandent une suppression, et un même geste ne doit pas pouvoir
 // déclencher l'une pour l'autre.
 const CHOIX_NOTES = new Set();
+
+// -- tout sélectionner
+//
+// Cocher deux cents dossiers un par un pour refaire deux cents notes n'est
+// pas un geste, c'est une punition. La case d'en-tête coche ce que le tableau
+// montre : filtrée sur « possible abandon », elle ne coche que ceux-là.
+function brancherToutChoisir(table, apres) {
+  const maitresse = table.querySelector(".tout-choisir");
+  if (!maitresse) return;
+  const cases = () => Array.from(
+    table.querySelectorAll("." + maitresse.dataset.cible));
+
+  maitresse.addEventListener("change", () => {
+    cases().forEach((coche) => { coche.checked = maitresse.checked; });
+    apres();
+    majCaseMaitresse(table);
+  });
+  cases().forEach((coche) =>
+    coche.addEventListener("change", () => majCaseMaitresse(table)));
+  majCaseMaitresse(table);
+}
+
+// Ni cochée ni vide quand une partie seulement l'est : l'état intermédiaire
+// dit « certains », là où une case vide dirait « aucun » et tromperait.
+function majCaseMaitresse(table) {
+  const maitresse = table.querySelector(".tout-choisir");
+  if (!maitresse) return;
+  const cases = Array.from(table.querySelectorAll("." + maitresse.dataset.cible));
+  const coches = cases.filter((c) => c.checked).length;
+  maitresse.checked = cases.length > 0 && coches === cases.length;
+  maitresse.indeterminate = coches > 0 && coches < cases.length;
+  maitresse.disabled = cases.length === 0;
+}
 
 function majChoixNotes() {
   const cases = Array.from(document.querySelectorAll(".choix-note"));
@@ -3725,8 +3761,16 @@ function valeurEtat(cle) {
   return rang < 0 ? STATUTS.length : rang;
 }
 
+// La case d'en-tête coche ce que le tableau montre — pas les deux cents
+// dossiers du portefeuille. Filtrer sur « possible abandon » puis tout
+// cocher est le geste : elle ne doit pas ramener le reste avec elle.
+function caseToutChoisir(cible) {
+  return '<input type="checkbox" class="tout-choisir" data-cible="' + cible
+    + '" title="Cocher ou décocher tous les dossiers affichés" />';
+}
+
 const COLONNES_SUIVI = [
-  { titre: "", classe: "etroite" },
+  { titre: "", classe: "etroite", entete: caseToutChoisir("choix") },
   { titre: "Dossier", cle: "dossier", valeur: (d) => valeurTexte(d.reference) },
   { titre: "Montant dû", classe: "num", cle: "montant", sens: -1,
     valeur: (d) => valeurNombre(d.montant_du) },
@@ -3750,7 +3794,7 @@ const COLONNES_SUIVI = [
 ];
 
 const COLONNES_DOCUMENTS = [
-  { titre: "", classe: "etroite" },
+  { titre: "", classe: "etroite", entete: caseToutChoisir("choix-note") },
   { titre: "Référence", cle: "reference", valeur: (d) => valeurTexte(d.reference) },
   { titre: "Débiteur", cle: "debiteur", valeur: (d) => valeurTexte(d.nom) },
   { titre: "Mails", cle: "mails", sens: -1, valeur: (d) => valeurNombre(d.nb_mails) },
@@ -3782,7 +3826,11 @@ function entetesTriables(colonnes, table) {
     const classes = [colonne.classe, etat.colonne === colonne.cle ? "triee" : ""]
       .filter(Boolean).join(" ");
     const ouvre = `<th${classes ? ` class="${classes}"` : ""}>`;
-    if (!colonne.cle) return ouvre + echapper(colonne.titre) + "</th>";
+    // Une colonne sans clé ne se trie pas — c'est celle des cases à cocher.
+    // Elle peut porter un en-tête à elle : la case « tout sélectionner ».
+    if (!colonne.cle) {
+      return ouvre + (colonne.entete || echapper(colonne.titre)) + "</th>";
+    }
     const sens = etat.colonne === colonne.cle
       ? (etat.sens > 0 ? " ↑" : " ↓") : "";
     return ouvre
@@ -4030,6 +4078,7 @@ function rendreDocuments() {
   brancherTri($("tableDocuments"));
   $("tableDocuments").querySelectorAll(".choix-note").forEach((coche) =>
     coche.addEventListener("change", majChoixNotes));
+  brancherToutChoisir($("tableDocuments"), majChoixNotes);
   majChoixNotes();
 
   $("tableDocuments").querySelectorAll(".fichier-piece").forEach((champ) =>
@@ -4187,6 +4236,7 @@ function rendreSuivi() {
 
   $("tableSuivi").querySelectorAll(".choix").forEach((coche) =>
     coche.addEventListener("change", majSelection));
+  brancherToutChoisir($("tableSuivi"), majSelection);
   $("supprimer").addEventListener("click", supprimerChoisis);
   $("toutEffacer").addEventListener("click", toutEffacer);
   // Le bouton figure a plusieurs endroits — la barre, le bloc des factures
