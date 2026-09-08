@@ -56,11 +56,11 @@ bandeau du PDF, ce qui permet de citer directement « pièce n° 3 ».
 dossier contentieux :
 
 - un bandeau **Montant en contentieux**, repris du tableau de suivi ;
-- **1. Résumé de la situation** — d'abord l'échange **raconté** en quelques
-  phrases, sans une seule date (« Liora a réclamé le paiement de la facture à
-  plusieurs reprises. SAS EDEN a contesté le montant. Liora a adressé une mise
-  en demeure. Depuis, SAS EDEN n'a plus répondu. »), puis ce que les parties
-  suivantes établissent, en quelques points chiffrés. Le récit ne devine rien :
+- **1. Résumé de la situation** — ce que les parties suivantes établissent, en
+  quatre points chiffrés, puis l'échange **raconté** en quelques phrases, sans
+  une seule date : « Liora a réclamé le paiement de la facture à plusieurs
+  reprises. SAS EDEN a contesté le montant. Liora a adressé une mise en
+  demeure. Depuis, SAS EDEN n'a plus répondu. » Le récit ne devine rien :
   chaque phrase vient d'un acte repéré — relance, contestation, mise en
   demeure, échéancier — et de qui l'a posé ;
 - **2. Détail du dossier** — formation suivie, montant facturé et reste dû,

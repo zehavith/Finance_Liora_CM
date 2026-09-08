@@ -4524,17 +4524,15 @@ def test_resume_de_la_conversation() -> None:
              "les actes se suivent dans l'ordre où ils ont été posés")
     verifier(len(phrases) <= 6, f"cinq lignes environ, pas un récit ({len(phrases)})")
 
-    # Il se lit au début de la note, avant les points chiffrés : c'est la
-    # première chose qu'on veut savoir en ouvrant un dossier.
-    import synthese as module  # noqa: PLC0415
+    # Il se lit au début de la note, sous les quatre points chiffrés : les
+    # chiffres d'abord, le récit qui les explique juste après.
     source = Path("synthese.py").read_text(encoding="utf-8")
-    tete = source.index("<h2>1. Résumé de la situation</h2>")
-    verifier(source.index('<p class="resume-fil">') - tete < 120,
-             "et il ouvre la partie 1, avant les points chiffrés")
-    verifier(source.index('<p class="resume-fil">')
-             < source.index("<h2>5. La conversation</h2>"),
+    place = source.index('<p class="resume-fil">')
+    verifier(source.index('<ol class="resume">') < place
+             < source.index("<h2>2. Détail du dossier</h2>"),
+             "il se lit en partie 1, sous les points chiffrés")
+    verifier(place < source.index("<h2>5. La conversation</h2>"),
              "et non plus au milieu de la note")
-    del module
 
     # Un débiteur muet ne doit pas se résumer comme un débiteur qui répond.
     muet = module_synthese.Synthese(

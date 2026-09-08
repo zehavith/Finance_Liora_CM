@@ -2304,12 +2304,12 @@ def construire_html(
 {f'<p class="chemin">{html.escape(note_vue)}</p>' if note_vue else ''}
 
 <h2>1. Résumé de la situation</h2>
-<p class="resume-fil">{' '.join(html.escape(p) for p in
-    resume_de_la_conversation(dossier, synthese))}</p>
 <ol class="resume">
 {''.join(f'<li><b>{html.escape(titre)}</b> : {html.escape(corps)}</li>'
          for titre, corps in situation)}
 </ol>
+<p class="resume-fil">{' '.join(html.escape(p) for p in
+    resume_de_la_conversation(dossier, synthese))}</p>
 
 <h2>2. Détail du dossier</h2>
 {bloc_contexte}
