@@ -1952,7 +1952,7 @@ CONTENU D'UN RÉPERTOIRE DE DOSSIER
 synthese.pdf      Note de synthèse : chiffres clés, constats, événements
                   repérés et chronologie. Établie automatiquement à partir
                   des seuls messages extraits ; chaque constat renvoie à un
-                  numéro de pièce. À relire avant transmission.
+                  numéro de pièce.
 index.csv         Chronologie des échanges : une ligne par message, numérotée
                   (pièce n° 1, 2, 3...) dans l'ordre chronologique. La colonne
                   « boites » indique de quelle boîte provient chaque message.

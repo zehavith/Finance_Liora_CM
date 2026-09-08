@@ -2021,8 +2021,7 @@ def construire_html(
     if entrees_note:
         bloc_contexte += (
             '<div class="interne"><b>Note interne du tableau de suivi</b> — '
-            "reprise sans qu'aucun mot en soit changé, à relire avant "
-            "transmission :"
+            "reprise mot pour mot :"
             "<ul class='constats'>"
             + "".join(f"<li>{html.escape(entree)}</li>" for entree in entrees_note)
             + "</ul></div>"
