@@ -986,6 +986,17 @@ class Gestionnaire(BaseHTTPRequestHandler):
             })
             return
 
+        if chemin == "/api/vivant":
+            # La page bat la mesure tant qu'elle est ouverte. Sans cela,
+            # l'outil se fermait au bout de trois minutes de lecture — car
+            # lire n'envoie aucune requête — et tout clic suivant echouait
+            # sans que rien n'ait ete ferme ni casse.
+            if not self._jeton_valide():
+                self._json(403, {"erreur": "Jeton invalide."})
+                return
+            self._json(200, {"vivant": True, "version": VERSION})
+            return
+
         if chemin == "/api/journal":
             if not self._jeton_valide():
                 self._json(403, {"erreur": "Jeton invalide."})
@@ -1903,11 +1914,9 @@ button:disabled{opacity:.45;cursor:not-allowed}
 </style></head>
 <body>
 <div id="deconnecte" hidden>
-  <b>L'application ne répond plus.</b> Aucun bouton de cette page ne peut
-  fonctionner tant qu'elle ne joint pas l'outil. Deux causes : la fenêtre
-  noire de l'outil a été fermée, ou cette page date d'une version précédente
-  et parle à un outil qui n'existe plus. Rouvrez l'outil avec
-  <b>Lancer.bat</b>, puis rechargez.
+  <span><b>L'application ne répond plus.</b> Aucun bouton de cette page ne peut
+  fonctionner tant qu'elle ne joint pas l'outil. Rouvrez l'outil avec
+  <b>Lancer.bat</b>, puis rechargez cette page.</span>
   <button class="secondaire" id="recharger">Recharger la page</button>
 </div>
 <header>
@@ -2488,6 +2497,17 @@ async function refaireNotes() {
     // les mêmes au clic suivant, en croyant en refaire d'autres.
     CHOIX_NOTES.clear();
     chargerDossiers();
+
+// Tant que cette page est ouverte, l'outil doit rester ouvert. Il se fermait
+// au bout de trois minutes sans requete — or lire un tableau n'en envoie
+// aucune : on lisait le tableau de bord, l'outil se fermait derriere, et le
+// clic suivant echouait sans que rien n'ait ete ferme ni casse. Battre la
+// mesure regle les deux : l'outil reste en vie, et une page morte le sait en
+// moins d'une minute au lieu de l'apprendre au premier clic.
+setInterval(async () => {
+  try { await api("/api/vivant"); }
+  catch (erreur) { void erreur; }
+}, 45000);
   } catch (erreur) { afficherBandeau(false, erreur.message); }
   finally { bouton.disabled = false; bouton.textContent = avant; }
 }

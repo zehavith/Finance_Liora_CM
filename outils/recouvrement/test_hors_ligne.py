@@ -3410,6 +3410,21 @@ def test_message_quand_l_outil_ne_repond_pas() -> None:
     verifier('id="recharger"' in page,
              "avec de quoi recharger une fois l'outil rouvert")
 
+    # L'outil se fermait au bout de trois minutes sans requête — or lire un
+    # tableau n'en envoie aucune. On lisait le tableau de bord, l'outil se
+    # fermait derrière, et le clic suivant échouait sans que rien n'ait été
+    # fermé ni cassé. C'est l'origine de tous les « Failed to fetch ».
+    verifier('"/api/vivant"' in page and "setInterval(async" in page,
+             "la page bat la mesure tant qu'elle est ouverte")
+    verifier(module_interface.DELAI_INACTIVITE > 45,
+             f"et le battement est plus court que le délai d'inactivité "
+             f"({module_interface.DELAI_INACTIVITE} s)")
+    # Le conteneur est en flex : un <b> nu y devient une boîte à part, et la
+    # phrase se cassait en trois morceaux à des hauteurs différentes.
+    barre = page[page.index('<div id="deconnecte"'):page.index("<header>")]
+    verifier(barre.count("<span>") == 1,
+             "et le texte de la barre tient dans un seul bloc")
+
     # Le bouton disait « Lancer l'export » quel que soit l'onglet : sur une
     # recherche ponctuelle on cherchait un bouton qui n'existait pas, à côté
     # de celui qui l'aurait lancée.
