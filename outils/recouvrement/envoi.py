@@ -174,6 +174,135 @@ def ecrire_pdf_unique(
     return reunis, cible.stat().st_size, motif
 
 
+def corps_du_message(dossier: dict) -> tuple[str, str]:
+    """L'objet et le texte du brouillon, tirés de ce que le dossier établit.
+
+    Rien qui ne soit déjà dans la note : le message annonce ce qu'il porte,
+    il ne plaide pas à sa place.
+    """
+    reference = dossier.get("reference") or ""
+    nom = dossier.get("nom") or ""
+    objet = f"Dossier contentieux — {reference}" + (f" — {nom}" if nom else "")
+
+    montant = dossier.get("montant_du")
+    lignes = [
+        "Bonjour,",
+        "",
+        f"Vous trouverez ci-joint le dossier {reference}"
+        + (f" concernant {nom}" if nom else "") + ".",
+        "",
+    ]
+    if montant:
+        lignes.append(
+            f"Montant réclamé : {montant:,.2f} €".replace(",", " ").replace(".", ",")
+            + (f" — échéance du {dossier['date_echeance']}"
+               if dossier.get("date_echeance") else "")
+            + "."
+        )
+    if dossier.get("nb_mails"):
+        lignes.append(
+            f"Le dossier réunit {dossier['nb_mails']} message(s) et "
+            f"{dossier.get('nb_pieces_jointes') or 0} pièce(s) jointe(s)."
+        )
+    lignes += [
+        "",
+        "La note de synthèse ouvre le document : elle résume la situation, "
+        "les pièces et les échanges, chaque constat renvoyant à un numéro de "
+        "pièce.",
+        "",
+        "Bien cordialement,",
+    ]
+    return objet, "\n".join(lignes)
+
+
+def _compte_outlook(outlook, adresse: str):
+    """Le compte Outlook portant cette adresse, s'il y en a un."""
+    voulu = (adresse or "").strip().lower()
+    if not voulu:
+        return None
+    try:
+        comptes = outlook.Session.Accounts
+    except Exception:  # noqa: BLE001
+        return None
+    for rang in range(1, comptes.Count + 1):
+        compte = comptes.Item(rang)
+        if str(getattr(compte, "SmtpAddress", "") or "").lower() == voulu:
+            return compte
+    return None
+
+
+def _envoyer_depuis(message, compte) -> None:
+    """Fixe le compte expéditeur du brouillon.
+
+    L'affectation directe suffit sur les versions récentes ; sur les autres,
+    il faut passer par l'identifiant de la propriété. Les deux sont tentées
+    plutôt qu'une seule : une boîte partagée ouverte à côté de la sienne, et
+    le courrier partirait de la mauvaise adresse.
+    """
+    try:
+        message.SendUsingAccount = compte
+        return
+    except Exception:  # noqa: BLE001
+        pass
+    # 64209 est l'identifiant de « SendUsingAccount » dans le modèle objet
+    # d'Outlook ; l'affectation par nom échoue sur certaines versions.
+    message._oleobj_.Invoke(*(64209, 0, 8, 0, compte))  # noqa: SLF001
+
+
+def brouillon_outlook(
+    destinataire: str, objet: str, corps: str, pieces: list[Path],
+    expediteur: str = "",
+) -> tuple[bool, str]:
+    """Ouvre un brouillon Outlook avec le dossier attaché. N'envoie rien.
+
+    Envoyer un courriel à un tiers est un geste qui appartient à la personne
+    qui le signe : le brouillon s'ouvre, elle le relit, elle l'envoie. Rien
+    ne part de l'application.
+
+    Ne fonctionne que sous Windows, avec Outlook installé et `pywin32`. Le
+    dire est la moitié du travail : ailleurs, on se rabat sur le brouillon
+    de la messagerie par défaut, et l'on annonce que la pièce jointe reste à
+    glisser.
+    """
+    try:
+        import win32com.client  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001 - absent, ou Windows sans Outlook
+        return False, (
+            "Outlook n'a pas pu être piloté depuis l'application "
+            f"({type(exc).__name__})"
+        )
+    avertissement = ""
+    try:
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        message = outlook.CreateItem(0)  # 0 = olMailItem
+        if destinataire:
+            message.To = destinataire
+        message.Subject = objet
+        message.Body = corps
+        for piece in pieces:
+            message.Attachments.Add(str(piece))
+
+        # Plusieurs boîtes sont souvent ouvertes côte à côte — la sienne, une
+        # boîte de service, une boîte partagée. Sans consigne, Outlook prend
+        # celle par défaut, et le courrier part de la mauvaise adresse sans
+        # que rien ne le signale avant l'envoi.
+        if expediteur:
+            compte = _compte_outlook(outlook, expediteur)
+            if compte is None:
+                avertissement = (
+                    f"le compte {expediteur} n'est pas ouvert dans Outlook : "
+                    "le brouillon partira du compte par défaut — vérifiez le "
+                    "champ « De » avant d'envoyer"
+                )
+            else:
+                _envoyer_depuis(message, compte)
+
+        message.Display()  # affiche le brouillon, ne l'envoie pas
+    except Exception as exc:  # noqa: BLE001
+        return False, f"Outlook a refusé la demande : {exc}"
+    return True, avertissement
+
+
 def preparer(
     repertoire: Path, reference: str, lignes: list[LigneIndex], sortie: Path
 ) -> dict:

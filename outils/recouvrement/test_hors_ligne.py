@@ -4654,9 +4654,45 @@ def test_preparer_pour_envoi() -> None:
         verifier("Mo" in resultat["poids_archive"] or "Ko" in resultat["poids_archive"],
                  f"son poids est dit ({resultat['poids_archive']})")
 
+    # Le brouillon : l'application prepare, elle ne poste pas. Adresser un
+    # courriel a un tiers est un geste qui appartient a celle qui le signe.
+    verifier("def brouillon_outlook" in
+             Path("envoi.py").read_text(encoding="utf-8"),
+             "un brouillon peut s'ouvrir avec le dossier attaché")
+    verifier("message.Display()" in Path("envoi.py").read_text(encoding="utf-8")
+             and ".Send()" not in Path("envoi.py").read_text(encoding="utf-8"),
+             "il s'affiche, il ne s'envoie jamais tout seul")
+    ouvert, motif = module_envoi.brouillon_outlook(
+        "x@liora.io", "Objet", "Corps", [])
+    verifier(not ouvert and "Outlook" in motif,
+             f"et l'absence d'Outlook se dit ({motif[:48]}…)")
+    objet, corps = module_envoi.corps_du_message({
+        "reference": "FACT-2405-00409", "nom": "SAS EDEN",
+        "montant_du": 5990.0, "date_echeance": "21/05/2024", "nb_mails": 8})
+    verifier("FACT-2405-00409" in objet and "SAS EDEN" in objet,
+             f"l'objet nomme le dossier ({objet})")
+    verifier("5 990,00" in corps and "21/05/2024" in corps,
+             "et le corps annonce le montant et l'échéance")
+
     page = module_interface.PAGE
     verifier('id="preparerEnvoi"' in page and '"/api/preparer-envoi"' in page,
              "un bouton la demande depuis la page")
+    verifier('data-brouillon' in page and '"/api/brouillon"' in page,
+             "et chaque dossier ouvre le sien")
+    # Deux responsables : se tromper de destinataire ne se rattrape pas.
+    verifier('id="responsableEntreprise"' in page
+             and 'id="responsablePersonnel"' in page,
+             "le destinataire dépend du portefeuille")
+    # Plusieurs boîtes sont souvent ouvertes côte à côte : sans consigne,
+    # Outlook prend celle par défaut, et le courrier part de la mauvaise
+    # adresse sans que rien ne le signale avant l'envoi.
+    verifier('id="expediteur"' in page,
+             "et l'adresse d'expédition se règle")
+    source = Path("envoi.py").read_text(encoding="utf-8")
+    verifier("def _compte_outlook" in source and "SendUsingAccount" in source,
+             "le brouillon est signé du compte demandé")
+    verifier("n'est pas ouvert dans Outlook" in source,
+             "et l'on est prévenu si ce compte n'est pas là")
     verifier("20 * 1024 * 1024" in page,
              "qui prévient au-delà de ce qu'une messagerie accepte")
 

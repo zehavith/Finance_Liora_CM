@@ -1222,6 +1222,15 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 "__SORTIE__",
                 _attribut(preferences.get("sortie", str(sortie_par_defaut()))),
             ).replace(
+                "__EXPEDITEUR__",
+                _attribut(preferences.get("expediteur", "")),
+            ).replace(
+                "__RESPONSABLE_ENTREPRISE__",
+                _attribut(preferences.get("responsable_entreprise", "")),
+            ).replace(
+                "__RESPONSABLE_PERSONNEL__",
+                _attribut(preferences.get("responsable_personnel", "")),
+            ).replace(
                 "__COPIE_VERS__", _attribut(preferences.get("copie_vers", ""))
             )
             # Le fichier importé reste sur le disque, mais un navigateur ne
@@ -1395,6 +1404,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/preparer-envoi":
                 self._preparer_envoi(self._corps_json())
                 return
+            if chemin == "/api/brouillon":
+                self._ouvrir_brouillon(self._corps_json())
+                return
             if chemin == "/api/restaurer-suivi":
                 self._restaurer_suivi(self._corps_json())
                 return
@@ -1425,7 +1437,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             cle: str(demande.get(cle) or "").strip()
             for cle in ("boites", "sortie", "copie_vers", "domaines",
                         "seulement", "filtre_colonne", "filtre_valeur",
-                        "tableau", "groupes")
+                        "tableau", "groupes",
+                        "responsable_entreprise", "responsable_personnel",
+                        "expediteur")
             if cle in demande
         }
 
@@ -1727,6 +1741,74 @@ class Gestionnaire(BaseHTTPRequestHandler):
             "echecs": echecs,
             "motifs": motifs,
             "repertoire": str(sortie / module_envoi.DOSSIER_ENVOI),
+        })
+
+    def _ouvrir_brouillon(self, demande: dict | None = None) -> None:
+        """Ouvre un brouillon de courriel avec le dossier attaché.
+
+        Le destinataire dépend du portefeuille : les dossiers d'entreprise et
+        ceux en financement personnel partent à deux responsables différents,
+        et se tromper de destinataire est le genre d'erreur qu'on ne rattrape
+        pas.
+
+        Rien n'est envoyé. Le brouillon s'ouvre, il se relit, il s'envoie —
+        d'un geste qui appartient à celle qui le signe.
+        """
+        import entreprises as module_entreprises  # noqa: PLC0415
+        import envoi as module_envoi  # noqa: PLC0415
+
+        reference = str((demande or {}).get("reference") or "").strip()
+        if not reference:
+            self._json(400, {"erreur": "Référence de dossier manquante."})
+            return
+
+        preferences = lire_preferences()
+        sortie = Path(preferences.get("sortie") or sortie_par_defaut())
+        annuaire = module_entreprises.charger_annuaire(ANNUAIRE)
+        dossiers = {
+            d["reference"]: d
+            for d in module_suivi.inventaire(sortie, SUIVI, annuaire)
+        }
+        dossier = dossiers.get(reference)
+        if dossier is None:
+            self._json(400, {"erreur": f"Dossier inconnu : {reference}"})
+            return
+
+        repertoire = sortie / dossier["repertoire"]
+        index = repertoire / "index.csv"
+        lignes, _t, _b, _c = (
+            export_mails.relire_dossier(repertoire, index)
+            if index.exists() else ([], {}, {}, set())
+        )
+        pret = module_envoi.preparer(repertoire, reference, lignes, sortie)
+
+        # Le PDF unique s'il existe, l'archive sinon : c'est le PDF qu'on
+        # relit, l'archive qu'on garde.
+        base = Path(pret["repertoire"])
+        pieces = [base / (pret["pdf"] or pret["archive"])]
+
+        destinataire = (
+            preferences.get("responsable_entreprise")
+            if dossier.get("financement") == "entreprise"
+            else preferences.get("responsable_personnel")
+        ) or ""
+
+        objet, corps = module_envoi.corps_du_message(dossier)
+        ouvert, motif = module_envoi.brouillon_outlook(
+            destinataire, objet, corps, pieces,
+            expediteur=(preferences.get("expediteur") or "").strip())
+
+        self._json(200, {
+            "ouvert": ouvert,
+            "motif": motif,
+            "destinataire": destinataire,
+            "expediteur": (preferences.get("expediteur") or "").strip(),
+            "objet": objet,
+            "corps": corps,
+            "piece": str(pieces[0]),
+            "repertoire": pret["repertoire"],
+            "poids": pret["poids_pdf"] or pret["poids_archive"],
+            "financement": dossier.get("financement") or "",
         })
 
     def _oublier_complements(self) -> None:
@@ -2637,6 +2719,31 @@ button:disabled{opacity:.45;cursor:not-allowed}
          l'adresse https:// du site.</p>
     </div>
     <div>
+      <label for="expediteur">Envoyer depuis — adresse mail</label>
+      <input type="text" id="expediteur" value="__EXPEDITEUR__"
+             placeholder="zehavit.s@liora.io" />
+      <p class="note">Le compte Outlook qui signe le brouillon. Laissé vide,
+         c'est le compte par défaut d'Outlook qui sert — ce qui, avec
+         plusieurs boîtes ouvertes, n'est pas toujours la vôtre.</p>
+    </div>
+    <div>
+      <label for="responsableEntreprise">Responsable des dossiers
+        <b>entreprise</b> — adresse mail, facultatif</label>
+      <input type="text" id="responsableEntreprise"
+             value="__RESPONSABLE_ENTREPRISE__"
+             placeholder="prenom.nom@liora.io" />
+    </div>
+    <div>
+      <label for="responsablePersonnel">Responsable des dossiers
+        <b>financement personnel</b> — adresse mail, facultatif</label>
+      <input type="text" id="responsablePersonnel"
+             value="__RESPONSABLE_PERSONNEL__"
+             placeholder="prenom.nom@liora.io" />
+      <p class="note">Ces deux adresses préremplissent le brouillon quand vous
+         cliquez sur <b>Préparer le mail</b>. Rien n'est envoyé : le brouillon
+         s'ouvre dans votre messagerie, vous le relisez et vous l'envoyez.</p>
+    </div>
+    <div>
       <label for="jetonMonday">Jeton Monday — pour télécharger factures et conventions</label>
       <input type="text" id="jetonMonday" placeholder="__ETAT_MONDAY__" />
     </div>
@@ -3118,6 +3225,38 @@ async function preparerEnvoi() {
   finally { bouton.disabled = false; bouton.textContent = avant; }
 }
 
+// Un brouillon, jamais un envoi : adresser un courriel à un tiers est un
+// geste qui appartient à celle qui le signe. L'application prépare, elle ne
+// poste pas.
+async function ouvrirBrouillon(reference) {
+  try {
+    const r = await api("/api/brouillon", { reference: reference });
+    if (r.ouvert) {
+      afficherBandeau(!r.motif,
+        `Brouillon ouvert dans Outlook — ${echapper(r.piece)} (${r.poids}) `
+        + "en pièce jointe"
+        + (r.destinataire ? `, à ${echapper(r.destinataire)}` : "")
+        + (r.expediteur ? `, depuis ${echapper(r.expediteur)}` : "")
+        + ". Relisez-le et envoyez-le : rien n'est parti."
+        + (r.motif ? ` ⚠ ${echapper(r.motif)}.` : ""));
+      return;
+    }
+    // Sans Outlook pilotable, on ouvre le brouillon de la messagerie par
+    // défaut et le répertoire : la pièce jointe reste à glisser, et il vaut
+    // mieux le dire que laisser croire qu'elle y est.
+    const lien = "mailto:" + encodeURIComponent(r.destinataire || "")
+      + "?subject=" + encodeURIComponent(r.objet)
+      + "&body=" + encodeURIComponent(r.corps);
+    window.location.href = lien;
+    try { await api("/api/ouvrir", { chemin: r.repertoire }); }
+    catch (erreur) { void erreur; }
+    afficherBandeau(true,
+      `Brouillon ouvert — ${echapper(r.motif)}. La pièce jointe reste à `
+      + `glisser depuis le dossier qui vient de s'ouvrir : ${echapper(r.piece)} `
+      + `(${r.poids}).`);
+  } catch (erreur) { afficherBandeau(false, erreur.message); }
+}
+
 if ($("preparerEnvoi")) {
   $("preparerEnvoi").addEventListener("click", preparerEnvoi);
 }
@@ -3155,6 +3294,9 @@ function reglages() {
   return {
     boites: $("boites").value, sortie: $("sortie").value,
     copie_vers: $("copieVers").value,
+    expediteur: $("expediteur").value,
+    responsable_entreprise: $("responsableEntreprise").value,
+    responsable_personnel: $("responsablePersonnel").value,
     domaines: $("domaines").value, seulement: $("seulement").value,
     filtre_colonne: $("filtreColonne").value,
     filtre_valeur: $("filtreValeur").value,
@@ -4336,7 +4478,9 @@ function rendreDocuments() {
                + `retourner sur Gmail.">↻ à refaire</span>` : "")
         : '<span class="lien inactif">pas de note</span>'}</td>
       <td>${piecesVersees(d)}</td>
-      <td><a class="lien" data-ouvrir="${echapper(d.repertoire)}">Ouvrir le répertoire</a></td>
+      <td><a class="lien" data-ouvrir="${echapper(d.repertoire)}">Ouvrir le répertoire</a>
+        <br /><a class="lien" data-brouillon="${echapper(d.reference)}"
+          title="Ouvre un brouillon de courriel avec ce dossier attaché. Rien n'est envoyé.">Préparer le mail</a></td>
     </tr>`).join("");
 
   // Le cas courant : un fichier de suivi appliqué après coup renseigne d'un
@@ -4382,6 +4526,9 @@ function rendreDocuments() {
   brancherToutChoisir($("tableDocuments"), majChoixNotes);
   // Corriger le financement d'un dossier : ce qui est saisi l'emporte sur
   // la déduction, et tient.
+  $("tableDocuments").querySelectorAll("[data-brouillon]").forEach((lien) =>
+    lien.addEventListener("click", () => ouvrirBrouillon(lien.dataset.brouillon)));
+
   $("tableDocuments").querySelectorAll("select.financement").forEach((champ) =>
     champ.addEventListener("change", async () => {
       try {

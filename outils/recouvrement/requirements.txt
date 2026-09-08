@@ -19,3 +19,9 @@ openpyxl>=3.1.0
 # rabat sur un lecteur interne, suffisant pour une facture générée par un
 # logiciel de facturation.
 pypdf>=4.0.0
+
+# Ouverture d'un brouillon Outlook avec le dossier attache, depuis le bouton
+# « Preparer le mail ». Windows seulement, et facultatif : sans lui,
+# l'application ouvre le brouillon de la messagerie par defaut et laisse la
+# piece jointe a glisser, en le disant.
+pywin32>=306; sys_platform == "win32"

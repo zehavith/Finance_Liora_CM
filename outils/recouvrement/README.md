@@ -655,6 +655,44 @@ un index vide effacerait un dossier complet.
 dossiers avant de les regarder, donc rien n'est complété. L'outil le signale
 plutôt que de laisser croire à une mise à jour.
 
+### Transmettre un dossier par mail
+
+Un dossier est un répertoire : cela ne s'attache pas à un courriel. Deux
+boutons y répondent, dans l'onglet **Documents**.
+
+**« Préparer pour envoi »** produit, pour chaque dossier retenu (tous, ou
+seulement ceux qui sont cochés), deux fichiers dans `pour-envoi` :
+
+| Fichier | Ce qu'il porte |
+|---|---|
+| `<dossier>.pdf` | la note de synthèse, les pièces clés, puis les échanges dans l'ordre de leurs numéros de pièce — un seul document, paginé, imprimable |
+| `<dossier>.zip` | tout le dossier, y compris ce qu'un PDF ne peut pas contenir : les `.eml` d'origine, les tableurs, les images |
+
+Ce que l'archive **ne reprend pas** : `mails-hors-dossier`. L'y remettre
+reviendrait à transmettre les échanges d'autres personnes, qu'on vient
+justement de retirer. Le poids est annoncé, et un dépassement de 20 Mo
+signalé — c'est la première question quand on attache.
+
+**« Préparer le mail »**, sur la ligne d'un dossier, ouvre un **brouillon**
+Outlook : destinataire, objet, corps et pièce jointe déjà en place.
+**Rien n'est envoyé** : adresser un courriel à un tiers est un geste qui
+appartient à celle qui le signe. Le brouillon s'ouvre, elle le relit, elle
+l'envoie.
+
+Trois adresses se règlent dans **Boîtes mail et options** :
+
+- **Envoyer depuis** — le compte Outlook qui signe. Laissé vide, c'est le
+  compte par défaut d'Outlook, qui avec plusieurs boîtes ouvertes n'est pas
+  toujours la vôtre. Si le compte demandé n'est pas ouvert dans Outlook,
+  l'application le dit plutôt que de laisser partir le courrier d'ailleurs.
+- **Responsable des dossiers entreprise** et **Responsable des dossiers
+  financement personnel** — le destinataire est choisi selon le portefeuille
+  du dossier.
+
+Sans Outlook pilotable (`pywin32` absent, autre système), le brouillon de la
+messagerie par défaut s'ouvre et le répertoire avec : la pièce jointe reste à
+glisser, et l'application le dit.
+
 ### Les pièces qui font le dossier, réunies à part
 
 Chaque dossier porte un sous-répertoire **`pieces-cles`** où sont rassemblées
