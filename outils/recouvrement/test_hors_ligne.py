@@ -3607,6 +3607,72 @@ def test_document_monday_verrouille() -> None:
          module_monday.identifiant) = vrais
 
 
+def test_heures_de_l_emargement() -> None:
+    """Les heures écrites dans l'émargement, et rien de deviné."""
+    import facture_pdf as module_facture  # noqa: PLC0415
+    import synthese as module_synthese  # noqa: PLC0415
+
+    print("\nHeures relevées dans la feuille d'émargement")
+
+    vrai = module_facture.texte_du_pdf
+    try:
+        for texte, attendu in (
+            ("Nombre d'heures : 42", "42"),
+            ("Nombre total d'heures de formation : 60 h", "60"),
+            ("Total des heures 38,5", "38.5"),
+            ("Heures de présence : 42 h 30", "42.5"),
+            ("Volume horaire réalisé : 214h", "214"),
+            ("Durée de la formation : 35 heures", "35"),
+        ):
+            module_facture.texte_du_pdf = lambda _c, t=texte: t
+            obtenu = module_synthese.heures_de_l_emargement(Path("x.pdf"))
+            verifier(obtenu == attendu,
+                     f"« {texte} » → {obtenu or '—'} h (attendu {attendu})")
+
+        # Rien n'est déduit ni additionné : une heure inventée par une lecture
+        # trop large ferait plus de tort que la colonne vide qu'elle remplace.
+        for texte, quoi in (
+            ("Feuille d'émargement du 02/09/2024 au 31/12/2025", "des dates"),
+            ("Identifiant 880ceucmlwnozdz", "un identifiant"),
+            ("Taux de présence : 70 %", "un pourcentage"),
+            ("Nombre d'heures : 0", "zéro heure"),
+            ("Nombre d'heures : 99999", "une valeur aberrante"),
+            ("Aucune mention d'horaire.", "rien du tout"),
+        ):
+            module_facture.texte_du_pdf = lambda _c, t=texte: t
+            obtenu = module_synthese.heures_de_l_emargement(Path("x.pdf"))
+            verifier(obtenu == "", f"{quoi} n'est pas lu comme des heures "
+                                   f"(obtenu : {obtenu or '—'})")
+    finally:
+        module_facture.texte_du_pdf = vrai
+
+
+def test_montant_deja_regle() -> None:
+    """Ce que le débiteur a déjà payé figure au point 1 de la note."""
+    import dossiers as module_dossiers  # noqa: PLC0415
+    import indexation as module_indexation  # noqa: PLC0415
+    import synthese as module_synthese  # noqa: PLC0415
+
+    print("\nMontant déjà réglé")
+
+    verifier("montant_recu" in module_indexation.COLONNES_RECAP,
+             "le récapitulatif porte le montant reçu")
+
+    champs = {c: (p.default if p.default is not inspect.Parameter.empty else "")
+              for c, p in inspect.signature(module_dossiers.Dossier).parameters.items()}
+    champs.update(reference="F", nom="SAS EDEN", emails=["c@x.fr"], factures=["F"],
+                  date_echeance="21/05/2024", montant_du="4990",
+                  montant_total="6490", montant_recu="1500")
+    dossier = module_dossiers.Dossier(**champs)
+    points = module_synthese.resumer_situation(
+        dossier, module_synthese.analyser([], {}),
+        datetime(2026, 9, 8, tzinfo=timezone.utc), [], [])
+    # Le taire fait réclamer une somme que le tableau sait partiellement
+    # payée — et c'est la première chose qu'un débiteur oppose.
+    verifier("1 500,00 € déjà réglés" in points[0][1],
+             f"la note dit ce qui a déjà été payé ({points[0][1][:90]})")
+
+
 def test_sauvegarde_du_suivi() -> None:
     """Le suivi n'existe nulle part ailleurs : il se sauvegarde tout seul."""
     import interface as module_interface  # noqa: PLC0415
@@ -7518,6 +7584,8 @@ def main() -> int:
     test_fil_trop_long_ecarte()
     test_csv_ouvert_dans_excel()
     test_document_monday_verrouille()
+    test_heures_de_l_emargement()
+    test_montant_deja_regle()
     test_sauvegarde_du_suivi()
     test_tout_effacer_respecte_la_reponse()
     test_doublons_de_la_liste()

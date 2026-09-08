@@ -14,6 +14,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 
 from indexation import LigneIndex
 
@@ -736,10 +737,18 @@ def resumer_situation(
     # 1. Montant.
     du = montant_lisible(dossier.montant_du)
     total = montant_lisible(dossier.montant_total)
+    # Ce que le débiteur a déjà réglé. Le taire fait réclamer une somme que le
+    # tableau sait partiellement payée — et c'est la première chose qu'un
+    # débiteur oppose. Mieux vaut que la note le dise avant lui.
+    recu = montant_lisible(getattr(dossier, "montant_recu", ""))
     if du and total and du != total:
         montant = f"{du} restant dus sur {total} facturés"
+        if recu:
+            montant += f", {recu} déjà réglés"
     elif du or total:
         montant = du or total
+        if recu:
+            montant += f" — {recu} déjà réglés"
     else:
         montant = "non renseigné au tableau de suivi"
 
@@ -1462,6 +1471,69 @@ def lire_emargement(nom: str) -> dict | None:
         "fin": f"{trouve['d2']}/{trouve['m2']}/{trouve['a2']}",
         "fichier": nom,
     }
+
+
+# Les heures écrites dans une feuille d'émargement.
+#
+# Rien n'est déduit ni additionné : on ne retient qu'un nombre que le document
+# énonce lui-même sous une étiquette explicite. Devant un tribunal, des heures
+# de présence établissent que la formation a été délivrée — et une heure
+# inventée par une addition maladroite ferait plus de tort que la colonne vide
+# qu'elle remplace.
+ETIQUETTES_HEURES = (
+    r"nombre\s+(?:total\s+)?d[e']\s*heures?(?:\s+de\s+\w+)?",
+    r"total\s+(?:des\s+)?heures?",
+    r"heures?\s+de\s+pr[ée]sence",
+    r"heures?\s+effectu[ée]es?",
+    r"heures?\s+r[ée]alis[ée]es?",
+    r"dur[ée]e\s+(?:totale|de\s+la\s+formation)",
+    r"volume\s+horaire(?:\s+(?:total|r[ée]alis[ée]))?",
+)
+
+# « 42 », « 42h », « 42 h 30 », « 42,5 » — jamais un pourcentage ni une date.
+MOTIF_HEURES = re.compile(
+    r"(?P<heures>\d{1,4}(?:[.,]\d{1,2})?)\s*(?:h(?:eures?)?\b\s*(?P<minutes>[0-5]?\d)?|\b)",
+    re.IGNORECASE,
+)
+
+
+def heures_de_l_emargement(chemin: Path) -> str:
+    """Les heures que la feuille d'émargement énonce, ou rien.
+
+    Rien de deviné : sans étiquette explicite, la fonction ne renvoie rien et
+    la colonne reste vide. C'est le seul comportement acceptable pour une
+    valeur qui peut être opposée à un débiteur.
+    """
+    import facture_pdf as module_facture  # noqa: PLC0415 - import tardif
+
+    try:
+        texte = module_facture.texte_du_pdf(Path(chemin))
+    except (OSError, ValueError):
+        return ""
+    if not texte:
+        return ""
+
+    plat = " ".join(texte.split())
+    for etiquette in ETIQUETTES_HEURES:
+        for trouve in re.finditer(etiquette + r"\s*:?\s*", plat, re.IGNORECASE):
+            suite = plat[trouve.end():trouve.end() + 24]
+            nombre = MOTIF_HEURES.match(suite)
+            if nombre is None:
+                continue
+            heures = nombre.group("heures").replace(",", ".")
+            try:
+                valeur = float(heures)
+            except ValueError:
+                continue
+            # Une formation de plus de mille heures ou de zéro heure n'est pas
+            # une lecture, c'est un faux positif — un identifiant, une année.
+            if not 0 < valeur <= 1000:
+                continue
+            minutes = nombre.group("minutes")
+            if minutes and int(minutes):
+                valeur += int(minutes) / 60
+            return f"{valeur:g}"
+    return ""
 
 
 CATEGORIES_PIECES = (

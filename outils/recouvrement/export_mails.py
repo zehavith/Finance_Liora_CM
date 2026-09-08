@@ -79,6 +79,7 @@ from rendu import (  # noqa: E402
     ecrire_synthese,
     moteur_pdf_disponible,
     nom_de_base,
+    slug,
     verifier_environnement,
 )
 
@@ -688,6 +689,9 @@ def traiter_dossier(
         repertoire=dossier.nom_repertoire,
         montant_du=dossier.montant_du,
         montant_total=dossier.montant_total,
+        # Ce que le debiteur a deja regle : la note doit le dire, sans quoi
+        # elle reclame une somme que le tableau sait deja partiellement payee.
+        montant_recu=dossier.montant_recu,
         date_echeance=dossier.date_echeance,
         convention_signee=dossier.convention_signee,
         diplome=dossier.diplome,
@@ -989,6 +993,44 @@ def traiter_dossier(
         vues.append("factures")
     if options.sous_dossiers_par_adresse:
         vues.append("adresses")
+
+    # Les heures ecrites dans la feuille d'emargement. Le tableau de suivi ne
+    # les porte presque jamais — trois lignes sur cent soixante-neuf — alors
+    # que la feuille, elle, les enonce. Devant un tribunal, des heures de
+    # presence etablissent que la formation a ete delivree.
+    #
+    # Seulement si le tableau n'en donne pas : ce que le service a saisi
+    # l'emporte sur ce qu'un PDF laisse lire.
+    if not dossier.heures_log:
+        # Le fichier est renomme sur le disque — « anas-ait-belaid-02-09-… » —
+        # et ne ressemble plus au nom que porte l'index. C'est donc l'index qui
+        # dit lesquelles sont des feuilles d'emargement, et le nom aplani qui
+        # retrouve le fichier correspondant.
+        for ligne in lignes:
+            for nom in (ligne.pieces_jointes or "").split(" | "):
+                nom = nom.strip()
+                if not nom or module_synthese.lire_emargement(nom) is None:
+                    continue
+                repertoire_pieces = repertoire / (ligne.dossier_pieces_jointes or "")
+                if not repertoire_pieces.is_dir():
+                    continue
+                # Exactement la regle de l'ecriture — slug(stem, 45) — et non
+                # la longueur par defaut : sinon le nom calcule est plus long
+                # que celui du disque, et aucun fichier ne correspond jamais.
+                attendu = slug(Path(nom).stem, 45)
+                for chemin_piece in sorted(repertoire_pieces.glob("*.pdf")):
+                    if not chemin_piece.stem.startswith(attendu):
+                        continue
+                    heures = module_synthese.heures_de_l_emargement(chemin_piece)
+                    if heures:
+                        dossier.heures_log = heures
+                        resume.heures_log = heures
+                        journal(f"    {heures} h relevee(s) dans {nom}")
+                        break
+                if dossier.heures_log:
+                    break
+            if dossier.heures_log:
+                break
 
     if not options.sans_synthese:
         contenu = module_synthese.construire_html(

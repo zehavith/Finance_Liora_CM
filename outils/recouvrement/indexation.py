@@ -52,6 +52,7 @@ COLONNES_RECAP = [
     "nb_pieces_jointes",
     "montant_du",
     "montant_total",
+    "montant_recu",
     # Colonnes de tri pour arbitrer sur l'ensemble des dossiers d'un coup d'œil.
     "mise_en_demeure",
     "contestation",
@@ -144,6 +145,7 @@ class ResumeDossier:
     dates: list[datetime] = field(default_factory=list)
     montant_du: str = ""
     montant_total: str = ""
+    montant_recu: str = ""
     mise_en_demeure: str = ""
     contestation: str = ""
     echeancier: str = ""
@@ -182,6 +184,7 @@ class ResumeDossier:
             "nb_pieces_jointes": str(self.nb_pieces_jointes),
             "montant_du": self.montant_du,
             "montant_total": self.montant_total,
+            "montant_recu": self.montant_recu,
             "mise_en_demeure": self.mise_en_demeure,
             "contestation": self.contestation,
             "echeancier": self.echeancier,

@@ -572,6 +572,7 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 "montant_renseigne": bool(
                     str(rangee.get("montant_du") or "").strip()),
                 "montant_total": _nombre(rangee.get("montant_total")),
+                "montant_recu": _nombre(rangee.get("montant_recu")),
                 "nb_mails": int(_nombre(rangee.get("nb_mails"))),
                 "nb_pieces_jointes": int(_nombre(rangee.get("nb_pieces_jointes"))),
                 "premier_mail": (rangee.get("premier_mail") or "").strip(),
