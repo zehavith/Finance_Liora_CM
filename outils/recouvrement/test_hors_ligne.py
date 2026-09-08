@@ -3234,6 +3234,41 @@ def _comparateur_de_tri() -> str:
     return reduire + tri
 
 
+def test_filtre_par_etat() -> None:
+    """Les deux tableaux se filtrent par l'état du dossier."""
+    import interface as module_interface  # noqa: PLC0415
+
+    print("\nFiltre par état du dossier")
+
+    page = module_interface.PAGE
+    for identifiant in ('id="filtreEtatSuivi"', 'id="filtreEtatDocuments"'):
+        verifier(identifiant in page, f"{identifiant} est dans la page")
+    verifier("Tous les états" in page, "avec un choix qui ne filtre rien")
+    # Le filtre porte sur les dossiers, pas seulement sur l'affichage : c'est
+    # « dossiersFiltres » que les deux tableaux consultent.
+    verifier("if (ETAT_CHOISI) {" in page
+             and '(d.statut || "non-transmis") === ETAT_CHOISI' in page,
+             "et il retient les dossiers dans cet état")
+    # Partagé entre les deux onglets, comme la recherche : isoler les
+    # possibles abandons puis passer aux documents sans le reperdre.
+    verifier('$(id) !== evenement.target) $(id).value = ETAT_CHOISI' in page,
+             "les deux listes déroulantes restent d'accord")
+    verifier("function remplirFiltresEtat" in page
+             and "comptes.get(s.cle)" in page,
+             "chaque état porte le nombre de dossiers qu'il compte")
+    verifier("remplirFiltresEtat();" in page,
+             "et la liste est remplie au chargement des dossiers")
+
+    # « FACT-2405-00409 » se coupait sur trois lignes, à chaque tiret : depuis
+    # que la première colonne porte une case à cocher, la référence
+    # n'héritait plus du « nowrap » réservé à la première cellule.
+    verifier('<td class="reference">' in page,
+             "la référence des documents a sa propre cellule")
+    verifier("#tableDocuments table.donnees td.reference b{white-space:nowrap}"
+             in page,
+             "et tient sur une seule ligne")
+
+
 def test_tri_des_colonnes() -> None:
     """Chaque en-tête trie, et le premier clic prend le sens utile."""
     import interface as module_interface  # noqa: PLC0415
@@ -8271,6 +8306,7 @@ def main() -> int:
     test_messages_autre_facture()
     test_feuille_emargement()
     test_copie_vers_sharepoint()
+    test_filtre_par_etat()
     test_tri_des_colonnes()
     test_pas_de_reserve_dans_la_note()
     test_references_parasites()

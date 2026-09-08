@@ -803,15 +803,20 @@ def reclasser_index(repertoire: Path, emails: Iterable[str] = ()) -> int:
     if len(gardees) == len(rangees):
         return 0
 
+    # L'index d'abord, les fichiers ensuite. Dans l'autre ordre, un index.csv
+    # ouvert dans Excel faisait échouer l'écriture après que les pièces
+    # avaient été déplacées : le dossier gardait alors un index qui renvoyait
+    # à des fichiers partis ailleurs. Si l'écriture échoue, rien n'a bougé.
+    module_indexation._ecrire_csv(
+        index, module_indexation.COLONNES_INDEX,
+        [{cle: r.get(cle, "") for cle in module_indexation.COLONNES_INDEX}
+         for r in gardees])
+
     for rangee in rangees:
         if a_garder(rangee):
             continue
         _ecarter_pieces(repertoire, rangee)
 
-    module_indexation._ecrire_csv(
-        index, module_indexation.COLONNES_INDEX,
-        [{cle: r.get(cle, "") for cle in module_indexation.COLONNES_INDEX}
-         for r in gardees])
     return len(rangees) - len(gardees)
 
 
@@ -2119,6 +2124,9 @@ details.absents li{break-inside:avoid}
 /* Plus specifique que la regle generale des champs, qui suit et prendrait
    sinon toute la largeur. */
 .recherche-dossiers input[type=search]{width:370px;max-width:100%}
+/* Le libelle d'etat le plus long fait soixante caracteres : laisse libre, la
+   liste deroulante repoussait le compte et le bouton hors de l'ecran. */
+.recherche-dossiers select{max-width:270px}
 .compte-recherche{font-size:12px;color:var(--texte-3);white-space:nowrap}
 .retenu{font-size:11.5px;color:var(--texte-3);max-width:230px}
 .lien-oubli{font-size:11.5px;color:var(--accent);cursor:pointer;white-space:nowrap}
@@ -2212,6 +2220,14 @@ table.donnees td:first-child{min-width:170px}
 #tableSuivi table.donnees td:first-child{min-width:0;width:26px;padding-right:0}
 #tableSuivi table.donnees td.dossier{min-width:170px}
 #tableSuivi table.donnees td.dossier b{white-space:nowrap}
+/* Meme chose aux documents : depuis que la premiere colonne porte la case a
+   cocher des notes a refaire, la reference n'heritait plus de la largeur ni
+   du « nowrap » reserves a la premiere cellule. « FACT-2405-00409 » se
+   coupait donc sur trois lignes, a chaque tiret. */
+#tableDocuments table.donnees td:first-child{min-width:0;width:26px;
+  padding-right:0}
+#tableDocuments table.donnees td.reference{min-width:150px}
+#tableDocuments table.donnees td.reference b{white-space:nowrap}
 /* Le libelle d'etape le plus long fait soixante caracteres : laisse libre, la
    liste deroulante poussait les dernieres colonnes hors de l'ecran. */
 #tableSuivi select{max-width:186px}
@@ -2319,6 +2335,9 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <div class="recherche-dossiers">
       <input type="search" id="chercheSuivi" autocomplete="off"
              placeholder="Facture, adresse mail, nom…" />
+      <select id="filtreEtatSuivi" title="N'afficher que les dossiers dans cet état.">
+        <option value="">Tous les états</option>
+      </select>
       <span class="compte-recherche" id="compteSuivi"></span>
     </div>
     <div id="tableSuivi"></div>
@@ -2333,6 +2352,9 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <div class="recherche-dossiers">
       <input type="search" id="chercheDocuments" autocomplete="off"
              placeholder="Facture, adresse mail, nom…" />
+      <select id="filtreEtatDocuments" title="N'afficher que les dossiers dans cet état.">
+        <option value="">Tous les états</option>
+      </select>
       <span class="compte-recherche" id="compteDocuments"></span>
       <button class="secondaire" id="refaireNotes"
               title="Réécrit les notes à partir des messages déjà au dossier, sans retourner sur Gmail. Quelques secondes.">Refaire les notes</button>
@@ -2813,6 +2835,9 @@ $("chercheTableau").addEventListener("input", rendreTableaux);
 ["chercheSuivi", "chercheDocuments"].forEach((id) => {
   if ($(id)) $(id).addEventListener("input", chercherDossiers);
 });
+["filtreEtatSuivi", "filtreEtatDocuments"].forEach((id) => {
+  if ($(id)) $(id).addEventListener("change", choisirEtat);
+});
 
 // Les dossiers dont on veut refaire la note. Sur deux cents dossiers dont
 // trois viennent de changer, refaire les deux cents pour trois est une
@@ -3278,6 +3303,7 @@ async function chargerDossiers() {
   A_REFAIRE = donnees.a_refaire || [];
   SAUVEGARDES = donnees.sauvegardes || null;
   $("cheminSortie").textContent = donnees.sortie;
+  remplirFiltresEtat();
   rendreDocuments();
   rendreSuivi();
   rendreBord();
@@ -3557,21 +3583,73 @@ function correspond(dossier, terme) {
 }
 
 function dossiersFiltres() {
+  let liste = DOSSIERS;
+  // L'état d'abord : « montre-moi les possibles abandons » est une question
+  // à part entière, qu'aucun mot-clé ne pose — le libellé n'est écrit nulle
+  // part dans les champs sur lesquels porte la recherche.
+  if (ETAT_CHOISI) {
+    liste = liste.filter((d) => (d.statut || "non-transmis") === ETAT_CHOISI);
+  }
   const terme = RECHERCHE.trim();
-  if (!terme) return DOSSIERS;
+  if (!terme) return liste;
   // Plusieurs mots : tous doivent correspondre, pour affiner plutôt
   // qu'élargir. « eden 00409 » ne ramène que ce dossier-là.
   const mots = terme.split(/\s+/).filter(Boolean);
-  return DOSSIERS.filter((d) => mots.every((mot) => correspond(d, mot)));
+  return liste.filter((d) => mots.every((mot) => correspond(d, mot)));
 }
 
 function majCompteRecherche(visibles) {
-  const texte = !RECHERCHE.trim()
+  const filtre = Boolean(RECHERCHE.trim() || ETAT_CHOISI);
+  const texte = !filtre
     ? (DOSSIERS.length ? `${DOSSIERS.length} dossier(s).` : "")
     : `${visibles} dossier(s) sur ${DOSSIERS.length}.`;
   ["compteSuivi", "compteDocuments"].forEach((id) => {
     if ($(id)) $(id).textContent = texte;
   });
+}
+
+// -- filtre par état
+//
+// Partagé entre les deux onglets, comme la recherche : isoler les possibles
+// abandons dans « État des dossiers » puis passer aux « Documents » sans le
+// reperdre est le geste courant.
+let ETAT_CHOISI = "";
+
+function remplirFiltresEtat() {
+  // Chaque état porte le nombre de dossiers qu'il compte : voir « Possible
+  // abandon (7) » avant de cliquer évite de filtrer pour rien, et donne le
+  // décompte sans changer d'onglet. Un état sans dossier n'est pas proposé.
+  const comptes = new Map();
+  DOSSIERS.forEach((d) => {
+    const cle = d.statut || "non-transmis";
+    comptes.set(cle, (comptes.get(cle) || 0) + 1);
+  });
+  const options = ['<option value="">Tous les états</option>']
+    .concat(STATUTS.filter((s) => comptes.get(s.cle))
+      .map((s) => `<option value="${echapper(s.cle)}"`
+        + (s.cle === ETAT_CHOISI ? " selected" : "") + ">"
+        + echapper(s.libelle) + ` (${comptes.get(s.cle)})</option>`));
+  // Un état choisi puis vidé de ses dossiers doit rester proposé, sans quoi
+  // la liste paraîtrait vide sans qu'on voie pourquoi.
+  if (ETAT_CHOISI && !comptes.get(ETAT_CHOISI)) {
+    const perdu = STATUTS.find((s) => s.cle === ETAT_CHOISI);
+    if (perdu) {
+      options.push(`<option value="${echapper(perdu.cle)}" selected>`
+        + echapper(perdu.libelle) + " (0)</option>");
+    }
+  }
+  ["filtreEtatSuivi", "filtreEtatDocuments"].forEach((id) => {
+    if ($(id)) $(id).innerHTML = options.join("");
+  });
+}
+
+function choisirEtat(evenement) {
+  ETAT_CHOISI = evenement.target.value;
+  ["filtreEtatSuivi", "filtreEtatDocuments"].forEach((id) => {
+    if ($(id) && $(id) !== evenement.target) $(id).value = ETAT_CHOISI;
+  });
+  rendreSuivi();
+  rendreDocuments();
 }
 
 function messageAucuneCorrespondance() {
@@ -3895,7 +3973,7 @@ function rendreDocuments() {
           data-ref="${echapper(d.reference)}"
           ${CHOIX_NOTES.has(d.reference) ? "checked" : ""}
           title="Refaire la note de ce dossier seulement." /></td>
-      <td><b>${echapper(d.reference)}</b></td>
+      <td class="reference"><b>${echapper(d.reference)}</b></td>
       <td>${echapper(d.nom)}</td>
       <td class="num">${d.nb_mails}</td>
       <td class="num">${d.nb_pieces_jointes}</td>
