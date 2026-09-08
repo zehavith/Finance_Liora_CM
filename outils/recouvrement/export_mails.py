@@ -997,6 +997,7 @@ def traiter_dossier(
             lignes=lignes,
             synthese=analyse,
             date_export=date_export,
+            date_note=date_export,
             documents_monday=documents_monday,
             # La note cite les réponses du débiteur telles qu'il les a
             # écrites : il lui faut donc le texte des pièces, pas seulement
@@ -1585,6 +1586,7 @@ def _ecrire_sous_dossiers(
                 lignes=pieces,
                 synthese=analyse,
                 date_export=date_export,
+                date_note=date_export,
                 documents_monday=documents,
                 rattachement=f"{dossier.reference} — {dossier.nom}".strip(" —"),
                 note_vue=note_vue,
