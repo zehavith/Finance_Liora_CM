@@ -66,10 +66,14 @@ dossier contentieux :
   échéancier), chacune renvoyant à son numéro de pièce ;
 - **4. Preuve des actions engagées** — chiffres clés, constats et événements
   repérés ;
-- **5. La conversation** — l'échange d'une traite, réplique par réplique, sans
-  dates ni numéros de pièce : de quoi savoir de quoi il retourne avant
-  d'entrer dans les pièces. Rien n'y est reformulé, chaque tour est le propos
-  du message. Les dates figurent dans les événements et dans l'annexe.
+- **5. La conversation** — d'abord l'échange **résumé** en quelques phrases
+  (« Liora a réclamé le paiement de la facture à plusieurs reprises. SAS EDEN
+  a contesté le montant. Liora a adressé une mise en demeure. Depuis, SAS EDEN
+  n'a plus répondu. »), puis l'échange **d'une traite**, réplique par réplique.
+  Sans dates ni numéros de pièce : de quoi savoir de quoi il retourne avant
+  d'entrer dans les pièces. Rien n'y est reformulé — le résumé vient des actes
+  repérés, chaque réplique est le propos du message. Les dates figurent dans
+  les événements de la partie 4 et dans l'annexe.
 
 Les montants, dates de formation et statuts viennent du tableau Monday ; le
 reste des seuls messages extraits.

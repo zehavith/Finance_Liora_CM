@@ -443,6 +443,12 @@ blockquote.propos { margin: 5px 0 9px 14px; padding-left: 11px;
                   letter-spacing: 0.2px; }
 .echange blockquote.propos { margin-top: 2px; }
 
+/* Le résumé de l'échange se lit avant l'échange lui-même : cinq phrases, un
+   peu plus grandes, détachées de ce qui suit. */
+.resume-fil { font-size: 10.5pt; line-height: 1.55; margin: 4px 0 14px;
+              padding: 9px 12px; background: #f4f4f2;
+              border-left: 3px solid #1a1a1a; }
+
 /* La conversation se lit d'une traite : le nom en tête de réplique, le
    propos à la suite, sans date ni numéro qui coupe la lecture. */
 .tour { margin: 0 0 7px; padding-left: 12px; border-left: 2px solid #ddd;
@@ -1194,6 +1200,77 @@ def _bloc_conversations(lignes_index: list[LigneIndex],
         + " au dossier, dans l'ordre où elles se sont tenues.</p>"
         + "".join(blocs)
     )
+
+
+# Ce que chaque acte repéré devient dans le récit, selon qui l'a posé. Rien
+# n'est déduit du texte des messages : ce sont les mêmes événements que ceux
+# de la partie 4, dits en français plutôt qu'en tableau.
+RECIT_DES_ACTES = {
+    ("Relance", "envoyé"): "a réclamé le paiement de la facture",
+    ("Mise en demeure", "envoyé"): "a adressé une mise en demeure",
+    ("Contestation", "reçu"): "a contesté le montant ou la prestation",
+    ("Contestation", "envoyé"): "a répondu à la contestation",
+    ("Échéancier évoqué", "reçu"): "a demandé à échelonner le paiement",
+    ("Échéancier évoqué", "envoyé"): "a proposé un échelonnement",
+}
+
+
+def resume_de_la_conversation(dossier, synthese: Synthese) -> list[str]:
+    """L'échange raconté : qui a dit quoi, dans l'ordre, sans une seule date.
+
+    La conversation restituée plus bas se lit en entier, et la partie 4 donne
+    les dates et les numéros de pièce. Ce qui manquait entre les deux est le
+    récit : on a réclamé, il a contesté, on a mis en demeure, il a demandé un
+    échelonnement, et depuis il se tait.
+
+    Rien n'est deviné ni reformulé à partir du texte des messages : chaque
+    phrase vient d'un acte déjà repéré, et de qui l'a posé.
+    """
+    qui = (getattr(dossier, "nom", "") or "Le débiteur").strip()
+
+    if not synthese.nb_pieces:
+        return ["Aucun message n'a été retrouvé pour ce dossier : "
+                "la conversation ne peut pas être résumée."]
+
+    # Les actes dans l'ordre où ils ont été posés, chacun rendu à son auteur.
+    actes: list[tuple[str, str]] = []
+    for evenement in sorted(synthese.evenements, key=lambda ev: ev.date):
+        propos = RECIT_DES_ACTES.get((evenement.libelle, evenement.sens))
+        if propos:
+            actes.append(("Liora" if evenement.sens == "envoyé" else qui, propos))
+
+    # Quatre relances et quatre contestations en alternance ne font pas huit
+    # phrases : ce sont deux actes, répétés. Chacun est dit une fois, à la
+    # place de sa première occurrence, et l'on dit qu'il s'est répété.
+    ordre: list[tuple[str, str]] = []
+    combien: dict[tuple[str, str], int] = {}
+    for acte in actes:
+        if acte not in combien:
+            ordre.append(acte)
+        combien[acte] = combien.get(acte, 0) + 1
+
+    phrases = [
+        f"{auteur} {propos}"
+        + (" à plusieurs reprises." if combien[(auteur, propos)] > 1 else ".")
+        for auteur, propos in ordre
+    ]
+
+    if not phrases:
+        phrases.append(
+            f"Aucun acte caractéristique — relance, contestation, mise en "
+            f"demeure — n'a été repéré dans l'échange entre Liora et {qui}."
+        )
+
+    # Et où cela s'est arrêté : le sens du dernier message le dit, sans qu'il
+    # faille lire une date.
+    if not synthese.nb_recus:
+        phrases.append(f"{qui} n'a jamais répondu.")
+    elif synthese.dernier and synthese.derniere_reponse != synthese.dernier:
+        phrases.append(f"Depuis, {qui} n'a plus répondu.")
+    else:
+        phrases.append(f"Le dernier message de l'échange vient de {qui}.")
+
+    return phrases
 
 
 def _nom_court(expediteur: str) -> str:
@@ -2252,6 +2329,8 @@ def construire_html(
 {bloc_evenements}
 
 <h2>5. La conversation</h2>
+<p class="resume-fil">{' '.join(html.escape(p) for p in
+    resume_de_la_conversation(dossier, synthese))}</p>
 {_bloc_dialogue(lignes, textes or {})}
 
 <div class="avertissement">

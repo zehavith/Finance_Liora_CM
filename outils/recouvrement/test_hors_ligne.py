@@ -4471,6 +4471,85 @@ def test_pieces_cles_reunies() -> None:
                  f"({len(convention)})")
 
 
+def test_resume_de_la_conversation() -> None:
+    """L'échange raconté : qui a dit quoi, sans une seule date."""
+    import synthese as module_synthese  # noqa: PLC0415
+
+    print("\nRésumé de la conversation")
+
+    class _Dossier:
+        nom = "SAS EDEN"
+        montant_du = "5 990,00 €"
+        montant_total = ""
+        montant_recu = ""
+        date_echeance = "21/05/2024"
+
+    def evenement(libelle, jour, piece, sens="envoyé"):
+        return module_synthese.Evenement(
+            libelle=libelle, date=datetime(2024, *jour), piece=piece, sens=sens)
+
+    analyse = module_synthese.Synthese(
+        nb_pieces=8, nb_envoyes=4, nb_recus=4,
+        premier=datetime(2024, 5, 21), dernier=datetime(2024, 7, 9),
+        derniere_reponse=datetime(2024, 7, 9), piece_derniere_reponse=8,
+        evenements=[
+            evenement("Relance", (5, 21), 1),
+            evenement("Contestation", (5, 28), 2, "reçu"),
+            evenement("Mise en demeure", (6, 4), 3),
+            evenement("Relance", (7, 2), 7),
+            evenement("Échéancier évoqué", (7, 9), 8, "reçu"),
+        ])
+    phrases = module_synthese.resume_de_la_conversation(_Dossier(), analyse)
+    texte = " ".join(phrases)
+
+    # « sans date ni rien, juste un résumé de la conversation ».
+    verifier(not any(c.isdigit() for c in texte),
+             f"pas un seul chiffre dans le résumé ({texte[:70]})")
+    verifier("Liora a réclamé le paiement de la facture" in texte,
+             "ce que Liora a fait est dit")
+    verifier("SAS EDEN a contesté le montant" in texte,
+             "ce que le débiteur a opposé aussi, sous son nom")
+    verifier("Liora a adressé une mise en demeure." in texte,
+             "et la mise en demeure")
+    verifier("SAS EDEN a demandé à échelonner le paiement." in texte,
+             "comme la demande d'échelonnement")
+    # Quatre relances et quatre contestations en alternance ne font pas huit
+    # phrases : ce sont deux actes, repetes.
+    verifier(texte.count("a réclamé le paiement") == 1,
+             "un acte répété n'est dit qu'une fois")
+    verifier("à plusieurs reprises" in texte,
+             "en disant qu'il s'est répété")
+    verifier(texte.index("réclamé") < texte.index("contesté")
+             < texte.index("mise en demeure"),
+             "les actes se suivent dans l'ordre où ils ont été posés")
+    verifier(len(phrases) <= 6, f"cinq lignes environ, pas un récit ({len(phrases)})")
+
+    # Un débiteur muet ne doit pas se résumer comme un débiteur qui répond.
+    muet = module_synthese.Synthese(
+        nb_pieces=2, nb_envoyes=2, nb_recus=0,
+        premier=datetime(2024, 5, 21), dernier=datetime(2024, 6, 21),
+        evenements=[evenement("Relance", (5, 21), 1)])
+    texte = " ".join(module_synthese.resume_de_la_conversation(_Dossier(), muet))
+    verifier("n'a jamais répondu" in texte, "un débiteur muet est dit muet")
+
+    # Il a répondu, mais le dernier mot est à nous : il s'est taru depuis.
+    tu = module_synthese.Synthese(
+        nb_pieces=4, nb_envoyes=3, nb_recus=1,
+        premier=datetime(2024, 5, 21), dernier=datetime(2024, 7, 9),
+        derniere_reponse=datetime(2024, 5, 28),
+        evenements=[evenement("Relance", (5, 21), 1),
+                    evenement("Contestation", (5, 28), 2, "reçu")])
+    texte = " ".join(module_synthese.resume_de_la_conversation(_Dossier(), tu))
+    verifier("Depuis, SAS EDEN n'a plus répondu." in texte,
+             "un débiteur qui s'est tu depuis est dit tel")
+
+    # Sans message, on ne résume rien plutôt que d'inventer.
+    vide = module_synthese.resume_de_la_conversation(
+        _Dossier(), module_synthese.Synthese())
+    verifier(len(vide) == 1 and "Aucun message" in vide[0],
+             "un dossier sans message le dit, sans rien inventer")
+
+
 def test_conversation_sans_dates() -> None:
     """La note donne l'échange d'une traite, sans dates ni numéros."""
     import synthese as module_synthese  # noqa: PLC0415
@@ -8412,6 +8491,7 @@ def main() -> int:
     test_sauvegarde_du_suivi()
     test_tout_effacer_respecte_la_reponse()
     test_pieces_cles_reunies()
+    test_resume_de_la_conversation()
     test_conversation_sans_dates()
     test_meme_courrier_parti_deux_fois()
     test_doublons_de_la_liste()
