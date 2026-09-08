@@ -13,6 +13,7 @@ from __future__ import annotations
 import inspect
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -3523,6 +3524,35 @@ def test_fil_trop_long_ecarte() -> None:
     source = Path("export_mails.py").read_text(encoding="utf-8")
     verifier("conversation(s) trop longue(s) " in source,
              "et le journal le dit, plutôt que de laisser un compte inexpliqué")
+
+
+def test_csv_ouvert_dans_excel() -> None:
+    """« Accès refusé » doit nommer Excel, pas laisser chercher des droits."""
+    import indexation as module_indexation  # noqa: PLC0415
+
+    print("\nIndex verrouillé par un autre programme")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        cible = Path(repertoire) / "index.csv"
+        vrai = os.replace
+        os.replace = lambda _a, _b: (_ for _ in ()).throw(
+            PermissionError(5, "Accès refusé"))
+        try:
+            module_indexation._ecrire_csv(cible, ["a"], [{"a": "1"}])
+            message = ""
+        except OSError as exc:
+            message = str(exc)
+        finally:
+            os.replace = vrai
+
+        # Sous Windows, un CSV ouvert dans Excel ne peut pas être remplacé.
+        # Le message brut faisait chercher un problème de droits là où il
+        # suffit de fermer une fenêtre.
+        verifier("Excel" in message,
+                 f"la cause la plus fréquente est nommée ({message[:80]})")
+        verifier("fermez-le" in message, "avec son remède")
+        verifier((Path(repertoire) / "index.csv.en-cours").exists(),
+                 "et ce qui a été écrit reste à côté, rien n'est perdu")
 
 
 def test_document_monday_verrouille() -> None:
@@ -7391,6 +7421,7 @@ def main() -> int:
     test_message_quand_l_outil_ne_repond_pas()
     test_montant_inconnu_n_est_pas_zero()
     test_fil_trop_long_ecarte()
+    test_csv_ouvert_dans_excel()
     test_document_monday_verrouille()
     test_tout_effacer_respecte_la_reponse()
     test_doublons_de_la_liste()
