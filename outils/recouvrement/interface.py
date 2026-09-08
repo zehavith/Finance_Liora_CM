@@ -2193,7 +2193,22 @@ async function api(chemin, corps) {
     options.headers["Content-Type"] = "application/json";
     options.body = JSON.stringify(corps);
   }
-  const reponse = await fetch(chemin, options);
+  // « Failed to fetch » est le message du navigateur quand il n'a pas pu
+  // joindre l'outil. En anglais, sans sujet ni remede, il fait croire a une
+  // panne de l'export alors qu'il ne dit qu'une chose : la page a parle dans
+  // le vide. Presque toujours parce que la fenetre noire a ete fermee, ou
+  // parce que la page est restee ouverte depuis une version precedente.
+  let reponse;
+  try {
+    reponse = await fetch(chemin, options);
+  } catch (erreur) {
+    throw new Error(
+      "L'application ne répond pas. La fenêtre noire de l'outil est-elle "
+      + "toujours ouverte ? Si vous venez d'installer une nouvelle version, "
+      + "cette page date de la précédente : fermez-la et rouvrez l'outil "
+      + "avec Lancer.bat. Un export en cours, lui, continue de son côté."
+    );
+  }
   const donnees = await reponse.json().catch(() => ({}));
   if (!reponse.ok) throw new Error(donnees.erreur || "Erreur " + reponse.status);
   return donnees;

@@ -3325,6 +3325,28 @@ console.log(JSON.stringify({{
              "les cases cochées survivent au tri")
 
 
+def test_message_quand_l_outil_ne_repond_pas() -> None:
+    """« Failed to fetch » ne dit rien à personne."""
+    import interface as module_interface  # noqa: PLC0415
+
+    print("\nOutil injoignable depuis la page")
+
+    page = module_interface.PAGE
+    bloc = page[page.index("async function api(chemin, corps)"):
+                page.index("// -- bascule entre les deux modes")]
+    # Le message du navigateur est en anglais, sans sujet ni remède, et fait
+    # croire à une panne de l'export alors qu'il ne dit qu'une chose : la
+    # page a parlé dans le vide.
+    verifier("try {" in bloc and "await fetch(chemin, options)" in bloc,
+             "l'échec de connexion est intercepté")
+    verifier("L'application ne répond pas" in bloc,
+             "et remplacé par une phrase en français")
+    verifier("Lancer.bat" in bloc and "fenêtre noire" in bloc,
+             "qui nomme les deux causes et leur remède")
+    verifier("Un export en cours, lui, continue" in bloc,
+             "en disant que l'export, lui, n'est pas interrompu")
+
+
 def test_montant_inconnu_n_est_pas_zero() -> None:
     """Un montant que personne n'a renseigné ne s'affiche pas « 0 € »."""
     import interface as module_interface  # noqa: PLC0415
@@ -7056,6 +7078,7 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_tri_des_colonnes()
+    test_message_quand_l_outil_ne_repond_pas()
     test_montant_inconnu_n_est_pas_zero()
     test_retrouver_les_dossiers_du_disque()
     test_arreter_un_export()
