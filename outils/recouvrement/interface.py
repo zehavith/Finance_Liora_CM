@@ -1281,8 +1281,11 @@ class Gestionnaire(BaseHTTPRequestHandler):
             # une corvée, et l'oublier laissait la liste en retard sur ce que
             # le service sait déjà.
             appliquer_complements_si_besoin()
-            dossiers = module_suivi.inventaire(racine, SUIVI)
+            # L'annuaire d'abord : une fiche d'entreprise avec son SIREN dit
+            # qu'un dossier est un dossier d'entreprise, là où le nom seul
+            # laisse « JAADI PERFORM » passer pour un particulier.
             annuaire = module_entreprises.charger_annuaire(ANNUAIRE)
+            dossiers = module_suivi.inventaire(racine, SUIVI, annuaire)
             # La fiche publique voyage avec le dossier : la page en a besoin
             # pour la ligne du débiteur comme pour le tableau des formes.
             for dossier in dossiers:
@@ -2031,6 +2034,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 contexte=demande.get("contexte"),
                 diplome=demande.get("diplome"),
                 echeance=demande.get("echeance"),
+                financement=demande.get("financement"),
             )
             module_suivi.enregistrer(SUIVI, donnees)
         except ValueError as exc:
@@ -2241,6 +2245,10 @@ details.absents li{break-inside:avoid}
 .ligne-etat b{color:var(--texte-3);font-variant-numeric:tabular-nums}
 .panneau-etats .vider-etats{width:100%;margin-top:6px;font-size:12px}
 .compte-recherche{font-size:12px;color:var(--texte-3);white-space:nowrap}
+/* Ce qui est coche se distingue de ce qui est affiche : deux comptes cote a
+   cote, l'un gris, l'autre a l'accent des que la selection n'est pas vide. */
+.compte-choix{font-size:12px;color:var(--texte-3);white-space:nowrap}
+.compte-choix.actif{color:var(--accent);font-weight:600}
 .retenu{font-size:11.5px;color:var(--texte-3);max-width:230px}
 .lien-oubli{font-size:11.5px;color:var(--accent);cursor:pointer;white-space:nowrap}
 .lien-oubli:hover{text-decoration:underline}
@@ -2434,6 +2442,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
   <div id="tuilesBord" class="tuiles"></div>
   <div class="graphe" id="courbeBord"></div>
   <div class="graphe" id="grapheBord"></div>
+  <div class="graphe" id="financements"></div>
   <div class="graphe" id="anciennete"></div>
   <div class="graphe" id="dormants"></div>
   <div class="graphe" id="solidite"></div>
@@ -2473,6 +2482,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
         <div class="panneau-etats" id="panneauEtatDocuments" hidden></div>
       </div>
       <span class="compte-recherche" id="compteDocuments"></span>
+      <span class="compte-choix" id="compteChoixNotes"></span>
       <button class="secondaire" id="refaireNotes"
               title="Réécrit les notes à partir des messages déjà au dossier, sans retourner sur Gmail. Quelques secondes.">Refaire les notes</button>
       <button class="secondaire" id="preparerEnvoi"
@@ -3006,6 +3016,20 @@ function majChoixNotes() {
   const cases = Array.from(document.querySelectorAll(".choix-note"));
   CHOIX_NOTES.clear();
   cases.filter((c) => c.checked).forEach((c) => CHOIX_NOTES.add(c.dataset.ref));
+  // Le compte se lit à côté de la recherche, et non seulement sur le
+  // bouton : on coche pour refaire des notes, mais aussi pour préparer un
+  // envoi, et il faut savoir combien on tient avant de choisir quoi en
+  // faire. Le montant avec : c'est lui qu'on annonce au responsable.
+  const compte = $("compteChoixNotes");
+  if (compte) {
+    const retenus = DOSSIERS.filter((d) => CHOIX_NOTES.has(d.reference));
+    const somme = retenus.reduce((t, d) => t + (d.montant_du || 0), 0);
+    compte.textContent = retenus.length
+      ? `${retenus.length} coché(s)` + (somme ? ` · ${euro(somme)}` : "")
+      : "";
+    compte.classList.toggle("actif", retenus.length > 0);
+  }
+
   const bouton = $("refaireNotes");
   if (!bouton) return;
   bouton.textContent = CHOIX_NOTES.size
@@ -4030,6 +4054,10 @@ const COLONNES_DOCUMENTS = [
   { titre: "", classe: "etroite", entete: caseToutChoisir("choix-note") },
   { titre: "Référence", cle: "reference", valeur: (d) => valeurTexte(d.reference) },
   { titre: "Débiteur", cle: "debiteur", valeur: (d) => valeurTexte(d.nom) },
+  // Deux portefeuilles qui partent a deux responsables : les distinguer
+  // d'un coup d'oeil, et pouvoir trier dessus.
+  { titre: "Financement", cle: "financement",
+    valeur: (d) => valeurTexte(d.financement) },
   { titre: "Mails", cle: "mails", sens: -1, valeur: (d) => valeurNombre(d.nb_mails) },
   { titre: "PJ", cle: "pj", sens: -1,
     valeur: (d) => valeurNombre(d.nb_pieces_jointes) },
@@ -4167,6 +4195,26 @@ function aPiece(dossier, nature) {
   return (dossier.pieces || []).some((p) => p.nature === nature);
 }
 
+// Entreprise ou financement personnel. Une déduction se signale comme
+// telle : « d'après le nom » se corrige d'un menu, un fait ne se corrige
+// pas — et la correction, une fois faite, l'emporte pour toujours.
+const ORIGINES_FINANCEMENT = {
+  saisi: "saisi par le service",
+  annuaire: "fiche d'entreprise trouvée à l'annuaire public",
+  nom: "déduit du nom du débiteur — corrigez ici si c'est faux",
+};
+
+function etatFinancement(dossier) {
+  const entreprise = dossier.financement === "entreprise";
+  const deduit = dossier.financement_source === "nom";
+  const sur = ORIGINES_FINANCEMENT[dossier.financement_source] || "";
+  return `<select class="financement${deduit ? " deduit" : ""}"
+      data-ref="${echapper(dossier.reference)}" title="${echapper(sur)}">
+    <option value="entreprise"${entreprise ? " selected" : ""}>Entreprise</option>
+    <option value="personnel"${entreprise ? "" : " selected"}>Personnel</option>
+  </select>`;
+}
+
 function etatPiece(dossier, nature, present, absent) {
   const versee = (dossier.pieces || []).find((p) => p.nature === nature);
   if (!versee) return '<span class="etat non">✕ ' + absent + "</span>";
@@ -4261,6 +4309,7 @@ function rendreDocuments() {
           title="Refaire la note de ce dossier seulement." /></td>
       <td class="reference"><b>${echapper(d.reference)}</b></td>
       <td>${echapper(d.nom)}</td>
+      <td>${etatFinancement(d)}</td>
       <td class="num">${d.nb_mails}</td>
       <td class="num">${d.nb_pieces_jointes}</td>
       <td>${etatOuiNon(d.convention_signee, "signée", "non signée")}</td>
@@ -4331,6 +4380,16 @@ function rendreDocuments() {
   $("tableDocuments").querySelectorAll(".choix-note").forEach((coche) =>
     coche.addEventListener("change", majChoixNotes));
   brancherToutChoisir($("tableDocuments"), majChoixNotes);
+  // Corriger le financement d'un dossier : ce qui est saisi l'emporte sur
+  // la déduction, et tient.
+  $("tableDocuments").querySelectorAll("select.financement").forEach((champ) =>
+    champ.addEventListener("change", async () => {
+      try {
+        await api("/api/suivi",
+          { reference: champ.dataset.ref, financement: champ.value });
+        chargerDossiers();
+      } catch (erreur) { afficherBandeau(false, erreur.message); }
+    }));
   majChoixNotes();
 
   $("tableDocuments").querySelectorAll(".fichier-piece").forEach((champ) =>
@@ -4734,6 +4793,41 @@ function majBandeauExport() {
 // Ce que l'annuaire public de l'Etat dit des debiteurs. Ce n'est pas une note
 // de solvabilite — les comptes n'y sont pas — mais une societe radiee ne
 // paiera pas, et cela se sait avant d'engager des frais d'avocat.
+// Deux portefeuilles dans un seul : les dossiers d'entreprise et ceux dont
+// l'apprenant finance lui-même sa formation. Ils partent à deux responsables
+// différents, et un total qui les mélange ne sert ni l'un ni l'autre.
+function rendreFinancements() {
+  const zone = $("financements");
+  if (!zone) return;
+  const parts = (AGREGATS && AGREGATS.par_financement) || [];
+  const total = parts.reduce((somme, p) => somme + p.montant, 0);
+
+  if (!parts.some((p) => p.nombre)) {
+    zone.innerHTML = "<h3>Entreprise et financement personnel</h3>"
+      + '<p class="aide">Aucun dossier en cours.</p>';
+    return;
+  }
+
+  const rangees = parts.map((p) => `
+    <tr>
+      <td>${echapper(p.libelle)}</td>
+      <td class="num">${p.nombre}</td>
+      <td class="num">${euro(p.montant)}</td>
+      <td class="num">${total ? Math.round(100 * p.montant / total) : 0} %</td>
+      <td class="num">${p.transmis}${
+        p.part_transmis === null ? "" : ` · ${p.part_transmis} %`}</td>
+    </tr>`).join("");
+
+  zone.innerHTML = "<h3>Entreprise et financement personnel</h3>"
+    + '<p class="aide">Les deux portefeuilles se transmettent à deux '
+    + "responsables différents. Le type est déduit du nom du débiteur et de "
+    + "l'annuaire public ; il se corrige dossier par dossier dans l'onglet "
+    + "<b>Documents</b>, colonne <b>Financement</b>.</p>"
+    + '<table class="donnees"><tr><th>Portefeuille</th><th class="num">Dossiers'
+    + '</th><th class="num">Montant dû</th><th class="num">Part</th>'
+    + '<th class="num">Transmis</th></tr>' + rangees + "</table>";
+}
+
 function rendreEntreprises() {
   const zone = $("entreprises");
   if (!zone) return;
@@ -5084,6 +5178,7 @@ function rendreBord() {
   rendreAnciennete();
   rendreDormants();
   rendreSolidite();
+  rendreFinancements();
   rendreEntreprises();
 
   $("grapheBord").innerHTML = `
@@ -5130,6 +5225,20 @@ function recalculer() {
     nb_partiellement_regles: DOSSIERS.filter((d) => (d.montant_recu || 0) > 0).length,
     // Transmis au contentieux, aujourd'hui ou avant : c'est le travail
     // rendu, et la question qu'on pose en premier devant un portefeuille.
+    // Les deux portefeuilles : recalcules ici comme le reste, pour que le
+    // panneau suive un filtre ou une correction sans attendre le serveur.
+    par_financement: ["entreprise", "personnel"].map((cle) => {
+      const part = DOSSIERS.filter((d) => d.financement === cle);
+      const transmis = part.filter((d) => d.transmis).length;
+      return {
+        cle: cle,
+        libelle: cle === "entreprise" ? "Entreprise" : "Financement personnel",
+        nombre: part.length,
+        montant: part.reduce((somme, d) => somme + (d.montant_du || 0), 0),
+        transmis: transmis,
+        part_transmis: part.length ? Math.round(100 * transmis / part.length) : null,
+      };
+    }),
     nb_transmis: DOSSIERS.filter((d) => d.transmis).length,
     montant_transmis: somme((d) => d.transmis),
     part_transmis: DOSSIERS.length

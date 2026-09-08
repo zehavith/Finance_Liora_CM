@@ -98,6 +98,39 @@ TRANSMIS = {"transmis-contentieux", "avocats", "tribunal-en-cours",
             "tribunal-gagne", "tribunal-perdu"}
 
 
+# Deux portefeuilles dans un seul : les dossiers d'entreprise et ceux dont
+# l'apprenant finance lui-même sa formation. Ils ne se transmettent pas au
+# même responsable, ne se plaident pas de la même façon, et se mélangeaient
+# dans tous les chiffres.
+#
+# D'où vient la réponse, dans cet ordre :
+#   1. ce que le service a saisi — il sait, et ce qu'il sait l'emporte ;
+#   2. une fiche d'entreprise trouvée à l'annuaire public, avec son SIREN ;
+#   3. le nom lui-même — « SAS EDEN » est une société, « Jean MONNEY » non.
+#
+# Le troisième point est une déduction, et l'application le dit : « d'après
+# le nom ». Un dossier mal classé se corrige d'un menu déroulant, et la
+# correction tient.
+FINANCEMENTS = ("entreprise", "personnel")
+
+
+def financement_du_dossier(
+    nom: str, entree: dict, fiche: dict | None = None
+) -> tuple[str, str]:
+    """Le type de financement, et ce sur quoi il repose."""
+    saisi = str((entree or {}).get("financement") or "").strip().lower()
+    if saisi in FINANCEMENTS:
+        return saisi, "saisi"
+    if fiche and str(fiche.get("siren") or "").strip():
+        return "entreprise", "annuaire"
+
+    from entreprises import ressemble_a_une_societe  # noqa: PLC0415
+
+    if ressemble_a_une_societe(nom or ""):
+        return "entreprise", "nom"
+    return "personnel", "nom"
+
+
 def a_ete_transmis(entree: dict) -> bool:
     """Le dossier est-il passé au contentieux, aujourd'hui ou avant ?
 
@@ -294,6 +327,7 @@ def mettre_a_jour(
     diplome: str | None = None,
     echeance: str | None = None,
     references: str | None = None,
+    financement: str | None = None,
 ) -> dict:
     if statut is not None and statut not in CLES_STATUTS:
         raise ValueError(f"Statut inconnu : {statut}")
@@ -324,6 +358,18 @@ def mettre_a_jour(
     # Le contexte est du texte libre, pas un oui/non : ce que le service sait
     # et qu'aucun tableau ne porte — appels sans réponse, chèque de caution
     # encaissé puis rejeté, arrangement verbal non tenu.
+    # Entreprise ou financement personnel. Deduit du nom a defaut, mais une
+    # deduction se trompe — « JAADI PERFORM » est une societe que son nom ne
+    # designe pas comme telle. Ce qui est saisi ici l'emporte et tient.
+    if financement is not None:
+        choix = str(financement).strip().lower()
+        if choix and choix not in FINANCEMENTS:
+            raise ValueError(f"Financement inconnu : {financement}")
+        if choix:
+            entree["financement"] = choix
+        else:
+            entree.pop("financement", None)
+
     for champ, valeur in (("convention", convention), ("diplome", diplome),
                           ("contexte", contexte)):
         if valeur is not None:
@@ -558,7 +604,8 @@ def _horodatage(valeur: str) -> datetime | None:
         return None
 
 
-def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
+def inventaire(racine_sortie: Path, chemin_suivi: Path,
+               annuaire: dict | None = None) -> list[dict]:
     """Croise ce que l'export a produit avec l'état de suivi de chaque dossier.
 
     Un dossier absent du suivi est simplement « non transmis » : le fichier de
@@ -581,6 +628,11 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
         statut = etat.get("statut") or STATUT_INITIAL
         if statut not in CLES_STATUTS:
             statut = STATUT_INITIAL
+        financement, origine_financement = financement_du_dossier(
+            (rangee.get("nom") or "").strip(),
+            etat,
+            (annuaire or {}).get(reference),
+        )
 
         dossiers.append(
             {
@@ -619,6 +671,10 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 # travail rendu, et la question qu'on pose en premier devant
                 # un portefeuille.
                 "transmis": a_ete_transmis(etat),
+                # Entreprise ou financement personnel : deux portefeuilles
+                # qui se transmettent a deux responsables differents.
+                "financement": financement,
+                "financement_source": origine_financement,
                 # Exécution de la formation, telle que le tableau la connaît.
                 # Trois états, jamais deux : ce que le tableau ne dit pas ne
                 # doit pas se lire comme un « non ».
@@ -1555,6 +1611,27 @@ def agreger(dossiers: list[dict]) -> dict:
         # Ce qui a été transmis au contentieux, aujourd'hui ou avant : le
         # travail rendu. Un nombre brut ne dit pas s'il s'agit du dixième ou
         # de la moitié du portefeuille ; la part le dit.
+        # Les deux portefeuilles, chacun avec ce qu'il pese et ce qui en a
+        # ete transmis : ils partent a deux responsables differents, et un
+        # total qui les melange ne sert ni l'un ni l'autre.
+        "par_financement": [
+            {
+                "cle": cle,
+                "libelle": ("Entreprise" if cle == "entreprise"
+                            else "Financement personnel"),
+                "nombre": len(part),
+                "montant": sum(d["montant_du"] for d in part),
+                "transmis": sum(1 for d in part if d.get("transmis")),
+                "part_transmis": (
+                    round(100 * sum(1 for d in part if d.get("transmis")) / len(part))
+                    if part else None
+                ),
+            }
+            for cle, part in (
+                (cle, [d for d in dossiers if d.get("financement") == cle])
+                for cle in FINANCEMENTS
+            )
+        ],
         "nb_transmis": sum(1 for d in dossiers if d.get("transmis")),
         "montant_transmis": sum(
             d["montant_du"] for d in dossiers if d.get("transmis")

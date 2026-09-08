@@ -4486,6 +4486,76 @@ def test_tout_effacer_respecte_la_reponse() -> None:
                  "demandé, le suivi est effacé")
 
 
+def test_deux_portefeuilles() -> None:
+    """Entreprise et financement personnel : deux responsables, deux comptes."""
+    import interface as module_interface  # noqa: PLC0415
+    import suivi as module_suivi  # noqa: PLC0415
+
+    print("\nEntreprise et financement personnel")
+
+    for nom, attendu in (
+        ("SAS EDEN", "entreprise"),
+        ("MCAPI", "entreprise"),
+        ("Experts et advisory services", "entreprise"),
+        ("Cyrille LOROUGNON", "personnel"),
+        ("Jean Boni MONNEY", "personnel"),
+        ("Kadiatou CONDE", "personnel"),
+    ):
+        obtenu, origine = module_suivi.financement_du_dossier(nom, {})
+        verifier(obtenu == attendu,
+                 f"« {nom} » → {obtenu} ({origine}, attendu {attendu})")
+
+    # Une fiche à l'annuaire public tranche là où le nom ne dit rien :
+    # « JAADI PERFORM » est une société que son nom ne désigne pas comme telle.
+    verifier(module_suivi.financement_du_dossier(
+        "JAADI PERFORM", {}, {"siren": "123456789"}) == ("entreprise", "annuaire"),
+        "une fiche d'entreprise l'emporte sur le nom")
+    # Et ce que le service saisit l'emporte sur tout le reste.
+    verifier(module_suivi.financement_du_dossier(
+        "SAS EDEN", {"financement": "personnel"}) == ("personnel", "saisi"),
+        "et la saisie du service l'emporte sur la déduction")
+
+    donnees = {}
+    module_suivi.mettre_a_jour(donnees, "F-1", financement="entreprise")
+    verifier(donnees["F-1"].get("financement") == "entreprise",
+             "la correction est enregistrée")
+    module_suivi.mettre_a_jour(donnees, "F-1", financement="")
+    verifier("financement" not in donnees["F-1"],
+             "et s'efface pour rendre la main à la déduction")
+    try:
+        module_suivi.mettre_a_jour(donnees, "F-1", financement="autre")
+        refuse = False
+    except ValueError:
+        refuse = True
+    verifier(refuse, "un financement inconnu est refusé")
+
+    dossiers = [
+        {"reference": "A", "statut": "transmis-contentieux", "montant_du": 1000.0,
+         "frais": 0.0, "transmis": True, "financement": "entreprise",
+         "duree_jours": None, "date_echeance": "", "clos": False},
+        {"reference": "B", "statut": "non-transmis", "montant_du": 500.0,
+         "frais": 0.0, "transmis": False, "financement": "personnel",
+         "duree_jours": None, "date_echeance": "", "clos": False},
+    ]
+    parts = {p["cle"]: p for p in module_suivi.agreger(dossiers)["par_financement"]}
+    verifier(parts["entreprise"]["nombre"] == 1
+             and parts["entreprise"]["montant"] == 1000.0
+             and parts["entreprise"]["part_transmis"] == 100,
+             f"les deux portefeuilles sont comptés à part ({parts})")
+
+    page = module_interface.PAGE
+    verifier('{ titre: "Financement", cle: "financement",' in page,
+             "la colonne existe au tableau des documents")
+    verifier("function etatFinancement" in page and 'value="personnel"' in page,
+             "et se corrige d'un menu déroulant")
+    verifier("function rendreFinancements" in page
+             and "Entreprise et financement personnel" in page,
+             "le tableau de bord sépare les deux portefeuilles")
+    # « lorsque je coche je sache le nb de dossier que j'ai coché ».
+    verifier('id="compteChoixNotes"' in page and "coché(s)" in page,
+             "le nombre de dossiers cochés s'affiche")
+
+
 def test_preparer_pour_envoi() -> None:
     """Un dossier ne s'attache pas à un mail : il lui faut un fichier."""
     import envoi as module_envoi  # noqa: PLC0415
@@ -8709,6 +8779,7 @@ def main() -> int:
     test_montant_deja_regle()
     test_sauvegarde_du_suivi()
     test_tout_effacer_respecte_la_reponse()
+    test_deux_portefeuilles()
     test_preparer_pour_envoi()
     test_pieces_cles_reunies()
     test_resume_de_la_conversation()
