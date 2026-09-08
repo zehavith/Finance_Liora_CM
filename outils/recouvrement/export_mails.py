@@ -1969,11 +1969,14 @@ def rassembler_pieces_cles(repertoire: Path, lignes: list[LigneIndex]) -> int:
 
     # Les documents du tableau comptent autant : la convention signée et la
     # facture y sont souvent déposées sans avoir jamais transité par un mail.
-    # Ceux-là gardent leur nom d'origine.
-    monday = repertoire / "documents-monday"
-    if monday.is_dir():
-        candidats += [(chemin.name, chemin)
-                      for chemin in sorted(monday.iterdir()) if chemin.is_file()]
+    # Et les pièces versées à la main plus encore — on les verse justement
+    # parce qu'elles manquaient. Toutes gardent leur nom d'origine.
+    for nom_du_dossier in ("documents-monday", "pieces-ajoutees"):
+        source_annexe = repertoire / nom_du_dossier
+        if source_annexe.is_dir():
+            candidats += [(chemin.name, chemin)
+                          for chemin in sorted(source_annexe.iterdir())
+                          if chemin.is_file()]
 
     racine = repertoire / PIECES_CLES
     vus: set[tuple[str, int]] = set()

@@ -4377,6 +4377,10 @@ def test_pieces_cles_reunies() -> None:
             (base / "convention-de-formation-sas-eden.pdf").write_bytes(b"%PDF-c")
         (dossier / "documents-monday").mkdir()
         (dossier / "documents-monday" / "FACT-2405-00409.pdf").write_bytes(b"%PDF-f")
+        # Une pièce versée à la main : on la verse justement parce qu'elle
+        # manquait au dossier, elle a toute sa place parmi les pièces clés.
+        (dossier / "pieces-ajoutees").mkdir()
+        (dossier / "pieces-ajoutees" / "Diplome RNCP.pdf").write_bytes(b"%PDF-d")
 
         lignes = [
             LigneIndex(
@@ -4392,7 +4396,9 @@ def test_pieces_cles_reunies() -> None:
         reunies = module_export.rassembler_pieces_cles(dossier, lignes)
 
         racine = dossier / "pieces-cles"
-        verifier(reunies == 2, f"deux pièces réunies, pas quatre ({reunies})")
+        verifier(reunies == 3, f"trois pièces réunies, pas cinq ({reunies})")
+        verifier((racine / "5-diplome" / "Diplome RNCP.pdf").exists(),
+                 "une pièce versée à la main y figure aussi")
         verifier(
             (racine / "1-convention-devis-signe"
              / "Convention de formation - SAS EDEN.pdf").exists(),
