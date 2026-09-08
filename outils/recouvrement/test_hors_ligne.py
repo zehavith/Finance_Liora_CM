@@ -10,6 +10,7 @@ installation pour vérifier que le poste est correctement équipé :
 
 from __future__ import annotations
 
+import csv
 import inspect
 import io
 import json
@@ -3607,6 +3608,98 @@ def test_document_monday_verrouille() -> None:
          module_monday.identifiant) = vrais
 
 
+def test_adresse_qui_parle_de_notre_facture() -> None:
+    """Le débiteur écrit souvent d'une autre boîte que celle du tableau."""
+    import export_mails as module_export  # noqa: PLC0415
+    from gmail_api import SourcesGmail  # noqa: PLC0415
+    from message import lire_message  # noqa: PLC0415
+
+    print("\nAdresse qui parle de notre facture")
+
+    def courriel(sujet, de, a, corps):
+        message = EmailMessage()
+        message["From"] = de
+        message["To"] = a
+        message["Subject"] = sujet
+        message["Date"] = "Tue, 21 May 2024 09:30:00 +0000"
+        message.set_content(corps)
+        return message.as_bytes()
+
+    # Le cas réel : SAS EDEN répond depuis « edenmarket2017@gmail.com » quand
+    # le tableau porte « sufyen.b@gmail.com ». S'en tenir au tableau ferait
+    # perdre toute la conversation — celle qu'on cherchait justement.
+    boite = {
+        "eden-1": courriel("Formation Benallaoua sofiane",
+                           "EDEN MARKET <edenmarket2017@gmail.com>",
+                           "billing@datascientest.com",
+                           "Notre salarié. Facture FACT-2405-00409."),
+        "eden-2": courriel("Re: Formation Benallaoua sofiane",
+                           "billing@datascientest.com",
+                           "edenmarket2017@gmail.com", "Erreur d'automatisation."),
+        "eden-3": courriel("Re: Formation Benallaoua sofiane",
+                           "EDEN MARKET <edenmarket2017@gmail.com>",
+                           "billing@datascientest.com", "Voici l'accord."),
+    }
+    for numero in range(20):
+        boite[f"autre-{numero}"] = courriel(
+            "Re: Formation Benallaoua sofiane", f"apprenant{numero}@exemple.fr",
+            "billing@datascientest.com", "Ma question à moi.")
+
+    class _Boite:
+        adresse_boite = "billing@datascientest.com"
+
+        def rechercher_identifiants(self, *_a, **_k):
+            return ["eden-1"]
+
+        def identifiants_des_fils(self, *_a, **_k):
+            self.fils_ecartes = 0
+            return list(boite)
+
+        def recuperer_messages(self, identifiants):
+            for identifiant in identifiants:
+                message = lire_message(
+                    {"id": identifiant, "threadId": "fil",
+                     "internalDate": "1716283800000"}, boite[identifiant])
+                message.boites = [self.adresse_boite]
+                yield message
+
+    vraies = module_export.ouvrir_sources
+    module_export.ouvrir_sources = lambda **_: SourcesGmail([_Boite()])
+    try:
+        with tempfile.TemporaryDirectory() as repertoire:
+            sortie = Path(repertoire) / "export"
+            depot = Path(repertoire) / "d.csv"
+            depot.write_text(
+                "N° de facture;Entreprise;Email;Reste à devoir TTC\n"
+                "FACT-2405-00409;SAS EDEN;sufyen.b@gmail.com;5 990,00 €\n",
+                encoding="utf-8-sig")
+            lignes_journal = []
+            module_export.executer(module_export.analyser_arguments([
+                "--dossiers", str(depot), "--sortie", str(sortie),
+                "--boites", "billing@datascientest.com", "--sans-navigateur",
+                "--domaines-internes", "datascientest.com,liora.io",
+                "--sans-decouverte-adresses"]), relais=lignes_journal.append)
+
+            index = next(sortie.glob("*/index.csv"))
+            rangees = list(csv.DictReader(
+                index.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"))
+
+    finally:
+        module_export.ouvrir_sources = vraies
+
+    verifier(len(rangees) == 3,
+             f"la conversation entière du débiteur est gardée "
+             f"({len(rangees)} message(s))")
+    expediteurs = " ".join(r["expediteur"] for r in rangees)
+    verifier("edenmarket2017@gmail.com" in expediteurs,
+             "y compris depuis l'adresse absente du tableau")
+    verifier(not any((r["critere"] or "").startswith("hors debiteur")
+                     for r in rangees),
+             "et rien n'y est mis à part")
+    verifier(any("20 message(s) du fil laissé(s)" in l for l in lignes_journal),
+             "les vingt autres apprenants du fil sont laissés")
+
+
 def test_mails_recuperes_expliques() -> None:
     """Chaque mail dit pourquoi il est au dossier."""
     import interface as module_interface  # noqa: PLC0415
@@ -3673,13 +3766,19 @@ def test_fil_de_diffusion_ecarte() -> None:
     # relevée dans le fil lui-même y figure par construction, et s'en servir
     # pour juger ce fil légitime reviendrait à se donner raison tout seul.
     source = Path("export_mails.py").read_text(encoding="utf-8")
-    verifier("citees - {a.lower() for a in adresses_decouvertes}" in source,
-             "sans compter les adresses découvertes dans le fil")
+    # Fait foi toute adresse extérieure figurant dans un message qui cite
+    # notre facture : le débiteur écrit souvent d'une autre boîte que celle
+    # du tableau. Les adresses maison en sont exclues — « billing@… » écrit
+    # à tous les apprenants et n'identifie personne.
+    verifier("def adresses_du_debiteur()" in source,
+             "les adresses qui parlent de notre facture font foi")
+    verifier("if domaine not in maison" in source,
+             "à l'exclusion des adresses maison")
 
     # Du fil, on ne prend que ce que le débiteur a écrit ou reçu. Prendre le
     # fil entier versait au dossier les échanges de tous les participants —
     # une comptabilité qui répond à trente apprenants dans le même sujet.
-    verifier("if dossier.adresses_citees(message.parties)" in source,
+    verifier("connues_fil = adresses_du_debiteur()" in source,
              "et du fil, on ne prend que la part du débiteur")
     verifier("ni écrits ni reçus par le débiteur" in source,
              "en disant combien de messages du fil sont laissés")
@@ -7720,6 +7819,7 @@ def main() -> int:
     test_fil_trop_long_ecarte()
     test_csv_ouvert_dans_excel()
     test_document_monday_verrouille()
+    test_adresse_qui_parle_de_notre_facture()
     test_mails_recuperes_expliques()
     test_fil_de_diffusion_ecarte()
     test_heures_de_l_emargement()

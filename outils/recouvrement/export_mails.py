@@ -835,6 +835,29 @@ def traiter_dossier(
             resume.adresses_decouvertes = " | ".join(trouvees)
             resume.requete = dossier.requete_gmail()
 
+    # Les adresses qui font foi pour ce dossier.
+    #
+    # Celles du tableau ne suffisent pas : le débiteur écrit souvent d'une
+    # autre boîte. SAS EDEN répond depuis « edenmarket2017@gmail.com » quand
+    # le tableau porte « sufyen.b@gmail.com » — et c'est bien de notre facture
+    # qu'il parle. S'en tenir au tableau ferait perdre toute la conversation.
+    #
+    # Fait donc foi toute adresse extérieure qui figure dans un message citant
+    # notre facture : c'est elle qui a envoyé la facture ou qui en parle. Les
+    # adresses maison en sont exclues — « billing@datascientest.com » écrit à
+    # tous les apprenants, et n'identifie personne.
+    def adresses_du_debiteur() -> set[str]:
+        maison = domaines_maison(sources, options)
+        retenues = {a.lower() for a in dossier.emails if a}
+        for message in messages:
+            if not dossier.factures_citees(message.texte_recherchable):
+                continue
+            for adresse in MOTIF_ADRESSE.findall(message.parties):
+                domaine = adresse.rsplit("@", 1)[-1].lower()
+                if domaine not in maison:
+                    retenues.add(adresse.lower())
+        return retenues
+
     # Gmail rend des messages, pas des conversations : un fil dont un seul
     # message cite le numéro ne remontait que celui-là, et la réponse du
     # débiteur — qui ne reprend ni le numéro ni l'objet — restait invisible.
@@ -858,12 +881,13 @@ def traiter_dossier(
                 #
                 # Sans adresse connue, rien ne permet de trancher : le fil
                 # est pris tel quel, comme avant.
-                connues_fil = [a for a in dossier.emails
-                               if a not in adresses_decouvertes]
+                connues_fil = adresses_du_debiteur()
                 if connues_fil:
                     gardes = [
                         message for message in complements
-                        if dossier.adresses_citees(message.parties)
+                        if connues_fil & set(
+                            a.lower() for a in
+                            MOTIF_ADRESSE.findall(message.parties))
                     ]
                     laisses = len(complements) - len(gardes)
                     if laisses:
@@ -889,6 +913,10 @@ def traiter_dossier(
                         f"    {gagnes} message(s) ajouté(s) en suivant les "
                         "conversations trouvées"
                     )
+
+    # Arrêtée une fois le lot complet : c'est sur l'ensemble des messages
+    # trouvés qu'on sait quelles adresses parlent de notre facture.
+    adresses_debiteur = adresses_du_debiteur()
 
     resume.doublons_ecartes = doublons
 
@@ -967,9 +995,8 @@ def traiter_dossier(
         # Sur les seules adresses que le tableau donnait : une adresse relevee
         # dans un fil de diffusion y figure par construction, et s'en servir
         # pour juger ce fil legitime reviendrait a se donner raison tout seul.
-        connues = [a for a in dossier.emails if a not in adresses_decouvertes]
-        citees = {a.lower() for a in dossier.adresses_citees(parties)}
-        presentes = citees - {a.lower() for a in adresses_decouvertes}
+        connues = adresses_debiteur
+        presentes = connues & {a.lower() for a in adresses_du_message}
         # Sans adresse connue, rien ne permet de dire que le debiteur n'y est
         # pas : le numero reste le seul lien, et on garde le message.
         hors_debiteur = bool(connues) and not autres_factures and not presentes
