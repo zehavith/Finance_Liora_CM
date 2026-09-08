@@ -401,6 +401,12 @@ def signaler_activite() -> None:
 _VERROU_NOTES = threading.Lock()
 NOTES_EN_COURS: set[str] = set()
 
+# Les notes qu'on n'a pas pu réécrire, et pourquoi. Sans ce relevé, une note
+# qu'un lecteur PDF tient ouverte reste en retard, la page la remet en
+# chantier à chaque affichage, et le bandeau « mise à jour en cours » ne
+# s'éteint jamais sans qu'on sache ce qui bloque.
+NOTES_EN_ECHEC: dict[str, str] = {}
+
 
 def rafraichir_notes(references: list[str]) -> None:
     """Refait les notes indiquees, une a une, sans bloquer la page."""
@@ -417,16 +423,22 @@ def rafraichir_notes(references: list[str]) -> None:
             destination = Path(copie) if copie else None
             voulues = set(references)
             for dossier in module_suivi.inventaire(sortie, SUIVI):
-                if dossier["reference"] not in voulues or EXECUTION.en_cours:
+                reference = dossier["reference"]
+                if reference not in voulues or EXECUTION.en_cours:
                     continue
                 repertoire = sortie / dossier["repertoire"]
                 if not repertoire.is_dir():
                     continue
                 try:
-                    _refaire_synthese(repertoire, dossier, suivi)
+                    refaite, motif = _refaire_synthese(repertoire, dossier, suivi)
                     recopier_note(repertoire, sortie, destination)
-                except Exception:  # noqa: BLE001 - jamais bloquant
+                except Exception as exc:  # noqa: BLE001 - jamais bloquant
+                    NOTES_EN_ECHEC[reference] = str(exc)
                     continue
+                if refaite:
+                    NOTES_EN_ECHEC.pop(reference, None)
+                else:
+                    NOTES_EN_ECHEC[reference] = motif or "cause inconnue"
         finally:
             NOTES_EN_COURS.difference_update(references)
             _VERROU_NOTES.release()
@@ -1279,6 +1291,13 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 # Celles qu'un fichier de suivi applique apres coup, ou une
                 # mise a jour de l'outil, ont laissees en retard.
                 "notes_en_cours": sorted(_lancer_rafraichissement(dossiers)),
+                # Une note qu'on n'arrive pas à réécrire est remise en
+                # chantier à chaque affichage : sans le dire, le bandeau
+                # tourne indéfiniment sans que rien n'avance.
+                "notes_en_echec": [
+                    {"reference": reference, "motif": motif}
+                    for reference, motif in sorted(NOTES_EN_ECHEC.items())
+                ],
                 "sauvegardes": _etat_sauvegardes(),
                 "absents_suivi": absents_du_suivi(),
                 "a_refaire": list(lire_preferences().get("dossiers_a_refaire") or []),
@@ -2091,6 +2110,8 @@ table.donnees th:not(.triee) button.tri:hover .sens::after{content:"\2195";
 /* Une note ecrite avant le dernier changement : ni une erreur ni un echec,
    un retard qu'un bouton rattrape. Ambre, comme ce qui attend une decision. */
 .perimee{color:#c9862a;font-size:11px;white-space:nowrap}
+p.aide.echecs{color:#e0736b;border-left:2px solid #e0736b;padding-left:10px;
+  margin:10px 0 13px;line-height:1.5}
 p.aide.perimees{color:#c9862a;border-left:2px solid #c9862a;padding-left:10px;
   margin:0 0 13px}
 /* Repliee par defaut : c'est une reponse a une question qu'on ne se pose pas
@@ -3284,6 +3305,10 @@ let DOSSIERS = [], STATUTS = [], AGREGATS = null, COURBE = null, SERVEUR = null;
 const LIGNES_A_L_ECRAN = 600;
 const NATURES_PIECES = __NATURES_PIECES__;
 let ENTREPRISES = null, ANNUAIRE_CONNU = false, ANNUAIRE_MANQUANTS = 0;
+// Les notes qu'on n'a pas pu reecrire, et pourquoi. Elles restent en retard,
+// donc remises en chantier a chaque affichage : sans le dire, le bandeau
+// « mise a jour en cours » tourne sans que rien n'avance.
+let NOTES_EN_ECHEC = [];
 // Les factures que le tableau de suivi connait et que l'export n'a pas
 // ramenees. Elles n'existent nulle part dans la page — ni dans la liste,
 // ni dans la recherche — et rien ne disait pourquoi.
@@ -3337,6 +3362,7 @@ async function chargerDossiers() {
   ANNUAIRE_MANQUANTS = donnees.annuaire_manquants || 0;
   ABSENTS_SUIVI = donnees.absents_suivi || [];
   A_REFAIRE = donnees.a_refaire || [];
+  NOTES_EN_ECHEC = donnees.notes_en_echec || [];
   SAUVEGARDES = donnees.sauvegardes || null;
   $("cheminSortie").textContent = donnees.sortie;
   remplirFiltresEtat();
@@ -4070,7 +4096,20 @@ function rendreDocuments() {
        Gmail.</p>`
     : "";
 
-  $("tableDocuments").innerHTML = avertissement
+  // Une note qu'on n'arrive pas à réécrire est remise en chantier à chaque
+  // affichage : sans le dire, le bandeau ci-dessus tourne indéfiniment sans
+  // que rien n'avance, et l'on croit l'outil occupé alors qu'il est bloqué.
+  const echecs = NOTES_EN_ECHEC.length ? `
+    <p class="aide echecs">⚠ ${NOTES_EN_ECHEC.length} note(s) n'ont pas pu
+       être réécrites : ${echapper(NOTES_EN_ECHEC[0].motif)}${
+      NOTES_EN_ECHEC.length > 1 ? " (et autres)" : ""} — ${
+      echapper(NOTES_EN_ECHEC.slice(0, 6).map((n) => n.reference).join(", "))}${
+      NOTES_EN_ECHEC.length > 6 ? "…" : ""}.<br />
+       La cause la plus fréquente est un PDF ouvert dans un lecteur : fermez-le,
+       la remise à jour repartira seule.</p>`
+    : "";
+
+  $("tableDocuments").innerHTML = avertissement + echecs
     + `<div class="defilable"><table class="donnees">
     ${entetesTriables(COLONNES_DOCUMENTS, "documents")}
     ${lignes}</table></div>`;

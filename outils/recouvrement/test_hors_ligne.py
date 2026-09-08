@@ -3234,6 +3234,66 @@ def _comparateur_de_tri() -> str:
     return reduire + tri
 
 
+def test_note_impossible_a_reecrire() -> None:
+    """Une note qu'on n'arrive pas à réécrire le dit, au lieu de boucler."""
+    import interface as module_interface  # noqa: PLC0415
+
+    print("\nNote impossible à réécrire")
+
+    vrais = (module_interface._refaire_synthese,
+             module_interface.recopier_note,
+             module_interface.module_suivi.inventaire)
+    module_interface.NOTES_EN_ECHEC.clear()
+    with tempfile.TemporaryDirectory() as repertoire:
+        dossier = Path(repertoire) / "d"
+        dossier.mkdir(parents=True)
+        try:
+            module_interface.module_suivi.inventaire = lambda *_a: [
+                {"reference": "FACT-2405-00409", "repertoire": str(dossier)}]
+            module_interface.recopier_note = lambda *_a: None
+
+            module_interface._refaire_synthese = lambda *_a: (
+                False, "le PDF est ouvert dans un autre programme")
+            module_interface.rafraichir_notes(["FACT-2405-00409"])
+            for _ in range(50):
+                if not module_interface.NOTES_EN_COURS:
+                    break
+                time.sleep(0.05)
+            verifier(module_interface.NOTES_EN_ECHEC.get("FACT-2405-00409")
+                     == "le PDF est ouvert dans un autre programme",
+                     f"l'échec est retenu avec son motif "
+                     f"({module_interface.NOTES_EN_ECHEC})")
+
+            # Et il s'efface dès que la note repasse : sans quoi le message
+            # resterait après que la cause a disparu.
+            module_interface._refaire_synthese = lambda *_a: (True, "")
+            module_interface.rafraichir_notes(["FACT-2405-00409"])
+            for _ in range(50):
+                if not module_interface.NOTES_EN_COURS:
+                    break
+                time.sleep(0.05)
+            verifier(not module_interface.NOTES_EN_ECHEC,
+                     "et s'efface dès que la note est réécrite")
+        finally:
+            (module_interface._refaire_synthese,
+             module_interface.recopier_note,
+             module_interface.module_suivi.inventaire) = vrais
+            module_interface.NOTES_EN_ECHEC.clear()
+
+    page = module_interface.PAGE
+    verifier("NOTES_EN_ECHEC = donnees.notes_en_echec" in page,
+             "la page reçoit la liste des notes en échec")
+    verifier('<p class="aide echecs">' in page
+             and "n'ont pas pu\n       être réécrites" in page,
+             "et l'annonce au-dessus du tableau des documents")
+    # Sans cela, le bandeau « mise à jour en cours » tourne indéfiniment :
+    # la note reste en retard, donc remise en chantier à chaque affichage.
+    verifier("un PDF ouvert dans un lecteur" in page,
+             "en nommant la cause la plus fréquente")
+    verifier("la remise à jour repartira seule" in page,
+             "et ce qu'il y a à faire")
+
+
 def test_filtre_par_etat() -> None:
     """Les deux tableaux se filtrent par l'état du dossier."""
     import interface as module_interface  # noqa: PLC0415
@@ -8331,6 +8391,7 @@ def main() -> int:
     test_messages_autre_facture()
     test_feuille_emargement()
     test_copie_vers_sharepoint()
+    test_note_impossible_a_reecrire()
     test_filtre_par_etat()
     test_tri_des_colonnes()
     test_pas_de_reserve_dans_la_note()
