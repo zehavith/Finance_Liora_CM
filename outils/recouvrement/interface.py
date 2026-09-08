@@ -1877,6 +1877,13 @@ button:disabled{opacity:.45;cursor:not-allowed}
 #journal a{color:var(--accent)}
 .l-alerte{color:var(--jaune)} .l-erreur{color:var(--rouge)} .l-ok{color:var(--vert)}
 .l-dossier{color:var(--texte);font-weight:600;margin-top:6px}
+/* Barre de deconnexion : une page qui ne joint plus l'outil ne peut rien
+   faire, et chaque clic echoue en silence. Elle doit le dire en haut, en
+   permanence, et non par un petit encart rouge au milieu d'une section. */
+#deconnecte{background:#5b1a1a;color:#ffe9e9;padding:13px 20px;font-size:13px;
+  line-height:1.6;display:flex;flex-wrap:wrap;align-items:center;gap:13px;
+  position:sticky;top:0;z-index:50}
+#deconnecte button{margin-left:auto}
 #etat{display:none;align-items:center;gap:11px;margin-top:16px;font-size:13px}
 #etat.visible{display:flex}
 .rond{width:15px;height:15px;border:2px solid var(--bord);border-top-color:var(--accent);
@@ -1892,6 +1899,14 @@ button:disabled{opacity:.45;cursor:not-allowed}
   border-top:1px solid var(--bord)}
 </style></head>
 <body>
+<div id="deconnecte" hidden>
+  <b>L'application ne répond plus.</b> Aucun bouton de cette page ne peut
+  fonctionner tant qu'elle ne joint pas l'outil. Deux causes : la fenêtre
+  noire de l'outil a été fermée, ou cette page date d'une version précédente
+  et parle à un outil qui n'existe plus. Rouvrez l'outil avec
+  <b>Lancer.bat</b>, puis rechargez.
+  <button class="secondaire" id="recharger">Recharger la page</button>
+</div>
 <header>
   <span class="logo">Liora</span>
   <span class="titre">Export contentieux</span>
@@ -1955,8 +1970,9 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <button class="principal" id="lancer" disabled>Lancer l'export</button>
     <button class="secondaire" id="ouvrir">Ouvrir les dossiers produits</button>
   </div>
-  <p class="note"><b>Tester d'abord</b> compte ce qui sera traité sans rien
-     écrire sur le disque. <b>Lancer l'export</b> constitue les dossiers.</p>
+  <p class="note" id="noteLancement"><b>Tester d'abord</b> compte ce qui sera
+     traité sans rien écrire sur le disque. <b>Lancer l'export</b> constitue
+     les dossiers.</p>
   <div id="etat"><div class="rond"></div><span id="texteEtat">Export en cours…</span>
     <button class="secondaire danger" id="arreter"
             title="Le dossier en cours va à son terme, puis l'export s'arrête. Ce qui est déjà constitué reste sur le disque, et « Reprendre » repartira d'ici.">Arrêter</button></div>
@@ -2186,6 +2202,13 @@ let fichierChoisi = null, position = 0, sondage = null, mode = "fichier";
 // relancer dessus sans le redéposer.
 let reutiliserImport = Boolean(IMPORT_PRECEDENT);
 
+// La barre reste tant qu'aucune requete n'aboutit : une page morte n'a
+// aucun moyen de le decouvrir toute seule, et l'on clique dans le vide.
+function signalerDeconnexion(perdue) {
+  const barre = $("deconnecte");
+  if (barre) barre.hidden = !perdue;
+}
+
 async function api(chemin, corps) {
   const options = { headers: { "X-Jeton": JETON } };
   if (corps !== undefined) {
@@ -2202,6 +2225,7 @@ async function api(chemin, corps) {
   try {
     reponse = await fetch(chemin, options);
   } catch (erreur) {
+    signalerDeconnexion(true);
     throw new Error(
       "L'application ne répond pas. La fenêtre noire de l'outil est-elle "
       + "toujours ouverte ? Si vous venez d'installer une nouvelle version, "
@@ -2209,6 +2233,7 @@ async function api(chemin, corps) {
       + "avec Lancer.bat. Un export en cours, lui, continue de son côté."
     );
   }
+  signalerDeconnexion(false);
   const donnees = await reponse.json().catch(() => ({}));
   if (!reponse.ok) throw new Error(donnees.erreur || "Erreur " + reponse.status);
   return donnees;
@@ -2272,6 +2297,17 @@ function majBouton() {
   }
   $("lancer").disabled = !pret;
   $("tester").disabled = !pret;
+  // Le bouton disait « Lancer l'export » quel que soit l'onglet. Sur une
+  // recherche ponctuelle, on cherchait donc un bouton « lancer la recherche »
+  // qui n'existait pas, a cote de celui qui l'aurait lancee.
+  $("lancer").textContent = mode === "manuel"
+    ? "Lancer la recherche" : "Lancer l'export";
+  $("noteLancement").innerHTML = mode === "manuel"
+    ? "<b>Tester d'abord</b> compte les messages trouvés sans rien écrire sur "
+      + "le disque. <b>Lancer la recherche</b> constitue le dossier de cette "
+      + "facture."
+    : "<b>Tester d'abord</b> compte ce qui sera traité sans rien écrire sur "
+      + "le disque. <b>Lancer l'export</b> constitue les dossiers.";
   majResume(pret);
 }
 
@@ -2706,6 +2742,8 @@ $("arreter").addEventListener("click", async () => {
     $("arreter").textContent = "Arrêter";
   }
 });
+
+$("recharger").addEventListener("click", () => location.reload());
 
 $("ouvrir").addEventListener("click", async () => {
   try { await api("/api/ouvrir", { chemin: $("sortie").value }); }

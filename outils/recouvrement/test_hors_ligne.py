@@ -3346,6 +3346,22 @@ def test_message_quand_l_outil_ne_repond_pas() -> None:
     verifier("Un export en cours, lui, continue" in bloc,
              "en disant que l'export, lui, n'est pas interrompu")
 
+    # Une page qui ne joint plus l'outil ne peut rien faire, et chaque clic
+    # echoue en silence. Un petit encart rouge au milieu d'une section ne
+    # suffit pas : on cherche un bouton qui n'a jamais pu repondre.
+    verifier('id="deconnecte"' in page and "signalerDeconnexion" in bloc,
+             "une barre permanente s'affiche quand l'outil ne répond plus")
+    verifier("signalerDeconnexion(false)" in bloc,
+             "et disparaît dès qu'une requête aboutit")
+    verifier('id="recharger"' in page,
+             "avec de quoi recharger une fois l'outil rouvert")
+
+    # Le bouton disait « Lancer l'export » quel que soit l'onglet : sur une
+    # recherche ponctuelle on cherchait un bouton qui n'existait pas, à côté
+    # de celui qui l'aurait lancée.
+    verifier('mode === "manuel"\n    ? "Lancer la recherche"' in page,
+             "le bouton s'appelle « Lancer la recherche » en mode ponctuel")
+
 
 def test_montant_inconnu_n_est_pas_zero() -> None:
     """Un montant que personne n'a renseigné ne s'affiche pas « 0 € »."""
