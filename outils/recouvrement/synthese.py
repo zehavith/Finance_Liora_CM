@@ -292,8 +292,7 @@ def rediger_constats(synthese: Synthese, reference_temps: datetime) -> list[str]
         )
     else:
         constats.append(
-            "Aucune mise en demeure n'apparaît dans les échanges extraits — "
-            "à vérifier avant transmission au contentieux."
+            "Aucune mise en demeure n'apparaît dans les échanges extraits."
         )
 
     if synthese.derniere_reponse is not None:

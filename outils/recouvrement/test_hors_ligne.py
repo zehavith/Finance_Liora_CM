@@ -3327,6 +3327,25 @@ console.log(JSON.stringify({{
              "les cases cochées survivent au tri")
 
 
+def test_pas_de_reserve_dans_la_note() -> None:
+    """Les formules de prudence retirées ne doivent pas revenir."""
+    print("\nFormules retirées de la note")
+
+    # Elles ont été retirées à la demande du service : une note qui se
+    # dédit d'elle-même ne se transmet pas.
+    visible = "".join(Path(nom).read_text(encoding="utf-8")
+                      for nom in ("synthese.py", "interface.py"))
+    for retiree in ("à vérifier avant transmission",
+                    "la liste peut être incomplète",
+                    "doit être relu avant transmission",
+                    "ne constitue pas une analyse juridique"):
+        # Hors documentation interne : ce que la note montre, pas ce que le
+        # code s'explique à lui-même.
+        lignes = [l for l in visible.splitlines()
+                  if retiree in l and not l.strip().startswith("#")]
+        verifier(not lignes, f"« {retiree} » ne figure plus ({lignes[:1]})")
+
+
 def test_references_parasites() -> None:
     """Une chaîne technique n'est pas un numéro de facture."""
     import dossiers as module_dossiers  # noqa: PLC0415
@@ -7417,6 +7436,7 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_tri_des_colonnes()
+    test_pas_de_reserve_dans_la_note()
     test_references_parasites()
     test_message_quand_l_outil_ne_repond_pas()
     test_montant_inconnu_n_est_pas_zero()
