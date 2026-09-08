@@ -168,9 +168,14 @@ def _aplatir(texte: str) -> str:
 
 
 def _texte_via_pypdf(chemin: Path) -> str:
+    # Pas seulement ImportError : une installation abîmée de pypdf — son
+    # module de chiffrement s'appuie sur une bibliothèque compilée — échoue
+    # à l'import par une erreur d'un tout autre genre, qui remontait jusqu'à
+    # faire échouer l'export entier. Une lecture d'appoint qui ne marche pas
+    # est une lecture qu'on abandonne, pas un export perdu.
     try:
         from pypdf import PdfReader  # noqa: PLC0415
-    except ImportError:
+    except Exception:  # noqa: BLE001
         return ""
     try:
         lecteur = PdfReader(str(chemin))

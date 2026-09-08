@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import zipfile
 import types
 import time
 from datetime import datetime, timedelta, timezone
@@ -4485,6 +4486,111 @@ def test_tout_effacer_respecte_la_reponse() -> None:
                  "demandé, le suivi est effacé")
 
 
+def test_preparer_pour_envoi() -> None:
+    """Un dossier ne s'attache pas à un mail : il lui faut un fichier."""
+    import envoi as module_envoi  # noqa: PLC0415
+    import interface as module_interface  # noqa: PLC0415
+
+    print("\nPréparer un dossier pour l'envoi")
+
+    with tempfile.TemporaryDirectory() as racine:
+        sortie = Path(racine) / "export"
+        dossier = sortie / "fact-2405-00409_sas-eden"
+        (dossier / "mails").mkdir(parents=True)
+        (dossier / "pieces-cles" / "2-facture").mkdir(parents=True)
+        (dossier / "mails-hors-dossier").mkdir()
+
+        (dossier / "synthese.pdf").write_bytes(b"%PDF-1.4 note")
+        (dossier / "pieces-cles" / "2-facture"
+         / "FACT-2405-00409.pdf").write_bytes(b"%PDF-1.4 facture")
+        (dossier / "mails" / "001_relance.pdf").write_bytes(b"%PDF-1.4 p1")
+        (dossier / "mails" / "001_relance.eml").write_text("brut", encoding="utf-8")
+        # Sans moteur PDF, un message reste en page HTML : il est au dossier,
+        # mais un PDF unique ne peut pas le porter.
+        (dossier / "mails" / "002_reponse.html").write_text("<p>x</p>",
+                                                            encoding="utf-8")
+        (dossier / "mails-hors-dossier" / "etranger.eml").write_text(
+            "les échanges d'un autre", encoding="utf-8")
+
+        lignes = [
+            LigneIndex(piece_n=1, date=datetime(2024, 5, 21), sens="envoyé",
+                       expediteur="a@liora.io", destinataires="b@x.fr", copie="",
+                       objet="Relance", nb_pieces_jointes=0, pieces_jointes="",
+                       critere="facture", boites="b",
+                       fichier_pdf="mails/001_relance.pdf",
+                       fichier_eml="mails/001_relance.eml",
+                       dossier_pieces_jointes="", thread_id="t", message_id="m1"),
+            LigneIndex(piece_n=2, date=datetime(2024, 5, 28), sens="reçu",
+                       expediteur="b@x.fr", destinataires="a@liora.io", copie="",
+                       objet="Re", nb_pieces_jointes=0, pieces_jointes="",
+                       critere="facture", boites="b",
+                       fichier_pdf="mails/002_reponse.html",
+                       fichier_eml="", dossier_pieces_jointes="",
+                       thread_id="t", message_id="m2"),
+        ]
+
+        # L'ordre d'un dossier présenté : la note, les pièces qui établissent
+        # la créance, puis les échanges dans l'ordre de leurs numéros.
+        ordre = [c.name for c in module_envoi.pdfs_du_dossier(dossier, lignes)]
+        verifier(ordre == ["synthese.pdf", "FACT-2405-00409.pdf",
+                           "001_relance.pdf"],
+                 f"la note ouvre, les pièces suivent, puis les échanges ({ordre})")
+        verifier(module_envoi.messages_sans_pdf(dossier, lignes) == [2],
+                 "un message resté en HTML est compté comme hors du PDF")
+
+        # Un faux pypdf : on éprouve l'assemblage, pas la bibliothèque.
+        appels = []
+
+        class _Redacteur:
+            def append(self, chemin):
+                appels.append(Path(chemin).name)
+
+            def write(self, fichier):
+                fichier.write(b"%PDF-1.4 reuni")
+
+            def close(self):
+                pass
+
+        faux = types.ModuleType("pypdf")
+        faux.PdfWriter = _Redacteur
+        vrai = sys.modules.get("pypdf")
+        sys.modules["pypdf"] = faux
+        try:
+            resultat = module_envoi.preparer(
+                dossier, "FACT-2405-00409", lignes, sortie)
+        finally:
+            if vrai is None:
+                sys.modules.pop("pypdf", None)
+            else:
+                sys.modules["pypdf"] = vrai
+
+        verifier(appels == ordre, f"le PDF unique reprend cet ordre ({appels})")
+        verifier(resultat["pieces_pdf"] == 3 and resultat["pdf"].endswith(".pdf"),
+                 f"il est écrit ({resultat['pdf']}, {resultat['pieces_pdf']} pièces)")
+        verifier(resultat["sans_pdf"] == 1
+                 and "dans l'archive" in resultat["motif"],
+                 f"et ce qui n'y est pas est dit ({resultat['motif']})")
+
+        archive = sortie / "pour-envoi" / "fact-2405-00409_sas-eden.zip"
+        noms = zipfile.ZipFile(archive).namelist()
+        verifier(archive.exists() and resultat["fichiers"] == 5,
+                 f"l'archive porte tout le dossier ({resultat['fichiers']} fichiers)")
+        # Les messages écartés ne doivent pas revenir par l'archive : les
+        # transmettre reviendrait à joindre les échanges d'autres personnes.
+        verifier(not any("hors-dossier" in nom for nom in noms),
+                 "sauf ce que la règle de rétention a écarté")
+        verifier(all(nom.startswith("fact-2405-00409_sas-eden/") for nom in noms),
+                 "et se décompresse dans un dossier, pas en vrac")
+        verifier("Mo" in resultat["poids_archive"] or "Ko" in resultat["poids_archive"],
+                 f"son poids est dit ({resultat['poids_archive']})")
+
+    page = module_interface.PAGE
+    verifier('id="preparerEnvoi"' in page and '"/api/preparer-envoi"' in page,
+             "un bouton la demande depuis la page")
+    verifier("20 * 1024 * 1024" in page,
+             "qui prévient au-delà de ce qu'une messagerie accepte")
+
+
 def test_pieces_cles_reunies() -> None:
     """Les pièces qui font le dossier, réunies dans un seul sous-dossier."""
     import export_mails as module_export  # noqa: PLC0415
@@ -8603,6 +8709,7 @@ def main() -> int:
     test_montant_deja_regle()
     test_sauvegarde_du_suivi()
     test_tout_effacer_respecte_la_reponse()
+    test_preparer_pour_envoi()
     test_pieces_cles_reunies()
     test_resume_de_la_conversation()
     test_conversation_sans_dates()

@@ -1389,6 +1389,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/refaire-notes":
                 self._refaire_notes(self._corps_json())
                 return
+            if chemin == "/api/preparer-envoi":
+                self._preparer_envoi(self._corps_json())
+                return
             if chemin == "/api/restaurer-suivi":
                 self._restaurer_suivi(self._corps_json())
                 return
@@ -1676,6 +1679,52 @@ class Gestionnaire(BaseHTTPRequestHandler):
                          "motifs": motifs, "choisies": len(voulues),
                          "inconnues": inconnues[:8], "recopiees": recopiees,
                          "copie_vers": str(destination) if destination else ""})
+
+    def _preparer_envoi(self, demande: dict | None = None) -> None:
+        """Met chaque dossier demandé dans un fichier qu'on peut attacher.
+
+        Un dossier est un répertoire : cela se consulte sur un disque, mais ne
+        s'attache pas à un mail — et c'est pourtant ainsi qu'on le transmet au
+        service contentieux ou à un avocat. On produit donc, à côté de
+        l'export, un PDF unique et une archive zip par dossier.
+
+        Sans références, tous les dossiers. Avec, ceux-là seulement.
+        """
+        import envoi as module_envoi  # noqa: PLC0415
+
+        voulues = {
+            str(reference).strip()
+            for reference in ((demande or {}).get("references") or [])
+            if str(reference).strip()
+        }
+        sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+        prets, echecs, motifs = [], 0, []
+
+        for dossier in module_suivi.inventaire(sortie, SUIVI):
+            if voulues and dossier["reference"] not in voulues:
+                continue
+            repertoire = sortie / dossier["repertoire"]
+            index = repertoire / "index.csv"
+            if not repertoire.is_dir():
+                continue
+            try:
+                lignes, _t, _b, _c = (
+                    export_mails.relire_dossier(repertoire, index)
+                    if index.exists() else ([], {}, {}, set())
+                )
+                prets.append(module_envoi.preparer(
+                    repertoire, dossier["reference"], lignes, sortie))
+            except Exception as exc:  # noqa: BLE001 - jamais bloquant
+                echecs += 1
+                if len(motifs) < 3:
+                    motifs.append(f"{dossier['reference']} : {exc}")
+
+        self._json(200, {
+            "prets": prets,
+            "echecs": echecs,
+            "motifs": motifs,
+            "repertoire": str(sortie / module_envoi.DOSSIER_ENVOI),
+        })
 
     def _oublier_complements(self) -> None:
         """Retire les fichiers de suivi retenus.
@@ -2426,6 +2475,8 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <span class="compte-recherche" id="compteDocuments"></span>
       <button class="secondaire" id="refaireNotes"
               title="Réécrit les notes à partir des messages déjà au dossier, sans retourner sur Gmail. Quelques secondes.">Refaire les notes</button>
+      <button class="secondaire" id="preparerEnvoi"
+              title="Met chaque dossier dans un fichier qu'on peut attacher à un mail : un PDF unique, et une archive zip.">Préparer pour envoi</button>
     </div>
     <div id="tableDocuments"></div>
   </section>
@@ -2999,6 +3050,53 @@ async function refaireNotes() {
 }
 
 if ($("refaireNotes")) $("refaireNotes").addEventListener("click", refaireNotes);
+
+// Un dossier est un répertoire : cela se consulte sur un disque, mais ne
+// s'attache pas à un mail — et c'est pourtant ainsi qu'on le transmet au
+// service contentieux ou à un avocat.
+async function preparerEnvoi() {
+  if (!DOSSIERS.length) {
+    afficherBandeau(false, "Aucun dossier : lancez d'abord un export.");
+    return;
+  }
+  const choisis = Array.from(CHOIX_NOTES);
+  const bouton = $("preparerEnvoi");
+  const avant = bouton.textContent;
+  bouton.disabled = true;
+  bouton.textContent = "Préparation…";
+  try {
+    const r = await api("/api/preparer-envoi", { references: choisis });
+    const prets = r.prets || [];
+    // Le poids est la première question quand on attache : une messagerie
+    // d'entreprise refuse en général au-delà de vingt-cinq mégaoctets.
+    const lourds = prets.filter((p) => p.octets_pdf > 20 * 1024 * 1024
+      || (!p.octets_pdf && p.octets_archive > 20 * 1024 * 1024));
+    const sansPdf = prets.filter((p) => !p.pdf);
+    afficherBandeau(true,
+      `${prets.length} dossier(s) prêts à envoyer dans ${r.repertoire} : `
+      + "un PDF unique et une archive zip chacun."
+      + (prets.length === 1
+         ? ` ${prets[0].pdf || prets[0].archive} — ${prets[0].poids_pdf || prets[0].poids_archive}.`
+         : "")
+      + (sansPdf.length
+         ? ` ${sansPdf.length} sans PDF unique : ${echapper(sansPdf[0].motif || "")}`
+         : "")
+      + (lourds.length
+         ? ` ⚠ ${lourds.length} dépasse(nt) 20 Mo — trop lourd(s) pour la`
+           + " plupart des messageries."
+         : "")
+      + (r.echecs ? ` ${r.echecs} en échec : ${(r.motifs || []).join(" ; ")}.` : ""));
+    // Le répertoire s'ouvre : le fichier est là, il n'y a plus qu'à le
+    // glisser dans le mail.
+    try { await api("/api/ouvrir", { chemin: r.repertoire }); }
+    catch (erreur) { void erreur; }
+  } catch (erreur) { afficherBandeau(false, erreur.message); }
+  finally { bouton.disabled = false; bouton.textContent = avant; }
+}
+
+if ($("preparerEnvoi")) {
+  $("preparerEnvoi").addEventListener("click", preparerEnvoi);
+}
 
 function tableauxCoches() {
   return Array.from(TABLEAUX_COCHES).join(",");
@@ -4927,6 +5025,10 @@ function rendreBord() {
        ? `dossiers non clôturés, dont ${euro(a.montant_abandon_possible)} `
          + "en possible abandon"
        : "dossiers non clôturés", ""],
+    ["Transmis au contentieux",
+     a.part_transmis === null ? "—" : a.part_transmis + " %",
+     `${a.nb_transmis} dossier(s) sur ${a.nb_dossiers} · `
+       + `${euro(a.montant_transmis)}`, ""],
     ["Frais engagés", euro(a.frais_engages), "avocat, huissier, greffe", ""],
     ["Recouvré", euro(a.montant_gagne),
      `${a.nb_sans_tribunal} sans tribunal · ${a.nb_au_tribunal} au tribunal`,
@@ -5026,6 +5128,13 @@ function recalculer() {
     nb_gagnes: gagnes.length, nb_perdus: perdus.length,
     montant_recu: DOSSIERS.reduce((t, d) => t + (d.montant_recu || 0), 0),
     nb_partiellement_regles: DOSSIERS.filter((d) => (d.montant_recu || 0) > 0).length,
+    // Transmis au contentieux, aujourd'hui ou avant : c'est le travail
+    // rendu, et la question qu'on pose en premier devant un portefeuille.
+    nb_transmis: DOSSIERS.filter((d) => d.transmis).length,
+    montant_transmis: somme((d) => d.transmis),
+    part_transmis: DOSSIERS.length
+      ? Math.round(100 * DOSSIERS.filter((d) => d.transmis).length / DOSSIERS.length)
+      : null,
     nb_abandon_possible: suspens.length,
     montant_abandon_possible: somme((d) => est(d, "suspens")),
     // Sur tout le portefeuille : un possible abandon n'est pas une issue,

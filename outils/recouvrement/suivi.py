@@ -85,6 +85,31 @@ ANCIENS_STATUTS = {
 
 CLES_STATUTS = {statut["cle"] for statut in STATUTS}
 STATUT_INITIAL = "non-transmis"
+
+# À partir de quelle étape un dossier est-il « transmis » ? De celle où il a
+# quitté le service pour le contentieux. « En cours de transmission » ne
+# compte pas : il est en train de partir, il n'est pas parti. « Possible
+# abandon » non plus : il attend un arbitrage, et n'a justement pas été
+# transmis.
+#
+# Les issues judiciaires en font partie : on ne va pas au tribunal sans être
+# passé par là.
+TRANSMIS = {"transmis-contentieux", "avocats", "tribunal-en-cours",
+            "tribunal-gagne", "tribunal-perdu"}
+
+
+def a_ete_transmis(entree: dict) -> bool:
+    """Le dossier est-il passé au contentieux, aujourd'hui ou avant ?
+
+    Le statut du jour ne suffit pas : un dossier transmis puis clôturé via
+    recouvrement n'affiche plus « transmis », et s'en tenir à l'étape
+    courante ferait dire que rien n'a été transmis. L'historique des étapes,
+    lui, garde la trace du passage.
+    """
+    if (entree.get("statut") or "") in TRANSMIS:
+        return True
+    return any((etape or {}).get("statut") in TRANSMIS
+               for etape in (entree.get("historique") or []))
 ORDRE_STATUTS = {statut["cle"]: rang for rang, statut in enumerate(STATUTS)}
 FAMILLES = {statut["cle"]: statut["famille"] for statut in STATUTS}
 # Clôturé veut dire « on n'y revient plus » : gagné ou perdu. Un dossier en
@@ -590,6 +615,10 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 # qui portent sur le reste a faire doivent pouvoir l'ecarter
                 # sans redecouvrir quelles etapes sont des issues.
                 "clos": statut in CLOTURES,
+                # Transmis au contentieux, aujourd'hui ou avant : c'est le
+                # travail rendu, et la question qu'on pose en premier devant
+                # un portefeuille.
+                "transmis": a_ete_transmis(etat),
                 # Exécution de la formation, telle que le tableau la connaît.
                 # Trois états, jamais deux : ce que le tableau ne dit pas ne
                 # doit pas se lire comme un « non ».
@@ -1522,6 +1551,17 @@ def agreger(dossiers: list[dict]) -> dict:
         "seuil_dormance": SEUIL_DORMANCE,
         "nb_jamais_transmis": sum(
             1 for d in dossiers if d["statut"] == STATUT_INITIAL
+        ),
+        # Ce qui a été transmis au contentieux, aujourd'hui ou avant : le
+        # travail rendu. Un nombre brut ne dit pas s'il s'agit du dixième ou
+        # de la moitié du portefeuille ; la part le dit.
+        "nb_transmis": sum(1 for d in dossiers if d.get("transmis")),
+        "montant_transmis": sum(
+            d["montant_du"] for d in dossiers if d.get("transmis")
+        ),
+        "part_transmis": (
+            round(100 * sum(1 for d in dossiers if d.get("transmis")) / len(dossiers))
+            if dossiers else None
         ),
         "nb_sans_tribunal": sum(
             1 for d in dossiers if d["statut"] == "cloture-recouvrement"
