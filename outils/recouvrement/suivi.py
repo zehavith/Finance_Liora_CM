@@ -593,14 +593,21 @@ def supprimer(
     chemin_suivi: Path,
     references: list[str],
     avec_fichiers: bool = False,
+    avec_suivi: bool = False,
 ) -> dict:
-    """Retire des dossiers de la liste, et de l'état de suivi.
+    """Retire des dossiers de la liste, et de rien d'autre par défaut.
 
     Les fichiers produits ne sont effacés que si on le demande : un dossier
     retiré de la liste par erreur se retrouve sur le disque, un répertoire
     supprimé ne revient pas. La suppression est refusée hors du répertoire
     d'export — un chemin venu d'un fichier n'a pas à pouvoir désigner
     n'importe où.
+
+    Le suivi saisi à la main — étapes, dates, frais, notes, contexte, pièces
+    versées — n'est emporté que si on le demande explicitement. Il partait
+    jusqu'ici avec la ligne de la liste : on répondait « non » à « effacer
+    aussi votre suivi », et il était efface quand même. C'est la seule chose
+    ici qui ne se refasse pas — aucun export ne la reconstitue.
     """
     voulues = {reference.strip() for reference in references if reference.strip()}
     if not voulues:
@@ -623,12 +630,14 @@ def supprimer(
                 redacteur.writeheader()
                 redacteur.writerows(gardees)
 
-    suivi = charger(chemin_suivi)
-    oublies = [reference for reference in voulues if reference in suivi]
-    for reference in oublies:
-        del suivi[reference]
-    if oublies:
-        enregistrer(chemin_suivi, suivi)
+    oublies: list[str] = []
+    if avec_suivi:
+        suivi = charger(chemin_suivi)
+        oublies = [reference for reference in voulues if reference in suivi]
+        for reference in oublies:
+            del suivi[reference]
+        if oublies:
+            enregistrer(chemin_suivi, suivi)
 
     effaces = 0
     if avec_fichiers:
@@ -1277,7 +1286,7 @@ def tout_effacer(
 
     resultat = supprimer(
         racine_sortie, chemin_suivi, references,
-        avec_fichiers=avec_fichiers,
+        avec_fichiers=avec_fichiers, avec_suivi=avec_suivi,
     ) if references else {"retires": 0, "effaces": 0, "oublies": 0}
 
     # Le récapitulatif vidé de ses lignes n'a plus lieu d'être.

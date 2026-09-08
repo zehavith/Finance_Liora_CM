@@ -3479,6 +3479,55 @@ def test_montant_inconnu_n_est_pas_zero() -> None:
              "et s'en sert dans le tableau")
 
 
+def test_tout_effacer_respecte_la_reponse() -> None:
+    """« Non » à « effacer aussi votre suivi » doit vouloir dire non."""
+    import suivi as module_suivi  # noqa: PLC0415
+
+    print("\nTout effacer : la troisième question")
+
+    def preparer(dossier: Path) -> tuple[Path, Path]:
+        racine = dossier / "export"
+        (racine / "a").mkdir(parents=True)
+        (racine / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures;date_echeance\n"
+            "FACT-2405-00409;SAS EDEN;a;5 990 €;FACT-2405-00409;\n",
+            encoding="utf-8-sig")
+        chemin = dossier / "suivi.json"
+        module_suivi.enregistrer(chemin, {"FACT-2405-00409": {
+            "statut": "transmis-contentieux", "frais": 250.0,
+            "note": "Référence avocat", "contexte": "Chèque rejeté",
+            "pieces": [{"nature": "Relevé comptable", "fichier": "p.pdf"}]}})
+        return racine, chemin
+
+    # Le suivi partait avec la ligne de la liste, quelle que soit la réponse :
+    # on répondait « non », et étapes, frais, notes, contexte et pièces
+    # versées disparaissaient. C'est la seule chose ici qu'aucun export ne
+    # reconstitue.
+    with tempfile.TemporaryDirectory() as dossier:
+        racine, chemin = preparer(Path(dossier))
+        module_suivi.tout_effacer(racine, chemin,
+                                  avec_fichiers=True, avec_suivi=False)
+        garde = module_suivi.charger(chemin).get("FACT-2405-00409") or {}
+        verifier(garde.get("statut") == "transmis-contentieux",
+                 f"l'étape est gardée ({garde.get('statut')})")
+        verifier(garde.get("frais") == 250.0 and garde.get("note"),
+                 "les frais et la note aussi")
+        verifier(len(garde.get("pieces") or []) == 1,
+                 "et les pièces versées à la main")
+        verifier(not (racine / "a").exists(),
+                 "tandis que les fichiers, eux, sont bien supprimés")
+        verifier(not (racine / "_recapitulatif.csv").exists(),
+                 "et la liste est bien vidée")
+
+    # Demandé explicitement, il part — c'est le troisième degré, et lui seul.
+    with tempfile.TemporaryDirectory() as dossier:
+        racine, chemin = preparer(Path(dossier))
+        module_suivi.tout_effacer(racine, chemin,
+                                  avec_fichiers=True, avec_suivi=True)
+        verifier(module_suivi.charger(chemin) == {},
+                 "demandé, le suivi est effacé")
+
+
 def test_doublons_de_la_liste() -> None:
     """Le même dossier ne figure pas deux fois dans la liste."""
     import export_mails as module_export  # noqa: PLC0415
@@ -5240,8 +5289,16 @@ def test_suppression_dossiers() -> None:
                  "un dossier retiré, aucun fichier effacé par défaut")
         verifier((sortie / "2024-118_a" / "index.csv").exists(),
                  "les fichiers restent sur le disque")
+        # Le suivi saisi à la main ne part pas avec la ligne de la liste : il
+        # ne se refait pas, et un dossier retiré par erreur le retrouve.
+        verifier("FACT-1" in module_suivi.charger(chemin_suivi),
+                 "son état de suivi est gardé, la liste seule a changé")
+        verifier(module_suivi.supprimer(
+                     sortie, chemin_suivi, ["FACT-1"], avec_suivi=True
+                 )["oublies"] == 1,
+                 "et ne s'oublie que si on le demande")
         verifier("FACT-1" not in module_suivi.charger(chemin_suivi),
-                 "son état de suivi est oublié")
+                 "alors seulement il est retiré")
         restants = module_suivi.inventaire(sortie, chemin_suivi)
         verifier([d["reference"] for d in restants] == ["FACT-2", "FACT-3"],
                  "il ne figure plus dans la liste")
@@ -7239,6 +7296,7 @@ def main() -> int:
     test_references_parasites()
     test_message_quand_l_outil_ne_repond_pas()
     test_montant_inconnu_n_est_pas_zero()
+    test_tout_effacer_respecte_la_reponse()
     test_doublons_de_la_liste()
     test_retrouver_les_dossiers_du_disque()
     test_arreter_un_export()
