@@ -2053,7 +2053,16 @@ header{background:var(--fond-2);border-bottom:1px solid var(--bord);padding:18px
 .logo{font-size:20px;font-weight:800;color:var(--accent);letter-spacing:-.5px}
 .titre{font-size:20px;font-weight:600}
 .moteur{margin-left:auto;color:var(--texte-3);font-size:12px}
-main{max-width:1000px;margin:0 auto;padding:28px}
+/* Toute la largeur de l'ecran, a une marge pres. La page etait tenue a mille
+   pixels centres : sur un ecran large, les tableaux se tassaient dans un
+   tiers de l'espace, la colonne « Etat » sortait du cadre, et les deux tiers
+   restants etaient vides. Le plafond ne sert plus qu'a garder les lignes de
+   texte lisibles sur un tres grand ecran. */
+main{max-width:2200px;margin:0 auto;padding:24px 28px}
+/* Les blocs de texte, eux, ne gagnent rien a s'etirer : une phrase de deux
+   cents caracteres ne se lit pas. Seuls les tableaux prennent la largeur. */
+main > .vue > section > .aide,
+main > .vue > section > p.note{max-width:1100px}
 h2{font-size:15px;margin:0 0 4px;font-weight:600}
 .aide{color:var(--texte-2);font-size:12.5px;margin:0 0 14px}
 section{background:var(--carte);border:1px solid var(--bord);border-radius:14px;
@@ -4807,7 +4816,11 @@ function rendreBord() {
 
   const tuiles = [
     ["Dossiers suivis", a.nb_dossiers, `dont ${a.nb_en_cours} en cours`, ""],
-    ["Montant en contentieux", euro(a.montant_en_cours), "dossiers non clôturés", ""],
+    ["Montant en contentieux", euro(a.montant_en_cours),
+     a.montant_abandon_possible
+       ? `dossiers non clôturés, dont ${euro(a.montant_abandon_possible)} `
+         + "en possible abandon"
+       : "dossiers non clôturés", ""],
     ["Frais engagés", euro(a.frais_engages), "avocat, huissier, greffe", ""],
     ["Recouvré", euro(a.montant_gagne),
      `${a.nb_sans_tribunal} sans tribunal · ${a.nb_au_tribunal} au tribunal`,
@@ -4894,8 +4907,13 @@ function recalculer() {
     .filter((v) => v !== null && v !== undefined).sort((a, b) => a - b);
   return {
     par_statut: par, nb_dossiers: DOSSIERS.length,
-    nb_en_cours: DOSSIERS.filter((d) => est(d, "cours")).length,
-    montant_en_cours: somme((d) => est(d, "cours")),
+    // Non clôturé, et non « en cours d'étape » : un possible abandon n'est
+    // ni gagné ni perdu, la créance reste due, et la décision reste à
+    // prendre. L'exclure retranchait sa part du montant en contentieux — 21
+    // dossiers et 64 846 € manquaient au tableau de bord, sans que rien ne
+    // le dise, alors que le serveur, lui, les comptait.
+    nb_en_cours: DOSSIERS.filter((d) => !est(d, "gagne") && !est(d, "perdu")).length,
+    montant_en_cours: somme((d) => !est(d, "gagne") && !est(d, "perdu")),
     frais_engages: DOSSIERS.reduce((t, d) => t + (d.frais || 0), 0),
     montant_gagne: somme((d) => est(d, "gagne")),
     montant_perdu: somme((d) => est(d, "perdu")),

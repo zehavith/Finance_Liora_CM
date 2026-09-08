@@ -8406,6 +8406,23 @@ def test_suivi() -> None:
                  "un possible abandon n'est ni clôturé ni perdu")
         verifier("abandon-possible" in module_suivi.EN_SUSPENS,
                  "il est en suspens, et sa créance compte parmi celles en cours")
+        # Le serveur le comptait, la page ne le comptait pas : vingt et un
+        # dossiers et soixante-cinq mille euros manquaient au tableau de bord
+        # sans que rien ne le dise.
+        import interface as module_page  # noqa: PLC0415
+        page = module_page.PAGE
+        verifier('montant_en_cours: somme((d) => !est(d, "gagne") '
+                 '&& !est(d, "perdu"))' in page,
+                 "le montant en contentieux compte tout ce qui n'est pas clôturé")
+        verifier('nb_en_cours: DOSSIERS.filter((d) => !est(d, "gagne") '
+                 '&& !est(d, "perdu")).length' in page,
+                 "et le nombre de dossiers en cours de même")
+        verifier("en possible abandon" in page,
+                 "la tuile dit quelle part est en possible abandon")
+        # Et la page prend la largeur de l'ecran : tenue a mille pixels
+        # centres, la colonne « Etat » sortait du cadre sur un ecran large.
+        verifier("main{max-width:2200px" in page,
+                 "la page occupe la largeur disponible")
         verifier("abandon" in module_suivi.PERDUS,
                  "l'abandon décidé, lui, reste une créance perdue")
         issues = [s for s in module_suivi.STATUTS
