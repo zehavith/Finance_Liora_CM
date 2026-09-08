@@ -3607,6 +3607,81 @@ def test_document_monday_verrouille() -> None:
          module_monday.identifiant) = vrais
 
 
+def test_sauvegarde_du_suivi() -> None:
+    """Le suivi n'existe nulle part ailleurs : il se sauvegarde tout seul."""
+    import interface as module_interface  # noqa: PLC0415
+    import suivi as module_suivi  # noqa: PLC0415
+
+    print("\nSauvegarde automatique du suivi")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        chemin = Path(repertoire) / "suivi-dossiers.json"
+
+        def saisir(combien, marque):
+            module_suivi.enregistrer(chemin, {
+                f"FACT-{n:04d}": {"statut": "transmis-contentieux", "frais": 250.0,
+                                  "note": marque, "contexte": "Chèque rejeté",
+                                  "pieces": [{"nature": "Relevé comptable"}]}
+                for n in range(combien)})
+
+        saisir(4, "premier jour")
+        verifier(module_suivi.sauvegardes(chemin) == [],
+                 "rien à sauvegarder avant la première écriture")
+        time.sleep(1.05)
+        saisir(20, "cinquième jour")
+        verifier(len(module_suivi.sauvegardes(chemin)) == 1,
+                 f"l'état précédent est mis de côté "
+                 f"({len(module_suivi.sauvegardes(chemin))})")
+
+        # Une écriture qui ne change rien n'ajoute pas de copie : trente
+        # sauvegardes doivent couvrir des semaines, pas trente secondes. La
+        # première réécriture met de côté l'état de 20 — jamais copié encore ;
+        # la suivante, qui trouve le même état déjà sauvegardé, s'abstient.
+        time.sleep(1.05)
+        saisir(20, "cinquième jour")
+        combien = len(module_suivi.sauvegardes(chemin))
+        time.sleep(1.05)
+        saisir(20, "cinquième jour")
+        verifier(len(module_suivi.sauvegardes(chemin)) == combien,
+                 f"une écriture qui ne change rien n'ajoute pas de copie "
+                 f"({combien} → {len(module_suivi.sauvegardes(chemin))})")
+
+        # L'accident : tout est effacé.
+        time.sleep(1.05)
+        module_suivi.enregistrer(chemin, {})
+        verifier(module_suivi.charger(chemin) == {}, "le suivi est vide")
+
+        vrai_suivi = module_interface.SUIVI
+        module_interface.SUIVI = chemin
+        try:
+            etat = module_interface._etat_sauvegardes()
+        finally:
+            module_interface.SUIVI = vrai_suivi
+        verifier(etat["perte"] is True,
+                 f"l'effondrement est repéré ({etat['dossiers_sauvegardes']} → "
+                 f"{etat['dossiers_suivis']})")
+
+        repris = module_suivi.restaurer(chemin, module_suivi.sauvegardes(chemin)[0].name)
+        verifier(repris == 20, f"la copie est remise en place ({repris})")
+        entree = module_suivi.charger(chemin)["FACT-0000"]
+        verifier(entree["statut"] == "transmis-contentieux"
+                 and entree["frais"] == 250.0
+                 and entree["note"] == "cinquième jour"
+                 and len(entree["pieces"]) == 1,
+                 "avec étape, frais, note et pièces versées")
+
+        # Restaurer par erreur ne doit pas être le geste qui perd tout.
+        verifier(len(module_suivi.sauvegardes(chemin)) >= 2,
+                 "l'état d'avant la restauration est gardé aussi")
+
+    # Trente copies au plus : une par écriture qui change quelque chose.
+    verifier(module_suivi.NOMBRE_SAUVEGARDES == 30,
+             f"trente copies conservées ({module_suivi.NOMBRE_SAUVEGARDES})")
+    page = module_interface.PAGE
+    verifier("function blocSauvegarde" in page and 'id="restaurerSuivi"' in page,
+             "et la page propose de restaurer quand le suivi s'effondre")
+
+
 def test_tout_effacer_respecte_la_reponse() -> None:
     """« Non » à « effacer aussi votre suivi » doit vouloir dire non."""
     import suivi as module_suivi  # noqa: PLC0415
@@ -7443,6 +7518,7 @@ def main() -> int:
     test_fil_trop_long_ecarte()
     test_csv_ouvert_dans_excel()
     test_document_monday_verrouille()
+    test_sauvegarde_du_suivi()
     test_tout_effacer_respecte_la_reponse()
     test_doublons_de_la_liste()
     test_retrouver_les_dossiers_du_disque()

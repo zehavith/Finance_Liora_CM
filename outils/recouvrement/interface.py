@@ -628,6 +628,32 @@ def _lancer_rafraichissement(dossiers: list[dict]) -> set[str]:
     return set(NOTES_EN_COURS)
 
 
+def _etat_sauvegardes() -> dict:
+    """Ce que le suivi contient, et ce que la dernière copie contenait.
+
+    Un suivi qui rétrécit brutalement est la signature d'un accident. Le dire
+    au moment où cela se voit, avec de quoi revenir en arrière, vaut mieux que
+    de le découvrir trois semaines plus tard.
+    """
+    copies = module_suivi.sauvegardes(SUIVI)
+    actuel = len(module_suivi.charger(SUIVI))
+    precedent = 0
+    if copies:
+        try:
+            donnees = json.loads(copies[0].read_text(encoding="utf-8"))
+            precedent = len(donnees) if isinstance(donnees, dict) else 0
+        except (OSError, ValueError):
+            precedent = 0
+    return {
+        "copies": [c.name for c in copies[:12]],
+        "dossiers_suivis": actuel,
+        "dossiers_sauvegardes": precedent,
+        # Le seuil est franc : on ne signale pas une suppression volontaire
+        # d'un dossier ou deux, mais un effondrement.
+        "perte": precedent >= 5 and actuel < precedent // 2,
+    }
+
+
 def absents_du_suivi() -> list[str]:
     """Les factures que les fichiers de suivi connaissent, sans dossier.
 
@@ -1035,6 +1061,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 # Celles qu'un fichier de suivi applique apres coup, ou une
                 # mise a jour de l'outil, ont laissees en retard.
                 "notes_en_cours": sorted(_lancer_rafraichissement(dossiers)),
+                "sauvegardes": _etat_sauvegardes(),
                 "absents_suivi": absents_du_suivi(),
                 "a_refaire": list(lire_preferences().get("dossiers_a_refaire") or []),
                 "sortie": str(racine),
@@ -1111,6 +1138,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 return
             if chemin == "/api/refaire-notes":
                 self._refaire_notes(self._corps_json())
+                return
+            if chemin == "/api/restaurer-suivi":
+                self._restaurer_suivi(self._corps_json())
                 return
             if chemin == "/api/retrouver":
                 self._retrouver_dossiers()
@@ -1261,6 +1291,21 @@ class Gestionnaire(BaseHTTPRequestHandler):
         resultat["memorise"] = nom
         resultat["retenus"] = [c.name for c in complements_memorises()]
         self._json(200, resultat)
+
+    def _restaurer_suivi(self, demande: dict) -> None:
+        """Remet en place une copie datée du suivi."""
+        nom = str((demande or {}).get("nom") or "").strip()
+        if not nom:
+            copies = module_suivi.sauvegardes(SUIVI)
+            if not copies:
+                raise ValueError("Aucune sauvegarde disponible.")
+            nom = copies[0].name
+        try:
+            repris = module_suivi.restaurer(SUIVI, nom)
+        except (ValueError, OSError) as exc:
+            self._json(400, {"erreur": str(exc)})
+            return
+        self._json(200, {"restaures": repris, "sauvegarde": nom})
 
     def _retrouver_dossiers(self) -> None:
         """Remet à la liste les dossiers présents sur le disque.
@@ -2926,6 +2971,10 @@ let ABSENTS_SUIVI = [];
 // des echanges sans rapport, et aucune correction d'affichage n'y changera
 // rien. Il faut les refaire.
 let A_REFAIRE = [];
+// L'etat des copies datees du suivi. Un suivi qui retrecit brutalement est la
+// signature d'un accident : il faut le dire quand cela se voit, avec de quoi
+// revenir en arriere.
+let SAUVEGARDES = null;
 // Une seule tentative par ouverture : si le service est injoignable, insister
 // a chaque rechargement de la liste ne le rendrait pas joignable.
 let annuaireTente = false;
@@ -2967,6 +3016,7 @@ async function chargerDossiers() {
   ANNUAIRE_MANQUANTS = donnees.annuaire_manquants || 0;
   ABSENTS_SUIVI = donnees.absents_suivi || [];
   A_REFAIRE = donnees.a_refaire || [];
+  SAUVEGARDES = donnees.sauvegardes || null;
   $("cheminSortie").textContent = donnees.sortie;
   rendreDocuments();
   rendreSuivi();
@@ -3138,6 +3188,25 @@ async function completerDepuisFichier(evenement) {
 // passe : une recherche ponctuelle effacait de la liste les cinquante-deux
 // autres. Ils etaient toujours sur le disque, complets, avec leurs pieces
 // versees — mais plus rien ne se voyait, ce qui revient au meme.
+async function restaurerSuivi() {
+  if (!confirm("Remettre en place la copie précédente de votre suivi ?\n\n"
+      + "Étapes, frais, notes, contextes et pièces versées y reviennent. "
+      + "L'état actuel est lui aussi sauvegardé avant : ce geste se défait.")) {
+    return;
+  }
+  const bouton = $("restaurerSuivi");
+  bouton.disabled = true;
+  try {
+    const r = await api("/api/restaurer-suivi", {});
+    afficherBandeau(true,
+      `${r.restaures} dossier(s) restaurés depuis ${r.sauvegarde}.`);
+    chargerDossiers();
+  } catch (erreur) {
+    afficherBandeau(false, erreur.message);
+    bouton.disabled = false;
+  }
+}
+
 async function retrouverDossiers(evenement) {
   const bouton = (evenement && evenement.currentTarget) || $("retrouver");
   bouton.disabled = true;
@@ -3635,6 +3704,21 @@ function rendreDocuments() {
     }));
 }
 
+// Le suivi est la seule chose de l'application qui n'existe nulle part
+// ailleurs : ni Monday ni Gmail ne le reconstitueraient. Chaque ecriture en
+// garde l'etat precedent ; si l'actuel s'effondre, on le dit ici.
+function blocSauvegarde() {
+  if (!SAUVEGARDES || !SAUVEGARDES.perte) return "";
+  return `
+    <p class="aide a-refaire"><b>Votre suivi est passé de
+       ${SAUVEGARDES.dossiers_sauvegardes} à ${SAUVEGARDES.dossiers_suivis}
+       dossier(s).</b> Si ce n'est pas voulu, la copie précédente est
+       conservée et peut être remise en place — étapes, frais, notes,
+       contextes et pièces versées.
+       <button class="secondaire" id="restaurerSuivi">Restaurer
+       ${SAUVEGARDES.dossiers_sauvegardes} dossier(s)</button></p>`;
+}
+
 // Une « reference » venue de la plomberie des messages — « goog_97526804 »,
 // « groups/13606280 » — entrait dans la requete Gmail. Or celle-la figure dans
 // presque tous les messages Gmail : le dossier ramassait des conversations
@@ -3754,6 +3838,7 @@ function rendreSuivi() {
     ${DOSSIERS.length
       ? (retenus.length ? "" : messageAucuneCorrespondance())
       : messageVideAvecRattrapage()}
+    ${blocSauvegarde()}
     ${blocARefaire()}
     ${blocAbsentsDuSuivi()}
     <div class="defilable"${retenus.length ? "" : " hidden"}><table class="donnees">

@@ -177,7 +177,78 @@ def _date_courte(valeur: str) -> str:
     raise ValueError(f"Date incomprise : « {valeur} ». Attendu : JJ/MM/AAAA.")
 
 
+# Le suivi est la seule chose de l'application qui n'existe nulle part
+# ailleurs : ni Monday ni Gmail ne le reconstitueraient. Chaque écriture en
+# garde donc l'état précédent, daté, avant d'écraser quoi que ce soit.
+SAUVEGARDES = "sauvegardes-suivi"
+NOMBRE_SAUVEGARDES = 30
+
+
+def repertoire_sauvegardes(chemin_suivi: Path) -> Path:
+    return chemin_suivi.parent / SAUVEGARDES
+
+
+def sauvegardes(chemin_suivi: Path) -> list[Path]:
+    """Les copies gardées, de la plus récente à la plus ancienne."""
+    dossier = repertoire_sauvegardes(chemin_suivi)
+    if not dossier.is_dir():
+        return []
+    return sorted(dossier.glob("suivi-*.json"), reverse=True)
+
+
+def _sauvegarder(chemin: Path) -> None:
+    """Met de côté l'état actuel avant de le remplacer.
+
+    Une copie par écriture, dans la limite des trente dernières. Sans elle,
+    une remise à zéro malencontreuse — ou un défaut que je n'ai pas encore
+    trouvé — emporte des semaines de suivi sans recours.
+    """
+    if not chemin.exists():
+        return
+    try:
+        ancien = chemin.read_text(encoding="utf-8")
+    except OSError:
+        return
+    if not ancien.strip() or ancien.strip() == "{}":
+        return
+
+    dossier = repertoire_sauvegardes(chemin)
+    try:
+        dossier.mkdir(parents=True, exist_ok=True)
+        # Une copie identique à la dernière n'apprend rien : on ne garde que
+        # les états qui diffèrent, sinon trente sauvegardes couvrent trente
+        # secondes de saisie au lieu de plusieurs semaines.
+        precedentes = sorted(dossier.glob("suivi-*.json"), reverse=True)
+        if precedentes and precedentes[0].read_text(encoding="utf-8") == ancien:
+            return
+        horodatage = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        (dossier / f"suivi-{horodatage}.json").write_text(ancien, encoding="utf-8")
+        for vieille in sorted(dossier.glob("suivi-*.json"),
+                              reverse=True)[NOMBRE_SAUVEGARDES:]:
+            vieille.unlink(missing_ok=True)
+    except OSError:
+        # Une sauvegarde impossible ne doit pas empêcher d'enregistrer : mieux
+        # vaut un suivi à jour sans copie qu'un suivi qu'on ne peut plus
+        # modifier.
+        return
+
+
+def restaurer(chemin_suivi: Path, nom: str) -> int:
+    """Remet en place une copie datée. Renvoie le nombre de dossiers repris."""
+    source = repertoire_sauvegardes(chemin_suivi) / Path(nom).name
+    if not source.is_file():
+        raise ValueError(f"Sauvegarde introuvable : {nom}")
+    donnees = json.loads(source.read_text(encoding="utf-8"))
+    if not isinstance(donnees, dict):
+        raise ValueError(f"Sauvegarde illisible : {nom}")
+    # L'état courant est sauvegardé à son tour : restaurer par erreur ne doit
+    # pas être le geste qui perd tout.
+    enregistrer(chemin_suivi, donnees)
+    return len(donnees)
+
+
 def enregistrer(chemin: Path, donnees: dict[str, dict]) -> None:
+    _sauvegarder(chemin)
     chemin.parent.mkdir(parents=True, exist_ok=True)
     chemin.write_text(
         json.dumps(donnees, ensure_ascii=False, indent=2, sort_keys=True),

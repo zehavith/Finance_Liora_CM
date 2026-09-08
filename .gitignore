@@ -6,6 +6,7 @@ outils/recouvrement/suivi-dossiers.json
 outils/recouvrement/interface-preferences.json
 outils/recouvrement/monday-token.txt
 outils/recouvrement/complements-suivi/
+outils/recouvrement/sauvegardes-suivi/
 
 # Traces d'exécution et fichiers déposés dans la page.
 outils/recouvrement/__pycache__/
