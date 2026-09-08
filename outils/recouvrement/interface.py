@@ -3011,12 +3011,16 @@ async function retrouverDossiers(evenement) {
   bouton.textContent = "Lecture du disque…";
   try {
     const r = await api("/api/retrouver", {});
-    afficherBandeau(true, r.retrouves
-      ? `${r.retrouves} dossier(s) remis à la liste depuis ${r.sortie}. `
-        + "Leurs messages et leurs pièces versées sont intacts ; la raison "
-        + "sociale et le montant reviendront au prochain export."
-      : `Aucun dossier à retrouver dans ${r.sortie} : la liste est déjà `
-        + "complète.");
+    // Ce qui a ete vu, pas seulement ce qui a ete fait : « aucun dossier
+    // retrouve » laisse croire a une panne, alors que la reponse est souvent
+    // qu'il n'y a qu'un repertoire la ou l'on en attendait cinquante.
+    const vu = (r.lignes || []).join(" ");
+    afficherBandeau(true, (r.retrouves
+      ? `${r.retrouves} dossier(s) remis à la liste. Leurs messages et leurs `
+        + "pièces versées sont intacts ; la raison sociale et le montant "
+        + "reviendront au prochain export. "
+      : "Aucun dossier à retrouver : la liste porte déjà tout ce qui est sur "
+        + "le disque. ") + vu);
     chargerDossiers();
   } catch (erreur) { afficherBandeau(false, erreur.message); }
   finally { bouton.disabled = false; bouton.textContent = avant; }

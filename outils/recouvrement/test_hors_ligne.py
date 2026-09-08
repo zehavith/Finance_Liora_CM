@@ -3372,8 +3372,14 @@ def test_retrouver_les_dossiers_du_disque() -> None:
 
     with tempfile.TemporaryDirectory() as repertoire:
         racine = Path(repertoire) / "export"
-        for reference in ("FACT-2405-00409", "FACT-2411-06955"):
-            dossier = racine / reference
+        # Nommés comme le vrai outil les nomme : « <slug référence>_<slug
+        # nom> », et non la référence nue. Une fixture trop simple avait
+        # laissé passer un rapprochement fait sur le nom du répertoire, qui
+        # ajoutait un doublon au lieu de reconnaître le dossier.
+        repertoires = {"FACT-2405-00409": "fact-2405-00409_sas-eden",
+                       "FACT-2411-06955": "fact-2411-06955_djiala"}
+        for reference, nom_repertoire in repertoires.items():
+            dossier = racine / nom_repertoire
             dossier.mkdir(parents=True)
             (dossier / "index.csv").write_text(
                 "piece_n;date;heure;sens;expediteur;destinataires;copie;objet;"
@@ -3389,22 +3395,36 @@ def test_retrouver_les_dossiers_du_disque() -> None:
             [module_indexation.ResumeDossier(
                 reference="FACT-2411-06955", nom="Djiala", emails="client@x.fr",
                 factures="FACT-2411-06955", requete="q",
-                repertoire="FACT-2411-06955", nb_mails=1)],
+                repertoire="fact-2411-06955_djiala", nb_mails=1)],
         )
 
         lignes: list[str] = []
         nombre = module_export.retrouver_dossiers(racine, lignes.append)
         verifier(nombre == 1, f"le dossier manquant est retrouvé ({nombre})")
 
+        # Dire ce qu'on a vu, et pas seulement ce qu'on a fait : « rien ne
+        # s'est passé » laisse croire à une panne, alors que la réponse est
+        # souvent qu'il n'y a qu'un répertoire là où l'on en attendait
+        # cinquante.
+        compte_rendu = " ".join(lignes)
+        verifier("2 répertoire(s)" in compte_rendu
+                 and "dont 2 constitué(s)" in compte_rendu
+                 and "1 déjà dans la liste" in compte_rendu,
+                 f"et l'on sait ce qui a été vu sur le disque ({compte_rendu})")
+
         rangees = {r["reference"]: r for r in module_indexation.lire_recapitulatif(
             racine / "_recapitulatif.csv")}
         verifier(sorted(rangees) == ["FACT-2405-00409", "FACT-2411-06955"],
                  f"la liste porte de nouveau les deux ({sorted(rangees)})")
         retrouve = rangees["FACT-2405-00409"]
-        verifier(retrouve["nb_mails"] == "1" and retrouve["factures"]
-                 == "fact-2405-00409",
-                 f"avec ce que l'index sait dire de lui ({retrouve['factures']}, "
-                 f"{retrouve['nb_mails']} message)")
+        # Le numéro tel qu'il est écrit dans l'index, casse comprise : c'est
+        # lui que la recherche et le tableau de suivi rapprochent.
+        verifier(retrouve["nb_mails"] == "1"
+                 and retrouve["factures"] == "FACT-2405-00409",
+                 f"avec son vrai numéro, non le nom du répertoire "
+                 f"({retrouve['factures']}, {retrouve['nb_mails']} message)")
+        verifier(retrouve["repertoire"] == "fact-2405-00409_sas-eden",
+                 f"et le répertoire où le rouvrir ({retrouve['repertoire']})")
         # Celui qui était déjà là n'est pas retouché : sa rangée vient de
         # l'export, plus complète que ce que le disque seul peut redire.
         verifier(rangees["FACT-2411-06955"]["nom"] == "Djiala",

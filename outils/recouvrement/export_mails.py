@@ -1090,45 +1090,62 @@ def retrouver_dossiers(racine_sortie: Path, journal=None) -> int:
     versées étaient tous là — mais plus rien ne se voyait, ce qui revient au
     même quand on cherche un dossier.
 
-    Reconstitué depuis ce qui est sur le disque : chaque répertoire portant un
-    `index.csv` redonne ses comptes, ses dates et ses factures. Ce que seul le
-    tableau savait — la raison sociale, le montant — ne s'invente pas et
-    revient au prochain export ; le dossier, lui, est de nouveau là.
+    Le rapprochement se fait sur le nom du répertoire, jamais sur la
+    référence : un répertoire s'appelle « fact-2405-00409_sas-eden » et non
+    « FACT-2405-00409 ». Prendre son nom pour une référence ajoutait un
+    doublon à côté du dossier au lieu de le reconnaître.
+
+    Ce que seul le tableau savait — la raison sociale, le montant — ne
+    s'invente pas et revient au prochain export ; le dossier, lui, est de
+    nouveau là.
     """
     dire = journal or (lambda _message: None)
-    existants = {r["reference"] for r in lire_recapitulatif(
-        racine_sortie / "_recapitulatif.csv")}
+    deja = set()
+    for rangee in lire_recapitulatif(racine_sortie / "_recapitulatif.csv"):
+        deja.add((rangee.get("repertoire") or "").strip())
     retrouves: list[ResumeDossier] = []
+
+    # Dire ce qu'on a vu, et pas seulement ce qu'on a fait. « Rien ne s'est
+    # passé » laisse croire à une panne, alors que la réponse est souvent
+    # qu'il n'y a qu'un répertoire là où l'on en attendait cinquante.
+    repertoires = [c for c in racine_sortie.iterdir() if c.is_dir()]
+    avec_index = [c for c in repertoires if (c / "index.csv").exists()]
+    dire(f"{len(repertoires)} répertoire(s) dans {racine_sortie}, "
+         f"dont {len(avec_index)} constitué(s) en dossier "
+         f"et {len(deja)} déjà dans la liste.")
 
     for index in sorted(racine_sortie.glob("*/index.csv")):
         repertoire = index.parent
+        if repertoire.name in deja:
+            continue
         try:
             lignes, _textes, _bases, _cles = relire_dossier(repertoire, index)
         except (OSError, ValueError) as exc:
             dire(f"    ⚠ {repertoire.name} illisible : {exc}")
             continue
 
-        from synthese import (  # noqa: PLC0415 - import tardif, cycle
-            adresses_de_ligne, factures_de_ligne,
-        )
-
-        factures, adresses = set(), set()
+        # Le numéro tel qu'il est écrit dans l'index, casse comprise : c'est
+        # lui que la recherche et le tableau de suivi rapprochent.
+        factures, adresses = [], []
         for ligne in lignes:
-            factures |= factures_de_ligne(ligne)
-            adresses |= adresses_de_ligne(ligne)
-        # La référence est le nom du répertoire : c'est lui que l'application
-        # rouvre, et le faire diverger rendrait les liens inertes.
-        reference = repertoire.name
-        if reference in existants:
-            continue
+            for valeur in (ligne.factures_concernees or "").split(" | "):
+                if valeur.strip() and valeur.strip() not in factures:
+                    factures.append(valeur.strip())
+            for valeur in (ligne.adresses_concernees or "").split(" | "):
+                if valeur.strip() and valeur.strip() not in adresses:
+                    adresses.append(valeur.strip())
+
+        reference = factures[0] if factures else repertoire.name
+        if reference in {r.reference for r in retrouves}:
+            reference = repertoire.name
         dates = [ligne.date for ligne in lignes if ligne.date]
         retrouves.append(ResumeDossier(
             reference=reference,
             nom="",
-            emails=" | ".join(sorted(adresses)),
-            factures=" | ".join(sorted(factures)),
+            emails=" | ".join(adresses),
+            factures=" | ".join(factures),
             requete="",
-            repertoire=reference,
+            repertoire=repertoire.name,
             statut="retrouvé sur le disque",
             nb_mails=len(lignes),
             nb_recus=sum(1 for l in lignes if l.sens == "reçu"),
