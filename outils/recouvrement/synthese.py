@@ -1290,6 +1290,43 @@ def _texte_depuis_html(brut: str) -> str:
 BALISE_HTML = re.compile(r"(?is)<(html|body|div|p|br|table|span|meta)\b")
 
 
+# Ce qui commence un pied de signature. Un message de service en porte cinq
+# lignes — site, adresse, telephone, reseaux sociaux — qui n'apprennent rien
+# sur la creance et alourdissent chaque extrait de la note.
+# « Le 12/05/2024 à 09:30, Marie Dupont a écrit : » — l'en-tête qu'un client
+# de messagerie place au-dessus du message cité.
+ENTETE_DE_CITATION = re.compile(r"^le\s+\d{1,2}[\s/.-]", re.IGNORECASE)
+
+DEBUTS_SIGNATURE = (
+    "website", "site web", "site :", "www.", "http", "tel :", "tel.",
+    "telephone", "mobile :", "fax", "linkedin", "twitter", "facebook",
+    "instagram", "youtube", "suivez-nous", "service comptable",
+    "ce message et toutes les pieces", "this message and any",
+    "avant d imprimer", "pensez a l environnement",
+)
+
+# Une adresse web ou un lien entre chevrons, tels qu'un client de messagerie
+# les recopie dans le texte : « <https://www.youtube.com/channel/…> ».
+LIENS_DANS_LE_TEXTE = re.compile(
+    r"<https?://[^>]*>|<mailto:[^>]*>|https?://\S+|\bwww\.\S+",
+    re.IGNORECASE,
+)
+
+
+# Une ligne qui n'est qu'un contact : une adresse mail seule, un numéro de
+# téléphone seul. C'est le reste du pied de signature une fois les liens ôtés.
+LIGNE_DE_CONTACT = re.compile(
+    r"^[\s\-|·]*(?:[\w.+-]+@[\w-]+\.[\w.-]+"
+    r"|(?:\+?\d[\s.\-()]?){8,}\d)[\s\-|·]*$"
+)
+
+
+def _sans_liens(ligne: str) -> str:
+    """La ligne sans ses adresses web, qui ne disent rien de la créance."""
+    propre = " ".join(LIENS_DANS_LE_TEXTE.sub(" ", ligne).split()).strip(" -|·")
+    return "" if LIGNE_DE_CONTACT.match(propre) else propre
+
+
 def _extrait_lisible(texte: str) -> str:
     """Les premières phrases utiles d'un message, citations et signature ôtées.
 
@@ -1307,12 +1344,26 @@ def _extrait_lisible(texte: str) -> str:
         if not propre or propre.startswith(">"):
             continue
         plat = _aplatir(propre)
-        if plat.startswith(("le ", "de :", "a :", "envoye :", "objet :",
+        # « Le 12/05/2024, X a écrit : » ouvre une citation. Mais « Le
+        # règlement devait se faire via l'OPCO » est une phrase du débiteur :
+        # écarter tout ce qui commence par « le » supprimait sans bruit ce
+        # qu'il avait dit.
+        if ENTETE_DE_CITATION.match(plat):
+            continue
+        if plat.startswith(("de :", "a :", "envoye :", "objet :",
                             "--", "__", "cordialement", "bien a vous",
                             "bonne journee", "bonne reception")):
             continue
         if "a ecrit :" in plat or "wrote:" in plat:
             break
+        # Le pied de signature : site, telephone, reseaux sociaux, mentions
+        # legales. Il n'apprend rien sur la creance et encombre chaque
+        # message d'une adresse et de quatre liens.
+        if any(plat.startswith(debut) for debut in DEBUTS_SIGNATURE):
+            continue
+        propre = _sans_liens(propre)
+        if not propre or _aplatir(propre) in ("", "-", ":"):
+            continue
         utiles.append(propre)
         if sum(len(m) for m in utiles) >= LONGUEUR_EXTRAIT:
             break

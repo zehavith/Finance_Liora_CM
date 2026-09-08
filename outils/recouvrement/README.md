@@ -643,6 +643,41 @@ un index vide effacerait un dossier complet.
 dossiers avant de les regarder, donc rien n'est complété. L'outil le signale
 plutôt que de laisser croire à une mise à jour.
 
+### Quels messages entrent au dossier
+
+Un dossier transmis au contentieux ne doit porter que les échanges du
+débiteur. La règle tient en une phrase : **on garde la facture elle-même, et
+la suite de la conversation qui vient de la même adresse.**
+
+Un message est retenu si :
+
+- il **cite le numéro de facture** du dossier ; ou
+- il porte en en-tête une **adresse du tableau** ; ou
+- il est dans le **même fil** qu'un message qui cite la facture, et partage
+  avec lui une **adresse extérieure** — c'est ainsi qu'est récupérée la
+  réponse du débiteur, qui ne reprend ni le numéro ni l'objet, y compris
+  depuis une autre boîte que celle du tableau.
+
+Tout le reste est laissé : ni au disque, ni à l'index, ni dans la liste des
+mails récupérés. Le nombre de messages laissés est annoncé à l'écran.
+
+Deux garde-fous complètent la règle :
+
+| Écarté | Pourquoi |
+|---|---|
+| un fil de plus de 40 messages | ce n'est plus une conversation, mais une liste de diffusion |
+| un fil où plus de 5 correspondants extérieurs différents citent notre facture | notre numéro y passe au milieu de ceux d'une promotion entière : le fil n'identifie personne |
+
+Les adresses maison — celles des boîtes interrogées et de
+`--domaines-internes` — n'entrent jamais dans ce compte : `billing@` écrit à
+tout le monde et n'identifie personne.
+
+Un dossier constitué par une version antérieure se corrige **sans refaire
+l'export** : *Refaire les notes* réapplique la règle à son index, et les
+messages qui ne concernent pas le débiteur sortent du dossier. Sortir n'est
+pas détruire — leurs pièces sont déplacées dans `mails-hors-dossier`, à côté,
+où elles restent consultables.
+
 ### Retrouver les adresses à partir du numéro de facture
 
 Beaucoup de lignes n'ont qu'un numéro de facture, sans adresse mail. La

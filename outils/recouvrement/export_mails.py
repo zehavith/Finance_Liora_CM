@@ -86,6 +86,12 @@ from rendu import (  # noqa: E402
 
 MOTIF_ADRESSE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 
+# Au-delà de ce nombre d'adresses extérieures citant notre facture dans un
+# même fil, ce fil n'identifie plus personne : c'est une comptabilité qui
+# répond à une promotion entière, et notre numéro y passe au milieu des
+# autres. Un débiteur écrit seul, parfois avec son comptable ou son OPCO.
+CORRESPONDANTS_MAX_PAR_FIL = 5
+
 RACINE = Path(__file__).resolve().parent
 
 # Au-delà, il ne s'agit probablement plus d'un lot contentieux mais de
@@ -433,6 +439,51 @@ def domaines_maison(sources: SourcesGmail, options: argparse.Namespace) -> set[s
         domaine.strip().lower().lstrip("@")
         for domaine in (options.domaines_internes or "").split(",")
         if domaine.strip()
+    }
+
+
+def adresses_exterieures(message: MessageMail, maison: set[str]) -> set[str]:
+    """Les adresses du message qui ne sont pas des nôtres.
+
+    « billing@… » écrit à tous les apprenants : une adresse maison n'identifie
+    personne, et ne peut donc rattacher un message à un débiteur.
+    """
+    return {
+        adresse.lower()
+        for adresse in MOTIF_ADRESSE.findall(message.parties)
+        if adresse.rsplit("@", 1)[-1].lower() not in maison
+    }
+
+
+def adresses_citantes_par_fil(
+    messages: list, dossier: Dossier, maison: set[str]
+) -> dict[str, set[str]]:
+    """Par fil, les adresses extérieures des messages qui citent notre facture.
+
+    Ce sont elles qui ont envoyé la facture ou qui en parlent : elles font foi
+    pour le reste du fil, y compris quand elles diffèrent de celle du tableau
+    — SAS EDEN répond depuis « edenmarket2017@gmail.com ».
+    """
+    par_fil: dict[str, set[str]] = {}
+    for message in messages:
+        fil = message.thread_id or ""
+        if not fil or not dossier.factures_citees(message.texte_recherchable):
+            continue
+        par_fil.setdefault(fil, set()).update(adresses_exterieures(message, maison))
+    return par_fil
+
+
+def fils_de_diffusion(par_fil: dict[str, set[str]]) -> set[str]:
+    """Les fils où notre facture est citée par toute une promotion.
+
+    Quand une dizaine de correspondants extérieurs différents citent notre
+    numéro dans le même fil, ce n'est pas une conversation avec un débiteur
+    mais une liste de diffusion où il passe au milieu des autres. Le fil
+    n'identifie alors personne, et ne peut rattacher aucun message.
+    """
+    return {
+        fil for fil, adresses in par_fil.items()
+        if len(adresses) > CORRESPONDANTS_MAX_PAR_FIL
     }
 
 
@@ -846,17 +897,7 @@ def traiter_dossier(
     # notre facture : c'est elle qui a envoyé la facture ou qui en parle. Les
     # adresses maison en sont exclues — « billing@datascientest.com » écrit à
     # tous les apprenants, et n'identifie personne.
-    def adresses_du_debiteur() -> set[str]:
-        maison = domaines_maison(sources, options)
-        retenues = {a.lower() for a in dossier.emails if a}
-        for message in messages:
-            if not dossier.factures_citees(message.texte_recherchable):
-                continue
-            for adresse in MOTIF_ADRESSE.findall(message.parties):
-                domaine = adresse.rsplit("@", 1)[-1].lower()
-                if domaine not in maison:
-                    retenues.add(adresse.lower())
-        return retenues
+    domaines_de_la_maison = domaines_maison(sources, options)
 
     # Gmail rend des messages, pas des conversations : un fil dont un seul
     # message cite le numéro ne remontait que celui-là, et la réponse du
@@ -872,30 +913,10 @@ def traiter_dossier(
             neufs = [paire for paire in suite if paire[1] not in connus]
             if neufs:
                 complements, _ = sources.messages(neufs)
-                # Du fil, on ne prend que ce que le débiteur a écrit ou reçu.
-                # Prendre le fil entier versait au dossier les échanges de
-                # tous les autres participants — une comptabilité qui répond
-                # à trente apprenants dans le même sujet. Ce qu'on cherche,
-                # c'est la réponse du débiteur, qui ne reprend ni le numéro
-                # ni l'objet : elle porte son adresse, cela suffit.
-                #
-                # Sans adresse connue, rien ne permet de trancher : le fil
-                # est pris tel quel, comme avant.
-                connues_fil = adresses_du_debiteur()
-                if connues_fil:
-                    gardes = [
-                        message for message in complements
-                        if connues_fil & set(
-                            a.lower() for a in
-                            MOTIF_ADRESSE.findall(message.parties))
-                    ]
-                    laisses = len(complements) - len(gardes)
-                    if laisses:
-                        journal(
-                            f"    {laisses} message(s) du fil laissé(s) : "
-                            "ni écrits ni reçus par le débiteur"
-                        )
-                    complements = gardes
+                # Le fil est ramené entier ici ; le tri se fait plus bas, une
+                # fois le lot complet, par la règle unique de rétention. Le
+                # faire en deux endroits donnait deux verdicts différents sur
+                # le même message.
                 messages, doubles_fils = _fusionner_messages(messages, complements)
                 doublons += doubles_fils
                 gagnes = len(complements)
@@ -914,9 +935,66 @@ def traiter_dossier(
                         "conversations trouvées"
                     )
 
-    # Arrêtée une fois le lot complet : c'est sur l'ensemble des messages
-    # trouvés qu'on sait quelles adresses parlent de notre facture.
-    adresses_debiteur = adresses_du_debiteur()
+    # La règle de rétention, arrêtée une fois le lot complet — c'est sur
+    # l'ensemble des messages qu'on sait quelles adresses parlent de notre
+    # facture. Elle tient en une phrase : on garde la facture elle-même, et la
+    # suite de la conversation qui vient de la même adresse.
+    #
+    # Concrètement, un message est retenu s'il cite notre facture, ou s'il est
+    # dans le même fil qu'un message qui la cite *et* partage avec lui une
+    # adresse extérieure. C'est ainsi qu'on récupère la réponse du débiteur,
+    # qui ne reprend ni le numéro ni l'objet, y compris depuis une autre boîte
+    # que celle du tableau : SAS EDEN répond depuis « edenmarket2017@gmail.com »
+    # quand le tableau porte une autre adresse.
+    #
+    # Tout le reste part — ni au disque, ni à l'index, ni dans la liste des
+    # mails récupérés. Un fil de comptabilité adressé à trente apprenants
+    # porte notre numéro pour l'un d'eux ; les échanges des vingt-neuf autres
+    # n'ont rien à faire dans un dossier transmis au contentieux. Les adresses
+    # maison sont hors du compte : « billing@… » écrit à tout le monde et
+    # n'identifie personne — c'est de là que vient le mélange.
+    # Les adresses que le tableau donnait, sans celles relevées dans les
+    # messages eux-mêmes : une adresse trouvée dans un fil de diffusion y
+    # figure par construction, et s'en servir pour juger ce fil légitime
+    # reviendrait à se donner raison tout seul.
+    du_tableau = {
+        adresse.lower() for adresse in dossier.emails
+        if adresse and adresse not in adresses_decouvertes
+    }
+    par_fil = adresses_citantes_par_fil(messages, dossier, domaines_de_la_maison)
+    # Un fil de diffusion n'identifie personne : seules les adresses du
+    # tableau y rattachent un message au dossier.
+    diffusions = fils_de_diffusion(par_fil)
+    citantes = [
+        message for message in messages
+        if dossier.factures_citees(message.texte_recherchable)
+    ]
+
+    def a_retenir(message) -> bool:
+        fil = message.thread_id or ""
+        presentes = {a.lower() for a in MOTIF_ADRESSE.findall(message.parties)}
+        if du_tableau & presentes:
+            return True
+        if fil in diffusions:
+            return False
+        if dossier.factures_citees(message.texte_recherchable):
+            return True
+        attendues = par_fil.get(fil)
+        return bool(attendues and attendues & presentes)
+
+    # Sans facture citée nulle part et sans adresse au tableau, rien ne permet
+    # de trancher : le dossier a été trouvé autrement, et on garde tout.
+    if citantes or du_tableau:
+        retenus = [message for message in messages if a_retenir(message)]
+    else:
+        retenus = list(messages)
+    laisses = len(messages) - len(retenus)
+    if laisses:
+        journal(
+            f"    {laisses} message(s) laissé(s) : ils ne citent pas la "
+            "facture et ne viennent pas de l'adresse qui en parle"
+        )
+    messages = retenus
 
     resume.doublons_ecartes = doublons
 
@@ -977,37 +1055,18 @@ def traiter_dossier(
         # ce qui concerne ses autres factures. Ces messages-la sont marques
         # plutot que fondus dans le dossier : la note les met a part, et rien
         # n'est perdu.
+        # Ce qui reste ici a deja passe la regle de retention : le message
+        # cite notre facture, ou vient de l'adresse qui en parle, dans le
+        # meme fil. Ceux qui ne concernaient pas le debiteur ne sont plus la
+        # du tout — il n'y a plus lieu de les marquer.
+        #
+        # Reste le cas d'un message retenu qui nomme aussi une autre facture
+        # du meme debiteur : la note le met a part plutot que de le fondre
+        # dans le dossier de celle-ci.
         autres_factures = dossier.concerne_une_autre_facture(recherchable)
-        # Un message ou le debiteur n'apparait nulle part ne concerne pas son
-        # dossier. Il n'est la que parce qu'un numero de facture s'y trouve —
-        # un fil de comptabilite adresse a une promotion, un echange entre
-        # collegues sur un autre apprenant. Il versait au dossier les
-        # echanges d'autres personnes, ce qu'on ne transmet ni a un avocat ni
-        # a un tribunal.
-        #
-        # Venir d'une adresse maison n'y change rien : « billing@… » ecrit a
-        # tous les apprenants, et c'est justement de la que vient le
-        # melange.
-        #
-        # « parties » est une chaine d'en-tetes : on y compte les adresses,
-        # pas les caracteres.
-        adresses_du_message = set(MOTIF_ADRESSE.findall(parties))
-        # Sur les seules adresses que le tableau donnait : une adresse relevee
-        # dans un fil de diffusion y figure par construction, et s'en servir
-        # pour juger ce fil legitime reviendrait a se donner raison tout seul.
-        connues = adresses_debiteur
-        presentes = connues & {a.lower() for a in adresses_du_message}
-        # Sans adresse connue, rien ne permet de dire que le debiteur n'y est
-        # pas : le numero reste le seul lien, et on garde le message.
-        hors_debiteur = bool(connues) and not autres_factures and not presentes
         motif_ecart = ""
-        if autres_factures:
+        if autres_factures and not dossier.factures_citees(recherchable):
             motif_ecart = "autre facture : " + ", ".join(autres_factures)
-        elif hors_debiteur:
-            motif_ecart = (
-                f"hors debiteur : {len(adresses_du_message)} adresse(s) au "
-                "message, aucune du debiteur"
-            )
 
         lignes.append(
             LigneIndex(
@@ -1530,10 +1589,18 @@ def _decouvrir_adresses(
     le plafond du dossier est une adresse interne ou partagée, pas celle d'un
     débiteur, et elle est écartée à voix haute.
     """
+    maison = domaines_maison(sources, options)
+    # Les fils de diffusion sont hors du compte : y prendre les adresses ferait
+    # entrer au dossier une promotion entière — et l'annoncerait comme autant
+    # d'adresses du débiteur, alors que leurs messages en sont écartés.
+    diffusions = fils_de_diffusion(
+        adresses_citantes_par_fil(messages, dossier, maison)
+    )
     citant_facture = [
         message
         for message in messages
         if dossier.factures_citees(message.texte_recherchable)
+        and (message.thread_id or "") not in diffusions
     ]
     if not citant_facture:
         journal(
@@ -1542,9 +1609,7 @@ def _decouvrir_adresses(
         )
         return [], []
 
-    candidates = adresses_candidates(
-        citant_facture, domaines_maison(sources, options), dossier.emails
-    )
+    candidates = adresses_candidates(citant_facture, maison, dossier.emails)
     if not candidates:
         return [], []
 

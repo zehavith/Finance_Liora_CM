@@ -29,6 +29,7 @@ import sys
 import threading
 import time
 import webbrowser
+from collections.abc import Iterable
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -712,7 +713,10 @@ def recopier_note(repertoire: Path, sortie: Path, destination: Path | None) -> i
     return copies
 
 
-def reclasser_index(repertoire: Path) -> int:
+ECARTES = "mails-hors-dossier"
+
+
+def reclasser_index(repertoire: Path, emails: Iterable[str] = ()) -> int:
     """Réapplique aux messages déjà au dossier la règle du jour.
 
     Les dossiers constitués avant elle portent des messages qui ne concernent
@@ -720,12 +724,15 @@ def reclasser_index(repertoire: Path) -> int:
     notre numéro figure par hasard. Le filtrage se fait à l'export, et refaire
     une note ne les enlève pas — elle est réécrite depuis le même index.
 
-    On recalcule donc le motif de chaque message. Rien n'est supprimé : les
-    messages restent au dossier, consultables, mais ceux qui ne concernent pas
-    le débiteur cessent de compter dans la note et dans les décomptes. Cela
-    évite de refaire une heure d'export pour corriger ce qui est déjà là.
+    La règle est celle de l'export, mot pour mot : on garde le message qui cite
+    la facture, celui qui porte une adresse du tableau, et la suite du fil
+    venue de l'adresse qui en parle. Le reste sort du dossier — un dossier
+    transmis au contentieux n'a pas à porter les échanges d'autres personnes.
 
-    Renvoie le nombre de messages nouvellement mis à part.
+    Sortir n'est pas détruire : les pièces écartées sont déplacées dans
+    « mails-hors-dossier », à côté, où elles restent consultables.
+
+    Renvoie le nombre de messages retirés du dossier.
     """
     index = repertoire / "index.csv"
     if not index.exists():
@@ -748,6 +755,7 @@ def reclasser_index(repertoire: Path) -> int:
         for adresse in (preferences.get("boites") or "").split(",")
         if "@" in adresse
     }
+    du_tableau = {a.strip().lower() for a in emails if a and a.strip()}
 
     def adresses(rangee: dict) -> set[str]:
         entetes = " ".join([rangee.get("expediteur") or "",
@@ -755,40 +763,138 @@ def reclasser_index(repertoire: Path) -> int:
                             rangee.get("copie") or ""])
         return {a.lower() for a in export_mails.MOTIF_ADRESSE.findall(entetes)}
 
-    # Fait foi toute adresse extérieure figurant dans un message qui cite
-    # notre facture : le débiteur écrit souvent d'une autre boîte que celle
-    # du tableau, et c'est bien de notre créance qu'il parle.
-    du_debiteur: set[str] = set()
+    def exterieures(rangee: dict) -> set[str]:
+        return {a for a in adresses(rangee)
+                if a.rsplit("@", 1)[-1] not in maison}
+
+    def cite(rangee: dict) -> bool:
+        return bool((rangee.get("factures_concernees") or "").strip())
+
+    # Fait foi, par fil, toute adresse extérieure figurant dans un message qui
+    # cite notre facture : le débiteur écrit souvent d'une autre boîte que
+    # celle du tableau, et c'est bien de notre créance qu'il parle.
+    par_fil: dict[str, set[str]] = {}
     for rangee in rangees:
-        if not (rangee.get("factures_concernees") or "").strip():
-            continue
-        for adresse in adresses(rangee):
-            if adresse.rsplit("@", 1)[-1] not in maison:
-                du_debiteur.add(adresse)
-    if not du_debiteur:
+        fil = (rangee.get("thread_id") or "").strip()
+        if fil and cite(rangee):
+            par_fil.setdefault(fil, set()).update(exterieures(rangee))
+    diffusions = export_mails.fils_de_diffusion(par_fil)
+
+    if not par_fil and not du_tableau:
+        # Rien pour trancher : on ne retire rien plutôt que de vider un dossier.
         return 0
 
-    nouveaux = 0
+    def a_garder(rangee: dict) -> bool:
+        # Une pièce versée à la main est au dossier parce qu'on l'y a mise.
+        if (rangee.get("critere") or "").strip().startswith(("déposé", "depose")):
+            return True
+        fil = (rangee.get("thread_id") or "").strip()
+        presentes = adresses(rangee)
+        if du_tableau & presentes:
+            return True
+        if fil in diffusions:
+            return False
+        if cite(rangee):
+            return True
+        attendues = par_fil.get(fil)
+        return bool(attendues and attendues & presentes)
+
+    gardees = [rangee for rangee in rangees if a_garder(rangee)]
+    if len(gardees) == len(rangees):
+        return 0
+
     for rangee in rangees:
-        critere = (rangee.get("critere") or "").strip()
-        if critere.startswith(("autre facture", "déposé", "depose")):
+        if a_garder(rangee):
             continue
-        concerne = bool(du_debiteur & adresses(rangee))
-        if concerne and critere.startswith(("hors debiteur", "diffusion")):
-            # Une règle plus juste peut aussi rendre un message au dossier.
-            rangee["critere"] = "adresse"
-        elif not concerne and not critere.startswith(("hors debiteur", "diffusion")):
-            rangee["critere"] = (
-                f"hors debiteur : {len(adresses(rangee))} adresse(s) au "
-                "message, aucune du debiteur"
-            )
-            nouveaux += 1
+        _ecarter_pieces(repertoire, rangee)
 
     module_indexation._ecrire_csv(
         index, module_indexation.COLONNES_INDEX,
         [{cle: r.get(cle, "") for cle in module_indexation.COLONNES_INDEX}
-         for r in rangees])
-    return nouveaux
+         for r in gardees])
+    return len(rangees) - len(gardees)
+
+
+def accorder_recapitulatif(repertoire: Path, reference: str) -> None:
+    """Remet le récapitulatif d'accord avec l'index du dossier.
+
+    Le nombre de mails, les dates du premier et du dernier, les pièces
+    jointes : la liste des dossiers les lit dans le récapitulatif. Après un
+    reclassement, elle annonçait cinquante-huit messages là où le dossier n'en
+    porte plus que huit.
+
+    Jamais bloquant : un récapitulatif ouvert dans Excel ne se remplace pas,
+    et ce n'est pas une raison pour refuser de refaire une note.
+    """
+    chemin = repertoire.parent / "_recapitulatif.csv"
+    rangees = module_indexation.lire_recapitulatif(chemin)
+    if not rangees:
+        return
+    try:
+        lignes = list(csv.DictReader(
+            (repertoire / "index.csv").read_text(encoding="utf-8-sig").splitlines(),
+            delimiter=";"))
+    except OSError:
+        return
+
+    dates = []
+    for ligne in lignes:
+        try:
+            dates.append(datetime.strptime(ligne.get("date") or "", "%d/%m/%Y"))
+        except ValueError:
+            continue
+    comptes = {
+        "nb_mails": str(len(lignes)),
+        "nb_recus": str(sum(1 for l in lignes if (l.get("sens") or "") == "reçu")),
+        "nb_envoyes": str(sum(1 for l in lignes if (l.get("sens") or "") == "envoyé")),
+        "nb_pieces_jointes": str(sum(
+            int(_entier(l.get("nb_pieces_jointes"))) for l in lignes)),
+        "premier_mail": min(dates).strftime("%d/%m/%Y") if dates else "",
+        "dernier_mail": max(dates).strftime("%d/%m/%Y") if dates else "",
+    }
+
+    touchee = False
+    for rangee in rangees:
+        if (rangee.get("reference") or "").strip() == reference:
+            rangee.update(comptes)
+            touchee = True
+    if not touchee:
+        return
+    try:
+        module_indexation._ecrire_csv(
+            chemin, module_indexation.COLONNES_RECAP,
+            [{cle: r.get(cle, "") for cle in module_indexation.COLONNES_RECAP}
+             for r in rangees])
+    except OSError:
+        return
+
+
+def _entier(valeur) -> int:
+    try:
+        return int(str(valeur or "0").strip() or 0)
+    except ValueError:
+        return 0
+
+
+def _ecarter_pieces(repertoire: Path, rangee: dict) -> None:
+    """Déplace les fichiers d'un message hors du dossier, sans rien détruire.
+
+    Un fichier ouvert dans un lecteur PDF ne se déplace pas sous Windows :
+    l'échec est sans conséquence, la rangée quitte l'index de toute façon.
+    """
+    for cle in ("fichier_pdf", "fichier_eml", "dossier_pieces_jointes"):
+        relatif = (rangee.get(cle) or "").strip()
+        if not relatif:
+            continue
+        source = repertoire / relatif
+        if not source.exists():
+            continue
+        destination = repertoire / ECARTES / relatif
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source), str(destination))
+        except OSError:
+            continue
 
 
 def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[bool, str]:
@@ -806,9 +912,24 @@ def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[boo
         return False, "index du dossier introuvable"
 
     # Avant de reecrire la note : les messages qui ne concernent pas le
-    # debiteur cessent de compter. Sans cela, refaire la note d'un dossier
+    # debiteur sortent du dossier. Sans cela, refaire la note d'un dossier
     # constitue avant la regle la reecrivait a l'identique.
-    reclasser_index(repertoire)
+    #
+    # Les adresses relevees dans les messages eux-memes sont hors du compte :
+    # une adresse trouvee dans un fil de diffusion y figure par construction,
+    # et s'en servir pour juger ce fil legitime reviendrait a se donner raison
+    # tout seul. Seules celles du tableau font foi ici.
+    decouvertes = {
+        adresse.strip()
+        for adresse in (dossier.get("adresses_decouvertes") or "").split(" | ")
+        if adresse.strip()
+    }
+    retires = reclasser_index(repertoire, [
+        adresse for adresse in (dossier.get("emails") or "").split(" | ")
+        if adresse.strip() and adresse.strip() not in decouvertes
+    ])
+    if retires:
+        accorder_recapitulatif(repertoire, dossier["reference"])
 
     try:
         from dossiers import Dossier  # noqa: PLC0415

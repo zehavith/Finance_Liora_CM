@@ -3608,6 +3608,49 @@ def test_document_monday_verrouille() -> None:
          module_monday.identifiant) = vrais
 
 
+def test_extrait_sans_signature() -> None:
+    """La note cite ce qui a été dit, pas les pieds de signature."""
+    import synthese as module_synthese  # noqa: PLC0415
+
+    print("\nExtraits de messages")
+
+    # Un message de service porte cinq lignes de pied — site, adresse,
+    # téléphone, réseaux sociaux — qui n'apprennent rien sur la créance et
+    # alourdissaient chaque extrait de la note.
+    extrait = module_synthese._extrait_lisible(
+        "Bonjour,\n\nIl s'agit d'une erreur d'automatisation.\n"
+        "Pouvez-vous nous transmettre l'accord de prise en charge ?\n\n"
+        "Bien à vous,\n\nService Comptable & Financier\n"
+        "Website : https://datascientest.com\n"
+        "billing@datascientest.com<https://www.youtube.com/channel/UCTVT>"
+        "<https://www.instagram.com/datascientest/>\n07.55.52.08.49\n")
+    verifier("erreur d'automatisation" in extrait,
+             "ce qui a été dit est cité")
+    for indesirable in ("http", "youtube", "instagram", "Website",
+                        "billing@datascientest.com", "07.55.52.08.49"):
+        verifier(indesirable not in extrait,
+                 f"« {indesirable} » ne figure plus dans l'extrait")
+
+    # Une adresse au milieu d'une phrase est du contenu, pas une signature.
+    utile = module_synthese._extrait_lisible(
+        "Merci d'écrire désormais à compta@sas-eden.fr pour toute relance.")
+    verifier("compta@sas-eden.fr" in utile,
+             "une adresse citée dans une phrase est conservée")
+
+    # « Le 12/05, X a écrit : » ouvre une citation ; « Le règlement devait se
+    # faire via l'OPCO » est une phrase du débiteur. Écarter tout ce qui
+    # commence par « le » supprimait sans bruit ce qu'il avait dit.
+    garde = module_synthese._extrait_lisible(
+        "Bonjour\nLe règlement devait se faire via l'OPCO.\nCordialement\n")
+    verifier("Le règlement devait se faire via l'OPCO." in garde,
+             f"une phrase commençant par « Le » est gardée ({garde})")
+    coupe = module_synthese._extrait_lisible(
+        "Je conteste ce montant.\n\nLe 12/05/2024 à 09:30, Liora a écrit :\n"
+        "> Votre facture reste impayée.\n")
+    verifier(coupe.strip() == "Je conteste ce montant.",
+             f"et la citation du fil est coupée ({coupe})")
+
+
 def test_autre_facture_partage_le_prefixe() -> None:
     """Une « autre facture » doit ressembler à une facture du débiteur."""
     import dossiers as module_dossiers  # noqa: PLC0415
@@ -3670,12 +3713,15 @@ def test_reclasser_un_dossier_deja_constitue() -> None:
                                 critere="indirect", factures_concernees="",
                                 message_id="m2")]
         # Vingt messages d'autres apprenants, venus du même fil.
+        (dossier / "mails").mkdir()
         for numero in range(20):
+            eml = f"mails/piece-{3 + numero}.eml"
+            (dossier / eml).write_text("brut", encoding="utf-8")
             rangees.append(dict(modele, piece_n=str(3 + numero),
                                 expediteur=f"apprenant{numero}@exemple.fr",
                                 destinataires="billing@datascientest.com",
                                 critere="indirect", factures_concernees="",
-                                message_id=f"a{numero}"))
+                                fichier_eml=eml, message_id=f"a{numero}"))
         module_indexation._ecrire_csv(
             dossier / "index.csv", module_indexation.COLONNES_INDEX, rangees)
 
@@ -3684,22 +3730,24 @@ def test_reclasser_un_dossier_deja_constitue() -> None:
             "boites": "billing@datascientest.com",
             "domaines": "datascientest.com,liora.io"})
         try:
-            mis_a_part = module_interface.reclasser_index(dossier)
+            retires = module_interface.reclasser_index(
+                dossier, ["sufyen.b@gmail.com"])
         finally:
             module_interface.ecrire_preferences(avant)
 
-        verifier(mis_a_part == 20,
-                 f"les vingt messages étrangers cessent de compter ({mis_a_part})")
-        apres = list(csv.DictReader(
+        verifier(retires == 20,
+                 f"les vingt messages étrangers sortent du dossier ({retires})")
+        gardes = list(csv.DictReader(
             (dossier / "index.csv").read_text(encoding="utf-8-sig").splitlines(),
             delimiter=";"))
-        # Rien n'est supprimé : les messages restent au dossier, consultables.
-        verifier(len(apres) == 22,
-                 f"sans qu'aucun message soit supprimé ({len(apres)})")
-        gardes = [r for r in apres
-                  if not (r["critere"] or "").startswith("hors debiteur")]
         verifier(len(gardes) == 2,
                  f"deux messages établissent encore la créance ({len(gardes)})")
+        # Sortir du dossier n'est pas détruire : les pièces sont à côté.
+        ecartes = sorted((dossier / "mails-hors-dossier" / "mails").glob("*.eml"))
+        verifier(len(ecartes) == 20,
+                 f"leurs pièces sont déplacées, pas supprimées ({len(ecartes)})")
+        verifier(not list((dossier / "mails").glob("*.eml")),
+                 "et ne restent pas dans « mails »")
         # L'adresse du débiteur est celle qui parle de notre facture, même
         # absente du tableau : la conversation d'EDEN est gardée entière.
         verifier(all("edenmarket2017@gmail.com" in r["expediteur"]
@@ -3796,7 +3844,7 @@ def test_adresse_qui_parle_de_notre_facture() -> None:
     verifier(not any((r["critere"] or "").startswith("hors debiteur")
                      for r in rangees),
              "et rien n'y est mis à part")
-    verifier(any("20 message(s) du fil laissé(s)" in l for l in lignes_journal),
+    verifier(any("20 message(s) laissé(s)" in l for l in lignes_journal),
              "les vingt autres apprenants du fil sont laissés")
 
 
@@ -3830,6 +3878,7 @@ def test_fil_de_diffusion_ecarte() -> None:
     """Un message où le débiteur n'apparaît pas ne concerne pas son dossier."""
     import export_mails as module_export  # noqa: PLC0415
     import synthese as module_synthese  # noqa: PLC0415
+    from gmail_api import SourcesGmail  # noqa: PLC0415
 
     print("\nFils de diffusion")
 
@@ -3851,37 +3900,108 @@ def test_fil_de_diffusion_ecarte() -> None:
         thread_id="t", message_id="m")
     verifier(module_synthese.concerne_une_autre_facture(ligne),
              "il est mis à part comme un message d'une autre facture")
-    # Venir d'une adresse maison n'y change rien : « billing@… » écrit à tous
-    # les apprenants, et c'est de là que vient le mélange.
-    source = Path("export_mails.py").read_text(encoding="utf-8")
-    verifier("hors_debiteur = bool(connues) and not autres_factures"
-             " and not presentes" in source,
-             "la règle est l'absence du débiteur, sans seuil ni exception")
     synthese = module_synthese.analyser([ligne], {})
     verifier(synthese.nb_pieces == 0 and len(synthese.autres_factures) == 1,
-             f"et ne compte pas parmi les pièces "
-             f"({synthese.nb_pieces} retenue(s))")
+             f"un index d'une version antérieure reste lisible "
+             f"({synthese.nb_pieces} pièce(s) retenue(s))")
 
-    # Le rapprochement se fait sur les adresses du tableau : une adresse
-    # relevée dans le fil lui-même y figure par construction, et s'en servir
-    # pour juger ce fil légitime reviendrait à se donner raison tout seul.
-    source = Path("export_mails.py").read_text(encoding="utf-8")
-    # Fait foi toute adresse extérieure figurant dans un message qui cite
-    # notre facture : le débiteur écrit souvent d'une autre boîte que celle
-    # du tableau. Les adresses maison en sont exclues — « billing@… » écrit
-    # à tous les apprenants et n'identifie personne.
-    verifier("def adresses_du_debiteur()" in source,
-             "les adresses qui parlent de notre facture font foi")
-    verifier("if domaine not in maison" in source,
-             "à l'exclusion des adresses maison")
+    # La règle de rétention, en situation : on garde la facture elle-même, et
+    # la suite de la conversation qui vient de la même adresse. Le reste est
+    # laissé — pas seulement mis à part : un dossier transmis au contentieux
+    # n'a pas à porter les échanges d'autres personnes.
+    def courriel(sujet, de, a, corps):
+        message = EmailMessage()
+        message["From"] = de
+        message["To"] = a
+        message["Subject"] = sujet
+        message["Date"] = "Tue, 21 May 2024 09:30:00 +0000"
+        message.set_content(corps)
+        return message.as_bytes()
 
-    # Du fil, on ne prend que ce que le débiteur a écrit ou reçu. Prendre le
-    # fil entier versait au dossier les échanges de tous les participants —
-    # une comptabilité qui répond à trente apprenants dans le même sujet.
-    verifier("connues_fil = adresses_du_debiteur()" in source,
-             "et du fil, on ne prend que la part du débiteur")
-    verifier("ni écrits ni reçus par le débiteur" in source,
-             "en disant combien de messages du fil sont laissés")
+    maison = "billing@datascientest.com"
+    boite = {
+        # Le fil de notre facture : la graine, puis la réponse du débiteur,
+        # qui ne reprend plus le numéro, et un inconnu venu s'y greffer.
+        "f1-graine": ("fil1", courriel(
+            "Formation", "EDEN MARKET <edenmarket2017@gmail.com>", maison,
+            "Notre salarié. Facture FACT-2405-00409.")),
+        "f1-suite": ("fil1", courriel(
+            "Re: Formation", "edenmarket2017@gmail.com", maison,
+            "Voici l'accord signé.")),
+        "f1-inconnu": ("fil1", courriel(
+            "Question d'un tiers", "apprenant@exemple.fr", maison,
+            "Ma question à moi.")),
+        # Même adresse, mais une autre conversation, sans notre facture :
+        # « que le fil de la conversation qui provient de la même adresse ».
+        "f2-ailleurs": ("fil2", courriel(
+            "Newsletter", "edenmarket2017@gmail.com", maison,
+            "Rien à voir avec la formation.")),
+        # L'adresse du tableau, elle, rattache le message sans autre condition.
+        "f3-tableau": ("fil3", courriel(
+            "Un mot", "sufyen.b@gmail.com", maison, "Je vous rappelle demain.")),
+    }
+    # Un fil où notre numéro est cité par toute une promotion : il n'identifie
+    # personne, et rien n'en est gardé — pas même les messages qui le citent.
+    for numero in range(module_export.CORRESPONDANTS_MAX_PAR_FIL + 1):
+        boite[f"f4-promo{numero}"] = ("fil4", courriel(
+            f"Comptabilité {numero}", f"apprenant{numero}@exemple.fr", maison,
+            "Question sans rapport. FACT-2405-00409 traîne dans le fil."))
+
+    class _Boite:
+        adresse_boite = maison
+
+        def rechercher_identifiants(self, *_a, **_k):
+            return list(boite)
+
+        def identifiants_des_fils(self, *_a, **_k):
+            self.fils_ecartes = 0
+            return list(boite)
+
+        def recuperer_messages(self, identifiants):
+            for identifiant in identifiants:
+                fil, brut = boite[identifiant]
+                message = lire_message(
+                    {"id": identifiant, "threadId": fil,
+                     "internalDate": "1716283800000"}, brut)
+                message.boites = [self.adresse_boite]
+                yield message
+
+    vraies = module_export.ouvrir_sources
+    module_export.ouvrir_sources = lambda **_: SourcesGmail([_Boite()])
+    try:
+        with tempfile.TemporaryDirectory() as repertoire:
+            sortie = Path(repertoire) / "export"
+            depot = Path(repertoire) / "d.csv"
+            depot.write_text(
+                "N° de facture;Entreprise;Email;Reste à devoir TTC\n"
+                "FACT-2405-00409;SAS EDEN;sufyen.b@gmail.com;5 990,00 €\n",
+                encoding="utf-8-sig")
+            module_export.executer(module_export.analyser_arguments([
+                "--dossiers", str(depot), "--sortie", str(sortie),
+                "--boites", maison, "--sans-navigateur",
+                "--domaines-internes", "datascientest.com,liora.io",
+                "--sans-decouverte-adresses"]), relais=lambda _l: None)
+            index = next(sortie.glob("*/index.csv"))
+            gardes = {
+                rangee["objet"] for rangee in csv.DictReader(
+                    index.read_text(encoding="utf-8-sig").splitlines(),
+                    delimiter=";")
+            }
+    finally:
+        module_export.ouvrir_sources = vraies
+
+    verifier("Formation" in gardes, "le message qui cite la facture est gardé")
+    verifier("Re: Formation" in gardes,
+             "et la suite du fil venue de la même adresse, sans le numéro")
+    verifier("Un mot" in gardes,
+             "l'adresse du tableau rattache le message où qu'il soit")
+    verifier("Newsletter" not in gardes,
+             "mais la même adresse dans un autre fil ne suffit pas")
+    verifier(not any(objet.startswith("Comptabilité") for objet in gardes),
+             "un fil où toute une promotion cite le numéro n'y rattache rien")
+    verifier(len(gardes) == 3,
+             f"l'inconnu du fil est laissé, pas mis à part "
+             f"({len(gardes)} objet(s) au dossier)")
 
 
 def test_heures_de_l_emargement() -> None:
@@ -7919,6 +8039,7 @@ def main() -> int:
     test_fil_trop_long_ecarte()
     test_csv_ouvert_dans_excel()
     test_document_monday_verrouille()
+    test_extrait_sans_signature()
     test_autre_facture_partage_le_prefixe()
     test_reclasser_un_dossier_deja_constitue()
     test_adresse_qui_parle_de_notre_facture()
