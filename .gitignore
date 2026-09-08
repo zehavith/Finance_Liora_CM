@@ -1,32 +1,12 @@
-# OS / éditeurs
-.DS_Store
-Thumbs.db
-*.swp
-*~
-.idea/
-.vscode/
-
-# Dépendances / build éventuels (l'app n'en utilise pas aujourd'hui)
-node_modules/
-dist/
-
-# Logs
-*.log
-
-# Outil de recouvrement : secrets d'accès Gmail et données extraites.
-# Ne doivent jamais être versionnés.
-outils/recouvrement/credentials.json
-outils/recouvrement/token.json
-outils/recouvrement/monday-token.txt
+# Données propres au poste : elles appartiennent à la personne qui utilise
+# l'outil, jamais à l'outil lui-même. Livrées dans le zip, elles écrasaient
+# à chaque installation ce que l'application avait appris ou reçu.
+outils/recouvrement/annuaire-entreprises.json
 outils/recouvrement/suivi-dossiers.json
-outils/recouvrement/*service*.json
-outils/recouvrement/dossiers.csv
-outils/recouvrement/dossiers-depose.*
 outils/recouvrement/interface-preferences.json
-outils/recouvrement/dossiers.xlsx
-outils/recouvrement/*.xlsx
-outils/recouvrement/*.xlsm
-export/
-outils/recouvrement/export/
-__pycache__/
-*.pyc
+outils/recouvrement/monday-token.txt
+outils/recouvrement/complements-suivi/
+
+# Traces d'exécution et fichiers déposés dans la page.
+outils/recouvrement/__pycache__/
+outils/recouvrement/dossiers-depose.csv
