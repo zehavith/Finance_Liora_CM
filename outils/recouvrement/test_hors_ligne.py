@@ -15,6 +15,7 @@ import inspect
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -3294,6 +3295,47 @@ def test_note_impossible_a_reecrire() -> None:
              "et ce qu'il y a à faire")
 
 
+def test_page_sans_reference_perdue() -> None:
+    """Le script de la page ne cite aucune fonction qui n'existe pas.
+
+    En remaniant le filtre par état, deux fonctions voisines — dont
+    « chercherDossiers » — sont parties avec le bloc remplacé. La page se
+    chargeait, le script s'arrêtait à la première ligne qui les cite, et plus
+    rien ne répondait : ni la recherche, ni le tri, ni les cases à cocher.
+    Aucune vérification de texte ne pouvait le voir.
+    """
+    import interface as module_interface  # noqa: PLC0415
+
+    print("\nScript de la page")
+
+    page = module_interface.PAGE
+    script = page[page.rindex("<script>") + len("<script>"):page.rindex("</script>")]
+
+    definis = set(re.findall(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\(", script))
+    definis |= set(re.findall(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=",
+                              script))
+    # Les fonctions passées en gestionnaire : c'est là que la référence
+    # perdue casse tout, à l'évaluation du nom, avant même le premier clic.
+    cites = set(re.findall(
+        r'addEventListener\(\s*"[^"]+"\s*,\s*([A-Za-z_$][\w$]*)\s*\)', script))
+    manquants = sorted(cites - definis)
+    verifier(not manquants,
+             f"chaque gestionnaire cité est défini ({', '.join(manquants) or 'tous'})")
+
+    node = shutil.which("node") or shutil.which("nodejs")
+    if not node:
+        print("  --   node absent : la syntaxe n'est pas vérifiée ici")
+        return
+    with tempfile.TemporaryDirectory() as repertoire:
+        fichier = Path(repertoire) / "page.js"
+        fichier.write_text(script, encoding="utf-8")
+        rendu = subprocess.run([node, "--check", str(fichier)],
+                               capture_output=True, text=True, check=False)
+    verifier(rendu.returncode == 0,
+             f"et le script est syntaxiquement valide "
+             f"({(rendu.stderr or '').strip().splitlines()[:1] or 'ok'})")
+
+
 def test_filtre_par_etat() -> None:
     """Les deux tableaux se filtrent par l'état du dossier."""
     import interface as module_interface  # noqa: PLC0415
@@ -3304,15 +3346,29 @@ def test_filtre_par_etat() -> None:
     for identifiant in ('id="filtreEtatSuivi"', 'id="filtreEtatDocuments"'):
         verifier(identifiant in page, f"{identifiant} est dans la page")
     verifier("Tous les états" in page, "avec un choix qui ne filtre rien")
+    # Plusieurs états à la fois : « les possibles abandons et les non
+    # transmis » ne se demande pas avec une liste à choix unique.
+    verifier("const ETATS_CHOISIS = new Set();" in page,
+             "plusieurs états peuvent être cochés à la fois")
+    verifier('class="choix-etat"' in page and "panneau-etats" in page,
+             "par un panneau de cases à cocher")
     # Le filtre porte sur les dossiers, pas seulement sur l'affichage : c'est
     # « dossiersFiltres » que les deux tableaux consultent.
-    verifier("if (ETAT_CHOISI) {" in page
-             and '(d.statut || "non-transmis") === ETAT_CHOISI' in page,
-             "et il retient les dossiers dans cet état")
+    verifier("if (ETATS_CHOISIS.size) {" in page
+             and 'ETATS_CHOISIS.has(d.statut || "non-transmis")' in page,
+             "et il retient les dossiers dans ces états")
+    # Vide = tous : c'est le seul moyen de dire « aucun filtre » sans
+    # obliger à tout cocher.
+    verifier("function viderEtats" in page and "ETATS_CHOISIS.clear()" in page,
+             "un bouton rend la liste entière")
     # Partagé entre les deux onglets, comme la recherche : isoler les
-    # possibles abandons puis passer aux documents sans le reperdre.
-    verifier('$(id) !== evenement.target) $(id).value = ETAT_CHOISI' in page,
-             "les deux listes déroulantes restent d'accord")
+    # possibles abandons puis passer aux documents sans les reperdre.
+    verifier('document.querySelectorAll(".choix-etat").forEach((coche) => {'
+             in page and "coche.checked = ETATS_CHOISIS.has(coche.value);" in page,
+             "les deux panneaux restent d'accord")
+    verifier("function basculerPanneauEtats" in page
+             and 'evenement.target.closest(".filtre-etats")' in page,
+             "le panneau se referme quand on clique ailleurs")
     verifier("function remplirFiltresEtat" in page
              and "comptes.get(s.cle)" in page,
              "chaque état porte le nombre de dossiers qu'il compte")
@@ -8498,6 +8554,7 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_note_impossible_a_reecrire()
+    test_page_sans_reference_perdue()
     test_filtre_par_etat()
     test_tri_des_colonnes()
     test_pas_de_reserve_dans_la_note()

@@ -2160,6 +2160,24 @@ details.absents li{break-inside:avoid}
 /* Le libelle d'etat le plus long fait soixante caracteres : laisse libre, la
    liste deroulante repoussait le compte et le bouton hors de l'ecran. */
 .recherche-dossiers select{max-width:270px}
+
+/* Le filtre par etat : un bouton, et un panneau de cases a cocher. Plusieurs
+   etats a la fois — « les possibles abandons et les non transmis » — ne se
+   demandent pas avec une liste a choix unique. */
+.filtre-etats{position:relative}
+.filtre-etats > button{max-width:300px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.filtre-etats > button.actif{border-color:var(--accent);color:var(--accent)}
+.panneau-etats{position:absolute;top:calc(100% + 6px);left:0;z-index:30;
+  background:var(--fond-2);border:1px solid var(--bord);border-radius:10px;
+  padding:7px;min-width:330px;box-shadow:0 12px 30px rgba(0,0,0,.5)}
+.ligne-etat{display:flex;align-items:center;gap:9px;padding:5px 7px;
+  border-radius:7px;cursor:pointer;font-size:12.5px}
+.ligne-etat:hover{background:rgba(255,255,255,.05)}
+.ligne-etat i{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+.ligne-etat span{flex:1}
+.ligne-etat b{color:var(--texte-3);font-variant-numeric:tabular-nums}
+.panneau-etats .vider-etats{width:100%;margin-top:6px;font-size:12px}
 .compte-recherche{font-size:12px;color:var(--texte-3);white-space:nowrap}
 .retenu{font-size:11.5px;color:var(--texte-3);max-width:230px}
 .lien-oubli{font-size:11.5px;color:var(--accent);cursor:pointer;white-space:nowrap}
@@ -2368,9 +2386,11 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <div class="recherche-dossiers">
       <input type="search" id="chercheSuivi" autocomplete="off"
              placeholder="Facture, adresse mail, nom…" />
-      <select id="filtreEtatSuivi" title="N'afficher que les dossiers dans cet état.">
-        <option value="">Tous les états</option>
-      </select>
+      <div class="filtre-etats">
+        <button type="button" class="secondaire" id="filtreEtatSuivi"
+                title="N'afficher que les dossiers dans ces états. Plusieurs états peuvent être cochés.">Tous les états ▾</button>
+        <div class="panneau-etats" id="panneauEtatSuivi" hidden></div>
+      </div>
       <span class="compte-recherche" id="compteSuivi"></span>
     </div>
     <div id="tableSuivi"></div>
@@ -2385,9 +2405,11 @@ button:disabled{opacity:.45;cursor:not-allowed}
     <div class="recherche-dossiers">
       <input type="search" id="chercheDocuments" autocomplete="off"
              placeholder="Facture, adresse mail, nom…" />
-      <select id="filtreEtatDocuments" title="N'afficher que les dossiers dans cet état.">
-        <option value="">Tous les états</option>
-      </select>
+      <div class="filtre-etats">
+        <button type="button" class="secondaire" id="filtreEtatDocuments"
+                title="N'afficher que les dossiers dans ces états. Plusieurs états peuvent être cochés.">Tous les états ▾</button>
+        <div class="panneau-etats" id="panneauEtatDocuments" hidden></div>
+      </div>
       <span class="compte-recherche" id="compteDocuments"></span>
       <button class="secondaire" id="refaireNotes"
               title="Réécrit les notes à partir des messages déjà au dossier, sans retourner sur Gmail. Quelques secondes.">Refaire les notes</button>
@@ -2869,7 +2891,9 @@ $("chercheTableau").addEventListener("input", rendreTableaux);
   if ($(id)) $(id).addEventListener("input", chercherDossiers);
 });
 ["filtreEtatSuivi", "filtreEtatDocuments"].forEach((id) => {
-  if ($(id)) $(id).addEventListener("change", choisirEtat);
+  if ($(id)) {
+    $(id).addEventListener("click", () => basculerPanneauEtats($(id)));
+  }
 });
 
 // Les dossiers dont on veut refaire la note. Sur deux cents dossiers dont
@@ -3658,8 +3682,8 @@ function dossiersFiltres() {
   // L'état d'abord : « montre-moi les possibles abandons » est une question
   // à part entière, qu'aucun mot-clé ne pose — le libellé n'est écrit nulle
   // part dans les champs sur lesquels porte la recherche.
-  if (ETAT_CHOISI) {
-    liste = liste.filter((d) => (d.statut || "non-transmis") === ETAT_CHOISI);
+  if (ETATS_CHOISIS.size) {
+    liste = liste.filter((d) => ETATS_CHOISIS.has(d.statut || "non-transmis"));
   }
   const terme = RECHERCHE.trim();
   if (!terme) return liste;
@@ -3670,57 +3694,13 @@ function dossiersFiltres() {
 }
 
 function majCompteRecherche(visibles) {
-  const filtre = Boolean(RECHERCHE.trim() || ETAT_CHOISI);
+  const filtre = Boolean(RECHERCHE.trim() || ETATS_CHOISIS.size);
   const texte = !filtre
     ? (DOSSIERS.length ? `${DOSSIERS.length} dossier(s).` : "")
     : `${visibles} dossier(s) sur ${DOSSIERS.length}.`;
   ["compteSuivi", "compteDocuments"].forEach((id) => {
     if ($(id)) $(id).textContent = texte;
   });
-}
-
-// -- filtre par état
-//
-// Partagé entre les deux onglets, comme la recherche : isoler les possibles
-// abandons dans « État des dossiers » puis passer aux « Documents » sans le
-// reperdre est le geste courant.
-let ETAT_CHOISI = "";
-
-function remplirFiltresEtat() {
-  // Chaque état porte le nombre de dossiers qu'il compte : voir « Possible
-  // abandon (7) » avant de cliquer évite de filtrer pour rien, et donne le
-  // décompte sans changer d'onglet. Un état sans dossier n'est pas proposé.
-  const comptes = new Map();
-  DOSSIERS.forEach((d) => {
-    const cle = d.statut || "non-transmis";
-    comptes.set(cle, (comptes.get(cle) || 0) + 1);
-  });
-  const options = ['<option value="">Tous les états</option>']
-    .concat(STATUTS.filter((s) => comptes.get(s.cle))
-      .map((s) => `<option value="${echapper(s.cle)}"`
-        + (s.cle === ETAT_CHOISI ? " selected" : "") + ">"
-        + echapper(s.libelle) + ` (${comptes.get(s.cle)})</option>`));
-  // Un état choisi puis vidé de ses dossiers doit rester proposé, sans quoi
-  // la liste paraîtrait vide sans qu'on voie pourquoi.
-  if (ETAT_CHOISI && !comptes.get(ETAT_CHOISI)) {
-    const perdu = STATUTS.find((s) => s.cle === ETAT_CHOISI);
-    if (perdu) {
-      options.push(`<option value="${echapper(perdu.cle)}" selected>`
-        + echapper(perdu.libelle) + " (0)</option>");
-    }
-  }
-  ["filtreEtatSuivi", "filtreEtatDocuments"].forEach((id) => {
-    if ($(id)) $(id).innerHTML = options.join("");
-  });
-}
-
-function choisirEtat(evenement) {
-  ETAT_CHOISI = evenement.target.value;
-  ["filtreEtatSuivi", "filtreEtatDocuments"].forEach((id) => {
-    if ($(id) && $(id) !== evenement.target) $(id).value = ETAT_CHOISI;
-  });
-  rendreSuivi();
-  rendreDocuments();
 }
 
 function messageAucuneCorrespondance() {
@@ -3739,6 +3719,113 @@ function chercherDossiers(evenement) {
   rendreSuivi();
   rendreDocuments();
 }
+
+// -- filtre par état
+//
+// Plusieurs états à la fois : « montre-moi les possibles abandons et les non
+// transmis » est une question courante, qu'une liste déroulante à choix
+// unique ne pose pas. Un panneau de cases à cocher, partagé entre les deux
+// onglets comme l'est la recherche — isoler des états dans « État des
+// dossiers » puis passer aux « Documents » sans les reperdre.
+//
+// Vide = tous les états. C'est le seul moyen de dire « aucun filtre » sans
+// obliger à tout cocher.
+const ETATS_CHOISIS = new Set();
+
+function remplirFiltresEtat() {
+  // Chaque état porte le nombre de dossiers qu'il compte : voir « Possible
+  // abandon (7) » avant de cocher évite de filtrer pour rien, et donne le
+  // décompte sans changer d'onglet. Un état sans dossier n'est pas proposé,
+  // sauf s'il est coché — sans quoi la liste paraîtrait vide sans qu'on
+  // voie pourquoi.
+  const comptes = new Map();
+  DOSSIERS.forEach((d) => {
+    const cle = d.statut || "non-transmis";
+    comptes.set(cle, (comptes.get(cle) || 0) + 1);
+  });
+  const retenus = STATUTS.filter(
+    (s) => comptes.get(s.cle) || ETATS_CHOISIS.has(s.cle));
+
+  const lignes = retenus.map((s) => `
+    <label class="ligne-etat">
+      <input type="checkbox" class="choix-etat" value="${echapper(s.cle)}"
+             ${ETATS_CHOISIS.has(s.cle) ? "checked" : ""} />
+      <i style="background:${echapper(s.couleur)}"></i>
+      <span>${echapper(s.libelle)}</span>
+      <b>${comptes.get(s.cle) || 0}</b>
+    </label>`).join("");
+
+  ["Suivi", "Documents"].forEach((onglet) => {
+    const panneau = $("panneauEtat" + onglet);
+    if (!panneau) return;
+    panneau.innerHTML = lignes
+      + '<button type="button" class="secondaire vider-etats">'
+      + "Tous les états</button>";
+    panneau.querySelectorAll(".choix-etat").forEach((coche) =>
+      coche.addEventListener("change", choisirEtat));
+    panneau.querySelector(".vider-etats")
+      .addEventListener("click", viderEtats);
+  });
+  majBoutonsEtat();
+}
+
+// Le bouton dit ce qui est filtré sans qu'il faille ouvrir le panneau : le
+// libellé quand un seul état est coché, le nombre au-delà.
+function majBoutonsEtat() {
+  let texte = "Tous les états";
+  if (ETATS_CHOISIS.size === 1) {
+    const seul = STATUTS.find((s) => ETATS_CHOISIS.has(s.cle));
+    texte = seul ? seul.libelle : texte;
+  } else if (ETATS_CHOISIS.size > 1) {
+    texte = ETATS_CHOISIS.size + " états";
+  }
+  ["filtreEtatSuivi", "filtreEtatDocuments"].forEach((id) => {
+    if ($(id)) {
+      $(id).textContent = texte + " ▾";
+      $(id).classList.toggle("actif", ETATS_CHOISIS.size > 0);
+    }
+  });
+}
+
+function choisirEtat(evenement) {
+  const cle = evenement.target.value;
+  if (evenement.target.checked) ETATS_CHOISIS.add(cle);
+  else ETATS_CHOISIS.delete(cle);
+  // Les deux panneaux disent la même chose : le filtre est commun.
+  document.querySelectorAll(".choix-etat").forEach((coche) => {
+    coche.checked = ETATS_CHOISIS.has(coche.value);
+  });
+  majBoutonsEtat();
+  rendreSuivi();
+  rendreDocuments();
+}
+
+function viderEtats() {
+  ETATS_CHOISIS.clear();
+  document.querySelectorAll(".choix-etat").forEach((coche) => {
+    coche.checked = false;
+  });
+  majBoutonsEtat();
+  rendreSuivi();
+  rendreDocuments();
+}
+
+function basculerPanneauEtats(bouton) {
+  const panneau = bouton.parentElement.querySelector(".panneau-etats");
+  if (!panneau) return;
+  const ouvert = !panneau.hidden;
+  // Un seul panneau ouvert à la fois : deux listes superposées se
+  // recouvriraient sans qu'on sache laquelle commande quoi.
+  document.querySelectorAll(".panneau-etats").forEach((p) => { p.hidden = true; });
+  panneau.hidden = ouvert;
+}
+
+// Cliquer ailleurs referme : un panneau resté ouvert masque le tableau qu'il
+// vient de filtrer.
+document.addEventListener("click", (evenement) => {
+  if (evenement.target.closest(".filtre-etats")) return;
+  document.querySelectorAll(".panneau-etats").forEach((p) => { p.hidden = true; });
+});
 
 // -- tri par colonne
 //
