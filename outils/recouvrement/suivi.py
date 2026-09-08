@@ -1274,6 +1274,11 @@ SEPARATEURS_MULTIVALEUR = re.compile(r"[|,;]")
 NATURES_PIECES = (
     "Relevé comptable",
     "Convention de formation",
+    # Le relevé de progression de l'apprenant : ce qu'il a suivi, module par
+    # module. Devant un juge, il établit que la formation a été délivrée et
+    # consommée — davantage qu'un diplôme, qu'un apprenant peut n'avoir jamais
+    # passé tout en ayant suivi les cours.
+    "Progress report",
     "Diplôme",
     "Facture",
     "Mise en demeure",

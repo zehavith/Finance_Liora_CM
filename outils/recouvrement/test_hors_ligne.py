@@ -3346,6 +3346,16 @@ def test_filtre_par_etat() -> None:
     for identifiant in ('id="filtreEtatSuivi"', 'id="filtreEtatDocuments"'):
         verifier(identifiant in page, f"{identifiant} est dans la page")
     verifier("Tous les états" in page, "avec un choix qui ne filtre rien")
+
+    # Le relevé de progression, visible comme le diplôme : une colonne à
+    # part, et une nature de pièce qu'on peut verser.
+    import suivi as module_suivi  # noqa: PLC0415
+    verifier("Progress report" in module_suivi.NATURES_PIECES,
+             "le progress report se verse comme les autres pièces")
+    verifier('{ titre: "Progress report", cle: "progress",' in page,
+             "il a sa colonne dans le tableau des documents")
+    verifier('etatPiece(d, "Progress report", "versé", "absent")' in page,
+             "qui dit s'il est versé ou absent")
     # Plusieurs états à la fois : « les possibles abandons et les non
     # transmis » ne se demande pas avec une liste à choix unique.
     verifier("const ETATS_CHOISIS = new Set();" in page,
@@ -4476,6 +4486,10 @@ def test_pieces_cles_reunies() -> None:
         ("Rib BNP Datascientest (1).pdf", "4-releve-bancaire"),
         ("Diplome RNCP Data Analyst.pdf", "5-diplome"),
         ("Certificat de réussite.pdf", "5-diplome"),
+        # Le relevé de progression établit que la formation a été suivie —
+        # ce qu'un diplôme ne dit pas : on peut suivre sans passer l'examen.
+        ("Progress report - Sofiane BENALLAOUA.pdf", "6-progress-report"),
+        ("Rapport de progression.pdf", "6-progress-report"),
         ("Capture ecran teams.png", ""),
     ):
         obtenu = module_synthese.piece_cle(nom)

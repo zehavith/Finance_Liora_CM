@@ -666,7 +666,8 @@ pieces-cles/
 ├── 2-facture/
 ├── 3-feuille-emargement/
 ├── 4-releve-bancaire/
-└── 5-diplome/
+├── 5-diplome/
+└── 6-progress-report/
 ```
 
 Ce sont des **copies** : l'original reste à sa place, sous son numéro de

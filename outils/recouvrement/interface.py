@@ -3925,6 +3925,11 @@ const COLONNES_DOCUMENTS = [
   { titre: "Convention", cle: "convention",
     valeur: (d) => valeurTroisEtats(d.convention_signee) },
   { titre: "Diplôme", cle: "diplome", valeur: (d) => valeurTroisEtats(d.diplome) },
+  // Le relevé de progression : ce que l'apprenant a suivi, module par
+  // module. Il établit que la formation a été délivrée et consommée, ce
+  // qu'un diplôme ne dit pas — on peut suivre sans passer l'examen.
+  { titre: "Progress report", cle: "progress",
+    valeur: (d) => valeurTroisEtats(aPiece(d, "Progress report")) },
   { titre: "Relevé bancaire", cle: "releve",
     valeur: (d) => valeurTroisEtats(aPiece(d, "Relevé comptable")) },
   { titre: "Heures", classe: "num", cle: "heures", sens: -1,
@@ -4149,6 +4154,7 @@ function rendreDocuments() {
       <td class="num">${d.nb_pieces_jointes}</td>
       <td>${etatOuiNon(d.convention_signee, "signée", "non signée")}</td>
       <td>${etatOuiNon(d.diplome, "reçu", "non reçu")}</td>
+      <td>${etatPiece(d, "Progress report", "versé", "absent")}</td>
       <td>${etatPiece(d, "Relevé comptable", "versé", "absent")}</td>
       <td class="num">${heuresSuivies(d)}</td>
       <td>${d.premier_mail || "—"} → ${d.dernier_mail || "—"}</td>

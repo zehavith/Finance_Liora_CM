@@ -1737,8 +1737,15 @@ def heures_de_l_emargement(chemin: Path) -> str:
     return ""
 
 
+MOTS_PROGRESSION = ("progress report", "progress-report", "progressreport",
+                    "rapport de progression", "releve de progression",
+                    "suivi de progression", "progression")
+
 CATEGORIES_PIECES = (
     ("Contrat / convention", ("convention", "contrat", "cgv", "devis", "bon de commande")),
+    # Avant la facture : « rapport de progression FACT-2405-00409.pdf » porte
+    # les deux mots, et c'est la progression qui le qualifie.
+    ("Relevé de progression", MOTS_PROGRESSION),
     ("Facture / avoir", ("facture", "fact-", "fact_", "avoir", "invoice")),
     ("Mise en demeure / relance", ("demeure", "relance", "recommande", "lrar")),
     ("Échéancier", ("echeancier", "echelonn")),
@@ -1768,6 +1775,7 @@ PIECES_CLES = (
     ("5-diplome",
      ("diplome", "certification", "certificat", "titre professionnel",
       "attestation de reussite", "attestation de fin", "attestation de suivi")),
+    ("6-progress-report", MOTS_PROGRESSION),
 )
 
 
