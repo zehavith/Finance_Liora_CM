@@ -996,6 +996,31 @@ def traiter_dossier(
         )
     messages = retenus
 
+    # Le même courrier parti deux fois — de billing@ puis de recouvrement@,
+    # à la même minute, même texte, même pièce jointe — porte deux Message-ID
+    # et échappait au dédoublonnage. Au dossier, cela faisait deux pièces
+    # identiques à la suite, et une chronologie qui comptait double.
+    par_contenu: dict[str, object] = {}
+    uniques = []
+    for message in messages:
+        cle = message.cle_contenu
+        jumeau = par_contenu.get(cle)
+        if jumeau is None:
+            par_contenu[cle] = message
+            uniques.append(message)
+            continue
+        doublons += 1
+        for boite in message.boites:
+            if boite not in jumeau.boites:
+                jumeau.boites.append(boite)
+    jumeaux = len(messages) - len(uniques)
+    if jumeaux:
+        journal(
+            f"    {jumeaux} message(s) identique(s) écarté(s) : même texte, "
+            "même minute, même pièce jointe — un seul envoi"
+        )
+    messages = uniques
+
     resume.doublons_ecartes = doublons
 
     if cles_existantes:

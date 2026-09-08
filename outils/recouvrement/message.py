@@ -121,6 +121,27 @@ class MessageMail:
         return hashlib.sha256(self.brut).hexdigest()
 
     @property
+    def cle_contenu(self) -> str:
+        """Ce que le message dit, indépendamment de qui l'a expédié.
+
+        Le Message-ID ne suffit pas toujours. Le même courrier part parfois
+        deux fois — de billing@ puis de recouvrement@, à la même minute, avec
+        le même texte et la même pièce jointe : deux Message-ID, un seul
+        envoi. Au dossier, cela donnait deux pièces identiques à la suite.
+
+        La minute compte dans la clé : deux relances au même texte envoyées à
+        des dates différentes sont deux relances, et doivent le rester.
+        """
+        corps = " ".join((self.corps_texte or self.corps_html or "").split())
+        empreinte = "\n".join([
+            self.date.strftime("%Y-%m-%d %H:%M"),
+            " ".join((self.objet or "").split()).lower(),
+            corps.lower(),
+            " | ".join(sorted(pj.nom for pj in self.pieces_jointes)),
+        ])
+        return hashlib.sha256(empreinte.encode("utf-8")).hexdigest()
+
+    @property
     def parties(self) -> str:
         """Adresses des seules parties à l'échange, en-têtes uniquement.
 

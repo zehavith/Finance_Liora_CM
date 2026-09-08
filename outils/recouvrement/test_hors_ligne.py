@@ -4290,6 +4290,79 @@ def test_tout_effacer_respecte_la_reponse() -> None:
                  "demandé, le suivi est effacé")
 
 
+def test_meme_courrier_parti_deux_fois() -> None:
+    """Deux Message-ID, un seul envoi : une seule pièce au dossier."""
+    import export_mails as module_export  # noqa: PLC0415
+    from gmail_api import SourcesGmail  # noqa: PLC0415
+
+    print("\nMême courrier parti deux fois")
+
+    def courriel(identifiant, de):
+        message = EmailMessage()
+        message["From"] = de
+        message["To"] = "anas.it@gmail.com"
+        message["Subject"] = "RE: Facture Datascientest n° FACT-2509-11537"
+        message["Date"] = "Tue, 30 Sep 2025 10:16:00 +0000"
+        message["Message-ID"] = f"<{identifiant}@datascientest.com>"
+        message.set_content("Bonjour, Excusez moi, voici la facture en PJ.")
+        message.add_attachment(b"%PDF-1.4", maintype="application",
+                               subtype="pdf", filename="FACT-2509-11537.pdf")
+        return message.as_bytes()
+
+    # Le même courrier, parti de deux boîtes maison à la même minute. Les
+    # Message-ID diffèrent : le dédoublonnage habituel ne les rapproche pas.
+    boite = {
+        "a": courriel("a", "Recouvrement <recouvrement@datascientest.com>"),
+        "b": courriel("b", "Billing Comptabilité <billing@datascientest.com>"),
+        # Le même texte, mais un autre jour : deux relances, pas un doublon.
+        "c": courriel("c", "Billing Comptabilité <billing@datascientest.com>")
+             .replace(b"30 Sep 2025", b"07 Oct 2025"),
+    }
+
+    class _Boite:
+        adresse_boite = "billing@datascientest.com"
+
+        def rechercher_identifiants(self, *_a, **_k):
+            return list(boite)
+
+        def recuperer_messages(self, identifiants):
+            for identifiant in identifiants:
+                message = lire_message(
+                    {"id": identifiant, "threadId": "fil",
+                     "internalDate": "1759226160000"}, boite[identifiant])
+                message.boites = [self.adresse_boite]
+                yield message
+
+    vraies = module_export.ouvrir_sources
+    module_export.ouvrir_sources = lambda **_: SourcesGmail([_Boite()])
+    try:
+        with tempfile.TemporaryDirectory() as repertoire:
+            sortie = Path(repertoire) / "export"
+            depot = Path(repertoire) / "d.csv"
+            depot.write_text(
+                "N° de facture;Entreprise;Email;Reste à devoir TTC\n"
+                "FACT-2509-11537;MCAPI;anas.it@gmail.com;3 730,00 €\n",
+                encoding="utf-8-sig")
+            module_export.executer(module_export.analyser_arguments([
+                "--dossiers", str(depot), "--sortie", str(sortie),
+                "--boites", "billing@datascientest.com", "--sans-navigateur",
+                "--domaines-internes", "datascientest.com",
+                "--sans-decouverte-adresses"]), relais=lambda _l: None)
+            index = next(sortie.glob("*/index.csv"))
+            rangees = list(csv.DictReader(
+                index.read_text(encoding="utf-8-sig").splitlines(),
+                delimiter=";"))
+    finally:
+        module_export.ouvrir_sources = vraies
+
+    verifier(len(rangees) == 2,
+             f"le courrier parti deux fois ne fait qu'une pièce "
+             f"({len(rangees)} pièce(s))")
+    dates = sorted(r["date"] for r in rangees)
+    verifier(dates == ["30/09/2025", "07/10/2025"] or dates == ["07/10/2025", "30/09/2025"],
+             f"et la relance du même texte, un autre jour, reste ({dates})")
+
+
 def test_doublons_de_la_liste() -> None:
     """Le même dossier ne figure pas deux fois dans la liste."""
     import export_mails as module_export  # noqa: PLC0415
@@ -4805,6 +4878,38 @@ def test_note_perimee() -> None:
         obtenu = module_suivi.inventaire(sortie, chemin)[0]
         verifier(obtenu["note_perimee"] is False,
                  "un dossier sans note n'est pas dit en retard")
+
+    # Une note qui n'a pas pu être écrite ne doit pas être marquée à jour.
+    # La marque se posait dans tous les cas : un PDF que le lecteur tenait
+    # ouvert n'était pas remplacé, l'ancienne note restait — et la marque
+    # toute neuve affirmait qu'elle était à jour. L'application ne proposait
+    # donc pas de la refaire, et l'on relisait la note d'avant.
+    import rendu as module_rendu  # noqa: PLC0415
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        cible = Path(repertoire) / "synthese.pdf"
+        marque = cible.with_suffix(".version")
+        marque.write_text("12", encoding="utf-8")
+
+        vrai = module_rendu.ecrire_pdf
+        module_rendu.ecrire_pdf = lambda _c, _p: (False, "le PDF est ouvert")
+        try:
+            reussi, _motif = module_rendu.ecrire_synthese("<p>x</p>", cible)
+        finally:
+            module_rendu.ecrire_pdf = vrai
+
+        verifier(not reussi, "une note non écrite est rapportée comme telle")
+        verifier(not marque.exists(),
+                 "et ne laisse pas une marque affirmant qu'elle est à jour")
+
+        module_rendu.ecrire_pdf = lambda _c, _p: (True, "chrome")
+        try:
+            module_rendu.ecrire_synthese("<p>x</p>", cible)
+        finally:
+            module_rendu.ecrire_pdf = vrai
+        verifier(marque.exists()
+                 and marque.read_text(encoding="utf-8") == module_rendu.VERSION,
+                 "une note écrite porte la version qui l'a écrite")
 
     page = module_interface.PAGE
     verifier("d.note_perimee" in page and "à refaire" in page,
@@ -8087,6 +8192,7 @@ def main() -> int:
     test_montant_deja_regle()
     test_sauvegarde_du_suivi()
     test_tout_effacer_respecte_la_reponse()
+    test_meme_courrier_parti_deux_fois()
     test_doublons_de_la_liste()
     test_retrouver_les_dossiers_du_disque()
     test_arreter_un_export()

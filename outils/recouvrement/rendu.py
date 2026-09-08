@@ -457,6 +457,19 @@ def ecrire_synthese(contenu_html: str, chemin_pdf: Path) -> tuple[bool, str]:
     """
     reussi, motif = ecrire_pdf(contenu_html, chemin_pdf)
     marque = chemin_pdf.with_suffix(".version")
+
+    # La marque ne se pose que si la note a bien été écrite. Elle se posait
+    # dans tous les cas : un PDF que le lecteur tenait ouvert n'était pas
+    # remplacé, l'ancienne note restait sur le disque — et la marque toute
+    # neuve affirmait qu'elle était à jour. L'application ne proposait donc
+    # pas de la refaire, et l'on relisait indéfiniment la note d'avant.
+    if not reussi:
+        try:
+            marque.unlink(missing_ok=True)
+        except OSError:
+            pass
+        return reussi, motif
+
     try:
         marque.write_text(VERSION, encoding="utf-8")
     except OSError:
