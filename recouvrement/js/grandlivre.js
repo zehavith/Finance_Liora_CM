@@ -1873,6 +1873,46 @@
         return out;
     }
 
+    /**
+     * Le suivi des lignes non clôturées, dans la forme de la balance âgée.
+     *
+     * Même lecture que la balance âgée du grand livre — une ligne par
+     * sous-catégorie, une colonne par tranche d'ancienneté — mais appliquée
+     * aux règlements que rien ne rapproche encore d'une facture.
+     *
+     * L'ancienneté n'est pas celle d'une échéance : un règlement n'est dû à
+     * personne, il est déjà là. C'est le temps qu'il passe sans être pointé
+     * qui compte, et il court depuis la date de l'écriture. Un encaissement
+     * de la semaine dernière n'a rien d'inquiétant ; le même, vieux de deux
+     * ans, dit qu'une facture est peut-être soldée sans que la balance âgée
+     * le sache — et qu'elle y traîne pour rien.
+     *
+     * @param {Array} nonPointes  les règlements et avoirs non lettrés
+     * @param {Date}  dateRef     la date d'arrêté
+     */
+    function pointageParFinancement(nonPointes, dateRef) {
+        const ref = dateRef || new Date();
+        const lignes = new Map();
+        const vide = cle => {
+            const o = { cle, nb: 0, euros: 0, sansDate: 0, plusAncien: null, lignes: [] };
+            for (const b of R.AGING_BUCKETS) o[b.key] = 0;
+            return o;
+        };
+        for (const l of (nonPointes || [])) {
+            const cle = l.financement || A_CLASSER;
+            let o = lignes.get(cle);
+            if (!o) { o = vide(cle); lignes.set(cle, o); }
+            const montant = (l.credit || 0) - (l.debit || 0);
+            o.nb++; o.euros += montant; o.lignes.push(l);
+            if (!l.date) { o.sansDate += montant; continue; }
+            if (!o.plusAncien || l.date < o.plusAncien) o.plusAncien = l.date;
+            const age = R.diffDays(ref, l.date);
+            const b = R.bucketFor(age) || R.AGING_BUCKETS[1];
+            o[b.key] += montant;
+        }
+        return [...lignes.values()].sort((a, b) => Math.abs(b.euros) - Math.abs(a.euros));
+    }
+
     function classerEcritures(lignesAPlat, creances) {
         // Le financement retenu par groupe, depuis les créances déjà classées.
         const parGroupe = new Map();
@@ -2243,7 +2283,7 @@
         regleCorrespond, financementParRegles, porteeDesRegles, etiquetteRegle,
         A_CLASSER, POOL_NON_LETTRE, MOTIFS_NUMERO, numeroDepuisTexte,
         creancesOuvertes, facturesToutes, referencesVersement, classer, classerEcritures, propositionsRapprochement,
-        pointageParMois, ecrituresAPlat, balanceAgee, comparer,
+        pointageParMois, pointageParFinancement, ecrituresAPlat, balanceAgee, comparer,
         dateDepuisTexte,
         MOTIFS_COMPTE, financementDuLibelle, typeDeClient, SEUIL_POEI,
         COLONNES, TOLERANCE, EST_FACTURE, EST_AVOIR,

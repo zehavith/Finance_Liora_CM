@@ -11,8 +11,8 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.55.0';
-    const VERSION_DATE = '7 septembre 2026';
+    const VERSION = '2.56.0';
+    const VERSION_DATE = '8 septembre 2026';
 
     const R = window.LioraRules;
     const PR = window.LioraPrelevements;
@@ -124,6 +124,7 @@
             repartitionOuverts: new Set(),
             agingDim: 'financement',
             agingSource: 'monday',
+            pointageNiveau: 'financement',
             glNiveau: 'financement',
             page: 1,
             pageSize: 50,
@@ -3092,6 +3093,301 @@
      * règlements du mois, il dit si le pointage suit ; comparé au mois
      * précédent, il dit s'il progresse.
      */
+    /**
+     * Le suivi des lignes non clôturées, dans la forme de la balance âgée.
+     *
+     * C'est la même lecture que la balance âgée du grand livre — une ligne par
+     * sous-catégorie, une colonne par tranche d'ancienneté — mais tournée vers
+     * l'argent déjà rentré que rien ne rapproche. Elle répond à une question
+     * que la balance âgée ne pose pas : depuis combien de temps cet
+     * encaissement attend-il d'être pointé, et sur quel dispositif ?
+     */
+    /**
+     * La clé à coller dans une recherche pour retrouver l'écriture.
+     *
+     * Le numéro de pièce est le repère le plus court et le plus sûr : c'est
+     * lui que Pennylane affiche. À défaut, le numéro de facture cité, puis le
+     * couple compte + montant, qui ne laisse jamais bredouille.
+     */
+    function cleDeRecherche(l) {
+        const b = l.brut || {};
+        // Le numéro de facture cité d'abord : c'est le repère le plus parlant.
+        if (l.numero) return l.numero;
+        // Le numéro de pièce ensuite — sauf sur un report à nouveau, où la
+        // même pièce couvre des milliers d'écritures et ne repère rien.
+        if (b.numeroPiece && !/^an/i.test(String(l.journal || ''))) return b.numeroPiece;
+        // À défaut, le compte et le montant : ce couple ne laisse jamais
+        // bredouille, même sur un report.
+        const mt = Math.round(Math.abs(l.credit || l.debit || 0));
+        return ((l.compte || '') + ' ' + mt).trim();
+    }
+
+    /**
+     * Les colonnes du pointage : d'abord retrouver la ligne, ensuite décider.
+     *
+     * L'ordre n'est pas décoratif. On cherche l'écriture dans la comptabilité
+     * (la clé, la date, la pièce, le journal), on la reconnaît (le client, le
+     * libellé, le montant), puis on lit ce que l'application propose et
+     * pourquoi. Sans le repère en tête, la liste est belle et inutilisable.
+     */
+    function colonnesPointage() {
+        const pastille = f => ({ certaine: 'pill-ok', forte: 'pill-ok', probable: 'pill-soft',
+                                 'à vérifier': 'pill-warn' })[f] || 'pill-muted';
+        return [
+            { key: c => cleDeRecherche(c), label: 'À chercher',
+              title: 'Collez cette clé dans la recherche de Pennylane pour tomber sur l’écriture.',
+              format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
+            { key: 'date', label: 'Date', align: 'center', format: U.dateFR },
+            { key: c => (c.brut && c.brut.numeroPiece) || '', label: 'N° de pièce',
+              format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
+            { key: 'journal', label: 'Journal', align: 'center',
+              format: v => U.escapeHtml(v || '—') },
+            { key: 'compte', label: 'Compte client',
+              format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
+            { key: 'tiers', label: 'Client',
+              format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+            { key: 'libelle', label: 'Libellé de l’écriture',
+              format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+            { key: 'credit', label: 'Montant reçu', align: 'right', format: U.euros },
+            { key: 'nature', label: 'Nature', align: 'center',
+              format: v => v === 'avoir' ? '<span class="pill pill-muted">avoir</span>'
+                                         : '<span class="pill">règlement</span>' },
+            { key: 'force', label: 'Confiance', align: 'center', format: (v, r) => v
+                ? `<span class="pill ${pastille(v)}">${U.escapeHtml(v)}</span>`
+                : '<span class="ag-zero">·</span>' },
+            { key: c => c.proposition ? c.proposition.map(x => x.numero || 'sans n°').join(' + ') : '',
+              label: 'Facture proposée', sortable: false,
+              format: (v, r) => r.proposition
+                ? `<span class="mono">${U.escapeHtml(v)}</span>`
+                  + `<span class="cell-mini">reste après lettrage : ${U.euros(
+                      r.proposition.reduce((a, x) => a + (x.resteDu || 0), 0) - (r.credit || 0))}</span>`
+                : '<span class="ag-zero">·</span>' },
+            { key: 'raison', label: 'Pourquoi', sortable: false,
+              format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+        ];
+    }
+
+    /**
+     * Le suivi complet des lignes non clôturées, en Excel.
+     *
+     * Trois feuilles : la synthèse par sous-catégorie et par ancienneté, la
+     * même par catégorie, et le détail ligne à ligne avec le repère de chaque
+     * écriture et la contrepartie proposée. C'est la balance âgée de ce qui
+     * est rentré sans rien solder.
+     */
+    function exporterSuiviPointage() {
+        const e = state.glEcritures;
+        const nonPointes = (e && (e.nonPointes || e.orphelins)) || [];
+        if (!nonPointes.length) { U.toast('Aucune ligne non pointée à exporter.', 'error'); return; }
+        const brut = GL.pointageParFinancement(nonPointes, state.filtres.dateRef);
+        const synthese = rows => rows.map(r => {
+            const o = { 'Sous-catégorie': libellePointage(r), 'Lignes': r.nb,
+                        'Montant non pointé': arrondi(r.euros) };
+            for (const b of R.AGING_BUCKETS.slice().reverse()) {
+                o[b.key === 'nonEchu' ? 'Du jour' : b.label] = arrondi(r[b.key] || 0);
+            }
+            o['La plus ancienne'] = r.plusAncien ? U.dateFR(r.plusAncien) : '';
+            return o;
+        });
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+            { 'Lecture': "Le suivi des règlements et avoirs qu'aucune facture ne rapproche encore — "
+                + "l'argent est rentré, mais il ne solde rien dans la balance âgée." },
+            { 'Lecture': "Même forme que la balance âgée du grand livre : une ligne par sous-catégorie, "
+                + "une colonne par tranche d'ancienneté." },
+            { 'Lecture': "L'ancienneté n'est pas celle d'une échéance — un règlement n'est dû à personne. "
+                + "C'est le temps qu'il passe sans être pointé, depuis la date de l'écriture." },
+            { 'Lecture': "La feuille « Détail » donne chaque ligne avec sa clé de recherche Pennylane, "
+                + "son numéro de pièce, son journal, et la facture que l'application propose." },
+            { 'Lecture': "Arrêté au " + U.dateFR(state.filtres.dateRef) + "." },
+        ]), 'Comment lire');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(synthese(brut)), 'Par sous-catégorie');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            synthese(regrouperPointage(brut)).map(o => {
+                const c = { 'Catégorie': o['Sous-catégorie'], ...o };
+                delete c['Sous-catégorie'];
+                return c;
+            })), 'Par catégorie');
+        const avec = rapprochementsPossibles(nonPointes);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(avec.map(l => ({
+            'À chercher dans Pennylane': cleDeRecherche(l),
+            'Date de l’écriture': l.date ? U.dateFR(l.date) : '',
+            'N° de pièce': (l.brut && l.brut.numeroPiece) || '',
+            'Journal': l.journal || '',
+            'Compte client': l.compte || '',
+            'Client': l.tiers || '',
+            'Libellé de l’écriture': l.libelle || '',
+            'Montant reçu': arrondi(l.credit || 0),
+            'Nature': l.nature === 'avoir' ? 'Avoir' : 'Règlement',
+            'Sous-catégorie': l.financement ? R.getRule(l.financement, state.rules).label : 'À classer',
+            'Catégorie': l.financement ? R.categorieDe(l.financement, state.rules) : 'À classer',
+            'Jours sans pointage': l.date ? R.diffDays(state.filtres.dateRef, l.date) : '',
+            'Tranche': l.date ? ((R.bucketFor(R.diffDays(state.filtres.dateRef, l.date)) || {}).label || '') : '',
+            'Confiance': l.force || '',
+            'Facture proposée': l.proposition ? l.proposition.map(x => x.numero || 'sans n°').join(' + ') : '',
+            'Restant dû de la facture': l.proposition
+                ? arrondi(l.proposition.reduce((a, x) => a + (x.resteDu || 0), 0)) : '',
+            'Reste après lettrage': l.proposition
+                ? arrondi(l.proposition.reduce((a, x) => a + (x.resteDu || 0), 0) - (l.credit || 0)) : '',
+            'Pourquoi': l.raison || '',
+            'Créances ouvertes sur le compte': l.nbOuvertes || 0,
+            'Créances les plus proches': (l.candidates || [])
+                .map(c => (c.numero || 'sans n°') + ' : ' + Math.round(c.resteDu) + ' €').join(' · '),
+        }))), 'Détail');
+        const nom = `Suivi_lignes_non_cloturees_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        XLSX.writeFile(wb, nom);
+        U.toast(`${U.nombre(nonPointes.length)} lignes exportées — ${nom}`, 'success', 7000);
+    }
+
+    /** Les lignes d'un dispositif, en Excel, avec les mêmes repères. */
+    function exporterPointage(row, avec) {
+        const lignes = (avec || []).map(l => ({
+            'À chercher dans Pennylane': cleDeRecherche(l),
+            'Date de l’écriture': l.date ? U.dateFR(l.date) : '',
+            'N° de pièce': (l.brut && l.brut.numeroPiece) || '',
+            'Journal': l.journal || '',
+            'Compte client': l.compte || '',
+            'Client': l.tiers || '',
+            'Libellé de l’écriture': l.libelle || '',
+            'Montant reçu': arrondi(l.credit || 0),
+            'Nature': l.nature === 'avoir' ? 'Avoir' : 'Règlement',
+            'Lettrage': l.lettre === GL.POOL_NON_LETTRE ? 'non lettré' : (l.lettre || ''),
+            'Sous-catégorie': l.financement ? R.getRule(l.financement, state.rules).label : 'À classer',
+            'Jours sans pointage': l.date ? R.diffDays(state.filtres.dateRef, l.date) : '',
+            'Confiance': l.force || '',
+            'Facture proposée': l.proposition ? l.proposition.map(x => x.numero || 'sans n°').join(' + ') : '',
+            'Restant dû de la facture': l.proposition
+                ? arrondi(l.proposition.reduce((a, x) => a + (x.resteDu || 0), 0)) : '',
+            'Reste après lettrage': l.proposition
+                ? arrondi(l.proposition.reduce((a, x) => a + (x.resteDu || 0), 0) - (l.credit || 0)) : '',
+            'Pourquoi': l.raison || '',
+            'Créances ouvertes sur le compte': l.nbOuvertes || 0,
+            'Reste dû sur le compte': arrondi(l.eurosOuverts || 0),
+            'Créances les plus proches': (l.candidates || [])
+                .map(c => (c.numero || 'sans n°') + ' : ' + Math.round(c.resteDu) + ' €').join(' · '),
+        }));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lignes), 'À pointer');
+        const nom = (libellePointage(row) || 'pointage').replace(/[^\w -]+/g, '').slice(0, 24);
+        XLSX.writeFile(wb, `Pointage_${nom}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+
+    function rendrePointageParFinancement(e) {
+        const el = $('#gl-pointage-financement');
+        if (!el) return;
+        const nonPointes = (e && (e.nonPointes || e.orphelins)) || [];
+        if (!nonPointes.length) { el.innerHTML = ''; return; }
+
+        const niveau = state.ui.pointageNiveau || 'financement';
+        $$('#seg-pointage-niveau .seg-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.niveau === niveau));
+
+        const brut = GL.pointageParFinancement(nonPointes, state.filtres.dateRef);
+        // Le regroupement par catégorie se fait sur le même calcul : une
+        // sous-catégorie appartient à une catégorie, la somme suit.
+        const rows = niveau === 'categorie' ? regrouperPointage(brut) : brut;
+        state.pointageRows = rows;
+
+        const cols = [
+            { key: 'cle', label: niveau === 'categorie' ? 'Catégorie' : 'Sous-catégorie',
+              format: (v, r) => `<span class="pill">${U.escapeHtml(libellePointage(r))}</span>` },
+            { key: 'nb', label: 'Lignes', align: 'right', format: U.nombre },
+            { key: 'euros', label: 'Montant non pointé', align: 'right',
+              format: v => `<strong>${fmtAg(v)}</strong>` },
+        ];
+        // Les tranches, de la plus ancienne à la plus récente, comme la
+        // balance âgée : ce qui traîne se lit à gauche.
+        const tranches = R.AGING_BUCKETS.slice().reverse();
+        for (const b of tranches) {
+            cols.push({ key: b.key,
+                // « Non échu » n'a pas de sens pour un règlement : il n'est dû
+                // à personne. Cette colonne-là, c'est l'écriture du jour même.
+                label: b.key === 'nonEchu' ? 'Du jour' : b.label, align: 'right',
+                title: b.key === 'nonEchu' ? 'Écritures passées aujourd’hui'
+                                           : 'Sans pointage depuis ' + b.label,
+                format: v => v ? fmtAg(v) : '<span class="ag-zero">·</span>' });
+        }
+        cols.push({ key: 'plusAncien', label: 'La plus ancienne', align: 'center',
+            format: v => v ? U.dateFR(v) : '—' });
+
+        const total = { cle: 'TOTAL', nb: 0, euros: 0, plusAncien: null };
+        for (const b of R.AGING_BUCKETS) total[b.key] = 0;
+        for (const r of rows) {
+            total.nb += r.nb; total.euros += r.euros;
+            for (const b of R.AGING_BUCKETS) total[b.key] += r[b.key] || 0;
+            if (r.plusAncien && (!total.plusAncien || r.plusAncien < total.plusAncien)) {
+                total.plusAncien = r.plusAncien;
+            }
+        }
+        const pied = { cle: '<strong>Total</strong>', nb: `<strong>${U.nombre(total.nb)}</strong>`,
+                       euros: `<strong>${fmtAg(total.euros)}</strong>`,
+                       plusAncien: total.plusAncien ? U.dateFR(total.plusAncien) : '' };
+        for (const b of R.AGING_BUCKETS) pied[b.key] = total[b.key] ? fmtAg(total[b.key]) : '';
+
+        el.innerHTML = U.table(cols, rows, {
+            vide: 'Toutes les écritures sont pointées.',
+            total: pied,
+            onRowClick: true,
+        });
+        el.querySelectorAll('tbody tr[data-row]').forEach(tr => {
+            tr.style.cursor = 'pointer';
+            tr.addEventListener('click', () => montrerLignesPointage(rows[+tr.dataset.row]));
+        });
+    }
+
+    /** Le libellé d'une ligne du suivi : le dispositif, ou « À classer ». */
+    function libellePointage(r) {
+        if (!r || !r.cle || r.cle === GL.A_CLASSER) return 'À classer';
+        if (r.categorie) return r.cle;
+        return R.getRule(r.cle, state.rules).label;
+    }
+
+    /** Les sous-catégories, remontées à leur catégorie. */
+    function regrouperPointage(rows) {
+        const par = new Map();
+        for (const r of rows) {
+            const cat = (r.cle && r.cle !== GL.A_CLASSER)
+                ? R.categorieDe(r.cle, state.rules) : 'À classer';
+            let o = par.get(cat);
+            if (!o) {
+                o = { cle: cat, categorie: true, nb: 0, euros: 0, sansDate: 0, plusAncien: null, lignes: [] };
+                for (const b of R.AGING_BUCKETS) o[b.key] = 0;
+                par.set(cat, o);
+            }
+            o.nb += r.nb; o.euros += r.euros; o.sansDate += r.sansDate;
+            o.lignes = o.lignes.concat(r.lignes);
+            for (const b of R.AGING_BUCKETS) o[b.key] += r[b.key] || 0;
+            if (r.plusAncien && (!o.plusAncien || r.plusAncien < o.plusAncien)) o.plusAncien = r.plusAncien;
+        }
+        return [...par.values()].sort((a, b) => Math.abs(b.euros) - Math.abs(a.euros));
+    }
+
+    /**
+     * Les règlements d'une ligne du suivi, avec de quoi les retrouver.
+     *
+     * Retrouver une écriture dans Pennylane demande son repère exact : le
+     * numéro de pièce, le journal, la date, le compte. Ils sont tous là, et la
+     * colonne « À chercher » donne la chaîne à coller dans la recherche.
+     */
+    function montrerLignesPointage(row) {
+        if (!row) return;
+        const lignes = (row.lignes || []).slice()
+            .sort((a, b) => Math.abs(b.credit || 0) - Math.abs(a.credit || 0));
+        const avec = rapprochementsPossibles(lignes);
+        const corps = U.table(colonnesPointage(), avec.slice(0, 400),
+            { vide: 'Aucune écriture.' });
+        const titre = libellePointage(row) + ' — ' + U.euros(row.euros)
+            + ' sur ' + U.nombre(row.nb) + ' lignes non pointées';
+        U.modal(titre,
+            (avec.length > 400
+                ? `<p class="fv-hint">400 premières lignes affichées sur ${U.nombre(avec.length)} — l'export les donne toutes.</p>`
+                : '')
+            + corps,
+            [{ label: 'Exporter ces lignes', close: false,
+               onClick: () => exporterPointage(row, avec) },
+             { label: 'Fermer', primary: true }], { large: true });
+    }
+
     function rendrePointageParMois(e) {
         const kpi = $('#gl-pointage-kpi'), tab = $('#gl-pointage-mois');
         if (!kpi || !tab) return;
@@ -3183,6 +3479,7 @@
             + `${U.nombre(totalRegl - (st.nonPointes || 0))} autres portent une lettre de lettrage : `
             + `la comptabilité les a rapprochés de la facture qu'ils soldent.</p>`;
 
+        rendrePointageParFinancement(e);
         rendrePointageParMois(e);
         const avecRappro = rapprochementsPossibles(nonPointes);
         const parForce = {};
@@ -3203,21 +3500,8 @@
             .sort((a, b) => (rang[a.force] == null ? 9 : rang[a.force]) - (rang[b.force] == null ? 9 : rang[b.force])
                 || (b.credit || 0) - (a.credit || 0))
             .slice(0, 300);
-        el.innerHTML = U.table([
-            { key: 'date', label: 'Date', align: 'center', format: U.dateFR },
-            { key: 'tiers', label: 'Client', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
-            { key: 'compte', label: 'Compte', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
-            { key: 'libelle', label: 'Libellé', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
-            { key: 'credit', label: 'Montant', align: 'right', format: U.euros },
-            { key: 'nature', label: 'Nature', align: 'center',
-              format: v => v === 'avoir' ? '<span class="pill pill-muted">avoir</span>' : '<span class="pill">règlement</span>' },
-            { key: '__rappro', label: 'Rapprochement proposé', sortable: false, format: (v, r) => r.proposition
-                ? `<span class="pill pill-ok" title="${U.escapeHtml(r.raison)}">${
-                    U.escapeHtml(r.proposition.map(c => c.numero || 'créance sans numéro').join(' + '))
-                  }</span><span class="cell-mini">${U.escapeHtml(r.raison)}</span>`
-                : `<span class="fv-hint">${U.escapeHtml(r.raison)}${r.nbOuvertes
-                    ? ` — ${U.nombre(r.nbOuvertes)} ouverte${r.nbOuvertes > 1 ? 's' : ''} · ${U.euros(r.eurosOuverts)}` : ''}</span>` },
-        ], liste, { vide: 'Tous les règlements sont rattachés à une facture.' });
+        el.innerHTML = U.table(colonnesPointage(), liste,
+            { vide: 'Tous les règlements sont rattachés à une facture.' });
     }
 
     /**
@@ -8373,6 +8657,12 @@
         }));
         $('#btn-aging-gl-export').addEventListener('click', exporterBalanceGL);
         $('#btn-gl-orphelins-export').addEventListener('click', exporterOrphelins);
+        $$('#seg-pointage-niveau .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.pointageNiveau = b.dataset.niveau;
+            rendrePointageParFinancement(state.glEcritures);
+        }));
+        const btnPt = $('#btn-pointage-export');
+        if (btnPt) btnPt.addEventListener('click', exporterSuiviPointage);
         $('#btn-gl-aclasser-export').addEventListener('click', exporterAClasser);
         $$('#seg-qualif-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.qualifUnite = b.dataset.unite;
