@@ -3427,15 +3427,26 @@ function brancherTri(zone) {
 }
 
 function messageVide() {
+  // Pendant un export, « aucun export trouvé » est faux et inquietant : la
+  // liste se reconstitue, elle n'est pas absente.
+  if (EXPORT_EN_COURS) {
+    return '<p class="vide">L\'export est en cours : les dossiers '
+      + "apparaîtront ici au fur et à mesure.</p>";
+  }
   return '<p class="vide">Aucun export trouvé dans le dossier de destination.' +
     "<br />Lancez un export depuis l'onglet « Export » — les dossiers produits " +
-    "apparaîtront ici." +
-    // C'est ici qu'on cherche quand la liste s'est vidée : proposer la
-    // récupération ailleurs revient à ne pas la proposer.
-    '<br /><br />Si des dossiers ont déjà été constitués sur le disque, ils se ' +
-    'récupèrent sans refaire d\'export : ' +
-    '<button class="secondaire" data-retrouver="1">Retrouver les dossiers ' +
-    'du disque</button></p>';
+    "apparaîtront ici.</p>";
+}
+
+// Le rattrapage n'est propose que la ou son bouton est branche — l'onglet
+// « Etat des dossiers ». Ailleurs, il s'affichait sans rien faire au clic.
+function messageVideAvecRattrapage() {
+  if (EXPORT_EN_COURS) return messageVide();
+  return messageVide()
+    + '<p class="vide">Si des dossiers ont déjà été constitués sur le disque, '
+    + "ils se récupèrent sans refaire d'export : "
+    + '<button class="secondaire" data-retrouver="1">Retrouver les dossiers '
+    + 'du disque</button></p>';
 }
 
 function pastilleStatut(cle) {
@@ -3737,7 +3748,7 @@ function rendreSuivi() {
     </div>
     ${DOSSIERS.length
       ? (retenus.length ? "" : messageAucuneCorrespondance())
-      : messageVide()}
+      : messageVideAvecRattrapage()}
     ${blocARefaire()}
     ${blocAbsentsDuSuivi()}
     <div class="defilable"${retenus.length ? "" : " hidden"}><table class="donnees">

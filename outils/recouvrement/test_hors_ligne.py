@@ -3668,9 +3668,19 @@ def test_retrouver_les_dossiers_du_disque() -> None:
                 page.index("// -- onglet État des dossiers")]
     verifier("data-retrouver" in bloc[:bloc.index("<details")],
              "et le propose hors du bloc repliable, non dedans")
-    verifier("data-retrouver" in page[page.index("function messageVide"):
+    verifier("data-retrouver" in page[page.index("function messageVideAvecRattrapage"):
                                       page.index("function pastilleStatut")],
              "y compris là où la liste est vide, qui est où on le cherche")
+    # Il n'est branche que dans l'onglet « Etat des dossiers » : ailleurs — au
+    # tableau de bord, aux documents — il s'affichait sans rien faire au clic.
+    ordinaire = page[page.index("function messageVide()"):
+                     page.index("function messageVideAvecRattrapage")]
+    verifier("data-retrouver" not in ordinaire,
+             "et nulle part ailleurs, où il ne serait branché à rien")
+    # « Aucun export trouve » pendant un export est faux et inquietant : la
+    # liste se reconstitue, elle n'est pas absente.
+    verifier("EXPORT_EN_COURS" in ordinaire and "au fur et à mesure" in ordinaire,
+             "pendant un export, le message dit que la liste se reconstitue")
     # Sans retour à la ligne, un bouton de plus était poussé hors de l'écran.
     verifier("flex-wrap:wrap" in page[page.index(".barre-selection{"):
                                       page.index(".barre-selection span")],
@@ -3943,7 +3953,7 @@ def test_barre_toujours_presente() -> None:
     verifier('id="toutEffacer"' in rendu and 'id="complement"' in rendu,
              "la barre est rendue dans tous les cas")
     verifier("? (retenus.length ? \"\" : messageAucuneCorrespondance())" in rendu
-             and ": messageVide()}" in rendu,
+             and ": messageVideAvecRattrapage()}" in rendu,
              "et le message « aucun export » prend la place du tableau, "
              "pas celle de la barre")
     # Effacer ce qui n'existe pas n'a pas de sens : le bouton est là pour
