@@ -3607,6 +3607,32 @@ def test_document_monday_verrouille() -> None:
          module_monday.identifiant) = vrais
 
 
+def test_mails_recuperes_expliques() -> None:
+    """Chaque mail dit pourquoi il est au dossier."""
+    import interface as module_interface  # noqa: PLC0415
+
+    print("\nPourquoi chaque mail a été récupéré")
+
+    page = module_interface.PAGE
+    verifier('"/api/messages"' in page and "function voirMessages" in page,
+             "le dossier ouvre la liste de ses mails")
+    verifier('id="voirMessages"' in page,
+             "depuis le panneau « Parcours »")
+
+    # Le critère est écrit en abrégé dans l'index — « adresse+facture » —
+    # parce qu'il sert d'abord à l'outil. La question « de quel droit ce mail
+    # est-il là » mérite une réponse en français.
+    bloc = page[page.index("function raisonLisible"):page.index("async function voirMessages")]
+    for phrase in ("l'adresse du débiteur", "le numéro de facture",
+                   "le nom d'une pièce jointe", "retrouvé par ",
+                   "mis à part : "):
+        verifier(phrase in bloc, f"« {phrase} » est dit en français")
+    verifier("ne parle que d'une autre facture" in bloc,
+             "et le motif de mise à part est nommé")
+    verifier("tr.ecarte" in page,
+             "les messages mis à part se distinguent des autres")
+
+
 def test_fil_de_diffusion_ecarte() -> None:
     """Un message à trente personnes sans le débiteur n'est pas sa correspondance."""
     import export_mails as module_export  # noqa: PLC0415
@@ -7683,6 +7709,7 @@ def main() -> int:
     test_fil_trop_long_ecarte()
     test_csv_ouvert_dans_excel()
     test_document_monday_verrouille()
+    test_mails_recuperes_expliques()
     test_fil_de_diffusion_ecarte()
     test_heures_de_l_emargement()
     test_montant_deja_regle()

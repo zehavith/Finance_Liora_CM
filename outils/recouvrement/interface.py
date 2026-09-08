@@ -1142,6 +1142,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/restaurer-suivi":
                 self._restaurer_suivi(self._corps_json())
                 return
+            if chemin == "/api/messages":
+                self._messages_du_dossier(self._corps_json())
+                return
             if chemin == "/api/retrouver":
                 self._retrouver_dossiers()
                 return
@@ -1291,6 +1294,47 @@ class Gestionnaire(BaseHTTPRequestHandler):
         resultat["memorise"] = nom
         resultat["retenus"] = [c.name for c in complements_memorises()]
         self._json(200, resultat)
+
+    def _messages_du_dossier(self, demande: dict) -> None:
+        """Les messages d'un dossier, et pourquoi chacun s'y trouve.
+
+        La question « quels mails ont été récupérés, et de quel droit » ne
+        trouvait sa réponse que dans index.csv, qu'il fallait ouvrir dans
+        Excel. Or c'est la première chose qu'on veut savoir d'un dossier
+        qu'on s'apprête à transmettre.
+        """
+        reference = str((demande or {}).get("reference") or "").strip()
+        sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+        dossiers = {d["reference"]: d for d in module_suivi.inventaire(sortie, SUIVI)}
+        if reference not in dossiers:
+            self._json(404, {"erreur": f"Dossier inconnu : {reference}"})
+            return
+
+        index = sortie / dossiers[reference]["repertoire"] / "index.csv"
+        if not index.exists():
+            self._json(200, {"messages": [], "sans_index": True})
+            return
+
+        messages = []
+        for rangee in csv.DictReader(
+                index.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"):
+            critere = (rangee.get("critere") or "").strip()
+            messages.append({
+                "piece": rangee.get("piece_n") or "",
+                "date": rangee.get("date") or "",
+                "sens": rangee.get("sens") or "",
+                "de": rangee.get("expediteur") or "",
+                "a": rangee.get("destinataires") or "",
+                "objet": rangee.get("objet") or "",
+                "pj": rangee.get("pieces_jointes") or "",
+                "critere": critere,
+                # Ce qui est mis a part n'etablit pas la creance : la note le
+                # range en annexe, et la liste doit le dire aussi.
+                "ecarte": critere.startswith(("autre facture", "diffusion")),
+                "fichier": rangee.get("fichier_pdf") or rangee.get("fichier_eml") or "",
+            })
+        self._json(200, {"messages": messages,
+                         "repertoire": str(sortie / dossiers[reference]["repertoire"])})
 
     def _restaurer_suivi(self, demande: dict) -> None:
         """Remet en place une copie datée du suivi."""
@@ -1831,6 +1875,8 @@ p.aide.perimees{color:#c9862a;border-left:2px solid #c9862a;padding-left:10px;
    tous les jours, et deroulee elle prendrait la place du tableau. */
 p.aide.a-refaire{margin-top:16px;color:#e8a0a0;border-left:2px solid #d03b3b;
   padding-left:10px;line-height:1.7}
+table.donnees tr.ecarte td{opacity:.55;font-style:italic}
+#messagesDossier{margin-top:14px}
 p.aide.rattrapage{margin-top:16px}
 p.aide.rattrapage button{margin-left:4px}
 details.absents{margin-top:10px;border:1px solid var(--bord);border-radius:8px;
@@ -3909,6 +3955,69 @@ function rendreSuivi() {
 // Les dates sont modifiables : une étape se saisit souvent quelques jours
 // après s'être produite, et la durée de procédure serait fausse de toute la
 // latence de saisie.
+// « Quels mails ont ete recuperes, et de quel droit ? » ne trouvait sa reponse
+// que dans index.csv, qu'il fallait ouvrir dans Excel. C'est pourtant la
+// premiere chose qu'on veut savoir d'un dossier qu'on va transmettre.
+//
+// Le critere y est ecrit en abrege — « adresse+facture » — parce qu'il sert
+// d'abord a l'outil. Ici on l'ecrit en francais.
+function raisonLisible(critere) {
+  const brut = String(critere || "").trim();
+  if (!brut) return "sans critère noté";
+  if (brut.startsWith("autre facture")) {
+    return "mis à part : ne parle que d'une autre facture ("
+      + echapper(brut.split(":").slice(1).join(":").trim()) + ")";
+  }
+  if (brut.startsWith("diffusion")) {
+    return "mis à part : "
+      + echapper(brut.split(":").slice(1).join(":").trim());
+  }
+  if (brut === "déposé à la main") return "versé à la main dans le dossier";
+  const morceaux = [];
+  if (brut.includes("adresse")) morceaux.push("l'adresse du débiteur");
+  if (brut.includes("facture")) morceaux.push("le numéro de facture");
+  if (brut.includes("nom")) morceaux.push("le nom de l'apprenant");
+  if (brut.includes("piece") || brut.includes("filename")) {
+    morceaux.push("le nom d'une pièce jointe");
+  }
+  if (!morceaux.length) return echapper(brut);
+  return "retrouvé par " + morceaux.join(" et ");
+}
+
+async function voirMessages(reference) {
+  const zone = $("messagesDossier");
+  zone.innerHTML = '<p class="aide">Lecture du dossier…</p>';
+  let reponse;
+  try { reponse = await api("/api/messages", { reference: reference }); }
+  catch (erreur) { zone.innerHTML = ""; afficherBandeau(false, erreur.message); return; }
+
+  const messages = reponse.messages || [];
+  if (!messages.length) {
+    zone.innerHTML = '<p class="vide">Aucun message dans ce dossier'
+      + (reponse.sans_index ? " : il n'a pas encore été constitué." : ".") + "</p>";
+    return;
+  }
+  const retenus = messages.filter((m) => !m.ecarte).length;
+  zone.innerHTML = `
+    <p class="aide"><b>${messages.length} message(s)</b> — ${retenus} qui
+       établissent la créance, ${messages.length - retenus} mis à part.
+       Chaque ligne dit pourquoi le message a été retrouvé.</p>
+    <div class="defilable"><table class="donnees">
+      <tr><th class="num">Pièce</th><th class="num">Date</th><th>Sens</th>
+          <th>De</th><th>Objet</th><th>Pourquoi</th><th>PJ</th></tr>
+      ${messages.map((m) => `
+        <tr${m.ecarte ? ' class="ecarte"' : ""}>
+          <td class="num">n° ${echapper(m.piece)}</td>
+          <td class="num">${echapper(m.date)}</td>
+          <td>${echapper(m.sens)}</td>
+          <td>${echapper(m.de)}</td>
+          <td>${echapper(m.objet)}</td>
+          <td>${raisonLisible(m.critere)}</td>
+          <td>${echapper(m.pj)}</td>
+        </tr>`).join("")}
+    </table></div>`;
+}
+
 function rendreDetail(reference) {
   const dossier = DOSSIERS.find((d) => d.reference === reference);
   const zone = $("detailDossier");
@@ -3956,7 +4065,11 @@ function rendreDetail(reference) {
          l'étape. ${monday.length
            ? "D'après le journal Monday : " + monday.join(", ") + "."
            : ""}</p>
-      <div class="boutons"><button class="secondaire" id="fermerDetail">Fermer</button></div>
+      <div class="boutons">
+        <button class="secondaire" id="voirMessages">Voir les mails récupérés</button>
+        <button class="secondaire" id="fermerDetail">Fermer</button>
+      </div>
+      <div id="messagesDossier"></div>
     </div>`;
 
   zone.querySelectorAll("input[data-rang]").forEach((champ) =>
@@ -3969,6 +4082,7 @@ function rendreDetail(reference) {
         rendreDetail(reference);
       } catch (erreur) { afficherBandeau(false, erreur.message); }
     }));
+  $("voirMessages").addEventListener("click", () => voirMessages(reference));
   $("fermerDetail").addEventListener("click", () => { zone.innerHTML = ""; });
   zone.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
