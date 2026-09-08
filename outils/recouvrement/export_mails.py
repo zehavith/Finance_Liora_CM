@@ -84,10 +84,6 @@ from rendu import (  # noqa: E402
     verifier_environnement,
 )
 
-# Au-dela, un message n'est plus une correspondance mais une diffusion. Une
-# relance de recouvrement compte quelques destinataires ; un fil de
-# comptabilite adresse a une promotion en compte des dizaines.
-SEUIL_DIFFUSION = 15
 MOTIF_ADRESSE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 
 RACINE = Path(__file__).resolve().parent
@@ -931,29 +927,38 @@ def traiter_dossier(
         # plutot que fondus dans le dossier : la note les met a part, et rien
         # n'est perdu.
         autres_factures = dossier.concerne_une_autre_facture(recherchable)
-        # Un message adresse a trente personnes dont le debiteur ne fait pas
-        # partie n'est pas une correspondance sur sa facture : c'est une liste
-        # de diffusion ou son numero apparait par hasard — un fil de
-        # comptabilite, une annonce a une promotion entiere. Il entrait au
-        # dossier et y versait les echanges d'autres apprenants.
+        # Un message ou le debiteur n'apparait nulle part ne concerne pas son
+        # dossier. Il n'est la que parce qu'un numero de facture s'y trouve —
+        # un fil de comptabilite adresse a une promotion, un echange entre
+        # collegues sur un autre apprenant. Il versait au dossier les
+        # echanges d'autres personnes, ce qu'on ne transmet ni a un avocat ni
+        # a un tribunal.
         #
-        # On ne l'ecarte que si l'on connait au moins une adresse du debiteur :
-        # sans elle, rien ne permet de dire qu'il n'y figure pas.
-        # « parties » est une chaîne d'en-têtes : on y compte les adresses,
-        # pas les caractères.
+        # Venir d'une adresse maison n'y change rien : « billing@… » ecrit a
+        # tous les apprenants, et c'est justement de la que vient le
+        # melange.
+        #
+        # « parties » est une chaine d'en-tetes : on y compte les adresses,
+        # pas les caracteres.
         adresses_du_message = set(MOTIF_ADRESSE.findall(parties))
-        # Le rapprochement se fait sur les seules adresses que le tableau
-        # donnait : une adresse relevée dans un fil de diffusion y figure par
-        # construction, et s'en servir pour juger ce fil légitime reviendrait
-        # à se donner raison tout seul.
+        # Sur les seules adresses que le tableau donnait : une adresse relevee
+        # dans un fil de diffusion y figure par construction, et s'en servir
+        # pour juger ce fil legitime reviendrait a se donner raison tout seul.
         connues = [a for a in dossier.emails if a not in adresses_decouvertes]
         citees = {a.lower() for a in dossier.adresses_citees(parties)}
-        diffusion = (
-            bool(connues)
-            and not autres_factures
-            and len(adresses_du_message) > SEUIL_DIFFUSION
-            and not (citees - {a.lower() for a in adresses_decouvertes})
-        )
+        presentes = citees - {a.lower() for a in adresses_decouvertes}
+        # Sans adresse connue, rien ne permet de dire que le debiteur n'y est
+        # pas : le numero reste le seul lien, et on garde le message.
+        hors_debiteur = bool(connues) and not autres_factures and not presentes
+        motif_ecart = ""
+        if autres_factures:
+            motif_ecart = "autre facture : " + ", ".join(autres_factures)
+        elif hors_debiteur:
+            motif_ecart = (
+                f"hors debiteur : {len(adresses_du_message)} adresse(s) au "
+                "message, aucune du debiteur"
+            )
+
         lignes.append(
             LigneIndex(
                 piece_n=numero,
@@ -965,13 +970,7 @@ def traiter_dossier(
                 objet=message.objet,
                 nb_pieces_jointes=len(message.pieces_jointes),
                 pieces_jointes=" | ".join(pj.nom for pj in message.pieces_jointes),
-                critere=(
-                    "autre facture : " + ", ".join(autres_factures)
-                    if autres_factures
-                    else f"diffusion : {len(adresses_du_message)} destinataires, sans le débiteur"
-                    if diffusion
-                    else dossier.criteres_trouves(recherchable)
-                ),
+                critere=motif_ecart or dossier.criteres_trouves(recherchable),
                 factures_concernees=" | ".join(dossier.factures_citees(recherchable)),
                 adresses_concernees=" | ".join(dossier.adresses_citees(parties)),
                 boites=" | ".join(message.boites),

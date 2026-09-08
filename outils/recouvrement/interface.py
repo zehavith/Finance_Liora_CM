@@ -1330,7 +1330,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 "critere": critere,
                 # Ce qui est mis a part n'etablit pas la creance : la note le
                 # range en annexe, et la liste doit le dire aussi.
-                "ecarte": critere.startswith(("autre facture", "diffusion")),
+                "ecarte": critere.startswith(
+                    ("autre facture", "diffusion", "hors debiteur")),
                 "fichier": rangee.get("fichier_pdf") or rangee.get("fichier_eml") or "",
             })
         self._json(200, {"messages": messages,
@@ -3971,6 +3972,10 @@ function raisonLisible(critere) {
   if (brut.startsWith("diffusion")) {
     return "mis à part : "
       + echapper(brut.split(":").slice(1).join(":").trim());
+  }
+  if (brut.startsWith("hors debiteur")) {
+    return "mis à part : votre débiteur n'apparaît nulle part dans ce "
+      + "message — il ne concerne pas son dossier";
   }
   if (brut === "déposé à la main") return "versé à la main dans le dossier";
   const morceaux = [];

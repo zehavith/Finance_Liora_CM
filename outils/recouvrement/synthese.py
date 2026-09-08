@@ -192,7 +192,8 @@ def concerne_une_autre_facture(ligne: LigneIndex) -> bool:
     apparaît par hasard — un fil de comptabilité adressé à trente personnes
     dont le débiteur ne fait pas partie. Celui-là ne prouve rien non plus.
     """
-    return (ligne.critere or "").startswith(("autre facture", "diffusion"))
+    return (ligne.critere or "").startswith(
+        ("autre facture", "diffusion", "hors debiteur"))
 
 
 def analyser(lignes: list[LigneIndex], textes: dict[int, str], doublons: int = 0) -> Synthese:

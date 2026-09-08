@@ -3634,15 +3634,11 @@ def test_mails_recuperes_expliques() -> None:
 
 
 def test_fil_de_diffusion_ecarte() -> None:
-    """Un message à trente personnes sans le débiteur n'est pas sa correspondance."""
+    """Un message où le débiteur n'apparaît pas ne concerne pas son dossier."""
     import export_mails as module_export  # noqa: PLC0415
     import synthese as module_synthese  # noqa: PLC0415
 
     print("\nFils de diffusion")
-
-    verifier(module_export.SEUIL_DIFFUSION == 15,
-             f"le seuil est de quinze destinataires "
-             f"({module_export.SEUIL_DIFFUSION})")
 
     # « parties » est une chaîne d'en-têtes : compter ses caractères donnait
     # « 976 destinataires » et écartait jusqu'aux vraies relances.
@@ -3656,11 +3652,18 @@ def test_fil_de_diffusion_ecarte() -> None:
         piece_n=1, date=datetime(2024, 5, 21), sens="reçu",
         expediteur="billing@datascientest.com", destinataires="promo",
         copie="", objet="Datascientest-Comptabilité", nb_pieces_jointes=0,
-        pieces_jointes="", critere="diffusion : 41 destinataires, sans le débiteur",
+        pieces_jointes="",
+        critere="hors debiteur : 41 adresse(s) au message, aucune du debiteur",
         boites="b", fichier_pdf="", fichier_eml="", dossier_pieces_jointes="",
         thread_id="t", message_id="m")
     verifier(module_synthese.concerne_une_autre_facture(ligne),
              "il est mis à part comme un message d'une autre facture")
+    # Venir d'une adresse maison n'y change rien : « billing@… » écrit à tous
+    # les apprenants, et c'est de là que vient le mélange.
+    source = Path("export_mails.py").read_text(encoding="utf-8")
+    verifier("hors_debiteur = bool(connues) and not autres_factures"
+             " and not presentes" in source,
+             "la règle est l'absence du débiteur, sans seuil ni exception")
     synthese = module_synthese.analyser([ligne], {})
     verifier(synthese.nb_pieces == 0 and len(synthese.autres_factures) == 1,
              f"et ne compte pas parmi les pièces "
