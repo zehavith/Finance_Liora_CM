@@ -3631,6 +3631,21 @@ def test_message_quand_l_outil_ne_repond_pas() -> None:
     verifier(module_interface.DELAI_INACTIVITE > 45,
              f"et le battement est plus court que le délai d'inactivité "
              f"({module_interface.DELAI_INACTIVITE} s)")
+    # Le battement ne suffit pas : un onglet passé à l'arrière-plan voit ses
+    # minuteries ralenties, puis gelées. Il suffisait d'aller lire un PDF un
+    # moment pour que l'outil s'arrête tout seul. Le délai doit couvrir une
+    # absence, pas seulement une pause.
+    verifier(module_interface.DELAI_INACTIVITE >= 900,
+             f"assez long pour survivre à un onglet mis de côté "
+             f"({module_interface.DELAI_INACTIVITE / 60:.0f} min)")
+    verifier('["visibilitychange", "focus"].forEach' in page,
+             "et la page bat aussi dès qu'elle revient au premier plan")
+    # Refaire deux cents notes prend plusieurs minutes, pendant lesquelles la
+    # page n'attend rien : s'arrêter là laisserait la moitié des notes
+    # réécrites et l'autre moitié en retard.
+    verifier("if EXECUTION.en_cours or NOTES_EN_COURS:" in
+             Path("interface.py").read_text(encoding="utf-8"),
+             "et une remise à jour des notes tient l'outil éveillé")
     # Le conteneur est en flex : un <b> nu y devient une boîte à part, et la
     # phrase se cassait en trois morceaux à des hauteurs différentes.
     barre = page[page.index('<div id="deconnecte"'):page.index("<header>")]

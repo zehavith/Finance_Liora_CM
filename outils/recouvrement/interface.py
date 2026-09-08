@@ -379,9 +379,18 @@ JETON = secrets.token_urlsafe(24)
 
 # Lancée depuis le raccourci, l'application n'a plus de fenêtre à fermer :
 # sans cette veille, chaque ouverture laisserait un processus caché de plus.
-# Le délai est confortable — un rechargement de page ou une pause dans la
-# navigation ne doit pas couper l'outil sous les pieds.
-DELAI_INACTIVITE = 180.0
+#
+# Une demi-heure, et non trois minutes. La page envoie bien un battement
+# toutes les quarante-cinq secondes, mais le navigateur ne le lui laisse pas
+# toujours faire : un onglet passé à l'arrière-plan voit ses minuteries
+# ralenties, puis gelées au bout de quelques minutes. Il suffisait donc
+# d'aller lire un PDF ou un tableau Excel un moment pour que l'application
+# s'arrête toute seule, et qu'il faille la relancer en revenant.
+#
+# Ce qu'on perd : un processus qui traîne une demi-heure après la fermeture
+# de l'onglet. Ce qu'on gagne : ne plus se faire couper l'outil sous les
+# pieds au milieu du travail.
+DELAI_INACTIVITE = 1800.0
 _dernier_contact = time.monotonic()
 
 
@@ -456,7 +465,11 @@ def _veiller(serveur) -> None:
     """
     while True:
         time.sleep(15)
-        if EXECUTION.en_cours:
+        # Un export, mais aussi une remise à jour des notes : refaire deux
+        # cents notes prend plusieurs minutes, pendant lesquelles la page
+        # n'attend rien. S'arrêter là laisserait la moitié des notes
+        # réécrites et l'autre moitié en retard.
+        if EXECUTION.en_cours or NOTES_EN_COURS:
             signaler_activite()
             continue
         if time.monotonic() - _dernier_contact > DELAI_INACTIVITE:
@@ -5060,6 +5073,18 @@ setInterval(async () => {
   try { await api("/api/vivant"); }
   catch (erreur) { void erreur; }
 }, 45000);
+
+// Un onglet passe a l'arriere-plan voit ses minuteries ralenties, puis
+// gelees : le battement s'arrete sans que la page le sache. On bat donc
+// aussi des qu'elle revient au premier plan — c'est le moment ou l'on va
+// s'en servir, et celui ou l'on veut savoir si l'outil repond encore.
+["visibilitychange", "focus"].forEach((quoi) => {
+  window.addEventListener(quoi, async () => {
+    if (document.visibilityState === "hidden") return;
+    try { await api("/api/vivant"); }
+    catch (erreur) { void erreur; }
+  });
+});
 
 function afficherBandeau(reussi, message) {
   const bandeau = $("bandeau");
