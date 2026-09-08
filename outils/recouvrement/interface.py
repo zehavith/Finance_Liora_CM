@@ -74,6 +74,10 @@ ANNUAIRE = RACINE / "annuaire-entreprises.json"
 # Secret au même titre que les identifiants Gmail : fichier dédié,
 # jamais renvoyé à la page, jamais mêlé aux préférences.
 JETON_MONDAY = RACINE / "monday-token.txt"
+# Les mêmes fichiers que l'export : c'est la même application Google, et le
+# jeton d'écriture vit à côté des jetons de lecture, sous son propre nom.
+IDENTIFIANTS_GOOGLE = RACINE / "credentials.json"
+JETON_GOOGLE = RACINE / "token.json"
 # Liora s'appelait DataScientest : les relances les plus anciennes partent
 # encore de ce domaine, et sans lui elles passeraient pour des messages reçus.
 DOMAINES_PAR_DEFAUT = "datascientest.com"
@@ -1787,6 +1791,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
         """
         import entreprises as module_entreprises  # noqa: PLC0415
         import envoi as module_envoi  # noqa: PLC0415
+        import gmail_api as module_gmail  # noqa: PLC0415
 
         reference = str((demande or {}).get("reference") or "").strip()
         if not reference:
@@ -1831,19 +1836,37 @@ class Gestionnaire(BaseHTTPRequestHandler):
         # Ouvrir un brouillon Outlook à quelqu'un qui travaille dans Gmail ne
         # sert à rien, et lui fait perdre le temps de comprendre pourquoi.
         messagerie = (preferences.get("messagerie") or "gmail").strip().lower()
-        ouvert, motif, lien = False, "", ""
+        ouvert, motif, lien, brouillon = False, "", "", ""
+
         if messagerie == "outlook":
             ouvert, motif = module_envoi.brouillon_outlook(
                 destinataire, objet, corps, pieces, expediteur=expediteur)
         else:
-            lien = module_envoi.lien_gmail(
-                expediteur, destinataire, objet, corps)
+            # Un vrai brouillon dans Gmail, pièce jointe comprise. En cas
+            # d'échec — autorisation refusée, réseau, quota —, la fenêtre de
+            # rédaction reste : mieux vaut un brouillon à compléter que rien.
+            try:
+                service = module_gmail.service_envoi(
+                    expediteur, IDENTIFIANTS_GOOGLE, JETON_GOOGLE,
+                    ouvrir_navigateur=True,
+                )
+                brouillon, motif = module_envoi.brouillon_gmail(
+                    service, expediteur, destinataire, objet, corps, pieces)
+                ouvert = bool(brouillon)
+            except Exception as exc:  # noqa: BLE001 - jamais bloquant
+                motif = str(exc)
+            if not ouvert:
+                lien = module_envoi.lien_gmail(
+                    expediteur, destinataire, objet, corps)
 
         self._json(200, {
             "ouvert": ouvert,
             "motif": motif,
             "messagerie": messagerie,
             "lien": lien,
+            "brouillon": brouillon,
+            "autorise": module_gmail.autorisation_envoi_faite(
+                expediteur, JETON_GOOGLE),
             "destinataire": destinataire,
             "expediteur": (preferences.get("expediteur") or "").strip(),
             "objet": objet,
@@ -3286,15 +3309,33 @@ async function ouvrirBrouillon(reference) {
     // ne peut y attacher un fichier. Le répertoire s'ouvre donc à côté, et
     // la pièce jointe se glisse d'un geste. Le dire est indispensable :
     // envoyer un dossier sans le dossier serait pire que de ne rien faire.
+    // Le brouillon est dans Gmail, pièce jointe comprise : il n'y a plus
+    // qu'à l'ouvrir, le relire et l'envoyer.
+    if (r.brouillon) {
+      window.open("https://mail.google.com/mail/"
+        + (r.expediteur ? "?authuser=" + encodeURIComponent(r.expediteur) : "")
+        + "#drafts", "_blank", "noopener");
+      afficherBandeau(!r.motif,
+        `Brouillon créé dans Gmail — ${echapper(r.piece)} (${r.poids}) en `
+        + "pièce jointe"
+        + (r.destinataire ? `, à ${echapper(r.destinataire)}` : "")
+        + (r.expediteur ? `, depuis ${echapper(r.expediteur)}` : "")
+        + ". Relisez-le et envoyez-le : rien n'est parti."
+        + (r.motif ? ` ⚠ ${echapper(r.motif)}.` : ""));
+      return;
+    }
+
     if (r.messagerie === "gmail" && r.lien) {
       window.open(r.lien, "_blank", "noopener");
       try { await api("/api/ouvrir", { chemin: r.repertoire }); }
       catch (erreur) { void erreur; }
-      afficherBandeau(true,
+      afficherBandeau(false,
         `Fenêtre Gmail ouverte — à ${echapper(r.destinataire || "compléter")}`
         + (r.expediteur ? `, depuis ${echapper(r.expediteur)}` : "")
         + `. ⚠ La pièce jointe reste à glisser : ${echapper(r.piece)} `
-        + `(${r.poids}), dans le dossier qui vient de s'ouvrir.`);
+        + `(${r.poids}), dans le dossier qui vient de s'ouvrir.`
+        + (r.motif ? ` Le brouillon n'a pas pu être écrit : ${echapper(r.motif)}.`
+           : ""));
       return;
     }
 

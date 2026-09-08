@@ -11,6 +11,8 @@ installation pour vérifier que le poste est correctement équipé :
 from __future__ import annotations
 
 import csv
+import email
+import base64
 import inspect
 import io
 import json
@@ -4710,6 +4712,68 @@ def test_preparer_pour_envoi() -> None:
     # indispensable, envoyer un dossier sans le dossier serait pire que rien.
     verifier("La pièce jointe reste à glisser" in page,
              "et l'on est prévenu que la pièce jointe reste à glisser")
+    # Le brouillon Gmail, pièce jointe comprise. Un brouillon, jamais un
+    # envoi : l'application n'appelle pas « send ».
+    capture = {}
+
+    class _Brouillons:
+        def create(self, userId, body):  # noqa: N803 - signature Google
+            capture["boite"] = userId
+            capture["raw"] = body["message"]["raw"]
+
+            class _Appel:
+                def execute(self_inner):
+                    return {"id": "r-1234"}
+
+            return _Appel()
+
+    class _Service:
+        def users(self):
+            return type("U", (), {"drafts": lambda _s: _Brouillons()})()
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        piece = Path(repertoire) / "fact-2405-00409_sas-eden.pdf"
+        piece.write_bytes(b"%PDF-1.4 " + b"x" * 4000)
+        identifiant, motif = module_envoi.brouillon_gmail(
+            _Service(), "zehavit.s@liora.io", "cmauge@omneseducation.com",
+            "Transmission du dossier de SAS EDEN - FACT-2405-00409",
+            "Bonjour,", [piece])
+
+        verifier(identifiant == "r-1234" and not motif,
+                 f"le brouillon est créé ({identifiant}, {motif or 'sans motif'})")
+        brut = base64.urlsafe_b64decode(capture["raw"])
+        message = email.message_from_bytes(brut)
+        verifier(message["From"] == "zehavit.s@liora.io"
+                 and message["To"] == "cmauge@omneseducation.com",
+                 "de la bonne adresse, à la bonne adresse")
+        jointes = [p.get_filename() for p in message.walk() if p.get_filename()]
+        verifier(jointes == ["fact-2405-00409_sas-eden.pdf"],
+                 f"avec le dossier en pièce jointe ({jointes})")
+
+        # Une pièce trop lourde ne fait pas échouer le brouillon : elle est
+        # signalée, et le reste part quand même.
+        gros = Path(repertoire) / "gros.zip"
+        gros.write_bytes(b"0" * (module_envoi.PIECE_MAX + 10))
+        _identifiant, motif = module_envoi.brouillon_gmail(
+            _Service(), "a@liora.io", "b@x.fr", "Objet", "Corps", [gros])
+        verifier("trop lourde" in motif and "à joindre à la main" in motif,
+                 f"une pièce trop lourde est annoncée ({motif[:50]}…)")
+
+    source = Path("envoi.py").read_text(encoding="utf-8")
+    verifier("drafts().create" in source and ".send(" not in source,
+             "l'application écrit des brouillons, elle n'envoie jamais")
+    # Les boîtes de l'export gardent leur autorisation en lecture seule :
+    # leur ajouter une portée les aurait toutes fait réautoriser.
+    import gmail_api as module_gmail  # noqa: PLC0415
+    verifier(module_gmail.PORTEES == [
+        "https://www.googleapis.com/auth/gmail.readonly"],
+        "les boîtes interrogées restent en lecture seule")
+    verifier(module_gmail.PORTEES_ENVOI == [
+        "https://www.googleapis.com/auth/gmail.compose"],
+        "et seule l'adresse qui signe reçoit la portée d'écriture")
+    verifier("-envoi" in Path("gmail_api.py").read_text(encoding="utf-8"),
+             "dans son propre fichier de jeton")
+
     verifier(module_interface.ENVOI_PAR_DEFAUT["responsable_entreprise"]
              == "cmauge@omneseducation.com"
              and module_interface.ENVOI_PAR_DEFAUT["responsable_personnel"]

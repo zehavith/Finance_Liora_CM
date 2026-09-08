@@ -15,6 +15,17 @@ from message import MessageMail, lire_message
 # quoi que ce soit dans la boîte.
 PORTEES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
+# Écrire un brouillon demande davantage, et Google ne propose pas de portée
+# « brouillon seulement » : celle-ci couvre aussi l'envoi. L'application
+# n'écrit que des brouillons — elle n'appelle jamais `send` —, mais le jeton,
+# lui, permettrait d'envoyer, et cela doit être dit.
+#
+# Elle vit dans son propre fichier de jeton, pour une seule adresse : celle
+# qui signe les transmissions. Les boîtes de l'export gardent leur
+# autorisation en lecture seule, intacte — ajouter une portée aux leurs les
+# aurait toutes fait réautoriser, et un export en cours l'aurait payé.
+PORTEES_ENVOI = ["https://www.googleapis.com/auth/gmail.compose"]
+
 # Nombre de tentatives automatiques de la librairie Google sur les erreurs
 # transitoires (429 quota dépassé, 500/503 côté Google).
 # Au-dela, un fil n'est plus une conversation avec un debiteur mais une
@@ -55,6 +66,7 @@ def _identifiants_utilisateur(
     fichier_token: Path,
     boite: str | None = None,
     ouvrir_navigateur: bool = True,
+    portees: list[str] | None = None,
 ):
     """Flux OAuth « application de bureau » : ouvre le navigateur au premier
     lancement, puis réutilise le jeton stocké.
@@ -72,7 +84,8 @@ def _identifiants_utilisateur(
     identifiants = None
     if fichier_token.exists():
         try:
-            identifiants = Credentials.from_authorized_user_file(str(fichier_token), PORTEES)
+            identifiants = Credentials.from_authorized_user_file(
+                str(fichier_token), portees or PORTEES)
         except ValueError:
             identifiants = None
 
@@ -87,7 +100,8 @@ def _identifiants_utilisateur(
                 f"Fichier d'identifiants introuvable : {fichier_credentials}\n"
                 "Voir la section « Mise en place » du README."
             )
-        flux = InstalledAppFlow.from_client_secrets_file(str(fichier_credentials), PORTEES)
+        flux = InstalledAppFlow.from_client_secrets_file(
+            str(fichier_credentials), portees or PORTEES)
         precision = f" en tant que {boite}" if boite else ""
 
         if ouvrir_navigateur:
@@ -406,3 +420,50 @@ def ouvrir_sources(
             )
         )
     return SourcesGmail(clients)
+
+
+def service_envoi(
+    adresse: str,
+    fichier_credentials: Path,
+    fichier_token: Path,
+    ouvrir_navigateur: bool = True,
+):
+    """Le service Gmail autorisé à écrire un brouillon dans cette boîte.
+
+    Son jeton est distinct de ceux de l'export : les boîtes interrogées
+    gardent leur autorisation en lecture seule, et seule l'adresse qui signe
+    les transmissions reçoit la portée plus large. La première utilisation
+    ouvre une fenêtre d'autorisation Google — une fois, puis le jeton sert.
+    """
+    build, _HttpError = _importer_dependances()
+    if not adresse:
+        raise ErreurGmail(
+            "Aucune adresse d'expédition : renseignez « Envoyer depuis » "
+            "dans les réglages."
+        )
+    cible = fichier_token_de_boite(
+        fichier_token.with_name(f"{fichier_token.stem}-envoi{fichier_token.suffix}"),
+        adresse,
+    )
+    identifiants = _identifiants_utilisateur(
+        fichier_credentials,
+        cible,
+        boite=adresse,
+        ouvrir_navigateur=ouvrir_navigateur,
+        portees=PORTEES_ENVOI,
+    )
+    return build("gmail", "v1", credentials=identifiants, cache_discovery=False)
+
+
+def autorisation_envoi_faite(adresse: str, fichier_token: Path) -> bool:
+    """Le jeton d'écriture existe-t-il déjà pour cette adresse ?
+
+    Sert à prévenir avant d'ouvrir une fenêtre d'autorisation : une fenêtre
+    Google qui surgit sans crier gare, on la referme.
+    """
+    if not adresse:
+        return False
+    return fichier_token_de_boite(
+        fichier_token.with_name(f"{fichier_token.stem}-envoi{fichier_token.suffix}"),
+        adresse,
+    ).exists()

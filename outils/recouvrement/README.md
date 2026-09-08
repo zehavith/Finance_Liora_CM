@@ -684,10 +684,31 @@ appartient à celle qui le signe.
 
 | Messagerie | Ce qui se passe |
 |---|---|
-| **Gmail** (par défaut) | la fenêtre de rédaction s'ouvre remplie ; **la pièce jointe reste à glisser** depuis le répertoire qui s'ouvre en même temps — aucune adresse web ne permet d'attacher un fichier |
-| **Outlook** | le brouillon s'ouvre **avec la pièce jointe déjà en place** (demande `pywin32`, Windows) |
+| **Gmail** (par défaut) | un **vrai brouillon** est écrit dans votre Gmail, **pièce jointe comprise** ; l'onglet des brouillons s'ouvre, vous relisez, vous envoyez |
+| **Outlook** | le brouillon s'ouvre dans Outlook, pièce jointe comprise (demande `pywin32`, Windows) |
 
 Le réglage **Messagerie** choisit lequel.
+
+#### L'autorisation d'écrire un brouillon
+
+Écrire dans Gmail demande plus que lire. À la **première** utilisation de
+« Préparer le mail », une fenêtre Google s'ouvre : autorisez-la avec
+l'adresse qui signe vos transmissions. Une fois, puis c'est fait.
+
+Deux précisions qui comptent :
+
+- **Les boîtes de l'export ne sont pas touchées.** `billing@` et
+  `recouvrement@` gardent leur autorisation en **lecture seule**, dans leurs
+  propres jetons. Seule l'adresse d'expédition reçoit la portée d'écriture,
+  dans un fichier de jeton à part.
+- **Google ne propose pas de portée « brouillon seulement »** : celle
+  demandée couvre aussi l'envoi. L'application **n'appelle jamais `send`** —
+  une vérification automatique l'interdit dans le code — mais le jeton, lui,
+  le permettrait. C'est dit plutôt que tu.
+
+Si l'autorisation échoue ou est refusée, la fenêtre de rédaction Gmail
+s'ouvre quand même, remplie, et le répertoire avec : la pièce jointe reste à
+glisser, et l'application le dit.
 
 Trois adresses se règlent dans **Boîtes mail et options** :
 

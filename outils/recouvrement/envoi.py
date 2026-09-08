@@ -227,6 +227,70 @@ def corps_du_message(dossier: dict) -> tuple[str, str]:
     return objet, "\n".join(lignes)
 
 
+# Ce qu'un brouillon écrit d'un seul tenant peut porter. Au-delà, l'envoi
+# reprend en plusieurs morceaux, ce qui demande un autre appel — et de toute
+# façon, une messagerie d'entreprise refuse en général au-delà de 25 Mo.
+PIECE_MAX = 24 * 1024 * 1024
+
+
+def brouillon_gmail(
+    service, expediteur: str, destinataire: str, objet: str, corps: str,
+    pieces: list[Path],
+) -> tuple[str, str]:
+    """Écrit un brouillon dans la boîte, pièce jointe comprise.
+
+    Un brouillon, jamais un envoi : l'application n'appelle pas `send`. Le
+    brouillon attend dans Gmail, il se relit, il s'envoie d'un clic qui
+    appartient à celle qui le signe.
+
+    Renvoie (identifiant du brouillon, motif). Un motif non vide dit ce qui
+    n'a pas pu être fait.
+    """
+    import base64  # noqa: PLC0415
+    import mimetypes  # noqa: PLC0415
+    from email.message import EmailMessage  # noqa: PLC0415
+
+    message = EmailMessage()
+    if destinataire:
+        message["To"] = destinataire
+    if expediteur:
+        message["From"] = expediteur
+    message["Subject"] = objet
+    message.set_content(corps)
+
+    trop_lourdes = []
+    for piece in pieces:
+        try:
+            octets = piece.read_bytes()
+        except OSError as exc:
+            return "", f"pièce jointe illisible : {exc}"
+        if len(octets) > PIECE_MAX:
+            trop_lourdes.append(f"{piece.name} ({_lisible(len(octets))})")
+            continue
+        type_devine, _ = mimetypes.guess_type(piece.name)
+        principal, _, secondaire = (type_devine or "application/octet-stream").partition("/")
+        message.add_attachment(
+            octets, maintype=principal, subtype=secondaire or "octet-stream",
+            filename=piece.name,
+        )
+
+    brut = base64.urlsafe_b64encode(message.as_bytes()).decode("ascii")
+    try:
+        cree = service.users().drafts().create(
+            userId="me", body={"message": {"raw": brut}}
+        ).execute()
+    except Exception as exc:  # noqa: BLE001 - quota, réseau, autorisation
+        return "", f"Gmail a refusé le brouillon : {exc}"
+
+    motif = ""
+    if trop_lourdes:
+        motif = (
+            "pièce(s) trop lourde(s) pour un brouillon, à joindre à la main : "
+            + ", ".join(trop_lourdes)
+        )
+    return str(cree.get("id") or ""), motif
+
+
 def lien_gmail(
     expediteur: str, destinataire: str, objet: str, corps: str
 ) -> str:
