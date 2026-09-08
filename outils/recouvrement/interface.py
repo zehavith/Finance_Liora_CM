@@ -981,6 +981,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 ),
                 "statuts": module_suivi.STATUTS,
                 "absents_suivi": absents_du_suivi(),
+                "a_refaire": list(lire_preferences().get("dossiers_a_refaire") or []),
                 "sortie": str(racine),
             })
             return
@@ -1713,6 +1714,8 @@ p.aide.perimees{color:#c9862a;border-left:2px solid #c9862a;padding-left:10px;
   margin:0 0 13px}
 /* Repliee par defaut : c'est une reponse a une question qu'on ne se pose pas
    tous les jours, et deroulee elle prendrait la place du tableau. */
+p.aide.a-refaire{margin-top:16px;color:#e8a0a0;border-left:2px solid #d03b3b;
+  padding-left:10px;line-height:1.7}
 p.aide.rattrapage{margin-top:16px}
 p.aide.rattrapage button{margin-left:4px}
 details.absents{margin-top:10px;border:1px solid var(--bord);border-radius:8px;
@@ -2846,6 +2849,10 @@ let ENTREPRISES = null, ANNUAIRE_CONNU = false, ANNUAIRE_MANQUANTS = 0;
 // ramenees. Elles n'existent nulle part dans la page — ni dans la liste,
 // ni dans la recherche — et rien ne disait pourquoi.
 let ABSENTS_SUIVI = [];
+// Les dossiers reunis sur une reference parasite : leurs pieces melangent
+// des echanges sans rapport, et aucune correction d'affichage n'y changera
+// rien. Il faut les refaire.
+let A_REFAIRE = [];
 // Une seule tentative par ouverture : si le service est injoignable, insister
 // a chaque rechargement de la liste ne le rendrait pas joignable.
 let annuaireTente = false;
@@ -2886,6 +2893,7 @@ async function chargerDossiers() {
   ANNUAIRE_CONNU = Boolean(donnees.annuaire_connu);
   ANNUAIRE_MANQUANTS = donnees.annuaire_manquants || 0;
   ABSENTS_SUIVI = donnees.absents_suivi || [];
+  A_REFAIRE = donnees.a_refaire || [];
   $("cheminSortie").textContent = donnees.sortie;
   rendreDocuments();
   rendreSuivi();
@@ -3544,6 +3552,26 @@ function rendreDocuments() {
     }));
 }
 
+// Une « reference » venue de la plomberie des messages — « goog_97526804 »,
+// « groups/13606280 » — entrait dans la requete Gmail. Or celle-la figure dans
+// presque tous les messages Gmail : le dossier ramassait des conversations
+// entieres sans rapport, avec les echanges d'autres apprenants. Le critere est
+// corrige, mais les dossiers deja constitues avec lui sont faux.
+function blocARefaire() {
+  const vus = new Set(DOSSIERS.map((d) => d.reference));
+  const concernes = A_REFAIRE.filter((r) => vus.has(r));
+  if (!concernes.length) return "";
+  return `
+    <p class="aide a-refaire"><b>${concernes.length} dossier(s) ont été
+       constitués sur un critère de recherche faux</b> — une chaîne technique
+       prise pour un numéro de facture, qui ramenait des conversations sans
+       rapport. Le critère est corrigé ; ces dossiers-là, eux, sont à refaire :
+       cochez-les ci-dessous, <b>Supprimer</b>, puis relancez l'export
+       <b>sans</b> « Reprendre ». Refaire les notes ne suffira pas — ce sont
+       les messages eux-mêmes qui sont en trop.
+       <br />${concernes.map(echapper).join(" · ")}</p>`;
+}
+
 // Le tableau de suivi porte des factures que l'export n'a pas ramenées. Elles
 // n'existent nulle part dans la page — ni dans la liste, ni dans la recherche
 // — et rien ne disait pourquoi : on cherchait un dossier qu'on savait avoir,
@@ -3643,6 +3671,7 @@ function rendreSuivi() {
     ${DOSSIERS.length
       ? (retenus.length ? "" : messageAucuneCorrespondance())
       : messageVide()}
+    ${blocARefaire()}
     ${blocAbsentsDuSuivi()}
     <div class="defilable"${retenus.length ? "" : " hidden"}><table class="donnees">
     ${entetesTriables(COLONNES_SUIVI, "suivi")}
@@ -4247,6 +4276,20 @@ function afficherBandeau(reussi, message) {
 
 
 def demarrer(port: int = 0, ouvrir: bool = True, veille: bool = False) -> ThreadingHTTPServer:
+    # Une « référence » venue de la plomberie des messages entrait dans la
+    # requête Gmail, et « goog_97526804 » figure dans presque tous les
+    # messages Gmail : le dossier ramassait alors des conversations entières
+    # sans rapport. On les retire du suivi au démarrage, et l'on retient les
+    # dossiers touchés — leurs pièces ont été réunies sur un critère faux.
+    try:
+        pollues = module_suivi.purger_references_parasites(SUIVI)
+    except OSError:
+        pollues = []
+    if pollues:
+        memoriser_preferences({"dossiers_a_refaire": pollues})
+        print(f"  {len(pollues)} dossier(s) constitué(s) sur une référence "
+              "parasite : à refaire sans « Reprendre ».")
+
     serveur = ThreadingHTTPServer(("127.0.0.1", port), Gestionnaire)
     adresse = f"http://127.0.0.1:{serveur.server_address[1]}/"
 

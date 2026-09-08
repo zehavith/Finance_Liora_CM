@@ -3325,6 +3325,60 @@ console.log(JSON.stringify({{
              "les cases cochées survivent au tri")
 
 
+def test_references_parasites() -> None:
+    """Une chaîne technique n'est pas un numéro de facture."""
+    import dossiers as module_dossiers  # noqa: PLC0415
+    import interface as module_interface  # noqa: PLC0415
+    import suivi as module_suivi  # noqa: PLC0415
+
+    print("\nRéférences parasites")
+
+    # Elles viennent de la plomberie des messages : identifiants Gmail,
+    # adresses de groupes, jeux de caractères, espaces de noms Microsoft.
+    for parasite in ("goog_97526804", "groups/13606280", "iso-8859-1",
+                     "office/2004/12", "wrd0000", "sep 2024"):
+        verifier(not module_dossiers.ressemble_a_une_facture(parasite),
+                 f"« {parasite} » n'est pas une facture")
+    for vraie in ("FACT-2405-00409", "DV-003453", "FACT 2405 00409",
+                  "2024-118", "INV0093"):
+        verifier(module_dossiers.ressemble_a_une_facture(vraie),
+                 f"« {vraie} » en est une")
+
+    # Le mal qu'elles faisaient : entrées dans la requête Gmail, et
+    # « goog_97526804 » figure dans presque tous les messages Gmail.
+    dossier = module_dossiers.Dossier(
+        reference="FACT-2509-11537", nom="MCAPI", emails=["c@x.fr"],
+        factures=["FACT-2509-11537"])
+    verifier("goog" not in dossier.requete_gmail(),
+             "aucune trace dans la requête d'un dossier sain")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        chemin = Path(repertoire) / "suivi.json"
+        module_suivi.enregistrer(chemin, {
+            "FACT-2509-11537": {"references": ["FACT-2409-05204",
+                                               "goog_97526804",
+                                               "groups/13606280"]},
+            "FACT-2405-00409": {"references": ["DV-003453"]},
+        })
+        touches = module_suivi.purger_references_parasites(chemin)
+        verifier(touches == ["FACT-2509-11537"],
+                 f"seul le dossier pollué est signalé ({touches})")
+        apres = module_suivi.charger(chemin)
+        verifier(apres["FACT-2509-11537"]["references"] == ["FACT-2409-05204"],
+                 f"la vraie référence est gardée "
+                 f"({apres['FACT-2509-11537']['references']})")
+        verifier(apres["FACT-2405-00409"]["references"] == ["DV-003453"],
+                 "et un dossier sain n'est pas touché")
+        verifier(module_suivi.purger_references_parasites(chemin) == [],
+                 "repasser dessus ne signale plus rien")
+
+    page = module_interface.PAGE
+    verifier("function blocARefaire" in page,
+             "la page nomme les dossiers réunis sur un critère faux")
+    verifier("Refaire les notes ne suffira pas" in page,
+             "en disant que refaire les notes n'y changera rien")
+
+
 def test_message_quand_l_outil_ne_repond_pas() -> None:
     """« Failed to fetch » ne dit rien à personne."""
     import interface as module_interface  # noqa: PLC0415
@@ -7094,6 +7148,7 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_tri_des_colonnes()
+    test_references_parasites()
     test_message_quand_l_outil_ne_repond_pas()
     test_montant_inconnu_n_est_pas_zero()
     test_retrouver_les_dossiers_du_disque()

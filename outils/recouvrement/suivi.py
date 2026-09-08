@@ -384,6 +384,34 @@ def _lire_recapitulatif(chemin: Path) -> list[dict]:
 BATTEMENT_NOTE = 60
 
 
+def purger_references_parasites(chemin_suivi: Path) -> list[str]:
+    """Retire du suivi les « références » qui n'en sont pas.
+
+    Une chaîne comme « goog_97526804 » ou « groups/13606280 » a la forme
+    d'un numéro de facture sans en être un : elle vient de la plomberie des
+    messages. Retenue comme référence du dossier, elle entrait dans la
+    requête Gmail — et « goog_97526804 » figure dans le corps de presque
+    tous les messages Gmail. Le dossier ramassait alors des conversations
+    entières sans rapport, avec les échanges d'autres apprenants.
+
+    Renvoie les dossiers dont une référence a été retirée : leurs pièces ont
+    été rassemblées sur un critère faux, et il faut les refaire.
+    """
+    from dossiers import ressemble_a_une_facture  # noqa: PLC0415 - cycle
+
+    etats = charger(chemin_suivi)
+    touches: list[str] = []
+    for reference, entree in etats.items():
+        gardees = [r for r in (entree.get("references") or [])
+                   if ressemble_a_une_facture(r)]
+        if len(gardees) != len(entree.get("references") or []):
+            entree["references"] = gardees
+            touches.append(reference)
+    if touches:
+        enregistrer(chemin_suivi, etats)
+    return sorted(touches)
+
+
 def note_perimee(repertoire: Path, etat: dict) -> bool:
     """Vrai si la note de synthèse ne dit plus ce qu'elle dirait aujourd'hui.
 

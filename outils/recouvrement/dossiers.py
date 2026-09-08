@@ -200,6 +200,56 @@ MOTIF_REFERENCE_QUELCONQUE = re.compile(
 )
 
 
+# Des chaînes qui ont la forme d'une référence sans en être. Elles viennent
+# de la plomberie des messages — identifiants Gmail, adresses de groupes,
+# jeux de caractères, espaces de noms Microsoft, artefacts Word — et non de
+# ce que quelqu'un a écrit. Reconnues comme factures, elles rangeaient un
+# échange sous une créance imaginaire, et la note citait « groups/13606280 »
+# comme pièce du dossier.
+PREFIXES_TECHNIQUES = {
+    "goog", "groups", "group", "mail", "gmail", "msg", "cid", "mid",
+    "iso", "utf", "win", "cp", "ansi", "mso", "wrd", "xmlns", "urn", "uuid",
+    "guid", "sha", "md", "crc", "rgb", "px", "pt", "em", "rem", "office",
+    "word", "excel", "http", "https", "www", "com", "org", "net", "html",
+    "div", "span", "img", "br", "td", "tr", "id", "src", "href", "aspx",
+    "php", "utm", "sid", "uid", "tel", "fax",
+}
+
+# « sep 2024 » est une date, pas une facture. Les mois s'écrivent des deux
+# façons dans les objets de messages, en français comme en anglais.
+MOIS_ABREGES = {
+    "jan", "janv", "fev", "feb", "mar", "mars", "avr", "apr", "mai", "may",
+    "jun", "juin", "jul", "juil", "aou", "aug", "sep", "sept", "oct", "nov",
+    "dec",
+}
+
+
+def ressemble_a_une_facture(valeur: str) -> bool:
+    """Dit si une chaîne peut être un numéro de facture.
+
+    Le motif seul est trop large : il reconnaît autant « FACT-2405-00409 »
+    que « iso-8859-1 » ou « office/2004/12 ». Ce qui les sépare n'est pas la
+    forme mais l'origine — les secondes viennent de la plomberie du message,
+    jamais de ce qu'une personne a écrit.
+    """
+    brut = str(valeur or "").strip()
+    if not brut:
+        return False
+    # Une barre oblique dit une adresse ou un espace de noms, pas une
+    # facture : aucun outil de facturation n'en met dans un numéro.
+    if "/" in brut:
+        return False
+    tete = "".join(c for c in brut if c.isalpha() or c.isdigit())
+    lettres = ""
+    for caractere in brut:
+        if caractere.isalpha():
+            lettres += caractere
+        elif lettres:
+            break
+    del tete
+    return lettres.lower() not in (PREFIXES_TECHNIQUES | MOIS_ABREGES)
+
+
 def _cle_reference(valeur: str) -> str:
     """Un numéro réduit à ce qui l'identifie, ponctuation ôtée."""
     return "".join(c for c in str(valeur or "").lower() if c.isalnum())
@@ -491,6 +541,12 @@ class Dossier:
         etrangeres: list[str] = []
         for trouve in MOTIF_REFERENCE_QUELCONQUE.finditer(texte_message or ""):
             brut = trouve.group(0).strip()
+            # « iso-8859-1 », « groups/13606280 » : la plomberie du message a
+            # la forme d'une référence sans en être une, et un message écarté
+            # « parce qu'il parle d'une autre facture » qui n'existe pas est
+            # une pièce perdue pour rien.
+            if not ressemble_a_une_facture(brut):
+                continue
             if _cle_reference(brut) in connues:
                 continue
             if brut not in etrangeres:

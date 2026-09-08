@@ -41,6 +41,7 @@ from dossiers import (  # noqa: E402
     lire_dossiers,
     regrouper_par_debiteur,
     rendre_repertoires_uniques,
+    ressemble_a_une_facture,
 )
 import monday as module_monday  # noqa: E402
 from decouverte import adresses_candidates  # noqa: E402
@@ -564,10 +565,14 @@ def _ajouter_references_saisies(
     for dossier in liste:
         etat = etats.get(dossier.reference) or {}
 
+        # Filtrées : une référence retenue autrefois peut venir de la
+        # plomberie d'un message — « goog_97526804 » — et entrait alors dans
+        # les factures du dossier, où elle rangeait des échanges sans rapport.
         supplements = [
             reference
             for reference in (etat.get("references") or [])
             if reference and reference not in dossier.factures
+            and ressemble_a_une_facture(reference)
         ]
         if supplements:
             dossier.factures = [*dossier.factures, *supplements]
@@ -698,6 +703,21 @@ def traiter_dossier(
     if options.reprendre and chemin_index.exists():
         journal("    déjà exporté, ignoré (--reprendre)")
         resume.statut = "ignoré (déjà exporté)"
+        # Ses comptes sont relus dans son index. Sans cela le résumé repartait
+        # à zéro message et zéro pièce jointe, et le récapitulatif écrasait
+        # les vrais chiffres du dossier par ceux d'un dossier vide : reprendre
+        # un export vidait à l'écran tout ce qu'il avait justement épargné.
+        try:
+            lignes, _textes, _bases, _cles = relire_dossier(
+                repertoire, chemin_index)
+        except (OSError, ValueError):
+            return resume
+        resume.nb_mails = len(lignes)
+        resume.nb_recus = sum(1 for ligne in lignes if ligne.sens == "reçu")
+        resume.nb_envoyes = sum(1 for ligne in lignes if ligne.sens == "envoyé")
+        resume.nb_pieces_jointes = sum(
+            ligne.nb_pieces_jointes or 0 for ligne in lignes)
+        resume.dates = [ligne.date for ligne in lignes if ligne.date]
         return resume
 
     # Mise à jour : le dossier existant est relu, jamais refait. Ce qui y
