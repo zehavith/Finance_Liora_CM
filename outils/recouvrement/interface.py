@@ -935,6 +935,13 @@ def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[boo
         from dossiers import Dossier  # noqa: PLC0415
 
         lignes, textes, _bases, _cles = export_mails.relire_dossier(repertoire, index)
+
+        # Les pièces qui font le dossier — convention ou devis signé, facture,
+        # émargement, relevé bancaire, diplôme — sont réunies à part. Ici
+        # aussi : un dossier exporté avant cette version doit pouvoir les
+        # obtenir sans qu'on refasse une heure d'export.
+        export_mails.rassembler_pieces_cles(repertoire, lignes)
+
         entree = suivi.get(dossier["reference"]) or {}
         contenu = module_synthese.construire_html(
             dossier=Dossier(

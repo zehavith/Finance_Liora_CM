@@ -443,6 +443,12 @@ blockquote.propos { margin: 5px 0 9px 14px; padding-left: 11px;
                   letter-spacing: 0.2px; }
 .echange blockquote.propos { margin-top: 2px; }
 
+/* La conversation se lit d'une traite : le nom en tête de réplique, le
+   propos à la suite, sans date ni numéro qui coupe la lecture. */
+.tour { margin: 0 0 7px; padding-left: 12px; border-left: 2px solid #ddd;
+        line-height: 1.5; }
+.tour b { font-variant: small-caps; letter-spacing: 0.2px; color: #1a1a1a; }
+
 /* L'annexe commence sur une nouvelle page à l'impression : le corps de la
    note se transmet seul, et le détail des échanges suit sans s'y mêler. */
 .annexe { margin-top: 30px; border-top: 2px solid #1a1a1a; padding-top: 14px; }
@@ -1190,6 +1196,61 @@ def _bloc_conversations(lignes_index: list[LigneIndex],
     )
 
 
+def _nom_court(expediteur: str) -> str:
+    """« SAS EDEN <edenmarket2017@gmail.com> » → « SAS EDEN ».
+
+    À défaut de nom, la partie qui précède l'arobase : « billing » vaut mieux
+    que l'adresse entière au fil d'un dialogue.
+    """
+    brut = (expediteur or "").strip()
+    if not brut:
+        return "—"
+    avant = brut.split("<", 1)[0].strip().strip('"')
+    if avant and "@" not in avant:
+        return avant
+    adresse = brut.split("<")[-1].strip("<> ").strip()
+    return (adresse.split("@", 1)[0] or adresse) if adresse else brut
+
+
+def _bloc_dialogue(lignes_index: list[LigneIndex],
+                   textes: dict[int, str]) -> str:
+    """La conversation seule : qui a dit quoi, dans l'ordre, sans les dates.
+
+    La chronologie datée existe déjà deux fois — dans les événements repérés
+    et dans l'annexe. Ce qu'on cherche ici est autre chose : lire l'échange
+    d'une traite, comme on relit un fil, pour savoir de quoi il retourne
+    avant d'entrer dans les pièces.
+
+    Rien n'est reformulé : chaque tour est le propos du message, cité.
+    """
+    tours = []
+    for ligne in sorted(lignes_index, key=lambda l: (l.date, l.piece_n)):
+        if concerne_une_autre_facture(ligne):
+            continue
+        propos = _extrait_lisible(textes.get(ligne.piece_n, ""))
+        if not propos:
+            continue
+        # Nos propres messages parlent d'une seule voix : « recouvrement »,
+        # « billing » ou le compte d'un collègue, c'est Liora qui écrit. En
+        # face, le nom du débiteur tel qu'il signe.
+        qui = "Liora" if ligne.sens == "envoyé" else _nom_court(ligne.expediteur)
+        tours.append(
+            f'<p class="tour"><b>{html.escape(qui)}</b> — '
+            f"{html.escape(propos)}</p>"
+        )
+
+    if not tours:
+        return ("<p>Aucun message du dossier ne porte de texte exploitable : "
+                "la conversation ne peut pas être restituée ici. Les messages "
+                "d'origine sont au dossier.</p>")
+
+    return (
+        "<p class='chemin'>L'échange dans son ordre, sans les dates : elles "
+        "figurent dans les événements ci-dessus et dans l'annexe.</p>"
+        + "".join(tours)
+    )
+
+
 def _bloc_autres_factures(lignes_index: list[LigneIndex]) -> str:
     """Les messages du débiteur qui nomment d'autres factures que la nôtre.
 
@@ -1605,6 +1666,52 @@ CATEGORIES_PIECES = (
     ("Mise en demeure / relance", ("demeure", "relance", "recommande", "lrar")),
     ("Échéancier", ("echeancier", "echelonn")),
 )
+
+
+# Les cinq pièces qu'on cherche en premier dans un dossier porté au
+# contentieux : ce qui engage (convention ou devis signé), ce qui chiffre
+# (facture), ce qui prouve l'exécution (émargement, diplôme) et ce qui
+# retrace le paiement (relevé bancaire). Elles sont éparpillées entre les
+# pièces jointes de vingt messages et les documents du tableau ; les réunir
+# évite d'ouvrir vingt sous-répertoires pour constituer le dossier papier.
+#
+# L'ordre est celui du classeur : chaque dossier porte son numéro, pour que
+# l'explorateur les range comme on les présente.
+PIECES_CLES = (
+    ("1-convention-devis-signe",
+     ("convention", "contrat", "devis", "bon de commande", "bon pour accord",
+      "cgv")),
+    ("2-facture",
+     ("facture", "fact-", "fact_", "avoir", "invoice")),
+    ("3-feuille-emargement",
+     ("emargement", "feuille de presence", "presence")),
+    ("4-releve-bancaire",
+     ("rib", "releve bancaire", "releve de compte", "releve_bancaire",
+      "iban", "bancaire", "virement")),
+    ("5-diplome",
+     ("diplome", "certification", "certificat", "titre professionnel",
+      "attestation de reussite", "attestation de fin", "attestation de suivi")),
+)
+
+
+def piece_cle(nom: str) -> str:
+    """Le dossier de destination d'une pièce, ou « » si elle n'en a pas.
+
+    Le nom du fichier suffit à trancher : il n'est pas ouvert. Une feuille
+    d'émargement, elle, ne se nomme pas « émargement » — elle porte le nom de
+    l'apprenant et les deux dates de la formation, et c'est à cela qu'on la
+    reconnaît.
+    """
+    nom = (nom or "").strip()
+    if not nom:
+        return ""
+    if lire_emargement(nom) is not None:
+        return "3-feuille-emargement"
+    plat = aplatir(nom)
+    for destination, motifs in PIECES_CLES:
+        if any(motif in plat for motif in motifs):
+            return destination
+    return ""
 
 
 # Un devis signé au nom de l'apprenant vaut engagement : c'est la pièce qu'on
@@ -2143,6 +2250,9 @@ def construire_html(
 
 <h3>Événements repérés</h3>
 {bloc_evenements}
+
+<h2>5. La conversation</h2>
+{_bloc_dialogue(lignes, textes or {})}
 
 <div class="avertissement">
 <b>Portée de ce document.</b> Le résumé de la partie 1 ne fait que reprendre ce

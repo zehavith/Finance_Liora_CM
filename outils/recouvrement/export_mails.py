@@ -1162,6 +1162,13 @@ def traiter_dossier(
 
     ecrire_index_dossier(chemin_index, lignes)
 
+    reunies = rassembler_pieces_cles(repertoire, lignes)
+    if reunies:
+        journal(
+            f"    {reunies} pièce(s) clé(s) réunie(s) dans « {PIECES_CLES} » "
+            "— convention, facture, émargement, relevé, diplôme"
+        )
+
     analyse = module_synthese.analyser(lignes, textes_par_piece, doublons)
     _reporter_synthese(resume, analyse, date_export)
 
@@ -1897,6 +1904,113 @@ def _echeance_depuis_facture(
         journal(f"    échéance non trouvée dans {chemin.name} — {origine}")
 
     return "", ""
+
+
+PIECES_CLES = "pieces-cles"
+
+# Ce que Windows refuse dans un nom de fichier. Le nom d'origine est gardé —
+# « Convention de formation - SAS EDEN.pdf » se lit, « convention-de-formation
+# -sas-eden.pdf » se déchiffre — mais deux points ou une barre oblique feraient
+# échouer la copie sans rien dire.
+INTERDITS_WINDOWS = str.maketrans({c: "-" for c in '\\/:*?"<>|\r\n\t'})
+
+
+def _nom_de_fichier_sur(nom: str) -> str:
+    """Le nom d'origine, débarrassé de ce qu'un système de fichiers refuse."""
+    propre = (nom or "").translate(INTERDITS_WINDOWS).strip(" .")
+    return propre[:150]
+
+
+def rassembler_pieces_cles(repertoire: Path, lignes: list[LigneIndex]) -> int:
+    """Réunit dans un seul sous-dossier les pièces qui font le dossier.
+
+    Convention ou devis signé, facture, feuille d'émargement, relevé bancaire,
+    diplôme : ce sont elles qu'on cherche en premier, et elles sont dispersées
+    entre les pièces jointes de vingt messages et les documents du tableau.
+    Les réunir évite d'ouvrir vingt sous-répertoires pour constituer le
+    dossier papier.
+
+    Ce sont des copies : l'original reste à sa place, sous son numéro de
+    pièce, et c'est lui qui fait foi. Le même document joint à sept relances
+    n'est copié qu'une fois.
+
+    Renvoie le nombre de fichiers réunis.
+    """
+    # Le nom d'origine et le fichier sur le disque : ils diffèrent. Une pièce
+    # jointe est écrite sous un nom assaini — « sofiane-benallaoua-02-09-… » —
+    # et une feuille d'émargement ne se reconnaît plus qu'au nom d'origine,
+    # qui porte les deux dates séparées par des soulignés. C'est donc le nom
+    # d'origine qui classe, et le fichier du disque qu'on copie.
+    candidats: list[tuple[str, Path]] = []
+
+    for ligne in lignes:
+        sous_dossier = (ligne.dossier_pieces_jointes or "").strip()
+        if not sous_dossier:
+            continue
+        repertoire_piece = repertoire / sous_dossier
+        if not repertoire_piece.is_dir():
+            continue
+        fichiers = sorted(repertoire_piece.iterdir())
+        for nom in (ligne.pieces_jointes or "").split(" | "):
+            nom = nom.strip()
+            if not nom:
+                continue
+            suffixe = Path(nom).suffix.lower()[:10]
+            radical = slug(Path(nom).stem, 45)
+            attendu = f"{radical}{suffixe}" if suffixe else radical
+            trouve = next(
+                (f for f in fichiers if f.name == attendu),
+                # Deux pièces de même nom dans un message reçoivent un numéro :
+                # « contrat_02.pdf ». Le radical, lui, ne change pas.
+                next((f for f in fichiers if f.stem.startswith(radical)), None),
+            )
+            if trouve is not None:
+                candidats.append((nom, trouve))
+
+    # Les documents du tableau comptent autant : la convention signée et la
+    # facture y sont souvent déposées sans avoir jamais transité par un mail.
+    # Ceux-là gardent leur nom d'origine.
+    monday = repertoire / "documents-monday"
+    if monday.is_dir():
+        candidats += [(chemin.name, chemin)
+                      for chemin in sorted(monday.iterdir()) if chemin.is_file()]
+
+    racine = repertoire / PIECES_CLES
+    vus: set[tuple[str, int]] = set()
+    reunis = 0
+
+    for nom_origine, source in candidats:
+        destination_relative = module_synthese.piece_cle(nom_origine)
+        if not destination_relative:
+            continue
+        try:
+            taille = source.stat().st_size
+        except OSError:
+            continue
+        # Le même document joint à sept relances : une seule copie. Même nom
+        # et même taille valent identité — deux fichiers différents ne se
+        # rencontrent pas à l'octet près sous le même nom.
+        propre = _nom_de_fichier_sur(nom_origine) or source.name
+        empreinte = (propre.lower(), taille)
+        if empreinte in vus:
+            continue
+        vus.add(empreinte)
+
+        cible = racine / destination_relative / propre
+        # Deux fichiers de même nom mais de tailles différentes sont deux
+        # documents : le second prend le nom du répertoire d'où il vient.
+        if cible.exists() and cible.stat().st_size != taille:
+            cible = cible.with_name(f"{source.parent.name}_{source.name}")
+        try:
+            cible.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, cible)
+        except OSError:
+            # Un fichier ouvert dans un lecteur ne se copie pas toujours.
+            # L'original est au dossier de toute façon : rien n'est perdu.
+            continue
+        reunis += 1
+
+    return reunis
 
 
 def _documents_monday(

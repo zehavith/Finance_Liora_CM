@@ -4290,6 +4290,103 @@ def test_tout_effacer_respecte_la_reponse() -> None:
                  "demandé, le suivi est effacé")
 
 
+def test_pieces_cles_reunies() -> None:
+    """Les pièces qui font le dossier, réunies dans un seul sous-dossier."""
+    import export_mails as module_export  # noqa: PLC0415
+    import synthese as module_synthese  # noqa: PLC0415
+
+    print("\nPièces clés réunies à part")
+
+    for nom, attendu in (
+        ("Convention de formation - SAS EDEN.pdf", "1-convention-devis-signe"),
+        ("Devis signé 2024.pdf", "1-convention-devis-signe"),
+        ("FACT-2405-00409.pdf", "2-facture"),
+        ("Sofiane_BENALLAOUA_02_09_2024_31_12_2025_880c_1.pdf",
+         "3-feuille-emargement"),
+        ("Rib BNP Datascientest (1).pdf", "4-releve-bancaire"),
+        ("Diplome RNCP Data Analyst.pdf", "5-diplome"),
+        ("Certificat de réussite.pdf", "5-diplome"),
+        ("Capture ecran teams.png", ""),
+    ):
+        obtenu = module_synthese.piece_cle(nom)
+        verifier(obtenu == attendu,
+                 f"« {nom} » → {obtenu or 'aucun'} (attendu {attendu or 'aucun'})")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        dossier = Path(repertoire) / "d"
+        pj = dossier / "pieces-jointes"
+        # La même convention jointe à trois relances, écrite sous son nom
+        # assaini — c'est celui du disque, pas celui de l'index.
+        for numero in (1, 2, 3):
+            base = pj / f"{numero:03d}_relance"
+            base.mkdir(parents=True)
+            (base / "convention-de-formation-sas-eden.pdf").write_bytes(b"%PDF-c")
+        (dossier / "documents-monday").mkdir()
+        (dossier / "documents-monday" / "FACT-2405-00409.pdf").write_bytes(b"%PDF-f")
+
+        lignes = [
+            LigneIndex(
+                piece_n=numero, date=datetime(2024, 5, 20 + numero), sens="envoyé",
+                expediteur="recouvrement@liora.io", destinataires="x@y.fr",
+                copie="", objet="Relance", nb_pieces_jointes=1,
+                pieces_jointes="Convention de formation - SAS EDEN.pdf",
+                critere="facture", boites="b", fichier_pdf="", fichier_eml="",
+                dossier_pieces_jointes=f"pieces-jointes/{numero:03d}_relance",
+                thread_id="t", message_id=f"m{numero}")
+            for numero in (1, 2, 3)
+        ]
+        reunies = module_export.rassembler_pieces_cles(dossier, lignes)
+
+        racine = dossier / "pieces-cles"
+        verifier(reunies == 2, f"deux pièces réunies, pas quatre ({reunies})")
+        verifier(
+            (racine / "1-convention-devis-signe"
+             / "Convention de formation - SAS EDEN.pdf").exists(),
+            "la convention est là, sous son nom d'origine")
+        verifier((racine / "2-facture" / "FACT-2405-00409.pdf").exists(),
+                 "la facture du tableau aussi")
+        convention = list((racine / "1-convention-devis-signe").iterdir())
+        verifier(len(convention) == 1,
+                 f"jointe à trois relances, elle n'est copiée qu'une fois "
+                 f"({len(convention)})")
+
+
+def test_conversation_sans_dates() -> None:
+    """La note donne l'échange d'une traite, sans dates ni numéros."""
+    import synthese as module_synthese  # noqa: PLC0415
+
+    print("\nLa conversation, dans la note")
+
+    lignes = [
+        LigneIndex(piece_n=1, date=datetime(2024, 5, 21), sens="envoyé",
+                   expediteur="Recouvrement <recouvrement@liora.io>",
+                   destinataires="sufyen.b@gmail.com", copie="",
+                   objet="Relance", nb_pieces_jointes=0, pieces_jointes="",
+                   critere="facture", boites="b", fichier_pdf="",
+                   fichier_eml="", dossier_pieces_jointes="", thread_id="t",
+                   message_id="m1"),
+        LigneIndex(piece_n=2, date=datetime(2024, 5, 28), sens="reçu",
+                   expediteur="SAS EDEN <edenmarket2017@gmail.com>",
+                   destinataires="recouvrement@liora.io", copie="",
+                   objet="Re: Relance", nb_pieces_jointes=0, pieces_jointes="",
+                   critere="facture", boites="b", fichier_pdf="",
+                   fichier_eml="", dossier_pieces_jointes="", thread_id="t",
+                   message_id="m2"),
+    ]
+    textes = {1: "La facture FACT-2405-00409 reste impayée.",
+              2: "Le règlement devait se faire via l'OPCO."}
+    bloc = module_synthese._bloc_dialogue(lignes, textes)
+
+    verifier("Liora" in bloc, "nos messages parlent d'une seule voix")
+    verifier("SAS EDEN" in bloc, "et le débiteur sous le nom dont il signe")
+    verifier("reste impayée" in bloc and "via l&#x27;OPCO" in bloc,
+             "les propos sont cités, dans l'ordre")
+    for date in ("21/05/2024", "28/05/2024", "pièce n°"):
+        verifier(date not in bloc, f"« {date} » n'y figure pas")
+    verifier(bloc.index("Liora") < bloc.index("SAS EDEN"),
+             "la relance précède la réponse")
+
+
 def test_meme_courrier_parti_deux_fois() -> None:
     """Deux Message-ID, un seul envoi : une seule pièce au dossier."""
     import export_mails as module_export  # noqa: PLC0415
@@ -8192,6 +8289,8 @@ def main() -> int:
     test_montant_deja_regle()
     test_sauvegarde_du_suivi()
     test_tout_effacer_respecte_la_reponse()
+    test_pieces_cles_reunies()
+    test_conversation_sans_dates()
     test_meme_courrier_parti_deux_fois()
     test_doublons_de_la_liste()
     test_retrouver_les_dossiers_du_disque()

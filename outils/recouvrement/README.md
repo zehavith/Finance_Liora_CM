@@ -56,13 +56,20 @@ bandeau du PDF, ce qui permet de citer directement « pièce n° 3 ».
 dossier contentieux :
 
 - un bandeau **Montant en contentieux**, repris du tableau de suivi ;
-- **1. Contexte** — formation suivie, montant facturé et reste dû, ancienneté
-  de l'échéance, statut, et la note interne du tableau reproduite telle quelle ;
-- **2. Contrat signé et factures** — les pièces jointes trouvées dans les
+- **1. Résumé de la situation** — ce que les parties suivantes établissent, en
+  quelques points ;
+- **2. Détail du dossier** — formation suivie, montant facturé et reste dû,
+  ancienneté de l'échéance, statut, et la note interne du tableau reprise mot
+  pour mot ;
+- **3. Contrat signé et factures** — les pièces jointes trouvées dans les
   échanges, classées par nature (convention, facture, mise en demeure,
   échéancier), chacune renvoyant à son numéro de pièce ;
-- **3. Preuve des actions engagées** — chiffres clés, constats, événements
-  repérés et chronologie complète des échanges.
+- **4. Preuve des actions engagées** — chiffres clés, constats et événements
+  repérés ;
+- **5. La conversation** — l'échange d'une traite, réplique par réplique, sans
+  dates ni numéros de pièce : de quoi savoir de quoi il retourne avant
+  d'entrer dans les pièces. Rien n'y est reformulé, chaque tour est le propos
+  du message. Les dates figurent dans les événements et dans l'annexe.
 
 Les montants, dates de formation et statuts viennent du tableau Monday ; le
 reste des seuls messages extraits.
@@ -642,6 +649,35 @@ un index vide effacerait un dossier complet.
 *Reprendre* et *Compléter* ensemble n'ont pas de sens : reprendre passe les
 dossiers avant de les regarder, donc rien n'est complété. L'outil le signale
 plutôt que de laisser croire à une mise à jour.
+
+### Les pièces qui font le dossier, réunies à part
+
+Chaque dossier porte un sous-répertoire **`pieces-cles`** où sont rassemblées
+les cinq pièces qu'on cherche en premier :
+
+```
+pieces-cles/
+├── 1-convention-devis-signe/
+├── 2-facture/
+├── 3-feuille-emargement/
+├── 4-releve-bancaire/
+└── 5-diplome/
+```
+
+Ce sont des **copies** : l'original reste à sa place, sous son numéro de
+pièce, et c'est lui qui fait foi. Elles gardent leur nom d'origine, viennent
+aussi bien des pièces jointes des messages que des documents du tableau, et le
+même document joint à sept relances n'y figure qu'une fois. Un répertoire vide
+n'est pas créé : s'il n'y a pas de diplôme au dossier, il n'y a pas de dossier
+`5-diplome`.
+
+Le classement se fait sur le nom du fichier, qui n'est jamais ouvert. Une
+feuille d'émargement, elle, ne se nomme pas « émargement » : elle porte le nom
+de l'apprenant et les deux dates de la formation, et c'est à cela qu'elle est
+reconnue.
+
+Les dossiers déjà exportés l'obtiennent avec *Refaire les notes*, sans
+réexport.
 
 ### Quels messages entrent au dossier
 
