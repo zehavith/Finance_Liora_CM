@@ -9,4 +9,4 @@ l'application doit pouvoir le voir sans relire la note.
 
 from __future__ import annotations
 
-VERSION = "117"
+VERSION = "118"

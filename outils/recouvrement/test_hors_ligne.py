@@ -3608,6 +3608,71 @@ def test_document_monday_verrouille() -> None:
          module_monday.identifiant) = vrais
 
 
+def test_reclasser_un_dossier_deja_constitue() -> None:
+    """Un dossier pollué se corrige sans refaire une heure d'export."""
+    import indexation as module_indexation  # noqa: PLC0415
+    import interface as module_interface  # noqa: PLC0415
+
+    print("\nCorriger un dossier déjà constitué")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        dossier = Path(repertoire) / "export" / "d"
+        dossier.mkdir(parents=True)
+        modele = {
+            "piece_n": "1", "date": "21/05/2024", "heure": "09:30", "sens": "reçu",
+            "expediteur": "EDEN MARKET <edenmarket2017@gmail.com>",
+            "destinataires": "billing@datascientest.com", "copie": "",
+            "objet": "Formation Benallaoua sofiane", "nb_pieces_jointes": "1",
+            "pieces_jointes": "FACT-2405-00409.pdf", "critere": "facture",
+            "factures_concernees": "FACT-2405-00409", "adresses_concernees": "",
+            "boites": "billing@datascientest.com", "fichier_pdf": "",
+            "fichier_eml": "", "dossier_pieces_jointes": "", "thread_id": "fil",
+            "message_id": "m1",
+        }
+        rangees = [modele, dict(modele, piece_n="2", sens="envoyé",
+                                expediteur="billing@datascientest.com",
+                                destinataires="edenmarket2017@gmail.com",
+                                critere="indirect", factures_concernees="",
+                                message_id="m2")]
+        # Vingt messages d'autres apprenants, venus du même fil.
+        for numero in range(20):
+            rangees.append(dict(modele, piece_n=str(3 + numero),
+                                expediteur=f"apprenant{numero}@exemple.fr",
+                                destinataires="billing@datascientest.com",
+                                critere="indirect", factures_concernees="",
+                                message_id=f"a{numero}"))
+        module_indexation._ecrire_csv(
+            dossier / "index.csv", module_indexation.COLONNES_INDEX, rangees)
+
+        avant = module_interface.lire_preferences()
+        module_interface.memoriser_preferences({
+            "boites": "billing@datascientest.com",
+            "domaines": "datascientest.com,liora.io"})
+        try:
+            mis_a_part = module_interface.reclasser_index(dossier)
+        finally:
+            module_interface.ecrire_preferences(avant)
+
+        verifier(mis_a_part == 20,
+                 f"les vingt messages étrangers cessent de compter ({mis_a_part})")
+        apres = list(csv.DictReader(
+            (dossier / "index.csv").read_text(encoding="utf-8-sig").splitlines(),
+            delimiter=";"))
+        # Rien n'est supprimé : les messages restent au dossier, consultables.
+        verifier(len(apres) == 22,
+                 f"sans qu'aucun message soit supprimé ({len(apres)})")
+        gardes = [r for r in apres
+                  if not (r["critere"] or "").startswith("hors debiteur")]
+        verifier(len(gardes) == 2,
+                 f"deux messages établissent encore la créance ({len(gardes)})")
+        # L'adresse du débiteur est celle qui parle de notre facture, même
+        # absente du tableau : la conversation d'EDEN est gardée entière.
+        verifier(all("edenmarket2017@gmail.com" in r["expediteur"]
+                     or "edenmarket2017@gmail.com" in r["destinataires"]
+                     for r in gardes),
+                 "et ce sont bien ceux du débiteur")
+
+
 def test_adresse_qui_parle_de_notre_facture() -> None:
     """Le débiteur écrit souvent d'une autre boîte que celle du tableau."""
     import export_mails as module_export  # noqa: PLC0415
@@ -7819,6 +7884,7 @@ def main() -> int:
     test_fil_trop_long_ecarte()
     test_csv_ouvert_dans_excel()
     test_document_monday_verrouille()
+    test_reclasser_un_dossier_deja_constitue()
     test_adresse_qui_parle_de_notre_facture()
     test_mails_recuperes_expliques()
     test_fil_de_diffusion_ecarte()

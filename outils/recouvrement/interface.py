@@ -39,6 +39,7 @@ import export_mails  # noqa: E402
 from gmail_api import ErreurGmail  # noqa: E402
 from dossiers import ErreurDossiers  # noqa: E402
 from rendu import moteur_pdf_disponible  # noqa: E402
+import indexation as module_indexation  # noqa: E402
 import suivi as module_suivi  # noqa: E402
 import synthese as module_synthese  # noqa: E402
 
@@ -711,6 +712,85 @@ def recopier_note(repertoire: Path, sortie: Path, destination: Path | None) -> i
     return copies
 
 
+def reclasser_index(repertoire: Path) -> int:
+    """Réapplique aux messages déjà au dossier la règle du jour.
+
+    Les dossiers constitués avant elle portent des messages qui ne concernent
+    pas le débiteur : un fil de comptabilité adressé à trente apprenants, où
+    notre numéro figure par hasard. Le filtrage se fait à l'export, et refaire
+    une note ne les enlève pas — elle est réécrite depuis le même index.
+
+    On recalcule donc le motif de chaque message. Rien n'est supprimé : les
+    messages restent au dossier, consultables, mais ceux qui ne concernent pas
+    le débiteur cessent de compter dans la note et dans les décomptes. Cela
+    évite de refaire une heure d'export pour corriger ce qui est déjà là.
+
+    Renvoie le nombre de messages nouvellement mis à part.
+    """
+    index = repertoire / "index.csv"
+    if not index.exists():
+        return 0
+    try:
+        rangees = list(csv.DictReader(
+            index.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"))
+    except OSError:
+        return 0
+    if not rangees:
+        return 0
+
+    preferences = lire_preferences()
+    maison = {
+        domaine.strip().lower().lstrip("@")
+        for domaine in (preferences.get("domaines") or "").split(",")
+        if domaine.strip()
+    } | {
+        adresse.split("@")[-1].strip().lower()
+        for adresse in (preferences.get("boites") or "").split(",")
+        if "@" in adresse
+    }
+
+    def adresses(rangee: dict) -> set[str]:
+        entetes = " ".join([rangee.get("expediteur") or "",
+                            rangee.get("destinataires") or "",
+                            rangee.get("copie") or ""])
+        return {a.lower() for a in export_mails.MOTIF_ADRESSE.findall(entetes)}
+
+    # Fait foi toute adresse extérieure figurant dans un message qui cite
+    # notre facture : le débiteur écrit souvent d'une autre boîte que celle
+    # du tableau, et c'est bien de notre créance qu'il parle.
+    du_debiteur: set[str] = set()
+    for rangee in rangees:
+        if not (rangee.get("factures_concernees") or "").strip():
+            continue
+        for adresse in adresses(rangee):
+            if adresse.rsplit("@", 1)[-1] not in maison:
+                du_debiteur.add(adresse)
+    if not du_debiteur:
+        return 0
+
+    nouveaux = 0
+    for rangee in rangees:
+        critere = (rangee.get("critere") or "").strip()
+        if critere.startswith(("autre facture", "déposé", "depose")):
+            continue
+        concerne = bool(du_debiteur & adresses(rangee))
+        if concerne and critere.startswith(("hors debiteur", "diffusion")):
+            # Une règle plus juste peut aussi rendre un message au dossier.
+            rangee["critere"] = "adresse"
+        elif not concerne and not critere.startswith(("hors debiteur", "diffusion")):
+            rangee["critere"] = (
+                f"hors debiteur : {len(adresses(rangee))} adresse(s) au "
+                "message, aucune du debiteur"
+            )
+            nouveaux += 1
+
+    module_indexation._ecrire_csv(
+        index, module_indexation.COLONNES_INDEX,
+        [{cle: r.get(cle, "") for cle in module_indexation.COLONNES_INDEX}
+         for r in rangees])
+    return nouveaux
+
+
 def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[bool, str]:
     """Réécrit la note de synthèse d'un dossier déjà exporté.
 
@@ -724,6 +804,11 @@ def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[boo
     index = repertoire / "index.csv"
     if not index.exists():
         return False, "index du dossier introuvable"
+
+    # Avant de reecrire la note : les messages qui ne concernent pas le
+    # debiteur cessent de compter. Sans cela, refaire la note d'un dossier
+    # constitue avant la regle la reecrivait a l'identique.
+    reclasser_index(repertoire)
 
     try:
         from dossiers import Dossier  # noqa: PLC0415
