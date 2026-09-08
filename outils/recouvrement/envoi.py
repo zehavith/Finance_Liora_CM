@@ -22,6 +22,7 @@ bibliothèque.
 
 from __future__ import annotations
 
+import urllib.parse
 import zipfile
 from pathlib import Path
 
@@ -224,6 +225,31 @@ def corps_du_message(dossier: dict) -> tuple[str, str]:
         "Bien cordialement,",
     ]
     return objet, "\n".join(lignes)
+
+
+def lien_gmail(
+    expediteur: str, destinataire: str, objet: str, corps: str
+) -> str:
+    """L'adresse d'une fenêtre de rédaction Gmail, déjà remplie.
+
+    `authuser` désigne le compte qui écrit : plusieurs comptes Google sont
+    souvent connectés dans le même navigateur, et sans cette précision la
+    fenêtre s'ouvre sur le dernier utilisé — pas forcément le bon.
+
+    La pièce jointe, elle, ne se passe pas par l'adresse : aucun paramètre ne
+    le permet, et prétendre le contraire ferait envoyer un dossier vide. Elle
+    reste à glisser, et l'application ouvre le répertoire pour cela.
+    """
+    parametres = {
+        "view": "cm",
+        "fs": "1",
+        "to": destinataire or "",
+        "su": objet or "",
+        "body": corps or "",
+    }
+    if expediteur:
+        parametres["authuser"] = expediteur
+    return "https://mail.google.com/mail/?" + urllib.parse.urlencode(parametres)
 
 
 def _compte_outlook(outlook, adresse: str):

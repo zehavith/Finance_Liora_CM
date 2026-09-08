@@ -4696,6 +4696,25 @@ def test_preparer_pour_envoi() -> None:
     # adresse sans que rien ne le signale avant l'envoi.
     verifier('id="expediteur"' in page,
              "et l'adresse d'expédition se règle")
+    # Gmail, pas Outlook : ouvrir un brouillon Outlook à quelqu'un qui
+    # travaille dans Gmail ne sert à rien.
+    lien = module_envoi.lien_gmail(
+        "zehavit.s@liora.io", "cmauge@omneseducation.com",
+        "Transmission du dossier de SAS EDEN - FACT-1", "Bonjour,")
+    verifier(lien.startswith("https://mail.google.com/mail/?")
+             and "authuser=zehavit.s%40liora.io" in lien
+             and "to=cmauge%40omneseducation.com" in lien
+             and "su=Transmission+du+dossier" in lien,
+             "la fenêtre Gmail s'ouvre remplie, depuis le bon compte")
+    # Aucune adresse ne permet d'attacher un fichier : le dire est
+    # indispensable, envoyer un dossier sans le dossier serait pire que rien.
+    verifier("La pièce jointe reste à glisser" in page,
+             "et l'on est prévenu que la pièce jointe reste à glisser")
+    verifier(module_interface.ENVOI_PAR_DEFAUT["responsable_entreprise"]
+             == "cmauge@omneseducation.com"
+             and module_interface.ENVOI_PAR_DEFAUT["responsable_personnel"]
+             == "cdesarbre@omneseducation.com",
+             "les deux responsables sont préremplis")
     source = Path("envoi.py").read_text(encoding="utf-8")
     verifier("def _compte_outlook" in source and "SendUsingAccount" in source,
              "le brouillon est signé du compte demandé")

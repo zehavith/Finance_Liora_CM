@@ -673,11 +673,21 @@ reviendrait à transmettre les échanges d'autres personnes, qu'on vient
 justement de retirer. Le poids est annoncé, et un dépassement de 20 Mo
 signalé — c'est la première question quand on attache.
 
-**« Préparer le mail »**, sur la ligne d'un dossier, ouvre un **brouillon**
-Outlook : destinataire, objet, corps et pièce jointe déjà en place.
+**« Préparer le mail »**, sur la ligne d'un dossier, ouvre une fenêtre de
+rédaction déjà remplie — destinataire, objet, corps —, et le répertoire à
+côté. L'objet suit toujours la même forme :
+
+> Transmission du dossier de SAS EDEN - FACT-2405-00409
+
 **Rien n'est envoyé** : adresser un courriel à un tiers est un geste qui
-appartient à celle qui le signe. Le brouillon s'ouvre, elle le relit, elle
-l'envoie.
+appartient à celle qui le signe.
+
+| Messagerie | Ce qui se passe |
+|---|---|
+| **Gmail** (par défaut) | la fenêtre de rédaction s'ouvre remplie ; **la pièce jointe reste à glisser** depuis le répertoire qui s'ouvre en même temps — aucune adresse web ne permet d'attacher un fichier |
+| **Outlook** | le brouillon s'ouvre **avec la pièce jointe déjà en place** (demande `pywin32`, Windows) |
+
+Le réglage **Messagerie** choisit lequel.
 
 Trois adresses se règlent dans **Boîtes mail et options** :
 

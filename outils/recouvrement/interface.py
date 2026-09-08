@@ -123,6 +123,17 @@ CASES_MEMORISEES = {
     "reprendre": False,
     "majdossiers": False,
 }
+# Le service transmet ses dossiers à deux responsables, l'un pour les
+# dossiers d'entreprise, l'autre pour ceux en financement personnel. Ces
+# valeurs ne servent qu'à préremplir : elles se changent dans les réglages,
+# et ce qui y est saisi l'emporte pour toujours.
+ENVOI_PAR_DEFAUT = {
+    "expediteur": "zehavit.s@liora.io",
+    "responsable_entreprise": "cmauge@omneseducation.com",
+    "responsable_personnel": "cdesarbre@omneseducation.com",
+    "messagerie": "gmail",
+}
+
 EXTENSIONS_ACCEPTEES = {".xlsx", ".xlsm", ".csv"}
 TAILLE_MAX_FICHIER = 25 * 1024 * 1024
 
@@ -142,7 +153,14 @@ def lire_preferences() -> dict:
         valeurs = json.loads(PREFERENCES.read_text(encoding="utf-8"))
     except (ValueError, OSError):
         return {}
-    return _migrer_preferences(valeurs) if isinstance(valeurs, dict) else {}
+    if not isinstance(valeurs, dict):
+        return {}
+    valeurs = _migrer_preferences(valeurs)
+    # Préremplies, jamais imposées : une valeur déjà enregistrée — fût-elle
+    # vide, si elle a été effacée — n'est pas remplacée.
+    for cle, defaut in ENVOI_PAR_DEFAUT.items():
+        valeurs.setdefault(cle, defaut)
+    return valeurs
 
 
 def _migrer_preferences(valeurs: dict) -> dict:
@@ -1222,6 +1240,19 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 "__SORTIE__",
                 _attribut(preferences.get("sortie", str(sortie_par_defaut()))),
             ).replace(
+                "__MESSAGERIE__",
+                "".join(
+                    f'<option value="{cle}"'
+                    + (" selected" if preferences.get("messagerie", "gmail") == cle
+                       else "")
+                    + f">{libelle}</option>"
+                    for cle, libelle in (
+                        ("gmail", "Gmail — ouvre une fenêtre de rédaction"),
+                        ("outlook",
+                         "Outlook — ouvre un brouillon avec la pièce jointe"),
+                    )
+                ),
+            ).replace(
                 "__EXPEDITEUR__",
                 _attribut(preferences.get("expediteur", "")),
             ).replace(
@@ -1439,7 +1470,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                         "seulement", "filtre_colonne", "filtre_valeur",
                         "tableau", "groupes",
                         "responsable_entreprise", "responsable_personnel",
-                        "expediteur")
+                        "expediteur", "messagerie")
             if cle in demande
         }
 
@@ -1794,13 +1825,25 @@ class Gestionnaire(BaseHTTPRequestHandler):
         ) or ""
 
         objet, corps = module_envoi.corps_du_message(dossier)
-        ouvert, motif = module_envoi.brouillon_outlook(
-            destinataire, objet, corps, pieces,
-            expediteur=(preferences.get("expediteur") or "").strip())
+        expediteur = (preferences.get("expediteur") or "").strip()
+
+        # Gmail ou Outlook : la messagerie se règle, et le réglage décide.
+        # Ouvrir un brouillon Outlook à quelqu'un qui travaille dans Gmail ne
+        # sert à rien, et lui fait perdre le temps de comprendre pourquoi.
+        messagerie = (preferences.get("messagerie") or "gmail").strip().lower()
+        ouvert, motif, lien = False, "", ""
+        if messagerie == "outlook":
+            ouvert, motif = module_envoi.brouillon_outlook(
+                destinataire, objet, corps, pieces, expediteur=expediteur)
+        else:
+            lien = module_envoi.lien_gmail(
+                expediteur, destinataire, objet, corps)
 
         self._json(200, {
             "ouvert": ouvert,
             "motif": motif,
+            "messagerie": messagerie,
+            "lien": lien,
             "destinataire": destinataire,
             "expediteur": (preferences.get("expediteur") or "").strip(),
             "objet": objet,
@@ -2719,6 +2762,13 @@ button:disabled{opacity:.45;cursor:not-allowed}
          l'adresse https:// du site.</p>
     </div>
     <div>
+      <label for="messagerie">Messagerie</label>
+      <select id="messagerie">__MESSAGERIE__</select>
+      <p class="note">Gmail ne permet pas d'attacher un fichier depuis un
+         lien : la fenêtre s'ouvre remplie, le répertoire s'ouvre à côté, et
+         la pièce jointe se glisse d'un geste.</p>
+    </div>
+    <div>
       <label for="expediteur">Envoyer depuis — adresse mail</label>
       <input type="text" id="expediteur" value="__EXPEDITEUR__"
              placeholder="zehavit.s@liora.io" />
@@ -3231,6 +3281,23 @@ async function preparerEnvoi() {
 async function ouvrirBrouillon(reference) {
   try {
     const r = await api("/api/brouillon", { reference: reference });
+
+    // Gmail : la fenêtre de rédaction s'ouvre remplie, mais aucune adresse
+    // ne peut y attacher un fichier. Le répertoire s'ouvre donc à côté, et
+    // la pièce jointe se glisse d'un geste. Le dire est indispensable :
+    // envoyer un dossier sans le dossier serait pire que de ne rien faire.
+    if (r.messagerie === "gmail" && r.lien) {
+      window.open(r.lien, "_blank", "noopener");
+      try { await api("/api/ouvrir", { chemin: r.repertoire }); }
+      catch (erreur) { void erreur; }
+      afficherBandeau(true,
+        `Fenêtre Gmail ouverte — à ${echapper(r.destinataire || "compléter")}`
+        + (r.expediteur ? `, depuis ${echapper(r.expediteur)}` : "")
+        + `. ⚠ La pièce jointe reste à glisser : ${echapper(r.piece)} `
+        + `(${r.poids}), dans le dossier qui vient de s'ouvrir.`);
+      return;
+    }
+
     if (r.ouvert) {
       afficherBandeau(!r.motif,
         `Brouillon ouvert dans Outlook — ${echapper(r.piece)} (${r.poids}) `
@@ -3241,9 +3308,9 @@ async function ouvrirBrouillon(reference) {
         + (r.motif ? ` ⚠ ${echapper(r.motif)}.` : ""));
       return;
     }
-    // Sans Outlook pilotable, on ouvre le brouillon de la messagerie par
-    // défaut et le répertoire : la pièce jointe reste à glisser, et il vaut
-    // mieux le dire que laisser croire qu'elle y est.
+
+    // Ni Gmail ni Outlook pilotable : le brouillon de la messagerie par
+    // défaut, et le répertoire pour la pièce jointe.
     const lien = "mailto:" + encodeURIComponent(r.destinataire || "")
       + "?subject=" + encodeURIComponent(r.objet)
       + "&body=" + encodeURIComponent(r.corps);
@@ -3294,6 +3361,7 @@ function reglages() {
   return {
     boites: $("boites").value, sortie: $("sortie").value,
     copie_vers: $("copieVers").value,
+    messagerie: $("messagerie").value,
     expediteur: $("expediteur").value,
     responsable_entreprise: $("responsableEntreprise").value,
     responsable_personnel: $("responsablePersonnel").value,
