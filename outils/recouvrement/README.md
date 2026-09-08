@@ -56,8 +56,13 @@ bandeau du PDF, ce qui permet de citer directement « pièce n° 3 ».
 dossier contentieux :
 
 - un bandeau **Montant en contentieux**, repris du tableau de suivi ;
-- **1. Résumé de la situation** — ce que les parties suivantes établissent, en
-  quelques points ;
+- **1. Résumé de la situation** — d'abord l'échange **raconté** en quelques
+  phrases, sans une seule date (« Liora a réclamé le paiement de la facture à
+  plusieurs reprises. SAS EDEN a contesté le montant. Liora a adressé une mise
+  en demeure. Depuis, SAS EDEN n'a plus répondu. »), puis ce que les parties
+  suivantes établissent, en quelques points chiffrés. Le récit ne devine rien :
+  chaque phrase vient d'un acte repéré — relance, contestation, mise en
+  demeure, échéancier — et de qui l'a posé ;
 - **2. Détail du dossier** — formation suivie, montant facturé et reste dû,
   ancienneté de l'échéance, statut, et la note interne du tableau reprise mot
   pour mot ;
@@ -66,14 +71,10 @@ dossier contentieux :
   échéancier), chacune renvoyant à son numéro de pièce ;
 - **4. Preuve des actions engagées** — chiffres clés, constats et événements
   repérés ;
-- **5. La conversation** — d'abord l'échange **résumé** en quelques phrases
-  (« Liora a réclamé le paiement de la facture à plusieurs reprises. SAS EDEN
-  a contesté le montant. Liora a adressé une mise en demeure. Depuis, SAS EDEN
-  n'a plus répondu. »), puis l'échange **d'une traite**, réplique par réplique.
-  Sans dates ni numéros de pièce : de quoi savoir de quoi il retourne avant
-  d'entrer dans les pièces. Rien n'y est reformulé — le résumé vient des actes
-  repérés, chaque réplique est le propos du message. Les dates figurent dans
-  les événements de la partie 4 et dans l'annexe.
+- **5. La conversation** — l'échange d'une traite, réplique par réplique, sans
+  dates ni numéros de pièce. Rien n'y est reformulé : chaque tour est le propos
+  du message, cité. Les dates figurent dans les événements de la partie 4 et
+  dans l'annexe.
 
 Les montants, dates de formation et statuts viennent du tableau Monday ; le
 reste des seuls messages extraits.
