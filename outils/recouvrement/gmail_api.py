@@ -17,6 +17,11 @@ PORTEES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
 # Nombre de tentatives automatiques de la librairie Google sur les erreurs
 # transitoires (429 quota dépassé, 500/503 côté Google).
+# Au-dela, un fil n'est plus une conversation avec un debiteur mais une
+# liste de diffusion. Le suivre versait au dossier les echanges de tous
+# les autres apprenants.
+MESSAGES_MAX_PAR_FIL = 40
+
 NB_RETENTATIVES = 5
 
 
@@ -193,8 +198,17 @@ class ClientGmail:
     def identifiants_des_fils(
         self, fils: list[str], inclure_spam_corbeille: bool = True
     ) -> list[str]:
-        """Identifiants de tous les messages de ces conversations."""
+        """Identifiants de tous les messages de ces conversations.
+
+        Les fils démesurés sont écartés. Compléter un fil sert à retrouver la
+        réponse du débiteur, qui ne reprend ni le numéro ni l'objet ; un
+        échange de recouvrement en compte quelques dizaines au plus. Au-delà,
+        ce n'est plus une conversation avec un débiteur mais une liste de
+        diffusion — une comptabilité qui écrit à trente apprenants — et la
+        suivre versait au dossier les échanges de tous les autres.
+        """
         identifiants: list[str] = []
+        self.fils_ecartes = 0
         for fil in fils:
             try:
                 reponse = (
@@ -207,7 +221,11 @@ class ClientGmail:
                 # Un fil devenu illisible — message supprimé, droits changés —
                 # ne doit pas interrompre le dossier : les autres continuent.
                 continue
-            for message in reponse.get("messages", []):
+            messages_du_fil = reponse.get("messages", [])
+            if len(messages_du_fil) > MESSAGES_MAX_PAR_FIL:
+                self.fils_ecartes += 1
+                continue
+            for message in messages_du_fil:
                 if message.get("id"):
                     identifiants.append(message["id"])
         return identifiants
@@ -317,12 +335,14 @@ class SourcesGmail:
                 fils_par_client.setdefault(id(client), (client, set()))[1].add(fil)
 
         trouves: list[tuple[ClientGmail, str]] = []
+        self.fils_ecartes = 0
         for client, fils in fils_par_client.values():
             lire = getattr(client, "identifiants_des_fils", None)
             if lire is None:
                 continue
             for identifiant in lire(sorted(fils), inclure_spam_corbeille):
                 trouves.append((client, identifiant))
+            self.fils_ecartes += getattr(client, "fils_ecartes", 0)
         return trouves
 
     def identifiants_dossier(

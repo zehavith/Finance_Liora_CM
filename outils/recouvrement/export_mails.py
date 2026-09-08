@@ -47,7 +47,12 @@ import monday as module_monday  # noqa: E402
 from decouverte import adresses_candidates  # noqa: E402
 import facture_pdf as module_facture  # noqa: E402
 import synthese as module_synthese  # noqa: E402
-from gmail_api import ErreurGmail, SourcesGmail, ouvrir_sources  # noqa: E402
+from gmail_api import (  # noqa: E402
+    MESSAGES_MAX_PAR_FIL,
+    ErreurGmail,
+    SourcesGmail,
+    ouvrir_sources,
+)
 from indexation import (  # noqa: E402
     LigneIndex,
     ResumeDossier,
@@ -828,6 +833,15 @@ def traiter_dossier(
                 messages, doubles_fils = _fusionner_messages(messages, complements)
                 doublons += doubles_fils
                 gagnes = len(complements)
+                ecartes = getattr(sources, "fils_ecartes", 0)
+                if ecartes:
+                    journal(
+                        f"    {ecartes} conversation(s) trop longue(s) "
+                        "écartée(s) — au-delà de "
+                        f"{MESSAGES_MAX_PAR_FIL} messages, c'est "
+                        "une liste de diffusion et non un échange avec le "
+                        "débiteur"
+                    )
                 if gagnes > 0:
                     journal(
                         f"    {gagnes} message(s) ajouté(s) en suivant les "

@@ -854,6 +854,17 @@ def recuperer_documents(
             telecharger(ressource["url"], repertoire / nom)
         except ErreurMonday as exc:
             echecs.append(f"{nom} : {exc}")
+        except OSError as exc:
+            # Sous Windows, un PDF ouvert dans un lecteur ne peut pas être
+            # réécrit. L'erreur remontait jusqu'à faire échouer le dossier
+            # entier : quarante messages retrouvés étaient jetés parce qu'une
+            # facture était ouverte à l'écran. Un document manquant est un
+            # document manquant, pas un dossier perdu.
+            echecs.append(
+                f"{nom} : {exc}. Si le fichier est ouvert dans un lecteur "
+                "PDF, fermez-le et relancez avec « Compléter les dossiers "
+                "déjà exportés »"
+            )
         else:
             ecrits.append(nom)
 

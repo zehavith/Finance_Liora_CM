@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import types
 import time
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
@@ -3477,6 +3478,84 @@ def test_montant_inconnu_n_est_pas_zero() -> None:
              "la page distingue les deux à l'affichage")
     verifier("${montantDu(d)}" in page,
              "et s'en sert dans le tableau")
+
+
+def test_fil_trop_long_ecarte() -> None:
+    """Une liste de diffusion n'est pas une conversation avec un débiteur."""
+    import gmail_api as module_gmail  # noqa: PLC0415
+
+    print("\nConversations démesurées")
+
+    class _FauxService:
+        def __init__(self, tailles):
+            self.tailles = tailles
+
+        def users(self):
+            return self
+
+        def threads(self):
+            return self
+
+        def get(self, userId, id, format):  # noqa: N803 - signature Google
+            del userId, format
+            taille = self.tailles[id]
+            return types.SimpleNamespace(execute=lambda num_retries=0: {
+                "messages": [{"id": f"{id}-{n}"} for n in range(taille)]})
+
+    client = module_gmail.ClientGmail.__new__(module_gmail.ClientGmail)
+    client._service = _FauxService({"court": 6, "immense": 120})
+    client._http_error = RuntimeError
+
+    trouves = client.identifiants_des_fils(["court", "immense"])
+    verifier(len(trouves) == 6,
+             f"seul le fil de taille normale est suivi ({len(trouves)})")
+    verifier(all(i.startswith("court-") for i in trouves),
+             "et c'est bien le sien")
+    # Compléter un fil sert à retrouver la réponse du débiteur. Au-delà de
+    # quelques dizaines de messages, c'est une comptabilité qui écrit à trente
+    # apprenants, et suivre le fil versait au dossier les échanges des autres.
+    verifier(client.fils_ecartes == 1,
+             f"le fil démesuré est compté comme écarté ({client.fils_ecartes})")
+    verifier(module_gmail.MESSAGES_MAX_PAR_FIL == 40,
+             f"le seuil est de quarante messages "
+             f"({module_gmail.MESSAGES_MAX_PAR_FIL})")
+
+    source = Path("export_mails.py").read_text(encoding="utf-8")
+    verifier("conversation(s) trop longue(s) " in source,
+             "et le journal le dit, plutôt que de laisser un compte inexpliqué")
+
+
+def test_document_monday_verrouille() -> None:
+    """Un PDF ouvert dans un lecteur ne fait pas perdre le dossier."""
+    import monday as module_monday  # noqa: PLC0415
+
+    print("\nDocument Monday impossible à écrire")
+
+    vrais = (module_monday.telecharger, module_monday.adresses_signees,
+             module_monday.identifiant)
+
+    def refuser(_url, _cible):
+        raise PermissionError(13, "Permission denied")
+
+    module_monday.telecharger = refuser
+    module_monday.adresses_signees = lambda ids, jeton: {
+        cle: {"nom": "FACT-2405-00409.pdf", "url": "u"} for cle in ids}
+    module_monday.identifiant = lambda lien: "123"
+    try:
+        with tempfile.TemporaryDirectory() as repertoire:
+            # Sous Windows, un PDF ouvert dans Acrobat ne peut pas être
+            # réécrit. L'erreur remontait jusqu'à faire échouer le dossier
+            # entier : quarante messages retrouvés étaient jetés.
+            ecrits, echecs = module_monday.recuperer_documents(
+                ["https://x/files/123"], "jeton", Path(repertoire))
+        verifier(ecrits == [], "le document n'est pas écrit")
+        verifier(len(echecs) == 1 and "Permission denied" in echecs[0],
+                 f"l'échec est rapporté, non levé ({echecs})")
+        verifier("ouvert dans un lecteur" in echecs[0],
+                 "en nommant la cause la plus fréquente et son remède")
+    finally:
+        (module_monday.telecharger, module_monday.adresses_signees,
+         module_monday.identifiant) = vrais
 
 
 def test_tout_effacer_respecte_la_reponse() -> None:
@@ -7311,6 +7390,8 @@ def main() -> int:
     test_references_parasites()
     test_message_quand_l_outil_ne_repond_pas()
     test_montant_inconnu_n_est_pas_zero()
+    test_fil_trop_long_ecarte()
+    test_document_monday_verrouille()
     test_tout_effacer_respecte_la_reponse()
     test_doublons_de_la_liste()
     test_retrouver_les_dossiers_du_disque()
