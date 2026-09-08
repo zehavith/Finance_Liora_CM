@@ -3325,6 +3325,43 @@ console.log(JSON.stringify({{
              "les cases cochées survivent au tri")
 
 
+def test_montant_inconnu_n_est_pas_zero() -> None:
+    """Un montant que personne n'a renseigné ne s'affiche pas « 0 € »."""
+    import interface as module_interface  # noqa: PLC0415
+    import suivi as module_suivi  # noqa: PLC0415
+
+    print("\nMontant non renseigné")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "sortie"
+        for nom in ("a", "b", "c"):
+            (sortie / nom).mkdir(parents=True)
+        (sortie / "_recapitulatif.csv").write_text(
+            "reference;nom;repertoire;montant_du;factures;date_echeance\n"
+            "FACT-VIDE;SAS EDEN;a;;FACT-VIDE;\n"
+            "FACT-ZERO;Soldé;b;0;FACT-ZERO;\n"
+            "FACT-DU;Doit;c;5 990 €;FACT-DU;\n",
+            encoding="utf-8-sig",
+        )
+        par_reference = {d["reference"]: d for d in module_suivi.inventaire(
+            sortie, Path(repertoire) / "suivi.json")}
+
+        # « 0 € » se lit comme une dette soldée. C'est la seule valeur qui
+        # décide d'aller ou non au contentieux : l'inventer est un mensonge.
+        verifier(par_reference["FACT-VIDE"]["montant_renseigne"] is False,
+                 "une colonne vide se distingue d'un vrai zéro")
+        verifier(par_reference["FACT-ZERO"]["montant_renseigne"] is True,
+                 "un zéro écrit reste un zéro")
+        verifier(par_reference["FACT-DU"]["montant_du"] == 5990.0,
+                 f"et un montant se lit ({par_reference['FACT-DU']['montant_du']})")
+
+    page = module_interface.PAGE
+    verifier("function montantDu(dossier)" in page,
+             "la page distingue les deux à l'affichage")
+    verifier("${montantDu(d)}" in page,
+             "et s'en sert dans le tableau")
+
+
 def test_retrouver_les_dossiers_du_disque() -> None:
     """Un dossier tombé de la liste se retrouve sans refaire d'export."""
     import export_mails as module_export  # noqa: PLC0415
@@ -6985,6 +7022,7 @@ def main() -> int:
     test_feuille_emargement()
     test_copie_vers_sharepoint()
     test_tri_des_colonnes()
+    test_montant_inconnu_n_est_pas_zero()
     test_retrouver_les_dossiers_du_disque()
     test_arreter_un_export()
     test_absents_de_l_export()

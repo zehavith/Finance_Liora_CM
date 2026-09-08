@@ -465,6 +465,13 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path) -> list[dict]:
                 "emails": (rangee.get("emails") or "").strip(),
                 "factures": (rangee.get("factures") or "").strip(),
                 "montant_du": _nombre(rangee.get("montant_du")),
+                # « 0 € » se lit comme une dette soldée. Un montant que
+                # personne n'a renseigné — un dossier retrouvé sur le disque,
+                # une ligne du tableau sans colonne de montant — n'est pas
+                # zéro : il est inconnu, et l'écrire zéro est un mensonge sur
+                # la seule valeur qui décide d'aller ou non au contentieux.
+                "montant_renseigne": bool(
+                    str(rangee.get("montant_du") or "").strip()),
                 "montant_total": _nombre(rangee.get("montant_total")),
                 "nb_mails": int(_nombre(rangee.get("nb_mails"))),
                 "nb_pieces_jointes": int(_nombre(rangee.get("nb_pieces_jointes"))),

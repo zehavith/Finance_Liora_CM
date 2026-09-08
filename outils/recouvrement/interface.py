@@ -2801,6 +2801,18 @@ let EXPORT_EN_COURS = false;
 const euro = (v) => new Intl.NumberFormat("fr-FR",
   { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(v || 0);
 
+// « 0 € » se lit comme une dette soldee. Un montant que personne n'a renseigne
+// — un dossier retrouve sur le disque, une ligne du tableau sans colonne de
+// montant — n'est pas zero : il est inconnu, et l'ecrire zero ment sur la
+// seule valeur qui decide d'aller ou non au contentieux.
+function montantDu(dossier) {
+  if (dossier.montant_renseigne === false && !dossier.montant_du) {
+    return '<span class="etat inconnu" title="Montant non renseigné : il '
+      + 'vient du tableau, et ce dossier n\'en a pas encore reçu.">—</span>';
+  }
+  return euro(dossier.montant_du);
+}
+
 async function chargerDossiers() {
   let donnees;
   try { donnees = await api("/api/dossiers"); }
@@ -3519,7 +3531,7 @@ function rendreSuivi() {
           ${CHOISIS.has(d.reference) ? "checked" : ""} /></td>
       <td class="dossier"><b>${echapper(d.reference)}</b><br />
           <span style="color:var(--texte-3)">${echapper(d.nom)}</span></td>
-      <td class="num">${euro(d.montant_du)}</td>
+      <td class="num">${montantDu(d)}</td>
       <td class="num"><input class="echeance" data-champ="echeance" type="text"
           value="${echapper(d.date_echeance || "")}" placeholder="JJ/MM/AAAA"
           title="Échéance de la facture. Saisie ici, elle l'emporte sur le tableau." /></td>
@@ -3906,7 +3918,7 @@ function rendreDormants() {
         <tr>
           <td><b>${echapper(d.reference)}</b><br />
               <span style="color:var(--texte-3)">${echapper(d.nom)}</span></td>
-          <td class="num">${euro(d.montant_du)}</td>
+          <td class="num">${montantDu(d)}</td>
           <td>${pastilleStatut(d.statut)}</td>
           <td class="num">${d.jours_sans_mouvement} j</td>
         </tr>`).join("")}
