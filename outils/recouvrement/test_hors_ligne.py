@@ -3676,6 +3676,14 @@ def test_fil_de_diffusion_ecarte() -> None:
     verifier("citees - {a.lower() for a in adresses_decouvertes}" in source,
              "sans compter les adresses découvertes dans le fil")
 
+    # Du fil, on ne prend que ce que le débiteur a écrit ou reçu. Prendre le
+    # fil entier versait au dossier les échanges de tous les participants —
+    # une comptabilité qui répond à trente apprenants dans le même sujet.
+    verifier("if dossier.adresses_citees(message.parties)" in source,
+             "et du fil, on ne prend que la part du débiteur")
+    verifier("ni écrits ni reçus par le débiteur" in source,
+             "en disant combien de messages du fil sont laissés")
+
 
 def test_heures_de_l_emargement() -> None:
     """Les heures écrites dans l'émargement, et rien de deviné."""

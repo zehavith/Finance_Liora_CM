@@ -849,6 +849,29 @@ def traiter_dossier(
             neufs = [paire for paire in suite if paire[1] not in connus]
             if neufs:
                 complements, _ = sources.messages(neufs)
+                # Du fil, on ne prend que ce que le débiteur a écrit ou reçu.
+                # Prendre le fil entier versait au dossier les échanges de
+                # tous les autres participants — une comptabilité qui répond
+                # à trente apprenants dans le même sujet. Ce qu'on cherche,
+                # c'est la réponse du débiteur, qui ne reprend ni le numéro
+                # ni l'objet : elle porte son adresse, cela suffit.
+                #
+                # Sans adresse connue, rien ne permet de trancher : le fil
+                # est pris tel quel, comme avant.
+                connues_fil = [a for a in dossier.emails
+                               if a not in adresses_decouvertes]
+                if connues_fil:
+                    gardes = [
+                        message for message in complements
+                        if dossier.adresses_citees(message.parties)
+                    ]
+                    laisses = len(complements) - len(gardes)
+                    if laisses:
+                        journal(
+                            f"    {laisses} message(s) du fil laissé(s) : "
+                            "ni écrits ni reçus par le débiteur"
+                        )
+                    complements = gardes
                 messages, doubles_fils = _fusionner_messages(messages, complements)
                 doublons += doubles_fils
                 gagnes = len(complements)
