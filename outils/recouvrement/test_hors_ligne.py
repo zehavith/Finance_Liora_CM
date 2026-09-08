@@ -3930,8 +3930,13 @@ def test_refaire_notes_choisies() -> None:
     # la note etait une facon de laisser la note mentir.
     verifier("def rafraichir_notes" in Path("interface.py").read_text(
         encoding="utf-8"), "les notes en retard se refont d'elles-mêmes")
-    verifier("sont en cours de\n       mise à jour" in page,
+    verifier('"sont en cours de mise à jour"' in page,
              "et la page l'annonce au lieu d'offrir un bouton")
+    # Pendant un export la remise a jour est suspendue — deux ecritures dans
+    # les memes repertoires se marcheraient dessus. Annoncer « en cours »
+    # serait promettre ce qui n'a pas lieu.
+    verifier('seront mises à jour à la fin de l\'export' in page,
+             "et dit qu'elle attend, quand un export tourne")
 
 
 def test_barre_toujours_presente() -> None:

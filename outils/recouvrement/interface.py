@@ -3603,11 +3603,16 @@ function rendreDocuments() {
   const perimees = DOSSIERS.filter((d) => d.note_perimee).length;
   // Elles se refont d'elles-memes : la page l'annonce au lieu d'offrir un
   // bouton pour le demander.
+  // Pendant un export, la remise a jour est volontairement suspendue : deux
+  // ecritures dans les memes repertoires se marcheraient dessus. Annoncer
+  // « en cours » serait promettre ce qui n'a pas lieu.
   const avertissement = perimees ? `
-    <p class="aide perimees">↻ ${perimees} note(s) de synthèse sont en cours de
-       mise à jour — échéance, convention, contexte ou étape ont changé depuis
-       qu'elles ont été écrites. Cela se fait tout seul, à partir des messages
-       déjà au dossier, sans retourner sur Gmail. Revenez dans un instant.</p>`
+    <p class="aide perimees">↻ ${perimees} note(s) de synthèse ${EXPORT_EN_COURS
+      ? "seront mises à jour à la fin de l'export en cours"
+      : "sont en cours de mise à jour"} — échéance, convention, contexte ou
+       étape ont changé depuis qu'elles ont été écrites. Cela se fait tout
+       seul, à partir des messages déjà au dossier, sans retourner sur
+       Gmail.</p>`
     : "";
 
   $("tableDocuments").innerHTML = avertissement
