@@ -3479,6 +3479,64 @@ def test_montant_inconnu_n_est_pas_zero() -> None:
              "et s'en sert dans le tableau")
 
 
+def test_doublons_de_la_liste() -> None:
+    """Le même dossier ne figure pas deux fois dans la liste."""
+    import export_mails as module_export  # noqa: PLC0415
+    import indexation as module_indexation  # noqa: PLC0415
+    import suivi as module_suivi  # noqa: PLC0415
+
+    print("\nDoublons de la liste")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        racine = Path(repertoire) / "export"
+        for nom in ("fact-2405-00409_sas-eden", "fact-2601-13302_jaadi"):
+            (racine / nom).mkdir(parents=True)
+            numero = ("FACT-2405-00409" if "eden" in nom else "FACT-2601-13302")
+            (racine / nom / "index.csv").write_text(
+                "piece_n;date;heure;sens;expediteur;destinataires;copie;objet;"
+                "nb_pieces_jointes;pieces_jointes;critere;factures_concernees;"
+                "adresses_concernees;boites;fichier_pdf;fichier_eml\n"
+                f"1;21/05/2024;09:30;envoyé;a@l.io;c@x.fr;;Relance;1;f.pdf;;"
+                f"{numero};c@x.fr;a@l.io;p.pdf;p.eml\n",
+                encoding="utf-8-sig")
+
+        def rangee(reference, nom, repertoire_dossier):
+            return module_indexation.ResumeDossier(
+                reference=reference, nom=nom, emails="c@x.fr",
+                factures=reference, requete="q",
+                repertoire=repertoire_dossier, nb_mails=4)
+
+        module_indexation.ecrire_recapitulatif(racine / "_recapitulatif.csv", [
+            rangee("FACT-2405-00409", "SAS EDEN", "fact-2405-00409_sas-eden"),
+            # Écrite quand « Retrouver » prenait le répertoire pour une
+            # référence : le même dossier, une seconde fois et sans son nom.
+            rangee("fact-2405-00409_sas-eden", "", "fact-2405-00409_sas-eden"),
+            rangee("fact-2601-13302_jaadi", "", "fact-2601-13302_jaadi"),
+        ])
+
+        retirees = module_export.nettoyer_recapitulatif(racine)
+        verifier(retirees == ["fact-2405-00409_sas-eden"],
+                 f"le doublon est retiré ({retirees})")
+
+        suivant = Path(repertoire) / "suivi.json"
+        listes = {d["reference"]: d for d in module_suivi.inventaire(
+            racine, suivant)}
+        verifier(sorted(listes) == ["FACT-2405-00409", "FACT-2601-13302"],
+                 f"la liste ne montre plus chaque dossier qu'une fois "
+                 f"({sorted(listes)})")
+        verifier(listes["FACT-2405-00409"]["nom"] == "SAS EDEN",
+                 "et c'est la rangée complète qui reste, pas la rangée vide")
+        # Celle qui n'existait que sous son nom de répertoire n'est pas perdue :
+        # on lui rend son numéro, lu dans son index.
+        verifier(Path(listes["FACT-2601-13302"]["repertoire"]).name
+                 == "fact-2601-13302_jaadi",
+                 f"le dossier sans doublon reprend son numéro sans être perdu "
+                 f"({listes['FACT-2601-13302']['repertoire']})")
+
+        verifier(module_export.nettoyer_recapitulatif(racine) == [],
+                 "repasser dessus ne retire plus rien")
+
+
 def test_retrouver_les_dossiers_du_disque() -> None:
     """Un dossier tombé de la liste se retrouve sans refaire d'export."""
     import export_mails as module_export  # noqa: PLC0415
@@ -7181,6 +7239,7 @@ def main() -> int:
     test_references_parasites()
     test_message_quand_l_outil_ne_repond_pas()
     test_montant_inconnu_n_est_pas_zero()
+    test_doublons_de_la_liste()
     test_retrouver_les_dossiers_du_disque()
     test_arreter_un_export()
     test_absents_de_l_export()

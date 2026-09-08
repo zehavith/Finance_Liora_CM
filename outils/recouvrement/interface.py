@@ -4359,6 +4359,19 @@ def demarrer(port: int = 0, ouvrir: bool = True, veille: bool = False) -> Thread
     # messages Gmail : le dossier ramassait alors des conversations entières
     # sans rapport. On les retire du suivi au démarrage, et l'on retient les
     # dossiers touchés — leurs pièces ont été réunies sur un critère faux.
+    # Les doublons ecrits par « Retrouver les dossiers du disque » quand il
+    # prenait le nom du repertoire pour une reference : le meme dossier
+    # figurait deux fois, une fois sous son numero et une fois sous son
+    # repertoire. Une liste qui montre deux fois le meme dossier ne se lit
+    # plus, et aucun export ne les enlevait.
+    try:
+        sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+        doublons = export_mails.nettoyer_recapitulatif(sortie, print)
+        if doublons:
+            print(f"  {len(doublons)} doublon(s) retire(s) de la liste.")
+    except OSError:
+        pass
+
     try:
         pollues = module_suivi.purger_references_parasites(SUIVI)
     except OSError:

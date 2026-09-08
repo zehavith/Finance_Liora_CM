@@ -53,6 +53,8 @@ from indexation import (  # noqa: E402
     ResumeDossier,
     ecrire_index_dossier,
     ecrire_recapitulatif,
+    COLONNES_RECAP,
+    _ecrire_csv,
     lire_recapitulatif,
 )
 from message import (  # noqa: E402
@@ -1099,6 +1101,77 @@ def verser_message(
     )
     ecrire_index_dossier(chemin_index, [*lignes, ligne])
     return ligne
+
+
+def nettoyer_recapitulatif(racine_sortie: Path, journal=None) -> list[str]:
+    """Retire les dossiers en double nés d'une référence prise sur le disque.
+
+    « Retrouver les dossiers du disque » a un temps pris le nom du répertoire
+    pour une référence : « fact-2405-00409_sas-eden » figurait alors dans la
+    liste à côté de « FACT-2405-00409 », qui est le même dossier. Le défaut
+    est corrigé, mais les rangées déjà écrites restent, et une liste qui
+    montre deux fois le même dossier ne se lit plus.
+
+    On garde la rangée qui porte une vraie référence. Quand il n'y en a pas —
+    le dossier n'était plus dans la liste que sous ce nom-là — on lui rend
+    son numéro, lu dans son index, plutôt que de le perdre.
+    """
+    dire = journal or (lambda _message: None)
+    chemin = racine_sortie / "_recapitulatif.csv"
+    rangees = lire_recapitulatif(chemin)
+    if not rangees:
+        return []
+
+    par_repertoire: dict[str, list[dict]] = {}
+    for rangee in rangees:
+        par_repertoire.setdefault(
+            (rangee.get("repertoire") or "").strip(), []).append(rangee)
+
+    gardees, retirees, renommees = [], [], 0
+    for repertoire, groupe in par_repertoire.items():
+        # La marque du défaut : la référence est le nom du répertoire.
+        vraies = [r for r in groupe
+                  if (r.get("reference") or "").strip() != repertoire]
+        if vraies:
+            gardees.extend(vraies)
+            retirees.extend((r.get("reference") or "").strip()
+                            for r in groupe if r not in vraies)
+            continue
+
+        # Seule rangée : on lui rend son numéro plutôt que de la perdre.
+        for rangee in groupe:
+            numero = ""
+            index = racine_sortie / repertoire / "index.csv"
+            if index.exists():
+                try:
+                    lignes, _t, _b, _c = relire_dossier(index.parent, index)
+                except (OSError, ValueError):
+                    lignes = []
+                for ligne in lignes:
+                    for valeur in (ligne.factures_concernees or "").split(" | "):
+                        if valeur.strip():
+                            numero = valeur.strip()
+                            break
+                    if numero:
+                        break
+            if numero and numero != rangee.get("reference"):
+                rangee["reference"] = numero
+                renommees += 1
+                dire(f"    {repertoire} reprend son numéro {numero}")
+            gardees.append(rangee)
+
+    # Un numéro rendu se garde aussi : n'écrire que sur un doublon retiré
+    # laissait la correction en mémoire, et le dossier repartait sous son nom
+    # de répertoire au chargement suivant.
+    if not retirees and not renommees:
+        return []
+
+    _ecrire_csv(chemin, COLONNES_RECAP,
+                [{cle: r.get(cle, "") for cle in COLONNES_RECAP}
+                 for r in gardees])
+    if retirees:
+        dire(f"{len(retirees)} doublon(s) retiré(s) de la liste.")
+    return sorted(retirees)
 
 
 def retrouver_dossiers(racine_sortie: Path, journal=None) -> int:
