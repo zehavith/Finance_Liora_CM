@@ -180,9 +180,20 @@ def corps_du_message(dossier: dict) -> tuple[str, str]:
     Rien qui ne soit déjà dans la note : le message annonce ce qu'il porte,
     il ne plaide pas à sa place.
     """
-    reference = dossier.get("reference") or ""
-    nom = dossier.get("nom") or ""
-    objet = f"Dossier contentieux — {reference}" + (f" — {nom}" if nom else "")
+    reference = (dossier.get("reference") or "").strip()
+    nom = (dossier.get("nom") or "").strip()
+
+    # « Transmission du dossier de SAS EDEN - FACT-2405-00409 » : le nom
+    # d'abord, parce que c'est par lui qu'on retrouve un dossier dans une
+    # boîte, le numéro ensuite, parce que c'est lui qui l'identifie. Le nom
+    # est celui du débiteur — la personne, ou l'entreprise qui paie.
+    from synthese import _de  # noqa: PLC0415
+
+    objet = "Transmission du dossier"
+    if nom:
+        objet += " " + _de(nom)
+    if reference:
+        objet += f" - {reference}"
 
     montant = dossier.get("montant_du")
     lignes = [

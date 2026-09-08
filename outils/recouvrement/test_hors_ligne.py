@@ -4669,8 +4669,16 @@ def test_preparer_pour_envoi() -> None:
     objet, corps = module_envoi.corps_du_message({
         "reference": "FACT-2405-00409", "nom": "SAS EDEN",
         "montant_du": 5990.0, "date_echeance": "21/05/2024", "nb_mails": 8})
-    verifier("FACT-2405-00409" in objet and "SAS EDEN" in objet,
-             f"l'objet nomme le dossier ({objet})")
+    verifier(objet == "Transmission du dossier de SAS EDEN - FACT-2405-00409",
+             f"l'objet nomme le débiteur puis la facture ({objet})")
+    # L'élision, que l'oreille attend : « d'Anas », pas « de Anas ».
+    verifier(module_envoi.corps_du_message(
+        {"reference": "F-1", "nom": "Anas Ait Belaid"})[0]
+        == "Transmission du dossier d'Anas Ait Belaid - F-1",
+        "avec l'élision devant une voyelle")
+    verifier(module_envoi.corps_du_message({"reference": "F-1", "nom": ""})[0]
+             == "Transmission du dossier - F-1",
+             "et sans nom, la facture suffit")
     verifier("5 990,00" in corps and "21/05/2024" in corps,
              "et le corps annonce le montant et l'échéance")
 
