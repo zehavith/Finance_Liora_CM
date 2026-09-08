@@ -860,6 +860,19 @@ def recuperer_documents(
             # entier : quarante messages retrouvés étaient jetés parce qu'une
             # facture était ouverte à l'écran. Un document manquant est un
             # document manquant, pas un dossier perdu.
+            #
+            # Et s'il est déjà là — c'est justement pourquoi un lecteur le
+            # tient ouvert —, il n'est pas manquant du tout : le dossier a
+            # son document, seule la réécriture a échoué. L'annoncer « non
+            # récupéré » envoyait chercher un fichier qui y était.
+            destination = repertoire / nom
+            try:
+                deja_la = destination.stat().st_size > 0
+            except OSError:
+                deja_la = False
+            if deja_la:
+                ecrits.append(nom)
+                continue
             echecs.append(
                 f"{nom} : {exc}. Si le fichier est ouvert dans un lecteur "
                 "PDF, fermez-le et relancez avec « Compléter les dossiers "

@@ -3574,6 +3574,33 @@ def test_csv_ouvert_dans_excel() -> None:
         verifier((Path(repertoire) / "index.csv.en-cours").exists(),
                  "et ce qui a été écrit reste à côté, rien n'est perdu")
 
+        # Un fichier qui vient d'être écrit est souvent tenu une fraction de
+        # seconde par l'antivirus ou l'indexeur de recherche. Renoncer à la
+        # première tentative faisait échouer un dossier entier sans qu'aucune
+        # fenêtre ne soit ouverte.
+        cible = Path(repertoire) / "recap.csv"
+        essais = []
+
+        def _capricieux(source, destination):
+            essais.append(1)
+            if len(essais) < 3:
+                raise PermissionError(5, "Accès refusé")
+            return vrai(source, destination)
+
+        os.replace = _capricieux
+        try:
+            module_indexation._ecrire_csv(cible, ["a"], [{"a": "1"}])
+            passe = True
+        except OSError:
+            passe = False
+        finally:
+            os.replace = vrai
+
+        verifier(passe and cible.exists(),
+                 f"un verrou passager n'échoue pas ({len(essais)} tentative(s))")
+        verifier(not (Path(repertoire) / "recap.csv.en-cours").exists(),
+                 "et le fichier provisoire ne traîne pas derrière")
+
 
 def test_document_monday_verrouille() -> None:
     """Un PDF ouvert dans un lecteur ne fait pas perdre le dossier."""
@@ -3603,6 +3630,17 @@ def test_document_monday_verrouille() -> None:
                  f"l'échec est rapporté, non levé ({echecs})")
         verifier("ouvert dans un lecteur" in echecs[0],
                  "en nommant la cause la plus fréquente et son remède")
+
+        # Si un lecteur le tient ouvert, c'est qu'il est déjà là : le dossier
+        # a son document, seule la réécriture a échoué. L'annoncer « non
+        # récupéré » envoyait chercher un fichier qui y était.
+        with tempfile.TemporaryDirectory() as repertoire:
+            (Path(repertoire) / "FACT-2405-00409.pdf").write_bytes(b"%PDF-1.4")
+            ecrits, echecs = module_monday.recuperer_documents(
+                ["https://x/files/123"], "jeton", Path(repertoire))
+        verifier(ecrits == ["FACT-2405-00409.pdf"] and not echecs,
+                 f"un document déjà au dossier n'est pas dit manquant "
+                 f"({ecrits}, {echecs})")
     finally:
         (module_monday.telecharger, module_monday.adresses_signees,
          module_monday.identifiant) = vrais

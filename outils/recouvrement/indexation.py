@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import csv
 import os
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -227,20 +228,32 @@ def _ecrire_csv(chemin: Path, colonnes: list[str], rangees: list[dict[str, str]]
         redacteur.writerows(rangees)
         fichier.flush()
         os.fsync(fichier.fileno())
-    try:
-        os.replace(provisoire, chemin)
-    except OSError as exc:
-        # Sous Windows, un CSV ouvert dans Excel ne peut pas être remplacé :
-        # « Accès refusé » sur le remplacement, sans dire par qui. Le message
-        # brut faisait chercher un problème de droits là où il suffit de
-        # fermer une fenêtre. Le fichier écrit reste à côté, sous son nom
-        # provisoire : rien de ce qui a été trouvé n'est perdu.
-        raise OSError(
-            f"{chemin.name} n'a pas pu être remplacé : {exc}. "
-            "Ce fichier est très probablement ouvert dans Excel ou un autre "
-            f"programme — fermez-le. Ce qui vient d'être écrit est conservé "
-            f"dans {provisoire.name}, à côté."
-        ) from exc
+    # Sous Windows, un fichier qui vient d'être écrit est souvent tenu une
+    # fraction de seconde par l'antivirus ou l'indexeur de recherche : le
+    # remplacement échoue alors qu'aucune fenêtre n'est ouverte. Trois
+    # tentatives espacées suffisent à passer outre, et ne coûtent rien quand
+    # tout va bien. Un fichier réellement ouvert dans Excel, lui, ne se
+    # libérera pas : l'attente reste courte.
+    dernier: OSError | None = None
+    for attente in (0.0, 0.3, 0.9):
+        if attente:
+            time.sleep(attente)
+        try:
+            os.replace(provisoire, chemin)
+            return
+        except OSError as exc:
+            dernier = exc
+
+    # « Accès refusé » sur le remplacement, sans dire par qui. Le message brut
+    # faisait chercher un problème de droits là où il suffit de fermer une
+    # fenêtre. Le fichier écrit reste à côté, sous son nom provisoire : rien
+    # de ce qui a été trouvé n'est perdu.
+    raise OSError(
+        f"{chemin.name} n'a pas pu être remplacé : {dernier}. "
+        "Ce fichier est très probablement ouvert dans Excel ou un autre "
+        f"programme — fermez-le. Ce qui vient d'être écrit est conservé "
+        f"dans {provisoire.name}, à côté."
+    ) from dernier
 
 
 def ecrire_index_dossier(chemin: Path, lignes: list[LigneIndex]) -> None:
