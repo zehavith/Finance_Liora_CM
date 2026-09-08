@@ -388,6 +388,51 @@ def signaler_activite() -> None:
     _dernier_contact = time.monotonic()
 
 
+# Refaire les notes etait un geste a soi : on corrigeait une echeance, la note
+# gardait l'ancienne, et rien ne le disait tant qu'on ne l'ouvrait pas. Elles
+# se refont desormais d'elles-memes, en arriere-plan.
+#
+# En arriere-plan et non dans la reponse : reecrire cinquante notes prend une
+# demi-minute, et la page attendrait sans rien afficher. Un seul rafraichissement
+# a la fois, et jamais pendant un export — les deux ecriraient dans les memes
+# repertoires.
+_VERROU_NOTES = threading.Lock()
+NOTES_EN_COURS: set[str] = set()
+
+
+def rafraichir_notes(references: list[str]) -> None:
+    """Refait les notes indiquees, une a une, sans bloquer la page."""
+    if not references or EXECUTION.en_cours:
+        return
+
+    def travail() -> None:
+        if not _VERROU_NOTES.acquire(blocking=False):
+            return
+        try:
+            sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+            suivi = module_suivi.charger(SUIVI)
+            copie = (lire_preferences().get("copie_vers") or "").strip()
+            destination = Path(copie) if copie else None
+            voulues = set(references)
+            for dossier in module_suivi.inventaire(sortie, SUIVI):
+                if dossier["reference"] not in voulues or EXECUTION.en_cours:
+                    continue
+                repertoire = sortie / dossier["repertoire"]
+                if not repertoire.is_dir():
+                    continue
+                try:
+                    _refaire_synthese(repertoire, dossier, suivi)
+                    recopier_note(repertoire, sortie, destination)
+                except Exception:  # noqa: BLE001 - jamais bloquant
+                    continue
+        finally:
+            NOTES_EN_COURS.difference_update(references)
+            _VERROU_NOTES.release()
+
+    NOTES_EN_COURS.update(references)
+    threading.Thread(target=travail, daemon=True).start()
+
+
 def _veiller(serveur) -> None:
     """Arrête le serveur quand plus aucune page ne l'interroge.
 
@@ -574,6 +619,13 @@ def appliquer_complements_si_besoin() -> dict:
                                "absents_suivi": absents})
     bilan["absents"] = absents
     return bilan
+
+
+def _lancer_rafraichissement(dossiers: list[dict]) -> set[str]:
+    """Remet a jour les notes en retard, et dit lesquelles sont en chantier."""
+    en_retard = [d["reference"] for d in dossiers if d.get("note_perimee")]
+    rafraichir_notes(en_retard)
+    return set(NOTES_EN_COURS)
 
 
 def absents_du_suivi() -> list[str]:
@@ -980,6 +1032,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
                     1 for d in dossiers if d["reference"] not in annuaire
                 ),
                 "statuts": module_suivi.STATUTS,
+                # Celles qu'un fichier de suivi applique apres coup, ou une
+                # mise a jour de l'outil, ont laissees en retard.
+                "notes_en_cours": sorted(_lancer_rafraichissement(dossiers)),
                 "absents_suivi": absents_du_suivi(),
                 "a_refaire": list(lire_preferences().get("dossiers_a_refaire") or []),
                 "sortie": str(racine),
@@ -1595,6 +1650,10 @@ class Gestionnaire(BaseHTTPRequestHandler):
         except OSError as exc:
             self._json(500, {"erreur": f"Enregistrement impossible : {exc}"})
             return
+        # Ce qui vient d'etre saisi entre dans la note : echeance, convention,
+        # diplome, contexte, note interne. La refaire tout de suite evite
+        # d'ouvrir demain une note qui dit le contraire de l'ecran.
+        rafraichir_notes([reference])
         self._json(200, {"enregistre": True, "dossier": entree})
 
     def _dater_etape(self, demande: dict) -> None:
@@ -1894,6 +1953,10 @@ button:disabled{opacity:.45;cursor:not-allowed}
 /* Barre de deconnexion : une page qui ne joint plus l'outil ne peut rien
    faire, et chaque clic echoue en silence. Elle doit le dire en haut, en
    permanence, et non par un petit encart rouge au milieu d'une section. */
+/* Un selecteur d'identifiant l'emporte sur le [hidden] du navigateur : sans
+   cette ligne, la barre restait affichee en permanence, y compris quand
+   l'outil repondait parfaitement. */
+#deconnecte[hidden]{display:none}
 #deconnecte{background:#5b1a1a;color:#ffe9e9;padding:13px 20px;font-size:13px;
   line-height:1.6;display:flex;flex-wrap:wrap;align-items:center;gap:13px;
   position:sticky;top:0;z-index:50}
@@ -2498,16 +2561,6 @@ async function refaireNotes() {
     CHOIX_NOTES.clear();
     chargerDossiers();
 
-// Tant que cette page est ouverte, l'outil doit rester ouvert. Il se fermait
-// au bout de trois minutes sans requete — or lire un tableau n'en envoie
-// aucune : on lisait le tableau de bord, l'outil se fermait derriere, et le
-// clic suivant echouait sans que rien n'ait ete ferme ni casse. Battre la
-// mesure regle les deux : l'outil reste en vie, et une page morte le sait en
-// moins d'une minute au lieu de l'apprendre au premier clic.
-setInterval(async () => {
-  try { await api("/api/vivant"); }
-  catch (erreur) { void erreur; }
-}, 45000);
   } catch (erreur) { afficherBandeau(false, erreur.message); }
   finally { bouton.disabled = false; bouton.textContent = avant; }
 }
@@ -3537,12 +3590,13 @@ function rendreDocuments() {
   // notes datent de l'export. Rien ne le disait, et la note ouverte paraissait
   // simplement fausse.
   const perimees = DOSSIERS.filter((d) => d.note_perimee).length;
+  // Elles se refont d'elles-memes : la page l'annonce au lieu d'offrir un
+  // bouton pour le demander.
   const avertissement = perimees ? `
-    <p class="aide perimees">↻ ${perimees} note(s) de synthèse ont été écrites
-       avant les derniers changements enregistrés — échéance, convention,
-       contexte ou étape. Elles se réécrivent à partir des messages déjà au
-       dossier, sans retourner sur Gmail.
-       <a class="lien" id="cocherPerimees">cocher ces ${perimees} dossiers</a></p>`
+    <p class="aide perimees">↻ ${perimees} note(s) de synthèse sont en cours de
+       mise à jour — échéance, convention, contexte ou étape ont changé depuis
+       qu'elles ont été écrites. Cela se fait tout seul, à partir des messages
+       déjà au dossier, sans retourner sur Gmail. Revenez dans un instant.</p>`
     : "";
 
   $("tableDocuments").innerHTML = avertissement
@@ -3553,13 +3607,6 @@ function rendreDocuments() {
   brancherTri($("tableDocuments"));
   $("tableDocuments").querySelectorAll(".choix-note").forEach((coche) =>
     coche.addEventListener("change", majChoixNotes));
-  if ($("cocherPerimees")) {
-    $("cocherPerimees").addEventListener("click", () => {
-      DOSSIERS.filter((d) => d.note_perimee)
-        .forEach((d) => CHOIX_NOTES.add(d.reference));
-      rendreDocuments();
-    });
-  }
   majChoixNotes();
 
   $("tableDocuments").querySelectorAll(".fichier-piece").forEach((champ) =>
@@ -4284,6 +4331,17 @@ function echapper(texte) {
 }
 
 chargerDossiers();
+
+// Tant que cette page est ouverte, l'outil doit rester ouvert. Il se fermait
+// au bout de trois minutes sans requete — or lire un tableau n'en envoie
+// aucune : on lisait le tableau de bord, l'outil se fermait derriere, et le
+// clic suivant echouait sans que rien n'ait ete ferme ni casse. Battre la
+// mesure regle les deux : l'outil reste en vie, et une page morte le sait en
+// moins d'une minute au lieu de l'apprendre au premier clic.
+setInterval(async () => {
+  try { await api("/api/vivant"); }
+  catch (erreur) { void erreur; }
+}, 45000);
 
 function afficherBandeau(reussi, message) {
   const bandeau = $("bandeau");

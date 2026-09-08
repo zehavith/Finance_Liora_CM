@@ -3414,8 +3414,18 @@ def test_message_quand_l_outil_ne_repond_pas() -> None:
     # tableau n'en envoie aucune. On lisait le tableau de bord, l'outil se
     # fermait derrière, et le clic suivant échouait sans que rien n'ait été
     # fermé ni cassé. C'est l'origine de tous les « Failed to fetch ».
-    verifier('"/api/vivant"' in page and "setInterval(async" in page,
-             "la page bat la mesure tant qu'elle est ouverte")
+    # Au niveau du script, et non dans le corps d'une fonction : place dans
+    # « refaireNotes », la mesure ne battait que si l'on cliquait ce bouton —
+    # c'est-a-dire jamais, et l'outil se fermait quand meme.
+    verifier('"/api/vivant"' in page and "\nsetInterval(async" in page,
+             "la page bat la mesure des son ouverture, hors de toute fonction")
+    verifier(page.index("\nsetInterval(async") > page.index("\nchargerDossiers();"),
+             "juste apres le premier chargement")
+    # Un selecteur d'identifiant l'emporte sur le [hidden] du navigateur :
+    # sans regle explicite, la barre restait affichee en permanence, y compris
+    # quand l'outil repondait parfaitement.
+    verifier("#deconnecte[hidden]{display:none}" in page,
+             "et la barre sait redevenir invisible")
     verifier(module_interface.DELAI_INACTIVITE > 45,
              f"et le battement est plus court que le délai d'inactivité "
              f"({module_interface.DELAI_INACTIVITE} s)")
@@ -3798,8 +3808,13 @@ def test_refaire_notes_choisies() -> None:
     verifier("CHOIX_NOTES" in page and "const CHOISIS" in page
              and "CHOISIS.has" in page,
              "les deux sélections restent distinctes")
-    verifier('id="cocherPerimees"' in page,
-             "et les notes en retard se cochent d'un clic")
+    # Les notes en retard ne se demandent plus : elles se refont seules, en
+    # arriere-plan. Corriger une echeance et devoir ensuite penser a refaire
+    # la note etait une facon de laisser la note mentir.
+    verifier("def rafraichir_notes" in Path("interface.py").read_text(
+        encoding="utf-8"), "les notes en retard se refont d'elles-mêmes")
+    verifier("sont en cours de\n       mise à jour" in page,
+             "et la page l'annonce au lieu d'offrir un bouton")
 
 
 def test_barre_toujours_presente() -> None:
