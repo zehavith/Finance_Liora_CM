@@ -607,6 +607,20 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
   .ask40{break-before:page}
   .dot{width:7pt;height:7pt;margin-right:5pt}
 }
+
+/* ── Décomposition budgétaire ── */
+.budget{list-style:none;padding:0;margin:12px 0;display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule)}
+.budget li{background:var(--surface);padding:11px 14px;display:grid;grid-template-columns:1fr auto;gap:4px 16px;align-items:baseline}
+.bl{font-family:"Archivo";font-weight:700;font-size:14px;letter-spacing:-.01em}
+.bv{font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:500;color:var(--accent);white-space:nowrap;font-variant-numeric:tabular-nums}
+.bd{grid-column:1/-1;font-size:13.5px;line-height:1.4;color:var(--ink-3)}
+.budget-tot{margin:0 0 14px;font-size:15px;line-height:1.5;color:var(--ink-2)}
+@media print{
+  .budget{margin:8pt 0;break-inside:avoid}
+  .budget li{padding:6pt 9pt}
+  .bl{font-size:9pt}.bv{font-size:8.6pt}.bd{font-size:8.2pt}
+  .budget-tot{font-size:9.2pt;margin-bottom:9pt}
+}
 </style>
 
 <div class="topbar">
@@ -665,7 +679,7 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
       <dl>
         <div><dt>Le constat</dt><dd>Nos clients paient. Le retard vient de chez nous, en amont de la facture — dans le dossier administratif, pas dans la relance.</dd></div>
         <div><dt>Le coût</dt><dd>À 100 M€, chaque jour de délai d'encaissement immobilise 274 k€. Quinze jours gagnés libèrent 4,1 M€ de trésorerie, définitivement.</dd></div>
-        <div><dt>Ce que nous demandons</dt><dd><strong>1.</strong> Un mandat sur l'amont, avec Sales et Ops — 0 €. <strong>2.</strong> Un CRM unique, Salesforce ou HubSpot — 0 €, économie probable. <strong>3.</strong> Une enveloppe de 60 à 90 k€ par an et un mandat pour négocier une ligne bancaire.</dd></div>
+        <div><dt>Ce que nous demandons</dt><dd><strong>1.</strong> Un mandat sur l'amont, avec Sales et Ops — 0 €. <strong>2.</strong> Un CRM unique, Salesforce ou HubSpot — 0 €, économie probable. <strong>3.</strong> Une enveloppe de 40 à 90 k€ la première année, et un mandat pour négocier une ligne bancaire.</dd></div>
       </dl>
       <p class="ask40-foot">Le reste de la note explique pourquoi. Si vous ne lisez rien d'autre, lisez « Ce que vaut un jour » et « Ce que nous demandons ».</p>
     </div>
@@ -980,7 +994,7 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
     </div>
 
     <div class="horizon h2c">
-      <div class="h-head"><span class="h-when">Horizon 2 · 6–18 mois</span><h3>Sécuriser et industrialiser</h3><span class="h-goal">60 à 90 k€/an + 1 recrutement</span></div>
+      <div class="h-head"><span class="h-when">Horizon 2 · 6–18 mois</span><h3>Sécuriser et industrialiser</h3><span class="h-goal">40 à 90 k€ an 1 + 1 recrutement</span></div>
       <p class="h-intro">Ici commence le vrai sujet. Non pas remplacer ce qui a été construit en interne, mais faire en sorte que cela survive à une absence et à un changement d'échelle.</p>
       <div class="acts">
         <div class="act is-pivot">
@@ -993,7 +1007,7 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
           <span class="act-id">H2.2</span>
           <h4>Décider ce qu'on garde en interne</h4>
           <p>Les deux applications internes font le travail. La question honnête est : jusqu'où. Nous proposons d'arbitrer explicitement, sur deux critères — l'auditabilité et le multi-pays. Ce qui les franchit reste interne. Ce qui ne les franchit pas s'achète. Ce n'est pas une décision d'achat, c'est une décision d'architecture.</p>
-          <div class="chips"><span class="chip hi">Décision de fond</span><span class="chip">60 à 90 k€/an si achat</span><span class="chip">Porteur : Recouvrement + DSI</span></div>
+          <div class="chips"><span class="chip hi">Décision de fond</span><span class="chip">15 à 40 k€/an si achat</span><span class="chip">Porteur : Recouvrement + DSI</span></div>
         </div>
         <div class="act">
           <span class="act-id">H2.3</span>
@@ -1105,8 +1119,16 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
         <div class="dec-n">3</div>
         <div>
           <h4>Une enveloppe et un mandat bancaire</h4>
-          <p>Une enveloppe de 60 à 90 k€ par an pour outiller ce qui doit l'être, et un mandat pour négocier dès maintenant une ligne de mobilisation de créances adossée à nos créances OPCO et publiques. Les deux se préparent quand tout va bien, pas quand la trésorerie se tend.</p>
-          <p class="ask">Coût : 60 à 90 k€/an · Retour : 4,1 M€ de trésorerie et 300 à 400 k€/an de masse salariale évitée</p>
+          <p>Deux choses distinctes. D'abord une <strong>enveloppe annuelle</strong> pour acheter ce qui doit l'être — celle-ci ne finance pas un outil précis, elle ouvre la possibilité d'en acquérir un après consultation :</p>
+          <ul class="budget">
+            <li><span class="bl">Outil de gestion du poste client</span><span class="bv">15 à 40 k€ / an</span><span class="bd">Multi-entités, multi-devises, piste d'audit, connecté à Pennylane.</span></li>
+            <li><span class="bl">Intégration et reprise de données</span><span class="bv">10 à 25 k€</span><span class="bd">La première année seulement.</span></li>
+            <li><span class="bl">Plateforme agréée de facturation électronique</span><span class="bv">5 à 15 k€ / an</span><span class="bd">Obligation réglementaire, pas un choix.</span></li>
+            <li><span class="bl">Formation et marge de sécurité</span><span class="bv">≈ 10 k€</span><span class="bd">Prise en main par une deuxième personne.</span></li>
+          </ul>
+          <p class="budget-tot"><strong>40 à 90 k€ la première année, 25 à 60 k€ ensuite.</strong> Ordres de grandeur du marché, à confirmer par la consultation de trois éditeurs avant tout engagement.</p>
+          <p>Ensuite un <strong>mandat pour négocier</strong> dès maintenant une ligne de mobilisation de créances adossée aux créances OPCO et publiques. Ce second point ne coûte rien : une ligne ouverte et non tirée ne supporte qu'une commission d'engagement. Les deux se préparent quand tout va bien, pas quand la trésorerie se tend — une banque qui sait que nous n'avons pas le choix tarife en conséquence.</p>
+          <p class="ask">Coût : 40 à 90 k€ la première année · Retour : 4,1 M€ de trésorerie libérée et 300 à 400 k€/an de masse salariale évitée</p>
         </div>
       </div>
     </div>
