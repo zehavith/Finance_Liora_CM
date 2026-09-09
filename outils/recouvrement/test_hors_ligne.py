@@ -5691,6 +5691,9 @@ def test_note_perimee() -> None:
         cible = Path(repertoire) / "synthese.pdf"
         marque = cible.with_suffix(".version")
         marque.write_text("12", encoding="utf-8")
+        # Un PDF périmé reste sur le disque — un lecteur le tient ouvert —
+        # et c'est vers lui que l'application renvoie.
+        cible.write_bytes(b"%PDF-1.4 vieille note")
 
         vrai = module_rendu.ecrire_pdf
         module_rendu.ecrire_pdf = lambda _c, _p: (False, "le PDF est ouvert")
@@ -5702,6 +5705,20 @@ def test_note_perimee() -> None:
         verifier(not reussi, "une note non écrite est rapportée comme telle")
         verifier(not marque.exists(),
                  "et ne laisse pas une marque affirmant qu'elle est à jour")
+
+        # Sans moteur PDF, en revanche, la note écrite en HTML est la seule
+        # et elle est à jour : ne pas la marquer la refaisait indéfiniment,
+        # à chaque affichage, sans que rien n'avance.
+        cible.unlink()
+        marque.unlink(missing_ok=True)
+        module_rendu.ecrire_pdf = lambda _c, _p: (False, "aucun moteur PDF")
+        try:
+            module_rendu.ecrire_synthese("<p>x</p>", cible)
+        finally:
+            module_rendu.ecrire_pdf = vrai
+        verifier(marque.exists(),
+                 "une note écrite en HTML seul est marquée, et cesse d'être "
+                 "refaite sans fin")
 
         module_rendu.ecrire_pdf = lambda _c, _p: (True, "chrome")
         try:
