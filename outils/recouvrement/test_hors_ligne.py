@@ -4668,6 +4668,7 @@ def test_adresse_du_debiteur() -> None:
 def test_dossiers_a_trancher() -> None:
     """Les dossiers qui demandent une décision, et de quoi les joindre."""
     import envoi as module_envoi  # noqa: PLC0415
+    import indexation as module_indexation  # noqa: PLC0415
     import interface as module_interface  # noqa: PLC0415
 
     print("\nDossiers à trancher")
@@ -4824,6 +4825,53 @@ def test_dossiers_a_trancher() -> None:
              and 'connus = [d for d in connus if d["reference"] == voulue]'
              in source,
              "et le serveur ne complète que celui-là")
+    # Refaire la note, dossier par dossier aussi : on corrige souvent celui
+    # qu'on a sous les yeux.
+    verifier('data-refaire="${echapper(d.reference)}"' in page
+             and "function refaireLaNote" in page,
+             "chaque dossier a son propre « Refaire la note »")
+
+    # « adresse_complete » vaut un booléen quand elle vient de l'inventaire,
+    # et « oui »/« non » quand elle vient du récapitulatif lu tel quel. Les
+    # deux arrivent à la note ; n'en traiter qu'un faisait échouer *toutes*
+    # les notes sur un « strip » impossible, sans qu'aucun test le voie.
+    with tempfile.TemporaryDirectory() as repertoire:
+        sortie = Path(repertoire) / "export"
+        dossier = sortie / "d-F-1"
+        (dossier / "mails").mkdir(parents=True)
+        module_indexation._ecrire_csv(
+            dossier / "index.csv", module_indexation.COLONNES_INDEX,
+            [{cle: "" for cle in module_indexation.COLONNES_INDEX} | {
+                "piece_n": "1", "date": "21/05/2024", "heure": "09:30",
+                "sens": "envoyé", "expediteur": "a@liora.io",
+                "destinataires": "b@x.fr", "objet": "Relance",
+                "nb_pieces_jointes": "0", "critere": "facture",
+                "boites": "b", "thread_id": "t", "message_id": "m1"}])
+        module_indexation._ecrire_csv(
+            sortie / "_recapitulatif.csv", module_indexation.COLONNES_RECAP,
+            [{cle: "" for cle in module_indexation.COLONNES_RECAP} | {
+                "reference": "F-1", "nom": "SAS EDEN", "montant_du": "5990",
+                "repertoire": "d-F-1", "statut": "ok"}])
+
+        anciens = (module_interface.SUIVI, module_interface.PREFERENCES)
+        module_interface.SUIVI = Path(repertoire) / "suivi.json"
+        module_interface.PREFERENCES = Path(repertoire) / "prefs.json"
+        try:
+            module_interface.memoriser_preferences({"sortie": str(sortie)})
+            # Tel que l'inventaire le rend : « adresse_complete » booleen.
+            inventaire = module_suivi_saisie.inventaire(
+                sortie, module_interface.SUIVI)
+            verifier(isinstance(inventaire[0].get("adresse_complete"), bool),
+                     "l'inventaire rend « adresse_complete » en booléen")
+            reussi, motif = module_interface._refaire_synthese(
+                dossier, inventaire[0],
+                module_suivi_saisie.charger(module_interface.SUIVI))
+            verifier("strip" not in motif,
+                     f"et refaire une note ne bute pas dessus ({motif[:60]})")
+            verifier(reussi or (dossier / "synthese.html").exists(),
+                     "la note est bien écrite")
+        finally:
+            module_interface.SUIVI, module_interface.PREFERENCES = anciens
     verifier('id="exporterATrancher"' in page
              and '"/api/liste-a-trancher"' in page,
              "et un bouton exporte la liste à trancher")

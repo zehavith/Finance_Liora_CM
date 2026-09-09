@@ -1031,7 +1031,12 @@ def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[boo
 
         postale = (dossier.get("adresse_postale") or "").strip()
         source_adresse = (dossier.get("source_adresse") or "").strip()
-        complete = (dossier.get("adresse_complete") or "oui").strip() != "non"
+        # « adresse_complete » vaut un booleen quand elle vient de
+        # l'inventaire, et la chaine « oui »/« non » quand elle vient du
+        # recapitulatif lu tel quel. Les deux arrivent ici : ne traiter que
+        # l'un faisait echouer toutes les notes sur un « strip » impossible.
+        brute = dossier.get("adresse_complete", True)
+        complete = brute if isinstance(brute, bool) else str(brute).strip() != "non"
         if not postale:
             trouvee = type("_D", (), {
                 "adresse_postale": "", "nom": dossier.get("nom") or ""})()
@@ -4833,7 +4838,9 @@ function rendreDocuments() {
         <br /><a class="lien" data-brouillon="${echapper(d.reference)}"
           title="Ouvre un brouillon de courriel avec ce dossier attaché. Rien n'est envoyé.">Préparer le mail</a>
         <br /><a class="lien" data-monday="${echapper(d.reference)}"
-          title="Relit le tableau Monday et complète ce dossier — téléphone, adresse, échéance, convention, heures, montants. Aucun message n'est retéléchargé.">Compléter depuis Monday</a></td>
+          title="Relit le tableau Monday et complète ce dossier — téléphone, adresse, échéance, convention, heures, montants. Aucun message n'est retéléchargé.">Compléter depuis Monday</a>
+        <br /><a class="lien" data-refaire="${echapper(d.reference)}"
+          title="Réécrit la note de ce dossier à partir des messages déjà au dossier, sans retourner sur Gmail.">Refaire la note</a></td>
     </tr>`).join("");
 
   // Le cas courant : un fichier de suivi appliqué après coup renseigne d'un
@@ -4884,6 +4891,9 @@ function rendreDocuments() {
 
   $("tableDocuments").querySelectorAll("[data-monday]").forEach((lien) =>
     lien.addEventListener("click", () => completerDepuisMonday(lien.dataset.monday)));
+
+  $("tableDocuments").querySelectorAll("[data-refaire]").forEach((lien) =>
+    lien.addEventListener("click", () => refaireLaNote(lien.dataset.refaire)));
 
   $("tableDocuments").querySelectorAll("select.financement").forEach((champ) =>
     champ.addEventListener("change", async () => {
@@ -5755,6 +5765,27 @@ function _titreDuFiltre() {
 
 // Sans reference : tous les dossiers. Avec : celui qu'on a sous les yeux,
 // sans relancer les cinquante autres.
+// Refaire la note d'un seul dossier : on corrige souvent celui qu'on a sous
+// les yeux, et attendre les cinquante autres n'a pas de raison d'etre.
+async function refaireLaNote(reference) {
+  afficherBandeau(true, `Réécriture de la note de ${echapper(reference)}…`);
+  try {
+    const r = await api("/api/refaire-notes", { references: [reference] });
+    if (r.refaites) {
+      afficherBandeau(true,
+        `Note de ${echapper(reference)} refaite`
+        + (r.recopiees ? `, et reportée dans ${echapper(r.copie_vers)}` : "")
+        + ". Les messages, eux, ne changent qu'en relançant un export.");
+    } else {
+      afficherBandeau(false,
+        `La note de ${echapper(reference)} n'a pas pu être refaite`
+        + ((r.motifs || []).length ? ` : ${echapper(r.motifs[0])}` : "")
+        + ".");
+    }
+    chargerDossiers();
+  } catch (erreur) { afficherBandeau(false, erreur.message); }
+}
+
 async function completerDepuisMonday(reference) {
   const bouton = reference ? null : $("completerMonday");
   const avant = bouton ? bouton.textContent : "";
@@ -5920,7 +5951,9 @@ function rendreDetailEtat() {
           value="${echapper(d.telephone || "")}" placeholder="06 12 34 56 78"
           title="Le tableau ne le porte pas toujours. Saisi ici, il l'emporte et tient." /></td>
       <td><a class="lien" data-monday="${echapper(d.reference)}"
-          title="Relit le tableau Monday et complète ce dossier. Aucun message n'est retéléchargé.">Compléter depuis Monday</a></td>
+          title="Relit le tableau Monday et complète ce dossier. Aucun message n'est retéléchargé.">Compléter depuis Monday</a>
+        <br /><a class="lien" data-refaire="${echapper(d.reference)}"
+          title="Réécrit la note de ce dossier, sans retourner sur Gmail.">Refaire la note</a></td>
     </tr>`).join("");
 
   zone.innerHTML = `
@@ -5968,6 +6001,9 @@ function rendreDetailEtat() {
 
   zone.querySelectorAll("[data-monday]").forEach((lien) =>
     lien.addEventListener("click", () => completerDepuisMonday(lien.dataset.monday)));
+
+  zone.querySelectorAll("[data-refaire]").forEach((lien) =>
+    lien.addEventListener("click", () => refaireLaNote(lien.dataset.refaire)));
 
   $("exporterEtat").addEventListener("click",
     () => exporterTableau(retenus, etat.libelle));
