@@ -4814,6 +4814,16 @@ def test_dossiers_a_trancher() -> None:
     # d'un reexport, et ce qui le rend utilisable a tout moment.
     verifier("Aucun message n'a été retéléchargé" in page,
              "et l'on dit qu'aucun message n'est retéléchargé")
+    # Et dossier par dossier : on complete souvent celui qu'on a sous les
+    # yeux, sans vouloir relancer les cinquante autres.
+    verifier('data-monday="${echapper(d.reference)}"' in page
+             and "completerDepuisMonday(lien.dataset.monday)" in page,
+             "chaque dossier a son propre « Compléter depuis Monday »")
+    verifier('voulue = str((demande or {}).get("reference") or "").strip()'
+             in source
+             and 'connus = [d for d in connus if d["reference"] == voulue]'
+             in source,
+             "et le serveur ne complète que celui-là")
     verifier('id="exporterATrancher"' in page
              and '"/api/liste-a-trancher"' in page,
              "et un bouton exporte la liste à trancher")

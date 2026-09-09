@@ -1637,6 +1637,14 @@ class Gestionnaire(BaseHTTPRequestHandler):
 
         sortie = Path(preferences.get("sortie") or sortie_par_defaut())
         connus = module_suivi.inventaire(sortie, SUIVI)
+        # Un dossier en particulier, ou tous : on complete souvent celui
+        # qu'on a sous les yeux, sans vouloir relancer les cinquante autres.
+        voulue = str((demande or {}).get("reference") or "").strip()
+        if voulue:
+            connus = [d for d in connus if d["reference"] == voulue]
+            if not connus:
+                self._json(400, {"erreur": f"Dossier inconnu : {voulue}"})
+                return
         if not connus:
             self._json(400, {"erreur": "Aucun dossier exporté à compléter."})
             return
@@ -1658,6 +1666,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
             return
 
         self._json(200, {
+            "reference": voulue,
             "tableaux": len(identifiants),
             "lignes": lignes_totales,
             "dossiers": bilan.get("dossiers", 0),
@@ -4822,7 +4831,9 @@ function rendreDocuments() {
       <td>${piecesVersees(d)}</td>
       <td><a class="lien" data-ouvrir="${echapper(d.repertoire)}">Ouvrir le répertoire</a>
         <br /><a class="lien" data-brouillon="${echapper(d.reference)}"
-          title="Ouvre un brouillon de courriel avec ce dossier attaché. Rien n'est envoyé.">Préparer le mail</a></td>
+          title="Ouvre un brouillon de courriel avec ce dossier attaché. Rien n'est envoyé.">Préparer le mail</a>
+        <br /><a class="lien" data-monday="${echapper(d.reference)}"
+          title="Relit le tableau Monday et complète ce dossier — téléphone, adresse, échéance, convention, heures, montants. Aucun message n'est retéléchargé.">Compléter depuis Monday</a></td>
     </tr>`).join("");
 
   // Le cas courant : un fichier de suivi appliqué après coup renseigne d'un
@@ -4870,6 +4881,9 @@ function rendreDocuments() {
   // la déduction, et tient.
   $("tableDocuments").querySelectorAll("[data-brouillon]").forEach((lien) =>
     lien.addEventListener("click", () => ouvrirBrouillon(lien.dataset.brouillon)));
+
+  $("tableDocuments").querySelectorAll("[data-monday]").forEach((lien) =>
+    lien.addEventListener("click", () => completerDepuisMonday(lien.dataset.monday)));
 
   $("tableDocuments").querySelectorAll("select.financement").forEach((champ) =>
     champ.addEventListener("change", async () => {
@@ -5739,23 +5753,33 @@ function _titreDuFiltre() {
   return bouts.join(" - ") || "tous les dossiers";
 }
 
-async function completerDepuisMonday() {
-  const bouton = $("completerMonday");
-  const avant = bouton.textContent;
-  bouton.disabled = true;
-  bouton.textContent = "Lecture de Monday…";
+// Sans reference : tous les dossiers. Avec : celui qu'on a sous les yeux,
+// sans relancer les cinquante autres.
+async function completerDepuisMonday(reference) {
+  const bouton = reference ? null : $("completerMonday");
+  const avant = bouton ? bouton.textContent : "";
+  if (bouton) { bouton.disabled = true; bouton.textContent = "Lecture de Monday…"; }
+  else { afficherBandeau(true, `Lecture de Monday pour ${echapper(reference)}…`); }
   try {
-    const r = await api("/api/completer-monday", {});
-    afficherBandeau(true,
-      `${r.lignes} ligne(s) lue(s) dans ${r.tableaux} tableau(x) Monday : `
-      + `${r.dossiers} dossier(s) complété(s), ${r.valeurs} valeur(s) `
-      + "renseignée(s)."
-      + (r.sans_correspondance
-         ? ` ${r.sans_correspondance} ligne(s) sans dossier correspondant.` : "")
-      + " Aucun message n'a été retéléchargé.");
+    const r = await api("/api/completer-monday",
+      reference ? { reference: reference } : {});
+    afficherBandeau(true, reference
+      ? (r.dossiers
+         ? `${echapper(reference)} complété depuis Monday : ${r.valeurs} `
+           + "valeur(s) renseignée(s). Aucun message n'a été retéléchargé."
+         : `${echapper(reference)} : rien à compléter — le tableau Monday ne `
+           + "porte aucune valeur nouvelle pour ce dossier.")
+      : `${r.lignes} ligne(s) lue(s) dans ${r.tableaux} tableau(x) Monday : `
+        + `${r.dossiers} dossier(s) complété(s), ${r.valeurs} valeur(s) `
+        + "renseignée(s)."
+        + (r.sans_correspondance
+           ? ` ${r.sans_correspondance} ligne(s) sans dossier correspondant.` : "")
+        + " Aucun message n'a été retéléchargé.");
     chargerDossiers();
   } catch (erreur) { afficherBandeau(false, erreur.message); }
-  finally { bouton.disabled = false; bouton.textContent = avant; }
+  finally {
+    if (bouton) { bouton.disabled = false; bouton.textContent = avant; }
+  }
 }
 
 async function exporterTableau(dossiers, titre) {
@@ -5895,6 +5919,8 @@ function rendreDetailEtat() {
           data-ref="${echapper(d.reference)}" type="text"
           value="${echapper(d.telephone || "")}" placeholder="06 12 34 56 78"
           title="Le tableau ne le porte pas toujours. Saisi ici, il l'emporte et tient." /></td>
+      <td><a class="lien" data-monday="${echapper(d.reference)}"
+          title="Relit le tableau Monday et complète ce dossier. Aucun message n'est retéléchargé.">Compléter depuis Monday</a></td>
     </tr>`).join("");
 
   zone.innerHTML = `
@@ -5911,7 +5937,7 @@ function rendreDetailEtat() {
         ? " — les 40 plus lourds sur " + retenus.length : ""}</h4>
       <div class="defilable"><table class="donnees">
         <tr><th>Dossier</th><th class="num">Montant dû</th><th class="num">Retard</th>
-          <th>Adresse postale</th><th>Téléphone</th></tr>${lignes}</table></div>
+          <th>Adresse postale</th><th>Téléphone</th><th></th></tr>${lignes}</table></div>
       <div class="boutons">
         <button class="secondaire" id="exporterEtat">Exporter ce tableau</button>
         <button class="secondaire" id="allerListeEtat">Ouvrir ces dossiers dans la liste</button>
@@ -5939,6 +5965,9 @@ function rendreDetailEtat() {
         rendreDetailEtat();
       } catch (erreur) { afficherBandeau(false, erreur.message); }
     }));
+
+  zone.querySelectorAll("[data-monday]").forEach((lien) =>
+    lien.addEventListener("click", () => completerDepuisMonday(lien.dataset.monday)));
 
   $("exporterEtat").addEventListener("click",
     () => exporterTableau(retenus, etat.libelle));

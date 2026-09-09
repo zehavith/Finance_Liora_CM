@@ -564,11 +564,17 @@ téléphone est annoncé à l'écran.
 Le téléphone vient du tableau de suivi : une colonne « Téléphone »,
 « Portable », « Numéro de téléphone »… est reconnue automatiquement.
 
-**Sans réexporter, et sans déposer de fichier** : le bouton **Compléter
-depuis Monday**, au-dessus de la liste, relit le tableau choisi et complète
-les dossiers déjà constitués — téléphone, adresse, échéance, convention,
-heures, montants. Aucun message n'est retéléchargé : c'est ce qui distingue
-ce geste d'un réexport, et ce qui le rend utilisable à tout moment.
+**Sans réexporter, et sans déposer de fichier** : **Compléter depuis
+Monday** relit le tableau choisi et complète les dossiers déjà constitués —
+téléphone, adresse, échéance, convention, heures, montants. Aucun message
+n'est retéléchargé : c'est ce qui distingue ce geste d'un réexport, et ce qui
+le rend utilisable à tout moment.
+
+Deux façons de le lancer :
+
+- **le bouton**, au-dessus de la liste : tous les dossiers d'un coup ;
+- **le lien sur la ligne d'un dossier** — dans *Documents* comme dans le
+  détail d'un état : celui-là seulement, sans relancer les cinquante autres.
 
 *Compléter depuis un fichier* fait la même chose à partir d'un export déposé,
 pour les tableaux qu'on ne lit pas en direct. Et ce qui manque encore se
