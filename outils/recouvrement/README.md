@@ -564,6 +564,12 @@ téléphone est annoncé à l'écran.
 Le téléphone vient du tableau de suivi : une colonne « Téléphone »,
 « Portable », « Numéro de téléphone »… est reconnue automatiquement.
 
+**Sans réexporter** : *Compléter depuis un fichier* apporte le téléphone et
+l'adresse aux dossiers déjà constitués. Déposez l'export Monday une fois, et
+les cinquante dossiers les reçoivent — là où un réexport prendrait une heure
+pour une colonne. Et ce qui manque encore se saisit à la main, dans le détail
+d'un état : la saisie l'emporte, et le prochain export ne l'efface pas.
+
 ### Les dossiers en souffrance
 
 Les dossiers **transmis, non clôturés, et sans changement d'étape depuis plus

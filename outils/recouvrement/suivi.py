@@ -1255,6 +1255,12 @@ def completer_depuis_grille(
             "montant_recu": (getattr(ligne, "montant_recu", "") or "").strip(),
             "montant_prorata": (
                 getattr(ligne, "montant_prorata", "") or "").strip(),
+            # De quoi joindre le débiteur autrement que par mail. Sans eux,
+            # obtenir les téléphones de cinquante dossiers demandait de tout
+            # réexporter — une heure, pour une colonne que le fichier porte.
+            "telephone": (getattr(ligne, "telephone", "") or "").strip(),
+            "adresse_postale": (
+                getattr(ligne, "adresse_postale", "") or "").strip(),
         }
         apports = {cle: valeur for cle, valeur in apports.items() if valeur}
         entree.update(apports)

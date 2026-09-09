@@ -4774,6 +4774,26 @@ def test_dossiers_a_trancher() -> None:
     verifier('id="exporterEtat"' in page and 'id="exporterSuivi"' in page
              and '"/api/exporter-liste"' in page,
              "chaque tableau s'exporte")
+
+    # Déposer le fichier de suivi remplit aussi le téléphone et l'adresse :
+    # sans cela, obtenir les téléphones de cinquante dossiers déjà exportés
+    # demandait de tout réexporter — une heure, pour une colonne du fichier.
+    with tempfile.TemporaryDirectory() as repertoire:
+        chemin = Path(repertoire) / "suivi.json"
+        connus = [{"reference": "FACT-1", "nom": "SAS EDEN",
+                   "factures": "FACT-1", "montant_du": 5990.0,
+                   "montant_total": 5990.0}]
+        grille = [
+            (1, ["N° de facture", "Entreprise", "Téléphone", "Adresse postale"]),
+            (2, ["FACT-1", "SAS EDEN", "01 23 45 67 89",
+                 "14 bis avenue de la République, 93300 AUBERVILLIERS"]),
+        ]
+        module_suivi_saisie.completer_depuis_grille(grille, connus, chemin)
+        entree = module_suivi_saisie.charger(chemin).get("FACT-1") or {}
+        verifier(entree.get("telephone") == "01 23 45 67 89",
+                 f"un fichier déposé apporte le téléphone ({entree.get('telephone')})")
+        verifier((entree.get("adresse_postale") or "").startswith("14 bis"),
+                 "et l'adresse postale")
     verifier('id="exporterATrancher"' in page
              and '"/api/liste-a-trancher"' in page,
              "et un bouton exporte la liste à trancher")
