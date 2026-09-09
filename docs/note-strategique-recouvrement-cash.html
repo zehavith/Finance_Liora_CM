@@ -421,6 +421,17 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
   .lex dd{font-size:9pt}
   .signoff{font-size:9.6pt;max-width:none}
   .tbd{font-size:.8em}
+  .kpis{grid-template-columns:repeat(3,1fr);gap:8pt;margin-bottom:14pt;break-inside:avoid}
+  .kpi{padding:9pt 11pt;break-inside:avoid}
+  .kpi-n{font-size:20pt}
+  .kpi-t{font-size:9pt}
+  .kpi-s{font-size:8.2pt}
+  .team{grid-template-columns:repeat(3,1fr);margin-top:11pt;break-inside:avoid}
+  .tm{padding:9pt 11pt}
+  .tm-n{font-size:14pt}
+  .tm-r{font-size:9pt}
+  .tm-d{font-size:8.2pt}
+  .team-foot{font-size:9.4pt;max-width:none;margin-top:10pt}
   #voyage,#plan,#demande{break-before:page}
 }
 
@@ -528,20 +539,90 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
   .pull{max-width:none;font-size:22px}
   .scene p{font-size:17px}
 }
+
+/* ── Bandeau de chiffres clés ── */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px;margin:0 0 30px}
+.kpi{background:var(--surface);border:1px solid var(--rule);border-top:4px solid var(--kc);padding:16px 18px 15px;box-shadow:var(--shadow);display:grid;gap:5px;align-content:start}
+.kpi-n{font-family:"Archivo";font-weight:800;font-size:clamp(26px,3.4vw,33px);letter-spacing:-.035em;line-height:1;color:var(--kc);font-variant-numeric:tabular-nums}
+.kpi-t{font-family:"Archivo";font-weight:700;font-size:12.5px;letter-spacing:-.005em;color:var(--ink)}
+.kpi-s{font-size:13px;line-height:1.4;color:var(--ink-3)}
+.k-cash{--kc:var(--pos)}
+.k-lost{--kc:var(--neg)}
+.k-day{--kc:var(--accent)}
+.k-chan{--kc:var(--info)}
+.k-team{--kc:var(--warn)}
+.k-due{--kc:var(--info)}
+
+/* ── L'équipe ── */
+.team{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin:20px 0 0}
+.tm{background:var(--surface);padding:15px 17px;display:grid;gap:5px;align-content:start}
+.tm-n{font-family:"Archivo";font-weight:800;font-size:19px;letter-spacing:-.02em;color:var(--tc,var(--ink))}
+.tm-r{font-family:"Archivo";font-weight:700;font-size:13.5px;letter-spacing:-.005em}
+.tm-d{font-size:13.5px;line-height:1.45;color:var(--ink-3)}
+.tm-adv{--tc:var(--info)}
+.tm-rec{--tc:var(--accent)}
+.tm-cdg{--tc:var(--pos)}
+.tm-cpt{--tc:var(--warn)}
+.tm-daf{--tc:var(--ink-2)}
+.team-foot{margin:16px 0 0;font-size:15.5px;line-height:1.55;color:var(--ink-2);max-width:78ch}
+
+/* ── Pastilles de canal ── */
+.dot{display:inline-block;width:9px;height:9px;margin-right:8px;vertical-align:baseline;flex:none}
+.d-opco{background:var(--info)}
+.d-cpf{background:var(--pos)}
+.d-pub{background:var(--warn)}
+.d-b2b{background:var(--accent)}
+.d-part{background:var(--neg)}
+
+/* ── Horizons colorés ── */
+.horizon{--hc:var(--ink)}
+.h1c{--hc:var(--pos)}
+.h2c{--hc:var(--info)}
+.h3c{--hc:var(--accent)}
+.h-head{border-bottom-color:var(--hc)}
+.h-when{background:var(--hc);color:var(--surface)}
+.act.is-pivot{box-shadow:inset 0 0 0 2px var(--hc)}
+.act.is-pivot .act-id{color:var(--hc)}
+.act-id{color:var(--hc)}
+
+@media (max-width:820px){
+  .kpis{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+  .team{grid-template-columns:1fr 1fr}
+}
+
+/* ── Impression : réglages postérieurs aux blocs ajoutés ── */
+@media print{
+  .kpis{grid-template-columns:repeat(3,1fr);gap:8pt;margin-bottom:0;break-inside:avoid}
+  .kpi{padding:9pt 11pt;border-top-width:3pt}
+  .kpi-n{font-size:19pt}
+  .kpi-t{font-size:8.8pt}
+  .kpi-s{font-size:8pt}
+  .team{grid-template-columns:repeat(3,1fr);break-inside:avoid}
+  .tm{padding:9pt 11pt}
+  .tm-n{font-size:14pt}
+  .tm-r{font-size:9pt}
+  .tm-d{font-size:8.2pt}
+  .scene p{font-size:10.4pt}
+  /* page 1 = couverture : titre, cas d'ouverture, chiffres clés. La demande ouvre la page 2. */
+  .ask40{break-before:page}
+  .dot{width:7pt;height:7pt;margin-right:5pt}
+}
 </style>
 
 <div class="topbar">
   <div class="wrap">
     <div class="topbar-id">LIORA <span>·</span> Recouvrement &amp; Cash</div>
     <nav class="topnav">
-      <a href="#vois">Ce que je vois</a>
-      <a href="#voyage">Le voyage d'un dossier</a>
-      <a href="#cinq">Nos cinq recouvrements</a>
-      <a href="#jour">Ce que vaut un jour</a>
-      <a href="#casse">Ce qui casse</a>
+      <a href="#vois">L'essentiel</a>
+      <a href="#equipe">L'équipe</a>
+      <a href="#voyage">Le voyage</a>
+      <a href="#cinq">Cinq canaux</a>
+      <a href="#jour">Les chiffres</a>
+      <a href="#casse">SWOT</a>
       <a href="#plan">Le plan</a>
       <a href="#objections">Objections</a>
-      <a href="#demande">Ma demande</a>
+      <a href="#demande">La demande</a>
+      <a href="#annexe">Annexe</a>
     </nav>
     <span class="reading">≈ 15 min · l'essentiel en 2 min</span>
   </div>
@@ -556,22 +637,21 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
       <p>Le 12 juin, une session se termine chez un client industriel. Nous facturons 48 000 €, financés par son OPCO. L'argent arrive sur le compte le 9 octobre.</p>
       <p><strong>Cent dix-neuf jours.</strong></p>
       <p>Sur ces cent dix-neuf jours, l'OPCO n'a jamais été en retard. Il a payé cinquante-huit jours après avoir reçu un dossier complet, dans les délais qu'il annonce. Les soixante et un autres jours sont les nôtres.</p>
-      <p>Et sur ces soixante et un jours, mon outil de suivi n'en voit que la moitié. L'autre moitié se joue avant que la facture existe.</p>
+      <p>Sur ces soixante et un jours, nos outils de suivi n'en voient que la moitié. L'autre moitié se joue avant que la facture existe.</p>
       <p class="scene-note">Cas type reconstitué à titre d'illustration. Le trajet, lui, est le nôtre.</p>
     </div>
 
-    <div class="ask40">
-      <span class="ask40-lbl">La demande en 40 secondes</span>
-      <dl>
-        <div><dt>Le constat</dt><dd>Nos clients paient. Le retard vient de chez nous, en amont de la facture — dans le dossier administratif, pas dans la relance.</dd></div>
-        <div><dt>Le coût</dt><dd>À 100 M€, chaque jour de délai d'encaissement immobilise 274 k€. Quinze jours gagnés libèrent 4,1 M€ de trésorerie, définitivement.</dd></div>
-        <div><dt>Ce que je demande</dt><dd><strong>1.</strong> Un mandat sur l'amont, avec Sales et Ops — 0 €. <strong>2.</strong> Un CRM unique, Salesforce ou HubSpot — 0 €, économie probable. <strong>3.</strong> Une enveloppe de 60 à 90 k€ par an et un mandat pour négocier une ligne bancaire.</dd></div>
-      </dl>
-      <p class="ask40-foot">Le reste de la note explique pourquoi. Si vous ne lisez rien d'autre, lisez « Ce que vaut un jour » et « Ce que je demande ».</p>
+    <div class="kpis">
+      <div class="kpi k-day"><span class="kpi-n">274 k€</span><span class="kpi-t">Un jour de délai</span><span class="kpi-s">Ce que chaque journée d'encaissement immobilisera à 100 M€.</span></div>
+      <div class="kpi k-cash"><span class="kpi-n">4,1 M€</span><span class="kpi-t">Trésorerie libérée</span><span class="kpi-s">En passant de 60 à 45 jours. Une fois, et durablement.</span></div>
+      <div class="kpi k-lost"><span class="kpi-n">61 j</span><span class="kpi-t">Perdus sur un dossier type</span><span class="kpi-s">Sur 119 jours, sans qu'aucun payeur soit en retard.</span></div>
+      <div class="kpi k-chan"><span class="kpi-n">5</span><span class="kpi-t">Canaux d'encaissement</span><span class="kpi-s">OPCO, CPF, public, B2B, particuliers. Cinq métiers distincts.</span></div>
+      <div class="kpi k-team"><span class="kpi-n">7</span><span class="kpi-t">Personnes à la finance</span><span class="kpi-s">Pour un dispositif qui devra encaisser cinq fois plus.</span></div>
+      <div class="kpi k-due"><span class="kpi-n">10,40 %</span><span class="kpi-t">Intérêts non réclamés</span><span class="kpi-s">Dus de plein droit sur nos factures publiques en retard.</span></div>
     </div>
 
     <dl class="meta">
-      <div><dt>Émetteur</dt><dd>Resp. Recouvrement &amp; Cash</dd></div>
+      <div><dt>Émetteur</dt><dd>Recouvrement &amp; Trésorerie</dd></div>
       <div><dt>Destinataires</dt><dd>DG · DAF · CODIR</dd></div>
       <div><dt>Date</dt><dd>9 septembre 2026</dd></div>
       <div><dt>Périmètre actuel</dt><dd>France + Allemagne</dd></div>
@@ -579,6 +659,17 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
       <div><dt>Statut</dt><dd>Pour décision</dd></div>
     </dl>
     <p class="hyp">Les 100 M€ et l'international sont la trajectoire retenue à cinq ans, prise ici comme un fait pour dimensionner. Ce n'est pas notre chiffre d'affaires d'aujourd'hui.</p>
+
+    <div class="ask40">
+      <span class="ask40-lbl">La demande en 40 secondes</span>
+      <dl>
+        <div><dt>Le constat</dt><dd>Nos clients paient. Le retard vient de chez nous, en amont de la facture — dans le dossier administratif, pas dans la relance.</dd></div>
+        <div><dt>Le coût</dt><dd>À 100 M€, chaque jour de délai d'encaissement immobilise 274 k€. Quinze jours gagnés libèrent 4,1 M€ de trésorerie, définitivement.</dd></div>
+        <div><dt>Ce que nous demandons</dt><dd><strong>1.</strong> Un mandat sur l'amont, avec Sales et Ops — 0 €. <strong>2.</strong> Un CRM unique, Salesforce ou HubSpot — 0 €, économie probable. <strong>3.</strong> Une enveloppe de 60 à 90 k€ par an et un mandat pour négocier une ligne bancaire.</dd></div>
+      </dl>
+      <p class="ask40-foot">Le reste de la note explique pourquoi. Si vous ne lisez rien d'autre, lisez « Ce que vaut un jour » et « Ce que nous demandons ».</p>
+    </div>
+
   </div>
 </header>
 
@@ -589,21 +680,21 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
   <div class="wrap">
     <div class="sec-head">
       <div class="sec-num">§ 01</div>
-      <div><h2>Ce que je vois</h2>
-      <div class="sec-sub">Quatre constats. Le premier est rassurant, le deuxième est le sujet de cette note, le troisième est celui qui m'inquiète le plus.</div></div>
+      <div><h2>L'essentiel en quatre constats</h2>
+      <div class="sec-sub">Le premier est rassurant. Le deuxième est le sujet de cette note. Le troisième engage la direction générale.</div></div>
     </div>
 
     <div class="takeaways">
       <div class="tk"><div class="tk-n">01</div><p><span class="lead">Nos payeurs paient.</span> OPCO, Caisse des Dépôts, Transitions Pro, Régions, France Travail, grands comptes industriels : aucun ne fait défaut. Notre problème n'est pas l'argent. C'est le délai.</p></div>
-      <div class="tk"><div class="tk-n">02</div><p><span class="lead">Le retard se produit avant la facture.</span> Sur le dossier ci-dessus, vingt-six jours se sont écoulés entre la fin de la session et le dépôt du dossier. Vingt-six jours perdus avant même que l'horloge du payeur commence à tourner. C'est là qu'est le gisement, et personne ne le mesure — moi comprise.</p></div>
-      <div class="tk"><div class="tk-n">03</div><p><span class="lead">Tout le dispositif repose sur une seule personne : moi.</span> J'ai construit les deux outils qui font tourner le poste client et la trésorerie. Ils font le travail aujourd'hui. Mais une entreprise à 100 M€, présente dans plusieurs pays, ne peut pas faire reposer son encaissement sur deux applications maison et une seule tête. Je préfère le dire maintenant que le découvrir en panne.</p></div>
+      <div class="tk"><div class="tk-n">02</div><p><span class="lead">Le retard se produit avant la facture.</span> Sur le dossier ci-dessus, vingt-six jours se sont écoulés entre la fin de la session et le dépôt du dossier. Vingt-six jours perdus avant même que l'horloge du payeur commence à tourner. C'est là qu'est le gisement, et aucun de nos outils ne le mesure aujourd'hui.</p></div>
+      <div class="tk"><div class="tk-n">03</div><p><span class="lead">Nos deux outils de pilotage n'ont qu'un seul mainteneur.</span> Développés en interne, ils font le travail et nous ont évité un budget logiciel. Mais ils ne sont ni documentés, ni auditables, ni prévus pour plusieurs pays ni plusieurs devises. Une entreprise à 100 M€ ne peut pas faire reposer son encaissement sur cette base. Mieux vaut le traiter maintenant que le découvrir en panne.</p></div>
       <div class="tk"><div class="tk-n">04</div><p><span class="lead">À 100 M€, un jour de délai vaudra 274 k€.</span> Passer de soixante à quarante-cinq jours libérera 4,1 M€ de trésorerie. Une fois, et pour de bon. C'est le premier financement de notre croissance, et il ne coûte ni dilution ni intérêts.</p></div>
     </div>
 
     <blockquote class="pull">Sur cent dix-neuf jours, l'OPCO en a pris cinquante-huit.<br>Les soixante et un autres sont les nôtres.</blockquote>
 
-    <h3>Ce que nous avons déjà, et qu'il faut savoir</h3>
-    <p class="prose">Contrairement à ce qu'on imagine souvent quand on parle de recouvrement, nous ne partons pas de zéro. J'ai construit deux applications.</p>
+    <h3>Ce dont nous disposons déjà</h3>
+    <p class="prose">Contrairement à ce qu'on imagine souvent quand on parle de recouvrement, nous ne partons pas de zéro. Deux applications ont été développées en interne, et le reste de la chaîne est déjà financé.</p>
 
     <div class="stack">
       <div class="st mine"><span class="tag">Construit en interne</span><h4>Suivi Cash</h4><p>Lit les extractions bancaires, catégorise automatiquement les flux par financeur, par équipe et par mode de paiement. Produit la prévision, le solde cumulé et le runway.</p></div>
@@ -611,18 +702,39 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
       <div class="st"><span class="tag">Déjà payé</span><h4>Agicap · Pennylane</h4><p>Trésorerie et comptabilité. Pennylane porte le grand livre clients qui alimente le suivi recouvrement.</p></div>
       <div class="st"><span class="tag">Déjà payé</span><h4>Zoho · Stripe · GoCardless · Swan · Tomorro</h4><p>Facturation, encaissement carte et prélèvement, comptes et virements non-euro, contrats.</p></div>
       <div class="st warnbox"><span class="tag">Le point faible</span><h4>Salesforce <em>et</em> HubSpot</h4><p>Deux CRM payés en parallèle. Aucun identifiant client unique ne circule donc du CRM jusqu'à l'encaissement. C'est ce qui empêche d'automatiser la suite.</p></div>
-      <div class="st warnbox"><span class="tag">Le vrai risque</span><h4>Une seule personne</h4><p>Ces deux applications, je les ai écrites, je les maintiens et je les exploite. Il n'y a ni doublure, ni documentation partagée, ni piste d'audit opposable à un commissaire aux comptes.</p></div>
+      <div class="st warnbox"><span class="tag">Le vrai risque</span><h4>Un seul mainteneur</h4><p>Les deux applications internes n'ont qu'un concepteur et qu'un mainteneur. Ni doublure, ni documentation partagée, ni piste d'audit opposable à un commissaire aux comptes.</p></div>
     </div>
 
-    <p class="prose">Autrement dit : la brique qu'on m'aurait conseillé d'acheter, je l'ai fabriquée. Elle fonctionne. La vraie question de cette note n'est donc pas « que faut-il mettre en place ». C'est <strong>ce qui tient à 100 M€, et ce qui casse</strong>.</p>
+    <p class="prose">Autrement dit : la brique qu'un éditeur nous aurait vendue, nous l'avons fabriquée. Elle fonctionne. La vraie question de cette note n'est donc pas « que faut-il mettre en place ». C'est <strong>ce qui tient à 100 M€, et ce qui casse</strong>.</p>
   </div>
 </section>
 
-<!-- 02 FRISE -->
-<section id="voyage">
+<!-- 02 EQUIPE -->
+<section id="equipe">
   <div class="wrap">
     <div class="sec-head">
       <div class="sec-num">§ 02</div>
+      <div><h2>Qui porte le sujet</h2>
+      <div class="sec-sub">Sept personnes couvrent aujourd'hui l'ensemble de la chaîne, de la commande à l'encaissement. C'est cette équipe qu'il faut projeter à 100 M€.</div></div>
+    </div>
+
+    <div class="team">
+      <div class="tm tm-adv"><span class="tm-n">3</span><span class="tm-r">Administration des ventes</span><span class="tm-d">Commandes, conventions, facturation, dossiers de financement. Le premier maillon du délai d'encaissement.</span></div>
+      <div class="tm tm-rec"><span class="tm-n">1</span><span class="tm-r">Recouvrement &amp; trésorerie</span><span class="tm-d">Poste client, relances, litiges, prévision de trésorerie et relation bancaire. Auteur des deux applications internes.</span></div>
+      <div class="tm tm-cdg"><span class="tm-n">1</span><span class="tm-r">Contrôle de gestion</span><span class="tm-d">Budget, analyse de la marge, suivi de la performance par activité.</span></div>
+      <div class="tm tm-cpt"><span class="tm-n">1</span><span class="tm-r">Comptabilité</span><span class="tm-d">Tenue, lettrage, clôtures, grand livre clients qui alimente le suivi du poste client.</span></div>
+      <div class="tm tm-daf"><span class="tm-n">1</span><span class="tm-r">Direction financière</span><span class="tm-d">Arbitrages, financement, relation banques et actionnaires.</span></div>
+    </div>
+
+    <p class="team-foot">Deux enseignements pour le CODIR. D'abord, <strong>le délai d'encaissement ne se joue pas seulement au recouvrement</strong> : les vingt-six premiers jours du dossier décrit plus loin appartiennent à l'ADV et aux opérations. Ensuite, <strong>cette équipe absorbera la croissance ou ne l'absorbera pas selon les choix pris maintenant</strong> : en restant artisanaux, le seul recouvrement réclamerait huit à dix personnes à 100 M€ ; industrialisé, il s'en tient à trois ou quatre.</p>
+  </div>
+</section>
+
+<!-- 03 FRISE -->
+<section id="voyage">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-num">§ 03</div>
       <div><h2>Le voyage d'un dossier</h2>
       <div class="sec-sub">Le même dossier de 48 000 €, déplié jour par jour. C'est le schéma le plus important de cette note.</div></div>
     </div>
@@ -660,9 +772,9 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
 
     <div class="prose">
       <p>Regardez où se situe le premier segment. Il est entièrement à gauche de la facture.</p>
-      <p>Les émargements sont remontés neuf jours après la fin de session. Le certificat de réalisation a ensuite attendu une signature pendant treize jours. Le dossier n'est parti que quatre jours plus tard, le 8 juillet. Neuf, treize, quatre : vingt-six. Pendant ces vingt-six jours, il n'y avait rien à relancer : la facture n'existait pas. Mon outil de recouvrement, lui, ne commence à compter qu'à partir du 8 juillet.</p>
+      <p>Les émargements sont remontés neuf jours après la fin de session. Le certificat de réalisation a ensuite attendu une signature pendant treize jours. Le dossier n'est parti que quatre jours plus tard, le 8 juillet. Neuf, treize, quatre : vingt-six. Pendant ces vingt-six jours, il n'y avait rien à relancer : la facture n'existait pas. Notre outil de recouvrement, lui, ne commence à compter qu'à partir du 8 juillet.</p>
       <p>Puis l'OPCO a rejeté le dossier pour un émargement manquant, et nous avons mis treize jours à le corriger.</p>
-      <p><strong>Sur ce dossier, nous avons perdu soixante et un jours sans qu'aucun payeur soit en retard.</strong> Voilà pourquoi je dis que nous cherchons le retard au mauvais endroit. Ajouter un relanceur ne récupère aucun de ces soixante et un jours. Traiter l'amont les récupère presque tous.</p>
+      <p><strong>Sur ce dossier, nous avons perdu soixante et un jours sans qu'aucun payeur soit en retard.</strong> Voilà pourquoi nous cherchons le retard au mauvais endroit. Ajouter un relanceur ne récupère aucun de ces soixante et un jours. Traiter l'amont les récupère presque tous.</p>
     </div>
   </div>
 </section>
@@ -671,7 +783,7 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
 <section id="cinq">
   <div class="wrap">
     <div class="sec-head">
-      <div class="sec-num">§ 03</div>
+      <div class="sec-num">§ 04</div>
       <div><h2>Nous n'avons pas un recouvrement, nous en avons cinq</h2>
       <div class="sec-sub">Chaque canal a son déclencheur de paiement et sa cause de retard. Un scénario de relance unique ne peut pas fonctionner — et pour trois d'entre eux, la relance n'est même pas le bon geste.</div></div>
     </div>
@@ -683,11 +795,11 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
           <tr><th>Canal</th><th>Qui paie</th><th>Ce qui déclenche réellement le paiement</th><th>Délai</th><th>Cause n°1 de retard</th><th>Le bon geste</th></tr>
         </thead>
         <tbody>
-          <tr><td>OPCO</td><td>Atlas, AKTO, AFDAS, Constructys, OPCO 2i et les autres</td><td>Un dossier complet : accord de prise en charge, subrogation, émargements, certificat de réalisation</td><td class="num">30 à 60 j après un dossier complet</td><td>Pièce manquante, dossier déposé trop tard</td><td>Sécuriser le dossier en amont</td></tr>
-          <tr><td>CPF</td><td>Caisse des Dépôts, via EDOF</td><td>Fin de formation, service fait déclaré, validation du stagiaire</td><td class="num">Délai administratif fixe</td><td>Dossier en anomalie, non-validation</td><td>Traiter les anomalies chaque jour</td></tr>
-          <tr><td>Public</td><td>Transitions Pro, France Travail, Régions, collectivités</td><td>Le mandatement de l'ordonnateur</td><td class="num">30 j (50 j pour les hôpitaux)</td><td>Mandatement, pièces de marché</td><td>Réclamer les intérêts moratoires</td></tr>
-          <tr><td>B2B</td><td>Entreprises — 181 comptes référencés, France et Allemagne</td><td>Facture conforme, bon de commande, dépôt sur le portail du client</td><td class="num">45 j fin de mois ou 60 j nets</td><td>Bon de commande manquant, mauvaise entité facturée</td><td>Cadrer la facturation dès la vente</td></tr>
-          <tr><td>Particuliers</td><td>Nos apprenants</td><td>Paiement en ligne ou échéancier</td><td class="num">Immédiat à 12 mois</td><td>Échec de prélèvement</td><td>Prélèvement par défaut</td></tr>
+          <tr><td><span class="dot d-opco"></span>OPCO</td><td>Atlas, AKTO, AFDAS, Constructys, OPCO 2i et les autres</td><td>Un dossier complet : accord de prise en charge, subrogation, émargements, certificat de réalisation</td><td class="num">30 à 60 j après un dossier complet</td><td>Pièce manquante, dossier déposé trop tard</td><td>Sécuriser le dossier en amont</td></tr>
+          <tr><td><span class="dot d-cpf"></span>CPF</td><td>Caisse des Dépôts, via EDOF</td><td>Fin de formation, service fait déclaré, validation du stagiaire</td><td class="num">Délai administratif fixe</td><td>Dossier en anomalie, non-validation</td><td>Traiter les anomalies chaque jour</td></tr>
+          <tr><td><span class="dot d-pub"></span>Public</td><td>Transitions Pro, France Travail, Régions, collectivités</td><td>Le mandatement de l'ordonnateur</td><td class="num">30 j (50 j pour les hôpitaux)</td><td>Mandatement, pièces de marché</td><td>Réclamer les intérêts moratoires</td></tr>
+          <tr><td><span class="dot d-b2b"></span>B2B</td><td>Entreprises — 181 comptes référencés, France et Allemagne</td><td>Facture conforme, bon de commande, dépôt sur le portail du client</td><td class="num">45 j fin de mois ou 60 j nets</td><td>Bon de commande manquant, mauvaise entité facturée</td><td>Cadrer la facturation dès la vente</td></tr>
+          <tr><td><span class="dot d-part"></span>Particuliers</td><td>Nos apprenants</td><td>Paiement en ligne ou échéancier</td><td class="num">Immédiat à 12 mois</td><td>Échec de prélèvement</td><td>Prélèvement par défaut</td></tr>
         </tbody>
       </table>
     </div>
@@ -716,7 +828,7 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
 <section id="jour">
   <div class="wrap">
     <div class="sec-head">
-      <div class="sec-num">§ 04</div>
+      <div class="sec-num">§ 05</div>
       <div><h2>Ce que vaut un jour</h2>
       <div class="sec-sub">L'arithmétique appliquée au chiffre d'affaires visé de 100 M€. C'est l'argument le plus court pour arbitrer un budget aujourd'hui.</div></div>
     </div>
@@ -752,9 +864,9 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
 <section id="casse">
   <div class="wrap">
     <div class="sec-head">
-      <div class="sec-num">§ 05</div>
+      <div class="sec-num">§ 06</div>
       <div><h2>Ce qui tient, ce qui casse</h2>
-      <div class="sec-sub">Notre position telle que je la vois, à l'aune de la trajectoire à cinq ans. Quatre points par case, ceux qui portent une décision.</div></div>
+      <div class="sec-sub">Notre position à l'aune de la trajectoire à cinq ans. Quatre points par case : ceux qui portent une décision.</div></div>
     </div>
 
     <div class="swot">
@@ -777,10 +889,10 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
         <div class="q-axis">Interne · Défavorable</div>
         <div class="q-head"><h3>Faiblesses</h3><span class="cnt">W</span></div>
         <ul>
-          <li><b>Une seule personne porte l'ensemble</b> J'ai écrit les deux outils, je les maintiens, je les exploite. Pas de doublure, pas de documentation partagée, pas de piste d'audit opposable. C'est le risque numéro un, et il grandit avec nous.</li>
-          <li><b>L'amont de la facture n'est mesuré nulle part</b> Les vingt-six jours du dossier précédent n'apparaissent dans aucun de mes tableaux de bord. Nous pilotons ce qui vient après la facture, alors que la moitié du délai se joue avant.</li>
+          <li><b>Nos outils n'ont qu'un mainteneur</b> Un seul concepteur, aucune doublure, aucune documentation partagée, aucune piste d'audit opposable. Ce n'est pas un problème de compétence : c'est un problème de continuité, et il grandit avec nous.</li>
+          <li><b>L'amont de la facture n'est mesuré nulle part</b> Les vingt-six jours du dossier précédent n'apparaissent dans aucun tableau de bord. Nous pilotons ce qui vient après la facture, alors que la moitié du délai se joue avant.</li>
           <li><b>Le référentiel client est éclaté</b> Deux CRM en parallèle, plus la facturation, plus la comptabilité. Aucun identifiant unique ne circule d'un bout à l'autre. C'est le verrou qui empêche d'automatiser la suite.</li>
-          <li><b>Nos outils ne parlent ni plusieurs langues, ni plusieurs devises</b> Ni plusieurs entités. Ils ont été conçus pour la France, par une personne, pour son propre usage. Ce n'est pas un défaut : c'est leur limite d'emploi.</li>
+          <li><b>Nos outils ne parlent ni plusieurs langues, ni plusieurs devises</b> Ni plusieurs entités. Ils ont été conçus pour la France et pour un usage interne. Ce n'est pas un défaut : c'est leur limite d'emploi.</li>
         </ul>
       </div>
 
@@ -813,12 +925,12 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
 <section id="plan">
   <div class="wrap">
     <div class="sec-head">
-      <div class="sec-num">§ 06</div>
+      <div class="sec-num">§ 07</div>
       <div><h2>Le plan</h2>
       <div class="sec-sub">Quinze mesures, séquencées. Une mesure pivot par horizon, signalée. L'horizon 1 ne demande aucun budget : il consiste à aller chercher les jours perdus en amont.</div></div>
     </div>
 
-    <div class="horizon">
+    <div class="horizon h1c">
       <div class="h-head"><span class="h-when">Horizon 1 · 0–6 mois</span><h3>Aller chercher les jours perdus</h3><span class="h-goal">Aucun budget logiciel</span></div>
       <p class="h-intro">Tout ce qui suit se fait avec ce que nous avons déjà. C'est là que se trouvent les gains les plus rapides, et ils ne coûtent que de la discipline.</p>
       <div class="acts">
@@ -826,13 +938,13 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
           <span class="act-id">H1.1 · mesure pivot</span>
           <h4>Pas de dossier complet, pas de démarrage</h4>
           <p>Une règle opposable, validée en CODIR : accord de prise en charge signé, subrogation, convention, entité de facturation et bon de commande côté B2B — avant la première heure de formation. C'est la mesure au meilleur rapport gain sur coût de tout le plan.</p>
-          <div class="chips"><span class="chip hi">Gain : ~15 j</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : moi + Sales + Ops</span></div>
+          <div class="chips"><span class="chip hi">Gain : ~15 j</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : ADV + Sales + Ops</span></div>
         </div>
         <div class="act">
           <span class="act-id">H1.2</span>
           <h4>Mesurer le délai que personne ne mesure</h4>
-          <p>Ajouter un seul indicateur : le nombre de jours entre la fin de session et le dépôt du dossier complet. Objectif cinq jours ouvrés. C'est le chiffre qui manque à mes tableaux de bord, et celui qui explique la moitié de notre délai.</p>
-          <div class="chips"><span class="chip hi">Gain : ~10 j</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : moi</span></div>
+          <p>Ajouter un seul indicateur : le nombre de jours entre la fin de session et le dépôt du dossier complet. Objectif cinq jours ouvrés. C'est le chiffre qui manque à nos tableaux de bord, et celui qui explique la moitié de notre délai.</p>
+          <div class="chips"><span class="chip hi">Gain : ~10 j</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : Recouvrement</span></div>
         </div>
         <div class="act">
           <span class="act-id">H1.3</span>
@@ -844,61 +956,61 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
           <span class="act-id">H1.4</span>
           <h4>Le prélèvement par défaut sur les particuliers</h4>
           <p>Cent pour cent des paiements individuels en prélèvement ou en paiement en ligne, sans exception — y compris les 150 € de reste à charge CPF. Et sur le B2B en dessous de 5 000 €, le prélèvement plutôt que le virement.</p>
-          <div class="chips"><span class="chip hi">Gain : immédiat</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : moi</span></div>
+          <div class="chips"><span class="chip hi">Gain : immédiat</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : Recouvrement</span></div>
         </div>
         <div class="act">
           <span class="act-id">H1.5</span>
           <h4>Réclamer ce qui nous est dû</h4>
           <p>Intérêts moratoires sur le secteur public, à 10,40 %, dus automatiquement. Pénalités et indemnité de 40 € sur le B2B. Cela coûte un modèle de courrier, et cela change durablement l'ordre dans lequel on nous paie.</p>
-          <div class="chips"><span class="chip">Gain : comportemental</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : moi</span></div>
+          <div class="chips"><span class="chip">Gain : comportemental</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : Recouvrement</span></div>
         </div>
         <div class="act">
           <span class="act-id">H1.6</span>
-          <h4>Écrire ma politique de recouvrement</h4>
-          <p>Cinq scénarios, un par canal. Qui relance, quand, jusqu'où, qui peut accorder un délai, quand on suspend la prestation. Aujourd'hui, tout cela existe — dans ma tête. Écrit, cela devient transmissible.</p>
-          <div class="chips"><span class="chip">Gain : structurel</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : moi</span></div>
+          <h4>Formaliser la politique de recouvrement</h4>
+          <p>Cinq scénarios, un par canal. Qui relance, quand, jusqu'où, qui peut accorder un délai, quand on suspend la prestation. Tout cela existe aujourd'hui dans la pratique, mais nulle part par écrit. Formalisé, cela devient transmissible et opposable.</p>
+          <div class="chips"><span class="chip">Gain : structurel</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : Recouvrement</span></div>
         </div>
       </div>
     </div>
 
-    <div class="horizon">
-      <div class="h-head"><span class="h-when">Horizon 2 · 6–18 mois</span><h3>Sortir de la dépendance à une seule personne</h3><span class="h-goal">60 à 90 k€/an + 1 recrutement</span></div>
-      <p class="h-intro">Ici commence le vrai sujet. Non pas remplacer ce que j'ai construit, mais faire en sorte que cela survive à mon absence et à un changement d'échelle.</p>
+    <div class="horizon h2c">
+      <div class="h-head"><span class="h-when">Horizon 2 · 6–18 mois</span><h3>Sécuriser et industrialiser</h3><span class="h-goal">60 à 90 k€/an + 1 recrutement</span></div>
+      <p class="h-intro">Ici commence le vrai sujet. Non pas remplacer ce qui a été construit en interne, mais faire en sorte que cela survive à une absence et à un changement d'échelle.</p>
       <div class="acts">
         <div class="act is-pivot">
           <span class="act-id">H2.1 · mesure pivot</span>
           <h4>Un seul CRM, un seul identifiant client</h4>
           <p>Trancher entre Salesforce et HubSpot, puis faire circuler le SIREN — et demain le numéro de TVA intracommunautaire — du CRM jusqu'à l'encaissement. Sans cela, aucune automatisation ne tiendra, et le rapprochement restera manuel.</p>
-          <div class="chips"><span class="chip hi">Bloquant</span><span class="chip ok">Économie probable</span><span class="chip">Porteur : DAF + moi</span></div>
+          <div class="chips"><span class="chip hi">Bloquant</span><span class="chip ok">Économie probable</span><span class="chip">Porteur : DAF + Recouvrement</span></div>
         </div>
         <div class="act">
           <span class="act-id">H2.2</span>
           <h4>Décider ce qu'on garde en interne</h4>
-          <p>Mes deux applications font le travail. La question honnête est : jusqu'où. Je propose d'arbitrer explicitement, avec deux critères — l'auditabilité et le multi-pays. Ce qui les franchit reste maison. Ce qui ne les franchit pas s'achète. Ce n'est pas une décision d'achat, c'est une décision d'architecture.</p>
-          <div class="chips"><span class="chip hi">Décision de fond</span><span class="chip">60 à 90 k€/an si achat</span><span class="chip">Porteur : moi + DSI</span></div>
+          <p>Les deux applications internes font le travail. La question honnête est : jusqu'où. Nous proposons d'arbitrer explicitement, sur deux critères — l'auditabilité et le multi-pays. Ce qui les franchit reste interne. Ce qui ne les franchit pas s'achète. Ce n'est pas une décision d'achat, c'est une décision d'architecture.</p>
+          <div class="chips"><span class="chip hi">Décision de fond</span><span class="chip">60 à 90 k€/an si achat</span><span class="chip">Porteur : Recouvrement + DSI</span></div>
         </div>
         <div class="act">
           <span class="act-id">H2.3</span>
           <h4>Brancher la facture électronique sur les relances</h4>
           <p>Choisir la plateforme agréée et vérifier notre échéance d'émission selon notre catégorie d'entreprise. Puis, surtout, utiliser les statuts de facture comme déclencheurs : une facture rejetée doit générer une action le lendemain.</p>
-          <div class="chips"><span class="chip hi">Gain fort</span><span class="chip">Réglementaire · 2027</span><span class="chip">Porteur : moi + DAF</span></div>
+          <div class="chips"><span class="chip hi">Gain fort</span><span class="chip">Réglementaire · 2027</span><span class="chip">Porteur : Recouvrement + DAF</span></div>
         </div>
         <div class="act">
           <span class="act-id">H2.4</span>
           <h4>Ouvrir une ligne de mobilisation de créances</h4>
           <p>Un affacturage ou une cession Dailly adossé aux créances OPCO et publiques. Cela transforme un délai subi en cash immédiat. À négocier maintenant, tant que nous ne sommes pas sous pression : les conditions obtenues dans l'urgence sont toujours moins bonnes.</p>
-          <div class="chips"><span class="chip hi">Gain fort</span><span class="chip">Mandat bancaire</span><span class="chip">Porteur : DAF + moi</span></div>
+          <div class="chips"><span class="chip hi">Gain fort</span><span class="chip">Mandat bancaire</span><span class="chip">Porteur : DAF + Recouvrement</span></div>
         </div>
         <div class="act">
           <span class="act-id">H2.5</span>
-          <h4>Séparer les deux métiers, et me doubler</h4>
-          <p>Le recouvrement est un métier de relation et de dossier. La trésorerie est un métier de prévision et de financement. Ce sont deux compétences, et aujourd'hui une seule personne. Un recrutement, et la documentation de ce que j'ai construit.</p>
+          <h4>Séparer les deux métiers et doubler les compétences</h4>
+          <p>Le recouvrement est un métier de relation et de dossier. La trésorerie est un métier de prévision et de financement. Ce sont deux compétences, portées aujourd'hui par une seule personne. Un recrutement, et la documentation de ce qui a été construit en interne.</p>
           <div class="chips"><span class="chip hi">Risque n°1</span><span class="chip">1 recrutement</span><span class="chip">Porteur : DG</span></div>
         </div>
       </div>
     </div>
 
-    <div class="horizon">
+    <div class="horizon h3c">
       <div class="h-head"><span class="h-when">Horizon 3 · 18–60 mois</span><h3>Changer d'échelle et de pays</h3><span class="h-goal">Cap 100 M€</span></div>
       <p class="h-intro">À partir d'ici, les décisions engagent l'entreprise pour longtemps. Le seul vrai piège serait de les prendre trop tard, en pleine croissance.</p>
       <div class="acts">
@@ -918,13 +1030,13 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
           <span class="act-id">H3.3</span>
           <h4>Une politique de crédit pour l'export</h4>
           <p>Limites de crédit par client, assurance-crédit sur le B2B export, conditions de paiement par pays, conditions générales localisées. Hors de nos financeurs publics français, le risque d'impayé redevient réel.</p>
-          <div class="chips"><span class="chip">Nouveau risque</span><span class="chip">Porteur : moi + juridique</span></div>
+          <div class="chips"><span class="chip">Nouveau risque</span><span class="chip">Porteur : Recouvrement + juridique</span></div>
         </div>
         <div class="act">
           <span class="act-id">H3.4</span>
           <h4>Le cash au tableau de bord du board</h4>
           <p>Trésorerie disponible et cycle de conversion du cash suivis au même rang que l'EBITDA. À 100 M€, c'est le langage des investisseurs comme des acquéreurs — et c'est ce qui fait de notre fonction une fonction stratégique.</p>
-          <div class="chips"><span class="chip">Gouvernance</span><span class="chip">Porteur : moi</span></div>
+          <div class="chips"><span class="chip">Gouvernance</span><span class="chip">Porteur : Recouvrement</span></div>
         </div>
       </div>
     </div>
@@ -935,19 +1047,19 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
 <section id="objections">
   <div class="wrap">
     <div class="sec-head">
-      <div class="sec-num">§ 07</div>
-      <div><h2>Ce qu'on va me répondre</h2>
-      <div class="sec-sub">Trois objections que j'anticipe, et ce que j'y réponds.</div></div>
+      <div class="sec-num">§ 08</div>
+      <div><h2>Ce qu'on nous répondra</h2>
+      <div class="sec-sub">Trois objections prévisibles, et les réponses que nous y apportons.</div></div>
     </div>
 
     <div class="obj">
       <div class="ob">
         <p class="ob-q">« Nos clients paient toujours. Où est le problème ? »</p>
-        <p class="ob-a">Il n'y a pas de problème d'impayé, et je ne prétends pas le contraire. Il y a un problème de trésorerie immobilisée. Quinze jours de délai en trop, à 100 M€, ce sont 4,1 M€ qui dorment chez nos payeurs au lieu de financer nos recrutements. Ce n'est pas une perte comptable, c'est un manque à disposer.</p>
+        <p class="ob-a">Il n'y a pas de problème d'impayé, et nous ne prétendons pas le contraire. Il y a un problème de trésorerie immobilisée. Quinze jours de délai en trop, à 100 M€, ce sont 4,1 M€ qui dorment chez nos payeurs au lieu de financer nos recrutements. Ce n'est pas une perte comptable, c'est un manque à disposer.</p>
       </div>
       <div class="ob">
-        <p class="ob-q">« Tu as déjà tes applications. Pourquoi un budget ? »</p>
-        <p class="ob-a">Parce que mes applications tiennent grâce à moi. Elles ne sont ni documentées, ni auditables, ni multi-pays, ni multi-devises. Elles nous ont fait gagner beaucoup de temps et beaucoup d'argent, et je les défends. Mais je ne recommande pas à une entreprise de 100 M€ de faire reposer son encaissement sur du logiciel écrit par une seule personne, moi comprise.</p>
+        <p class="ob-q">« Vous avez déjà vos applications. Pourquoi un budget ? »</p>
+        <p class="ob-a">Parce qu'elles reposent sur une seule personne. Elles ne sont ni documentées, ni auditables, ni multi-pays, ni multi-devises. Elles nous ont fait gagner beaucoup de temps et beaucoup d'argent, et elles resteront utiles. Mais une entreprise de 100 M€ ne fait pas reposer son encaissement sur du logiciel écrit et maintenu par une seule tête.</p>
       </div>
       <div class="ob">
         <p class="ob-q">« Il suffirait de recruter deux recouvreurs et de voir venir. »</p>
@@ -961,8 +1073,8 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
 <section id="demande">
   <div class="wrap">
     <div class="sec-head">
-      <div class="sec-num">§ 08</div>
-      <div><h2>Ce que je demande</h2>
+      <div class="sec-num">§ 09</div>
+      <div><h2>Ce que la direction financière demande</h2>
       <div class="sec-sub">Trois décisions. Les deux premières ne coûtent rien et conditionnent tout le reste.</div></div>
     </div>
 
@@ -971,7 +1083,7 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
         <div class="dec-n">1</div>
         <div>
           <h4>Un mandat sur l'amont</h4>
-          <p>Le recouvrement ne commence pas à la facture, il commence à la signature. Je demande un mandat explicite pour imposer avec Sales et Ops la règle « pas de dossier complet, pas de démarrage », et pour qu'une part de la variable commerciale dépende de l'encaissement effectif, pas de la seule signature.</p>
+          <p>Le recouvrement ne commence pas à la facture, il commence à la signature. Nous demandons un mandat explicite pour imposer avec Sales et Ops la règle « pas de dossier complet, pas de démarrage », et pour qu'une part de la variable commerciale dépende de l'encaissement effectif, pas de la seule signature.</p>
           <p class="ask">Coût : 0 € · Gain attendu : une quinzaine de jours de délai</p>
         </div>
       </div>
@@ -993,7 +1105,7 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
       </div>
     </div>
 
-    <p class="signoff">Je reste disponible pour détailler n'importe lequel de ces points, et pour présenter le chiffrage complet en séance.</p>
+    <p class="signoff">L'équipe finance reste disponible pour détailler n'importe lequel de ces points et présenter le chiffrage complet en séance.</p>
   </div>
 </section>
 
@@ -1001,7 +1113,7 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
 <section id="annexe">
   <div class="wrap">
     <div class="sec-head">
-      <div class="sec-num">§ 09</div>
+      <div class="sec-num">§ 10</div>
       <div><h2>Annexe</h2>
       <div class="sec-sub">Le vocabulaire, et ce qu'il me manque pour aller plus loin.</div></div>
     </div>
@@ -1016,10 +1128,10 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
       <div><dt>Affacturage · cession Dailly</dt><dd>Vendre ou nantir une créance auprès d'une banque pour être payé tout de suite, contre une commission.</dd></div>
     </dl>
 
-    <h3>Ce qu'il me manque pour chiffrer précisément</h3>
+    <h3>Ce qui manque pour chiffrer précisément</h3>
     <ul class="plist">
       <li><b>Notre chiffre d'affaires prévisionnel</b> par année jusqu'à 100 M€ — pour projeter l'encours à chaque palier plutôt qu'au seul point d'arrivée.</li>
-      <li><b>Le délai réel entre fin de session et dépôt du dossier</b>, sur les six derniers mois. Je ne l'ai pas : personne ne le mesure. C'est le premier chantier de l'horizon 1.</li>
+      <li><b>Le délai réel entre fin de session et dépôt du dossier</b>, sur les six derniers mois. Personne ne le mesure aujourd'hui. C'est le premier chantier de l'horizon 1.</li>
       <li><b>Les conditions bancaires en vigueur</b> par entité, pour dimensionner la ligne de mobilisation et préparer la négociation.</li>
     </ul>
   </div>
