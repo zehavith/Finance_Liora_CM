@@ -131,9 +131,11 @@ h1 .thin{font-weight:500;color:var(--ink-3);display:block;font-size:.72em;letter
 .premise-lbl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:600;display:block;margin-bottom:7px}
 .premise p{margin:0;font-size:16px;color:var(--ink-2)}
 .meta{
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  display:grid;grid-template-columns:repeat(6,1fr);
   gap:1px;background:var(--rule);border:1px solid var(--rule);
 }
+@media (max-width:1080px){.meta{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:560px){.meta{grid-template-columns:repeat(2,1fr)}}
 .meta div{background:var(--ground);padding:12px 14px}
 .meta dt{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:5px}
 .meta dd{margin:0;font-family:"Archivo";font-size:14px;font-weight:600;letter-spacing:-.01em}
@@ -274,7 +276,122 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
   .dec{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-@media print{.topbar{display:none}body{background:#fff}}
+.q-axis{display:none}
+
+/* ── Impression / PDF ── */
+@page{size:A4;margin:15mm 13mm 17mm}
+@media print{
+  /* Palette claire forcée : une impression depuis un navigateur en thème sombre reste lisible */
+  :root,:root[data-theme="dark"],:root:not([data-theme="light"]){
+    --ground:#FFFFFF;--surface:#FFFFFF;--surface-2:#F2F4F8;
+    --ink:#0F142A;--ink-2:#333A57;--ink-3:#5F6683;
+    --rule:#D5DAE5;--rule-strong:#AFB6C8;
+    --accent:#B33F25;--accent-2:#8E3019;--accent-soft:rgba(179,63,37,.07);
+    --pos:#256B4B;--pos-soft:rgba(37,107,75,.09);
+    --warn:#8A5D0D;--warn-soft:rgba(138,93,13,.09);
+    --neg:#9C2F2A;--neg-soft:rgba(156,47,42,.09);
+    --info:#333DA0;--info-soft:rgba(51,61,160,.09);
+    --shadow:none;
+  }
+  html,body{background:#fff}
+  body{font-size:9.6pt;line-height:1.5}
+  .topbar{display:none}
+  .wrap{padding:0;max-width:none}
+  a{color:var(--ink);text-decoration:none}
+
+  header.doc{padding:0 0 14pt}
+  h1{font-size:26pt;max-width:24ch;margin-bottom:12pt}
+  h1 .thin{font-size:.62em}
+  .standfirst{font-size:11pt;margin-bottom:14pt;max-width:none}
+  .premise{margin-bottom:16pt;padding:10pt 13pt;max-width:none;break-inside:avoid}
+  .premise p{font-size:9.6pt}
+  .meta{grid-template-columns:repeat(3,1fr)}
+  .meta dd{font-size:9pt}
+  .meta div{background:#fff}
+
+  section{padding:16pt 0;break-inside:auto}
+  .sec-head{margin-bottom:12pt;break-after:avoid;break-inside:avoid}
+  h2{font-size:16pt}
+  .sec-sub{font-size:9.4pt}
+  h3,h4{break-after:avoid}
+  .prose{max-width:none}
+  p{orphans:3;widows:3}
+
+  /* Blocs à ne pas couper */
+  .tk,.act,.dec,.callout,.chart,.st,.h-head,.bar-row,.cf{break-inside:avoid}
+  .takeaways{gap:8pt}
+  .tk{padding:9pt 12pt}
+  .tk p{font-size:9.6pt}
+  .callout{margin:14pt 0;padding:11pt 14pt;max-width:none}
+
+  /* Tableaux : tout doit tenir dans la largeur de la page, en-têtes répétés */
+  .tbl-scroll{overflow:visible;margin:12pt 0;break-inside:auto}
+  table{min-width:0;width:100%;font-size:8.3pt;table-layout:fixed}
+  thead{display:table-header-group}
+  tr{break-inside:avoid}
+  /* les valeurs cessent d'être insécables : en table-layout fixed elles déborderaient sur la colonne voisine */
+  .num,td .num,td.num{white-space:normal;font-size:.94em}
+  /* §03 — cartographie des cinq recouvrements (6 colonnes) */
+  #segments th:nth-child(1),#segments td:nth-child(1){width:14.5%}
+  #segments th:nth-child(2),#segments td:nth-child(2){width:18%}
+  #segments th:nth-child(3),#segments td:nth-child(3){width:17.5%}
+  #segments th:nth-child(4),#segments td:nth-child(4){width:16%}
+  #segments th:nth-child(5),#segments td:nth-child(5){width:17%}
+  #segments th:nth-child(6),#segments td:nth-child(6){width:17%}
+  /* §07 — tableau de bord (5 colonnes) */
+  #pilotage th:nth-child(1),#pilotage td:nth-child(1){width:22%}
+  #pilotage th:nth-child(2),#pilotage td:nth-child(2){width:22%}
+  #pilotage th:nth-child(3),#pilotage td:nth-child(3){width:16%}
+  #pilotage th:nth-child(4),#pilotage td:nth-child(4){width:20%}
+  #pilotage th:nth-child(5),#pilotage td:nth-child(5){width:20%}
+  th{font-size:7.2pt;padding:7pt 7pt}
+  td{padding:6pt 7pt;line-height:1.35;overflow-wrap:break-word}
+  td:first-child{font-size:8.3pt;letter-spacing:0}
+  caption{padding:9pt 0 4pt;font-size:7.5pt}
+  tbody tr:hover td{background:transparent}
+
+  /* SWOT : flux vertical, chaque quadrant porte son axe */
+  .swot{display:block}
+  .ax{display:none}
+  .q{margin-bottom:10pt;padding:11pt 14pt;break-inside:avoid}
+  .q-axis{display:block;font-family:"IBM Plex Mono",monospace;font-size:6.8pt;letter-spacing:.14em;
+          text-transform:uppercase;color:var(--ink-3);margin-bottom:4pt}
+  .q-head{margin-bottom:8pt}
+  .q-head h3{font-size:12pt}
+  .q ul{gap:6pt}
+  .q li{font-size:9pt;line-height:1.42}
+  .q li b{font-size:9pt}
+
+  /* Graphique */
+  .chart{padding:13pt 15pt;margin:14pt 0}
+  .bar-row{grid-template-columns:60pt 1fr 60pt;gap:8pt}
+  .bar-track{height:15pt}
+  .bar-label,.bar-val{font-size:8.6pt}
+  .cf dd{font-size:13pt}
+  .chart-foot{gap:16pt}
+
+  /* Plan d'action */
+  .horizon{margin-top:16pt;break-inside:auto}
+  .h-head{margin-bottom:10pt;padding-bottom:7pt}
+  .h-head h3{font-size:13pt}
+  .acts{grid-template-columns:1fr 1fr}
+  .act{padding:10pt 12pt}
+  .act p{font-size:8.9pt;line-height:1.4}
+  .act h4{font-size:9.6pt}
+  .chip{font-size:6.6pt;padding:2pt 4pt}
+  .stack{grid-template-columns:1fr 1fr}
+  .st p{font-size:8.9pt}
+  .plist li{font-size:9.6pt}
+
+  .dec{padding:11pt 14pt}
+  .dec p{font-size:9.6pt}
+  .dec-n{font-size:22pt}
+
+  footer{padding:16pt 0 0;font-size:8.2pt;max-width:none;break-inside:avoid}
+
+  /* Ruptures de page volontaires devant les grands ensembles */
+  #swot,#plan{break-before:page}
+}
 </style>
 
 <div class="topbar">
@@ -463,6 +580,7 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
 
       <div class="ax ax-v">Interne</div>
       <div class="q q--f">
+        <div class="q-axis">Interne · Favorable</div>
         <div class="q-head"><h3>Forces</h3><span class="cnt">S</span></div>
         <ul>
           <li><b>Un portefeuille de payeurs solvables</b> Institutionnels et grands comptes : le risque de perte finale est marginal. Notre encours est de très bonne qualité — donc facilement mobilisable auprès des financeurs.</li>
@@ -474,6 +592,7 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
         </ul>
       </div>
       <div class="q q--w">
+        <div class="q-axis">Interne · Défavorable</div>
         <div class="q-head"><h3>Faiblesses</h3><span class="cnt">W</span></div>
         <ul>
           <li><b>Aucun pilotage de l'encours</b> Ni balance âgée, ni DSO, ni promesse de paiement, ni suivi de litige. On ne peut pas améliorer ce qu'on ne mesure pas.</li>
@@ -488,6 +607,7 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
 
       <div class="ax ax-v">Externe</div>
       <div class="q q--o">
+        <div class="q-axis">Externe · Favorable</div>
         <div class="q-head"><h3>Opportunités</h3><span class="cnt">O</span></div>
         <ul>
           <li><b>La facturation électronique</b> Réception obligatoire pour toutes les entreprises depuis le 1<sup>er</sup> septembre 2026, émission généralisée d'ici septembre 2027. Le statut normalisé de chaque facture devient un déclencheur de relance : une facture rejetée se traite à J+1, plus à J+45.</li>
@@ -499,6 +619,7 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
         </ul>
       </div>
       <div class="q q--t">
+        <div class="q-axis">Externe · Défavorable</div>
         <div class="q-head"><h3>Menaces</h3><span class="cnt">T</span></div>
         <ul>
           <li><b>L'effet ciseau du BFR</b> Nous payons les salaires et les formateurs avant d'encaisser OPCO et CPF. La croissance consomme du cash avant d'en produire : à 100 M€, l'encours client atteint 16 M€ à 60 jours de DSO.</li>
@@ -560,7 +681,7 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
     <div class="sec-head">
       <div class="sec-num">§ 06</div>
       <div><h2>Plan d'action en trois horizons</h2>
-      <div class="sec-sub">Vingt mesures, séquencées. L'horizon 1 ne demande aucun budget logiciel : il consiste à voir ce que nous ne voyons pas et à traiter les causes racines.</div></div>
+      <div class="sec-sub">Vingt-deux mesures, séquencées. L'horizon 1 ne demande aucun budget logiciel : il consiste à voir ce que nous ne voyons pas et à traiter les causes racines.</div></div>
     </div>
 
     <!-- H1 -->
