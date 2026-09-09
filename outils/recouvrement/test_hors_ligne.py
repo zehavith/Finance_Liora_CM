@@ -4794,6 +4794,26 @@ def test_dossiers_a_trancher() -> None:
                  f"un fichier déposé apporte le téléphone ({entree.get('telephone')})")
         verifier((entree.get("adresse_postale") or "").startswith("14 bis"),
                  "et l'adresse postale")
+
+    # Mais deposer un export pour en tirer trois colonnes est un detour : le
+    # tableau est la, et l'application sait le lire.
+    verifier('id="completerMonday"' in page
+             and '"/api/completer-monday"' in page,
+             "et Monday se lit directement, sans déposer de fichier")
+    source = Path("interface.py").read_text(encoding="utf-8")
+    verifier("def _completer_depuis_monday" in source
+             and "module_monday.lire_tableau(identifiant, jeton)" in source,
+             "en relisant le tableau choisi")
+    # Le jeton reste sur le poste : il n'est ni demande a la page, ni
+    # renvoye vers elle.
+    bloc = source[source.index("def _completer_depuis_monday"):
+                  source.index("def _completer_depuis_fichier")]
+    verifier("lire_jeton(JETON_MONDAY)" in bloc and '"jeton"' not in bloc,
+             "sans que le jeton passe par la page")
+    # Aucun message n'est retelecharge : c'est ce qui distingue ce geste
+    # d'un reexport, et ce qui le rend utilisable a tout moment.
+    verifier("Aucun message n'a été retéléchargé" in page,
+             "et l'on dit qu'aucun message n'est retéléchargé")
     verifier('id="exporterATrancher"' in page
              and '"/api/liste-a-trancher"' in page,
              "et un bouton exporte la liste à trancher")

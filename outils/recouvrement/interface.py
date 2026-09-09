@@ -1498,6 +1498,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/exporter-liste":
                 self._exporter_liste(self._corps_json())
                 return
+            if chemin == "/api/completer-monday":
+                self._completer_depuis_monday(self._corps_json())
+                return
             if chemin == "/api/restaurer-suivi":
                 self._restaurer_suivi(self._corps_json())
                 return
@@ -1595,6 +1598,72 @@ class Gestionnaire(BaseHTTPRequestHandler):
             avec_fichiers=bool(demande.get("fichiers")),
         )
         self._json(200, resultat)
+
+    def _completer_depuis_monday(self, demande: dict | None = None) -> None:
+        """Complète les dossiers déjà exportés en lisant Monday directement.
+
+        Déposer un export du tableau pour en tirer trois colonnes est un
+        détour : le tableau est là, l'application sait le lire, et le jeton
+        est déjà sur le poste. Rien n'est réexporté — aucun message n'est
+        retéléchargé —, on ne rapatrie que ce que le tableau dit des dossiers
+        déjà constitués.
+
+        Le jeton reste sur le poste, dans son propre fichier : il n'est ni
+        demandé à la page, ni renvoyé vers elle.
+        """
+        import monday as module_monday  # noqa: PLC0415
+
+        try:
+            jeton = module_monday.lire_jeton(JETON_MONDAY)
+        except Exception as exc:  # noqa: BLE001
+            self._json(400, {"erreur": (
+                "Aucun jeton Monday sur ce poste : renseignez-le dans "
+                f"« Boîtes mail et options ». ({exc})")})
+            return
+
+        preferences = lire_preferences()
+        identifiants = [
+            morceau.strip()
+            for morceau in str(
+                (demande or {}).get("tableau") or preferences.get("tableau") or ""
+            ).split(",")
+            if morceau.strip()
+        ]
+        if not identifiants:
+            self._json(400, {"erreur": (
+                "Aucun tableau Monday choisi : cochez-en un dans l'onglet "
+                "Export, section « Depuis Monday, en direct ».")})
+            return
+
+        sortie = Path(preferences.get("sortie") or sortie_par_defaut())
+        connus = module_suivi.inventaire(sortie, SUIVI)
+        if not connus:
+            self._json(400, {"erreur": "Aucun dossier exporté à compléter."})
+            return
+
+        # Tout le tableau, sans filtre : on complète des dossiers qu'on a
+        # déjà, et les restreindre au groupe « contentieux » laisserait sans
+        # téléphone ceux qui en sont sortis depuis.
+        lignes_totales, bilan = 0, {}
+        try:
+            for identifiant in identifiants:
+                grille = module_monday.lire_tableau(identifiant, jeton)
+                lignes_totales += max(0, len(grille) - 1)
+                part = module_suivi.completer_depuis_grille(grille, connus, SUIVI)
+                for cle, valeur in part.items():
+                    if isinstance(valeur, int):
+                        bilan[cle] = bilan.get(cle, 0) + valeur
+        except Exception as exc:  # noqa: BLE001 - réseau, jeton, quota
+            self._json(400, {"erreur": f"Lecture de Monday impossible : {exc}"})
+            return
+
+        self._json(200, {
+            "tableaux": len(identifiants),
+            "lignes": lignes_totales,
+            "dossiers": bilan.get("dossiers", 0),
+            "valeurs": bilan.get("valeurs", 0),
+            "sans_correspondance": bilan.get("sans_correspondance", 0),
+        })
 
     def _completer_depuis_fichier(self, demande: dict) -> None:
         """Complète les dossiers déjà exportés avec un fichier de suivi.
@@ -4944,6 +5013,8 @@ function rendreSuivi() {
       <label class="depot-complement" title="__COMPLEMENT__">Compléter depuis un fichier
         <input type="file" id="complement" accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xltx" />
       </label>
+      <button class="secondaire" id="completerMonday"
+              title="Relit le tableau Monday choisi et complète les dossiers déjà exportés — téléphone, adresse, échéance, convention, heures, montants. Aucun message n'est retéléchargé.">Compléter depuis Monday</button>
       <span id="etatComplement" class="retenu">__COMPLEMENT__</span>
       <a id="oublierComplements" class="lien-oubli" hidden
          title="Les fichiers cessent d'être relus. Ce qu'ils ont déjà renseigné reste dans les dossiers.">oublier</a>
@@ -4982,6 +5053,11 @@ function rendreSuivi() {
   $("tableSuivi").querySelectorAll("#retrouver, [data-retrouver]")
     .forEach((bouton) => bouton.addEventListener("click", retrouverDossiers));
   $("complement").addEventListener("change", completerDepuisFichier);
+  // Deposer un export du tableau pour en tirer trois colonnes est un
+  // detour : le tableau est la, et l'application sait le lire.
+  if ($("completerMonday")) {
+    $("completerMonday").addEventListener("click", completerDepuisMonday);
+  }
   $("oublierComplements").dataset.noms = COMPLEMENTS_RETENUS.join("|");
   majOubliComplements(COMPLEMENTS_RETENUS);
   $("oublierComplements").addEventListener("click", oublierComplements);
@@ -5661,6 +5737,25 @@ function _titreDuFiltre() {
   if (etats.length) bouts.push(etats.join(" et "));
   if (RECHERCHE.trim()) bouts.push(RECHERCHE.trim());
   return bouts.join(" - ") || "tous les dossiers";
+}
+
+async function completerDepuisMonday() {
+  const bouton = $("completerMonday");
+  const avant = bouton.textContent;
+  bouton.disabled = true;
+  bouton.textContent = "Lecture de Monday…";
+  try {
+    const r = await api("/api/completer-monday", {});
+    afficherBandeau(true,
+      `${r.lignes} ligne(s) lue(s) dans ${r.tableaux} tableau(x) Monday : `
+      + `${r.dossiers} dossier(s) complété(s), ${r.valeurs} valeur(s) `
+      + "renseignée(s)."
+      + (r.sans_correspondance
+         ? ` ${r.sans_correspondance} ligne(s) sans dossier correspondant.` : "")
+      + " Aucun message n'a été retéléchargé.");
+    chargerDossiers();
+  } catch (erreur) { afficherBandeau(false, erreur.message); }
+  finally { bouton.disabled = false; bouton.textContent = avant; }
 }
 
 async function exporterTableau(dossiers, titre) {

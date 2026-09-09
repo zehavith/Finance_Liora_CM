@@ -564,11 +564,19 @@ téléphone est annoncé à l'écran.
 Le téléphone vient du tableau de suivi : une colonne « Téléphone »,
 « Portable », « Numéro de téléphone »… est reconnue automatiquement.
 
-**Sans réexporter** : *Compléter depuis un fichier* apporte le téléphone et
-l'adresse aux dossiers déjà constitués. Déposez l'export Monday une fois, et
-les cinquante dossiers les reçoivent — là où un réexport prendrait une heure
-pour une colonne. Et ce qui manque encore se saisit à la main, dans le détail
-d'un état : la saisie l'emporte, et le prochain export ne l'efface pas.
+**Sans réexporter, et sans déposer de fichier** : le bouton **Compléter
+depuis Monday**, au-dessus de la liste, relit le tableau choisi et complète
+les dossiers déjà constitués — téléphone, adresse, échéance, convention,
+heures, montants. Aucun message n'est retéléchargé : c'est ce qui distingue
+ce geste d'un réexport, et ce qui le rend utilisable à tout moment.
+
+*Compléter depuis un fichier* fait la même chose à partir d'un export déposé,
+pour les tableaux qu'on ne lit pas en direct. Et ce qui manque encore se
+saisit à la main dans le détail d'un état.
+
+La règle de priorité, du plus fort au plus faible : **ce qui est saisi à la
+main**, puis le fichier ou le tableau, puis l'export. Une correction ne se
+fait jamais écraser.
 
 ### Les dossiers en souffrance
 
