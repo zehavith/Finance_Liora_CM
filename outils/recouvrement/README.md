@@ -523,12 +523,24 @@ par un logiciel de facturation. `--sans-echeance-facture` désactive la lecture.
 
 ### Les dossiers à trancher
 
-**Cliquez n'importe quelle barre** du tableau de bord : le détail de cet
-état s'ouvre en dessous —
+**Cliquez n'importe quelle ligne** des tableaux du tableau de bord : le
+détail s'ouvre en dessous, sous le tableau que vous venez de cliquer. Les
+quatre s'ouvrent de la même façon —
+
+| Tableau | Ce qu'une ligne y désigne |
+| --- | --- |
+| *Montant en contentieux par étape* | un état : non transmis, avocats, tribunal… |
+| *Montant encore dû, par ancienneté de la créance* | une tranche d'âge : 6 mois à 1 an, plus de 2 ans… |
+| *Entreprise et financement personnel* | un portefeuille |
+| *Débiteurs entreprises, par forme juridique* | une forme : SAS, SARL, non identifiée… |
+
+Le panneau dit la même chose à chaque fois —
 
 - **combien de dossiers**, combien déjà transmis ;
 - **le montant dû**, le montant moyen, ce qui a été encaissé, les frais ;
 - **par portefeuille** : entreprise et financement personnel, séparés ;
+- **par étape** : où en sont ces dossiers — la première question devant une
+  tranche d'ancienneté ou un portefeuille ;
 - **ce qui manque pour agir** : sans adresse postale, adresse à compléter,
   sans téléphone, sans convention signée, sans note de synthèse ;
 - **les dossiers eux-mêmes**, du plus lourd au plus léger, avec leur adresse
@@ -536,8 +548,17 @@ par un logiciel de facturation. `--sans-echeance-facture` désactive la lecture.
   porte pas toujours, et ce qu'on retrouve par un appel doit tenir. Ce qui est
   saisi l'emporte, et le prochain export ne l'efface pas.
 
-De là, deux boutons : **Exporter ce tableau**, et **Ouvrir ces dossiers dans
-la liste** pour agir dessus.
+Les deux sections que le tableau cliqué dirait déjà sont omises : ouvrir le
+détail d'un portefeuille pour y relire « par portefeuille » n'apprendrait
+rien.
+
+De là, **Exporter ce tableau**, et — sur un état — **Ouvrir ces dossiers dans
+la liste** pour agir dessus. Un second clic sur la même ligne referme le
+panneau, comme le bouton **Fermer**. Il n'y a jamais qu'un panneau ouvert : il
+se déplace sous le tableau qu'on interroge, et il survit au réaffichage —
+corriger une étape ne referme pas ce qu'on était en train de lire.
+
+Un tableau de bord ne sert que si l'on peut lui demander « lesquels ? ».
 
 Le même bouton **Exporter ce tableau** figure au-dessus de *État des
 dossiers* : il écrit ce que la liste montre, **telle qu'elle est filtrée**.
@@ -574,11 +595,11 @@ Deux façons de le lancer :
 
 - **le bouton**, au-dessus de la liste : tous les dossiers d'un coup ;
 - **le lien sur la ligne d'un dossier** — dans *Documents* comme dans le
-  détail d'un état : celui-là seulement, sans relancer les cinquante autres.
+  détail ouvert : celui-là seulement, sans relancer les cinquante autres.
 
 *Compléter depuis un fichier* fait la même chose à partir d'un export déposé,
 pour les tableaux qu'on ne lit pas en direct. Et ce qui manque encore se
-saisit à la main dans le détail d'un état.
+saisit à la main dans le détail ouvert.
 
 La règle de priorité, du plus fort au plus faible : **ce qui est saisi à la
 main**, puis le fichier ou le tableau, puis l'export. Une correction ne se

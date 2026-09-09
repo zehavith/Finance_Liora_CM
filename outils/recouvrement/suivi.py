@@ -760,6 +760,13 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path,
                 "date_echeance": _date_francaise(
                     etat.get("echeance") or rangee.get("date_echeance")),
                 "echeance_saisie": bool(etat.get("echeance")),
+                # La tranche d'anciennete du dossier, calculee ici : la page
+                # en a besoin pour montrer le detail d'une tranche, et la
+                # recalculer de son cote ferait diverger les deux bornages.
+                "tranche_anciennete": (
+                    (tranche_anciennete(_jours_depuis(
+                        etat.get("echeance") or rangee.get("date_echeance")))
+                     or {}).get("cle") or "inconnue"),
                 "anciennete_jours": _jours_depuis(
                     etat.get("echeance") or rangee.get("date_echeance")),
                 # Jours écoulés depuis le dernier changement d'étape. None quand

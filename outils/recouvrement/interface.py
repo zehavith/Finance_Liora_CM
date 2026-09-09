@@ -2682,6 +2682,19 @@ select:focus,input.frais:focus,input.note:focus{outline:none;border-color:var(--
 .rangee.menante:hover .etiquette{color:var(--texte-1)}
 .rangee.menante:focus-visible{outline:2px solid var(--accent);outline-offset:2px;
   border-radius:6px}
+/* Une ligne de tableau qui mene au detail se signale comme une barre : le
+   meme geste, le meme curseur, sur les quatre tableaux du tableau de bord. */
+tr.menante{cursor:pointer}
+tr.menante:hover{background:rgba(255,255,255,.06)}
+tr.menante:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* Le detail se pose sous le tableau qu'on vient de cliquer : un filet le
+   rattache a ce tableau, faute de quoi on ne sait plus de quoi il parle. */
+.detail-graphe{margin-top:16px;padding-top:16px;
+  border-top:1px solid var(--bord)}
+.detail-graphe h3{display:flex;align-items:center;gap:8px}
+.detail-graphe h4{margin:18px 0 8px;font-size:13px;color:var(--texte-2)}
+.detail-graphe i{display:inline-block;width:10px;height:10px;border-radius:3px}
+.detail-graphe .boutons{margin-top:16px}
 .etiquette{font-size:12.5px;color:var(--texte-2);text-align:right}
 .piste{height:14px;background:rgba(255,255,255,.04);border-radius:4px;overflow:hidden}
 .remplissage{height:100%;border-radius:0 4px 4px 0;min-width:3px}
@@ -5291,14 +5304,25 @@ function rendreAnciennete() {
     <p class="aide">Depuis l'échéance de la facture, sur les seuls dossiers non
        clôturés. Une créance déjà recouvrée n'a plus d'ancienneté.</p>
     <div class="barres">${tranches.map((t) => `
-      <div class="rangee" title="${echapper(t.libelle)} — ${euro(t.montant)}, ${t.nombre} dossier(s)">
+      <div class="rangee${t.nombre ? " menante" : ""}"
+           ${t.nombre ? `data-tranche="${echapper(t.cle)}"` : ""}
+           title="${echapper(t.libelle)} — ${euro(t.montant)}, ${t.nombre} dossier(s)${t.nombre ? " — cliquez pour voir ces dossiers" : ""}">
         <div class="etiquette">${echapper(t.libelle)}</div>
         <div class="piste">
           <div class="remplissage" style="width:${(100 * t.montant / maximum).toFixed(1)}%;
                background:${t.couleur}"></div>
         </div>
         <div class="valeur">${t.montant ? euro(t.montant) : "—"}<span> · ${t.nombre} dossier${t.nombre > 1 ? "s" : ""}</span></div>
-      </div>`).join("")}</div>`;
+      </div>`).join("")}</div>
+    <p class="aide">Cliquez une barre pour voir le détail de cette tranche.</p>
+    <div class="ancre-detail"></div>`;
+
+  $("anciennete").querySelectorAll("[data-tranche]").forEach((rangee) => {
+    const tranche = tranches.find((t) => t.cle === rangee.dataset.tranche);
+    rendreMenante(rangee, "anciennete", rangee.dataset.tranche,
+                  tranche ? tranche.libelle : rangee.dataset.tranche,
+                  "anciennete");
+  });
 }
 
 // Ce qui rend un dossier defendable, avant meme de parler d'etape : une
@@ -5335,7 +5359,9 @@ function rendreFinancements() {
   }
 
   const rangees = parts.map((p) => `
-    <tr>
+    <tr class="${p.nombre ? "menante" : ""}"
+        ${p.nombre ? `data-financement="${echapper(p.cle)}"` : ""}
+        ${p.nombre ? 'title="Cliquez pour voir ces dossiers"' : ""}>
       <td>${echapper(p.libelle)}</td>
       <td class="num">${p.nombre}</td>
       <td class="num">${euro(p.montant)}</td>
@@ -5351,7 +5377,16 @@ function rendreFinancements() {
     + "<b>Documents</b>, colonne <b>Financement</b>.</p>"
     + '<table class="donnees"><tr><th>Portefeuille</th><th class="num">Dossiers'
     + '</th><th class="num">Montant dû</th><th class="num">Part</th>'
-    + '<th class="num">Transmis</th></tr>' + rangees + "</table>";
+    + '<th class="num">Transmis</th></tr>' + rangees + "</table>"
+    + '<p class="aide">Cliquez une ligne pour voir le détail de ce '
+    + 'portefeuille.</p><div class="ancre-detail"></div>';
+
+  zone.querySelectorAll("[data-financement]").forEach((rangee) => {
+    const part = parts.find((p) => p.cle === rangee.dataset.financement);
+    rendreMenante(rangee, "financement", rangee.dataset.financement,
+                  part ? part.libelle : rangee.dataset.financement,
+                  "financements");
+  });
 }
 
 function rendreEntreprises() {
@@ -5366,7 +5401,9 @@ function rendreEntreprises() {
   }
 
   const rangees = e.formes.map((f) => `
-    <tr>
+    <tr class="${f.nombre ? "menante" : ""}"
+        ${f.nombre ? `data-forme="${echapper(f.forme)}"` : ""}
+        ${f.nombre ? 'title="Cliquez pour voir ces dossiers"' : ""}>
       <td><b>${echapper(f.forme)}</b></td>
       <td class="num">${f.nombre}</td>
       <td class="num">${euro(f.montant)}</td>
@@ -5400,6 +5437,9 @@ ont cessé leur activité : radiées ou fermées. Il n'y a plus d'entreprise en
 face pour payer, et engager des frais sur ces dossiers est rarement utile."
               >dont fermées</th></tr>
       ${rangees}</table></div>
+    <p class="aide">Cliquez une ligne pour voir le détail de cette forme
+       juridique.</p>
+    <div class="ancre-detail"></div>
     ${alerte}
     <div class="boutons" style="margin-top:16px">
       <button class="secondaire" id="majAnnuaire">
@@ -5414,6 +5454,10 @@ face pour payer, et engager des frais sur ces dossiers est rarement utile."
        et une société déjà interrogée ne l'est pas deux fois.</p>`;
 
   $("majAnnuaire").addEventListener("click", interrogerAnnuaire);
+
+  zone.querySelectorAll("[data-forme]").forEach((rangee) =>
+    rendreMenante(rangee, "forme", rangee.dataset.forme,
+                  rangee.dataset.forme, "entreprises"));
 }
 
 // Les debiteurs arrives depuis la derniere consultation recoivent leur fiche
@@ -5721,27 +5765,23 @@ function rendreBord() {
        vision deutéranope.</p>
     <div class="barres">${barres}</div>
     <p class="aide">Cliquez une barre pour voir le détail de cet état.</p>
-    <div id="detailEtat"></div>
+    <div class="ancre-detail"></div>
     <button class="secondaire" id="exporterATrancher"
             title="Écrit un tableau des dossiers qui demandent une décision : possible abandon, ou montant trop faible pour justifier des frais. Avec l'adresse, le mail et le téléphone.">Exporter les dossiers à trancher</button>`;
 
   if ($("exporterATrancher")) {
     $("exporterATrancher").addEventListener("click", exporterATrancher);
   }
-  // Le detail ouvert survit au reaffichage : corriger une etape ne doit pas
-  // refermer ce qu'on etait en train de lire.
-  rendreDetailEtat();
-
   $("grapheBord").querySelectorAll(".rangee.menante").forEach((rangee) => {
-    const aller = () => montrerLesDossiers(rangee.dataset.etat);
-    rangee.addEventListener("click", aller);
-    rangee.addEventListener("keydown", (evenement) => {
-      if (evenement.key === "Enter" || evenement.key === " ") {
-        evenement.preventDefault();
-        aller();
-      }
-    });
+    const etat = STATUTS.find((s) => s.cle === rangee.dataset.etat);
+    rendreMenante(rangee, "etat", rangee.dataset.etat,
+                  etat ? etat.libelle : rangee.dataset.etat, "grapheBord");
   });
+
+  // Le detail ouvert survit au reaffichage : corriger une etape ne doit pas
+  // refermer ce qu'on etait en train de lire. Il vient en dernier, tous les
+  // tableaux etant alors reconstruits — c'est sous l'un d'eux qu'il se pose.
+  rendreDetailGraphe();
 }
 
 // D'une barre du tableau de bord aux dossiers qu'elle compte : on filtre sur
@@ -5854,18 +5894,77 @@ async function exporterATrancher() {
   finally { bouton.disabled = false; bouton.textContent = avant; }
 }
 
-// Cliquer une barre ouvre le detail de cet etat, sur place : combien de
-// dossiers, combien d'argent, dans quels portefeuilles, depuis combien de
-// temps, et ce qui manque pour agir. « 64 666 € sur 20 dossiers » appelle la
+// Cliquer une ligne d'un tableau de bord ouvre son detail, sur place :
+// combien de dossiers, combien d'argent, dans quels portefeuilles, a quelle
+// etape, et ce qui manque pour agir. « 64 666 € sur 20 dossiers » appelle la
 // question « lesquels, et que fait-on ? » ; y repondre demandait de
-// reconstruire le compte a la main, onglet par onglet.
-let ETAT_DETAILLE = "";
+// reconstruire le compte a la main, onglet par onglet. La question se pose de
+// la meme facon sur l'anciennete, sur les portefeuilles et sur les formes
+// juridiques : le panneau est donc un seul, et il se deplace sous le tableau
+// qu'on vient de cliquer.
+let DETAIL = null;
 
-function montrerLesDossiers(cle) {
-  ETAT_DETAILLE = ETAT_DETAILLE === cle ? "" : cle;
-  rendreDetailEtat();
-  const zone = $("detailEtat");
-  if (zone && ETAT_DETAILLE) zone.scrollIntoView({ block: "nearest" });
+// Ce qui distingue un tableau d'un autre : comment il decoupe les dossiers,
+// et ce qu'il est inutile de lui redire. Ouvrir le detail d'un portefeuille
+// pour y relire « Par portefeuille » n'apprendrait rien.
+const DETAILS = {
+  etat: {
+    filtre: (d, v) => (d.statut || "non-transmis") === v,
+    vignette: (v) => STATUTS.find((s) => s.cle === v) || null,
+  },
+  // Comme le graphique lui-meme : une creance recouvree n'a plus
+  // d'anciennete, et les dossiers clotures en sont absents.
+  anciennete: {
+    filtre: (d, v) => !d.clos && (d.tranche_anciennete || "inconnue") === v,
+  },
+  financement: {
+    filtre: (d, v) => (d.financement || "") === v,
+  },
+  // Comme la repartition par forme juridique : sur les dossiers en cours.
+  forme: {
+    filtre: (d, v) => !d.clos
+      && (((d.fiche_entreprise || {}).forme) || "Non identifiée") === v,
+  },
+};
+
+// Le panneau est unique et garde en memoire, jamais recree : ainsi il survit
+// au reaffichage du graphique qui l'a ouvert — corriger une etape ne doit pas
+// refermer ce qu'on etait en train de lire — et deux panneaux ne peuvent pas
+// se contredire a l'ecran.
+let ZONE_DETAIL = null;
+
+function zoneDetail() {
+  if (!ZONE_DETAIL) {
+    ZONE_DETAIL = document.createElement("div");
+    ZONE_DETAIL.id = "detailGraphe";
+  }
+  return ZONE_DETAIL;
+}
+
+function montrerDetail(genre, valeur, titre, hote) {
+  const memeQueLouvert = DETAIL && DETAIL.genre === genre
+    && DETAIL.valeur === valeur;
+  DETAIL = memeQueLouvert ? null : { genre, valeur, titre, hote };
+  rendreDetailGraphe();
+  if (DETAIL && ZONE_DETAIL && ZONE_DETAIL.isConnected) {
+    ZONE_DETAIL.scrollIntoView({ block: "nearest" });
+  }
+}
+
+// Rendre une ligne de tableau cliquable, au clavier comme a la souris : une
+// ligne qui compte des dossiers mene a ces dossiers.
+function rendreMenante(element, genre, valeur, titre, hote) {
+  element.classList.add("menante");
+  element.setAttribute("role", "button");
+  element.setAttribute("tabindex", "0");
+  const aller = () => montrerDetail(genre, valeur, titre, hote);
+  element.addEventListener("click", aller);
+  element.addEventListener("keydown", (evenement) => {
+    if (evenement.key === "Enter" || evenement.key === " ") {
+      evenement.preventDefault();
+      aller();
+    }
+  });
 }
 
 // D'ici a la liste filtree : le detail dit ce qu'il en est, la liste permet
@@ -5880,14 +5979,18 @@ function ouvrirListeFiltree(cle) {
   if (onglet) onglet.click();
 }
 
-function rendreDetailEtat() {
-  const zone = $("detailEtat");
-  if (!zone) return;
-  if (!ETAT_DETAILLE) { zone.innerHTML = ""; return; }
+function rendreDetailGraphe() {
+  const zone = zoneDetail();
+  const refermer = () => { zone.innerHTML = ""; zone.remove(); };
+  if (!DETAIL) { refermer(); return; }
 
-  const etat = STATUTS.find((s) => s.cle === ETAT_DETAILLE);
-  const retenus = DOSSIERS.filter((d) => (d.statut || "non-transmis") === ETAT_DETAILLE);
-  if (!etat || !retenus.length) { zone.innerHTML = ""; return; }
+  const regle = DETAILS[DETAIL.genre];
+  const hote = $(DETAIL.hote);
+  const ancre = hote ? hote.querySelector(".ancre-detail") : null;
+  const retenus = regle
+    ? DOSSIERS.filter((d) => regle.filtre(d, DETAIL.valeur)) : [];
+  if (!regle || !ancre || !retenus.length) { refermer(); return; }
+  ancre.appendChild(zone);
 
   const somme = (f) => retenus.reduce((t, d) => t + (f(d) || 0), 0);
   const du = somme((d) => d.montant_du);
@@ -5911,12 +6014,24 @@ function rendreDetailEtat() {
   ].join("");
 
   // Par portefeuille : les deux partent a deux responsables differents.
-  const parts = ["entreprise", "personnel"].map((f) => {
-    const part = retenus.filter((d) => d.financement === f);
-    return part.length ? `<tr><td>${f === "entreprise" ? "Entreprise"
-      : "Financement personnel"}</td><td class="num">${part.length}</td>
-      <td class="num">${euro(part.reduce((t, d) => t + (d.montant_du || 0), 0))}</td></tr>` : "";
-  }).filter(Boolean).join("");
+  const parts = DETAIL.genre === "financement" ? "" :
+    ["entreprise", "personnel"].map((f) => {
+      const part = retenus.filter((d) => d.financement === f);
+      return part.length ? `<tr><td>${f === "entreprise" ? "Entreprise"
+        : "Financement personnel"}</td><td class="num">${part.length}</td>
+        <td class="num">${euro(part.reduce((t, d) => t + (d.montant_du || 0), 0))}</td></tr>` : "";
+    }).filter(Boolean).join("");
+
+  // Par etape : sur une tranche d'anciennete ou un portefeuille, c'est la
+  // premiere question qui vient — ces dossiers, ou en sont-ils ?
+  const etapes = DETAIL.genre === "etat" ? "" :
+    STATUTS.map((s) => {
+      const part = retenus.filter((d) => (d.statut || "non-transmis") === s.cle);
+      return part.length ? `<tr><td><i style="background:${echapper(s.couleur)}"></i>
+        ${s.icone ? echapper(s.icone) + " " : ""}${echapper(s.libelle)}</td>
+        <td class="num">${part.length}</td>
+        <td class="num">${euro(part.reduce((t, d) => t + (d.montant_du || 0), 0))}</td></tr>` : "";
+    }).filter(Boolean).join("");
 
   // Ce qui manque pour agir : sans ces trois-la, on ne poursuit pas.
   const manques = [
@@ -5956,14 +6071,23 @@ function rendreDetailEtat() {
           title="Réécrit la note de ce dossier, sans retourner sur Gmail.">Refaire la note</a></td>
     </tr>`).join("");
 
+  const vignette = regle.vignette ? regle.vignette(DETAIL.valeur) : null;
+  const titre = (vignette
+    ? `<i style="background:${echapper(vignette.couleur)}"></i>`
+      + (vignette.icone ? echapper(vignette.icone) + " " : "")
+      + echapper(vignette.libelle)
+    : echapper(DETAIL.titre || ""));
+
   zone.innerHTML = `
-    <div class="detail-etat">
-      <h3><i style="background:${echapper(etat.couleur)}"></i>
-        ${etat.icone ? echapper(etat.icone) + " " : ""}${echapper(etat.libelle)}</h3>
+    <div class="detail-graphe">
+      <h3>${titre}</h3>
       <div class="tuiles">${chiffres}</div>
       ${parts ? '<h4>Par portefeuille</h4><table class="donnees"><tr>'
         + '<th>Portefeuille</th><th class="num">Dossiers</th>'
         + '<th class="num">Montant dû</th></tr>' + parts + "</table>" : ""}
+      ${etapes ? '<h4>Par étape</h4><table class="donnees"><tr>'
+        + '<th>Étape</th><th class="num">Dossiers</th>'
+        + '<th class="num">Montant dû</th></tr>' + etapes + "</table>" : ""}
       ${manques ? "<h4>Ce qui manque pour agir</h4><ul class=\"constats\">"
         + manques + "</ul>" : ""}
       <h4>Les dossiers${retenus.length > 40
@@ -5972,9 +6096,10 @@ function rendreDetailEtat() {
         <tr><th>Dossier</th><th class="num">Montant dû</th><th class="num">Retard</th>
           <th>Adresse postale</th><th>Téléphone</th><th></th></tr>${lignes}</table></div>
       <div class="boutons">
-        <button class="secondaire" id="exporterEtat">Exporter ce tableau</button>
-        <button class="secondaire" id="allerListeEtat">Ouvrir ces dossiers dans la liste</button>
-        <button class="secondaire" id="fermerDetailEtat">Fermer</button>
+        <button class="secondaire" id="exporterDetail">Exporter ce tableau</button>
+        ${DETAIL.genre === "etat" ? '<button class="secondaire" '
+          + 'id="allerListeEtat">Ouvrir ces dossiers dans la liste</button>' : ""}
+        <button class="secondaire" id="fermerDetail">Fermer</button>
       </div>
     </div>`;
 
@@ -5995,7 +6120,7 @@ function rendreDetailEtat() {
             dossier.adresse_complete = true;
           }
         }
-        rendreDetailEtat();
+        rendreDetailGraphe();
       } catch (erreur) { afficherBandeau(false, erreur.message); }
     }));
 
@@ -6005,13 +6130,16 @@ function rendreDetailEtat() {
   zone.querySelectorAll("[data-refaire]").forEach((lien) =>
     lien.addEventListener("click", () => refaireLaNote(lien.dataset.refaire)));
 
-  $("exporterEtat").addEventListener("click",
-    () => exporterTableau(retenus, etat.libelle));
-  $("allerListeEtat").addEventListener("click",
-    () => ouvrirListeFiltree(ETAT_DETAILLE));
-  $("fermerDetailEtat").addEventListener("click", () => {
-    ETAT_DETAILLE = "";
-    rendreDetailEtat();
+  const intitule = vignette ? vignette.libelle : (DETAIL.titre || "detail");
+  $("exporterDetail").addEventListener("click",
+    () => exporterTableau(retenus, intitule));
+  if ($("allerListeEtat")) {
+    $("allerListeEtat").addEventListener("click",
+      () => ouvrirListeFiltree(DETAIL.valeur));
+  }
+  $("fermerDetail").addEventListener("click", () => {
+    DETAIL = null;
+    rendreDetailGraphe();
   });
 }
 

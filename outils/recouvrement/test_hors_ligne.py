@@ -4740,13 +4740,30 @@ def test_dossiers_a_trancher() -> None:
     # Une barre du tableau de bord mène aux dossiers qu'elle compte.
     page = module_interface.PAGE
     verifier('class="rangee${s.nombre ? " menante" : ""}"' in page
-             and "function montrerLesDossiers" in page,
+             and "function montrerDetail" in page,
              "chaque barre mène aux dossiers qu'elle compte")
     # Quel que soit l'état cliqué, le détail s'ouvre : combien de dossiers,
     # combien d'argent, dans quels portefeuilles, et ce qui manque pour agir.
-    verifier("function rendreDetailEtat" in page and 'id="detailEtat"' in page,
+    verifier("function rendreDetailGraphe" in page
+             and 'ZONE_DETAIL.id = "detailGraphe"' in page,
              "et ouvre le détail de cet état, quel qu'il soit")
-    for morceau in ("Par portefeuille", "Ce qui manque pour agir",
+    # La même question se pose sur les autres tableaux du tableau de bord :
+    # une tranche d'ancienneté, un portefeuille, une forme juridique appellent
+    # « lesquels, et que fait-on ? » tout autant qu'une étape. Chacun porte
+    # donc ses lignes cliquables et l'ancre où le panneau vient se poser.
+    for quoi, marqueur, hote in (
+            ("l'ancienneté", "data-tranche=", "anciennete"),
+            ("les portefeuilles", "data-financement=", "financements"),
+            ("les formes juridiques", "data-forme=", "entreprises")):
+        verifier(marqueur in page and f'"{hote}")' in page,
+                 f"le tableau par {quoi} mène lui aussi au détail")
+    ancres = page.count('class="ancre-detail"')
+    verifier(ancres >= 4,
+             f"les quatre tableaux portent l'ancre du panneau (obtenu : {ancres})")
+    for genre in ("etat", "anciennete", "financement", "forme"):
+        verifier(f"  {genre}: {{" in page,
+                 f"et le panneau sait découper les dossiers par « {genre} »")
+    for morceau in ("Par portefeuille", "Par étape", "Ce qui manque pour agir",
                     "sans adresse postale", "sans téléphone",
                     "sans convention signée"):
         verifier(morceau in page, f"le détail porte « {morceau} »")
@@ -4772,7 +4789,7 @@ def test_dossiers_a_trancher() -> None:
              "vider le champ rend la main au tableau")
 
     # Un tableau qu'on regarde, on veut souvent l'emporter.
-    verifier('id="exporterEtat"' in page and 'id="exporterSuivi"' in page
+    verifier('id="exporterDetail"' in page and 'id="exporterSuivi"' in page
              and '"/api/exporter-liste"' in page,
              "chaque tableau s'exporte")
 
