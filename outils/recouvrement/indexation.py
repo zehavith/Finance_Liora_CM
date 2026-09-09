@@ -60,6 +60,7 @@ COLONNES_RECAP = [
     # une deduction, et la note doit pouvoir le dire.
     "adresse_postale",
     "source_adresse",
+    "adresse_complete",
     # Colonnes de tri pour arbitrer sur l'ensemble des dossiers d'un coup d'œil.
     "mise_en_demeure",
     "contestation",
@@ -156,6 +157,7 @@ class ResumeDossier:
     montant_prorata: str = ""
     adresse_postale: str = ""
     source_adresse: str = ""
+    adresse_complete: str = ""
     mise_en_demeure: str = ""
     contestation: str = ""
     echeancier: str = ""
@@ -198,6 +200,7 @@ class ResumeDossier:
             "montant_prorata": self.montant_prorata,
             "adresse_postale": self.adresse_postale,
             "source_adresse": self.source_adresse,
+            "adresse_complete": self.adresse_complete,
             "mise_en_demeure": self.mise_en_demeure,
             "contestation": self.contestation,
             "echeancier": self.echeancier,

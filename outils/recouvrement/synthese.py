@@ -2106,11 +2106,20 @@ def construire_html(
     # verifie avant qu'un huissier s'y presente.
     postale = (getattr(dossier, "adresse_postale", "") or "").strip()
     if postale:
+        mentions = []
         origine = {
-            "convention": " (lue sur la convention)",
-            "facture": " (lue sur la facture)",
+            "convention": "lue sur la convention",
+            "facture": "lue sur la facture",
         }.get(getattr(dossier, "source_adresse", ""), "")
-        identite.append(("Adresse postale", postale + origine))
+        if origine:
+            mentions.append(origine)
+        # Une voie sans code postal fait gagner l'essentiel du travail de
+        # recherche, mais ne s'utilise pas telle quelle : la dire incomplète
+        # évite qu'un courrier parte à une adresse qui n'en est pas une.
+        if not getattr(dossier, "adresse_complete", True):
+            mentions.append("adresse à compléter")
+        suite = f" ({' — '.join(mentions)})" if mentions else ""
+        identite.append(("Adresse postale", postale + suite))
 
     identite += [
         ("Factures" if len(dossier.factures) > 1 else "Facture",

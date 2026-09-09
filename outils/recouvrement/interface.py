@@ -868,7 +868,7 @@ def reclasser_index(repertoire: Path, emails: Iterable[str] = ()) -> int:
 
 
 def _noter_adresse(repertoire: Path, reference: str,
-                   postale: str, source: str) -> None:
+                   postale: str, source: str, complete: bool = True) -> None:
     """Inscrit au récapitulatif une adresse lue sur une pièce.
 
     Sans quoi elle serait relue à chaque note refaite : ouvrir deux PDF par
@@ -884,6 +884,7 @@ def _noter_adresse(repertoire: Path, reference: str,
         if (rangee.get("reference") or "").strip() == reference:
             rangee["adresse_postale"] = postale
             rangee["source_adresse"] = source
+            rangee["adresse_complete"] = "oui" if complete else "non"
             touchee = True
     if not touchee:
         return
@@ -1030,13 +1031,15 @@ def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[boo
 
         postale = (dossier.get("adresse_postale") or "").strip()
         source_adresse = (dossier.get("source_adresse") or "").strip()
+        complete = (dossier.get("adresse_complete") or "oui").strip() != "non"
         if not postale:
             trouvee = type("_D", (), {
                 "adresse_postale": "", "nom": dossier.get("nom") or ""})()
-            postale, source_adresse = module_adresse.trouver(repertoire, trouvee)
+            postale, source_adresse, complete = module_adresse.trouver(
+                repertoire, trouvee)
             if postale:
                 _noter_adresse(repertoire, dossier["reference"],
-                               postale, source_adresse)
+                               postale, source_adresse, complete)
 
         entree = suivi.get(dossier["reference"]) or {}
         contenu = module_synthese.construire_html(
@@ -1049,6 +1052,7 @@ def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[boo
                 montant_total=str(dossier.get("montant_total") or ""),
                 adresse_postale=postale,
                 source_adresse=source_adresse,
+                adresse_complete=complete,
                 date_echeance=entree.get("echeance")
                 or dossier.get("date_echeance") or "",
                 # Refaire la note ne doit pas l'amputer : sans ces valeurs,

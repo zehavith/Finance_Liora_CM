@@ -771,12 +771,20 @@ Lue sur une pièce, elle est annoncée comme telle : *« 14 bis avenue de la
 République, 93300 Aubervilliers (lue sur la convention) »*. Une lecture se
 vérifie avant qu'un huissier s'y présente.
 
-Deux garde-fous : **aucune ligne n'est retenue sans code postal français
-suivi d'une commune** — « 12 rue des Lilas » tout seul ne prouve rien —, et
-**notre propre adresse est exclue** : une facture porte d'abord l'émetteur, et
+**Une adresse incomplète est écrite quand même**, et annoncée comme telle :
+
+> 9 rue Ancienne *(lue sur la facture — adresse à compléter)*
+
+Une voie sans code postal fait gagner l'essentiel du travail de recherche ;
+la taire coûterait davantage. Mais elle ne s'utilise pas telle quelle, et la
+mention l'interdit. **On ne s'en contente qu'après avoir éprouvé toutes les
+sources** : une adresse entière trouvée sur la facture l'emporte sur une voie
+sans code postal inscrite au tableau.
+
+**Notre propre adresse est exclue** : une facture porte d'abord l'émetteur, et
 retenir la première adresse venue ferait mettre Liora en demeure elle-même.
-Sans lecture sûre, la note n'affiche pas d'adresse : mieux vaut aucune
-adresse qu'une fausse.
+Et si rien n'est lisible, la note n'affiche pas d'adresse — mieux vaut aucune
+adresse qu'une adresse devinée.
 
 Les dossiers déjà exportés l'obtiennent avec *Refaire les notes*, sans
 réexport — et elle est alors inscrite au récapitulatif, pour ne pas rouvrir

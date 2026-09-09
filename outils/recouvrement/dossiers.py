@@ -401,6 +401,9 @@ class Dossier:
     # D'ou vient cette adresse : « tableau », « convention » ou « facture ».
     # Une adresse lue sur un PDF est une deduction, et la note le dit.
     source_adresse: str = ""
+    # Une voie sans code postal, un code postal sans voie : c'est un debut,
+    # et un debut vaut mieux que rien — a condition de le dire.
+    adresse_complete: bool = True
     commentaire: str = ""
     liens: list[str] = field(default_factory=list)
     # Exécution de la formation, telle que le suivi la connaît. Sert la note

@@ -1174,14 +1174,20 @@ def traiter_dossier(
     # a l'endroit ou on les cherche.
     import adresse as module_adresse  # noqa: PLC0415
 
-    postale, source_adresse = module_adresse.trouver(repertoire, dossier)
+    postale, source_adresse, complete = module_adresse.trouver(repertoire, dossier)
     if postale:
         dossier.adresse_postale = postale
         dossier.source_adresse = source_adresse
+        dossier.adresse_complete = complete
         resume.adresse_postale = postale
         resume.source_adresse = source_adresse
-        if source_adresse != "tableau":
-            journal(f"    adresse lue sur la {source_adresse} : {postale}")
+        resume.adresse_complete = "oui" if complete else "non"
+        if source_adresse != "tableau" or not complete:
+            journal(
+                f"    adresse {'lue sur la ' + source_adresse if source_adresse != 'tableau' else 'du tableau'}"
+                f" : {postale}"
+                + ("" if complete else " — incomplète, à compléter")
+            )
 
     analyse = module_synthese.analyser(lignes, textes_par_piece, doublons)
     _reporter_synthese(resume, analyse, date_export)

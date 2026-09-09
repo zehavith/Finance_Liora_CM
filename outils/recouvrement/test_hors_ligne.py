@@ -4611,22 +4611,41 @@ def test_adresse_du_debiteur() -> None:
 
             # 1. Le tableau d'abord : c'est le service qui la tient.
             verifier(module_adresse.trouver(dossier, _Tableau())
-                     == ("3 place du Marché, 75004 PARIS", "tableau"),
+                     == ("3 place du Marché, 75004 PARIS", "tableau", True),
                      "le tableau l'emporte sur les pièces")
             # 2. À défaut, la convention — signée du débiteur.
             verifier(module_adresse.trouver(dossier, _Sans())
                      == ("14 bis avenue de la Republique, 93300 AUBERVILLIERS",
-                         "convention"),
+                         "convention", True),
                      "puis la convention")
             # 3. À défaut, la facture.
             (dossier / "pieces-cles" / "1-convention-devis-signe"
              / "Convention.pdf").unlink()
             verifier(module_adresse.trouver(dossier, _Sans())
-                     == ("9 rue Ancienne, 75001 PARIS", "facture"),
+                     == ("9 rue Ancienne, 75001 PARIS", "facture", True),
                      "puis la facture")
             # 4. Rien de lisible : aucune adresse, et aucune source.
+            # Toutes les sources éprouvées, et rien de complet : on rend ce
+            # qu'on a, en le disant. Une voie sans code postal fait gagner
+            # l'essentiel du travail ; la taire coûterait davantage.
+            module_facture.texte_du_pdf = lambda _c: (
+                "FACTURE\nClient : SAS EDEN\n9 rue Ancienne\nMontant 500 EUR")
+            verifier(module_adresse.trouver(dossier, _Sans())
+                     == ("9 rue Ancienne", "facture", False),
+                     "une adresse incomplète est rendue, marquée comme telle")
+            # Mais une adresse incomplète au tableau n'arrête pas la
+            # recherche : une adresse entière ailleurs vaut mieux.
+            class _Partiel:
+                adresse_postale = "9 rue Ancienne"
+                nom = "SAS EDEN"
+
+            module_facture.texte_du_pdf = lambda _c: (
+                "FACTURE\nClient : SAS EDEN\n3 place du Marche\n75004 PARIS")
+            verifier(module_adresse.trouver(dossier, _Partiel())
+                     == ("3 place du Marche, 75004 PARIS", "facture", True),
+                     "et une adresse complète ailleurs l'emporte sur elle")
             module_facture.texte_du_pdf = lambda _c: "Facture 123"
-            verifier(module_adresse.trouver(dossier, _Sans()) == ("", ""),
+            verifier(module_adresse.trouver(dossier, _Sans()) == ("", "", False),
                      "et rien plutôt qu'une adresse devinée")
         finally:
             module_facture.texte_du_pdf = vrai
@@ -4634,10 +4653,12 @@ def test_adresse_du_debiteur() -> None:
     # La note la porte, en disant d'où elle vient : une adresse lue se
     # vérifie avant qu'un huissier s'y présente.
     source = Path("synthese.py").read_text(encoding="utf-8")
-    verifier('("Adresse postale", postale + origine)' in source,
+    verifier('("Adresse postale", postale + suite)' in source,
              "la note porte l'adresse")
-    verifier('"convention": " (lue sur la convention)"' in source
-             and '"facture": " (lue sur la facture)"' in source,
+    verifier('mentions.append("adresse à compléter")' in source,
+             "et dit quand elle reste à compléter")
+    verifier('"convention": "lue sur la convention"' in source
+             and '"facture": "lue sur la facture"' in source,
              "et dit quand elle a été lue sur une pièce")
     verifier("adresse_postale" in module_indexation.COLONNES_RECAP
              and "source_adresse" in module_indexation.COLONNES_RECAP,
