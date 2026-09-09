@@ -143,6 +143,13 @@ ALIAS_COLONNES = {
         "adresse de l apprenant", "adresse apprenant", "adresse du debiteur",
         "adresse siege", "siege social", "adresse",
     ],
+    # Le telephone du debiteur : quand les mails restent sans reponse, c'est
+    # ce qui reste avant l'huissier.
+    "telephone": [
+        "numero de telephone", "num de telephone", "telephone portable",
+        "telephone client", "tel client", "telephone", "portable",
+        "mobile", "tel",
+    ],
     "statut": [
         "qualification generale pour dispach monday",
         "statut de la facture", "statut facture",
@@ -398,6 +405,7 @@ class Dossier:
     montant_recu: str = ""
     montant_prorata: str = ""
     adresse_postale: str = ""
+    telephone: str = ""
     # D'ou vient cette adresse : « tableau », « convention » ou « facture ».
     # Une adresse lue sur un PDF est une deduction, et la note le dit.
     source_adresse: str = ""
@@ -852,6 +860,7 @@ def _fusionner(groupe: list[Dossier]) -> Dossier:
         # L'exécution de la formation est la même pour toutes les factures
         # d'une apprenante : la première renseignée vaut pour le dossier.
         adresse_postale=_premier_renseigne("adresse_postale"),
+        telephone=_premier_renseigne("telephone"),
         convention_signee=_premier_renseigne("convention_signee"),
         diplome=_premier_renseigne("diplome"),
         heures_theoriques=_premier_renseigne("heures_theoriques"),
@@ -1449,6 +1458,7 @@ def dossiers_depuis_grille(
             montant_recu=_premier("montant_recu"),
             montant_prorata=_premier("montant_prorata"),
             adresse_postale=_premier("adresse_postale"),
+            telephone=_premier("telephone"),
             commentaire=" · ".join(valeurs["commentaire"]),
             convention_signee=_premier("convention_signee"),
             diplome=_premier("diplome"),

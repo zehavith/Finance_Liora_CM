@@ -444,3 +444,123 @@ def preparer(
         "sans_pdf": len(absents),
         "motif": motif,
     }
+
+
+# --------------------------------------------------------------------------
+# La liste des dossiers à trancher
+# --------------------------------------------------------------------------
+
+# Un dossier « possible abandon » attend une décision. Un petit montant aussi :
+# en dessous de ce seuil, les frais de recouvrement approchent la créance, et
+# la question « poursuit-on ? » se pose d'elle-même. Les deux listes se
+# travaillent ensemble, et se tranchent en réunion.
+SEUIL_PETIT_MONTANT = 3000.0
+
+COLONNES_A_TRANCHER = [
+    "reference",
+    "nom",
+    "adresse_postale",
+    "adresse_a_completer",
+    "emails",
+    "telephone",
+    "montant_du",
+    "date_echeance",
+    "jours_de_retard",
+    "etat",
+    "financement",
+    "motif",
+]
+
+ENTETES_A_TRANCHER = {
+    "reference": "Référence",
+    "nom": "Nom du débiteur",
+    "adresse_postale": "Adresse postale",
+    "adresse_a_completer": "Adresse à compléter",
+    "emails": "Adresse(s) mail",
+    "telephone": "Téléphone",
+    "montant_du": "Montant dû",
+    "date_echeance": "Échéance",
+    "jours_de_retard": "Jours de retard",
+    "etat": "État du dossier",
+    "financement": "Financement",
+    "motif": "Pourquoi ce dossier est dans la liste",
+}
+
+
+def a_trancher(dossier: dict, seuil: float = SEUIL_PETIT_MONTANT) -> str:
+    """Pourquoi ce dossier demande une décision, ou une chaîne vide.
+
+    Deux raisons, cumulables : l'étape dit « possible abandon », ou le
+    montant est trop faible pour justifier des frais. Un dossier déjà clos
+    n'est pas à trancher — la décision a été prise.
+    """
+    if dossier.get("clos"):
+        return ""
+    motifs = []
+    if dossier.get("statut") == "abandon-possible":
+        motifs.append("possible abandon de la créance")
+    montant = dossier.get("montant_du") or 0
+    if dossier.get("montant_renseigne", True) and 0 < montant < seuil:
+        montant_lisible = f"{montant:,.2f}".replace(",", " ").replace(".", ",")
+        motifs.append(f"montant inférieur à {seuil:.0f} € ({montant_lisible} €)")
+    return " ; ".join(motifs)
+
+
+def liste_a_trancher(
+    dossiers: list[dict], seuil: float = SEUIL_PETIT_MONTANT
+) -> list[dict[str, str]]:
+    """Les dossiers qui demandent une décision, prêts pour un tableur."""
+    rangees = []
+    for dossier in dossiers:
+        motif = a_trancher(dossier, seuil)
+        if not motif:
+            continue
+        montant = dossier.get("montant_du") or 0
+        rangees.append({
+            "reference": dossier.get("reference") or "",
+            "nom": dossier.get("nom") or "",
+            "adresse_postale": dossier.get("adresse_postale") or "",
+            # Dit franchement : une adresse tronquée ne s'utilise pas telle
+            # quelle, et l'apprendre après l'envoi coûte un courrier.
+            "adresse_a_completer": (
+                "" if dossier.get("adresse_complete", True)
+                else "à compléter"
+            ),
+            "emails": dossier.get("emails") or "",
+            "telephone": dossier.get("telephone") or "",
+            "montant_du": f"{montant:.2f}".replace(".", ",") if montant else "",
+            "date_echeance": dossier.get("date_echeance") or "",
+            "jours_de_retard": str(dossier.get("retard") or ""),
+            "etat": dossier.get("statut_libelle") or dossier.get("statut") or "",
+            "financement": {
+                "entreprise": "Entreprise",
+                "personnel": "Financement personnel",
+            }.get(dossier.get("financement") or "", ""),
+            "motif": motif,
+        })
+    # Le plus lourd d'abord : c'est par là qu'on commence une réunion.
+    rangees.sort(key=lambda r: -_montant_trie(r["montant_du"]))
+    return rangees
+
+
+def _montant_trie(texte: str) -> float:
+    try:
+        return float((texte or "0").replace(" ", "").replace(",", "."))
+    except ValueError:
+        return 0.0
+
+
+def ecrire_liste_a_trancher(
+    cible: Path, dossiers: list[dict], seuil: float = SEUIL_PETIT_MONTANT
+) -> tuple[int, Path]:
+    """Écrit la liste dans un CSV qu'Excel ouvre par double-clic."""
+    from indexation import _ecrire_csv  # noqa: PLC0415
+
+    rangees = liste_a_trancher(dossiers, seuil)
+    _ecrire_csv(
+        cible,
+        [ENTETES_A_TRANCHER[cle] for cle in COLONNES_A_TRANCHER],
+        [{ENTETES_A_TRANCHER[cle]: rangee[cle] for cle in COLONNES_A_TRANCHER}
+         for rangee in rangees],
+    )
+    return len(rangees), cible

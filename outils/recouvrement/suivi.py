@@ -639,6 +639,13 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path,
                 "reference": reference,
                 "nom": (rangee.get("nom") or "").strip(),
                 "emails": (rangee.get("emails") or "").strip(),
+                # De quoi joindre le debiteur autrement que par mail, et lui
+                # ecrire : c'est ce que demande un dossier a trancher.
+                "telephone": (rangee.get("telephone") or "").strip(),
+                "adresse_postale": (rangee.get("adresse_postale") or "").strip(),
+                "adresse_complete":
+                    (rangee.get("adresse_complete") or "").strip() != "non",
+                "source_adresse": (rangee.get("source_adresse") or "").strip(),
                 "factures": (rangee.get("factures") or "").strip(),
                 "montant_du": _nombre(rangee.get("montant_du")),
                 # « 0 € » se lit comme une dette soldée. Un montant que

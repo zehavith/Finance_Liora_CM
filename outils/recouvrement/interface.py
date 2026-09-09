@@ -1492,6 +1492,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/brouillon":
                 self._ouvrir_brouillon(self._corps_json())
                 return
+            if chemin == "/api/liste-a-trancher":
+                self._exporter_a_trancher(self._corps_json())
+                return
             if chemin == "/api/restaurer-suivi":
                 self._restaurer_suivi(self._corps_json())
                 return
@@ -1925,6 +1928,55 @@ class Gestionnaire(BaseHTTPRequestHandler):
             "repertoire": pret["repertoire"],
             "poids": pret["poids_pdf"] or pret["poids_archive"],
             "financement": dossier.get("financement") or "",
+        })
+
+    def _exporter_a_trancher(self, demande: dict | None = None) -> None:
+        """Écrit la liste des dossiers qui demandent une décision.
+
+        Deux raisons, cumulables : l'étape dit « possible abandon », ou le
+        montant est trop faible pour justifier des frais. Ce sont les mêmes
+        dossiers qu'on trie en réunion, et le tableau porte ce qu'il faut
+        pour les joindre : adresse, mail, téléphone.
+        """
+        import entreprises as module_entreprises  # noqa: PLC0415
+        import envoi as module_envoi  # noqa: PLC0415
+
+        try:
+            seuil = float(str((demande or {}).get("seuil")
+                              or module_envoi.SEUIL_PETIT_MONTANT))
+        except (TypeError, ValueError):
+            seuil = module_envoi.SEUIL_PETIT_MONTANT
+
+        sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+        annuaire = module_entreprises.charger_annuaire(ANNUAIRE)
+        dossiers = module_suivi.inventaire(sortie, SUIVI, annuaire)
+        for dossier in dossiers:
+            dossier["statut_libelle"] = next(
+                (s["libelle"] for s in module_suivi.STATUTS
+                 if s["cle"] == dossier.get("statut")), dossier.get("statut") or "")
+
+        cible = sortie / "dossiers-a-trancher.csv"
+        try:
+            combien, chemin = module_envoi.ecrire_liste_a_trancher(
+                cible, dossiers, seuil)
+        except OSError as exc:
+            self._json(400, {"erreur": str(exc)})
+            return
+
+        sans_adresse = sum(
+            1 for r in module_envoi.liste_a_trancher(dossiers, seuil)
+            if not r["adresse_postale"]
+        )
+        sans_telephone = sum(
+            1 for r in module_envoi.liste_a_trancher(dossiers, seuil)
+            if not r["telephone"]
+        )
+        self._json(200, {
+            "dossiers": combien,
+            "fichier": str(chemin),
+            "seuil": seuil,
+            "sans_adresse": sans_adresse,
+            "sans_telephone": sans_telephone,
         })
 
     def _oublier_complements(self) -> None:
@@ -2487,6 +2539,13 @@ select:focus,input.frais:focus,input.note:focus{outline:none;border-color:var(--
 .rangee{display:grid;grid-template-columns:196px 1fr 178px;align-items:center;
   gap:12px;padding:5px 0}
 .rangee:hover{background:rgba(255,255,255,.025);border-radius:6px}
+/* Une barre qui compte des dossiers mene a ces dossiers : le curseur le dit
+   avant le clic, faute de quoi personne ne l'essaie. */
+.rangee.menante{cursor:pointer}
+.rangee.menante:hover{background:rgba(255,255,255,.06)}
+.rangee.menante:hover .etiquette{color:var(--texte-1)}
+.rangee.menante:focus-visible{outline:2px solid var(--accent);outline-offset:2px;
+  border-radius:6px}
 .etiquette{font-size:12.5px;color:var(--texte-2);text-align:right}
 .piste{height:14px;background:rgba(255,255,255,.04);border-radius:4px;overflow:hidden}
 .remplissage{height:100%;border-radius:0 4px 4px 0;min-width:3px}
@@ -5470,8 +5529,13 @@ function rendreBord() {
   // qui décide où porter l'effort, et c'est lui que l'œil doit comparer. Le
   // nombre de dossiers reste en étiquette, jamais encodé par la longueur.
   const maximum = Math.max(1, ...a.par_statut.map((s) => s.montant));
+  // Chaque barre mene aux dossiers qu'elle compte : voir « 64 666 € sur 20
+  // dossiers » appelle la question « lesquels ? », et la reponse etait a
+  // reconstruire a la main, onglet par onglet, filtre par filtre.
   const barres = a.par_statut.map((s) => `
-    <div class="rangee" title="${echapper(s.libelle)} — ${euro(s.montant)}, ${s.nombre} dossier(s)${s.frais ? ", " + euro(s.frais) + " de frais engagés" : ""}">
+    <div class="rangee${s.nombre ? " menante" : ""}"
+         ${s.nombre ? `data-etat="${echapper(s.cle)}" role="button" tabindex="0"` : ""}
+         title="${echapper(s.libelle)} — ${euro(s.montant)}, ${s.nombre} dossier(s)${s.frais ? ", " + euro(s.frais) + " de frais engagés" : ""}${s.nombre ? " — cliquez pour voir ces dossiers" : ""}">
       <div class="etiquette">${s.icone ? s.icone + " " : ""}${echapper(s.libelle)}</div>
       <div class="piste">
         <div class="remplissage" style="width:${(100 * s.montant / maximum).toFixed(1)}%;
@@ -5494,7 +5558,63 @@ function rendreBord() {
        teinte, de la plus soutenue à la plus claire ; les trois issues portent une
        couleur d'état et une icône, la couleur seule ne les distinguant pas en
        vision deutéranope.</p>
-    <div class="barres">${barres}</div>`;
+    <div class="barres">${barres}</div>
+    <p class="aide">Cliquez une barre pour voir les dossiers qu'elle compte.</p>
+    <button class="secondaire" id="exporterATrancher"
+            title="Écrit un tableau des dossiers qui demandent une décision : possible abandon, ou montant trop faible pour justifier des frais. Avec l'adresse, le mail et le téléphone.">Exporter les dossiers à trancher</button>`;
+
+  if ($("exporterATrancher")) {
+    $("exporterATrancher").addEventListener("click", exporterATrancher);
+  }
+
+  $("grapheBord").querySelectorAll(".rangee.menante").forEach((rangee) => {
+    const aller = () => montrerLesDossiers(rangee.dataset.etat);
+    rangee.addEventListener("click", aller);
+    rangee.addEventListener("keydown", (evenement) => {
+      if (evenement.key === "Enter" || evenement.key === " ") {
+        evenement.preventDefault();
+        aller();
+      }
+    });
+  });
+}
+
+// D'une barre du tableau de bord aux dossiers qu'elle compte : on filtre sur
+// cet etat, et l'on bascule sur la liste. Le filtre etant partage, il tient
+// d'un onglet a l'autre — on peut passer aux documents sans le reperdre.
+// Les dossiers qui demandent une decision : possible abandon, ou montant
+// trop faible pour justifier des frais. Ce sont les memes qu'on trie en
+// reunion, et le tableau porte de quoi les joindre.
+async function exporterATrancher() {
+  const bouton = $("exporterATrancher");
+  const avant = bouton.textContent;
+  bouton.disabled = true;
+  bouton.textContent = "Écriture…";
+  try {
+    const r = await api("/api/liste-a-trancher", {});
+    if (!r.dossiers) {
+      afficherBandeau(true, "Aucun dossier à trancher : ni possible abandon, "
+        + `ni montant inférieur à ${euro(r.seuil)}.`);
+      return;
+    }
+    afficherBandeau(true,
+      `${r.dossiers} dossier(s) à trancher écrits dans ${echapper(r.fichier)}.`
+      + (r.sans_adresse ? ` ⚠ ${r.sans_adresse} sans adresse postale.` : "")
+      + (r.sans_telephone ? ` ⚠ ${r.sans_telephone} sans téléphone.` : ""));
+    try { await api("/api/ouvrir", { chemin: r.fichier }); }
+    catch (erreur) { void erreur; }
+  } catch (erreur) { afficherBandeau(false, erreur.message); }
+  finally { bouton.disabled = false; bouton.textContent = avant; }
+}
+
+function montrerLesDossiers(cle) {
+  ETATS_CHOISIS.clear();
+  ETATS_CHOISIS.add(cle);
+  remplirFiltresEtat();
+  rendreSuivi();
+  rendreDocuments();
+  const onglet = document.querySelector('button[data-vue="vueSuivi"]');
+  if (onglet) onglet.click();
 }
 
 function recalculer() {

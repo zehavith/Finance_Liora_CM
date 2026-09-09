@@ -4665,6 +4665,90 @@ def test_adresse_du_debiteur() -> None:
              "le récapitulatif la garde, pour ne pas la relire à chaque note")
 
 
+def test_dossiers_a_trancher() -> None:
+    """Les dossiers qui demandent une décision, et de quoi les joindre."""
+    import envoi as module_envoi  # noqa: PLC0415
+    import interface as module_interface  # noqa: PLC0415
+
+    print("\nDossiers à trancher")
+
+    dossiers = [
+        {"reference": "F-1", "nom": "SAS EDEN", "statut": "abandon-possible",
+         "montant_du": 5990.0, "montant_renseigne": True, "clos": False,
+         "emails": "a@x.fr", "telephone": "01 23 45 67 89",
+         "adresse_postale": "14 bis avenue de la République, 93300 AUBERVILLIERS",
+         "adresse_complete": True, "financement": "entreprise",
+         "date_echeance": "21/05/2024", "retard": 840},
+        # Petit montant : les frais approchent la créance.
+        {"reference": "F-2", "nom": "MCAPI", "statut": "non-transmis",
+         "montant_du": 2500.0, "montant_renseigne": True, "clos": False,
+         "emails": "b@x.fr", "telephone": "", "adresse_postale": "",
+         "adresse_complete": True, "financement": "entreprise"},
+        # Gros montant, étape ordinaire : rien à trancher.
+        {"reference": "F-3", "nom": "SIJO", "statut": "non-transmis",
+         "montant_du": 12490.0, "montant_renseigne": True, "clos": False,
+         "emails": "c@x.fr", "telephone": "", "adresse_postale": "",
+         "adresse_complete": True, "financement": "entreprise"},
+        # Clos : la décision a été prise, il n'y a plus rien à trancher.
+        {"reference": "F-4", "nom": "Ancien", "statut": "abandon",
+         "montant_du": 500.0, "montant_renseigne": True, "clos": True,
+         "emails": "d@x.fr", "telephone": "", "adresse_postale": "",
+         "adresse_complete": True, "financement": "personnel"},
+        # Montant non renseigné : ce n'est pas zéro, et zéro n'est pas petit.
+        {"reference": "F-5", "nom": "Inconnu", "statut": "non-transmis",
+         "montant_du": 0.0, "montant_renseigne": False, "clos": False,
+         "emails": "e@x.fr", "telephone": "", "adresse_postale": "",
+         "adresse_complete": True, "financement": "personnel"},
+    ]
+
+    rangees = module_envoi.liste_a_trancher(dossiers)
+    retenus = [r["reference"] for r in rangees]
+    verifier(retenus == ["F-1", "F-2"],
+             f"possible abandon et petits montants, rien d'autre ({retenus})")
+    verifier("possible abandon" in rangees[0]["motif"],
+             f"le motif est dit ({rangees[0]['motif']})")
+    verifier("inférieur à 3000" in rangees[1]["motif"],
+             f"pour l'un comme pour l'autre ({rangees[1]['motif']})")
+    # Le plus lourd d'abord : c'est par là qu'on commence une réunion.
+    verifier(rangees[0]["montant_du"] == "5990,00",
+             f"le plus lourd ouvre la liste ({rangees[0]['montant_du']})")
+    # Ce qu'il faut pour joindre le débiteur.
+    verifier(rangees[0]["telephone"] == "01 23 45 67 89"
+             and rangees[0]["emails"] == "a@x.fr"
+             and rangees[0]["adresse_postale"].startswith("14 bis"),
+             "avec l'adresse, le mail et le téléphone")
+
+    # Une adresse tronquée ne s'utilise pas telle quelle : la colonne le dit.
+    partiel = module_envoi.liste_a_trancher([dict(
+        dossiers[0], reference="F-6", adresse_postale="9 rue Ancienne",
+        adresse_complete=False)])
+    verifier(partiel[0]["adresse_a_completer"] == "à compléter",
+             "et une adresse incomplète est signalée dans le tableau")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        cible = Path(repertoire) / "dossiers-a-trancher.csv"
+        combien, _chemin = module_envoi.ecrire_liste_a_trancher(cible, dossiers)
+        verifier(combien == 2 and cible.exists(),
+                 f"le tableau est écrit ({combien} dossiers)")
+        entetes = next(csv.reader(
+            cible.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"))
+        verifier("Téléphone" in entetes and "Adresse postale" in entetes
+                 and "Nom du débiteur" in entetes,
+                 f"avec des en-têtes lisibles dans Excel ({entetes[:4]}…)")
+
+    # Une barre du tableau de bord mène aux dossiers qu'elle compte.
+    page = module_interface.PAGE
+    verifier('class="rangee${s.nombre ? " menante" : ""}"' in page
+             and "function montrerLesDossiers" in page,
+             "chaque barre mène aux dossiers qu'elle compte")
+    verifier("ETATS_CHOISIS.add(cle)" in page
+             and 'querySelector(\'button[data-vue="vueSuivi"]\')' in page,
+             "en filtrant sur cet état et en basculant sur la liste")
+    verifier('id="exporterATrancher"' in page
+             and '"/api/liste-a-trancher"' in page,
+             "et un bouton exporte la liste à trancher")
+
+
 def test_preparer_pour_envoi() -> None:
     """Un dossier ne s'attache pas à un mail : il lui faut un fichier."""
     import envoi as module_envoi  # noqa: PLC0415
@@ -9032,6 +9116,7 @@ def main() -> int:
     test_tout_effacer_respecte_la_reponse()
     test_deux_portefeuilles()
     test_adresse_du_debiteur()
+    test_dossiers_a_trancher()
     test_preparer_pour_envoi()
     test_pieces_cles_reunies()
     test_resume_de_la_conversation()

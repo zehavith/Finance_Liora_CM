@@ -61,6 +61,7 @@ COLONNES_RECAP = [
     "adresse_postale",
     "source_adresse",
     "adresse_complete",
+    "telephone",
     # Colonnes de tri pour arbitrer sur l'ensemble des dossiers d'un coup d'œil.
     "mise_en_demeure",
     "contestation",
@@ -158,6 +159,7 @@ class ResumeDossier:
     adresse_postale: str = ""
     source_adresse: str = ""
     adresse_complete: str = ""
+    telephone: str = ""
     mise_en_demeure: str = ""
     contestation: str = ""
     echeancier: str = ""
@@ -201,6 +203,7 @@ class ResumeDossier:
             "adresse_postale": self.adresse_postale,
             "source_adresse": self.source_adresse,
             "adresse_complete": self.adresse_complete,
+            "telephone": self.telephone,
             "mise_en_demeure": self.mise_en_demeure,
             "contestation": self.contestation,
             "echeancier": self.echeancier,

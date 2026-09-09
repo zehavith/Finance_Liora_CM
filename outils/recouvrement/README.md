@@ -521,6 +521,32 @@ l'échéance reste alors à saisir dans Monday. `pypdf` améliore l'extraction s
 est installé ; sans lui, un lecteur interne suffit pour une facture produite
 par un logiciel de facturation. `--sans-echeance-facture` désactive la lecture.
 
+### Les dossiers à trancher
+
+Deux barres du tableau de bord posent la même question : « lesquels ? ».
+**Cliquez une barre** — elle filtre la liste sur cet état et bascule sur
+*État des dossiers*. Le filtre étant partagé, il tient d'un onglet à l'autre.
+
+Le bouton **« Exporter les dossiers à trancher »**, sous le graphe, écrit
+`dossiers-a-trancher.csv` à la racine de l'export. Il retient :
+
+- les dossiers en **possible abandon de la créance** ;
+- ceux dont le **montant est inférieur à 3 000 €** — en dessous, les frais de
+  recouvrement approchent la créance, et la question se pose d'elle-même.
+
+Un dossier clos n'y figure pas : la décision a été prise. Un montant non
+renseigné non plus — ce n'est pas zéro, et zéro n'est pas un petit montant.
+
+Le tableau porte de quoi joindre le débiteur : **nom, adresse postale,
+adresse mail, téléphone**, plus le montant, l'échéance, le retard, l'état,
+le portefeuille et **le motif** de sa présence dans la liste. Le plus lourd
+en premier — c'est par là qu'on commence une réunion. Une adresse tronquée
+est marquée *« à compléter »*, et le compte des dossiers sans adresse ni
+téléphone est annoncé à l'écran.
+
+Le téléphone vient du tableau de suivi : une colonne « Téléphone »,
+« Portable », « Numéro de téléphone »… est reconnue automatiquement.
+
 ### Les dossiers en souffrance
 
 Les dossiers **transmis, non clôturés, et sans changement d'étape depuis plus

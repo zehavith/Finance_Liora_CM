@@ -1174,6 +1174,7 @@ def traiter_dossier(
     # a l'endroit ou on les cherche.
     import adresse as module_adresse  # noqa: PLC0415
 
+    resume.telephone = (getattr(dossier, "telephone", "") or "").strip()
     postale, source_adresse, complete = module_adresse.trouver(repertoire, dossier)
     if postale:
         dossier.adresse_postale = postale
