@@ -133,6 +133,16 @@ ALIAS_COLONNES = {
         "montant du au prorata", "montant au prorata",
         "prorata des heures faites", "montant prorata",
     ],
+    # L'adresse postale du debiteur : celle a laquelle part une mise en
+    # demeure, et sans laquelle un dossier ne se transmet pas a un huissier.
+    # Le tableau la porte souvent ; a defaut, elle se lit sur la convention
+    # ou sur la facture.
+    "adresse_postale": [
+        "adresse postale", "adresse du client", "adresse client",
+        "adresse de facturation", "adresse facturation",
+        "adresse de l apprenant", "adresse apprenant", "adresse du debiteur",
+        "adresse siege", "siege social", "adresse",
+    ],
     "statut": [
         "qualification generale pour dispach monday",
         "statut de la facture", "statut facture",
@@ -387,6 +397,10 @@ class Dossier:
     etape: str = ""
     montant_recu: str = ""
     montant_prorata: str = ""
+    adresse_postale: str = ""
+    # D'ou vient cette adresse : « tableau », « convention » ou « facture ».
+    # Une adresse lue sur un PDF est une deduction, et la note le dit.
+    source_adresse: str = ""
     commentaire: str = ""
     liens: list[str] = field(default_factory=list)
     # Exécution de la formation, telle que le suivi la connaît. Sert la note
@@ -834,6 +848,7 @@ def _fusionner(groupe: list[Dossier]) -> Dossier:
         commentaire=" · ".join(_union(lambda d: d.commentaire.split(" · "))),
         # L'exécution de la formation est la même pour toutes les factures
         # d'une apprenante : la première renseignée vaut pour le dossier.
+        adresse_postale=_premier_renseigne("adresse_postale"),
         convention_signee=_premier_renseigne("convention_signee"),
         diplome=_premier_renseigne("diplome"),
         heures_theoriques=_premier_renseigne("heures_theoriques"),
@@ -1430,6 +1445,7 @@ def dossiers_depuis_grille(
             etape=_premier("etape"),
             montant_recu=_premier("montant_recu"),
             montant_prorata=_premier("montant_prorata"),
+            adresse_postale=_premier("adresse_postale"),
             commentaire=" · ".join(valeurs["commentaire"]),
             convention_signee=_premier("convention_signee"),
             diplome=_premier("diplome"),

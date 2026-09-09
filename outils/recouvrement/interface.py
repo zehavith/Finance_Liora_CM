@@ -867,6 +867,35 @@ def reclasser_index(repertoire: Path, emails: Iterable[str] = ()) -> int:
     return len(rangees) - len(gardees)
 
 
+def _noter_adresse(repertoire: Path, reference: str,
+                   postale: str, source: str) -> None:
+    """Inscrit au récapitulatif une adresse lue sur une pièce.
+
+    Sans quoi elle serait relue à chaque note refaite : ouvrir deux PDF par
+    dossier, sur deux cents dossiers, pour retrouver ce qu'on savait déjà.
+
+    Jamais bloquant : un récapitulatif ouvert dans Excel ne se remplace pas,
+    et ce n'est pas une raison pour refuser de refaire une note.
+    """
+    chemin = repertoire.parent / "_recapitulatif.csv"
+    rangees = module_indexation.lire_recapitulatif(chemin)
+    touchee = False
+    for rangee in rangees:
+        if (rangee.get("reference") or "").strip() == reference:
+            rangee["adresse_postale"] = postale
+            rangee["source_adresse"] = source
+            touchee = True
+    if not touchee:
+        return
+    try:
+        module_indexation._ecrire_csv(
+            chemin, module_indexation.COLONNES_RECAP,
+            [{cle: r.get(cle, "") for cle in module_indexation.COLONNES_RECAP}
+             for r in rangees])
+    except OSError:
+        return
+
+
 def accorder_recapitulatif(repertoire: Path, reference: str) -> None:
     """Remet le récapitulatif d'accord avec l'index du dossier.
 
@@ -994,6 +1023,21 @@ def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[boo
         # obtenir sans qu'on refasse une heure d'export.
         export_mails.rassembler_pieces_cles(repertoire, lignes)
 
+        # L'adresse a laquelle part une mise en demeure. Cherchee ici aussi :
+        # un dossier exporte avant cette version doit l'obtenir sans qu'on
+        # refasse une heure d'export.
+        import adresse as module_adresse  # noqa: PLC0415
+
+        postale = (dossier.get("adresse_postale") or "").strip()
+        source_adresse = (dossier.get("source_adresse") or "").strip()
+        if not postale:
+            trouvee = type("_D", (), {
+                "adresse_postale": "", "nom": dossier.get("nom") or ""})()
+            postale, source_adresse = module_adresse.trouver(repertoire, trouvee)
+            if postale:
+                _noter_adresse(repertoire, dossier["reference"],
+                               postale, source_adresse)
+
         entree = suivi.get(dossier["reference"]) or {}
         contenu = module_synthese.construire_html(
             dossier=Dossier(
@@ -1003,6 +1047,8 @@ def _refaire_synthese(repertoire: Path, dossier: dict, suivi: dict) -> tuple[boo
                 factures=[f for f in (dossier.get("factures") or "").split(" | ") if f],
                 montant_du=str(dossier.get("montant_du") or ""),
                 montant_total=str(dossier.get("montant_total") or ""),
+                adresse_postale=postale,
+                source_adresse=source_adresse,
                 date_echeance=entree.get("echeance")
                 or dossier.get("date_echeance") or "",
                 # Refaire la note ne doit pas l'amputer : sans ces valeurs,

@@ -754,6 +754,34 @@ reconnue.
 Les dossiers déjà exportés l'obtiennent avec *Refaire les notes*, sans
 réexport.
 
+### L'adresse du débiteur
+
+C'est l'adresse à laquelle part une mise en demeure, et sans laquelle un
+dossier ne se transmet pas à un huissier. Elle figure dans la note, en tête,
+avec les autres éléments d'identité. Trois sources, dans cet ordre :
+
+1. **le tableau de suivi** — une colonne « Adresse », « Adresse postale »,
+   « Adresse du client », « Adresse de facturation »… ; c'est le service qui
+   la tient, et ce qu'il tient fait foi ;
+2. **la convention de formation** — signée par le débiteur, elle porte
+   l'adresse qu'il a donnée en s'engageant ;
+3. **la facture** — à défaut, l'adresse de facturation.
+
+Lue sur une pièce, elle est annoncée comme telle : *« 14 bis avenue de la
+République, 93300 Aubervilliers (lue sur la convention) »*. Une lecture se
+vérifie avant qu'un huissier s'y présente.
+
+Deux garde-fous : **aucune ligne n'est retenue sans code postal français
+suivi d'une commune** — « 12 rue des Lilas » tout seul ne prouve rien —, et
+**notre propre adresse est exclue** : une facture porte d'abord l'émetteur, et
+retenir la première adresse venue ferait mettre Liora en demeure elle-même.
+Sans lecture sûre, la note n'affiche pas d'adresse : mieux vaut aucune
+adresse qu'une fausse.
+
+Les dossiers déjà exportés l'obtiennent avec *Refaire les notes*, sans
+réexport — et elle est alors inscrite au récapitulatif, pour ne pas rouvrir
+les PDF à chaque note.
+
 ### Quels messages entrent au dossier
 
 Un dossier transmis au contentieux ne doit porter que les échanges du

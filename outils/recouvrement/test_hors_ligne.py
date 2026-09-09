@@ -4558,6 +4558,92 @@ def test_deux_portefeuilles() -> None:
              "le nombre de dossiers cochés s'affiche")
 
 
+def test_adresse_du_debiteur() -> None:
+    """L'adresse à laquelle part une mise en demeure, et d'où elle vient."""
+    import adresse as module_adresse  # noqa: PLC0415
+    import facture_pdf as module_facture  # noqa: PLC0415
+    import indexation as module_indexation  # noqa: PLC0415
+
+    print("\nAdresse postale du débiteur")
+
+    facture = (
+        "DATASCIENTEST\n6 rue Georges Bizet\n75116 PARIS\n"
+        "FACTURE N° FACT-2405-00409\n\nClient :\nSAS EDEN\n"
+        "14 bis avenue de la Republique\n93300 AUBERVILLIERS\n"
+    )
+    verifier(module_adresse.adresse_dans_le_texte(facture, "SAS EDEN")
+             == "14 bis avenue de la Republique, 93300 AUBERVILLIERS",
+             "l'adresse du client est lue, pas celle de l'en-tête")
+    # Notre propre adresse ne se met pas en demeure.
+    verifier(module_adresse.adresse_dans_le_texte(
+        "Notre siege : 6 rue Georges Bizet 75116 PARIS - Liora", "X") == "",
+        "et jamais la nôtre")
+    # Mieux vaut pas d'adresse qu'une fausse : on n'assigne pas à une
+    # adresse devinée.
+    verifier(module_adresse.adresse_dans_le_texte(
+        "Facture n° 123\nMontant 500 EUR") == "",
+        "sans code postal, rien n'est retenu")
+    verifier(module_adresse.adresse_dans_le_texte("") == "",
+             "un texte vide ne produit pas d'adresse")
+
+    with tempfile.TemporaryDirectory() as repertoire:
+        dossier = Path(repertoire)
+        for sous, nom in (("1-convention-devis-signe", "Convention.pdf"),
+                          ("2-facture", "FACT.pdf")):
+            (dossier / "pieces-cles" / sous).mkdir(parents=True)
+            (dossier / "pieces-cles" / sous / nom).write_bytes(b"%PDF")
+
+        textes = {
+            "Convention.pdf": "CONVENTION\nEt :\nSAS EDEN\n"
+                              "14 bis avenue de la Republique\n93300 AUBERVILLIERS\n",
+            "FACT.pdf": "FACTURE\nClient : SAS EDEN\n9 rue Ancienne\n75001 PARIS\n",
+        }
+        vrai = module_facture.texte_du_pdf
+        module_facture.texte_du_pdf = lambda c: textes.get(Path(c).name, "")
+        try:
+            class _Tableau:
+                adresse_postale = "3 place du Marché, 75004 PARIS"
+                nom = "SAS EDEN"
+
+            class _Sans:
+                adresse_postale = ""
+                nom = "SAS EDEN"
+
+            # 1. Le tableau d'abord : c'est le service qui la tient.
+            verifier(module_adresse.trouver(dossier, _Tableau())
+                     == ("3 place du Marché, 75004 PARIS", "tableau"),
+                     "le tableau l'emporte sur les pièces")
+            # 2. À défaut, la convention — signée du débiteur.
+            verifier(module_adresse.trouver(dossier, _Sans())
+                     == ("14 bis avenue de la Republique, 93300 AUBERVILLIERS",
+                         "convention"),
+                     "puis la convention")
+            # 3. À défaut, la facture.
+            (dossier / "pieces-cles" / "1-convention-devis-signe"
+             / "Convention.pdf").unlink()
+            verifier(module_adresse.trouver(dossier, _Sans())
+                     == ("9 rue Ancienne, 75001 PARIS", "facture"),
+                     "puis la facture")
+            # 4. Rien de lisible : aucune adresse, et aucune source.
+            module_facture.texte_du_pdf = lambda _c: "Facture 123"
+            verifier(module_adresse.trouver(dossier, _Sans()) == ("", ""),
+                     "et rien plutôt qu'une adresse devinée")
+        finally:
+            module_facture.texte_du_pdf = vrai
+
+    # La note la porte, en disant d'où elle vient : une adresse lue se
+    # vérifie avant qu'un huissier s'y présente.
+    source = Path("synthese.py").read_text(encoding="utf-8")
+    verifier('("Adresse postale", postale + origine)' in source,
+             "la note porte l'adresse")
+    verifier('"convention": " (lue sur la convention)"' in source
+             and '"facture": " (lue sur la facture)"' in source,
+             "et dit quand elle a été lue sur une pièce")
+    verifier("adresse_postale" in module_indexation.COLONNES_RECAP
+             and "source_adresse" in module_indexation.COLONNES_RECAP,
+             "le récapitulatif la garde, pour ne pas la relire à chaque note")
+
+
 def test_preparer_pour_envoi() -> None:
     """Un dossier ne s'attache pas à un mail : il lui faut un fichier."""
     import envoi as module_envoi  # noqa: PLC0415
@@ -8907,6 +8993,7 @@ def main() -> int:
     test_sauvegarde_du_suivi()
     test_tout_effacer_respecte_la_reponse()
     test_deux_portefeuilles()
+    test_adresse_du_debiteur()
     test_preparer_pour_envoi()
     test_pieces_cles_reunies()
     test_resume_de_la_conversation()

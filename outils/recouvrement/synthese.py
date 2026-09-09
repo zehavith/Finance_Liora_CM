@@ -2099,6 +2099,20 @@ def construire_html(
         ("Débiteur", dossier.nom or "—"),
         ("Adresses mail" if len(dossier.emails) > 1 else "Adresse mail",
          " | ".join(dossier.emails) or "—"),
+    ]
+
+    # L'adresse a laquelle part une mise en demeure. D'ou elle vient est dit :
+    # celle du tableau est saisie, celle d'un PDF est lue — et une lecture se
+    # verifie avant qu'un huissier s'y presente.
+    postale = (getattr(dossier, "adresse_postale", "") or "").strip()
+    if postale:
+        origine = {
+            "convention": " (lue sur la convention)",
+            "facture": " (lue sur la facture)",
+        }.get(getattr(dossier, "source_adresse", ""), "")
+        identite.append(("Adresse postale", postale + origine))
+
+    identite += [
         ("Factures" if len(dossier.factures) > 1 else "Facture",
          " | ".join(dossier.factures) or "—"),
         ("Boîtes interrogées", ", ".join(boites)),
