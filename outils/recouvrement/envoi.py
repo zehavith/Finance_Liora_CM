@@ -550,6 +550,46 @@ def _montant_trie(texte: str) -> float:
         return 0.0
 
 
+def ecrire_liste(cible: Path, dossiers: list[dict], motif: str = "") -> tuple[int, Path]:
+    """Écrit un tableau des dossiers donnés, tels quels.
+
+    Mêmes colonnes que la liste à trancher — nom, adresse, mail, téléphone,
+    montant, échéance, retard, état — parce que ce sont celles dont on a
+    besoin pour agir, quel que soit le tableau qu'on exporte.
+    """
+    from indexation import _ecrire_csv  # noqa: PLC0415
+
+    rangees = []
+    for dossier in dossiers:
+        montant = dossier.get("montant_du") or 0
+        rangees.append({
+            "reference": dossier.get("reference") or "",
+            "nom": dossier.get("nom") or "",
+            "adresse_postale": dossier.get("adresse_postale") or "",
+            "adresse_a_completer": (
+                "" if dossier.get("adresse_complete", True) else "à compléter"),
+            "emails": dossier.get("emails") or "",
+            "telephone": dossier.get("telephone") or "",
+            "montant_du": f"{montant:.2f}".replace(".", ",") if montant else "",
+            "date_echeance": dossier.get("date_echeance") or "",
+            "jours_de_retard": str(dossier.get("anciennete_jours") or ""),
+            "etat": dossier.get("statut_libelle") or dossier.get("statut") or "",
+            "financement": {
+                "entreprise": "Entreprise",
+                "personnel": "Financement personnel",
+            }.get(dossier.get("financement") or "", ""),
+            "motif": motif,
+        })
+    rangees.sort(key=lambda r: -_montant_trie(r["montant_du"]))
+    _ecrire_csv(
+        cible,
+        [ENTETES_A_TRANCHER[cle] for cle in COLONNES_A_TRANCHER],
+        [{ENTETES_A_TRANCHER[cle]: rangee[cle] for cle in COLONNES_A_TRANCHER}
+         for rangee in rangees],
+    )
+    return len(rangees), cible
+
+
 def ecrire_liste_a_trancher(
     cible: Path, dossiers: list[dict], seuil: float = SEUIL_PETIT_MONTANT
 ) -> tuple[int, Path]:

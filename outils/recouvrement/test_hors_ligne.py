@@ -4741,9 +4741,39 @@ def test_dossiers_a_trancher() -> None:
     verifier('class="rangee${s.nombre ? " menante" : ""}"' in page
              and "function montrerLesDossiers" in page,
              "chaque barre mène aux dossiers qu'elle compte")
-    verifier("ETATS_CHOISIS.add(cle)" in page
-             and 'querySelector(\'button[data-vue="vueSuivi"]\')' in page,
-             "en filtrant sur cet état et en basculant sur la liste")
+    # Quel que soit l'état cliqué, le détail s'ouvre : combien de dossiers,
+    # combien d'argent, dans quels portefeuilles, et ce qui manque pour agir.
+    verifier("function rendreDetailEtat" in page and 'id="detailEtat"' in page,
+             "et ouvre le détail de cet état, quel qu'il soit")
+    for morceau in ("Par portefeuille", "Ce qui manque pour agir",
+                    "sans adresse postale", "sans téléphone",
+                    "sans convention signée"):
+        verifier(morceau in page, f"le détail porte « {morceau} »")
+    verifier("function ouvrirListeFiltree" in page
+             and "ETATS_CHOISIS.add(cle)" in page,
+             "et mène de là à la liste filtrée")
+
+    # Le téléphone et l'adresse se saisissent : le tableau ne les porte pas
+    # toujours, et ce qu'on retrouve à la main doit tenir.
+    verifier('class="telephone" data-champ="telephone"' in page
+             and 'data-champ="adresse_postale"' in page,
+             "le téléphone et l'adresse se saisissent à la main")
+    import suivi as module_suivi_saisie  # noqa: PLC0415
+    donnees = {}
+    module_suivi_saisie.mettre_a_jour(
+        donnees, "F-1", telephone="06 12 34 56 78",
+        adresse_postale="9 rue Ancienne, 75001 PARIS")
+    verifier(donnees["F-1"].get("telephone") == "06 12 34 56 78"
+             and donnees["F-1"].get("adresse_postale").startswith("9 rue"),
+             "et la saisie est enregistrée")
+    module_suivi_saisie.mettre_a_jour(donnees, "F-1", telephone="")
+    verifier("telephone" not in donnees["F-1"],
+             "vider le champ rend la main au tableau")
+
+    # Un tableau qu'on regarde, on veut souvent l'emporter.
+    verifier('id="exporterEtat"' in page and 'id="exporterSuivi"' in page
+             and '"/api/exporter-liste"' in page,
+             "chaque tableau s'exporte")
     verifier('id="exporterATrancher"' in page
              and '"/api/liste-a-trancher"' in page,
              "et un bouton exporte la liste à trancher")

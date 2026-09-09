@@ -523,9 +523,26 @@ par un logiciel de facturation. `--sans-echeance-facture` désactive la lecture.
 
 ### Les dossiers à trancher
 
-Deux barres du tableau de bord posent la même question : « lesquels ? ».
-**Cliquez une barre** — elle filtre la liste sur cet état et bascule sur
-*État des dossiers*. Le filtre étant partagé, il tient d'un onglet à l'autre.
+**Cliquez n'importe quelle barre** du tableau de bord : le détail de cet
+état s'ouvre en dessous —
+
+- **combien de dossiers**, combien déjà transmis ;
+- **le montant dû**, le montant moyen, ce qui a été encaissé, les frais ;
+- **par portefeuille** : entreprise et financement personnel, séparés ;
+- **ce qui manque pour agir** : sans adresse postale, adresse à compléter,
+  sans téléphone, sans convention signée, sans note de synthèse ;
+- **les dossiers eux-mêmes**, du plus lourd au plus léger, avec leur adresse
+  et leur téléphone — **saisissables à la main** : le tableau de suivi ne les
+  porte pas toujours, et ce qu'on retrouve par un appel doit tenir. Ce qui est
+  saisi l'emporte, et le prochain export ne l'efface pas.
+
+De là, deux boutons : **Exporter ce tableau**, et **Ouvrir ces dossiers dans
+la liste** pour agir dessus.
+
+Le même bouton **Exporter ce tableau** figure au-dessus de *État des
+dossiers* : il écrit ce que la liste montre, **telle qu'elle est filtrée**.
+Le nom du fichier reprend le filtre — `liste-possible-abandon-de-la-creance.csv`
+se retrouve dans un répertoire, `liste.csv` non.
 
 Le bouton **« Exporter les dossiers à trancher »**, sous le graphe, écrit
 `dossiers-a-trancher.csv` à la racine de l'export. Il retient :

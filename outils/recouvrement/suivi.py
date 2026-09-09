@@ -328,6 +328,8 @@ def mettre_a_jour(
     echeance: str | None = None,
     references: str | None = None,
     financement: str | None = None,
+    telephone: str | None = None,
+    adresse_postale: str | None = None,
 ) -> dict:
     if statut is not None and statut not in CLES_STATUTS:
         raise ValueError(f"Statut inconnu : {statut}")
@@ -369,6 +371,18 @@ def mettre_a_jour(
             entree["financement"] = choix
         else:
             entree.pop("financement", None)
+
+    # Le telephone et l'adresse : le tableau ne les porte pas toujours, et
+    # ce qui manque se retrouve a la main — un appel, une recherche. Ce qui
+    # est saisi ici l'emporte sur le tableau et tient.
+    for champ, valeur in (("telephone", telephone),
+                          ("adresse_postale", adresse_postale)):
+        if valeur is not None:
+            texte = " ".join(str(valeur).split())
+            if texte:
+                entree[champ] = texte
+            else:
+                entree.pop(champ, None)
 
     for champ, valeur in (("convention", convention), ("diplome", diplome),
                           ("contexte", contexte)):
@@ -641,10 +655,17 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path,
                 "emails": (rangee.get("emails") or "").strip(),
                 # De quoi joindre le debiteur autrement que par mail, et lui
                 # ecrire : c'est ce que demande un dossier a trancher.
-                "telephone": (rangee.get("telephone") or "").strip(),
-                "adresse_postale": (rangee.get("adresse_postale") or "").strip(),
-                "adresse_complete":
-                    (rangee.get("adresse_complete") or "").strip() != "non",
+                # La saisie du service l'emporte : le tableau se tait
+                # souvent, et ce qui a ete retrouve a la main ne doit pas
+                # etre efface par le prochain export.
+                "telephone": (etat.get("telephone")
+                              or rangee.get("telephone") or "").strip(),
+                "adresse_postale": (etat.get("adresse_postale")
+                                    or rangee.get("adresse_postale") or "").strip(),
+                "adresse_complete": (
+                    True if etat.get("adresse_postale")
+                    else (rangee.get("adresse_complete") or "").strip() != "non"
+                ),
                 "source_adresse": (rangee.get("source_adresse") or "").strip(),
                 "factures": (rangee.get("factures") or "").strip(),
                 "montant_du": _nombre(rangee.get("montant_du")),

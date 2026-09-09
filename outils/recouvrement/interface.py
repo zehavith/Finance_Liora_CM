@@ -1495,6 +1495,9 @@ class Gestionnaire(BaseHTTPRequestHandler):
             if chemin == "/api/liste-a-trancher":
                 self._exporter_a_trancher(self._corps_json())
                 return
+            if chemin == "/api/exporter-liste":
+                self._exporter_liste(self._corps_json())
+                return
             if chemin == "/api/restaurer-suivi":
                 self._restaurer_suivi(self._corps_json())
                 return
@@ -1930,6 +1933,54 @@ class Gestionnaire(BaseHTTPRequestHandler):
             "financement": dossier.get("financement") or "",
         })
 
+    def _exporter_liste(self, demande: dict | None = None) -> None:
+        """Écrit un tableau des dossiers demandés — ceux qui sont à l'écran.
+
+        Un tableau qu'on regarde, on veut souvent l'emporter : dans un mail,
+        dans une réunion, dans un tableur pour l'annoter. Les colonnes sont
+        celles dont on a besoin pour agir, pas celles de l'affichage.
+        """
+        import entreprises as module_entreprises  # noqa: PLC0415
+        import envoi as module_envoi  # noqa: PLC0415
+
+        demandees = [
+            str(reference).strip()
+            for reference in ((demande or {}).get("references") or [])
+            if str(reference).strip()
+        ]
+        titre = " ".join(str((demande or {}).get("titre") or "").split())
+
+        sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
+        annuaire = module_entreprises.charger_annuaire(ANNUAIRE)
+        dossiers = module_suivi.inventaire(sortie, SUIVI, annuaire)
+        for dossier in dossiers:
+            dossier["statut_libelle"] = next(
+                (s["libelle"] for s in module_suivi.STATUTS
+                 if s["cle"] == dossier.get("statut")), dossier.get("statut") or "")
+
+        voulus = set(demandees)
+        retenus = [d for d in dossiers if not voulus or d["reference"] in voulus]
+        if not retenus:
+            self._json(400, {"erreur": "Aucun dossier à exporter."})
+            return
+
+        # Le nom du fichier dit ce qu'il porte : trois exports dans le même
+        # répertoire, et « export.csv » ne désigne plus rien.
+        base = export_mails.slug(titre or "liste", 50) or "liste"
+        cible = sortie / f"liste-{base}.csv"
+        try:
+            combien, chemin = module_envoi.ecrire_liste(cible, retenus, titre)
+        except OSError as exc:
+            self._json(400, {"erreur": str(exc)})
+            return
+
+        self._json(200, {
+            "dossiers": combien,
+            "fichier": str(chemin),
+            "sans_adresse": sum(1 for d in retenus if not d.get("adresse_postale")),
+            "sans_telephone": sum(1 for d in retenus if not d.get("telephone")),
+        })
+
     def _exporter_a_trancher(self, demande: dict | None = None) -> None:
         """Écrit la liste des dossiers qui demandent une décision.
 
@@ -2285,6 +2336,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 diplome=demande.get("diplome"),
                 echeance=demande.get("echeance"),
                 financement=demande.get("financement"),
+                telephone=demande.get("telephone"),
+                adresse_postale=demande.get("adresse_postale"),
             )
             module_suivi.enregistrer(SUIVI, donnees)
         except ValueError as exc:
@@ -2720,6 +2773,8 @@ button:disabled{opacity:.45;cursor:not-allowed}
         <div class="panneau-etats" id="panneauEtatSuivi" hidden></div>
       </div>
       <span class="compte-recherche" id="compteSuivi"></span>
+      <button class="secondaire" id="exporterSuivi"
+              title="Écrit un tableau des dossiers affichés — nom, adresse, mail, téléphone, montant, état.">Exporter ce tableau</button>
     </div>
     <div id="tableSuivi"></div>
   </section>
@@ -4914,6 +4969,12 @@ function rendreSuivi() {
     coche.addEventListener("change", majSelection));
   brancherToutChoisir($("tableSuivi"), majSelection);
   $("supprimer").addEventListener("click", supprimerChoisis);
+  // Ce que la liste montre, telle qu'elle est filtree : c'est ce qu'on
+  // regarde, donc ce qu'on veut emporter.
+  if ($("exporterSuivi")) {
+    $("exporterSuivi").addEventListener("click",
+      () => exporterTableau(dossiersFiltres(), _titreDuFiltre()));
+  }
   $("toutEffacer").addEventListener("click", toutEffacer);
   // Le bouton figure a plusieurs endroits — la barre, le bloc des factures
   // absentes, le message de liste vide — parce qu'on le cherche la ou le
@@ -5559,13 +5620,17 @@ function rendreBord() {
        couleur d'état et une icône, la couleur seule ne les distinguant pas en
        vision deutéranope.</p>
     <div class="barres">${barres}</div>
-    <p class="aide">Cliquez une barre pour voir les dossiers qu'elle compte.</p>
+    <p class="aide">Cliquez une barre pour voir le détail de cet état.</p>
+    <div id="detailEtat"></div>
     <button class="secondaire" id="exporterATrancher"
             title="Écrit un tableau des dossiers qui demandent une décision : possible abandon, ou montant trop faible pour justifier des frais. Avec l'adresse, le mail et le téléphone.">Exporter les dossiers à trancher</button>`;
 
   if ($("exporterATrancher")) {
     $("exporterATrancher").addEventListener("click", exporterATrancher);
   }
+  // Le detail ouvert survit au reaffichage : corriger une etape ne doit pas
+  // refermer ce qu'on etait en train de lire.
+  rendreDetailEtat();
 
   $("grapheBord").querySelectorAll(".rangee.menante").forEach((rangee) => {
     const aller = () => montrerLesDossiers(rangee.dataset.etat);
@@ -5585,6 +5650,38 @@ function rendreBord() {
 // Les dossiers qui demandent une decision : possible abandon, ou montant
 // trop faible pour justifier des frais. Ce sont les memes qu'on trie en
 // reunion, et le tableau porte de quoi les joindre.
+// Un tableau qu'on regarde, on veut souvent l'emporter : dans un mail, dans
+// une reunion, dans un tableur pour l'annoter.
+// Le nom du fichier dit ce qu'il porte : « liste-possible-abandon.csv » se
+// retrouve dans un repertoire, « liste.csv » non.
+function _titreDuFiltre() {
+  const etats = STATUTS.filter((s) => ETATS_CHOISIS.has(s.cle))
+    .map((s) => s.libelle);
+  const bouts = [];
+  if (etats.length) bouts.push(etats.join(" et "));
+  if (RECHERCHE.trim()) bouts.push(RECHERCHE.trim());
+  return bouts.join(" - ") || "tous les dossiers";
+}
+
+async function exporterTableau(dossiers, titre) {
+  if (!dossiers.length) {
+    afficherBandeau(false, "Aucun dossier à exporter.");
+    return;
+  }
+  try {
+    const r = await api("/api/exporter-liste", {
+      references: dossiers.map((d) => d.reference),
+      titre: titre || "",
+    });
+    afficherBandeau(true,
+      `${r.dossiers} dossier(s) écrits dans ${echapper(r.fichier)}.`
+      + (r.sans_adresse ? ` ⚠ ${r.sans_adresse} sans adresse postale.` : "")
+      + (r.sans_telephone ? ` ⚠ ${r.sans_telephone} sans téléphone.` : ""));
+    try { await api("/api/ouvrir", { chemin: r.fichier }); }
+    catch (erreur) { void erreur; }
+  } catch (erreur) { afficherBandeau(false, erreur.message); }
+}
+
 async function exporterATrancher() {
   const bouton = $("exporterATrancher");
   const avant = bouton.textContent;
@@ -5607,7 +5704,23 @@ async function exporterATrancher() {
   finally { bouton.disabled = false; bouton.textContent = avant; }
 }
 
+// Cliquer une barre ouvre le detail de cet etat, sur place : combien de
+// dossiers, combien d'argent, dans quels portefeuilles, depuis combien de
+// temps, et ce qui manque pour agir. « 64 666 € sur 20 dossiers » appelle la
+// question « lesquels, et que fait-on ? » ; y repondre demandait de
+// reconstruire le compte a la main, onglet par onglet.
+let ETAT_DETAILLE = "";
+
 function montrerLesDossiers(cle) {
+  ETAT_DETAILLE = ETAT_DETAILLE === cle ? "" : cle;
+  rendreDetailEtat();
+  const zone = $("detailEtat");
+  if (zone && ETAT_DETAILLE) zone.scrollIntoView({ block: "nearest" });
+}
+
+// D'ici a la liste filtree : le detail dit ce qu'il en est, la liste permet
+// d'agir dessus. Le filtre etant partage, il tient d'un onglet a l'autre.
+function ouvrirListeFiltree(cle) {
   ETATS_CHOISIS.clear();
   ETATS_CHOISIS.add(cle);
   remplirFiltresEtat();
@@ -5615,6 +5728,131 @@ function montrerLesDossiers(cle) {
   rendreDocuments();
   const onglet = document.querySelector('button[data-vue="vueSuivi"]');
   if (onglet) onglet.click();
+}
+
+function rendreDetailEtat() {
+  const zone = $("detailEtat");
+  if (!zone) return;
+  if (!ETAT_DETAILLE) { zone.innerHTML = ""; return; }
+
+  const etat = STATUTS.find((s) => s.cle === ETAT_DETAILLE);
+  const retenus = DOSSIERS.filter((d) => (d.statut || "non-transmis") === ETAT_DETAILLE);
+  if (!etat || !retenus.length) { zone.innerHTML = ""; return; }
+
+  const somme = (f) => retenus.reduce((t, d) => t + (f(d) || 0), 0);
+  const du = somme((d) => d.montant_du);
+  const recu = somme((d) => d.montant_recu);
+  const frais = somme((d) => d.frais);
+  const connus = retenus.filter((d) => d.montant_renseigne !== false);
+
+  const tuile = (libelle, valeur, sous) => `
+    <div class="tuile"><div class="lib">${echapper(libelle)}</div>
+      <div class="val">${valeur}</div>
+      <div class="sous">${echapper(sous || "")}</div></div>`;
+
+  const chiffres = [
+    tuile("Dossiers", retenus.length,
+          `${retenus.filter((d) => d.transmis).length} déjà transmis`),
+    tuile("Montant dû", euro(du),
+          connus.length ? `${euro(du / connus.length)} en moyenne` : "montant non renseigné"),
+    tuile("Déjà encaissé", euro(recu),
+          `${retenus.filter((d) => (d.montant_recu || 0) > 0).length} dossier(s)`),
+    tuile("Frais engagés", euro(frais), "avocat, huissier, greffe"),
+  ].join("");
+
+  // Par portefeuille : les deux partent a deux responsables differents.
+  const parts = ["entreprise", "personnel"].map((f) => {
+    const part = retenus.filter((d) => d.financement === f);
+    return part.length ? `<tr><td>${f === "entreprise" ? "Entreprise"
+      : "Financement personnel"}</td><td class="num">${part.length}</td>
+      <td class="num">${euro(part.reduce((t, d) => t + (d.montant_du || 0), 0))}</td></tr>` : "";
+  }).filter(Boolean).join("");
+
+  // Ce qui manque pour agir : sans ces trois-la, on ne poursuit pas.
+  const manques = [
+    ["sans adresse postale", retenus.filter((d) => !d.adresse_postale).length],
+    ["adresse à compléter",
+     retenus.filter((d) => d.adresse_postale && d.adresse_complete === false).length],
+    ["sans téléphone", retenus.filter((d) => !d.telephone).length],
+    ["sans convention signée",
+     retenus.filter((d) => d.convention_signee !== true).length],
+    ["sans note de synthèse", retenus.filter((d) => !d.a_synthese).length],
+  ].filter(([, combien]) => combien > 0)
+   .map(([quoi, combien]) => `<li>${combien} ${echapper(quoi)}</li>`).join("");
+
+  // Les dossiers eux-memes, du plus lourd au plus leger.
+  const lignes = retenus.slice()
+    .sort((a, b) => (b.montant_du || 0) - (a.montant_du || 0))
+    .slice(0, 40)
+    .map((d) => `<tr>
+      <td><b>${echapper(d.reference)}</b><br />
+        <span style="color:var(--texte-3)">${echapper(d.nom || "")}</span></td>
+      <td class="num">${montantDu(d)}</td>
+      <td class="num">${retard(d.anciennete_jours)}</td>
+      <td><input class="adresse-postale" data-champ="adresse_postale"
+          data-ref="${echapper(d.reference)}" type="text"
+          value="${echapper(d.adresse_postale || "")}"
+          placeholder="14 bis avenue de la République, 93300 Aubervilliers"
+          title="Le tableau ne la porte pas toujours. Saisie ici, elle l'emporte et tient." />
+        ${d.adresse_postale && d.adresse_complete === false
+          ? '<span class="perimee">à compléter</span>' : ""}</td>
+      <td><input class="telephone" data-champ="telephone"
+          data-ref="${echapper(d.reference)}" type="text"
+          value="${echapper(d.telephone || "")}" placeholder="06 12 34 56 78"
+          title="Le tableau ne le porte pas toujours. Saisi ici, il l'emporte et tient." /></td>
+    </tr>`).join("");
+
+  zone.innerHTML = `
+    <div class="detail-etat">
+      <h3><i style="background:${echapper(etat.couleur)}"></i>
+        ${etat.icone ? echapper(etat.icone) + " " : ""}${echapper(etat.libelle)}</h3>
+      <div class="tuiles">${chiffres}</div>
+      ${parts ? '<h4>Par portefeuille</h4><table class="donnees"><tr>'
+        + '<th>Portefeuille</th><th class="num">Dossiers</th>'
+        + '<th class="num">Montant dû</th></tr>' + parts + "</table>" : ""}
+      ${manques ? "<h4>Ce qui manque pour agir</h4><ul class=\"constats\">"
+        + manques + "</ul>" : ""}
+      <h4>Les dossiers${retenus.length > 40
+        ? " — les 40 plus lourds sur " + retenus.length : ""}</h4>
+      <div class="defilable"><table class="donnees">
+        <tr><th>Dossier</th><th class="num">Montant dû</th><th class="num">Retard</th>
+          <th>Adresse postale</th><th>Téléphone</th></tr>${lignes}</table></div>
+      <div class="boutons">
+        <button class="secondaire" id="exporterEtat">Exporter ce tableau</button>
+        <button class="secondaire" id="allerListeEtat">Ouvrir ces dossiers dans la liste</button>
+        <button class="secondaire" id="fermerDetailEtat">Fermer</button>
+      </div>
+    </div>`;
+
+  // Saisir ce que le tableau ne porte pas : un telephone retrouve par un
+  // appel, une adresse completee. Ce qui est saisi tient, et le prochain
+  // export ne l'efface pas.
+  zone.querySelectorAll("[data-champ]").forEach((champ) =>
+    champ.addEventListener("change", async () => {
+      try {
+        await api("/api/suivi", {
+          reference: champ.dataset.ref,
+          [champ.dataset.champ]: champ.value,
+        });
+        const dossier = DOSSIERS.find((d) => d.reference === champ.dataset.ref);
+        if (dossier) {
+          dossier[champ.dataset.champ] = champ.value.trim();
+          if (champ.dataset.champ === "adresse_postale") {
+            dossier.adresse_complete = true;
+          }
+        }
+        rendreDetailEtat();
+      } catch (erreur) { afficherBandeau(false, erreur.message); }
+    }));
+
+  $("exporterEtat").addEventListener("click",
+    () => exporterTableau(retenus, etat.libelle));
+  $("allerListeEtat").addEventListener("click",
+    () => ouvrirListeFiltree(ETAT_DETAILLE));
+  $("fermerDetailEtat").addEventListener("click", () => {
+    ETAT_DETAILLE = "";
+    rendreDetailEtat();
+  });
 }
 
 function recalculer() {
