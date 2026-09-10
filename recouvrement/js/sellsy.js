@@ -95,6 +95,10 @@
         montant:    ['montant ttc', 'total ttc', 'ttc', 'montant', 'total'],
         montantHT:  ['montant ht', 'total ht', 'ht'],
         resteDu:    ['montant du ttc', 'montant du', 'restant du', 'reste du', 'reste a payer', 'solde du', 'solde'],
+        // Le reste à charge après acompte : sur un dossier CPF, l'apprenant
+        // verse souvent une part à l'inscription et la Caisse des Dépôts ne
+        // règle que ce qui reste. C'est cette colonne qui le porte.
+        montantRAC: ['montant rac', 'montant r a c', 'rac', 'reste a charge', 'montant reste a charge'],
         dateFacture: ['date', 'date de facture', 'date facture', 'date d emission'],
         dateEcheanceSource: ['date d echeance', 'echeance', 'date limite de paiement'],
         // Sellsy nomme les dates de formation « début » et « fin de service ».
@@ -277,6 +281,7 @@
                 client: mapping.client ? String(r[mapping.client] || '').trim() : '',
                 montant,
                 montantHT: mapping.montantHT ? I.parseMontant(r[mapping.montantHT]) : null,
+                montantRAC: mapping.montantRAC ? I.parseMontant(r[mapping.montantRAC]) : null,
                 resteDu,
                 dateFacture: mapping.dateFacture ? R.parseDate(r[mapping.dateFacture]) : null,
                 dateEcheance: mapping.dateEcheanceSource ? R.parseDate(r[mapping.dateEcheanceSource]) : null,
@@ -306,6 +311,7 @@
             if (!prec) { parCle.set(l.cle, { ...l, lignesExport: 1 }); continue; }
             prec.lignesExport++;
             if (prec.montant == null) prec.montant = l.montant;
+            if (prec.montantRAC == null) prec.montantRAC = l.montantRAC;
             if (!prec.dateFacture) prec.dateFacture = l.dateFacture;
             if (!prec.typeClient) prec.typeClient = l.typeClient;
             if (!prec.dateDebutService) prec.dateDebutService = l.dateDebutService;

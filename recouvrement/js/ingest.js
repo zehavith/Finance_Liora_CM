@@ -37,6 +37,10 @@
         { field: 'montant',              label: 'Montant TTC',            aliases: ['montant ttc', 'total ttc', 'total facture', 'total de la facture', 'montant de la facture', 'montant facture', 'montant', 'total', 'prix ttc', 'ca ttc', 'montant total', 'montant tct', 'prix', 'cout', 'cout total', 'cout formation', 'cout de la formation', 'tarif', 'somme', 'valeur'] },
         { field: 'montantHT',            label: 'Montant HT',             aliases: ['montant ht', 'total ht', 'ca ht', 'prix ht'] },
         { field: 'montantRegle',         label: 'Montant réglé',          aliases: ['montant regle', 'montant paye', 'deja regle', 'encaisse', 'montant encaisse', 'total regle'] },
+        // Le reste à charge : sur un dossier CPF, l'apprenant verse souvent un
+        // acompte, et c'est cette colonne qui porte ce qui reste dû après lui.
+        // La différence avec le montant de la facture est déjà encaissée.
+        { field: 'montantRAC',           label: 'Montant RAC (reste à charge)', aliases: ['montant rac', 'montant r a c', 'rac', 'reste a charge', 'montant reste a charge', 'rac ttc', 'montant rac ttc'] },
         { field: 'resteDu',              label: 'Reste dû',               aliases: ['montant du ttc', 'montant du ht', 'montant du', 'reste du', 'restant du', 'reste a payer', 'reste a regler', 'montant a payer', 'solde du', 'solde restant', 'solde', 'reliquat'] },
         { field: 'dateFacture',          label: 'Date de facture',        aliases: ['date de facture', 'date facture', 'date d emission', 'date emission', 'date de la facture', 'date piece', 'date facturation', 'date de facturation', 'facturation', 'date creation facture', 'date edition'] },
         { field: 'dateEcheanceSource',   label: 'Date d’échéance',   aliases: ['date d echeance', 'date echeance', 'echeance', 'date limite de paiement', 'date limite', 'date de reglement prevue', 'date calculee', 'date negociee', 'date calcule negocie'] },
@@ -343,6 +347,7 @@
 
             montant: montant,
             montantHT: parseMontant(v.montantHT),
+            montantRAC: parseMontant(v.montantRAC),
             montantRegle: montantRegle,
             resteDu: resteDu,
 
@@ -660,7 +665,7 @@
     function mergeFacture(base, extra) {
         const out = { ...base };
         // Champs conservés depuis la source la plus riche (non vide gagne)
-        const champs = ['client', 'financement', 'financementBrut', 'typeClient', 'montant', 'montantHT', 'montantRegle',
+        const champs = ['client', 'financement', 'financementBrut', 'typeClient', 'montant', 'montantHT', 'montantRegle', 'montantRAC',
             'resteDu', 'dateFacture', 'dateDebutFormation', 'dateFinFormation', 'dateEcheanceSource',
             'datePaiement', 'dateControlePaiement', 'statut', 'proprietaire', 'qualifRecouvrement', 'qualifBascule',
             'relance', 'commentaire', 'litige', 'groupeOrigine', 'motif', 'motifColonne'];
@@ -1038,6 +1043,9 @@
                 f.montantVientDeSellsy = true;
                 st.montants++;
             }
+            // Le reste à charge après acompte, quand la facturation le porte :
+            // c'est lui qui fait la créance sur un dossier avec acompte.
+            if (f.montantRAC == null && l.montantRAC != null) f.montantRAC = l.montantRAC;
             if (!f.dateFacture && l.dateFacture) {
                 f.dateFacture = l.dateFacture;
                 f.dateFactureVientDeSellsy = true;
@@ -1194,6 +1202,34 @@
             const paye = motif != null && !f.soldeeParAvoir;
             f.paye = paye;
             f.motifPaye = f.soldeeParAvoir ? 'Annulée par un avoir au grand livre' : motif;
+
+            // L'acompte, et ce qu'il change.
+            //
+            // Sur un dossier CPF, l'apprenant verse très souvent un acompte au
+            // moment de l'inscription : la Caisse des Dépôts ne règle que le
+            // reste. Sellsy porte ce reste dans « Montant RAC » — reste à
+            // charge — et la différence avec le montant de la facture est déjà
+            // encaissée.
+            //
+            // Sans cette lecture, la balance âgée réclamait le montant entier
+            // d'une facture déjà partiellement payée, et surestimait le CPF
+            // d'autant. Le montant de la facture est conservé à part : c'est
+            // lui qui fait le chiffre facturé, le reste à charge fait la
+            // créance.
+            // Recalculable : si une passe précédente a déjà ramené le montant
+            // au reste à charge, on repart du montant de la facture.
+            if (f.montantFacture != null) f.montant = f.montantFacture;
+            f.montantFacture = f.montant;
+            f.acompte = 0;
+            f.montantVientDuRAC = false;
+            if (!f.paye && f.montantRAC != null && f.montant != null
+                && f.montantRAC > 0 && f.montantRAC < f.montant) {
+                f.acompte = f.montant - f.montantRAC;
+                f.montant = f.montantRAC;
+                f.montantRegle = Math.max(f.montantRegle || 0, f.acompte);
+                f.montantVientDuRAC = true;
+            }
+
 
             // Signaux de règlement portés par un tableau opérationnel : ils ne
             // valent pas paiement, mais méritent d'être signalés.
