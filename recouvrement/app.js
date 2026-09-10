@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.59.0';
+    const VERSION = '2.60.0';
     const VERSION_DATE = '10 septembre 2026';
 
     const R = window.LioraRules;
@@ -2931,6 +2931,8 @@
         $('#aging-monday').hidden = src !== 'monday';
         $('#aging-gl').hidden = src !== 'gl';
         $('#aging-comparaison').hidden = src !== 'comparaison';
+        const pt = $('#aging-pointage');
+        if (pt) pt.hidden = src !== 'pointage';
 
         const charge = !!(state.glBalance && state.glBalance.rows.length);
         const hint = $('#aging-source-hint');
@@ -2938,7 +2940,9 @@
             ? "Ce que le circuit Monday porte comme encours, filtres de la barre appliqués"
             : src === 'gl'
                 ? "Le solde des comptes clients, sans filtre : la comptabilité ne connaît pas le circuit"
-                : "Les deux côte à côte, sans filtre";
+                : src === 'pointage'
+                    ? "L'argent rentré qu'aucune facture ne rapproche encore, et ce qu'on peut lettrer"
+                    : "Les deux côte à côte, sans filtre";
 
         if (src === 'gl') {
             $('#aging-gl-vide').hidden = charge;
@@ -2946,6 +2950,13 @@
             if (charge) rendreBalanceGL();
         } else if (src === 'comparaison') {
             rendreComparaisonAging();
+        } else if (src === 'pointage') {
+            // Le pointage vit du grand livre : sans lui, il n'a rien à montrer.
+            const aGL = !!state.glEcritures;
+            const vide = $('#pointage-vide'), contenu = $('#pointage-contenu');
+            if (vide) vide.hidden = aGL;
+            if (contenu) contenu.hidden = !aGL;
+            if (aGL) rendreOrphelins();
         }
     }
 
@@ -3109,6 +3120,118 @@
         rendreOrphelins();
         rendreReglesClassement();
         rendreAClasser();
+    }
+
+    /**
+     * Le classeur que la comptable ouvre pour lettrer.
+     *
+     * Une feuille par niveau de confiance, du sûr au douteux, et rien d'autre
+     * à faire que de lire de gauche à droite : le repère de l'écriture, le
+     * règlement, la facture qu'il solde, et ce qu'il en reste après lettrage.
+     * Une cinquième feuille porte ce que l'application ne sait pas rapprocher
+     * — ne rien en dire reviendrait à le cacher.
+     *
+     * Rien n'est lettré automatiquement : c'est une proposition, pas une
+     * écriture.
+     */
+    function exporterPourCompta() {
+        const e = state.glEcritures;
+        if (!e) { U.toast('Chargez le grand livre pour préparer le classeur.', 'error'); return; }
+        const nonPointes = e.nonPointes || e.orphelins || [];
+        if (!nonPointes.length) { U.toast('Aucun règlement non pointé.', 'info'); return; }
+
+        const avec = rapprochementsPossibles(nonPointes);
+        const NIVEAUX = [
+            { force: 'certaine', feuille: 'A - certaine', consigne: 'Lettrer',
+              texte: 'Le libellé du règlement cite le numéro de facture ET le montant tombe juste. '
+                   + 'Rien à vérifier.' },
+            { force: 'forte', feuille: 'B - forte', consigne: 'Lettrer après un coup d’œil',
+              texte: 'Soit le libellé cite le numéro et le règlement est partiel, soit le montant '
+                   + 'tombe juste sur le même compte.' },
+            { force: 'probable', feuille: 'C - probable', consigne: 'À confirmer',
+              texte: 'Le montant reçu est la somme de plusieurs factures du compte.' },
+            { force: 'à vérifier', feuille: 'D - a verifier', consigne: 'Ne rien lettrer sans regarder',
+              texte: 'Acompte possible, ou montant qui dépasse le reste dû de la facture.' },
+        ];
+        const ligne = (l, consigne) => {
+            const reste = l.proposition
+                ? l.proposition.reduce((a, x) => a + (x.resteDu || 0), 0) : null;
+            const f = l.proposition ? l.proposition[0] : null;
+            return {
+                'À faire': consigne,
+                'Confiance': l.force || '',
+                'Pourquoi ce rapprochement': l.raison || '',
+                '— LE RÈGLEMENT —': '',
+                'À chercher dans Pennylane': cleDeRecherche(l),
+                'Date du règlement': l.date ? U.dateFR(l.date) : '',
+                'N° de pièce': (l.brut && l.brut.numeroPiece) || '',
+                'Journal': l.journal || '',
+                'Compte client': l.compte || '',
+                'Client': l.tiers || '',
+                'Libellé de l’écriture': l.libelle || '',
+                'Montant reçu': arrondi(l.credit || 0),
+                'Nature': l.nature === 'avoir' ? 'Avoir' : 'Règlement',
+                '— LA FACTURE À LETTRER —': '',
+                'N° de facture': l.proposition
+                    ? l.proposition.map(x => x.numero || 'sans n°').join(' + ') : '',
+                'Date de facture': f && f.dateFacture ? U.dateFR(f.dateFacture) : '',
+                'Échéance': f && f.dateEcheance ? U.dateFR(f.dateEcheance) : '',
+                'Financement': f && f.financement ? R.getRule(f.financement, state.rules).label : '',
+                'Montant de la facture': f ? arrondi(f.montant || 0) : '',
+                'Restant dû avant lettrage': reste == null ? '' : arrondi(reste),
+                'RESTE APRÈS LETTRAGE': reste == null ? '' : arrondi(reste - (l.credit || 0)),
+                'Compte de la facture': f ? f.compte : '',
+                '— POUR AIDER —': '',
+                'Créances ouvertes sur ce compte': l.nbOuvertes || 0,
+                'Reste dû sur ce compte': arrondi(l.eurosOuverts || 0),
+                'Créances les plus proches': (l.candidates || [])
+                    .map(c => (c.numero || 'sans n°') + ' : ' + Math.round(c.resteDu) + ' €').join(' · '),
+            };
+        };
+
+        const wb = XLSX.utils.book_new();
+        const somme = l => Math.round(l.reduce((a, x) => a + (x.credit || 0), 0));
+        const parNiveau = NIVEAUX.map(n => ({
+            ...n, lignes: avec.filter(l => l.force === n.force && l.proposition && l.proposition.length),
+        }));
+        const sans = avec.filter(l => !l.proposition || !l.proposition.length);
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+            { 'Lecture': 'Chaque ligne est un règlement du grand livre qu’aucune facture ne rapproche '
+                + 'encore, en face de la facture qu’il solde selon toute vraisemblance.' },
+            { 'Lecture': 'Les feuilles vont du plus sûr au plus douteux. Commencez par A.' },
+            ...parNiveau.map(n => ({ 'Lecture': `${n.feuille} — ${n.texte} `
+                + `${U.nombre(n.lignes.length)} lignes, ${U.nombre(somme(n.lignes))} €. À faire : ${n.consigne}.` })),
+            { 'Lecture': `E - sans proposition — l’application ne trouve aucune contrepartie. `
+                + `${U.nombre(sans.length)} lignes, ${U.nombre(somme(sans))} €. La colonne « Pourquoi » `
+                + `dit ce qui a été cherché.` },
+            { 'Lecture': '' },
+            { 'Lecture': 'La colonne « À chercher dans Pennylane » donne la chaîne à coller dans la '
+                + 'recherche pour tomber sur l’écriture.' },
+            { 'Lecture': '« RESTE APRÈS LETTRAGE » à zéro : la facture se solde entièrement et sort de '
+                + 'la balance âgée. Un reste positif : il manque encore de l’argent sur cette facture.' },
+            { 'Lecture': 'Rien n’est lettré automatiquement. Ce classeur propose, la comptabilité décide.' },
+            { 'Lecture': `Arrêté au ${U.dateFR(state.filtres.dateRef)} · grand livre : `
+                + `${(state.glLecture && state.glLecture.fichier) || 'non nommé'}.` },
+        ]), 'Comment lire');
+
+        for (const n of parNiveau) {
+            if (!n.lignes.length) continue;
+            XLSX.utils.book_append_sheet(wb,
+                XLSX.utils.json_to_sheet(n.lignes.map(l => ligne(l, n.consigne))), n.feuille);
+        }
+        if (sans.length) {
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sans.map(l => {
+                const o = ligne(l, /Aucune créance ouverte/.test(l.raison || '')
+                    ? 'Chercher ailleurs — autre compte, avance, doublon'
+                    : 'Regarder les créances du compte');
+                o['Pourquoi ce rapprochement'] = l.raison || 'Aucune contrepartie trouvée';
+                return o;
+            })), 'E - sans proposition');
+        }
+        const nom = `Rapprochements_a_lettrer_${new Date().toISOString().slice(0, 10)}.xlsx`;
+        XLSX.writeFile(wb, nom);
+        U.toast(`${U.nombre(avec.length)} règlements exportés — ${nom}`, 'success', 8000);
     }
 
     /**
@@ -8808,6 +8931,8 @@
         }));
         $('#btn-aging-gl-export').addEventListener('click', exporterBalanceGL);
         $('#btn-gl-orphelins-export').addEventListener('click', exporterOrphelins);
+        const btnCompta = $('#btn-pointage-compta');
+        if (btnCompta) btnCompta.addEventListener('click', exporterPourCompta);
         [$('#btn-motifs-export'), $('#btn-motifs-export-2')].forEach(b => {
             if (b) b.addEventListener('click', exporterMotifs);
         });

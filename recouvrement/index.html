@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.59.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.59.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.59.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.59.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.59.0">
-    <link rel="stylesheet" href="styles.css?v=2.59.0">
+    <script src="../vendor/chart.umd.min.js?v=2.60.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.60.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.60.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.60.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.60.0">
+    <link rel="stylesheet" href="styles.css?v=2.60.0">
 </head>
 <body>
 
@@ -705,6 +705,7 @@
                     <button class="seg-btn active" data-source="monday">D'après Monday</button>
                     <button class="seg-btn" data-source="gl">D'après le grand livre</button>
                     <button class="seg-btn" data-source="comparaison">Comparer les deux</button>
+                    <button class="seg-btn" data-source="pointage">Pointage des paiements</button>
                 </div>
                 <div class="table-toolbar-right">
                     <!-- Actualiser sans quitter la balance : une facture saisie
@@ -806,43 +807,6 @@
                             <div class="table-wrap" id="aging-gl-table"></div>
                         </div>
                     </div>
-                    <div class="section-header section-header-sub" id="sec-pointage">
-                        <h3>Les paiements à pointer</h3>
-                        <span class="fv-hint">Règlements et avoirs qu'aucune facture du même lettrage ne rattache</span>
-                        <button class="btn btn-ghost btn-sm" id="btn-gl-orphelins-export">Exporter les paiements à pointer</button>
-                    </div>
-                    <div id="gl-orphelins-note" class="scope-note"></div>
-                    <div class="recup-grid" id="gl-pointage-kpi"></div>
-
-                    <!-- Le suivi des lignes non clôturées, dans la forme de la
-                         balance âgée : une ligne par sous-catégorie, une colonne
-                         par tranche d'ancienneté. -->
-                    <div class="chart-card chart-wide">
-                        <div class="chart-header">
-                            <h3>Les lignes non clôturées, par sous-catégorie et par ancienneté</h3>
-                            <div class="chart-controls">
-                                <div class="seg seg-sm" id="seg-pointage-niveau">
-                                    <button class="seg-btn active" data-niveau="financement">Par sous-catégorie</button>
-                                    <button class="seg-btn" data-niveau="categorie">Par catégorie</button>
-                                </div>
-                                <button class="btn btn-ghost btn-sm" id="btn-pointage-export">Exporter le suivi</button>
-                            </div>
-                        </div>
-                        <span class="fv-hint">
-                            Même lecture que la balance âgée, appliquée à l'argent qui est rentré sans
-                            solder de facture. L'ancienneté n'est pas celle d'une échéance — un
-                            règlement n'est dû à personne — c'est le temps qu'il passe sans être pointé,
-                            depuis la date de l'écriture. Un encaissement de la semaine dernière n'a
-                            rien d'inquiétant ; le même, vieux de deux ans, dit qu'une facture est
-                            peut-être soldée sans que la balance âgée le sache.
-                            <strong>Cliquez une ligne</strong> pour voir les règlements qu'elle porte.
-                        </span>
-                        <div class="table-wrap" id="gl-pointage-financement"></div>
-                    </div>
-
-                    <div class="table-wrap" id="gl-pointage-mois"></div>
-                    <div class="table-wrap" id="gl-orphelins"></div>
-
                     <div class="section-header section-header-sub" id="sec-regles">
                         <h3>Vos règles de classement</h3>
                         <span class="fv-hint">Classer en masse tout ce qui se reconnaît à son libellé, son compte ou son client</span>
@@ -882,6 +846,58 @@
                     </div>
                     <div class="barre-selection" id="aging-gl-barre" hidden></div>
                     <div class="table-wrap" id="aging-gl-aclasser"></div>
+                </div>
+            </div>
+
+            <!-- Le pointage des paiements, en sous-onglet -->
+            <div id="aging-pointage" hidden>
+                <div id="pointage-vide" class="empty-state" hidden>
+                    <h3>Aucun grand livre chargé</h3>
+                    <p>Le pointage lit les écritures du grand livre : déposez-en un dans
+                       l'onglet <em>Données</em> pour voir quels règlements ne sont rattachés
+                       à aucune facture, et lesquels pourraient l'être.</p>
+                </div>
+                <div id="pointage-contenu">
+                    <div class="section-header section-header-sub" id="sec-pointage">
+                        <h3>Les paiements à pointer</h3>
+                        <span class="fv-hint">Règlements et avoirs qu'aucune facture du même lettrage ne rattache</span>
+                        <button class="btn btn-primary btn-sm" id="btn-pointage-compta">
+                            Exporter pour la comptable
+                        </button>
+                        <button class="btn btn-ghost btn-sm" id="btn-gl-orphelins-export">Export complet</button>
+                    </div>
+                    <div id="gl-orphelins-note" class="scope-note"></div>
+                    <div class="recup-grid" id="gl-pointage-kpi"></div>
+
+                    <!-- Le suivi des lignes non clôturées, dans la forme de la
+                         balance âgée : une ligne par sous-catégorie, une colonne
+                         par tranche d'ancienneté. -->
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header">
+                            <h3>Les lignes non clôturées, par sous-catégorie et par ancienneté</h3>
+                            <div class="chart-controls">
+                                <div class="seg seg-sm" id="seg-pointage-niveau">
+                                    <button class="seg-btn active" data-niveau="financement">Par sous-catégorie</button>
+                                    <button class="seg-btn" data-niveau="categorie">Par catégorie</button>
+                                </div>
+                                <button class="btn btn-ghost btn-sm" id="btn-pointage-export">Exporter le suivi</button>
+                            </div>
+                        </div>
+                        <span class="fv-hint">
+                            Même lecture que la balance âgée, appliquée à l'argent qui est rentré sans
+                            solder de facture. L'ancienneté n'est pas celle d'une échéance — un
+                            règlement n'est dû à personne — c'est le temps qu'il passe sans être pointé,
+                            depuis la date de l'écriture. Un encaissement de la semaine dernière n'a
+                            rien d'inquiétant ; le même, vieux de deux ans, dit qu'une facture est
+                            peut-être soldée sans que la balance âgée le sache.
+                            <strong>Cliquez une ligne</strong> pour voir les règlements qu'elle porte.
+                        </span>
+                        <div class="table-wrap" id="gl-pointage-financement"></div>
+                    </div>
+
+                    <div class="table-wrap" id="gl-pointage-mois"></div>
+                    <div class="table-wrap" id="gl-orphelins"></div>
+
                 </div>
             </div>
 
@@ -1471,16 +1487,16 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.59.0"></script>
-<script src="js/store.js?v=2.59.0"></script>
-<script src="js/monday.js?v=2.59.0"></script>
-<script src="js/ingest.js?v=2.59.0"></script>
-<script src="js/metrics.js?v=2.59.0"></script>
-<script src="js/prelevements.js?v=2.59.0"></script>
-    <script src="js/grandlivre.js?v=2.59.0"></script>
-    <script src="js/sellsy.js?v=2.59.0"></script>
-    <script src="js/zoho.js?v=2.59.0"></script>
-<script src="js/ui.js?v=2.59.0"></script>
-<script src="app.js?v=2.59.0"></script>
+<script src="js/rules.js?v=2.60.0"></script>
+<script src="js/store.js?v=2.60.0"></script>
+<script src="js/monday.js?v=2.60.0"></script>
+<script src="js/ingest.js?v=2.60.0"></script>
+<script src="js/metrics.js?v=2.60.0"></script>
+<script src="js/prelevements.js?v=2.60.0"></script>
+    <script src="js/grandlivre.js?v=2.60.0"></script>
+    <script src="js/sellsy.js?v=2.60.0"></script>
+    <script src="js/zoho.js?v=2.60.0"></script>
+<script src="js/ui.js?v=2.60.0"></script>
+<script src="app.js?v=2.60.0"></script>
 </body>
 </html>
