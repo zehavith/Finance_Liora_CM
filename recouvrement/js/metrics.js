@@ -87,6 +87,10 @@
 
             if (f.perimetre && f.perimetre !== 'Tous' && x.perimetre !== f.perimetre) return false;
 
+            // Ne montrer que les créances qu'on ne sait pas dater : c'est la
+            // ligne « Date d'échéance manquante » de la balance âgée.
+            if (f.sansEcheance && x.dateEcheance) return false;
+
             // Source : les factures issues du tableau « payées » sont rattachées
             // à leur source d'origine si elle est connue, sinon toujours retenues.
             if (f.sources && f.sources.size) {
@@ -665,10 +669,26 @@
     //  Balance âgée
     // ──────────────────────────────────────────────
 
+    /**
+     * La clé des créances dont l'échéance est inconnue.
+     *
+     * Elles étaient purement écartées de la balance âgée : leur montant
+     * n'apparaissait nulle part, et une facture qu'on ne sait pas dater
+     * disparaissait au lieu d'appeler du travail. Elles ont désormais leur
+     * ligne, et leur montant est rangé en non échu — faute de savoir depuis
+     * quand elles sont dues, on ne peut pas les déclarer en retard.
+     */
+    const ECHEANCE_MANQUANTE = '__ECHEANCE_MANQUANTE__';
+    const LABEL_ECHEANCE_MANQUANTE = 'Date d’échéance manquante — à qualifier';
+
     function balanceAgee(factures) {
-        const nonPayees = factures.filter(x => !x.paye && x.dateEcheance);
+        const nonPayees = factures.filter(x => !x.paye);
         return R.AGING_BUCKETS.map(b => {
-            const items = nonPayees.filter(x => x.bucket && x.bucket.key === b.key);
+            // Sans échéance, pas d'ancienneté : la créance est comptée en non
+            // échu, la seule tranche qui n'affirme rien sur son retard.
+            const items = nonPayees.filter(x => x.bucket
+                ? x.bucket.key === b.key
+                : b.key === 'nonEchu');
             return {
                 ...b,
                 nb: items.length,
@@ -681,17 +701,23 @@
 
     /** Balance âgée croisée avec une dimension (financement, tableau, propriétaire…). */
     function balanceAgeeParDimension(factures, dimFn, labelFn) {
-        const nonPayees = factures.filter(x => !x.paye && x.dateEcheance);
+        const nonPayees = factures.filter(x => !x.paye);
         const map = new Map();
         for (const f of nonPayees) {
-            const k = dimFn(f) || '—';
+            // Une créance sans échéance ne relève d'aucun dispositif tant
+            // qu'on ne l'a pas datée : elle a sa propre ligne, qui dit ce
+            // qu'il y a à faire.
+            const sansEcheance = !f.dateEcheance;
+            const k = sansEcheance ? ECHEANCE_MANQUANTE : (dimFn(f) || '—');
             let row = map.get(k);
             if (!row) {
-                row = { key: k, label: labelFn ? labelFn(k, f) : k, total: 0, nb: 0, echu: 0, echuNb: 0 };
+                row = { key: k,
+                        label: sansEcheance ? LABEL_ECHEANCE_MANQUANTE : (labelFn ? labelFn(k, f) : k),
+                        sansEcheance, total: 0, nb: 0, echu: 0, echuNb: 0 };
                 for (const b of R.AGING_BUCKETS) { row[b.key] = 0; row[b.key + '_nb'] = 0; }
                 map.set(k, row);
             }
-            const b = f.bucket;
+            const b = sansEcheance ? { key: 'nonEchu' } : f.bucket;
             if (b) { row[b.key] += f.montant || 0; row[b.key + '_nb']++; }
             // Ce qui est échu et toujours dû : tout sauf la tranche « non
             // échu ». C'est le montant en retard, celui sur lequel il y a
@@ -700,7 +726,10 @@
             row.total += f.montant || 0;
             row.nb++;
         }
-        return [...map.values()].sort((a, b) => b.total - a.total);
+        // La ligne des échéances manquantes ferme la marche : c'est un reste à
+        // qualifier, pas un dispositif.
+        return [...map.values()].sort((a, b) =>
+            (a.sansEcheance ? 1 : 0) - (b.sansEcheance ? 1 : 0) || b.total - a.total);
     }
 
     // ──────────────────────────────────────────────
@@ -1365,7 +1394,7 @@
         evolutionParFinancement, reglementsParOrigine,
         agreger, repartitionMontants, fluxRecouvrement, parDimension, finDeMois,
         dsoParMois, histogrammeRetards, TRANCHES_RETARD, joursDuMois,
-        balanceAgee, balanceAgeeParDimension, causesSansEcheance, topClients, parTableau, parGroupe,
+        balanceAgee, balanceAgeeParDimension, ECHEANCE_MANQUANTE, LABEL_ECHEANCE_MANQUANTE, causesSansEcheance, topClients, parTableau, parGroupe,
         qualite, scoreQualite, comparaisonMensuelle,
         inventaireQualifications, repartitionQualification,
         qualificationsParTableau, estColonneQualification, creancesDouteuses,

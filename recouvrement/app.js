@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.58.0';
+    const VERSION = '2.59.0';
     const VERSION_DATE = '10 septembre 2026';
 
     const R = window.LioraRules;
@@ -106,6 +106,7 @@
             etapes: null,
             qualif: null,
             exclureTampon: false,
+            sansEcheance: false,     // n'afficher que les créances non datées
             recherche: '',
             retardMin: null,
             retardMax: null,
@@ -671,6 +672,7 @@
         f.boards = null; f.bucket = null; f.client = null; f.recherche = '';
         f.retardMin = null; f.retardMax = null; f.etapes = null; f.qualif = null;
         f.exclureTampon = false;
+        f.sansEcheance = false;
         f.sources = new Set(['recouvrement', 'adv', 'opco', 'b2c']);
         $('#search-input').value = '';
         state.ui.page = 1;
@@ -1044,8 +1046,14 @@
      * pas encore exigible n'a pas la même urgence.
      */
     function rendreMotifs(data) {
-        const el = $('#motifs-table'), note = $('#motifs-note');
-        if (!el || !note) return;
+        // Le tableau de bord et la balance âgée montrent le même tableau : la
+        // question « pourquoi ce n'est pas payé » se pose aux deux endroits.
+        const tables = [$('#motifs-table'), $('#motifs-table-2')].filter(Boolean);
+        const notes = [$('#motifs-note'), $('#motifs-note-2')].filter(Boolean);
+        if (!tables.length || !notes.length) return;
+        const el = { set innerHTML(v) { tables.forEach(x => { x.innerHTML = v; }); } };
+        const note = { set innerHTML(v) { notes.forEach(x => { x.innerHTML = v; }); },
+                       set textContent(v) { notes.forEach(x => { x.textContent = v; }); } };
         // Le montant qui reste à encaisser, sur la même base que le reste du
         // tableau de bord : le reste dû quand Monday le porte, le montant de la
         // facture sinon — beaucoup de tableaux ne renseignent pas le premier.
@@ -2631,6 +2639,8 @@
     // ══════════════════════════════════════════════
 
     function rendreAging(data) {
+        rendreReglesGL();
+        rendreMotifs(data);
         const buckets = X.balanceAgee(data);
         const totalEuros = X.sum(buckets, b => b.euros);
 
@@ -2752,6 +2762,15 @@
         el.innerHTML = U.table(cols, rows, { vide: 'Aucun encours non réglé.', total, onRowClick: true });
         U.bindTable(el, rows, {
             onRowClick: r => {
+                // La ligne des échéances manquantes n'est pas un dispositif :
+                // on filtre sur ce qui la définit, l'absence de date.
+                if (r.sansEcheance) {
+                    state.filtres.sansEcheance = true;
+                    state.ui.page = 1;
+                    ouvrirOnglet('factures');
+                    rendreTout();
+                    return;
+                }
                 if (dim === 'financement') state.filtres.financements = new Set([r.key]);
                 else if (dim === 'board') state.filtres.boards = new Set([r.key]);
                 else if (dim === 'client') state.filtres.client = r.key;
@@ -2943,8 +2962,11 @@
      * bloc est replié par défaut : présent quand on en a besoin, discret sinon.
      */
     function rendreReglesGL() {
-        const el = $('#aging-gl-regles-corps');
-        if (!el) return;
+        // Deux emplacements : au-dessus des trois balances, et dans le détail
+        // du grand livre. Le même contenu, écrit une fois.
+        const cibles = [$('#aging-regles-corps'), $('#aging-gl-regles-corps')].filter(Boolean);
+        if (!cibles.length) return;
+        const el = { set innerHTML(v) { cibles.forEach(x => { x.innerHTML = v; }); } };
         const libelle = { dateFacture: 'date de facture', dateDebutFormation: 'début de formation',
             dateFinFormation: 'fin de formation' };
         const regles = state.rules.filter(r => r.key !== 'INCONNU');
@@ -7712,8 +7734,14 @@
 
     /** Horodatage discret dans la barre supérieure. */
     function majIndicateurActualisation() {
-        const el = $('#indicateur-actualisation');
-        if (!el) return;
+        // Deux emplacements, le même message : en tête d'application, et
+        // au-dessus de la balance âgée, là où la question « ces chiffres
+        // datent de quand ? » se pose vraiment.
+        const els = [$('#indicateur-actualisation'), $('#aging-maj')].filter(Boolean);
+        if (!els.length) return;
+        const el = { set className(v) { els.forEach(x => { x.className = v; }); },
+                     set textContent(v) { els.forEach(x => { x.textContent = v; }); },
+                     set title(v) { els.forEach(x => { x.title = v; }); } };
 
         if (state.chargementEnCours) {
             el.className = 'maj-indic en-cours';
@@ -8780,8 +8808,9 @@
         }));
         $('#btn-aging-gl-export').addEventListener('click', exporterBalanceGL);
         $('#btn-gl-orphelins-export').addEventListener('click', exporterOrphelins);
-        const btnMot = $('#btn-motifs-export');
-        if (btnMot) btnMot.addEventListener('click', exporterMotifs);
+        [$('#btn-motifs-export'), $('#btn-motifs-export-2')].forEach(b => {
+            if (b) b.addEventListener('click', exporterMotifs);
+        });
         $$('#seg-pointage-niveau .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.pointageNiveau = b.dataset.niveau;
             rendrePointageParFinancement(state.glEcritures);
@@ -8879,6 +8908,28 @@
         $('#btn-export-xlsx').addEventListener('click', exporterExcel);
         $('#btn-export-table').addEventListener('click', exporterExcel);
         $('#btn-export-pdf').addEventListener('click', () => window.print());
+        // Le même geste que le bouton d'en-tête, mais à portée de main quand on
+        // lit la balance âgée : pas besoin de remonter, ni de changer d'onglet.
+        const btnAg = $('#btn-aging-refresh');
+        if (btnAg) btnAg.addEventListener('click', async () => {
+            if (state.chargementEnCours) return;
+            if (!state.token || !state.boards.some(b => b.actif && !String(b.id).startsWith('file:'))) {
+                ouvrirOnglet('donnees');
+                U.toast('Connectez-vous à Monday, ou réimportez vos exports, pour actualiser la balance.',
+                    'info', 8000);
+                return;
+            }
+            btnAg.disabled = true;
+            const avant = btnAg.textContent;
+            btnAg.textContent = 'Actualisation…';
+            try {
+                await chargerBoardsActifs();
+                U.toast('Balance âgée actualisée depuis Monday.', 'success', 5000);
+            } finally {
+                btnAg.disabled = false;
+                btnAg.textContent = avant;
+            }
+        });
         $('#btn-refresh').addEventListener('click', async () => {
             if (state.token && state.boards.some(b => b.actif && !String(b.id).startsWith('file:'))) {
                 await chargerBoardsActifs();

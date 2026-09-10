@@ -12,12 +12,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.58.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.58.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.58.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.58.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.58.0">
-    <link rel="stylesheet" href="styles.css?v=2.58.0">
+    <script src="../vendor/chart.umd.min.js?v=2.59.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.59.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.59.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.59.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.59.0">
+    <link rel="stylesheet" href="styles.css?v=2.59.0">
 </head>
 <body>
 
@@ -707,8 +707,32 @@
                     <button class="seg-btn" data-source="comparaison">Comparer les deux</button>
                 </div>
                 <div class="table-toolbar-right">
+                    <!-- Actualiser sans quitter la balance : une facture saisie
+                         dans Monday à l'instant apparaît ici en un clic. -->
+                    <span class="maj-indic" id="aging-maj"></span>
+                    <button class="btn btn-primary btn-sm" id="btn-aging-refresh">
+                        ⟳ Actualiser depuis Monday
+                    </button>
                     <span class="fv-hint" id="aging-source-hint"></span>
                 </div>
+            </div>
+
+            <!-- Les règles au-dessus des trois balances : une balance âgée ne se
+                 lit pas sans savoir sur quelle date chaque échéance est calculée. -->
+            <details class="regles-bloc" id="aging-regles" open>
+                <summary>Les règles appliquées — échéance et classement</summary>
+                <div id="aging-regles-corps"></div>
+            </details>
+
+            <!-- Pourquoi ce n'est pas payé : le motif de vos colonnes de
+                 qualification, à côté du montant qu'il bloque. -->
+            <div class="chart-card chart-wide" id="aging-motifs-bloc">
+                <div class="chart-header">
+                    <h3>Pourquoi ce n'est pas payé</h3>
+                    <button class="btn btn-ghost btn-sm" id="btn-motifs-export-2">Exporter</button>
+                </div>
+                <span class="fv-hint" id="motifs-note-2"></span>
+                <div class="table-wrap" id="motifs-table-2"></div>
             </div>
 
             <div id="aging-monday">
@@ -1447,16 +1471,16 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.58.0"></script>
-<script src="js/store.js?v=2.58.0"></script>
-<script src="js/monday.js?v=2.58.0"></script>
-<script src="js/ingest.js?v=2.58.0"></script>
-<script src="js/metrics.js?v=2.58.0"></script>
-<script src="js/prelevements.js?v=2.58.0"></script>
-    <script src="js/grandlivre.js?v=2.58.0"></script>
-    <script src="js/sellsy.js?v=2.58.0"></script>
-    <script src="js/zoho.js?v=2.58.0"></script>
-<script src="js/ui.js?v=2.58.0"></script>
-<script src="app.js?v=2.58.0"></script>
+<script src="js/rules.js?v=2.59.0"></script>
+<script src="js/store.js?v=2.59.0"></script>
+<script src="js/monday.js?v=2.59.0"></script>
+<script src="js/ingest.js?v=2.59.0"></script>
+<script src="js/metrics.js?v=2.59.0"></script>
+<script src="js/prelevements.js?v=2.59.0"></script>
+    <script src="js/grandlivre.js?v=2.59.0"></script>
+    <script src="js/sellsy.js?v=2.59.0"></script>
+    <script src="js/zoho.js?v=2.59.0"></script>
+<script src="js/ui.js?v=2.59.0"></script>
+<script src="app.js?v=2.59.0"></script>
 </body>
 </html>
