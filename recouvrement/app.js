@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.57.0';
+    const VERSION = '2.57.1';
     const VERSION_DATE = '10 septembre 2026';
 
     const R = window.LioraRules;
@@ -2721,7 +2721,7 @@
             // page. Le détail par tranche vient après, il dit depuis quand.
             { key: 'echu', label: 'Montant en retard', align: 'right',
               title: 'Factures échues et toujours impayées — toutes les tranches sauf « non échu »',
-              format: (v, r) => v ? `<strong>${fmtAg(v)}</strong><span class="cell-mini">${U.nombre(r.echuNb)} factures</span>`
+              format: (v, r) => v ? `<strong>${fmtAg(v)}</strong><span class="cell-mini">${U.nombre(r.echuNb)} en retard</span>`
                                   : '<span class="ag-zero">·</span>',
               cls: () => 'ag-total' },
             ...R.AGING_BUCKETS.map(b => ({
@@ -2730,13 +2730,22 @@
                 cls: () => 'ag-col',
             })),
             { key: 'total', label: 'Total', align: 'right', format: U.euros, cls: () => 'ag-total' },
-            { key: 'nb', label: 'Nb', align: 'right', format: U.nombre },
+            // Deux comptages, et ils ne disent pas la même chose : sous le
+            // montant en retard, les factures échues et impayées ; ici, toutes
+            // les factures non réglées de la ligne, échues et non échues. Les
+            // nommer « factures » toutes les deux laissait croire à une
+            // incohérence là où il n'y a qu'une différence de périmètre.
+            { key: 'nb', label: 'Factures non réglées', align: 'right',
+              title: 'Toutes les factures non réglées de cette ligne, échues comme non échues. '
+                   + 'Le compte sous « Montant en retard » ne retient que les échues.',
+              format: (v, r) => `${U.nombre(v)}<span class="cell-mini">dont ${U.nombre(r.echuNb)} en retard</span>` },
         ];
 
         const total = { label: 'Total général', total: U.euros(X.sum(rows, r => r.total)),
-            nb: U.nombre(X.sum(rows, r => r.nb)),
+            nb: `${U.nombre(X.sum(rows, r => r.nb))}`
+                + `<span class="cell-mini">dont ${U.nombre(X.sum(rows, r => r.echuNb))} en retard</span>`,
             echu: `<strong>${fmtAg(X.sum(rows, r => r.echu))}</strong>`
-                + `<span class="cell-mini">${U.nombre(X.sum(rows, r => r.echuNb))} factures</span>` };
+                + `<span class="cell-mini">${U.nombre(X.sum(rows, r => r.echuNb))} en retard</span>` };
         for (const b of R.AGING_BUCKETS) total[b.key] = fmtAg(X.sum(rows, r => r[b.key]));
 
         const el = $('#aging-table');
