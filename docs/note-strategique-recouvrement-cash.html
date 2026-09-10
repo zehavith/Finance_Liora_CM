@@ -1,644 +1,664 @@
 <meta charset="utf-8">
-<title>Note stratégique Recouvrement &amp; Cash</title>
+<title>Note stratégique Recouvrement &amp; Trésorerie</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap">
-
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap">
 <style>
 :root{
-  --ground:#F5F6FA; --surface:#FFFFFF; --surface-2:#EDEFF5; --surface-3:#E3E7F0;
-  --ink:#0F142A; --ink-2:#3C4360; --ink-3:#6E7593;
-  --rule:#D8DCE8; --rule-strong:#B8BFD0;
-  --accent:#B8402A; --accent-soft:rgba(184,64,42,.08);
-  --pos:#26694A; --pos-soft:rgba(38,105,74,.10);
-  --warn:#8C5E0D; --warn-soft:rgba(140,94,13,.10);
-  --neg:#9E3029; --neg-soft:rgba(158,48,41,.10);
-  --info:#2F3A96; --info-soft:rgba(47,58,150,.10);
-  --shadow:0 1px 2px rgba(15,20,42,.05);
+  --ink:#1A1A1A; --ink-2:#333333; --ink-3:#6B6B6B;
+  --rule:#D4D4D4; --ground:#FFFFFF;
 }
 @media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --ground:#0B0E1A; --surface:#111631; --surface-2:#171D3E; --surface-3:#1E2650;
-    --ink:#EEF0F6; --ink-2:#AEB5C9; --ink-3:#7B8299;
-    --rule:rgba(129,140,248,.20); --rule-strong:rgba(129,140,248,.36);
-    --accent:#F47458; --accent-soft:rgba(244,116,88,.13);
-    --pos:#7FCB93; --pos-soft:rgba(127,203,147,.13);
-    --warn:#EBAA45; --warn-soft:rgba(235,170,69,.13);
-    --neg:#F1786F; --neg-soft:rgba(241,120,111,.13);
-    --info:#8E96F7; --info-soft:rgba(142,150,247,.13);
-    --shadow:0 1px 2px rgba(0,0,0,.4);
-  }
+  :root:not([data-theme="light"]){--ink:#ECECEC;--ink-2:#D2D2D2;--ink-3:#9A9A9A;--rule:#3A3A3A;--ground:#141414}
 }
-:root[data-theme="dark"]{
-  --ground:#0B0E1A; --surface:#111631; --surface-2:#171D3E; --surface-3:#1E2650;
-  --ink:#EEF0F6; --ink-2:#AEB5C9; --ink-3:#7B8299;
-  --rule:rgba(129,140,248,.20); --rule-strong:rgba(129,140,248,.36);
-  --accent:#F47458; --accent-soft:rgba(244,116,88,.13);
-  --pos:#7FCB93; --pos-soft:rgba(127,203,147,.13);
-  --warn:#EBAA45; --warn-soft:rgba(235,170,69,.13);
-  --neg:#F1786F; --neg-soft:rgba(241,120,111,.13);
-  --info:#8E96F7; --info-soft:rgba(142,150,247,.13);
-  --shadow:0 1px 2px rgba(0,0,0,.4);
-}
+:root[data-theme="dark"]{--ink:#ECECEC;--ink-2:#D2D2D2;--ink-3:#9A9A9A;--rule:#3A3A3A;--ground:#141414}
 
 *{box-sizing:border-box}
-body{background:var(--ground);color:var(--ink);font-family:"Newsreader",Georgia,"Times New Roman",serif;font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
-.wrap{max-width:1080px;margin:0 auto;padding:0 30px}
-p{margin:0 0 .8em}
-strong{font-weight:600;color:var(--ink)}
-a{color:var(--accent)}
-a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-h1,h2,h3,h4,th,.mono,.lbl,.tag,.num,.chip{font-family:"Archivo",system-ui,-apple-system,sans-serif}
-.mono,.lbl,.tag,.chip,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+body{background:var(--ground);color:var(--ink-2);font-family:"Lato",-apple-system,"Segoe UI",Arial,sans-serif;font-size:15px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:760px;margin:0 auto;padding:52px 32px 80px}
+p{margin:0 0 14px}
+strong{font-weight:700;color:var(--ink)}
+a{color:inherit}
 
-/* ── En-tête ── */
-header.doc{padding:46px 0 0}
-.doc-org{display:flex;align-items:baseline;justify-content:space-between;gap:20px;padding-bottom:12px;border-bottom:2px solid var(--ink);flex-wrap:wrap}
-.doc-org .org{font-family:"Archivo";font-weight:800;font-size:15px;letter-spacing:.02em}
-.doc-org .cls{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
-h1{font-family:"Archivo";font-weight:800;font-size:clamp(30px,4.4vw,44px);letter-spacing:-.03em;line-height:1.05;margin:24px 0 6px}
-.subtitle{font-family:"Archivo";font-weight:600;font-size:clamp(16px,2vw,20px);letter-spacing:-.015em;color:var(--ink-3);margin:0 0 26px}
+h1.doc{font-family:"Lato";font-weight:900;font-size:30px;letter-spacing:-.01em;color:var(--ink);margin:0 0 16px;text-transform:uppercase}
+h2.docsub{font-family:"Lato";font-weight:700;font-size:19px;color:var(--ink);margin:0 0 14px}
+p.docobj{font-weight:700;color:var(--ink);font-size:15px;margin:0 0 26px}
+hr{border:0;border-top:1px solid var(--rule);margin:30px 0}
 
-/* ── Bloc d'identification ── */
-.ident{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);margin-bottom:26px}
-.ident div{background:var(--surface);padding:11px 15px}
-.ident dt{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
-.ident dd{margin:0;font-family:"Archivo";font-weight:600;font-size:13.5px;letter-spacing:-.005em}
+h2.s{font-family:"Lato";font-weight:900;font-size:25px;letter-spacing:-.015em;color:var(--ink);margin:0 0 18px;line-height:1.2}
+h3.s{font-family:"Lato";font-weight:700;font-size:17px;color:var(--ink);margin:24px 0 10px}
+h4.s{font-family:"Lato";font-weight:700;font-size:15px;color:var(--ink);margin:18px 0 8px}
 
-/* ── Synthèse ── */
-.synth{border:1px solid var(--rule-strong);border-left:4px solid var(--accent);background:var(--surface);padding:20px 24px;margin-bottom:22px;box-shadow:var(--shadow)}
-.synth h2{font-size:15px;font-family:"Archivo";font-weight:800;letter-spacing:.02em;text-transform:uppercase;margin:0 0 12px;color:var(--accent)}
-.synth ul{margin:0;padding:0;list-style:none;display:grid;gap:8px}
-.synth li{padding-left:19px;position:relative;font-size:15.5px;line-height:1.5;color:var(--ink-2)}
-.synth li::before{content:"";position:absolute;left:0;top:.58em;width:7px;height:7px;background:var(--accent)}
-.synth li b{color:var(--ink);font-weight:600}
+ul{list-style:none;padding:0 0 0 38px;margin:0 0 14px}
+ul li{position:relative;margin:0 0 3px;font-size:14.5px;line-height:1.5}
+ul li::before{content:"•";position:absolute;left:-14px;color:var(--ink-2)}
+p.arrow{margin:0 0 14px;font-size:14.5px}
 
-/* ── Chiffres clés ── */
-.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:26px}
-.kpi{background:var(--surface);border:1px solid var(--rule);border-top:3px solid var(--kc);padding:13px 14px;display:grid;gap:4px;align-content:start;box-shadow:var(--shadow)}
-.kpi-n{font-family:"Archivo";font-weight:800;font-size:clamp(19px,2.4vw,25px);letter-spacing:-.03em;line-height:1;color:var(--kc);font-variant-numeric:tabular-nums}
-.kpi-t{font-family:"Archivo";font-weight:700;font-size:11.5px;letter-spacing:-.005em;line-height:1.25}
-.kpi-s{font-size:12px;line-height:1.35;color:var(--ink-3)}
-.k-1{--kc:var(--accent)} .k-2{--kc:var(--pos)} .k-3{--kc:var(--neg)}
-.k-4{--kc:var(--info)} .k-5{--kc:var(--warn)} .k-6{--kc:var(--info)}
+table{border-collapse:collapse;width:100%;margin:6px 0 18px;font-size:14px}
+th{text-align:left;font-weight:400;color:var(--ink-2);padding:7px 10px 7px 0;border-bottom:1px solid #8A8A8A;font-size:14px}
+td{padding:8px 10px 8px 0;border-bottom:1px solid var(--rule);vertical-align:top;line-height:1.4}
+td:first-child,th:first-child{padding-left:4px}
+.tw{overflow-x:auto}
 
-/* ── Sommaire ── */
-.toc{border:1px solid var(--rule);background:var(--surface);padding:16px 22px;margin-bottom:34px}
-.toc h2{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:0 0 10px;font-weight:600}
-.toc ol{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:6px 26px}
-.toc a{font-family:"Archivo";font-weight:600;font-size:13.5px;letter-spacing:-.008em;text-decoration:none;color:var(--ink-2);display:flex;gap:9px}
-.toc a:hover{color:var(--accent)}
-.toc .n{color:var(--accent);font-family:"IBM Plex Mono",monospace;font-size:12px;flex:none}
+.tbd{font-weight:700;color:var(--ink);border-bottom:1px dashed var(--ink-3);padding:0 2px}
 
-/* ── Sections ── */
-section{padding:30px 0 0}
-h2.sec{font-family:"Archivo";font-weight:800;font-size:22px;letter-spacing:-.022em;margin:0 0 4px;padding-bottom:9px;border-bottom:2px solid var(--accent);display:flex;gap:12px;align-items:baseline}
-h2.sec .n{color:var(--accent);font-family:"IBM Plex Mono",monospace;font-size:16px;font-weight:600}
-.sec-lead{font-size:15px;color:var(--ink-3);margin:10px 0 16px;max-width:82ch}
-h3.sub{font-family:"Archivo";font-weight:700;font-size:15.5px;letter-spacing:-.012em;margin:22px 0 8px;display:flex;gap:9px;align-items:baseline}
-h3.sub .n{color:var(--accent);font-family:"IBM Plex Mono",monospace;font-size:12.5px}
-.prose{max-width:84ch}
-
-/* ── Tableaux ── */
-.tbl{overflow-x:auto;margin:12px 0 18px;border:1px solid var(--rule);background:var(--surface)}
-table{border-collapse:collapse;width:100%;min-width:660px;font-size:13.5px}
-th{text-align:left;font-size:10px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;color:var(--ink-3);padding:10px 13px;border-bottom:1.5px solid var(--rule-strong);background:var(--surface-2);vertical-align:bottom}
-td{padding:9px 13px;border-bottom:1px solid var(--rule);vertical-align:top;color:var(--ink-2);line-height:1.4}
-tbody tr:last-child td{border-bottom:0}
-td.k{color:var(--ink);font-family:"Archivo";font-weight:600;font-size:13px;letter-spacing:-.005em}
-.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:12.5px}
-tbody tr:nth-child(even) td{background:var(--surface-2)}
-caption{caption-side:top;text-align:left;padding:10px 13px 0;font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
-.dot{display:inline-block;width:8px;height:8px;margin-right:7px;flex:none}
-.d1{background:var(--info)} .d2{background:var(--pos)} .d3{background:var(--warn)} .d4{background:var(--accent)} .d5{background:var(--neg)}
-.hz{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.05em;padding:2px 6px;color:#fff;white-space:nowrap}
-.hz1{background:var(--pos)} .hz2{background:var(--info)} .hz3{background:var(--accent)}
-:root[data-theme="dark"] .hz,:root:not([data-theme="light"]) .hz{color:#0B0E1A}
-@media (prefers-color-scheme: light){:root:not([data-theme="dark"]) .hz{color:#fff}}
-.piv{color:var(--accent);font-weight:700}
-
-
-.ref{font-family:"IBM Plex Mono",monospace;font-size:.82em;font-weight:600;color:var(--accent);display:block;margin-bottom:2px;letter-spacing:.02em}
-/* ── Frise ── */
-.frise{background:var(--surface);border:1px solid var(--rule);padding:18px 20px 14px;margin:12px 0 16px;overflow-x:auto;box-shadow:var(--shadow)}
-.frise-legend{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:14px}
-.fl{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);display:flex;align-items:center;gap:6px}
-.fl::before{content:"";width:11px;height:11px;flex:none}
-.fl1::before{background:var(--accent-soft);border:1px solid var(--accent)}
-.fl2::before{background:var(--neg-soft);border:1px solid var(--neg)}
-.fl3::before{background:var(--warn-soft);border:1px solid var(--warn)}
-.fl4::before{background:var(--surface-3);border:1px solid var(--rule-strong)}
-.fbar{display:flex;height:28px;min-width:600px;border:1px solid var(--rule-strong)}
-.fs{display:flex;align-items:center;justify-content:center;border-right:1px solid var(--surface)}
-.fs:last-child{border-right:0}
-.fs span{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600}
-.f1{background:var(--accent-soft);background-image:repeating-linear-gradient(45deg,transparent,transparent 4px,var(--accent-soft) 4px,var(--accent-soft) 9px);box-shadow:inset 0 0 0 1px var(--accent)}
-.f1 span{color:var(--accent)}
-.f2{background:var(--neg-soft)} .f3{background:var(--warn-soft)} .f4{background:var(--surface-3)}
-.f2 span,.f3 span,.f4 span{color:var(--ink-2)}
-.fmarks{position:relative;min-width:600px;height:56px;margin-top:2px}
-.fm{position:absolute;top:0;transform:translateX(-50%);padding-top:10px;display:grid;gap:2px}
-.fm::before{content:"";position:absolute;top:0;left:50%;width:1px;height:7px;background:var(--rule-strong)}
-.fm:first-child{transform:translateX(0)}.fm:first-child::before{left:0}
-.fm.end{transform:translateX(-100%)}.fm.end::before{left:auto;right:0}
-.fm .d{font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:600;color:var(--ink-3);white-space:nowrap}
-.fm .t{font-size:11px;line-height:1.3;color:var(--ink-2);white-space:nowrap}
-.fm.key .d{color:var(--accent)}.fm.key::before{background:var(--accent);height:11px}.fm.key .t b{color:var(--accent)}
-.fsum{display:flex;flex-wrap:wrap;gap:24px;padding-top:12px;border-top:1px solid var(--rule);margin-top:2px}
-.fsum div{display:grid;gap:0}
-.fsum .v{font-family:"Archivo";font-weight:800;font-size:19px;letter-spacing:-.03em}
-.fsum .l{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
-.fsum .hi .v,.fsum .hi .l{color:var(--accent)}
-
-/* ── Graphique DSO ── */
-.chart{background:var(--surface);border:1px solid var(--rule);padding:18px 20px;margin:12px 0 18px;box-shadow:var(--shadow)}
-.chart-t{font-family:"Archivo";font-weight:700;font-size:14px;letter-spacing:-.012em;margin-bottom:2px}
-.chart-s{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-3);margin-bottom:14px}
-.bars{display:grid;gap:7px}
-.br{display:grid;grid-template-columns:70px 1fr 78px;gap:12px;align-items:center}
-.br .lb{font-family:"Archivo";font-size:12px;font-weight:600;color:var(--ink-2);font-variant-numeric:tabular-nums}
-.br .tr{height:20px;background:var(--surface-2)}
-.br .bar{height:100%;background:var(--rule-strong)}
-.br .vl{font-family:"IBM Plex Mono",monospace;font-size:12px;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
-.br.tgt .bar{background:var(--accent)} .br.tgt .lb,.br.tgt .vl{color:var(--accent)}
-.br.ref .bar{background:var(--ink-3);opacity:.5}
-
-/* ── SWOT ── */
-.swot{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0 4px}
-.q{background:var(--surface);border:1px solid var(--rule);border-top:3px solid var(--qc);padding:15px 18px;box-shadow:var(--shadow)}
-.qf{--qc:var(--pos)} .qw{--qc:var(--warn)} .qo{--qc:var(--info)} .qt{--qc:var(--neg)}
-.q h3{font-family:"Archivo";font-weight:700;font-size:15px;color:var(--qc);margin:0 0 3px}
-.q .ax{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:9px}
-.q ul{margin:0;padding:0;list-style:none;display:grid;gap:7px}
-.q li{font-size:13.5px;line-height:1.42;color:var(--ink-2);padding-left:13px;position:relative}
-.q li::before{content:"";position:absolute;left:0;top:.55em;width:5px;height:5px;background:var(--qc);opacity:.6}
-.q li b{color:var(--ink);font-weight:600}
-
-/* ── Encadrés ── */
-.note{border:1px solid var(--rule-strong);border-left:3px solid var(--info);background:var(--info-soft);padding:13px 17px;margin:14px 0;max-width:88ch}
-.note .lbl{font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--info);font-weight:600;display:block;margin-bottom:5px}
-.note p{margin:0;font-size:14.5px;line-height:1.45;color:var(--ink-2)}
-.note.acc{border-left-color:var(--accent);background:var(--accent-soft)}
-.note.acc .lbl{color:var(--accent)}
-
-/* ── Budget ── */
-.tbd{font-family:"IBM Plex Mono",monospace;font-size:.8em;text-transform:uppercase;color:var(--accent);border-bottom:1.5px dashed var(--accent);padding:0 3px;white-space:nowrap}
-
-/* ── Lexique ── */
-.lex{display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule);margin:10px 0}
-.lex div{background:var(--surface);padding:10px 15px;display:grid;grid-template-columns:180px 1fr;gap:16px;align-items:baseline}
-.lex dt{font-family:"Archivo";font-weight:700;font-size:13px}
-.lex dd{margin:0;font-size:13.5px;line-height:1.42;color:var(--ink-2)}
-
-ul.pl{max-width:86ch;padding-left:0;list-style:none;display:grid;gap:7px;margin:10px 0 16px}
-ul.pl li{padding-left:17px;position:relative;color:var(--ink-2);font-size:14.5px;line-height:1.45}
-ul.pl li::before{content:"";position:absolute;left:0;top:.55em;width:6px;height:6px;background:var(--accent);opacity:.65}
-ul.pl li b{color:var(--ink);font-weight:600}
-
-footer{margin-top:36px;padding:16px 0 60px;border-top:1px solid var(--rule);color:var(--ink-3);font-size:12.5px;max-width:90ch}
-
-@media (max-width:900px){
-  .kpis{grid-template-columns:repeat(3,1fr)}
-  .ident{grid-template-columns:repeat(2,1fr)}
-  .swot{grid-template-columns:1fr}
-  .lex div{grid-template-columns:1fr;gap:3px}
-  .wrap{padding:0 18px}
-}
+@media (max-width:640px){.wrap{padding:32px 18px 60px}h1.doc{font-size:25px}h2.s{font-size:21px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
-/* ══ Impression ══ */
-@page{size:A4;margin:14mm 13mm 16mm}
+@page{size:A4;margin:22mm 24mm 20mm}
 @media print{
-  :root,:root[data-theme="dark"],:root:not([data-theme="light"]){
-    --ground:#fff;--surface:#fff;--surface-2:#F2F4F8;--surface-3:#E6EAF2;
-    --ink:#0F142A;--ink-2:#333A57;--ink-3:#5F6683;
-    --rule:#D5DAE5;--rule-strong:#AEB5C7;
-    --accent:#A83A24;--accent-soft:rgba(168,58,36,.07);
-    --pos:#1F5E42;--pos-soft:rgba(31,94,66,.09);
-    --warn:#7C520B;--warn-soft:rgba(124,82,11,.09);
-    --neg:#8E2A24;--neg-soft:rgba(142,42,36,.09);
-    --info:#2A3486;--info-soft:rgba(42,52,134,.09);
-    --shadow:none;
-  }
+  :root,:root[data-theme="dark"],:root:not([data-theme="light"]){--ink:#1A1A1A;--ink-2:#333;--ink-3:#6B6B6B;--rule:#D4D4D4;--ground:#fff}
   html,body{background:#fff}
-  body{font-size:9.3pt;line-height:1.42}
-  .wrap{padding:0;max-width:none}
-  a{color:var(--ink);text-decoration:none}
-  header.doc{padding:0}
-  h1{font-size:25pt;margin:14pt 0 3pt}
-  .subtitle{font-size:12pt;margin-bottom:14pt}
-  .doc-org .org{font-size:10pt}.doc-org .cls{font-size:7.5pt}
-  .ident{grid-template-columns:repeat(3,1fr);margin-bottom:14pt;break-inside:avoid}
-  .ident div{padding:7pt 10pt}
-  .ident dt{font-size:6.8pt}.ident dd{font-size:9pt}
-  .synth{padding:12pt 15pt;margin-bottom:12pt;break-inside:avoid}
-  .synth h2{font-size:10pt;margin-bottom:8pt}
-  .synth li{font-size:9.4pt}
-  .kpis{gap:6pt;margin-bottom:14pt;break-inside:avoid}
-  .kpi{padding:8pt 9pt;border-top-width:2.5pt}
-  .kpi-n{font-size:15pt}.kpi-t{font-size:8pt}.kpi-s{font-size:7.4pt}
-  .toc{display:none}
-  section{padding-top:16pt;break-inside:auto}
-  h2.sec{font-size:14pt;padding-bottom:6pt;break-after:avoid}
-  h2.sec .n{font-size:11pt}
-  .sec-lead{font-size:9.2pt;margin:7pt 0 10pt;max-width:none}
-  h3.sub{font-size:10.5pt;margin:13pt 0 5pt;break-after:avoid}
-  .prose{max-width:none}
-  p{orphans:3;widows:3}
-  .tbl{overflow:visible;margin:8pt 0 12pt}
-  table{min-width:0;font-size:8pt;table-layout:fixed}
+  body{font-size:9.6pt;line-height:1.52}
+  .wrap{max-width:none;padding:0}
+  h1.doc{font-size:19pt;margin-bottom:11pt}
+  h2.docsub{font-size:12.5pt;margin-bottom:9pt}
+  p.docobj{font-size:10pt;margin-bottom:16pt}
+  hr{margin:18pt 0}
+  h2.s{font-size:16pt;margin-bottom:11pt;break-after:avoid}
+  h3.s{font-size:11.5pt;margin:14pt 0 6pt;break-after:avoid}
+  h4.s{font-size:10pt;margin:11pt 0 5pt;break-after:avoid}
+  p{margin-bottom:9pt;orphans:3;widows:3}
+  ul{padding-left:26pt;margin-bottom:9pt}
+  ul li{font-size:9.3pt;margin-bottom:1.5pt}
+  table{font-size:8.8pt;margin:4pt 0 14pt}
+  th{font-size:8.8pt;padding:5pt 7pt 5pt 0}
+  td{padding:5pt 7pt 5pt 0}
   thead{display:table-header-group}
   tr{break-inside:avoid}
-  th{font-size:6.9pt;padding:6pt 6pt}
-  td{padding:5pt 6pt;line-height:1.3;overflow-wrap:break-word}
-  td.k{font-size:8pt;letter-spacing:0}
-  .num{font-size:7.6pt;white-space:normal}
-  caption{padding:7pt 0 3pt;font-size:7pt}
-  .frise{padding:10pt 12pt;margin:8pt 0 12pt;overflow:visible;break-inside:avoid}
-  .fbar,.fmarks{min-width:0}
-  .fbar{height:18pt}
-  .fs span{font-size:7.4pt}
-  .fmarks{height:38pt}
-  .fm .d,.fm .t{font-size:7pt}
-  .fsum{gap:16pt;padding-top:8pt}
-  .fsum .v{font-size:13pt}.fsum .l{font-size:6.8pt}
-  .fl{font-size:6.8pt}.frise-legend{gap:11pt;margin-bottom:9pt}
-  .chart{padding:10pt 12pt;margin:8pt 0 12pt;break-inside:avoid}
-  .chart-t{font-size:9.5pt}.chart-s{font-size:7.2pt;margin-bottom:9pt}
-  .br{grid-template-columns:46pt 1fr 52pt;gap:8pt}
-  .br .tr{height:13pt}.br .lb,.br .vl{font-size:8pt}
-  .swot{grid-template-columns:1fr 1fr;gap:8pt;break-inside:avoid}
-  .q{padding:10pt 12pt;break-inside:avoid}
-  .q h3{font-size:10.5pt}.q .ax{font-size:6.5pt;margin-bottom:6pt}
-  .q li{font-size:8.4pt;line-height:1.35}
-  .note{padding:9pt 12pt;margin:10pt 0;max-width:none;break-inside:avoid}
-  .note p{font-size:8.8pt}.note .lbl{font-size:6.8pt}
-  .lex div{grid-template-columns:120pt 1fr;gap:10pt;padding:6pt 10pt;break-inside:avoid}
-  .lex dt{font-size:8.4pt}.lex dd{font-size:8.4pt}
-  ul.pl{max-width:none;gap:5pt}
-  ul.pl li{font-size:8.8pt}
-  footer{font-size:7.6pt;margin-top:16pt;padding:10pt 0 0;max-width:none;break-inside:avoid}
-  .hz{font-size:6.3pt;padding:1pt 3pt;letter-spacing:0}
-  .ref{font-size:7pt;margin-bottom:1pt}
-  #s3,#annexes{break-before:page}
+  .tw{overflow:visible}
+  section{break-inside:auto}
 }
 </style>
+<div class="wrap">
 
-<header class="doc">
-  <div class="wrap">
-    <div class="doc-org">
-      <span class="org">LIORA · Direction financière</span>
-      <span class="cls">Document de travail — diffusion CODIR</span>
-    </div>
+<h1 class="doc">Note stratégique</h1>
+<h2 class="docsub">Recouvrement &amp; Trésorerie</h2>
+<p class="docobj">Accompagner la trajectoire vers 100 M€ de chiffre d'affaires et l'internationalisation</p>
 
-    <h1>Note stratégique</h1>
-    <p class="subtitle">Recouvrement &amp; Trésorerie — cap 100 M€</p>
+<hr>
 
-    <dl class="ident">
-      <div><dt>Objet</dt><dd>Sécuriser l'encaissement et la trésorerie à l'horizon 100 M€</dd></div>
-      <div><dt>Émetteur</dt><dd>Recouvrement &amp; Trésorerie</dd></div>
-      <div><dt>Destinataires</dt><dd>Direction générale · DAF · CODIR</dd></div>
-      <div><dt>Date</dt><dd>10 septembre 2026</dd></div>
-      <div><dt>Périmètre</dt><dd>France et Allemagne</dd></div>
-      <div><dt>Statut</dt><dd>Pour décision</dd></div>
-    </dl>
-
-    <div class="synth">
-      <h2>Synthèse</h2>
-      <ul>
-        <li><b>Nos clients paient ; le délai vient de nous.</b> Aucun de nos financeurs ne fait défaut. Sur un dossier type encaissé en 119 jours, 61 sont imputables à un dossier administratif incomplet, en amont de la facture.</li>
-        <li><b>Le poste client est déjà piloté.</b> Balance âgée, délai moyen d'encaissement, relances, litiges et promesses de paiement sont suivis par deux applications développées et documentées en interne.</li>
-        <li><b>Ces outils ne passeront pas l'échelle.</b> Un seul mainteneur, aucune piste d'audit opposable, aucune gestion du multi-pays ni du multi-devises.</li>
-        <li><b>L'enjeu financier est de premier rang.</b> À 100 M€, chaque jour de délai immobilise 274 k€ ; quinze jours gagnés libèrent 4,1 M€ de trésorerie, de façon permanente.</li>
-        <li><b>Trois décisions sont soumises au CODIR</b> — un mandat sur l'amont et le choix d'un CRM unique, sans coût ; une enveloppe d'outillage de 40 à 90 k€ la première année, assortie d'un mandat de négociation bancaire.</li>
-      </ul>
-    </div>
-
-    <div class="kpis">
-      <div class="kpi k-1"><span class="kpi-n">274 k€</span><span class="kpi-t">Un jour de délai</span><span class="kpi-s">Immobilisés à 100 M€</span></div>
-      <div class="kpi k-2"><span class="kpi-n">4,1 M€</span><span class="kpi-t">Trésorerie libérée</span><span class="kpi-s">En passant de 60 à 45 jours</span></div>
-      <div class="kpi k-3"><span class="kpi-n">61 j</span><span class="kpi-t">Perdus en amont</span><span class="kpi-s">Sur un dossier de 119 jours</span></div>
-      <div class="kpi k-4"><span class="kpi-n">5</span><span class="kpi-t">Canaux d'encaissement</span><span class="kpi-s">Cinq métiers distincts</span></div>
-      <div class="kpi k-5"><span class="kpi-n">7</span><span class="kpi-t">Personnes à la finance</span><span class="kpi-s">Pour encaisser 5 fois plus</span></div>
-      <div class="kpi k-6"><span class="kpi-n">10,40 %</span><span class="kpi-t">Intérêts non réclamés</span><span class="kpi-s">Dus sur nos factures publiques</span></div>
-    </div>
-
-    <nav class="toc">
-      <h2>Sommaire</h2>
-      <ol>
-        <li><a href="#s1"><span class="n">1.</span> Contexte</a></li>
-        <li><a href="#s2"><span class="n">2.</span> Diagnostic</a></li>
-        <li><a href="#s3"><span class="n">3.</span> Analyse SWOT</a></li>
-        <li><a href="#s4"><span class="n">4.</span> Plan d'action</a></li>
-        <li><a href="#s5"><span class="n">5.</span> Recommandations</a></li>
-        <li><a href="#annexes"><span class="n">6.</span> Annexes</a></li>
-      </ol>
-    </nav>
-  </div>
-</header>
-
-<main>
-
-<section id="s1">
-  <div class="wrap">
-    <h2 class="sec"><span class="n">1.</span> Contexte</h2>
-    <p class="sec-lead">La trajectoire retenue à cinq ans porte le chiffre d'affaires à 100 M€ et ouvre plusieurs pays. Elle est prise ici comme une hypothèse de dimensionnement, non comme une description de la situation actuelle : Liora opère aujourd'hui en France et dispose d'une entité en Allemagne.</p>
-
-    <h3 class="sub"><span class="n">1.1</span> L'équipe en charge</h3>
-    <div class="tbl">
-      <table>
-        <caption>Fonction finance — effectif actuel</caption>
-        <thead><tr><th style="width:14%">Effectif</th><th style="width:26%">Fonction</th><th>Périmètre</th></tr></thead>
-        <tbody>
-          <tr><td class="k num">3</td><td class="k">Administration des ventes</td><td>Commandes, conventions, facturation, constitution des dossiers de financement</td></tr>
-          <tr><td class="k num">1</td><td class="k">Recouvrement &amp; trésorerie</td><td>Poste client, relances, litiges, prévision de trésorerie, relation bancaire</td></tr>
-          <tr><td class="k num">1</td><td class="k">Contrôle de gestion</td><td>Budget, analyse de la marge, suivi de la performance</td></tr>
-          <tr><td class="k num">1</td><td class="k">Comptabilité</td><td>Tenue, lettrage, clôtures, grand livre clients</td></tr>
-          <tr><td class="k num">1</td><td class="k">Direction financière</td><td>Arbitrages, financement, relations bancaires et actionnaires</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <h3 class="sub"><span class="n">1.2</span> Les moyens en place</h3>
-    <div class="tbl">
-      <table>
-        <caption>Outillage du cycle commande — encaissement</caption>
-        <thead><tr><th style="width:24%">Outil</th><th style="width:17%">Origine</th><th>Fonction</th></tr></thead>
-        <tbody>
-          <tr><td class="k">Suivi Recouvrement</td><td>Développement interne</td><td>Balance âgée, délai moyen d'encaissement, relances, litiges, promesses de paiement. Alimentation automatique.</td></tr>
-          <tr><td class="k">Suivi Cash</td><td>Développement interne</td><td>Lecture des flux bancaires, catégorisation par financeur, prévision et solde cumulé.</td></tr>
-          <tr><td class="k">Pennylane</td><td>Éditeur</td><td>Comptabilité et grand livre clients, source du suivi du poste client.</td></tr>
-          <tr><td class="k">Agicap</td><td>Éditeur</td><td>Prévision et suivi de trésorerie.</td></tr>
-          <tr><td class="k">Zoho Invoice</td><td>Éditeur</td><td>Émission des factures.</td></tr>
-          <tr><td class="k">Stripe · GoCardless · Swan</td><td>Éditeurs</td><td>Encaissement carte et prélèvement, comptes et virements non-euro.</td></tr>
-          <tr><td class="k">Salesforce <em>et</em> HubSpot</td><td>Éditeurs</td><td>Deux CRM en parallèle. Aucun identifiant client unique ne circule jusqu'à l'encaissement.</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="note">
-      <span class="lbl">Point d'attention</span>
-      <p>L'essentiel du dispositif de pilotage du poste client a été développé en interne. Ce choix a évité un budget logiciel et a produit un outil adapté à nos canaux de financement. Il fait aujourd'hui reposer deux applications critiques sur un mainteneur unique.</p>
-    </div>
-  </div>
+<section>
+<h2 class="s">1. Ambition</h2>
+<p>La trajectoire vers <strong>100 M€ de chiffre d'affaires à horizon 5 ans</strong> constitue un changement d'échelle majeur. Le périmètre actuel se limite à la France et à une entité en Allemagne : l'internationalisation reste à construire.</p>
+<p>Dans ce contexte, le Recouvrement et la Trésorerie doivent évoluer d'une logique principalement opérationnelle vers une fonction permettant de :</p>
+<ul>
+<li>sécuriser les encaissements ;</li>
+<li>réduire les délais de paiement ;</li>
+<li>améliorer la prévisibilité du cash ;</li>
+<li>maîtriser l'exposition client ;</li>
+<li>anticiper les tensions de liquidité ;</li>
+<li>accompagner le développement international.</li>
+</ul>
+<p>L'objectif est de construire une organisation capable d'absorber la croissance sans dégrader la qualité des encaissements ni la visibilité sur la trésorerie.</p>
+<p>À 100 M€ de chiffre d'affaires, <strong>1 jour de DSO représente environ 274 k€ de créances</strong>. Ramener le délai moyen de 60 à 45 jours libérerait <strong>4,1 M€ de trésorerie</strong>, de façon permanente et sans dilution.</p>
+<p>La maîtrise du délai d'encaissement devient donc un enjeu financier majeur.</p>
+<p>Cette fonction est aujourd'hui portée par une équipe de sept personnes : trois à l'administration des ventes, une au recouvrement et à la trésorerie, une au contrôle de gestion, une à la comptabilité, et la direction financière.</p>
 </section>
 
-<section id="s2">
-  <div class="wrap">
-    <h2 class="sec"><span class="n">2.</span> Diagnostic</h2>
-    <p class="sec-lead">Le délai d'encaissement ne se forme pas là où il est traditionnellement traité. Trois constats le documentent : la localisation du retard, la nature hétérogène de nos recouvrements, et l'enjeu financier à l'échelle visée.</p>
+<hr>
 
-    <h3 class="sub"><span class="n">2.1</span> Le retard se forme en amont de la facture</h3>
-    <p class="prose">L'analyse d'un dossier type — une session achevée le 12 juin, facturée 48 000 € et financée par un OPCO, encaissée le 9 octobre — fait apparaître la décomposition suivante.</p>
+<section>
+<h2 class="s">2. Diagnostic</h2>
 
-    <div class="frise">
-      <div class="frise-legend">
-        <span class="fl fl1">Avant la facture, non mesuré</span>
-        <span class="fl fl2">Examen puis rejet du dossier</span>
-        <span class="fl fl3">Correction interne</span>
-        <span class="fl fl4">Délai propre du payeur</span>
-      </div>
-      <div class="fbar">
-        <div class="fs f1" style="width:21.8%"><span>26 j</span></div>
-        <div class="fs f2" style="width:18.5%"><span>22 j</span></div>
-        <div class="fs f3" style="width:10.9%"><span>13 j</span></div>
-        <div class="fs f4" style="width:48.8%"><span>58 j</span></div>
-      </div>
-      <div class="fmarks">
-        <div class="fm"><span class="d">J 0</span><span class="t">Fin de session<br>12 juin</span></div>
-        <div class="fm key" style="left:21.8%"><span class="d">J+26</span><span class="t"><b>Émission de la facture</b><br>8 juillet</span></div>
-        <div class="fm" style="left:40.3%"><span class="d">J+48</span><span class="t">Rejet OPCO<br>émargement manquant</span></div>
-        <div class="fm" style="left:51.2%"><span class="d">J+61</span><span class="t">Dossier complet<br>redéposé</span></div>
-        <div class="fm end" style="left:100%"><span class="d">J+119</span><span class="t">Encaissement<br>9 octobre</span></div>
-      </div>
-      <div class="fsum">
-        <div><span class="v">61 j</span><span class="l">Imputables à Liora</span></div>
-        <div><span class="v">58 j</span><span class="l">Délai propre du payeur</span></div>
-        <div class="hi"><span class="v">26 j</span><span class="l">Antérieurs à la facture</span></div>
-      </div>
-    </div>
+<h3 class="s">Le retard se forme en amont de la facture</h3>
+<p>L'analyse d'un dossier type — session achevée le 12 juin, facturée 48 000 € à un OPCO, encaissée le 9 octobre — fait apparaître la décomposition suivante.</p>
+<div class="tw">
+<table>
+<thead><tr><th style="width:20%">Période</th><th style="width:14%">Durée</th><th>Nature du délai</th></tr></thead>
+<tbody>
+<tr><td>J 0 à J+26</td><td>26 jours</td><td>Remontée des émargements, signature du certificat de réalisation, dépôt du dossier. La facture n'existe pas encore.</td></tr>
+<tr><td>J+26 à J+48</td><td>22 jours</td><td>Examen par l'OPCO, conclu par un rejet pour pièce manquante.</td></tr>
+<tr><td>J+48 à J+61</td><td>13 jours</td><td>Correction et redépôt du dossier.</td></tr>
+<tr><td>J+61 à J+119</td><td>58 jours</td><td>Délai propre du payeur, conforme à ses conditions annoncées.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Sur 119 jours, <strong>61 sont imputables à un dossier incomplet et 26 se situent avant même l'émission de la facture</strong>. Aucun dispositif de relance n'a prise sur cette période. Le renforcement des moyens de relance ne récupérerait aucun de ces jours ; le traitement de l'amont documentaire les récupère en quasi-totalité.</p>
 
-    <ul class="pl">
-      <li><b>Vingt-six jours précèdent l'émission de la facture.</b> Neuf jours pour la remontée des émargements, treize pour la signature du certificat de réalisation, quatre pour le dépôt du dossier. Aucun dispositif de relance n'a prise sur cette période.</li>
-      <li><b>Trente-cinq jours supplémentaires résultent d'un dossier incomplet.</b> Vingt-deux jours d'examen conclus par un rejet, treize jours de correction.</li>
-      <li><b>Le payeur a respecté ses délais.</b> Cinquante-huit jours après réception d'un dossier complet, conformément à ses conditions annoncées.</li>
-      <li><b>Conséquence directe :</b> le renforcement des moyens de relance ne récupère aucun de ces soixante et un jours. Le traitement de l'amont documentaire les récupère en quasi-totalité.</li>
-    </ul>
+<h3 class="s">Cinq canaux de financement, cinq recouvrements distincts</h3>
+<div class="tw">
+<table>
+<thead><tr><th style="width:17%">Canal</th><th style="width:30%">Déclencheur réel du paiement</th><th style="width:17%">Délai</th><th>Cause principale de retard</th></tr></thead>
+<tbody>
+<tr><td>OPCO</td><td>Dossier complet : prise en charge, subrogation, émargements, certificat de réalisation</td><td>30 à 60 jours</td><td>Pièce manquante ou dépôt tardif</td></tr>
+<tr><td>CPF</td><td>Fin de formation, service fait déclaré, validation du bénéficiaire</td><td>Délai administratif fixe</td><td>Dossier en anomalie sur EDOF</td></tr>
+<tr><td>Public et reconversion</td><td>Mandatement de l'ordonnateur</td><td>30 jours, 50 jours pour les hôpitaux</td><td>Mandatement, pièces de marché</td></tr>
+<tr><td>B2B — 181 comptes référencés</td><td>Facture conforme, bon de commande, dépôt sur le portail client</td><td>45 jours fin de mois ou 60 jours nets</td><td>Bon de commande manquant, entité de facturation erronée</td></tr>
+<tr><td>Particuliers</td><td>Paiement en ligne ou échéancier</td><td>Immédiat à 12 mois</td><td>Échec de prélèvement</td></tr>
+</tbody>
+</table>
+</div>
+<p>Trois de ces cinq canaux ne relèvent pas de la relance mais de la <strong>conformité documentaire</strong>. Cette distinction commande l'ordre des priorités : le recouvrement chez Liora est d'abord un métier de processus, ensuite un métier de relance.</p>
 
-    <h3 class="sub"><span class="n">2.2</span> Cinq canaux, cinq recouvrements distincts</h3>
-    <div class="tbl">
-      <table>
-        <caption>Déclencheurs de paiement et causes de retard par canal</caption>
-        <thead><tr><th style="width:15%">Canal</th><th style="width:22%">Déclencheur réel du paiement</th><th style="width:15%">Délai</th><th style="width:23%">Cause principale de retard</th><th>Levier</th></tr></thead>
-        <tbody>
-          <tr><td class="k"><span class="dot d1"></span>OPCO</td><td>Dossier complet : accord de prise en charge, subrogation, émargements, certificat de réalisation</td><td class="num">30 à 60 j</td><td>Pièce manquante ou dépôt tardif</td><td>Sécurisation documentaire en amont</td></tr>
-          <tr><td class="k"><span class="dot d2"></span>CPF</td><td>Fin de formation, service fait déclaré, validation du bénéficiaire</td><td class="num">Délai fixe</td><td>Dossier en anomalie, non-validation</td><td>Traitement quotidien des anomalies</td></tr>
-          <tr><td class="k"><span class="dot d3"></span>Public</td><td>Mandatement de l'ordonnateur</td><td class="num">30 j · 50 j hôpitaux</td><td>Mandatement, pièces de marché</td><td>Réclamation des intérêts moratoires</td></tr>
-          <tr><td class="k"><span class="dot d4"></span>B2B</td><td>Facture conforme, bon de commande, dépôt sur le portail client</td><td class="num">45 j fin de mois ou 60 j nets</td><td>Bon de commande manquant, entité erronée</td><td>Cadrage dès la vente</td></tr>
-          <tr><td class="k"><span class="dot d5"></span>Particuliers</td><td>Paiement en ligne ou échéancier</td><td class="num">Immédiat à 12 mois</td><td>Échec de prélèvement</td><td>Prélèvement par défaut</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="prose">Trois de ces cinq canaux ne relèvent pas de la relance mais de la conformité documentaire. Cette distinction commande l'ordre des mesures du plan d'action.</p>
+<h3 class="s">Un dispositif de pilotage déjà en place, mais fragile</h3>
+<p>Contrairement à une situation de départ classique, le poste client est déjà piloté. Deux applications développées et documentées en interne assurent :</p>
+<ul>
+<li>la balance âgée et le calcul du DSO ;</li>
+<li>les relances organisées, le suivi des litiges et des promesses de paiement ;</li>
+<li>la lecture des flux bancaires, la catégorisation par financeur et la prévision de trésorerie.</li>
+</ul>
+<p>Leur alimentation est automatique. Elles reposent en revanche sur <strong>un concepteur et un mainteneur uniques</strong>, n'offrent aucune piste d'audit opposable, et n'ont été conçues ni pour le multi-pays ni pour le multi-devises.</p>
+<p>Le reste de la chaîne est outillé : Pennylane pour la comptabilité et le grand livre clients, Agicap pour la trésorerie, Zoho Invoice pour la facturation, Stripe et GoCardless pour l'encaissement, Swan pour les flux non-euro, Tomorro pour les contrats. Un point faible subsiste : <strong>Salesforce et HubSpot sont payés en parallèle</strong>, si bien qu'aucun identifiant client unique ne circule du CRM jusqu'à l'encaissement.</p>
 
-    <h3 class="sub"><span class="n">2.3</span> L'enjeu financier</h3>
-    <div class="chart">
-      <div class="chart-t">Encours client immobilisé selon le délai moyen d'encaissement</div>
-      <div class="chart-s">Encours = chiffre d'affaires annuel × délai / 365 · hypothèse 100 M€</div>
-      <div class="bars">
-        <div class="br"><span class="lb">30 jours</span><div class="tr"><div class="bar" style="width:33.3%"></div></div><span class="vl">8,2 M€</span></div>
-        <div class="br tgt"><span class="lb">45 jours</span><div class="tr"><div class="bar" style="width:50%"></div></div><span class="vl">12,3 M€</span></div>
-        <div class="br ref"><span class="lb">60 jours</span><div class="tr"><div class="bar" style="width:66.7%"></div></div><span class="vl">16,4 M€</span></div>
-        <div class="br"><span class="lb">75 jours</span><div class="tr"><div class="bar" style="width:83.3%"></div></div><span class="vl">20,5 M€</span></div>
-        <div class="br"><span class="lb">90 jours</span><div class="tr"><div class="bar" style="width:100%"></div></div><span class="vl">24,7 M€</span></div>
-      </div>
-    </div>
-    <ul class="pl">
-      <li><b>Un jour de délai représente 274 k€</b> d'encours immobilisé à 100 M€. La même formule s'applique dès aujourd'hui, rapportée à notre chiffre d'affaires : <span class="tbd">à compléter</span>, pour un délai moyen actuel de <span class="tbd">à compléter</span> jours.</li>
-      <li><b>Le passage de 60 à 45 jours libère 4,1 M€</b> de trésorerie, sans dilution ni intérêts, et l'effet est permanent tant que le délai est tenu.</li>
-      <li><b>Le coût de la fonction est le second enjeu.</b> À dispositif inchangé, l'effectif de recouvrement croît avec le nombre de factures : de l'ordre de huit à dix postes à 100 M€, contre trois à quatre en dispositif industrialisé, soit 300 à 400 k€ par an.</li>
-    </ul>
-    <div class="note acc">
-      <span class="lbl">Principe directeur du plan d'action</span>
-      <p>Gagner quinze jours de délai libère 4,1 M€ sans coût. Mobiliser ces mêmes 4,1 M€ auprès d'une banque coûterait environ 165 k€ par an, de façon récurrente. Les mesures sans coût sont donc traitées en premier ; le financement externe intervient en sécurisation, non en substitution.</p>
-    </div>
-  </div>
+<h3 class="s">Ce que la croissance va mécaniquement augmenter</h3>
+<ul>
+<li>le nombre de clients ;</li>
+<li>le volume de factures ;</li>
+<li>le montant des créances ;</li>
+<li>le nombre de transactions bancaires ;</li>
+<li>la complexité des encaissements ;</li>
+<li>le nombre de situations nécessitant une intervention ;</li>
+<li>l'exposition aux risques clients.</li>
+</ul>
+<p>L'enjeu n'est donc pas uniquement de traiter davantage de volume. Il est de faire évoluer le modèle afin que <strong>la croissance du chiffre d'affaires ne se traduise pas par une croissance disproportionnée des créances et des risques de trésorerie</strong>.</p>
+
+<h3 class="s">Environnement réglementaire à intégrer</h3>
+<div class="tw">
+<table>
+<thead><tr><th style="width:26%">Sujet</th><th style="width:18%">Échéance</th><th>Incidence</th></tr></thead>
+<tbody>
+<tr><td>Facturation électronique</td><td>1<sup>er</sup> sept. 2026 et 1<sup>er</sup> sept. 2027</td><td>Réception obligatoire depuis septembre 2026 ; émission généralisée aux PME en septembre 2027. Le cycle de vie normalisé des factures fournira les motifs de non-paiement en temps réel.</td></tr>
+<tr><td>Reste à charge CPF</td><td>2 avril 2026</td><td>Porté de 103,20 € à 150 €. Réglé par le bénéficiaire à la Caisse des Dépôts, non à Liora. Tant qu'il n'est pas acquitté, le dossier n'est pas validé : c'est un jalon supplémentaire avant démarrage.</td></tr>
+<tr><td>Intérêts moratoires publics</td><td>En vigueur</td><td>Taux BCE majoré de 8 points, soit 10,40 % au second semestre 2026, plus 40 € par facture. Dus de plein droit dès le lendemain du trentième jour, sans mise en demeure. Non réclamés à ce jour.</td></tr>
+<tr><td>Délais de paiement B2B</td><td>En vigueur</td><td>Plafonds de 60 jours nets ou 45 jours fin de mois. Pénalités au taux BCE majoré de 10 points et indemnité de 40 € par facture. Liora est aussi concernée en tant que débiteur.</td></tr>
+</tbody>
+</table>
+</div>
 </section>
 
-<section id="s3">
-  <div class="wrap">
-    <h2 class="sec"><span class="n">3.</span> Analyse SWOT</h2>
-    <p class="sec-lead">Position de la fonction recouvrement et trésorerie, appréciée à l'aune de la trajectoire à cinq ans.</p>
+<hr>
 
-    <div class="swot">
-      <div class="q qf">
-        <div class="ax">Interne · Favorable</div>
-        <h3>Forces</h3>
-        <ul>
-          <li><b>Poste client déjà piloté</b> Balance âgée, délai moyen, relances, litiges et promesses de paiement suivis, avec alimentation automatique.</li>
-          <li><b>Outils internes documentés</b> Fonctionnalités, architecture et règles de gestion sont écrites, ce qui rend la reprise possible.</li>
-          <li><b>Portefeuille de payeurs solide</b> Financeurs institutionnels et 181 comptes B2B référencés, sans dépendance à un client unique.</li>
-          <li><b>Rails d'encaissement modernes</b> Prélèvement et paiement en ligne en production, flux non-euro déjà opérés.</li>
-        </ul>
-      </div>
-      <div class="q qw">
-        <div class="ax">Interne · Défavorable</div>
-        <h3>Faiblesses</h3>
-        <ul>
-          <li><b>Mainteneur unique</b> Deux applications critiques sans doublure opérationnelle ni piste d'audit opposable.</li>
-          <li><b>Amont non mesuré</b> Les délais antérieurs à la facture n'apparaissent dans aucun tableau de bord.</li>
-          <li><b>Référentiel client éclaté</b> Deux CRM en parallèle, sans identifiant unique circulant jusqu'à l'encaissement.</li>
-          <li><b>Absence de multi-pays et de multi-devises</b> Les outils ont été conçus pour un périmètre national et un usage interne.</li>
-        </ul>
-      </div>
-      <div class="q qo">
-        <div class="ax">Externe · Favorable</div>
-        <h3>Opportunités</h3>
-        <ul>
-          <li><b>Facturation électronique</b> Réception obligatoire depuis le 1<sup>er</sup> septembre 2026, émission généralisée au 1<sup>er</sup> septembre 2027. Les statuts normalisés deviennent des déclencheurs de relance.</li>
-          <li><b>Mobilisation de créances</b> Créances OPCO et publiques de très bonne signature : cession Dailly disponible autour de 4 % l'an sur les sommes avancées, soit environ 0,5 % du chiffre d'affaires à quarante-cinq jours de délai.</li>
-          <li><b>Généralisation du prélèvement</b> Seul levier agissant sur le délai sans négociation avec le client.</li>
-          <li><b>Construction internationale</b> Ouvrir un pays permet d'imposer d'emblée un référentiel et des conditions de paiement uniques.</li>
-        </ul>
-      </div>
-      <div class="q qt">
-        <div class="ax">Externe · Défavorable</div>
-        <h3>Menaces</h3>
-        <ul>
-          <li><b>Effet de ciseau du besoin en fonds de roulement</b> Salaires et formateurs réglés avant encaissement ; 16,4 M€ d'encours à 100 M€ si le délai reste à soixante jours.</li>
-          <li><b>Instabilité du financement de la formation</b> Reste à charge CPF porté de 103,20 à 150 € en avril 2026. Un changement de règle décale simultanément tout le portefeuille.</li>
-          <li><b>Concentration des financeurs institutionnels</b> Une dizaine d'OPCO et la Caisse des Dépôts ; un blocage administratif immobilise plusieurs millions. Risque Qualiopi associé.</li>
-          <li><b>Complexité par pays</b> Délais, change, fiscalité et obligations de facturation propres à chaque marché ouvert.</li>
-        </ul>
-      </div>
-    </div>
-  </div>
+<section>
+<h2 class="s">3. SWOT</h2>
+
+<h3 class="s">Forces</h3>
+<ul>
+<li>Poste client déjà piloté : balance âgée, DSO, relances, litiges et promesses de paiement suivis, avec alimentation automatique.</li>
+<li>Outils internes documentés, ce qui rend leur reprise possible par une autre personne.</li>
+<li>Portefeuille de payeurs solide : financeurs institutionnels et 181 comptes B2B référencés, sans dépendance à un client unique.</li>
+<li>Risque d'impayé structurellement faible sur les canaux OPCO, CPF et public.</li>
+<li>Rails d'encaissement modernes : prélèvement et paiement en ligne en production, flux non-euro déjà opérés.</li>
+<li>Activité permettant une forte industrialisation des processus et une automatisation significative du recouvrement et de la trésorerie.</li>
+</ul>
+
+<h3 class="s">Faiblesses</h3>
+<ul>
+<li>Deux applications critiques reposant sur un mainteneur unique, sans doublure opérationnelle ni piste d'audit opposable.</li>
+<li>Délais antérieurs à la facture non mesurés, alors qu'ils représentent la moitié du délai total.</li>
+<li>Référentiel client éclaté entre deux CRM, sans identifiant unique circulant jusqu'à l'encaissement.</li>
+<li>Outils conçus pour un périmètre national et un usage interne : ni multi-pays, ni multi-devises.</li>
+<li>Dépendance à la qualité et à la rapidité de la constitution des dossiers de financement.</li>
+<li>Sensibilité du cash à l'évolution des délais de paiement et au risque de créances échues.</li>
+</ul>
+
+<h3 class="s">Opportunités</h3>
+<ul>
+<li>Facturation électronique : les statuts normalisés de facture deviennent des déclencheurs de relance automatiques.</li>
+<li>Mobilisation de créances : les créances OPCO et publiques constituent une très bonne signature, finançable autour de 4 % l'an sur les sommes avancées.</li>
+<li>Généralisation du prélèvement, seul levier agissant sur le délai sans négociation avec le client.</li>
+<li>Industrialisation du recouvrement et automatisation des tâches à faible valeur ajoutée.</li>
+<li>Traitement de l'amont documentaire, gisement principal et sans coût.</li>
+<li>Structuration d'une approche Groupe pour l'international, à construire sur le périmètre franco-allemand existant.</li>
+</ul>
+
+<h3 class="s">Menaces</h3>
+<ul>
+<li>Effet de ciseau du besoin en fonds de roulement : salaires et formateurs réglés avant encaissement.</li>
+<li>Instabilité du financement de la formation : un changement de règle décale simultanément tout le portefeuille.</li>
+<li>Concentration des financeurs institutionnels : un blocage administratif chez un seul immobilise plusieurs millions. Risque Qualiopi associé.</li>
+<li>Hypercroissance générant une forte augmentation des créances et des litiges.</li>
+<li>Multiplication des devises, des comptes bancaires et des obligations locales de facturation.</li>
+<li>Perte de continuité en cas d'indisponibilité du mainteneur unique des outils.</li>
+</ul>
 </section>
 
-<section id="s4">
-  <div class="wrap">
-    <h2 class="sec"><span class="n">4.</span> Plan d'action</h2>
-    <p class="sec-lead">Quinze mesures réparties sur trois horizons. Les mesures signalées en couleur sont les mesures pivots, dont dépend l'efficacité des autres. L'horizon 1 ne mobilise aucun budget logiciel.</p>
+<hr>
 
-    <div class="tbl">
-      <table>
-        <caption>Mesures, gains attendus, coûts et responsables</caption>
-        <thead><tr><th style="width:11%">Horizon</th><th style="width:23%">Mesure</th><th style="width:27%">Objet</th><th style="width:12%">Gain attendu</th><th style="width:12%">Coût</th><th style="width:15%">Responsable</th></tr></thead>
-        <tbody>
-          <tr><td><span class="hz hz1">0–6 mois</span></td><td class="k piv"><span class="ref">H1.1</span>Pas de dossier complet, pas de démarrage</td><td>Règle opposable : accord de prise en charge, subrogation, convention, bon de commande obtenus avant la première heure de formation</td><td class="num">≈ 15 jours</td><td class="num">0 €</td><td>ADV, Sales, Ops</td></tr>
-          <tr><td><span class="hz hz1">0–6 mois</span></td><td class="k"><span class="ref">H1.2</span>Mesure du délai amont</td><td>Indicateur du nombre de jours entre fin de session et dépôt du dossier complet. Cible : 5 jours ouvrés</td><td class="num">≈ 10 jours</td><td class="num">0 €</td><td>Recouvrement</td></tr>
-          <tr><td><span class="hz hz1">0–6 mois</span></td><td class="k"><span class="ref">H1.3</span>Revue quotidienne des anomalies EDOF</td><td>Traitement journalier des dossiers CPF bloqués, avec responsable désigné</td><td class="num">Direct</td><td class="num">0 €</td><td>Ops</td></tr>
-          <tr><td><span class="hz hz1">0–6 mois</span></td><td class="k"><span class="ref">H1.4</span>Prélèvement par défaut</td><td>Généralisation sur le canal particuliers et sur le B2B inférieur à 5 000 €</td><td class="num">Immédiat</td><td class="num">0 €</td><td>Recouvrement</td></tr>
-          <tr><td><span class="hz hz1">0–6 mois</span></td><td class="k"><span class="ref">H1.5</span>Réclamation des pénalités</td><td>Intérêts moratoires du secteur public et indemnités forfaitaires B2B, dus de plein droit</td><td class="num">Indirect</td><td class="num">0 €</td><td>Recouvrement</td></tr>
-          <tr><td><span class="hz hz1">0–6 mois</span></td><td class="k"><span class="ref">H1.6</span>Formalisation de la politique de recouvrement</td><td>Cinq scénarios de relance, seuils de délégation, conditions de suspension et de contentieux</td><td class="num">Structurel</td><td class="num">0 €</td><td>Recouvrement</td></tr>
-          <tr><td><span class="hz hz2">6–18 mois</span></td><td class="k piv"><span class="ref">H2.1</span>Référentiel client unique</td><td>Désignation d'un CRM maître et circulation du SIREN, puis du numéro de TVA, jusqu'à l'encaissement</td><td class="num">Bloquant</td><td class="num">0 €</td><td>DAF, Recouvrement</td></tr>
-          <tr><td><span class="hz hz2">6–18 mois</span></td><td class="k"><span class="ref">H2.2</span>Arbitrage interne / externe</td><td>Décision d'architecture sur deux critères : auditabilité et multi-pays. Acquisition d'un outil de gestion du poste client si les critères ne sont pas franchis</td><td class="num">Structurant</td><td class="num">15 à 40 k€/an</td><td>Recouvrement, DSI</td></tr>
-          <tr><td><span class="hz hz2">6–18 mois</span></td><td class="k"><span class="ref">H2.3</span>Facturation électronique</td><td>Choix de la plateforme agréée et branchement des statuts de facture sur les scénarios de relance</td><td class="num">Élevé</td><td class="num">5 à 15 k€/an</td><td>Recouvrement, DAF</td></tr>
-          <tr><td><span class="hz hz2">6–18 mois</span></td><td class="k"><span class="ref">H2.4</span>Ligne de mobilisation de créances</td><td>Cession Dailly adossée aux créances OPCO et publiques, négociée hors période de tension</td><td class="num">Élevé</td><td class="num">4 %/an de l'avance, au prorata</td><td>DAF, Recouvrement</td></tr>
-          <tr><td><span class="hz hz2">6–18 mois</span></td><td class="k"><span class="ref">H2.5</span>Séparation des métiers et doublure</td><td>Distinction entre gestion du poste client et trésorerie ; appropriation de la documentation par une seconde personne</td><td class="num">Risque n°1</td><td class="num">1 ETP</td><td>Direction générale</td></tr>
-          <tr><td><span class="hz hz3">18–60 mois</span></td><td class="k piv"><span class="ref">H3.1</span>Allemagne comme pays modèle</td><td>Normalisation du périmètre franco-allemand avant toute nouvelle ouverture, puis modèle centralisé avec relais locaux</td><td class="num">Structurant</td><td class="num">—</td><td>DAF</td></tr>
-          <tr><td><span class="hz hz3">18–60 mois</span></td><td class="k"><span class="ref">H3.2</span>Socle financier multi-entités</td><td>Décision à prendre vers 40 à 50 M€, avant la phase de forte croissance</td><td class="num">Structurant</td><td class="num">À instruire</td><td>DAF, DSI</td></tr>
-          <tr><td><span class="hz hz3">18–60 mois</span></td><td class="k"><span class="ref">H3.3</span>Politique de crédit export</td><td>Limites de crédit, assurance-crédit, conditions de paiement et conditions générales localisées</td><td class="num">Nouveau risque</td><td class="num">À instruire</td><td>Recouvrement, juridique</td></tr>
-          <tr><td><span class="hz hz3">18–60 mois</span></td><td class="k"><span class="ref">H3.4</span>Reporting cash au conseil</td><td>Trésorerie disponible et cycle de conversion suivis au même rang que l'EBITDA</td><td class="num">Gouvernance</td><td class="num">0 €</td><td>Recouvrement, DAF</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
+<section>
+<h2 class="s">4. Problématiques prioritaires et réponses proposées</h2>
+<div class="tw">
+<table>
+<thead><tr><th style="width:42%">Problématique</th><th>Réponse</th></tr></thead>
+<tbody>
+<tr><td>Délai constitué avant l'émission de la facture</td><td>Règle « pas de dossier complet, pas de démarrage » et mesure du délai fin de session — dépôt</td></tr>
+<tr><td>Rejets de dossiers par les financeurs</td><td>Checklist documentaire opposable, partagée avec l'ADV et les opérations</td></tr>
+<tr><td>Croissance des créances avec le chiffre d'affaires</td><td>Pilotage du DSO et des échéances par canal de financement</td></tr>
+<tr><td>Retards de paiement</td><td>Recouvrement préventif et segmenté</td></tr>
+<tr><td>Factures bloquées</td><td>Suivi structuré des litiges</td></tr>
+<tr><td>Risque client sur le B2B et l'export</td><td>Politique de crédit adaptée, limites d'exposition</td></tr>
+<tr><td>Conditions commerciales longues</td><td>Implication du Sales sur les comptes concernés</td></tr>
+<tr><td>Référentiel client éclaté entre deux CRM</td><td>Désignation d'un CRM maître et circulation d'un identifiant unique</td></tr>
+<tr><td>Manque de visibilité sur les encaissements</td><td>Prévision des encaissements adossée à la balance âgée existante</td></tr>
+<tr><td>Faible visibilité sur le cash</td><td>Daily Cash et Cash Forecast à 13 semaines</td></tr>
+<tr><td>Augmentation des volumes</td><td>Automatisation et industrialisation</td></tr>
+<tr><td>Dépendance à un mainteneur unique</td><td>Doublure des compétences et arbitrage interne / externe sur l'outillage</td></tr>
+<tr><td>Internationalisation</td><td>Structuration du Treasury et du recouvrement Groupe, à partir de l'Allemagne</td></tr>
+</tbody>
+</table>
+</div>
 </section>
 
-<section id="s5">
-  <div class="wrap">
-    <h2 class="sec"><span class="n">5.</span> Recommandations</h2>
-    <p class="sec-lead">Trois décisions sont soumises au CODIR. Les deux premières sont sans incidence budgétaire et conditionnent l'efficacité de l'ensemble du plan.</p>
+<hr>
 
-    <div class="tbl">
-      <table>
-        <caption>Décisions soumises</caption>
-        <thead><tr><th style="width:5%">N°</th><th style="width:22%">Décision</th><th>Motif</th><th style="width:17%">Coût</th><th style="width:20%">Retour attendu</th></tr></thead>
-        <tbody>
-          <tr><td class="num k">1</td><td class="k">Mandat sur l'amont documentaire</td><td>Imposer avec Sales et Ops la règle « pas de dossier complet, pas de démarrage », et indexer une part de la variable commerciale sur l'encaissement effectif</td><td class="num">0 €</td><td class="num">≈ 15 jours de délai</td></tr>
-          <tr><td class="num k">2</td><td class="k">Désignation d'un CRM maître</td><td>Salesforce et HubSpot coexistent ; aucun identifiant client unique ne circule jusqu'à l'encaissement, ce qui interdit toute automatisation</td><td class="num">0 €, économie probable</td><td class="num">Condition des mesures H2</td></tr>
-          <tr><td class="num k">3</td><td class="k">Enveloppe d'outillage et mandat bancaire</td><td>Ouvrir la possibilité d'acquérir les outils après consultation, et négocier dès maintenant une ligne de mobilisation de créances</td><td class="num">40 à 90 k€ an 1<br>25 à 60 k€ ensuite</td><td class="num">4,1 M€ de trésorerie<br>300 à 400 k€/an évités</td></tr>
-        </tbody>
-      </table>
-    </div>
+<section>
+<h2 class="s">5. Recouvrement : passer du curatif au préventif</h2>
+<p>L'objectif est de faire évoluer le recouvrement d'une logique :</p>
+<p><strong>échéance → retard → relance</strong></p>
+<p>vers :</p>
+<p><strong>dossier → facturation → anticipation → échéance → encaissement.</strong></p>
+<p>La différence avec un schéma de recouvrement classique tient à l'ajout d'une étape amont : chez Liora, le délai commence à la fin de la session, pas à l'émission de la facture.</p>
 
-    <h3 class="sub"><span class="n">5.1</span> Composition de l'enveloppe</h3>
-    <div class="tbl">
-      <table>
-        <caption>Décision n°3 — décomposition indicative</caption>
-        <thead><tr><th style="width:34%">Poste</th><th style="width:20%">Montant</th><th>Observations</th></tr></thead>
-        <tbody>
-          <tr><td class="k">Outil de gestion du poste client</td><td class="num">15 à 40 k€ / an</td><td>Multi-entités, multi-devises, piste d'audit, connexion à Pennylane</td></tr>
-          <tr><td class="k">Intégration et reprise de données</td><td class="num">10 à 25 k€</td><td>Première année uniquement</td></tr>
-          <tr><td class="k">Plateforme agréée de facturation électronique</td><td class="num">5 à 15 k€ / an</td><td>Obligation réglementaire</td></tr>
-          <tr><td class="k">Formation et marge de sécurité</td><td class="num">≈ 10 k€</td><td>Prise en main par une seconde personne</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="note">
-      <span class="lbl">Statut de ces montants</span>
-      <p>Ordres de grandeur du marché, à confirmer par la consultation de trois éditeurs avant tout engagement. Le mandat de négociation bancaire, lui, n'emporte aucun coût : une ligne ouverte et non tirée ne supporte qu'une commission d'engagement.</p>
-    </div>
-  </div>
+<h3 class="s">Avant facturation</h3>
+<ul>
+<li>obtenir l'accord de prise en charge et la subrogation avant le démarrage ;</li>
+<li>sécuriser les émargements et le certificat de réalisation dès la fin de session ;</li>
+<li>déposer le dossier complet sous cinq jours ouvrés ;</li>
+<li>vérifier l'entité de facturation et le bon de commande côté B2B.</li>
+</ul>
+
+<h3 class="s">Avant échéance</h3>
+<ul>
+<li>vérifier la bonne réception de la facture ;</li>
+<li>identifier les éventuels blocages ;</li>
+<li>confirmer l'interlocuteur de paiement ;</li>
+<li>anticiper les échéances importantes.</li>
+</ul>
+
+<h3 class="s">À échéance</h3>
+<ul>
+<li>identifier rapidement les paiements non reçus ;</li>
+<li>lancer les actions de relance ;</li>
+<li>prioriser les montants significatifs.</li>
+</ul>
+
+<h3 class="s">Après échéance</h3>
+<ul>
+<li>segmenter les retards ;</li>
+<li>identifier le motif ;</li>
+<li>obtenir une date de paiement ;</li>
+<li>suivre les promesses ;</li>
+<li>escalader les situations nécessitant une intervention commerciale ;</li>
+<li>réclamer les intérêts moratoires et indemnités dus de plein droit.</li>
+</ul>
+
+<h3 class="s">Retards significatifs</h3>
+<p>Pour les comptes stratégiques ou les montants importants, une intervention du Sales doit être organisée lorsque la relation commerciale peut permettre de débloquer l'encaissement.</p>
 </section>
 
-<section id="annexes">
-  <div class="wrap">
-    <h2 class="sec"><span class="n">6.</span> Annexes</h2>
+<hr>
 
-    <h3 class="sub"><span class="n">6.1</span> Évolutions réglementaires à prendre en compte</h3>
-    <div class="tbl">
-      <table>
-        <caption>Environnement réglementaire au 10 septembre 2026</caption>
-        <thead><tr><th style="width:22%">Sujet</th><th style="width:15%">Échéance</th><th>Incidence sur l'encaissement</th></tr></thead>
-        <tbody>
-          <tr><td class="k">Reste à charge CPF</td><td class="num">2 avril 2026</td><td>Porté de 103,20 € à 150 €. La participation est réglée par le bénéficiaire à la Caisse des Dépôts, non à Liora. Tant qu'elle n'est pas acquittée, le dossier n'est pas validé et le financement n'est pas acquis : c'est un jalon supplémentaire avant démarrage.</td></tr>
-          <tr><td class="k">Intérêts moratoires publics</td><td class="num">S2 2026</td><td>Taux BCE majoré de 8 points, soit 10,40 %, plus 40 € par facture. Dus de plein droit dès le lendemain du trentième jour, sans mise en demeure. Une facture de 50 000 € réglée avec 40 jours de retard représente 610 €.</td></tr>
-          <tr><td class="k">Facturation électronique</td><td class="num">1<sup>er</sup> sept. 2026<br>1<sup>er</sup> sept. 2027</td><td>Réception obligatoire pour toutes les entreprises depuis septembre 2026 ; émission généralisée aux PME en septembre 2027. Le cycle de vie normalisé des factures fournit les motifs de non-paiement en temps réel.</td></tr>
-          <tr><td class="k">Délais de paiement B2B</td><td class="num">En vigueur</td><td>Plafonds de 60 jours nets ou 45 jours fin de mois. Pénalités au taux BCE majoré de 10 points et indemnité forfaitaire de 40 € par facture. Liora est également concernée en tant que débiteur.</td></tr>
-        </tbody>
-      </table>
-    </div>
+<section>
+<h2 class="s">6. Segmentation du portefeuille</h2>
+<p>Le recouvrement doit être différencié selon deux axes successifs : d'abord le canal de financement, qui détermine la nature du geste ; ensuite, au sein du B2B, le niveau de risque et la valeur du client.</p>
 
-    <h3 class="sub"><span class="n">6.2</span> Objections anticipées</h3>
-    <div class="tbl">
-      <table>
-        <caption>Réponses aux objections prévisibles</caption>
-        <thead><tr><th style="width:32%">Objection</th><th>Réponse</th></tr></thead>
-        <tbody>
-          <tr><td class="k">« Nos clients paient toujours, où est le problème ? »</td><td>Il n'existe pas de problème d'impayé. Il existe un problème de trésorerie immobilisée : quinze jours de délai excédentaire représentent 4,1 M€ non disponibles pour financer la croissance.</td></tr>
-          <tr><td class="k">« Les applications internes existent, pourquoi un budget ? »</td><td>Elles sont documentées, ce qui rend la reprise possible, mais elles reposent sur une personne et ne sont ni auditables, ni multi-pays, ni multi-devises. Une entreprise de 100 M€ ne peut faire reposer son encaissement sur cette seule base.</td></tr>
-          <tr><td class="k">« Deux recouvreurs supplémentaires suffiraient. »</td><td>Ce scénario coûte 300 à 400 k€ par an à l'approche des 100 M€ et ne récupère aucun des vingt-six jours antérieurs à la facture, sur lesquels la relance est sans effet.</td></tr>
-        </tbody>
-      </table>
-    </div>
+<h3 class="s">Segmentation par canal</h3>
+<ul>
+<li><strong>Financeurs institutionnels</strong> — OPCO, CPF, secteur public : le geste est documentaire. Priorité à la complétude des dossiers et au traitement des anomalies.</li>
+<li><strong>Entreprises</strong> — B2B direct : le geste est commercial et contractuel. Priorité au bon de commande, au portail client et aux conditions de paiement.</li>
+<li><strong>Particuliers</strong> — le geste est automatisé. Priorité au prélèvement et au traitement des rejets.</li>
+</ul>
 
-    <h3 class="sub"><span class="n">6.3</span> Lexique</h3>
-    <dl class="lex">
-      <div><dt>Poste client</dt><dd>Ensemble du cycle allant de l'octroi des conditions de paiement à l'encaissement effectif. Désigné en anglais par <em>credit management</em>.</dd></div>
-      <div><dt>DSO</dt><dd>Délai moyen, en jours, entre l'émission d'une facture et son encaissement.</dd></div>
-      <div><dt>Balance âgée</dt><dd>État des créances échues et non échues, classées par ancienneté.</dd></div>
-      <div><dt>Encours client</dt><dd>Total facturé et non encore encaissé. Il atteint 16,4 M€ à 100 M€ de chiffre d'affaires et soixante jours de délai.</dd></div>
-      <div><dt>Lettrage</dt><dd>Rapprochement de chaque encaissement avec la facture correspondante.</dd></div>
-      <div><dt>Ligne de mobilisation de créances</dt><dd>Plafond de financement ouvert à l'avance auprès d'une banque, utilisable en cédant des factures émises et non encore encaissées. La banque en verse le montant sous 24 à 48 heures ; la ligne se reconstitue à mesure que les clients règlent. Elle ne finance que ce qui est déjà facturé : les délais antérieurs à l'émission n'y sont pas éligibles.</dd></div>
-      <div><dt>Cession Dailly</dt><dd>Mobilisation de créances professionnelles auprès d'une banque. Le taux ne porte ni sur le chiffre d'affaires ni sur le montant facturé, mais sur les sommes avancées et pour la seule durée de l'avance. Une créance de 48 000 € financée 45 jours à 4 % l'an coûte 237 €, soit 0,49 % de son montant. Rapporté au chiffre d'affaires, le coût annuel équivaut à 4 % × délai / 365, soit environ 0,5 % à quarante-cinq jours.</dd></div>
-      <div><dt>Affacturage</dt><dd>Cession de créances à un factor, incluant la gestion du poste client. Aux intérêts s'ajoute une commission de service qui porte, elle, sur le volume cédé — de 0,1 à 1,5 % de chaque facture, indépendamment de la durée. Ce service étant déjà assuré en interne, la cession Dailly est privilégiée.</dd></div>
-    </dl>
+<h3 class="s">Segment stratégique</h3>
+<ul>
+<li>grands comptes ;</li>
+<li>forte exposition ;</li>
+<li>enjeux commerciaux importants.</li>
+</ul>
+<p class="arrow">→ suivi individualisé et coordination étroite avec le Sales.</p>
 
-    <h3 class="sub"><span class="n">6.4</span> Données nécessaires au chiffrage définitif</h3>
-    <ul class="pl">
-      <li><b>Chiffre d'affaires prévisionnel par exercice</b> jusqu'à 100 M€, afin de projeter l'encours à chaque palier.</li>
-      <li><b>Délai moyen constaté entre fin de session et dépôt du dossier</b> sur les six derniers mois. Cette donnée n'est aujourd'hui mesurée par aucun outil ; sa production constitue la mesure H1.2.</li>
-      <li><b>Conditions bancaires en vigueur par entité</b>, pour dimensionner la ligne de mobilisation et préparer la négociation.</li>
-      <li><b>Devis de trois éditeurs</b> d'outils de gestion du poste client, pour substituer un montant ferme à la fourchette de la décision n°3.</li>
-    </ul>
-  </div>
+<h3 class="s">Segment standard</h3>
+<ul>
+<li>clients présentant un risque maîtrisé.</li>
+</ul>
+<p class="arrow">→ processus standardisé et automatisé.</p>
+
+<h3 class="s">Segment à risque</h3>
+<ul>
+<li>retards récurrents ;</li>
+<li>exposition élevée ;</li>
+<li>comportement de paiement dégradé.</li>
+</ul>
+<p class="arrow">→ surveillance renforcée et actions spécifiques.</p>
+
+<p>Cette segmentation permet de concentrer les ressources humaines sur les situations où leur intervention génère le plus de valeur.</p>
 </section>
 
-</main>
+<hr>
 
-<footer>
-  <div class="wrap">
-    <p>Le dossier présenté au point 2.1 est un cas type reconstitué à titre d'illustration ; les étapes et les ordres de grandeur correspondent aux situations observées. Les montants du point 2.3 résultent de calculs arithmétiques appliqués à la trajectoire visée de 100 M€ à cinq ans : ils ne décrivent ni le chiffre d'affaires actuel, ni une prévision d'activité. Les références réglementaires figurant en annexe 6.1 sont citées à titre de cadrage et doivent être confirmées avec le conseil de l'entreprise avant toute mise en œuvre.</p>
-  </div>
-</footer>
+<section>
+<h2 class="s">7. Responsabilité du Sales et de l'ADV dans le recouvrement</h2>
+<p>Le Sales et l'ADV ne portent pas le recouvrement opérationnel. Leur intervention est en revanche déterminante, et pour l'ADV elle l'est sur la totalité des dossiers de financement.</p>
+
+<h3 class="s">L'administration des ventes</h3>
+<p>C'est le premier maillon du délai d'encaissement : les vingt-six jours antérieurs à la facture relèvent de son périmètre et de celui des opérations. L'ADV doit notamment :</p>
+<ul>
+<li>obtenir l'accord de prise en charge avant le démarrage de la formation ;</li>
+<li>collecter les émargements et le certificat de réalisation sans délai ;</li>
+<li>déposer les dossiers complets auprès des financeurs ;</li>
+<li>vérifier l'exactitude des données de facturation.</li>
+</ul>
+
+<h3 class="s">Le Sales</h3>
+<ul>
+<li>éviter les conditions de paiement exceptionnellement longues sans justification ;</li>
+<li>contribuer à sécuriser les informations nécessaires à la facturation ;</li>
+<li>identifier les risques spécifiques liés aux clients ;</li>
+<li>intervenir sur les comptes stratégiques en retard ;</li>
+<li>contribuer à obtenir un engagement de paiement lorsque la relation commerciale est nécessaire ;</li>
+<li>participer à la résolution des litiges commerciaux.</li>
+</ul>
+<p>L'objectif est de construire une responsabilité partagée :</p>
+<p><strong>l'ADV sécurise le dossier ; la Finance pilote le recouvrement ; le Sales débloque les situations commerciales.</strong></p>
+</section>
+
+<hr>
+
+<section>
+<h2 class="s">8. Credit Management</h2>
+<p>La croissance vers 100 M€ nécessite de mieux anticiper le risque client. Cette exigence doit toutefois être proportionnée à la réalité du portefeuille : sur les canaux OPCO, CPF et public, le risque de défaut est structurellement faible et le sujet reste le délai, non la solvabilité.</p>
+<p>Le credit management prend en revanche tout son sens sur deux périmètres :</p>
+<ul>
+<li>les clients B2B présentant une exposition significative ;</li>
+<li>l'ensemble des clients export, à mesure que de nouveaux pays s'ouvrent.</li>
+</ul>
+<p>Sur ces périmètres :</p>
+<ul>
+<li>évaluation du risque ;</li>
+<li>définition d'une limite d'exposition lorsque nécessaire ;</li>
+<li>suivi de l'encours ;</li>
+<li>identification des comportements de paiement ;</li>
+<li>réévaluation des clients présentant des retards récurrents ;</li>
+<li>recours à l'assurance-crédit sur l'export.</li>
+</ul>
+<p>Le principe est de ne pas découvrir le risque client au moment où la facture devient impayée.</p>
+</section>
+
+<hr>
+
+<section>
+<h2 class="s">9. Gestion des litiges</h2>
+<p>Les litiges doivent être traités comme un levier direct d'amélioration du recouvrement. Chez Liora, la majorité d'entre eux ne sont pas des contestations commerciales mais des <strong>rejets pour pièce manquante</strong> : leur traitement relève autant de l'ADV que du recouvrement.</p>
+<p>Chaque litige significatif doit disposer de :</p>
+<ul>
+<li>montant ;</li>
+<li>motif ;</li>
+<li>responsable ;</li>
+<li>date cible de résolution ;</li>
+<li>prochaine action.</li>
+</ul>
+<p>Les principales causes doivent être analysées afin d'identifier les problèmes récurrents. Sur le dossier type analysé au point 2, un émargement manquant a coûté trente-cinq jours.</p>
+<p>L'objectif est double :</p>
+<p><strong>résoudre rapidement les litiges existants et réduire leur récurrence.</strong></p>
+</section>
+
+<hr>
+
+<section>
+<h2 class="s">10. Trésorerie : passer d'une vision réactive à une vision prédictive</h2>
+<p>La croissance vers 100 M€ nécessite une visibilité renforcée sur le cash. Les briques existent déjà — Agicap et l'application interne de suivi des flux — mais le pilotage reste largement fondé sur le constaté bancaire.</p>
+<p>Le pilotage doit s'effectuer sur trois horizons.</p>
+
+<h3 class="s">Daily Cash</h3>
+<p>Vision quotidienne :</p>
+<ul>
+<li>cash disponible ;</li>
+<li>soldes bancaires ;</li>
+<li>encaissements ;</li>
+<li>décaissements ;</li>
+<li>anomalies ;</li>
+<li>besoins immédiats.</li>
+</ul>
+
+<h3 class="s">Forecast 13 semaines</h3>
+<p>Vision opérationnelle :</p>
+<ul>
+<li>encaissements attendus, issus de l'échéancier réel des créances ;</li>
+<li>décaissements prévisionnels : paie, URSSAF, formateurs, loyers, abonnements ;</li>
+<li>événements exceptionnels ;</li>
+<li>évolution du cash disponible.</li>
+</ul>
+<p>L'objectif est d'identifier les tensions de trésorerie suffisamment tôt pour pouvoir agir. Le passage d'un modèle fondé sur l'historique à une prévision construite créance par créance constitue le principal progrès attendu.</p>
+
+<h3 class="s">Vision 12–24 mois</h3>
+<p>Vision stratégique :</p>
+<ul>
+<li>évolution des besoins de trésorerie ;</li>
+<li>croissance ;</li>
+<li>investissements ;</li>
+<li>financement, dont la ligne de mobilisation de créances ;</li>
+<li>développement international.</li>
+</ul>
+</section>
+
+<hr>
+
+<section>
+<h2 class="s">11. Prévision des encaissements</h2>
+<p>La qualité du cash forecast dépend directement de la qualité des prévisions d'encaissement. La balance âgée existante en constitue la source naturelle.</p>
+<p>Le modèle cible doit permettre de distinguer :</p>
+<ul>
+<li>encaissements certains — dossiers complets déposés et acceptés ;</li>
+<li>encaissements probables — dossiers en cours d'instruction ;</li>
+<li>encaissements à risque — dossiers en anomalie ou litige ouvert ;</li>
+<li>retards potentiels.</li>
+</ul>
+<p>Les prévisions doivent être régulièrement comparées aux encaissements réellement reçus afin d'améliorer leur fiabilité. L'écart entre prévu et réalisé doit lui-même devenir un indicateur suivi.</p>
+</section>
+
+<hr>
+
+<section>
+<h2 class="s">12. Automatisation</h2>
+<p>L'automatisation doit permettre d'absorber la croissance sans augmenter proportionnellement les tâches manuelles. Une partie du chemin est déjà faite : les relances, le suivi des litiges et des promesses, la balance âgée et la catégorisation des flux bancaires sont outillés.</p>
+
+<h4 class="s">Ce qui reste à automatiser — recouvrement</h4>
+<ul>
+<li>déclenchement des relances par les statuts de facture électronique ;</li>
+<li>priorisation des comptes selon le risque et le montant ;</li>
+<li>alertes sur les dossiers de financement en anomalie ;</li>
+<li>suivi du délai fin de session — dépôt.</li>
+</ul>
+
+<h4 class="s">Ce qui reste à automatiser — trésorerie</h4>
+<ul>
+<li>lettrage automatique par référence de facture, aujourd'hui effectué par reconnaissance de libellés bancaires ;</li>
+<li>rapprochements ;</li>
+<li>consolidation multi-comptes et multi-devises ;</li>
+<li>reporting et alertes.</li>
+</ul>
+<p>L'objectif est de concentrer l'intervention humaine sur :</p>
+<p><strong>les risques, les exceptions, les litiges et les décisions.</strong></p>
+</section>
+
+<hr>
+
+<section>
+<h2 class="s">13. KPIs Recouvrement</h2>
+<p>Les indicateurs prioritaires sont :</p>
+<ul>
+<li>délai fin de session — dépôt du dossier complet, indicateur aujourd'hui absent et pourtant déterminant ;</li>
+<li>DSO global ;</li>
+<li>DSO par canal : OPCO, CPF, public, B2B, particuliers ;</li>
+<li>montant des créances échues ;</li>
+<li>créances &gt;30 / &gt;60 / &gt;90 jours ;</li>
+<li>taux d'échéances respectées ;</li>
+<li>taux de dossiers rejetés par les financeurs, et motifs ;</li>
+<li>taux de promesses de paiement respectées ;</li>
+<li>taux de litiges et montant des litiges ;</li>
+<li>délai moyen de résolution ;</li>
+<li>taux de recouvrement ;</li>
+<li>taux de lettrage automatique.</li>
+</ul>
+<p>Le pilotage doit permettre d'identifier non seulement <strong>combien est en retard</strong>, mais également <strong>pourquoi et depuis combien de temps</strong>.</p>
+</section>
+
+<hr>
+
+<section>
+<h2 class="s">14. KPIs Trésorerie</h2>
+<p>Les indicateurs prioritaires sont :</p>
+<ul>
+<li>cash disponible ;</li>
+<li>prévision de cash à 13 semaines ;</li>
+<li>précision du forecast, mesurée par l'écart entre prévu et réalisé ;</li>
+<li>encaissements prévus vs réalisés ;</li>
+<li>décaissements prévus vs réalisés ;</li>
+<li>niveau minimum de liquidité ;</li>
+<li>dette et disponibilités ;</li>
+<li>encours mobilisable et part effectivement mobilisée ;</li>
+<li>exposition par banque et par devise.</li>
+</ul>
+</section>
+
+<hr>
+
+<section>
+<h2 class="s">15. Internationalisation</h2>
+<p>L'internationalisation constitue un nouveau niveau de complexité pour le Recouvrement et la Trésorerie. Elle a déjà commencé, à petite échelle, avec l'entité allemande : celle-ci doit servir de terrain d'apprentissage et de modèle avant toute nouvelle ouverture.</p>
+<p>Les principaux sujets à anticiper sont :</p>
+<ul>
+<li>devises ;</li>
+<li>comptes bancaires locaux ;</li>
+<li>moyens de paiement ;</li>
+<li>pratiques de paiement par pays ;</li>
+<li>risque client, qui redevient réel hors financeurs publics français ;</li>
+<li>risque pays ;</li>
+<li>fiscalité ;</li>
+<li>obligations locales de facturation électronique, différentes dans chaque pays ;</li>
+<li>rapatriement des liquidités ;</li>
+<li>prévision des encaissements internationaux.</li>
+</ul>
+<p>L'objectif est de construire progressivement une approche Groupe permettant de conserver une <strong>vision consolidée du cash et des créances</strong>, tout en tenant compte des spécificités locales.</p>
+</section>
+
+<hr>
+
+<section>
+<h2 class="s">16. Organisation cible</h2>
+<p>L'organisation actuelle compte sept personnes. À dispositif inchangé, le seul recouvrement mobiliserait huit à dix postes à 100 M€ ; industrialisé, il s'en tient à trois ou quatre. L'écart, de l'ordre de 300 à 400 k€ par an, justifie à lui seul l'effort d'industrialisation.</p>
+<p>L'organisation doit permettre de séparer clairement :</p>
+
+<h3 class="s">Pilotage</h3>
+<ul>
+<li>stratégie de recouvrement ;</li>
+<li>politique de crédit ;</li>
+<li>stratégie de trésorerie ;</li>
+<li>KPIs ;</li>
+<li>amélioration continue.</li>
+</ul>
+
+<h3 class="s">Opérations</h3>
+<ul>
+<li>relances ;</li>
+<li>suivi des créances ;</li>
+<li>gestion des promesses ;</li>
+<li>suivi bancaire ;</li>
+<li>rapprochements ;</li>
+<li>prévisions.</li>
+</ul>
+
+<h3 class="s">Exceptions</h3>
+<ul>
+<li>grands comptes ;</li>
+<li>litiges complexes ;</li>
+<li>risques clients ;</li>
+<li>situations internationales ;</li>
+<li>écarts significatifs de prévision.</li>
+</ul>
+
+<p>Deux évolutions structurelles sont à conduire :</p>
+<ul>
+<li><strong>séparer le recouvrement de la trésorerie</strong>, qui sont deux métiers distincts aujourd'hui portés par une seule personne ;</li>
+<li><strong>doubler les compétences clés</strong>, en particulier sur la maintenance des outils internes, afin de supprimer le risque de continuité.</li>
+</ul>
+<p>L'objectif est de faire évoluer progressivement le fonctionnement vers une organisation où les opérations standardisées sont automatisées et où les équipes se concentrent sur les exceptions.</p>
+</section>
+
+<hr>
+
+<section>
+<h2 class="s">17. Roadmap</h2>
+
+<h3 class="s">0–6 mois — Stabiliser</h3>
+<ul>
+<li>instaurer la règle « pas de dossier complet, pas de démarrage » avec l'ADV, le Sales et les opérations ;</li>
+<li>mesurer le délai fin de session — dépôt du dossier, avec une cible de cinq jours ouvrés ;</li>
+<li>mettre en place une revue quotidienne des dossiers CPF en anomalie ;</li>
+<li>généraliser le prélèvement sur les particuliers et sur le B2B de petit montant ;</li>
+<li>réclamer systématiquement les intérêts moratoires et indemnités dus ;</li>
+<li>formaliser par écrit la politique de recouvrement, aujourd'hui appliquée sans être documentée ;</li>
+<li>segmenter les clients ;</li>
+<li>mettre en place le Daily Cash et le Forecast 13 semaines ;</li>
+<li>identifier les principaux litiges et définir les KPIs prioritaires.</li>
+</ul>
+
+<h3 class="s">6–18 mois — Industrialiser</h3>
+<ul>
+<li>désigner un CRM maître et faire circuler un identifiant client unique jusqu'à l'encaissement ;</li>
+<li>arbitrer ce qui reste développé en interne et ce qui doit être acquis, sur deux critères : auditabilité et multi-pays ;</li>
+<li>choisir la plateforme agréée de facturation électronique et brancher les statuts de facture sur les relances ;</li>
+<li>mettre en place le lettrage automatique par référence de facture ;</li>
+<li>négocier une ligne de mobilisation de créances adossée aux créances OPCO et publiques ;</li>
+<li>renforcer le Credit Management sur le B2B et structurer le Dispute Management ;</li>
+<li>séparer les métiers du recouvrement et de la trésorerie, et doubler les compétences clés ;</li>
+<li>améliorer la prévision des encaissements et mettre en place un reporting standardisé.</li>
+</ul>
+
+<h3 class="s">18–36 mois — Internationaliser</h3>
+<ul>
+<li>normaliser le périmètre franco-allemand avant toute nouvelle ouverture ;</li>
+<li>adapter le modèle de recouvrement aux différents pays ;</li>
+<li>structurer les flux bancaires et gérer les devises ;</li>
+<li>mettre en place une politique de crédit export et une assurance-crédit ;</li>
+<li>renforcer le suivi du risque pays ;</li>
+<li>consolider la visibilité Groupe sur les créances et le cash ;</li>
+<li>décider du socle financier multi-entités, à instruire dès 40 à 50 M€.</li>
+</ul>
+
+<h3 class="s">36–60 mois — Optimiser</h3>
+<ul>
+<li>amélioration continue du DSO ;</li>
+<li>automatisation avancée ;</li>
+<li>prévision prédictive des encaissements ;</li>
+<li>optimisation du cash Groupe ;</li>
+<li>pilotage par la donnée ;</li>
+<li>amélioration continue des processus.</li>
+</ul>
+</section>
+
+<hr>
+
+<section>
+<h2 class="s">18. Cibles à horizon 100 M€</h2>
+<p>À maturité, la fonction Recouvrement &amp; Trésorerie devra permettre :</p>
+<ul>
+<li>un <strong>délai fin de session — dépôt inférieur à 3 jours ouvrés</strong>, contre une pratique aujourd'hui non mesurée ;</li>
+<li>un <strong>DSO global de l'ordre de 45 jours</strong>, avec des cibles propres à chaque canal : 30 à 45 jours sur les financeurs institutionnels, 45 à 60 jours sur le B2B, immédiat sur les particuliers ;</li>
+<li>une réduction forte des créances anciennes, avec un encours à plus de 90 jours inférieur à 3 % ;</li>
+<li>une majorité des relances standardisées et automatisées ;</li>
+<li>un taux de lettrage automatique supérieur à 90 % ;</li>
+<li>une gestion structurée des litiges, avec analyse systématique des causes récurrentes ;</li>
+<li>une visibilité quotidienne sur le cash ;</li>
+<li>un Forecast 13 semaines fiable, avec un écart entre prévu et réalisé inférieur à 5 % ;</li>
+<li>une visibilité consolidée sur les flux internationaux ;</li>
+<li>un pilotage du risque client proportionné à l'exposition ;</li>
+<li>une fonction dimensionnée à trois ou quatre postes de recouvrement, et non huit à dix.</li>
+</ul>
+<p>Deux données restent à établir pour compléter ce cadrage : le chiffre d'affaires de référence de l'exercice en cours <span class="tbd">[à compléter]</span> et le DSO actuellement constaté <span class="tbd">[à compléter]</span>.</p>
+</section>
+
+<hr>
+
+<section>
+<h2 class="s">19. Conclusion</h2>
+<p>La trajectoire vers 100 M€ nécessite une évolution du modèle de Recouvrement et de Trésorerie.</p>
+<p>L'objectif n'est pas uniquement de traiter davantage de factures ou davantage de clients.</p>
+<p>Le diagnostic conduit à une conclusion précise : <strong>la moitié du délai d'encaissement se forme avant l'émission de la facture</strong>, dans la constitution des dossiers de financement. C'est là que se trouve le gisement principal, et il ne demande aucun budget.</p>
+<p>Il s'agit de construire une fonction capable de <strong>prévenir les risques, accélérer les encaissements, anticiper le cash et accompagner l'internationalisation</strong>.</p>
+<p>La transformation repose sur quatre leviers :</p>
+<p><strong>Prévenir → Industrialiser → Anticiper → Piloter</strong></p>
+<p>Le Recouvrement et la Trésorerie deviennent ainsi des fonctions essentielles pour sécuriser la croissance et garantir la capacité de l'entreprise à accompagner son changement d'échelle.</p>
+</section>
+
+</div>
