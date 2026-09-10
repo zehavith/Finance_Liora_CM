@@ -856,6 +856,32 @@ def supprimer(
             "oublies": len(oublies)}
 
 
+def nb_factures(dossiers: list[dict]) -> int:
+    """Combien de factures les dossiers portent, et non combien de dossiers.
+
+    Un dossier groupe toutes les factures d'un même débiteur : « SAS EDEN,
+    trois factures » est une ligne et trois créances. Le service, lui, compte
+    en factures — c'est ce que porte son tableau —, et lire « 53 dossiers »
+    en croyant lire « 53 factures » fait chercher une erreur là où il n'y en
+    a pas.
+
+    Chaque numéro n'est compté qu'une fois : une même facture rattachée à
+    deux dossiers — cela arrive après une fusion — n'en fait pas deux.
+    """
+    vues: set[str] = set()
+    for dossier in dossiers:
+        numeros = [
+            numero.strip()
+            for numero in str(dossier.get("factures") or "").split("|")
+            if numero.strip()
+        ]
+        # Un dossier dont le récapitulatif ne porte pas la colonne compte
+        # pour sa propre référence : elle est son numéro de facture.
+        vues.update(numeros or [str(dossier.get("reference") or "").strip()])
+    vues.discard("")
+    return len(vues)
+
+
 def tranches_anciennete(dossiers: list[dict]) -> list[dict]:
     """Montant encore dû, par ancienneté de la créance.
 
@@ -1603,6 +1629,11 @@ def agreger(dossiers: list[dict]) -> dict:
     return {
         "par_statut": [dict(cle=cle, **valeurs) for cle, valeurs in par_statut.items()],
         "nb_dossiers": len(dossiers),
+        # Un dossier n'est pas une facture. Le service compte en factures —
+        # « j'ai 37 en personnel et 16 en entreprise » — et l'application ne
+        # savait dire que des dossiers. Quand un débiteur en porte plusieurs,
+        # les deux chiffres divergent, et rien ne disait lequel on lisait.
+        "nb_factures": nb_factures(dossiers),
         "nb_en_cours": len(en_cours),
         "montant_en_cours": sum(d["montant_du"] for d in en_cours),
         "montant_total": sum(d["montant_du"] for d in dossiers),

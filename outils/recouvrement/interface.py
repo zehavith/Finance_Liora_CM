@@ -4403,9 +4403,15 @@ function dossiersFiltres() {
 
 function majCompteRecherche(visibles) {
   const filtre = Boolean(RECHERCHE.trim() || ETATS_CHOISIS.size);
+  // « 53 dossier(s) » se lisait « 53 factures ». Un dossier groupe toutes
+  // les factures d'un meme debiteur : quand les deux comptes different, on
+  // dit les deux plutot que de laisser croire a une perte.
+  const factures = nbFactures(DOSSIERS);
+  const suite = factures && factures !== DOSSIERS.length
+    ? ` · ${factures} facture(s)` : "";
   const texte = !filtre
-    ? (DOSSIERS.length ? `${DOSSIERS.length} dossier(s).` : "")
-    : `${visibles} dossier(s) sur ${DOSSIERS.length}.`;
+    ? (DOSSIERS.length ? `${DOSSIERS.length} dossier(s)${suite}.` : "")
+    : `${visibles} dossier(s) sur ${DOSSIERS.length}${suite}.`;
   ["compteSuivi", "compteDocuments"].forEach((id) => {
     if ($(id)) $(id).textContent = texte;
   });
@@ -5753,7 +5759,10 @@ function rendreBord() {
   const a = AGREGATS = recalculer();
 
   const tuiles = [
-    ["Dossiers suivis", a.nb_dossiers, `dont ${a.nb_en_cours} en cours`, ""],
+    ["Dossiers suivis", a.nb_dossiers,
+     `dont ${a.nb_en_cours} en cours`
+     + (a.nb_factures && a.nb_factures !== a.nb_dossiers
+        ? ` · ${a.nb_factures} facture(s)` : ""), ""],
     ["Montant en contentieux", euro(a.montant_en_cours),
      a.montant_abandon_possible
        ? `dossiers non clôturés, dont ${euro(a.montant_abandon_possible)} `
@@ -6234,6 +6243,20 @@ function rendreDetailGraphe() {
   });
 }
 
+// Chaque numero une seule fois : une meme facture rattachee a deux dossiers
+// — cela arrive apres une fusion — n'en fait pas deux.
+function nbFactures(dossiers) {
+  const vues = new Set();
+  for (const d of dossiers) {
+    const numeros = String(d.factures || "").split("|")
+      .map((n) => n.trim()).filter(Boolean);
+    const retenus = numeros.length
+      ? numeros : [String(d.reference || "").trim()];
+    retenus.forEach((n) => { if (n) vues.add(n); });
+  }
+  return vues.size;
+}
+
 function recalculer() {
   const par = STATUTS.map((s) => ({ ...s, nombre: 0, montant: 0, frais: 0 }));
   const index = Object.fromEntries(par.map((s, i) => [s.cle, i]));
@@ -6253,6 +6276,11 @@ function recalculer() {
     .filter((v) => v !== null && v !== undefined).sort((a, b) => a - b);
   return {
     par_statut: par, nb_dossiers: DOSSIERS.length,
+    // Un dossier n'est pas une facture : il groupe toutes celles d'un meme
+    // debiteur. Le service, lui, compte en factures — c'est ce que porte son
+    // tableau —, et lire « 53 dossiers » en croyant lire « 53 factures » fait
+    // chercher une erreur la ou il n'y en a pas.
+    nb_factures: nbFactures(DOSSIERS),
     // Non clôturé, et non « en cours d'étape » : un possible abandon n'est
     // ni gagné ni perdu, la créance reste due, et la décision reste à
     // prendre. L'exclure retranchait sa part du montant en contentieux — 21

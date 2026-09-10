@@ -433,6 +433,22 @@ Tout est enregistré dans `suivi-dossiers.json`, **à côté de l'outil et non d
 l'export** : refaire une extraction n'efface pas l'avancement. Les états de la
 version précédente sont repris automatiquement.
 
+### Un dossier n'est pas une facture
+
+L'application compte des **dossiers**. Un dossier groupe toutes les factures
+d'un même débiteur : « SAS EDEN, trois factures » est **une** ligne et
+**trois** créances. Le service, lui, compte en factures — c'est ce que porte
+son tableau —, et lire « 53 dossiers » en croyant lire « 53 factures » fait
+chercher une perte là où il n'y en a pas.
+
+Quand les deux comptes diffèrent, les deux sont écrits : « 53 dossier(s) ·
+58 facture(s) », au-dessus des listes comme sur la tuile *Dossiers suivis*.
+S'ils sont égaux, un seul suffit.
+
+Les deux portefeuilles, eux, **partitionnent** les dossiers : chacun est
+d'entreprise ou en financement personnel, jamais les deux, jamais aucun. Leur
+somme est donc toujours le total — 37 + 16 font 53, et c'est normal.
+
 ### Les indicateurs du tableau de bord
 
 Neuf tuiles : dossiers suivis, montant en contentieux, frais engagés,

@@ -4776,6 +4776,25 @@ def test_dossiers_a_trancher() -> None:
              and seule["emails"] == "b@x.fr",
              "avec le nom du débiteur et son portefeuille")
 
+    # Un dossier n'est pas une facture : il groupe toutes celles d'un même
+    # débiteur. Lire « 53 dossiers » en croyant lire « 53 factures » fait
+    # chercher une perte là où il n'y en a pas.
+    import suivi as module_compte  # noqa: PLC0415
+    combien = module_compte.nb_factures([
+        {"reference": "F-1", "factures": "F-1 | F-1bis | F-1ter"},
+        {"reference": "F-2", "factures": "F-2"},
+        {"reference": "F-3", "factures": ""},
+        {"reference": "F-4", "factures": "F-2"},
+    ])
+    verifier(combien == 5,
+             f"quatre dossiers peuvent porter cinq factures (obtenu : {combien})")
+    verifier(module_compte.nb_factures(
+        [{"reference": "A", "factures": "A"}]) == 1,
+        "et une facture par dossier reste une facture")
+    verifier("nb_factures: nbFactures(DOSSIERS)" in module_interface.PAGE
+             and "facture(s)" in module_interface.PAGE,
+             "la page dit les deux comptes quand ils diffèrent")
+
     # Une adresse tronquée ne s'utilise pas telle quelle : la colonne le dit.
     partiel = module_envoi.liste_a_trancher([dict(
         dossiers[0], reference="F-6", adresse_postale="9 rue Ancienne",
