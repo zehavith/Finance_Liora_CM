@@ -1245,9 +1245,17 @@ class Gestionnaire(BaseHTTPRequestHandler):
         chemin = self.path.split("?")[0]
 
         if chemin == "/":
+            import envoi as module_envoi  # noqa: PLC0415
+
             page = PAGE.replace("__JETON__", JETON)
             page = page.replace("__MOTEUR_PDF__", moteur_pdf_disponible())
             page = page.replace("__VERSION__", VERSION)
+            # « 3000 » et non « 3000.0 » : la valeur sert à la fois de
+            # constante JavaScript et de contenu d'un champ que l'on voit.
+            seuil = module_envoi.SEUIL_PETIT_MONTANT
+            page = page.replace(
+                "__SEUIL_PETIT_MONTANT__",
+                str(int(seuil) if float(seuil).is_integer() else seuil))
             page = page.replace(
                 "__NATURES_PIECES__",
                 json.dumps(list(module_suivi.NATURES_PIECES), ensure_ascii=False)
@@ -2071,6 +2079,10 @@ class Gestionnaire(BaseHTTPRequestHandler):
         montant est trop faible pour justifier des frais. Ce sont les mêmes
         dossiers qu'on trie en réunion, et le tableau porte ce qu'il faut
         pour les joindre : adresse, mail, téléphone.
+
+        « raisons » restreint la liste à l'une des deux : « tous les dossiers
+        de moins de 3 000 € » est une question à soi seule, et la mêler aux
+        possibles abandons obligeait à retrier le tableau à la main.
         """
         import entreprises as module_entreprises  # noqa: PLC0415
         import envoi as module_envoi  # noqa: PLC0415
@@ -2080,6 +2092,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
                               or module_envoi.SEUIL_PETIT_MONTANT))
         except (TypeError, ValueError):
             seuil = module_envoi.SEUIL_PETIT_MONTANT
+        raisons = (demande or {}).get("raisons") or None
 
         sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
         annuaire = module_entreprises.charger_annuaire(ANNUAIRE)
@@ -2089,28 +2102,21 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 (s["libelle"] for s in module_suivi.STATUTS
                  if s["cle"] == dossier.get("statut")), dossier.get("statut") or "")
 
-        cible = sortie / "dossiers-a-trancher.csv"
+        cible = sortie / module_envoi.fichier_a_trancher(raisons)
         try:
             combien, chemin = module_envoi.ecrire_liste_a_trancher(
-                cible, dossiers, seuil)
+                cible, dossiers, seuil, raisons)
         except OSError as exc:
             self._json(400, {"erreur": str(exc)})
             return
 
-        sans_adresse = sum(
-            1 for r in module_envoi.liste_a_trancher(dossiers, seuil)
-            if not r["adresse_postale"]
-        )
-        sans_telephone = sum(
-            1 for r in module_envoi.liste_a_trancher(dossiers, seuil)
-            if not r["telephone"]
-        )
+        rangees = module_envoi.liste_a_trancher(dossiers, seuil, raisons)
         self._json(200, {
             "dossiers": combien,
             "fichier": str(chemin),
             "seuil": seuil,
-            "sans_adresse": sans_adresse,
-            "sans_telephone": sans_telephone,
+            "sans_adresse": sum(1 for r in rangees if not r["adresse_postale"]),
+            "sans_telephone": sum(1 for r in rangees if not r["telephone"]),
         })
 
     def _oublier_complements(self) -> None:
@@ -2625,6 +2631,14 @@ details.absents li{break-inside:avoid}
 #tableDocuments td.periode{white-space:nowrap;font-size:11.5px;
   line-height:1.35;color:var(--texte-2)}
 #tableDocuments .etat{white-space:nowrap}
+/* « Exporter les dossiers de moins de [3000] € » : le seuil est au milieu de
+   la phrase, pas dans un reglage a chercher ailleurs. */
+.exports-trancher{display:flex;align-items:center;flex-wrap:wrap;gap:8px;
+  margin-top:16px}
+.exports-trancher .seuil{display:inline-flex;align-items:center;gap:5px;
+  font-size:13px;color:var(--texte-2);margin-left:-4px}
+.exports-trancher .seuil input{width:82px;text-align:right;min-width:0;
+  font-variant-numeric:tabular-nums}
 #tableDocuments td.reference{white-space:nowrap}
 .depot-piece{display:inline-block;margin-left:5px;font-size:11.5px;
   color:var(--accent);cursor:pointer;white-space:nowrap}
@@ -2899,6 +2913,23 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <button class="secondaire" id="exporterSuivi"
               title="Écrit un tableau des dossiers affichés — nom, adresse, mail, téléphone, montant, état.">Exporter ce tableau</button>
     </div>
+    <!-- Les deux listes qu'on trie en reunion. Elles vivent ici, avec les
+         dossiers, et non sur le tableau de bord : c'est en regardant la liste
+         qu'on se dit « sors-moi tous ceux sous trois mille ». -->
+    <div class="exports-trancher">
+      <button class="secondaire" id="exporterPetitsMontants"
+              title="Écrit un tableau de tous les dossiers en cours dont le montant dû est inférieur au seuil. Nom du débiteur — l'apprenant ou l'entreprise —, adresse postale, adresse mail, téléphone, montant, échéance, retard, état et portefeuille.">Exporter les dossiers de moins de</button>
+      <label class="seuil">
+        <input type="number" id="seuilPetitMontant" min="1" step="100"
+               value="__SEUIL_PETIT_MONTANT__"
+               title="En dessous de ce montant, les frais de recouvrement approchent la créance." />
+        €</label>
+      <button class="secondaire" id="exporterATrancher"
+              title="Les deux à la fois : les possibles abandons et les petits montants. C'est la liste qu'on trie en réunion.">Exporter tous les dossiers à trancher</button>
+    </div>
+    <p class="note">Ces deux tableaux portent de quoi joindre le débiteur :
+       nom de l'apprenant ou de l'entreprise, adresse postale, adresse mail et
+       téléphone. La colonne <b>Financement</b> dit lequel des deux c'est.</p>
     <div id="tableSuivi"></div>
   </section>
 </div>
@@ -4010,6 +4041,10 @@ document.querySelectorAll("nav.principal button").forEach((bouton) => {
 let DOSSIERS = [], STATUTS = [], AGREGATS = null, COURBE = null, SERVEUR = null;
 const LIGNES_A_L_ECRAN = 600;
 const NATURES_PIECES = __NATURES_PIECES__;
+// Le seuil sous lequel les frais de recouvrement approchent la creance. Il
+// vient du serveur : le coder ici en dur ferait diverger le libelle du
+// bouton et ce que le fichier contient.
+const SEUIL_PETIT_MONTANT = __SEUIL_PETIT_MONTANT__;
 let ENTREPRISES = null, ANNUAIRE_CONNU = false, ANNUAIRE_MANQUANTS = 0;
 // Les notes qu'on n'a pas pu reecrire, et pourquoi. Elles restent en retard,
 // donc remises en chantier a chaque affichage : sans le dire, le bandeau
@@ -5115,6 +5150,9 @@ function rendreSuivi() {
     $("exporterSuivi").addEventListener("click",
       () => exporterTableau(dossiersFiltres(), _titreDuFiltre()));
   }
+  $("exporterPetitsMontants")
+    .addEventListener("click", exporterPetitsMontants);
+  $("exporterATrancher").addEventListener("click", exporterTousATrancher);
   $("toutEffacer").addEventListener("click", toutEffacer);
   // Le bouton figure a plusieurs endroits — la barre, le bloc des factures
   // absentes, le message de liste vide — parce qu'on le cherche la ou le
@@ -5797,13 +5835,8 @@ function rendreBord() {
        vision deutéranope.</p>
     <div class="barres">${barres}</div>
     <p class="aide">Cliquez une barre pour voir le détail de cet état.</p>
-    <div class="ancre-detail"></div>
-    <button class="secondaire" id="exporterATrancher"
-            title="Écrit un tableau des dossiers qui demandent une décision : possible abandon, ou montant trop faible pour justifier des frais. Avec l'adresse, le mail et le téléphone.">Exporter les dossiers à trancher</button>`;
+    <div class="ancre-detail"></div>`;
 
-  if ($("exporterATrancher")) {
-    $("exporterATrancher").addEventListener("click", exporterATrancher);
-  }
   $("grapheBord").querySelectorAll(".rangee.menante").forEach((rangee) => {
     const etat = STATUTS.find((s) => s.cle === rangee.dataset.etat);
     rendreMenante(rangee, "etat", rangee.dataset.etat,
@@ -5904,26 +5937,52 @@ async function exporterTableau(dossiers, titre) {
   } catch (erreur) { afficherBandeau(false, erreur.message); }
 }
 
-async function exporterATrancher() {
-  const bouton = $("exporterATrancher");
+// Les deux raisons se demandent separement. « Tous les dossiers de moins de
+// 3 000 € » est une question a soi seule — on la pose pour decider d'un lot
+// de relances telephoniques — et la meler aux possibles abandons obligeait a
+// retrier le tableau a la main, ce qu'on venait justement d'eviter.
+async function exporterATrancher(bouton, raisons, rien) {
   const avant = bouton.textContent;
   bouton.disabled = true;
   bouton.textContent = "Écriture…";
   try {
-    const r = await api("/api/liste-a-trancher", {});
+    const seuil = seuilPetitMontant();
+    const r = await api("/api/liste-a-trancher",
+                        raisons ? { raisons, seuil } : { seuil });
     if (!r.dossiers) {
-      afficherBandeau(true, "Aucun dossier à trancher : ni possible abandon, "
-        + `ni montant inférieur à ${euro(r.seuil)}.`);
+      afficherBandeau(true, rien(euro(r.seuil)));
       return;
     }
     afficherBandeau(true,
-      `${r.dossiers} dossier(s) à trancher écrits dans ${echapper(r.fichier)}.`
+      `${r.dossiers} dossier(s) écrits dans ${echapper(r.fichier)}.`
       + (r.sans_adresse ? ` ⚠ ${r.sans_adresse} sans adresse postale.` : "")
       + (r.sans_telephone ? ` ⚠ ${r.sans_telephone} sans téléphone.` : ""));
     try { await api("/api/ouvrir", { chemin: r.fichier }); }
     catch (erreur) { void erreur; }
   } catch (erreur) { afficherBandeau(false, erreur.message); }
   finally { bouton.disabled = false; bouton.textContent = avant; }
+}
+
+// Trois mille euros est le seuil d'usage, pas une loi : sous ce montant les
+// frais de recouvrement approchent la creance. Il se change sur place — une
+// reunion se tient parfois a mille cinq cents.
+function seuilPetitMontant() {
+  const champ = $("seuilPetitMontant");
+  const lu = parseFloat(String(champ ? champ.value : "").replace(",", "."));
+  return lu > 0 ? lu : SEUIL_PETIT_MONTANT;
+}
+
+function exporterPetitsMontants() {
+  return exporterATrancher(
+    $("exporterPetitsMontants"), ["petit-montant"],
+    (seuil) => `Aucun dossier en cours sous ${seuil}.`);
+}
+
+function exporterTousATrancher() {
+  return exporterATrancher(
+    $("exporterATrancher"), null,
+    (seuil) => "Aucun dossier à trancher : ni possible abandon, "
+      + `ni montant inférieur à ${seuil}.`);
 }
 
 // Cliquer une ligne d'un tableau de bord ouvre son detail, sur place :

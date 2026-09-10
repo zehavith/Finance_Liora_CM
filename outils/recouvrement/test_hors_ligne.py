@@ -4748,6 +4748,34 @@ def test_dossiers_a_trancher() -> None:
              and rangees[0]["adresse_postale"].startswith("14 bis"),
              "avec l'adresse, le mail et le téléphone")
 
+    # « Tous les dossiers de moins de 3 000 € » est une question à soi seule :
+    # on la pose pour décider d'un lot de relances téléphoniques, et la mêler
+    # aux possibles abandons obligeait à retrier le tableau à la main.
+    petits = [r["reference"] for r in
+              module_envoi.liste_a_trancher(dossiers, raisons=["petit-montant"])]
+    verifier(petits == ["F-2"],
+             f"les petits montants se demandent seuls ({petits})")
+    abandons = [r["reference"] for r in module_envoi.liste_a_trancher(
+        dossiers, raisons=["abandon-possible"])]
+    verifier(abandons == ["F-1"],
+             f"les possibles abandons aussi ({abandons})")
+    # Le seuil n'est pas une loi : une réunion se tient parfois à 1 500 €.
+    a_mille = [r["reference"] for r in module_envoi.liste_a_trancher(
+        dossiers, seuil=1000.0, raisons=["petit-montant"])]
+    verifier(a_mille == [], f"et le seuil se change ({a_mille})")
+    # Le nom du fichier dit ce qu'il porte : « liste.csv » ne dit rien.
+    verifier(module_envoi.fichier_a_trancher(["petit-montant"])
+             == "dossiers-petits-montants.csv"
+             and module_envoi.fichier_a_trancher()
+             == "dossiers-a-trancher.csv",
+             "chacun dans son fichier, nommé par ce qu'il contient")
+    # Ce qu'elle demande dans l'export : de quoi joindre l'apprenant ou
+    # l'entreprise. Le portefeuille dit lequel des deux c'est.
+    seule = module_envoi.liste_a_trancher(dossiers, raisons=["petit-montant"])[0]
+    verifier(seule["nom"] == "MCAPI" and seule["financement"] == "Entreprise"
+             and seule["emails"] == "b@x.fr",
+             "avec le nom du débiteur et son portefeuille")
+
     # Une adresse tronquée ne s'utilise pas telle quelle : la colonne le dit.
     partiel = module_envoi.liste_a_trancher([dict(
         dossiers[0], reference="F-6", adresse_postale="9 rue Ancienne",
@@ -4816,6 +4844,14 @@ def test_dossiers_a_trancher() -> None:
     module_suivi_saisie.mettre_a_jour(donnees, "F-1", telephone="")
     verifier("telephone" not in donnees["F-1"],
              "vider le champ rend la main au tableau")
+
+    # Les deux boutons, sous le graphe, et le seuil au milieu de la phrase.
+    verifier('id="exporterPetitsMontants"' in page
+             and 'id="seuilPetitMontant"' in page
+             and "Exporter les dossiers de moins de" in page,
+             "les dossiers sous le seuil s'exportent d'un bouton nommé")
+    verifier("const SEUIL_PETIT_MONTANT = __SEUIL_PETIT_MONTANT__;" in page,
+             "et le seuil vient du serveur, non codé en dur dans la page")
 
     # Un tableau qu'on regarde, on veut souvent l'emporter.
     verifier('id="exporterDetail"' in page and 'id="exporterSuivi"' in page

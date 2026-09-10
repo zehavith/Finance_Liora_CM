@@ -547,32 +547,70 @@ ENTETES_A_TRANCHER = {
 }
 
 
-def a_trancher(dossier: dict, seuil: float = SEUIL_PETIT_MONTANT) -> str:
+# Les deux raisons d'être dans la liste, nommées : elles se demandent
+# séparément. « Tous les dossiers de moins de 3 000 € » est une question à
+# soi seule — on la pose pour décider d'un lot de relances téléphoniques —,
+# et la mêler aux possibles abandons oblige à retrier le tableau à la main.
+RAISON_ABANDON = "abandon-possible"
+RAISON_PETIT_MONTANT = "petit-montant"
+RAISONS = (RAISON_ABANDON, RAISON_PETIT_MONTANT)
+
+# Le nom du fichier dit ce qu'il porte : retrouvé dans un répertoire six mois
+# plus tard, « liste.csv » ne dit rien.
+FICHIERS_A_TRANCHER = {
+    (RAISON_ABANDON,): "dossiers-possible-abandon.csv",
+    (RAISON_PETIT_MONTANT,): "dossiers-petits-montants.csv",
+    RAISONS: "dossiers-a-trancher.csv",
+}
+
+
+def _raisons(demandees) -> tuple[str, ...]:
+    """Les raisons retenues, dans leur ordre canonique. Vide vaut toutes."""
+    if not demandees:
+        return RAISONS
+    voulues = {str(r).strip() for r in demandees}
+    gardees = tuple(r for r in RAISONS if r in voulues)
+    return gardees or RAISONS
+
+
+def fichier_a_trancher(raisons=None) -> str:
+    """Le nom du fichier qui porte ces raisons-là."""
+    return FICHIERS_A_TRANCHER[_raisons(raisons)]
+
+
+def a_trancher(dossier: dict, seuil: float = SEUIL_PETIT_MONTANT,
+               raisons=None) -> str:
     """Pourquoi ce dossier demande une décision, ou une chaîne vide.
 
     Deux raisons, cumulables : l'étape dit « possible abandon », ou le
     montant est trop faible pour justifier des frais. Un dossier déjà clos
     n'est pas à trancher — la décision a été prise.
+
+    « raisons » restreint la question : passer le seul petit montant donne
+    tous les dossiers sous le seuil, et rien d'autre.
     """
     if dossier.get("clos"):
         return ""
+    gardees = _raisons(raisons)
     motifs = []
-    if dossier.get("statut") == "abandon-possible":
+    if (RAISON_ABANDON in gardees
+            and dossier.get("statut") == "abandon-possible"):
         motifs.append("possible abandon de la créance")
     montant = dossier.get("montant_du") or 0
-    if dossier.get("montant_renseigne", True) and 0 < montant < seuil:
+    if (RAISON_PETIT_MONTANT in gardees
+            and dossier.get("montant_renseigne", True) and 0 < montant < seuil):
         montant_lisible = f"{montant:,.2f}".replace(",", " ").replace(".", ",")
         motifs.append(f"montant inférieur à {seuil:.0f} € ({montant_lisible} €)")
     return " ; ".join(motifs)
 
 
 def liste_a_trancher(
-    dossiers: list[dict], seuil: float = SEUIL_PETIT_MONTANT
+    dossiers: list[dict], seuil: float = SEUIL_PETIT_MONTANT, raisons=None
 ) -> list[dict[str, str]]:
     """Les dossiers qui demandent une décision, prêts pour un tableur."""
     rangees = []
     for dossier in dossiers:
-        motif = a_trancher(dossier, seuil)
+        motif = a_trancher(dossier, seuil, raisons)
         if not motif:
             continue
         montant = dossier.get("montant_du") or 0
@@ -651,12 +689,13 @@ def ecrire_liste(cible: Path, dossiers: list[dict], motif: str = "") -> tuple[in
 
 
 def ecrire_liste_a_trancher(
-    cible: Path, dossiers: list[dict], seuil: float = SEUIL_PETIT_MONTANT
+    cible: Path, dossiers: list[dict], seuil: float = SEUIL_PETIT_MONTANT,
+    raisons=None,
 ) -> tuple[int, Path]:
     """Écrit la liste dans un CSV qu'Excel ouvre par double-clic."""
     from indexation import _ecrire_csv  # noqa: PLC0415
 
-    rangees = liste_a_trancher(dossiers, seuil)
+    rangees = liste_a_trancher(dossiers, seuil, raisons)
     _ecrire_csv(
         cible,
         [ENTETES_A_TRANCHER[cle] for cle in COLONNES_A_TRANCHER],

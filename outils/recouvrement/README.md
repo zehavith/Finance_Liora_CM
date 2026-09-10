@@ -565,12 +565,27 @@ dossiers* : il écrit ce que la liste montre, **telle qu'elle est filtrée**.
 Le nom du fichier reprend le filtre — `liste-possible-abandon-de-la-creance.csv`
 se retrouve dans un répertoire, `liste.csv` non.
 
-Le bouton **« Exporter les dossiers à trancher »**, sous le graphe, écrit
-`dossiers-a-trancher.csv` à la racine de l'export. Il retient :
+Deux boutons, dans l'onglet **État des dossiers** sous la barre de recherche
+— c'est en regardant la liste qu'on se dit « sors-moi tous ceux sous trois
+mille », pas en regardant un graphique :
+
+| Bouton | Fichier écrit | Ce qu'il retient |
+| --- | --- | --- |
+| **Exporter les dossiers de moins de `3000` €** | `dossiers-petits-montants.csv` | tous les dossiers en cours sous le seuil |
+| **Exporter tous les dossiers à trancher** | `dossiers-a-trancher.csv` | les deux motifs à la fois |
+
+Le **seuil est au milieu de la phrase** : `3 000 €` est l'usage — en dessous,
+les frais de recouvrement approchent la créance — mais il se change sur place,
+une réunion se tenant parfois à 1 500 €.
+
+La liste complète retient donc :
 
 - les dossiers en **possible abandon de la créance** ;
-- ceux dont le **montant est inférieur à 3 000 €** — en dessous, les frais de
-  recouvrement approchent la créance, et la question se pose d'elle-même.
+- ceux dont le **montant est inférieur au seuil**.
+
+Les deux listes sont **écrites séparément** : mêler les petits montants aux
+possibles abandons obligeait à retrier le tableau à la main, ce qu'on venait
+justement d'éviter.
 
 Un dossier clos n'y figure pas : la décision a été prise. Un montant non
 renseigné non plus — ce n'est pas zéro, et zéro n'est pas un petit montant.
