@@ -364,6 +364,13 @@
                     ...(v.__qualifs || {}) }
                 : (v.__qualifs || {}),
             statut: String(v.statut || '').trim(),
+            // Ce que le tableau dit du blocage, quelle que soit la colonne qui
+            // le porte : c'est la réponse à « pourquoi ce n'est pas payé ».
+            ...motifDeQualification(qualifRecouvrement || qualifBascule
+                ? { ...(qualifRecouvrement ? { 'Qualification recouvrement': qualifRecouvrement } : {}),
+                    ...(qualifBascule ? { 'Qualification recouvrement avec basculement': qualifBascule } : {}),
+                    ...(v.__qualifs || {}) }
+                : (v.__qualifs || {})),
             proprietaire: String(v.proprietaire || '').trim() || '—',
             qualifRecouvrement,
             relance: String(v.relance || '').trim(),
@@ -456,6 +463,49 @@
         const utilisees = new Set(Object.values(mapping || {}));
         return (colonnes || []).filter(c =>
             ['status', 'color', 'dropdown'].includes(c.type) && !utilisees.has(c.id));
+    }
+
+    /**
+     * La colonne qui dit POURQUOI une facture n'est pas payée.
+     *
+     * Chaque tableau a la sienne, et ce n'est pas la même : l'ADV suit les
+     * « Problématique pré relance », le recouvrement la « Qualification
+     * recouvrement avec basculement », le financement personnel la
+     * « Qualification Générale », le CPF la « Compta Qualification ». Elles
+     * disent toutes la même chose sous des noms différents — ce qui bloque
+     * l'encaissement — et c'est la seule information qui répond à « pourquoi
+     * ne nous a-t-on pas payés ? ».
+     *
+     * L'ordre est celui de la précision : une qualification de recouvrement
+     * est plus avancée dans le circuit qu'une problématique de pré-relance, et
+     * l'emporte donc quand une facture porte les deux.
+     */
+    const COLONNES_MOTIF = [
+        { motif: /qualification recouvrement avec basculement|qualification avec basculement/,
+          libelle: 'Qualification recouvrement (avec basculement)' },
+        { motif: /qualification recouvrement|qualif recouvrement/, libelle: 'Qualification recouvrement' },
+        { motif: /compta qualification|qualification compta/, libelle: 'Compta Qualification' },
+        { motif: /qualification generale|qualif generale/, libelle: 'Qualification Générale' },
+        { motif: /problematique pre ?relance|problematique pre ?echeance/, libelle: 'Problématique pré-relance' },
+        { motif: /^qualification$|^qualif$/, libelle: 'Qualification' },
+    ];
+
+    /**
+     * Le motif d'une facture : la première colonne de qualification renseignée,
+     * dans l'ordre de précision, avec le nom de celle qui a répondu.
+     */
+    function motifDeQualification(qualifs) {
+        const entrees = Object.entries(qualifs || {})
+            .filter(([, v]) => String(v || '').trim());
+        if (!entrees.length) return { motif: '', motifColonne: '' };
+        for (const c of COLONNES_MOTIF) {
+            for (const [nom, val] of entrees) {
+                if (c.motif.test(R.norm(nom))) {
+                    return { motif: String(val).trim(), motifColonne: nom };
+                }
+            }
+        }
+        return { motif: '', motifColonne: '' };
     }
 
     /** Transforme les items Monday d'un tableau en factures canoniques. */
@@ -613,10 +663,14 @@
         const champs = ['client', 'financement', 'financementBrut', 'typeClient', 'montant', 'montantHT', 'montantRegle',
             'resteDu', 'dateFacture', 'dateDebutFormation', 'dateFinFormation', 'dateEcheanceSource',
             'datePaiement', 'dateControlePaiement', 'statut', 'proprietaire', 'qualifRecouvrement', 'qualifBascule',
-            'relance', 'commentaire', 'litige', 'groupeOrigine'];
+            'relance', 'commentaire', 'litige', 'groupeOrigine', 'motif', 'motifColonne'];
         // Les qualifications de chaque source se cumulent : une facture vue sur
         // deux tableaux porte les colonnes de qualification des deux.
         out.qualifs = { ...(extra.qualifs || {}), ...(base.qualifs || {}) };
+        // Le motif se relit sur l'ensemble : une facture suivie à l'ADV et au
+        // recouvrement porte les deux colonnes, et c'est la plus avancée dans
+        // le circuit qui dit où elle en est.
+        Object.assign(out, motifDeQualification(out.qualifs));
         for (const c of champs) {
             const cur = out[c], nxt = extra[c];
             const vide = cur == null || cur === '' || cur === '—';
@@ -1233,6 +1287,7 @@
     global.LioraIngest = {
         FIELD_DEFS, FIELD_BY_NAME, autoMapColumns, parseMontant, factureKey,
         buildFacture, facturesFromMondayBoard, facturesFromRows, colonnesQualification,
+        COLONNES_MOTIF, motifDeQualification,
         validerMapping, couvertureMapping, verifierValeurs, colonnesCandidates,
         consolider, appliquerGrandLivre, appliquerSellsy, enrichir, statutIndiquePaye,
         aplatirExportMonday,

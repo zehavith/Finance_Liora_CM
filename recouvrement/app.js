@@ -11,8 +11,8 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.56.0';
-    const VERSION_DATE = '8 septembre 2026';
+    const VERSION = '2.57.0';
+    const VERSION_DATE = '10 septembre 2026';
 
     const R = window.LioraRules;
     const PR = window.LioraPrelevements;
@@ -808,6 +808,7 @@
 
         rendreRecuperation(v);
         rendreNoteperimetre(data, v);
+        rendreMotifs(data);
 
         rendreRepartition(data);
 
@@ -1027,6 +1028,119 @@
     }
 
     /** Rappels métier contextuels (OPCO sans recouvrement, retards côté ADV). */
+    /**
+     * Pourquoi ce n'est pas payé.
+     *
+     * Chaque tableau porte sa colonne de qualification, et ce n'est pas la
+     * même d'un tableau à l'autre : l'ADV suit les « Problématique pré
+     * relance », le recouvrement la « Qualification recouvrement avec
+     * basculement », le financement personnel la « Qualification Générale »,
+     * le CPF la « Compta Qualification ». Elles disent toutes la même chose
+     * sous des noms différents — ce qui bloque l'encaissement.
+     *
+     * Le tableau les réunit sous un seul motif et répond à la question que la
+     * balance âgée ne pose pas : non pas combien ni depuis quand, mais
+     * pourquoi. Échu et non échu séparés, parce qu'un blocage sur une facture
+     * pas encore exigible n'a pas la même urgence.
+     */
+    function rendreMotifs(data) {
+        const el = $('#motifs-table'), note = $('#motifs-note');
+        if (!el || !note) return;
+        // Le montant qui reste à encaisser, sur la même base que le reste du
+        // tableau de bord : le reste dû quand Monday le porte, le montant de la
+        // facture sinon — beaucoup de tableaux ne renseignent pas le premier.
+        const ouvertes = (data || []).filter(f => !f.paye);
+        const reste = f => (f.resteDu != null && f.resteDu > 0) ? f.resteDu : (f.montant || 0);
+        const par = new Map();
+        for (const f of ouvertes) {
+            const cle = (f.motif || '').trim() || '__aucun__';
+            let o = par.get(cle);
+            if (!o) {
+                o = { motif: cle, colonnes: new Set(), nb: 0, total: 0, echu: 0, nonEchu: 0,
+                      nbEchu: 0, plusAncienne: null };
+                par.set(cle, o);
+            }
+            if (f.motifColonne) o.colonnes.add(f.motifColonne);
+            o.nb++; o.total += reste(f);
+            const enRetard = (f.retardJours || 0) > 0;
+            if (enRetard) { o.echu += reste(f); o.nbEchu++; }
+            else o.nonEchu += reste(f);
+            const d = f.dateEcheance || f.dateFacture;
+            if (d && (!o.plusAncienne || d < o.plusAncienne)) o.plusAncienne = d;
+        }
+        const rows = [...par.values()].sort((a, b) => b.total - a.total);
+        state.motifsRows = rows;
+
+        const total = rows.reduce((a, r) => ({
+            nb: a.nb + r.nb, total: a.total + r.total, echu: a.echu + r.echu, nonEchu: a.nonEchu + r.nonEchu,
+        }), { nb: 0, total: 0, echu: 0, nonEchu: 0 });
+        const sans = par.get('__aucun__');
+        const renseigne = total.total - (sans ? sans.total : 0);
+
+        if (!rows.length) { note.textContent = ''; el.innerHTML = ''; return; }
+        note.innerHTML = 'Le motif vient de vos colonnes de qualification, quelle que soit celle que '
+            + 'le tableau utilise — <em>Problématique pré-relance</em> à l\'ADV, <em>Qualification '
+            + 'recouvrement avec basculement</em> au recouvrement, <em>Qualification Générale</em> en '
+            + 'financement personnel, <em>Compta Qualification</em> au CPF. Quand une facture en porte '
+            + 'plusieurs, la plus avancée dans le circuit l\'emporte. '
+            + `<strong>${U.euros(renseigne)}</strong> sur ${U.euros(total.total)} sont qualifiés `
+            + `(${U.pourcent(total.total ? renseigne / total.total * 100 : 0, 0)})`
+            + (sans ? ` — il reste ${U.nombre(sans.nb)} factures sans motif, ${U.euros(sans.total)}.` : '.');
+
+        el.innerHTML = U.table([
+            { key: 'motif', label: 'Pourquoi', format: (v, r) => v === '__aucun__'
+                ? '<span class="pill pill-muted">Aucun motif renseigné</span>'
+                : `<span class="pill">${U.escapeHtml(v)}</span>`
+                  + `<span class="cell-mini">${U.escapeHtml([...r.colonnes].join(' · '))}</span>` },
+            { key: 'nb', label: 'Factures', align: 'right', format: U.nombre },
+            { key: 'total', label: 'Reste dû', align: 'right',
+              format: v => `<strong>${U.euros(v)}</strong>` },
+            { key: 'echu', label: 'Dont échu', align: 'right',
+              format: (v, r) => v
+                ? `${U.euros(v)}<span class="cell-mini">${U.nombre(r.nbEchu)} facture${r.nbEchu > 1 ? 's' : ''}</span>`
+                : '<span class="ag-zero">·</span>' },
+            { key: 'nonEchu', label: 'Non échu', align: 'right',
+              format: v => v ? U.euros(v) : '<span class="ag-zero">·</span>' },
+            { key: 'plusAncienne', label: 'La plus ancienne', align: 'center', format: U.dateFR },
+        ], rows, {
+            vide: 'Aucune facture ouverte.',
+            total: { motif: '<strong>Total</strong>', nb: `<strong>${U.nombre(total.nb)}</strong>`,
+                     total: `<strong>${U.euros(total.total)}</strong>`,
+                     echu: U.euros(total.echu), nonEchu: U.euros(total.nonEchu) },
+        });
+    }
+
+    /** Les motifs, en Excel, avec le détail des factures de chacun. */
+    function exporterMotifs() {
+        const rows = state.motifsRows || [];
+        if (!rows.length) { U.toast('Aucun motif à exporter.', 'error'); return; }
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(r => ({
+            'Pourquoi': r.motif === '__aucun__' ? 'Aucun motif renseigné' : r.motif,
+            'Colonnes d’origine': [...r.colonnes].join(' · '),
+            'Factures': r.nb,
+            'Reste dû': arrondi(r.total),
+            'Dont échu': arrondi(r.echu),
+            'Factures échues': r.nbEchu,
+            'Non échu': arrondi(r.nonEchu),
+            'La plus ancienne': r.plusAncienne ? U.dateFR(r.plusAncienne) : '',
+        }))), 'Pourquoi');
+        const reste = f => (f.resteDu != null && f.resteDu > 0) ? f.resteDu : (f.montant || 0);
+        const detail = (state.factures || []).filter(f => !f.paye).map(f => ({
+            'Facture': f.numero, 'Client': f.client,
+            'Financement': f.financement ? R.getRule(f.financement, state.rules).label : '',
+            'Reste dû': arrondi(reste(f)),
+            'Échéance': f.dateEcheance ? U.dateFR(f.dateEcheance) : '',
+            'Jours de retard': f.retardJours == null ? '' : f.retardJours,
+            'Échu': (f.retardJours || 0) > 0 ? 'oui' : 'non',
+            'Pourquoi': f.motif || '',
+            'Colonne d’origine': f.motifColonne || '',
+            'Tableau': f.board || '', 'Étape': f.etapeLabel || '',
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), 'Détail');
+        XLSX.writeFile(wb, `Pourquoi_impaye_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+
     function rendreNoteperimetre(data, v) {
         const el = $('#scope-note');
         if (!el) return;
@@ -8657,6 +8771,8 @@
         }));
         $('#btn-aging-gl-export').addEventListener('click', exporterBalanceGL);
         $('#btn-gl-orphelins-export').addEventListener('click', exporterOrphelins);
+        const btnMot = $('#btn-motifs-export');
+        if (btnMot) btnMot.addEventListener('click', exporterMotifs);
         $$('#seg-pointage-niveau .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.pointageNiveau = b.dataset.niveau;
             rendrePointageParFinancement(state.glEcritures);
