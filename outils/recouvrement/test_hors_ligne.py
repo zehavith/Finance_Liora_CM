@@ -4586,6 +4586,35 @@ def test_adresse_du_debiteur() -> None:
     verifier(module_adresse.adresse_dans_le_texte("") == "",
              "un texte vide ne produit pas d'adresse")
 
+    # Le pied de facture porte le RIB de l'émetteur, souvent suivi de la
+    # raison sociale et de la ville de l'agence. « 31100 Toulouse » y est un
+    # code postal comme un autre, et le bloc bancaire entier partait en
+    # adresse postale dans la note de synthèse.
+    rib = (
+        "SAS EDEN\nFACTURE FACT-2405-00409\nMontant : 12 000,00 EUR\n"
+        "Banque : BNP Paribas Entreprises, BIC : BNPAFRPPXXX, "
+        "IBAN : FR76300040283700011304861 94, SAS EDEN, 31100 Toulouse\n"
+    )
+    lu = module_adresse.adresse_dans_le_texte(rib, "SAS EDEN")
+    verifier(lu == "", f"le RIB n'est jamais pris pour une adresse (lu : {lu!r})")
+    partiel = module_adresse.adresse_partielle_dans_le_texte(rib, "SAS EDEN")
+    verifier(partiel == "",
+             f"ni comme adresse partielle (lu : {partiel!r})")
+    # Et la vraie adresse est retenue même quand le RIB figure sur la page.
+    avec_les_deux = (
+        "Client :\nSAS EDEN\n14 bis avenue de la Republique\n31000 TOULOUSE\n"
+        "\nReglement par virement :\nBanque : BNP Paribas\n"
+        "IBAN : FR76 3000 4028 3700 0113 0486 194\nSAS EDEN, 31100 Toulouse\n"
+    )
+    verifier(module_adresse.adresse_dans_le_texte(avec_les_deux, "SAS EDEN")
+             == "14 bis avenue de la Republique, 31000 TOULOUSE",
+             "l'adresse du client l'emporte sur le RIB de la même page")
+    # La rue de la Banque existe à Paris : l'exclure serait perdre une adresse.
+    verifier(module_adresse.adresse_dans_le_texte(
+        "Client :\nSARL ATLAS\n12 rue de la Banque\n75002 PARIS\n", "SARL ATLAS")
+        == "12 rue de la Banque, 75002 PARIS",
+        "mais « rue de la Banque » reste une adresse")
+
     with tempfile.TemporaryDirectory() as repertoire:
         dossier = Path(repertoire)
         for sous, nom in (("1-convention-devis-signe", "Convention.pdf"),
@@ -4919,6 +4948,21 @@ def test_preparer_pour_envoi() -> None:
                                                             encoding="utf-8")
         (dossier / "mails-hors-dossier" / "etranger.eml").write_text(
             "les échanges d'un autre", encoding="utf-8")
+        # Une pièce jointe que le classement ne reconnaît pas — un bon de
+        # commande, un devis non signé — n'en est pas moins au dossier. Elle
+        # ne figurait nulle part dans le PDF transmis, et rien ne le disait.
+        (dossier / "001-pieces-jointes").mkdir()
+        (dossier / "001-pieces-jointes"
+         / "bon-de-commande.pdf").write_bytes(b"%PDF-1.4 bon")
+        # Et la pièce clé est une COPIE : comparée par le chemin, la facture
+        # serait partie deux fois.
+        (dossier / "documents-monday").mkdir()
+        (dossier / "documents-monday"
+         / "Facture.pdf").write_bytes(b"%PDF-1.4 facture")
+        # Ce qu'un PDF ne peut pas porter : une feuille d'émargement en photo.
+        (dossier / "pieces-cles" / "3-feuille-emargement").mkdir()
+        (dossier / "pieces-cles" / "3-feuille-emargement"
+         / "emargement.jpg").write_bytes(b"\xff\xd8photo")
 
         lignes = [
             LigneIndex(piece_n=1, date=datetime(2024, 5, 21), sens="envoyé",
@@ -4941,10 +4985,17 @@ def test_preparer_pour_envoi() -> None:
         # la créance, puis les échanges dans l'ordre de leurs numéros.
         ordre = [c.name for c in module_envoi.pdfs_du_dossier(dossier, lignes)]
         verifier(ordre == ["synthese.pdf", "FACT-2405-00409.pdf",
-                           "001_relance.pdf"],
+                           "001_relance.pdf", "bon-de-commande.pdf"],
                  f"la note ouvre, les pièces suivent, puis les échanges ({ordre})")
+        verifier("bon-de-commande.pdf" in ordre,
+                 "et rien du dossier n'est laissé de côté")
+        verifier(ordre.count("FACT-2405-00409.pdf") == 1
+                 and "Facture.pdf" not in ordre,
+                 "une pièce clé et son original ne partent pas en double")
         verifier(module_envoi.messages_sans_pdf(dossier, lignes) == [2],
                  "un message resté en HTML est compté comme hors du PDF")
+        verifier(module_envoi.pieces_hors_pdf(dossier) == ["emargement.jpg"],
+                 "et une pièce clé qui n'est pas un PDF est nommée")
 
         # Un faux pypdf : on éprouve l'assemblage, pas la bibliothèque.
         appels = []
@@ -4973,15 +5024,16 @@ def test_preparer_pour_envoi() -> None:
                 sys.modules["pypdf"] = vrai
 
         verifier(appels == ordre, f"le PDF unique reprend cet ordre ({appels})")
-        verifier(resultat["pieces_pdf"] == 3 and resultat["pdf"].endswith(".pdf"),
+        verifier(resultat["pieces_pdf"] == 4 and resultat["pdf"].endswith(".pdf"),
                  f"il est écrit ({resultat['pdf']}, {resultat['pieces_pdf']} pièces)")
-        verifier(resultat["sans_pdf"] == 1
-                 and "dans l'archive" in resultat["motif"],
+        verifier(resultat["sans_pdf"] == 1 and resultat["hors_pdf"] == 1
+                 and "dans l'archive" in resultat["motif"]
+                 and "emargement.jpg" in resultat["motif"],
                  f"et ce qui n'y est pas est dit ({resultat['motif']})")
 
         archive = sortie / "pour-envoi" / "fact-2405-00409_sas-eden.zip"
         noms = zipfile.ZipFile(archive).namelist()
-        verifier(archive.exists() and resultat["fichiers"] == 5,
+        verifier(archive.exists() and resultat["fichiers"] == 8,
                  f"l'archive porte tout le dossier ({resultat['fichiers']} fichiers)")
         # Les messages écartés ne doivent pas revenir par l'archive : les
         # transmettre reviendrait à joindre les échanges d'autres personnes.

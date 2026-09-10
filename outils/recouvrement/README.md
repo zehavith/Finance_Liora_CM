@@ -749,8 +749,22 @@ seulement ceux qui sont cochés), deux fichiers dans `pour-envoi` :
 
 | Fichier | Ce qu'il porte |
 |---|---|
-| `<dossier>.pdf` | la note de synthèse, les pièces clés, puis les échanges dans l'ordre de leurs numéros de pièce — un seul document, paginé, imprimable |
+| `<dossier>.pdf` | la note de synthèse, les pièces clés, les échanges dans l'ordre de leurs numéros de pièce, **puis tout le reste du dossier** — un seul document, paginé, imprimable |
 | `<dossier>.zip` | tout le dossier, y compris ce qu'un PDF ne peut pas contenir : les `.eml` d'origine, les tableurs, les images |
+
+**Le PDF ne laisse rien de côté.** Une pièce jointe que le classement ne
+reconnaît pas — un bon de commande, un devis non signé, un relevé d'heures —
+n'entrait ni dans les pièces clés, qui ne retiennent que six natures, ni
+parmi les messages, qui n'ont chacun que leur propre page : elle manquait au
+dossier transmis, et rien ne le disait. Tous les PDF du répertoire y sont
+désormais, après les pièces classées.
+
+Une pièce et sa copie ne partent pas en double : les pièces clés sont des
+copies, et c'est le **contenu** qui les rapproche, non le chemin.
+
+Ce qu'un PDF ne peut pas porter — une feuille d'émargement photographiée, un
+relevé en tableur — est **nommé à l'écran** : la pièce est dans l'archive, et
+il faut le savoir avant de transmettre, pas après.
 
 Ce que l'archive **ne reprend pas** : `mails-hors-dossier`. L'y remettre
 reviendrait à transmettre les échanges d'autres personnes, qu'on vient
@@ -850,6 +864,14 @@ avec les autres éléments d'identité. Trois sources, dans cet ordre :
 2. **la convention de formation** — signée par le débiteur, elle porte
    l'adresse qu'il a donnée en s'engageant ;
 3. **la facture** — à défaut, l'adresse de facturation.
+
+Le **RIB** du pied de facture n'est jamais pris pour une adresse : « Banque :
+BNP Paribas, BIC : …, IBAN : FR76…, SAS EDEN, 31100 Toulouse » porte un code
+postal comme n'importe quelle adresse, et ce bloc partait en mise en demeure à
+la place de celle du débiteur. Les mentions bancaires — IBAN, BIC, SWIFT, RIB,
+« Banque : », domiciliation, titulaire du compte — écartent le bloc entier. La
+*rue de la Banque*, elle, reste une adresse : c'est le deux-points qui
+distingue.
 
 Lue sur une pièce, elle est annoncée comme telle : *« 14 bis avenue de la
 République, 93300 Aubervilliers (lue sur la convention) »*. Une lecture se

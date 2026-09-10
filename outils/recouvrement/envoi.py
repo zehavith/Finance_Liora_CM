@@ -22,6 +22,7 @@ bibliothèque.
 
 from __future__ import annotations
 
+import hashlib
 import urllib.parse
 import zipfile
 from pathlib import Path
@@ -87,6 +88,37 @@ def messages_sans_pdf(repertoire: Path, lignes: list[LigneIndex]) -> list[int]:
     return manquants
 
 
+def pieces_hors_pdf(repertoire: Path) -> list[str]:
+    """Les pièces clés qu'un PDF ne peut pas porter : images, tableurs, Word.
+
+    Une feuille d'émargement photographiée, un relevé en tableur : la pièce
+    est au dossier et dans l'archive, mais elle ne peut pas entrer dans le PDF
+    unique. Le taire ferait transmettre un dossier amputé sans le savoir.
+    """
+    cles = repertoire / "pieces-cles"
+    if not cles.is_dir():
+        return []
+    return sorted(
+        chemin.name
+        for chemin in cles.rglob("*")
+        if chemin.is_file() and chemin.suffix.lower() != ".pdf"
+    )
+
+
+def _empreinte(chemin: Path) -> tuple[int, str] | None:
+    """Taille et empreinte du contenu, pour ne pas joindre deux fois la même pièce.
+
+    Les pièces clés sont des *copies* : le même document y figure sous un autre
+    chemin que l'original. Comparer les chemins ne les rapprocherait pas, et
+    la convention partirait en double.
+    """
+    try:
+        contenu = chemin.read_bytes()
+    except OSError:
+        return None
+    return len(contenu), hashlib.sha1(contenu).hexdigest()  # noqa: S324
+
+
 def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex]) -> list[Path]:
     """Les PDF à réunir, dans l'ordre où l'on présente un dossier.
 
@@ -94,15 +126,25 @@ def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex]) -> list[Path]:
     pièces qui établissent la créance suivent — convention, facture,
     émargement, relevé, diplôme, progress report —, puis les échanges dans
     l'ordre de leurs numéros de pièce, ceux-là mêmes que la note cite.
+
+    **Et enfin tout le reste.** Une pièce jointe que le classement ne reconnaît
+    pas — un devis non signé, un bon de commande, un relevé d'heures, un
+    échange scanné — n'en est pas moins au dossier. Elle ne figurait nulle part
+    dans le PDF transmis : ni parmi les pièces clés, qui ne retiennent que six
+    natures, ni parmi les messages, qui n'ont chacun que leur propre page. Le
+    dossier partait amputé, et rien ne le disait.
     """
     ordre: list[Path] = []
-    vus: set[Path] = set()
+    vus: set[tuple[int, str]] = set()
 
     def ajouter(chemin: Path) -> None:
-        resolu = chemin.resolve()
-        if chemin.is_file() and chemin.suffix.lower() == ".pdf" and resolu not in vus:
-            vus.add(resolu)
-            ordre.append(chemin)
+        if not chemin.is_file() or chemin.suffix.lower() != ".pdf":
+            return
+        empreinte = _empreinte(chemin)
+        if empreinte is None or empreinte in vus:
+            return
+        vus.add(empreinte)
+        ordre.append(chemin)
 
     ajouter(repertoire / "synthese.pdf")
 
@@ -116,6 +158,13 @@ def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex]) -> list[Path]:
     for ligne in sorted(lignes, key=lambda l: l.piece_n):
         if ligne.fichier_pdf:
             ajouter(repertoire / ligne.fichier_pdf)
+
+    # Le reste du dossier, dans l'ordre du disque : ce que ni le classement
+    # ni les numéros de pièce n'ont ramassé. Ce qui n'est pas un PDF ne peut
+    # pas y entrer — c'est l'archive qui le porte, et « preparer » le dit.
+    for chemin in sorted(repertoire.rglob("*.[pP][dD][fF]")):
+        if not _a_exclure(chemin, repertoire):
+            ajouter(chemin)
 
     return ordre
 
@@ -430,6 +479,16 @@ def preparer(
                   + ") — ils sont dans l'archive")
         motif = f"{motif} ; {manque}" if motif else manque
 
+    # Ce qu'un PDF ne peut pas porter : une feuille d'émargement en photo, un
+    # relevé en tableur. C'est dans l'archive, et il faut le savoir avant de
+    # transmettre — pas après.
+    autres = pieces_hors_pdf(repertoire) if pieces else []
+    if autres:
+        dit = (f"{len(autres)} pièce(s) clé(s) hors du PDF, n'étant pas des "
+               "PDF (" + ", ".join(autres[:3])
+               + ("…" if len(autres) > 3 else "") + ") — dans l'archive")
+        motif = f"{motif} ; {dit}" if motif else dit
+
     return {
         "reference": reference,
         "repertoire": str(destination),
@@ -442,6 +501,7 @@ def preparer(
         "poids_pdf": _lisible(poids_pdf) if pieces else "",
         "octets_pdf": poids_pdf,
         "sans_pdf": len(absents),
+        "hors_pdf": len(autres),
         "motif": motif,
     }
 

@@ -2598,7 +2598,34 @@ details.absents li{break-inside:avoid}
   font-size:13px;color:var(--texte-2);cursor:pointer;white-space:nowrap}
 .depot-complement:hover{border-color:var(--texte-3);color:var(--texte)}
 .depot-complement input{display:none}
-#tableDocuments select.nature{font-size:11px;padding:3px 5px;max-width:135px}
+/* Seize colonnes dans une fenetre : le tableau des documents est le plus
+   large de l'application, et la derniere colonne — celle qui porte « Ouvrir
+   le repertoire », « Preparer le mail », « Completer depuis Monday » et
+   « Refaire la note » — sortait de l'ecran. Elle etait donc invisible, et
+   les liens qu'on avait demandes paraissaient absents. Tout y est resserre :
+   c'est le seul moyen de garder les seize colonnes ET les liens.
+
+   La regle generale « select{min-width:172px} » l'emportait ici : une
+   min-width bat une max-width, et les deux listes deroulantes de chaque
+   ligne prenaient 344 px a elles seules. */
+#tableDocuments select{min-width:0}
+#tableDocuments select.nature{font-size:11px;padding:3px 5px;max-width:118px}
+#tableDocuments select.financement{font-size:11.5px;padding:4px 6px;
+  max-width:132px}
+#tableDocuments table.donnees{font-size:12px}
+#tableDocuments table.donnees th,
+#tableDocuments table.donnees td{padding:7px 5px}
+/* Chaque lien sur une seule ligne : coupes en deux, les quatre liens de la
+   derniere colonne faisaient huit lignes et une rangee haute de trois
+   centimetres. */
+#tableDocuments td:last-child .lien{white-space:nowrap;font-size:11.5px}
+/* Les deux dates l'une sous l'autre : cote a cote elles demandaient cent
+   quarante pixels de large, et la rangee fait de toute facon quatre lignes
+   de haut a cause des liens. La hauteur etait deja payee ; la largeur, non. */
+#tableDocuments td.periode{white-space:nowrap;font-size:11.5px;
+  line-height:1.35;color:var(--texte-2)}
+#tableDocuments .etat{white-space:nowrap}
+#tableDocuments td.reference{white-space:nowrap}
 .depot-piece{display:inline-block;margin-left:5px;font-size:11.5px;
   color:var(--accent);cursor:pointer;white-space:nowrap}
 .depot-piece:hover{text-decoration:underline}
@@ -4695,7 +4722,11 @@ function pastilleStatut(cle) {
 function etatOuiNon(valeur, oui, non) {
   if (valeur === true) return '<span class="etat oui">✓ ' + oui + "</span>";
   if (valeur === false) return '<span class="etat non">✕ ' + non + "</span>";
-  return '<span class="etat inconnu">— non renseigné</span>';
+  // « — non renseigné » en toutes lettres, sur quatre colonnes et cinquante
+  // lignes, coutait deux cents pixels de largeur au tableau — de quoi pousser
+  // la derniere colonne hors de l'ecran. Le tiret dit deja l'inconnu ; le
+  // reste est dans l'infobulle.
+  return '<span class="etat inconnu" title="non renseigné">—</span>';
 }
 
 // Le relevé comptable est une pièce versée à la main, pas une colonne du
@@ -4828,7 +4859,8 @@ function rendreDocuments() {
       <td>${etatPiece(d, "Progress report", "versé", "absent")}</td>
       <td>${etatPiece(d, "Relevé comptable", "versé", "absent")}</td>
       <td class="num">${heuresSuivies(d)}</td>
-      <td>${d.premier_mail || "—"} → ${d.dernier_mail || "—"}</td>
+      <td class="periode">${d.premier_mail || "—"}<br />→ ${
+        d.dernier_mail || "—"}</td>
       <td>${[
         d.sous_dossiers > 1
           ? `<a class="lien" data-ouvrir="${echapper(d.repertoire)}/factures">${d.sous_dossiers} factures</a>`

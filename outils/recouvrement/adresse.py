@@ -41,12 +41,37 @@ MOTIF_VOIE = re.compile(
 # demeure Liora elle-même.
 MOTS_MAISON = ("liora", "datascientest", "inseec", "omnes")
 
+# Un RIB n'est pas une adresse. Le pied d'une facture porte les coordonnées
+# bancaires de l'émetteur — banque, BIC, IBAN — souvent suivies de la raison
+# sociale et de la ville de l'agence : « Banque : BNP Paribas Entreprises,
+# BIC : BNPAFRPPXXX, IBAN : FR76…, SAS EDEN, 31100 Toulouse ». Le code postal
+# y est un code postal comme un autre, et ce bloc partait en mise en demeure
+# à la place de l'adresse du débiteur.
+#
+# Le deux-points après « banque » n'est pas un ornement : la rue de la Banque
+# existe à Paris, et l'exclure serait perdre une vraie adresse.
+MOTIF_BANQUE = re.compile(
+    r"\b(?:iban|bic|swift|rib)\b"
+    r"|\bbanque\s*:"
+    r"|\bdomiciliation\b"
+    r"|\bcode\s+(?:banque|guichet)\b"
+    r"|\btitulaire\s+du\s+compte\b"
+    r"|\bcoordonn[ée]es\s+bancaires\b"
+    r"|\b[A-Z]{2}\d{2}[\s\d]{12,}",
+    re.IGNORECASE,
+)
+
 # Au-delà, ce n'est plus une adresse mais un paragraphe.
 LIGNES_MAX = 5
 
 
 def _propre(ligne: str) -> str:
     return " ".join((ligne or "").replace("\xa0", " ").split())
+
+
+def est_bancaire(texte: str) -> bool:
+    """Ce texte tient-il du relevé d'identité bancaire plutôt que de l'adresse ?"""
+    return bool(MOTIF_BANQUE.search(texte or ""))
 
 
 def est_complete(texte: str) -> bool:
@@ -81,8 +106,9 @@ def adresse_partielle_dans_le_texte(texte: str, nom: str = "") -> str:
     mots_nom = [mot for mot in _propre(nom).lower().split() if len(mot) > 2]
 
     def _maison(rang: int) -> bool:
-        environ = " ".join(lignes[max(0, rang - 2):rang + 1]).lower()
-        return any(mot in environ for mot in MOTS_MAISON)
+        environ = " ".join(lignes[max(0, rang - 2):rang + 1])
+        return (any(mot in environ.lower() for mot in MOTS_MAISON)
+                or est_bancaire(environ))
 
     # Une voie d'abord : c'est le plus utile des deux morceaux.
     for depart in (True, False):
@@ -145,6 +171,11 @@ def adresse_dans_le_texte(texte: str, nom: str = "") -> str:
             continue
 
         bloc = ", ".join(morceaux)
+
+        # Le RIB de l'émetteur, écarté sur le bloc retenu comme sur ce qui
+        # l'entoure : « IBAN : FR76… » peut tenir sur la ligne d'avant.
+        if est_bancaire(bloc) or est_bancaire(environ):
+            continue
 
         # Une adresse qui suit le nom du débiteur l'emporte : sur une
         # facture, l'émetteur est en haut et le client en dessous.
