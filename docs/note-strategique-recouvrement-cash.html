@@ -1,1166 +1,635 @@
 <meta charset="utf-8">
-<title>Recouvrement &amp; Cash Liora</title>
+<title>Note stratégique Recouvrement &amp; Cash</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap">
 
 <style>
 :root{
-  --ground:#F5F6FA;
-  --surface:#FFFFFF;
-  --surface-2:#ECEEF5;
-  --ink:#0F142A;
-  --ink-2:#3C4360;
-  --ink-3:#6E7593;
-  --rule:#DBDFEA;
-  --rule-strong:#C2C8D9;
-  --accent:#C1442A;
-  --accent-2:#9B3520;
-  --accent-soft:rgba(193,68,42,.08);
-  --pos:#2C7A57;
-  --pos-soft:rgba(44,122,87,.10);
-  --warn:#9C6A10;
-  --warn-soft:rgba(156,106,16,.10);
-  --neg:#AC3630;
-  --neg-soft:rgba(172,54,48,.10);
-  --info:#3B45A8;
-  --info-soft:rgba(59,69,168,.10);
-  --shadow:0 1px 2px rgba(15,20,42,.05), 0 8px 24px rgba(15,20,42,.05);
-  --maxw:1140px;
-  --prose:66ch;
+  --ground:#F5F6FA; --surface:#FFFFFF; --surface-2:#EDEFF5; --surface-3:#E3E7F0;
+  --ink:#0F142A; --ink-2:#3C4360; --ink-3:#6E7593;
+  --rule:#D8DCE8; --rule-strong:#B8BFD0;
+  --accent:#B8402A; --accent-soft:rgba(184,64,42,.08);
+  --pos:#26694A; --pos-soft:rgba(38,105,74,.10);
+  --warn:#8C5E0D; --warn-soft:rgba(140,94,13,.10);
+  --neg:#9E3029; --neg-soft:rgba(158,48,41,.10);
+  --info:#2F3A96; --info-soft:rgba(47,58,150,.10);
+  --shadow:0 1px 2px rgba(15,20,42,.05);
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --ground:#0B0E1A;
-    --surface:#111631;
-    --surface-2:#171D3E;
-    --ink:#EEF0F6;
-    --ink-2:#AEB5C9;
-    --ink-3:#7B8299;
-    --rule:rgba(129,140,248,.18);
-    --rule-strong:rgba(129,140,248,.32);
-    --accent:#F47458;
-    --accent-2:#FF9077;
-    --accent-soft:rgba(244,116,88,.13);
-    --pos:#7FCB93;
-    --pos-soft:rgba(127,203,147,.13);
-    --warn:#EBAA45;
-    --warn-soft:rgba(235,170,69,.13);
-    --neg:#F1786F;
-    --neg-soft:rgba(241,120,111,.13);
-    --info:#8E96F7;
-    --info-soft:rgba(142,150,247,.13);
-    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+    --ground:#0B0E1A; --surface:#111631; --surface-2:#171D3E; --surface-3:#1E2650;
+    --ink:#EEF0F6; --ink-2:#AEB5C9; --ink-3:#7B8299;
+    --rule:rgba(129,140,248,.20); --rule-strong:rgba(129,140,248,.36);
+    --accent:#F47458; --accent-soft:rgba(244,116,88,.13);
+    --pos:#7FCB93; --pos-soft:rgba(127,203,147,.13);
+    --warn:#EBAA45; --warn-soft:rgba(235,170,69,.13);
+    --neg:#F1786F; --neg-soft:rgba(241,120,111,.13);
+    --info:#8E96F7; --info-soft:rgba(142,150,247,.13);
+    --shadow:0 1px 2px rgba(0,0,0,.4);
   }
 }
 :root[data-theme="dark"]{
-  --ground:#0B0E1A;
-  --surface:#111631;
-  --surface-2:#171D3E;
-  --ink:#EEF0F6;
-  --ink-2:#AEB5C9;
-  --ink-3:#7B8299;
-  --rule:rgba(129,140,248,.18);
-  --rule-strong:rgba(129,140,248,.32);
-  --accent:#F47458;
-  --accent-2:#FF9077;
-  --accent-soft:rgba(244,116,88,.13);
-  --pos:#7FCB93;
-  --pos-soft:rgba(127,203,147,.13);
-  --warn:#EBAA45;
-  --warn-soft:rgba(235,170,69,.13);
-  --neg:#F1786F;
-  --neg-soft:rgba(241,120,111,.13);
-  --info:#8E96F7;
-  --info-soft:rgba(142,150,247,.13);
-  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.35);
+  --ground:#0B0E1A; --surface:#111631; --surface-2:#171D3E; --surface-3:#1E2650;
+  --ink:#EEF0F6; --ink-2:#AEB5C9; --ink-3:#7B8299;
+  --rule:rgba(129,140,248,.20); --rule-strong:rgba(129,140,248,.36);
+  --accent:#F47458; --accent-soft:rgba(244,116,88,.13);
+  --pos:#7FCB93; --pos-soft:rgba(127,203,147,.13);
+  --warn:#EBAA45; --warn-soft:rgba(235,170,69,.13);
+  --neg:#F1786F; --neg-soft:rgba(241,120,111,.13);
+  --info:#8E96F7; --info-soft:rgba(142,150,247,.13);
+  --shadow:0 1px 2px rgba(0,0,0,.4);
 }
 
 *{box-sizing:border-box}
-body{
-  background:var(--ground);
-  color:var(--ink);
-  font-family:"Newsreader",Georgia,"Times New Roman",serif;
-  font-size:17px;
-  line-height:1.62;
-  -webkit-font-smoothing:antialiased;
-}
-.wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
-p{margin:0 0 1em}
-a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:3px}
-a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:2px}
+body{background:var(--ground);color:var(--ink);font-family:"Newsreader",Georgia,"Times New Roman",serif;font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:0 30px}
+p{margin:0 0 .8em}
 strong{font-weight:600;color:var(--ink)}
-em{font-style:italic;color:var(--ink-2)}
+a{color:var(--accent)}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2,h3,h4,th,.mono,.lbl,.tag,.num,.chip{font-family:"Archivo",system-ui,-apple-system,sans-serif}
+.mono,.lbl,.tag,.chip,.num{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace}
 
-h1,h2,h3,h4,.mono,.chip,.eyebrow,th,.kpi-num,.bar-val,.bar-label{font-family:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif}
-h1,h2,h3,h4{text-wrap:balance;margin:0}
-.mono,.eyebrow,.chip,.tag{font-family:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace}
+/* ── En-tête ── */
+header.doc{padding:46px 0 0}
+.doc-org{display:flex;align-items:baseline;justify-content:space-between;gap:20px;padding-bottom:12px;border-bottom:2px solid var(--ink);flex-wrap:wrap}
+.doc-org .org{font-family:"Archivo";font-weight:800;font-size:15px;letter-spacing:.02em}
+.doc-org .cls{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+h1{font-family:"Archivo";font-weight:800;font-size:clamp(30px,4.4vw,44px);letter-spacing:-.03em;line-height:1.05;margin:24px 0 6px}
+.subtitle{font-family:"Archivo";font-weight:600;font-size:clamp(16px,2vw,20px);letter-spacing:-.015em;color:var(--ink-3);margin:0 0 26px}
 
-/* ── Topbar ── */
-.topbar{
-  position:sticky;top:0;z-index:20;
-  background:color-mix(in srgb, var(--ground) 88%, transparent);
-  backdrop-filter:blur(10px);
-  border-bottom:1px solid var(--rule);
-}
-.topbar .wrap{display:flex;align-items:center;gap:24px;height:52px}
-.topbar-id{font-family:"Archivo";font-weight:700;font-size:13px;letter-spacing:-.01em;white-space:nowrap}
-.topbar-id span{color:var(--accent)}
-.topnav{display:flex;gap:18px;margin-left:auto;overflow-x:auto;scrollbar-width:none}
-.topnav::-webkit-scrollbar{display:none}
-.topnav a{
-  font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.06em;
-  text-transform:uppercase;color:var(--ink-3);text-decoration:none;white-space:nowrap;
-}
-.topnav a:hover{color:var(--accent)}
+/* ── Bloc d'identification ── */
+.ident{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);margin-bottom:26px}
+.ident div{background:var(--surface);padding:11px 15px}
+.ident dt{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-bottom:4px}
+.ident dd{margin:0;font-family:"Archivo";font-weight:600;font-size:13.5px;letter-spacing:-.005em}
 
-/* ── Header ── */
-header.doc{padding:52px 0 36px;border-bottom:1px solid var(--rule)}
-.doc-kicker{
-  font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);
-  font-weight:600;margin-bottom:20px;display:flex;align-items:center;gap:10px;
-}
-.doc-kicker::after{content:"";height:1px;flex:1;background:var(--rule);max-width:180px}
-h1{
-  font-size:clamp(32px,4.6vw,50px);font-weight:800;letter-spacing:-.033em;line-height:1.05;
-  max-width:21ch;margin-bottom:20px;
-}
-h1 .thin{font-weight:500;color:var(--ink-3);display:block;font-size:.72em;letter-spacing:-.022em;margin-top:6px}
-.standfirst{font-size:19px;line-height:1.5;color:var(--ink-2);max-width:64ch;margin-bottom:26px}
-.premise{border:1px solid var(--rule-strong);border-left:3px solid var(--ink-3);background:var(--surface);padding:16px 20px;margin-bottom:30px;max-width:82ch;box-shadow:var(--shadow)}
-.premise-lbl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);font-weight:600;display:block;margin-bottom:7px}
-.premise p{margin:0;font-size:16px;color:var(--ink-2)}
-.meta{
-  display:grid;grid-template-columns:repeat(6,1fr);
-  gap:1px;background:var(--rule);border:1px solid var(--rule);
-}
-@media (max-width:1080px){.meta{grid-template-columns:repeat(3,1fr)}}
-@media (max-width:560px){.meta{grid-template-columns:repeat(2,1fr)}}
-.meta div{background:var(--ground);padding:12px 14px}
-.meta dt{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:5px}
-.meta dd{margin:0;font-family:"Archivo";font-size:14px;font-weight:600;letter-spacing:-.01em}
+/* ── Synthèse ── */
+.synth{border:1px solid var(--rule-strong);border-left:4px solid var(--accent);background:var(--surface);padding:20px 24px;margin-bottom:22px;box-shadow:var(--shadow)}
+.synth h2{font-size:15px;font-family:"Archivo";font-weight:800;letter-spacing:.02em;text-transform:uppercase;margin:0 0 12px;color:var(--accent)}
+.synth ul{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.synth li{padding-left:19px;position:relative;font-size:15.5px;line-height:1.5;color:var(--ink-2)}
+.synth li::before{content:"";position:absolute;left:0;top:.58em;width:7px;height:7px;background:var(--accent)}
+.synth li b{color:var(--ink);font-weight:600}
+
+/* ── Chiffres clés ── */
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:26px}
+.kpi{background:var(--surface);border:1px solid var(--rule);border-top:3px solid var(--kc);padding:13px 14px;display:grid;gap:4px;align-content:start;box-shadow:var(--shadow)}
+.kpi-n{font-family:"Archivo";font-weight:800;font-size:clamp(19px,2.4vw,25px);letter-spacing:-.03em;line-height:1;color:var(--kc);font-variant-numeric:tabular-nums}
+.kpi-t{font-family:"Archivo";font-weight:700;font-size:11.5px;letter-spacing:-.005em;line-height:1.25}
+.kpi-s{font-size:12px;line-height:1.35;color:var(--ink-3)}
+.k-1{--kc:var(--accent)} .k-2{--kc:var(--pos)} .k-3{--kc:var(--neg)}
+.k-4{--kc:var(--info)} .k-5{--kc:var(--warn)} .k-6{--kc:var(--info)}
+
+/* ── Sommaire ── */
+.toc{border:1px solid var(--rule);background:var(--surface);padding:16px 22px;margin-bottom:34px}
+.toc h2{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin:0 0 10px;font-weight:600}
+.toc ol{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:6px 26px}
+.toc a{font-family:"Archivo";font-weight:600;font-size:13.5px;letter-spacing:-.008em;text-decoration:none;color:var(--ink-2);display:flex;gap:9px}
+.toc a:hover{color:var(--accent)}
+.toc .n{color:var(--accent);font-family:"IBM Plex Mono",monospace;font-size:12px;flex:none}
 
 /* ── Sections ── */
-section{padding:56px 0;border-bottom:1px solid var(--rule)}
-section:last-of-type{border-bottom:0}
-.sec-head{display:flex;gap:18px;align-items:baseline;margin-bottom:26px}
-.sec-num{
-  font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:500;color:var(--accent);
-  letter-spacing:.04em;padding-top:6px;flex:none;
-}
-h2{font-size:clamp(24px,3vw,33px);font-weight:700;letter-spacing:-.026em;line-height:1.12}
-.sec-sub{color:var(--ink-3);font-size:15px;font-family:"Archivo";font-weight:500;margin-top:6px;max-width:70ch}
-.prose{max-width:var(--prose)}
-h3{font-size:19px;font-weight:700;letter-spacing:-.018em;margin:30px 0 10px}
-h4{font-size:15px;font-weight:700;letter-spacing:-.01em;margin:0 0 6px}
+section{padding:30px 0 0}
+h2.sec{font-family:"Archivo";font-weight:800;font-size:22px;letter-spacing:-.022em;margin:0 0 4px;padding-bottom:9px;border-bottom:2px solid var(--accent);display:flex;gap:12px;align-items:baseline}
+h2.sec .n{color:var(--accent);font-family:"IBM Plex Mono",monospace;font-size:16px;font-weight:600}
+.sec-lead{font-size:15px;color:var(--ink-3);margin:10px 0 16px;max-width:82ch}
+h3.sub{font-family:"Archivo";font-weight:700;font-size:15.5px;letter-spacing:-.012em;margin:22px 0 8px;display:flex;gap:9px;align-items:baseline}
+h3.sub .n{color:var(--accent);font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+.prose{max-width:84ch}
 
-/* ── Key takeaways ── */
-.takeaways{display:grid;gap:14px;margin-bottom:30px}
-.tk{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start;padding:16px 18px;background:var(--surface);border:1px solid var(--rule);box-shadow:var(--shadow)}
-.tk-n{font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600;color:var(--accent);padding-top:3px}
-.tk p{margin:0;font-size:16.5px}
-.tk .lead{font-family:"Archivo";font-weight:700;letter-spacing:-.012em}
-
-/* ── Callout ── */
-.callout{
-  border-left:3px solid var(--accent);background:var(--accent-soft);
-  padding:18px 22px;margin:28px 0;max-width:78ch;
-}
-.callout .lbl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:600;display:block;margin-bottom:8px}
-.callout p:last-child{margin-bottom:0}
-.callout.neutral{border-left-color:var(--rule-strong);background:var(--surface-2)}
-.callout.neutral .lbl{color:var(--ink-3)}
-
-/* ── Tables ── */
-.tbl-scroll{overflow-x:auto;margin:24px 0;border:1px solid var(--rule);background:var(--surface)}
-table{border-collapse:collapse;width:100%;min-width:720px;font-size:14.5px}
-caption{text-align:left;padding:14px 18px 0;font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)}
-th{
-  text-align:left;font-size:11px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;
-  color:var(--ink-3);padding:14px 16px;border-bottom:1px solid var(--rule-strong);vertical-align:bottom;
-}
-td{padding:13px 16px;border-bottom:1px solid var(--rule);vertical-align:top;color:var(--ink-2);line-height:1.45}
+/* ── Tableaux ── */
+.tbl{overflow-x:auto;margin:12px 0 18px;border:1px solid var(--rule);background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:660px;font-size:13.5px}
+th{text-align:left;font-size:10px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;color:var(--ink-3);padding:10px 13px;border-bottom:1.5px solid var(--rule-strong);background:var(--surface-2);vertical-align:bottom}
+td{padding:9px 13px;border-bottom:1px solid var(--rule);vertical-align:top;color:var(--ink-2);line-height:1.4}
 tbody tr:last-child td{border-bottom:0}
-td:first-child{color:var(--ink);font-family:"Archivo";font-weight:600;font-size:14px;letter-spacing:-.008em}
-.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;white-space:nowrap}
-tbody tr:hover td{background:var(--surface-2)}
+td.k{color:var(--ink);font-family:"Archivo";font-weight:600;font-size:13px;letter-spacing:-.005em}
+.num{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;font-size:12.5px}
+tbody tr:nth-child(even) td{background:var(--surface-2)}
+caption{caption-side:top;text-align:left;padding:10px 13px 0;font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.dot{display:inline-block;width:8px;height:8px;margin-right:7px;flex:none}
+.d1{background:var(--info)} .d2{background:var(--pos)} .d3{background:var(--warn)} .d4{background:var(--accent)} .d5{background:var(--neg)}
+.hz{font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;letter-spacing:.05em;padding:2px 6px;color:#fff;white-space:nowrap}
+.hz1{background:var(--pos)} .hz2{background:var(--info)} .hz3{background:var(--accent)}
+:root[data-theme="dark"] .hz,:root:not([data-theme="light"]) .hz{color:#0B0E1A}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]) .hz{color:#fff}}
+.piv{color:var(--accent);font-weight:700}
+
+
+.ref{font-family:"IBM Plex Mono",monospace;font-size:.82em;font-weight:600;color:var(--accent);display:block;margin-bottom:2px;letter-spacing:.02em}
+/* ── Frise ── */
+.frise{background:var(--surface);border:1px solid var(--rule);padding:18px 20px 14px;margin:12px 0 16px;overflow-x:auto;box-shadow:var(--shadow)}
+.frise-legend{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:14px}
+.fl{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3);display:flex;align-items:center;gap:6px}
+.fl::before{content:"";width:11px;height:11px;flex:none}
+.fl1::before{background:var(--accent-soft);border:1px solid var(--accent)}
+.fl2::before{background:var(--neg-soft);border:1px solid var(--neg)}
+.fl3::before{background:var(--warn-soft);border:1px solid var(--warn)}
+.fl4::before{background:var(--surface-3);border:1px solid var(--rule-strong)}
+.fbar{display:flex;height:28px;min-width:600px;border:1px solid var(--rule-strong)}
+.fs{display:flex;align-items:center;justify-content:center;border-right:1px solid var(--surface)}
+.fs:last-child{border-right:0}
+.fs span{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600}
+.f1{background:var(--accent-soft);background-image:repeating-linear-gradient(45deg,transparent,transparent 4px,var(--accent-soft) 4px,var(--accent-soft) 9px);box-shadow:inset 0 0 0 1px var(--accent)}
+.f1 span{color:var(--accent)}
+.f2{background:var(--neg-soft)} .f3{background:var(--warn-soft)} .f4{background:var(--surface-3)}
+.f2 span,.f3 span,.f4 span{color:var(--ink-2)}
+.fmarks{position:relative;min-width:600px;height:56px;margin-top:2px}
+.fm{position:absolute;top:0;transform:translateX(-50%);padding-top:10px;display:grid;gap:2px}
+.fm::before{content:"";position:absolute;top:0;left:50%;width:1px;height:7px;background:var(--rule-strong)}
+.fm:first-child{transform:translateX(0)}.fm:first-child::before{left:0}
+.fm.end{transform:translateX(-100%)}.fm.end::before{left:auto;right:0}
+.fm .d{font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:600;color:var(--ink-3);white-space:nowrap}
+.fm .t{font-size:11px;line-height:1.3;color:var(--ink-2);white-space:nowrap}
+.fm.key .d{color:var(--accent)}.fm.key::before{background:var(--accent);height:11px}.fm.key .t b{color:var(--accent)}
+.fsum{display:flex;flex-wrap:wrap;gap:24px;padding-top:12px;border-top:1px solid var(--rule);margin-top:2px}
+.fsum div{display:grid;gap:0}
+.fsum .v{font-family:"Archivo";font-weight:800;font-size:19px;letter-spacing:-.03em}
+.fsum .l{font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
+.fsum .hi .v,.fsum .hi .l{color:var(--accent)}
+
+/* ── Graphique DSO ── */
+.chart{background:var(--surface);border:1px solid var(--rule);padding:18px 20px;margin:12px 0 18px;box-shadow:var(--shadow)}
+.chart-t{font-family:"Archivo";font-weight:700;font-size:14px;letter-spacing:-.012em;margin-bottom:2px}
+.chart-s{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-3);margin-bottom:14px}
+.bars{display:grid;gap:7px}
+.br{display:grid;grid-template-columns:70px 1fr 78px;gap:12px;align-items:center}
+.br .lb{font-family:"Archivo";font-size:12px;font-weight:600;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.br .tr{height:20px;background:var(--surface-2)}
+.br .bar{height:100%;background:var(--rule-strong)}
+.br .vl{font-family:"IBM Plex Mono",monospace;font-size:12px;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+.br.tgt .bar{background:var(--accent)} .br.tgt .lb,.br.tgt .vl{color:var(--accent)}
+.br.ref .bar{background:var(--ink-3);opacity:.5}
 
 /* ── SWOT ── */
-.swot{display:grid;grid-template-columns:28px 1fr 1fr;grid-template-rows:auto auto auto;gap:12px;margin-top:8px}
-.ax{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);display:flex;align-items:center;justify-content:center}
-.ax-v{writing-mode:vertical-rl;transform:rotate(180deg)}
-.ax-h{justify-content:flex-start;padding-left:2px}
-.q{background:var(--surface);border:1px solid var(--rule);border-top:3px solid var(--qc);padding:20px 22px;box-shadow:var(--shadow)}
-.q--f{--qc:var(--pos)}
-.q--w{--qc:var(--warn)}
-.q--o{--qc:var(--info)}
-.q--t{--qc:var(--neg)}
-.q-head{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
-.q-head h3{margin:0;font-size:17px;color:var(--qc)}
-.q-head .cnt{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);margin-left:auto}
-.q ul{list-style:none;padding:0;margin:0;display:grid;gap:11px}
-.q li{font-size:15.5px;line-height:1.5;color:var(--ink-2);padding-left:15px;position:relative}
-.q li::before{content:"";position:absolute;left:0;top:.62em;width:5px;height:5px;background:var(--qc);opacity:.55}
-.q li b{font-family:"Archivo";font-weight:700;font-size:14.5px;letter-spacing:-.01em;color:var(--ink);display:block;margin-bottom:1px}
+.swot{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0 4px}
+.q{background:var(--surface);border:1px solid var(--rule);border-top:3px solid var(--qc);padding:15px 18px;box-shadow:var(--shadow)}
+.qf{--qc:var(--pos)} .qw{--qc:var(--warn)} .qo{--qc:var(--info)} .qt{--qc:var(--neg)}
+.q h3{font-family:"Archivo";font-weight:700;font-size:15px;color:var(--qc);margin:0 0 3px}
+.q .ax{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:9px}
+.q ul{margin:0;padding:0;list-style:none;display:grid;gap:7px}
+.q li{font-size:13.5px;line-height:1.42;color:var(--ink-2);padding-left:13px;position:relative}
+.q li::before{content:"";position:absolute;left:0;top:.55em;width:5px;height:5px;background:var(--qc);opacity:.6}
+.q li b{color:var(--ink);font-weight:600}
 
-/* ── Chart ── */
-.chart{background:var(--surface);border:1px solid var(--rule);padding:24px 26px;margin:26px 0;box-shadow:var(--shadow)}
-.chart-title{font-family:"Archivo";font-weight:700;font-size:16px;letter-spacing:-.015em;margin-bottom:3px}
-.chart-sub{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);margin-bottom:20px}
-.bars{display:grid;gap:10px}
-.bar-row{display:grid;grid-template-columns:88px 1fr 106px;gap:14px;align-items:center}
-.bar-label{font-size:13px;font-weight:600;color:var(--ink-2);font-variant-numeric:tabular-nums}
-.bar-track{height:26px;background:var(--surface-2);position:relative}
-.bar{height:100%;background:var(--rule-strong)}
-.bar-row.is-target .bar{background:var(--accent)}
-.bar-row.is-target .bar-label,.bar-row.is-target .bar-val{color:var(--accent)}
-.bar-row.is-ref .bar{background:var(--ink-3);opacity:.55}
-.bar-val{font-family:"IBM Plex Mono",monospace;font-size:13px;font-variant-numeric:tabular-nums;text-align:right;color:var(--ink);font-weight:500}
-.chart-foot{margin-top:18px;padding-top:16px;border-top:1px solid var(--rule);display:flex;flex-wrap:wrap;gap:26px}
-.cf{display:grid;gap:2px}
-.cf dt{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
-.cf dd{margin:0;font-family:"Archivo";font-weight:700;font-size:19px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.cf dd.accent{color:var(--accent)}
+/* ── Encadrés ── */
+.note{border:1px solid var(--rule-strong);border-left:3px solid var(--info);background:var(--info-soft);padding:13px 17px;margin:14px 0;max-width:88ch}
+.note .lbl{font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--info);font-weight:600;display:block;margin-bottom:5px}
+.note p{margin:0;font-size:14.5px;line-height:1.45;color:var(--ink-2)}
+.note.acc{border-left-color:var(--accent);background:var(--accent-soft)}
+.note.acc .lbl{color:var(--accent)}
 
-/* ── Roadmap ── */
-.horizon{margin-top:34px}
-.h-head{display:flex;align-items:baseline;gap:14px;padding-bottom:12px;border-bottom:2px solid var(--ink);margin-bottom:20px;flex-wrap:wrap}
-.h-when{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--surface);background:var(--ink);padding:4px 9px}
-.h-head h3{margin:0;font-size:21px}
-.h-goal{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-3);margin-left:auto}
-.acts{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule)}
-.act{background:var(--surface);padding:18px 20px;display:flex;flex-direction:column;gap:9px}
-.act-id{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--accent);letter-spacing:.06em;font-weight:600}
-.act p{margin:0;font-size:15px;line-height:1.5;color:var(--ink-2);flex:1}
-.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
-.chip{
-  font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding:3px 7px;
-  border:1px solid var(--rule-strong);color:var(--ink-3);white-space:nowrap;
-}
-.chip.hi{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
-.chip.ok{border-color:var(--pos);color:var(--pos);background:var(--pos-soft)}
+/* ── Budget ── */
+.tbd{font-family:"IBM Plex Mono",monospace;font-size:.8em;text-transform:uppercase;color:var(--accent);border-bottom:1.5px dashed var(--accent);padding:0 3px;white-space:nowrap}
 
-/* ── Stack grid ── */
-.stack{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin:24px 0}
-.st{background:var(--surface);padding:16px 18px}
-.st .tag{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);display:block;margin-bottom:6px}
-.st h4{margin-bottom:5px}
-.st p{margin:0;font-size:14.5px;line-height:1.45;color:var(--ink-2)}
-.st.gap{background:var(--neg-soft)}
-.st.gap .tag{color:var(--neg)}
+/* ── Lexique ── */
+.lex{display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule);margin:10px 0}
+.lex div{background:var(--surface);padding:10px 15px;display:grid;grid-template-columns:180px 1fr;gap:16px;align-items:baseline}
+.lex dt{font-family:"Archivo";font-weight:700;font-size:13px}
+.lex dd{margin:0;font-size:13.5px;line-height:1.42;color:var(--ink-2)}
 
-/* ── Decisions ── */
-.decisions{display:grid;gap:14px;margin-top:8px}
-.dec{display:grid;grid-template-columns:auto 1fr;gap:18px;padding:20px 22px;background:var(--surface);border:1px solid var(--rule);border-left:3px solid var(--accent);box-shadow:var(--shadow)}
-.dec-n{font-family:"Archivo";font-weight:800;font-size:30px;letter-spacing:-.04em;color:var(--accent-soft);-webkit-text-stroke:1px var(--accent);line-height:1}
-.dec h4{font-size:16.5px;margin-bottom:6px}
-.dec p{margin:0;font-size:15.5px;color:var(--ink-2)}
-.dec .ask{margin-top:9px;font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--accent)}
+ul.pl{max-width:86ch;padding-left:0;list-style:none;display:grid;gap:7px;margin:10px 0 16px}
+ul.pl li{padding-left:17px;position:relative;color:var(--ink-2);font-size:14.5px;line-height:1.45}
+ul.pl li::before{content:"";position:absolute;left:0;top:.55em;width:6px;height:6px;background:var(--accent);opacity:.65}
+ul.pl li b{color:var(--ink);font-weight:600}
 
-/* ── Lists in prose ── */
-.plist{max-width:78ch;padding-left:0;list-style:none;display:grid;gap:12px;margin:18px 0}
-.plist li{padding-left:20px;position:relative;color:var(--ink-2);font-size:16px}
-.plist li::before{content:"→";position:absolute;left:0;color:var(--accent);font-family:"IBM Plex Mono",monospace;font-size:13px;top:.15em}
-.plist li b{color:var(--ink);font-weight:600}
+footer{margin-top:36px;padding:16px 0 60px;border-top:1px solid var(--rule);color:var(--ink-3);font-size:12.5px;max-width:90ch}
 
-footer{padding:44px 0 70px;color:var(--ink-3);font-size:13.5px;max-width:78ch}
-footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;display:block;margin-bottom:10px;color:var(--ink-3)}
-
-@media (max-width:820px){
-  body{font-size:16px}
-  .wrap{padding:0 18px}
+@media (max-width:900px){
+  .kpis{grid-template-columns:repeat(3,1fr)}
+  .ident{grid-template-columns:repeat(2,1fr)}
   .swot{grid-template-columns:1fr}
-  .ax{display:none}
-  .bar-row{grid-template-columns:74px 1fr 88px;gap:10px}
-  .sec-head{gap:12px}
-  .dec{grid-template-columns:1fr}
+  .lex div{grid-template-columns:1fr;gap:3px}
+  .wrap{padding:0 18px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-.q-axis{display:none}
 
-/* ── Impression / PDF ── */
-@page{size:A4;margin:15mm 13mm 17mm}
+/* ══ Impression ══ */
+@page{size:A4;margin:14mm 13mm 16mm}
 @media print{
-  /* Palette claire forcée : une impression depuis un navigateur en thème sombre reste lisible */
   :root,:root[data-theme="dark"],:root:not([data-theme="light"]){
-    --ground:#FFFFFF;--surface:#FFFFFF;--surface-2:#F2F4F8;
+    --ground:#fff;--surface:#fff;--surface-2:#F2F4F8;--surface-3:#E6EAF2;
     --ink:#0F142A;--ink-2:#333A57;--ink-3:#5F6683;
-    --rule:#D5DAE5;--rule-strong:#AFB6C8;
-    --accent:#B33F25;--accent-2:#8E3019;--accent-soft:rgba(179,63,37,.07);
-    --pos:#256B4B;--pos-soft:rgba(37,107,75,.09);
-    --warn:#8A5D0D;--warn-soft:rgba(138,93,13,.09);
-    --neg:#9C2F2A;--neg-soft:rgba(156,47,42,.09);
-    --info:#333DA0;--info-soft:rgba(51,61,160,.09);
+    --rule:#D5DAE5;--rule-strong:#AEB5C7;
+    --accent:#A83A24;--accent-soft:rgba(168,58,36,.07);
+    --pos:#1F5E42;--pos-soft:rgba(31,94,66,.09);
+    --warn:#7C520B;--warn-soft:rgba(124,82,11,.09);
+    --neg:#8E2A24;--neg-soft:rgba(142,42,36,.09);
+    --info:#2A3486;--info-soft:rgba(42,52,134,.09);
     --shadow:none;
   }
   html,body{background:#fff}
-  body{font-size:9.6pt;line-height:1.5}
-  .topbar{display:none}
+  body{font-size:9.3pt;line-height:1.42}
   .wrap{padding:0;max-width:none}
   a{color:var(--ink);text-decoration:none}
-
-  header.doc{padding:0 0 14pt}
-  h1{font-size:26pt;max-width:24ch;margin-bottom:12pt}
-  h1 .thin{font-size:.62em}
-  .standfirst{font-size:11pt;margin-bottom:14pt;max-width:none}
-  .premise{margin-bottom:16pt;padding:10pt 13pt;max-width:none;break-inside:avoid}
-  .premise p{font-size:9.6pt}
-  .meta{grid-template-columns:repeat(3,1fr);break-inside:avoid}
-  .meta dd{font-size:9pt}
-  .meta div{background:#fff}
-
-  section{padding:16pt 0;break-inside:auto}
-  .sec-head{margin-bottom:12pt;break-after:avoid;break-inside:avoid}
-  h2{font-size:16pt}
-  .sec-sub{font-size:9.4pt}
-  h3,h4{break-after:avoid}
+  header.doc{padding:0}
+  h1{font-size:25pt;margin:14pt 0 3pt}
+  .subtitle{font-size:12pt;margin-bottom:14pt}
+  .doc-org .org{font-size:10pt}.doc-org .cls{font-size:7.5pt}
+  .ident{grid-template-columns:repeat(3,1fr);margin-bottom:14pt;break-inside:avoid}
+  .ident div{padding:7pt 10pt}
+  .ident dt{font-size:6.8pt}.ident dd{font-size:9pt}
+  .synth{padding:12pt 15pt;margin-bottom:12pt;break-inside:avoid}
+  .synth h2{font-size:10pt;margin-bottom:8pt}
+  .synth li{font-size:9.4pt}
+  .kpis{gap:6pt;margin-bottom:14pt;break-inside:avoid}
+  .kpi{padding:8pt 9pt;border-top-width:2.5pt}
+  .kpi-n{font-size:15pt}.kpi-t{font-size:8pt}.kpi-s{font-size:7.4pt}
+  .toc{display:none}
+  section{padding-top:16pt;break-inside:auto}
+  h2.sec{font-size:14pt;padding-bottom:6pt;break-after:avoid}
+  h2.sec .n{font-size:11pt}
+  .sec-lead{font-size:9.2pt;margin:7pt 0 10pt;max-width:none}
+  h3.sub{font-size:10.5pt;margin:13pt 0 5pt;break-after:avoid}
   .prose{max-width:none}
   p{orphans:3;widows:3}
-
-  /* Blocs à ne pas couper */
-  .tk,.act,.dec,.callout,.chart,.st,.h-head,.bar-row,.cf{break-inside:avoid}
-  .takeaways{gap:8pt}
-  .tk{padding:9pt 12pt}
-  .tk p{font-size:9.6pt}
-  .callout{margin:14pt 0;padding:11pt 14pt;max-width:none}
-
-  /* Tableaux : tout doit tenir dans la largeur de la page, en-têtes répétés */
-  .tbl-scroll{overflow:visible;margin:12pt 0;break-inside:auto}
-  table{min-width:0;width:100%;font-size:8.3pt;table-layout:fixed}
+  .tbl{overflow:visible;margin:8pt 0 12pt}
+  table{min-width:0;font-size:8pt;table-layout:fixed}
   thead{display:table-header-group}
   tr{break-inside:avoid}
-  /* les valeurs cessent d'être insécables : en table-layout fixed elles déborderaient sur la colonne voisine */
-  .num,td .num,td.num{white-space:normal;font-size:.94em}
-  /* §03 — les cinq canaux (6 colonnes) */
-  #cinq th:nth-child(1),#cinq td:nth-child(1){width:14.5%}
-  #cinq th:nth-child(2),#cinq td:nth-child(2){width:18%}
-  #cinq th:nth-child(3),#cinq td:nth-child(3){width:17.5%}
-  #cinq th:nth-child(4),#cinq td:nth-child(4){width:16%}
-  #cinq th:nth-child(5),#cinq td:nth-child(5){width:17%}
-  #cinq th:nth-child(6),#cinq td:nth-child(6){width:17%}
-  th{font-size:7.2pt;padding:7pt 7pt}
-  td{padding:6pt 7pt;line-height:1.35;overflow-wrap:break-word}
-  td:first-child{font-size:8.3pt;letter-spacing:0}
-  caption{padding:9pt 0 4pt;font-size:7.5pt}
-  tbody tr:hover td{background:transparent}
-
-  /* SWOT : flux vertical, chaque quadrant porte son axe */
-  .swot{display:block}
-  .ax{display:none}
-  .q{margin-bottom:10pt;padding:11pt 14pt;break-inside:avoid}
-  .q-axis{display:block;font-family:"IBM Plex Mono",monospace;font-size:6.8pt;letter-spacing:.14em;
-          text-transform:uppercase;color:var(--ink-3);margin-bottom:4pt}
-  .q-head{margin-bottom:8pt}
-  .q-head h3{font-size:12pt}
-  .q ul{gap:6pt}
-  .q li{font-size:9pt;line-height:1.42}
-  .q li b{font-size:9pt}
-
-  /* Graphique */
-  .chart{padding:13pt 15pt;margin:14pt 0}
-  .bar-row{grid-template-columns:60pt 1fr 60pt;gap:8pt}
-  .bar-track{height:15pt}
-  .bar-label,.bar-val{font-size:8.6pt}
-  .cf dd{font-size:13pt}
-  .chart-foot{gap:16pt}
-
-  /* Plan d'action */
-  .horizon{margin-top:16pt;break-inside:auto}
-  .h-head{margin-bottom:10pt;padding-bottom:7pt}
-  .h-head h3{font-size:13pt}
-  .acts{grid-template-columns:1fr 1fr}
-  .act{padding:10pt 12pt}
-  .act p{font-size:8.9pt;line-height:1.4}
-  .act h4{font-size:9.6pt}
-  .chip{font-size:6.6pt;padding:2pt 4pt}
-  .stack{grid-template-columns:1fr 1fr}
-  .st p{font-size:8.9pt}
-  .plist li{font-size:9.6pt}
-
-  .dec{padding:11pt 14pt}
-  .dec p{font-size:9.6pt}
-  .dec-n{font-size:22pt}
-
-  footer{padding:16pt 0 0;font-size:8.2pt;max-width:none;break-inside:avoid}
-
-  /* Ruptures de page volontaires devant les grands ensembles */
-  /* nouveaux objets */
-  .reading{display:none}
-  .scene{margin-bottom:14pt;padding-left:12pt;max-width:none}
-  .scene p{font-size:11pt;line-height:1.45}
-  .scene p strong{font-size:14pt}
-  .scene .scene-note{font-size:7.5pt;margin-top:8pt}
-  .ask40{padding:12pt 15pt;margin-bottom:14pt;max-width:none;break-inside:avoid}
-  .ask40 dd{font-size:9.6pt}
-  .ask40 dl div{grid-template-columns:100pt 1fr;gap:10pt}
-  .ask40-foot{font-size:8.8pt;margin-top:10pt;padding-top:9pt}
-  .hyp{font-size:7.6pt;margin-top:10pt}
-  .pull{margin:20pt 0;font-size:17pt;max-width:26ch;break-inside:avoid}
-  .frise{padding:13pt 15pt;margin:6pt 0 14pt;overflow:visible;break-inside:avoid}
-  .frise-bar,.frise-marks{min-width:0}
-  .frise-bar{height:22pt}
-  .fs-d{font-size:8pt}
-  .frise-marks{height:46pt}
-  .fm-l{font-size:7.4pt}
-  .fm-t{font-size:7.4pt}
-  .fsp-n{font-size:16pt}
-  .fsp-l{font-size:7pt}
-  .frise-foot{font-size:8.8pt;margin-top:9pt;max-width:none}
-  .frise-legend{gap:14pt;margin-bottom:11pt}
-  .fl{font-size:7.2pt}
-  .news{grid-template-columns:1fr 1fr;gap:10pt;margin:14pt 0}
-  .nw{padding:10pt 12pt;break-inside:avoid}
-  .nw p{font-size:8.9pt}
-  .h-intro{font-size:9.6pt;margin-bottom:10pt;max-width:none}
-  .obj{max-width:none;gap:11pt}
-  .ob{break-inside:avoid;padding-left:12pt}
-  .ob-q{font-size:11pt}
-  .ob-a{font-size:9.6pt}
-  .lex{max-width:none;margin-top:10pt}
-  .lex div{grid-template-columns:130pt 1fr;gap:12pt;padding:8pt 12pt;break-inside:avoid}
-  .lex dd{font-size:9pt}
-  .signoff{font-size:9.6pt;max-width:none}
-  .tbd{font-size:.8em}
-  .kpis{grid-template-columns:repeat(3,1fr);gap:8pt;margin-bottom:14pt;break-inside:avoid}
-  .kpi{padding:9pt 11pt;break-inside:avoid}
-  .kpi-n{font-size:20pt}
-  .kpi-t{font-size:9pt}
-  .kpi-s{font-size:8.2pt}
-  .team{grid-template-columns:repeat(3,1fr);margin-top:11pt;break-inside:avoid}
-  .tm{padding:9pt 11pt}
-  .tm-n{font-size:14pt}
-  .tm-r{font-size:9pt}
-  .tm-d{font-size:8.2pt}
-  .team-foot{font-size:9.4pt;max-width:none;margin-top:10pt}
-  #voyage,#plan,#demande{break-before:page}
-}
-
-/* ── Contrat de lecture ── */
-.reading{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.05em;color:var(--ink-3);white-space:nowrap;padding-left:20px;border-left:1px solid var(--rule)}
-
-/* ── Scène d'ouverture ── */
-.scene{border-left:3px solid var(--accent);padding:4px 0 4px 22px;margin:0 0 30px;max-width:62ch}
-.scene p{font-size:19px;line-height:1.55;margin:0 0 .7em;color:var(--ink-2)}
-.scene p strong{font-family:"Archivo";font-weight:800;font-size:23px;letter-spacing:-.02em;color:var(--ink)}
-.scene .scene-note{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink-3);margin:14px 0 0;line-height:1.5}
-
-/* ── La demande en 40 secondes ── */
-.ask40{border:1px solid var(--accent);background:var(--accent-soft);padding:22px 26px;margin:0 0 28px;max-width:86ch}
-.ask40-lbl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:600;display:block;margin-bottom:16px}
-.ask40 dl{margin:0;display:grid;gap:13px}
-.ask40 dl div{display:grid;grid-template-columns:132px 1fr;gap:16px;align-items:baseline}
-.ask40 dt{font-family:"Archivo";font-weight:700;font-size:13.5px;letter-spacing:-.01em;color:var(--accent)}
-.ask40 dd{margin:0;font-size:16px;line-height:1.5;color:var(--ink)}
-.ask40-foot{margin:16px 0 0;padding-top:14px;border-top:1px solid var(--rule-strong);font-size:14.5px;color:var(--ink-2)}
-
-.hyp{font-family:"IBM Plex Mono",monospace;font-size:11px;line-height:1.6;color:var(--ink-3);margin:14px 0 0;max-width:80ch}
-
-/* ── Citations détachées ── */
-.pull{margin:38px 0;padding:0;border:0;max-width:24ch;font-family:"Newsreader",Georgia,serif;font-size:clamp(24px,3.4vw,34px);line-height:1.25;font-weight:500;font-style:italic;color:var(--accent);letter-spacing:-.01em;text-wrap:balance}
-
-/* ── Frise : le voyage d'un dossier ── */
-.frise{background:var(--surface);border:1px solid var(--rule);padding:24px 26px 20px;margin:6px 0 26px;box-shadow:var(--shadow);overflow-x:auto}
-.frise-legend{display:flex;flex-wrap:wrap;gap:20px;margin-bottom:18px}
-.fl{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);display:flex;align-items:center;gap:7px}
-.fl::before{content:"";width:12px;height:12px;flex:none}
-.fl-blind::before{background:var(--accent-soft);border:1px solid var(--accent)}
-.fl-rej::before{background:var(--neg-soft);border:1px solid var(--neg)}
-.fl-fix::before{background:var(--warn-soft);border:1px solid var(--warn)}
-.fl-them::before{background:var(--surface-2);border:1px solid var(--rule-strong)}
-.frise-bar{display:flex;height:34px;min-width:620px;border:1px solid var(--rule-strong)}
-.fs{position:relative;display:flex;align-items:center;justify-content:center;border-right:1px solid var(--surface)}
-.fs:last-child{border-right:0}
-.fs-d{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;color:var(--ink)}
-.fs-blind{background:var(--accent-soft);background-image:repeating-linear-gradient(45deg,transparent,transparent 5px,var(--accent-soft) 5px,var(--accent-soft) 10px);box-shadow:inset 0 0 0 1px var(--accent)}
-.fs-blind .fs-d{color:var(--accent)}
-.fs-rej{background:var(--neg-soft)}
-.fs-fix{background:var(--warn-soft)}
-.fs-them{background:var(--surface-2)}
-.fs-them .fs-d,.fs-rej .fs-d,.fs-fix .fs-d{color:var(--ink-2)}
-.frise-marks{position:relative;min-width:620px;height:70px;margin-top:2px}
-.fm{position:absolute;top:0;transform:translateX(-50%);display:grid;gap:3px;padding-top:12px}
-.fm::before{content:"";position:absolute;top:0;left:50%;width:1px;height:9px;background:var(--rule-strong)}
-.fm:first-child{transform:translateX(0)}
-.fm:first-child::before{left:0}
-.fm-end{transform:translateX(-100%)}
-.fm-end::before{left:auto;right:0}
-.fm-t{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;color:var(--ink-3);white-space:nowrap}
-.fm-l{font-size:12px;line-height:1.35;color:var(--ink-2);white-space:nowrap}
-.fm-key .fm-t{color:var(--accent)}
-.fm-key::before{background:var(--accent);height:14px}
-.fm-key .fm-l strong{color:var(--accent)}
-.frise-foot{margin:14px 0 0;font-size:14.5px;line-height:1.5;color:var(--ink-2);max-width:78ch}
-.frise-split{display:flex;flex-wrap:wrap;gap:30px;padding-top:16px;border-top:1px solid var(--rule)}
-.fsp{display:grid;gap:1px}
-.fsp-n{font-family:"Archivo";font-weight:800;font-size:24px;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
-.fsp-l{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink-3)}
-.fsp-hi .fsp-n{color:var(--accent)}
-.fsp-hi .fsp-l{color:var(--accent)}
-
-/* ── Tuiles stack : ce que j'ai construit / les points faibles ── */
-.st.mine{box-shadow:inset 3px 0 0 var(--pos)}
-.st.mine .tag{color:var(--pos)}
-.st.warnbox{box-shadow:inset 3px 0 0 var(--warn)}
-.st.warnbox .tag{color:var(--warn)}
-
-/* ── Actualité réglementaire ── */
-.news{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin:24px 0}
-.nw{background:var(--surface);border:1px solid var(--rule);border-top:3px solid var(--info);padding:18px 20px;box-shadow:var(--shadow)}
-.nw-tag{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--info);display:block;margin-bottom:7px}
-.nw h4{font-size:16px;margin-bottom:7px}
-.nw p{margin:0;font-size:15px;line-height:1.5;color:var(--ink-2)}
-
-/* ── Valeur à compléter ── */
-.tbd{font-family:"IBM Plex Mono",monospace;font-size:.82em;letter-spacing:.03em;text-transform:uppercase;color:var(--accent);border-bottom:1.5px dashed var(--accent);padding:0 3px;white-space:nowrap}
-
-/* ── Plan ── */
-.h-intro{max-width:70ch;font-size:16px;color:var(--ink-2);margin:0 0 18px}
-.act.is-pivot{box-shadow:inset 0 0 0 2px var(--accent)}
-.act.is-pivot .act-id{color:var(--accent)}
-
-/* ── Objections ── */
-.obj{display:grid;gap:16px;max-width:80ch}
-.ob{border-left:3px solid var(--rule-strong);padding-left:22px}
-.ob-q{font-family:"Newsreader",Georgia,serif;font-style:italic;font-size:19px;line-height:1.4;color:var(--ink);margin:0 0 8px}
-.ob-a{margin:0;font-size:16px;line-height:1.55;color:var(--ink-2)}
-
-.signoff{margin-top:26px;font-size:16px;color:var(--ink-2);max-width:70ch}
-
-/* ── Lexique ── */
-.lex{display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule);margin:18px 0 0;max-width:84ch}
-.lex div{background:var(--surface);padding:13px 18px;display:grid;grid-template-columns:190px 1fr;gap:18px;align-items:baseline}
-.lex dt{font-family:"Archivo";font-weight:700;font-size:14px;letter-spacing:-.01em}
-.lex dd{margin:0;font-size:15px;line-height:1.5;color:var(--ink-2)}
-
-@media (max-width:820px){
-  .ask40 dl div{grid-template-columns:1fr;gap:3px}
-  .lex div{grid-template-columns:1fr;gap:4px}
-  .reading{display:none}
-  .pull{max-width:none;font-size:22px}
-  .scene p{font-size:17px}
-}
-
-/* ── Bandeau de chiffres clés ── */
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:14px;margin:0 0 30px}
-.kpi{background:var(--surface);border:1px solid var(--rule);border-top:4px solid var(--kc);padding:16px 18px 15px;box-shadow:var(--shadow);display:grid;gap:5px;align-content:start}
-.kpi-n{font-family:"Archivo";font-weight:800;font-size:clamp(26px,3.4vw,33px);letter-spacing:-.035em;line-height:1;color:var(--kc);font-variant-numeric:tabular-nums}
-.kpi-t{font-family:"Archivo";font-weight:700;font-size:12.5px;letter-spacing:-.005em;color:var(--ink)}
-.kpi-s{font-size:13px;line-height:1.4;color:var(--ink-3)}
-.k-cash{--kc:var(--pos)}
-.k-lost{--kc:var(--neg)}
-.k-day{--kc:var(--accent)}
-.k-chan{--kc:var(--info)}
-.k-team{--kc:var(--warn)}
-.k-due{--kc:var(--info)}
-
-/* ── L'équipe ── */
-.team{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:1px;background:var(--rule);border:1px solid var(--rule);margin:20px 0 0}
-.tm{background:var(--surface);padding:15px 17px;display:grid;gap:5px;align-content:start}
-.tm-n{font-family:"Archivo";font-weight:800;font-size:19px;letter-spacing:-.02em;color:var(--tc,var(--ink))}
-.tm-r{font-family:"Archivo";font-weight:700;font-size:13.5px;letter-spacing:-.005em}
-.tm-d{font-size:13.5px;line-height:1.45;color:var(--ink-3)}
-.tm-adv{--tc:var(--info)}
-.tm-rec{--tc:var(--accent)}
-.tm-cdg{--tc:var(--pos)}
-.tm-cpt{--tc:var(--warn)}
-.tm-daf{--tc:var(--ink-2)}
-.team-foot{margin:16px 0 0;font-size:15.5px;line-height:1.55;color:var(--ink-2);max-width:78ch}
-
-/* ── Pastilles de canal ── */
-.dot{display:inline-block;width:9px;height:9px;margin-right:8px;vertical-align:baseline;flex:none}
-.d-opco{background:var(--info)}
-.d-cpf{background:var(--pos)}
-.d-pub{background:var(--warn)}
-.d-b2b{background:var(--accent)}
-.d-part{background:var(--neg)}
-
-/* ── Horizons colorés ── */
-.horizon{--hc:var(--ink)}
-.h1c{--hc:var(--pos)}
-.h2c{--hc:var(--info)}
-.h3c{--hc:var(--accent)}
-.h-head{border-bottom-color:var(--hc)}
-.h-when{background:var(--hc);color:var(--surface)}
-.act.is-pivot{box-shadow:inset 0 0 0 2px var(--hc)}
-.act.is-pivot .act-id{color:var(--hc)}
-.act-id{color:var(--hc)}
-
-@media (max-width:820px){
-  .kpis{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
-  .team{grid-template-columns:1fr 1fr}
-}
-
-/* ── Impression : réglages postérieurs aux blocs ajoutés ── */
-@media print{
-  .kpis{grid-template-columns:repeat(3,1fr);gap:8pt;margin-bottom:0;break-inside:avoid}
-  .kpi{padding:9pt 11pt;border-top-width:3pt}
-  .kpi-n{font-size:19pt}
-  .kpi-t{font-size:8.8pt}
-  .kpi-s{font-size:8pt}
-  .team{grid-template-columns:repeat(3,1fr);break-inside:avoid}
-  .tm{padding:9pt 11pt}
-  .tm-n{font-size:14pt}
-  .tm-r{font-size:9pt}
-  .tm-d{font-size:8.2pt}
-  .scene p{font-size:10.4pt}
-  /* page 1 = couverture : titre, cas d'ouverture, chiffres clés. La demande ouvre la page 2. */
-  .ask40{break-before:page}
-  .dot{width:7pt;height:7pt;margin-right:5pt}
-}
-
-/* ── Décomposition budgétaire ── */
-.budget{list-style:none;padding:0;margin:12px 0;display:grid;gap:1px;background:var(--rule);border:1px solid var(--rule)}
-.budget li{background:var(--surface);padding:11px 14px;display:grid;grid-template-columns:1fr auto;gap:4px 16px;align-items:baseline}
-.bl{font-family:"Archivo";font-weight:700;font-size:14px;letter-spacing:-.01em}
-.bv{font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:500;color:var(--accent);white-space:nowrap;font-variant-numeric:tabular-nums}
-.bd{grid-column:1/-1;font-size:13.5px;line-height:1.4;color:var(--ink-3)}
-.budget-tot{margin:0 0 14px;font-size:15px;line-height:1.5;color:var(--ink-2)}
-@media print{
-  .budget{margin:8pt 0;break-inside:avoid}
-  .budget li{padding:6pt 9pt}
-  .bl{font-size:9pt}.bv{font-size:8.6pt}.bd{font-size:8.2pt}
-  .budget-tot{font-size:9.2pt;margin-bottom:9pt}
+  th{font-size:6.9pt;padding:6pt 6pt}
+  td{padding:5pt 6pt;line-height:1.3;overflow-wrap:break-word}
+  td.k{font-size:8pt;letter-spacing:0}
+  .num{font-size:7.6pt;white-space:normal}
+  caption{padding:7pt 0 3pt;font-size:7pt}
+  .frise{padding:10pt 12pt;margin:8pt 0 12pt;overflow:visible;break-inside:avoid}
+  .fbar,.fmarks{min-width:0}
+  .fbar{height:18pt}
+  .fs span{font-size:7.4pt}
+  .fmarks{height:38pt}
+  .fm .d,.fm .t{font-size:7pt}
+  .fsum{gap:16pt;padding-top:8pt}
+  .fsum .v{font-size:13pt}.fsum .l{font-size:6.8pt}
+  .fl{font-size:6.8pt}.frise-legend{gap:11pt;margin-bottom:9pt}
+  .chart{padding:10pt 12pt;margin:8pt 0 12pt;break-inside:avoid}
+  .chart-t{font-size:9.5pt}.chart-s{font-size:7.2pt;margin-bottom:9pt}
+  .br{grid-template-columns:46pt 1fr 52pt;gap:8pt}
+  .br .tr{height:13pt}.br .lb,.br .vl{font-size:8pt}
+  .swot{grid-template-columns:1fr 1fr;gap:8pt;break-inside:avoid}
+  .q{padding:10pt 12pt;break-inside:avoid}
+  .q h3{font-size:10.5pt}.q .ax{font-size:6.5pt;margin-bottom:6pt}
+  .q li{font-size:8.4pt;line-height:1.35}
+  .note{padding:9pt 12pt;margin:10pt 0;max-width:none;break-inside:avoid}
+  .note p{font-size:8.8pt}.note .lbl{font-size:6.8pt}
+  .lex div{grid-template-columns:120pt 1fr;gap:10pt;padding:6pt 10pt;break-inside:avoid}
+  .lex dt{font-size:8.4pt}.lex dd{font-size:8.4pt}
+  ul.pl{max-width:none;gap:5pt}
+  ul.pl li{font-size:8.8pt}
+  footer{font-size:7.6pt;margin-top:16pt;padding:10pt 0 0;max-width:none;break-inside:avoid}
+  .hz{font-size:6.3pt;padding:1pt 3pt;letter-spacing:0}
+  .ref{font-size:7pt;margin-bottom:1pt}
+  #s3,#annexes{break-before:page}
 }
 </style>
 
-<div class="topbar">
-  <div class="wrap">
-    <div class="topbar-id">LIORA <span>·</span> Recouvrement &amp; Cash</div>
-    <nav class="topnav">
-      <a href="#vois">L'essentiel</a>
-      <a href="#equipe">L'équipe</a>
-      <a href="#voyage">Le voyage</a>
-      <a href="#cinq">Cinq canaux</a>
-      <a href="#jour">Les chiffres</a>
-      <a href="#casse">SWOT</a>
-      <a href="#plan">Le plan</a>
-      <a href="#objections">Objections</a>
-      <a href="#demande">La demande</a>
-      <a href="#annexe">Annexe</a>
-    </nav>
-    <span class="reading">≈ 15 min · l'essentiel en 2 min</span>
-  </div>
-</div>
-
 <header class="doc">
   <div class="wrap">
-    <div class="doc-kicker">Note interne · Recouvrement &amp; trésorerie</div>
-    <h1>Nous cherchons le retard au mauvais endroit<span class="thin">Recouvrement et trésorerie, cap 100 M€</span></h1>
+    <div class="doc-org">
+      <span class="org">LIORA · Direction financière</span>
+      <span class="cls">Document de travail — diffusion CODIR</span>
+    </div>
 
-    <div class="scene">
-      <p>Le 12 juin, une session se termine chez un client industriel. Nous facturons 48 000 €, financés par son OPCO. L'argent arrive sur le compte le 9 octobre.</p>
-      <p><strong>Cent dix-neuf jours.</strong></p>
-      <p>Sur ces cent dix-neuf jours, l'OPCO n'a jamais été en retard. Il a payé cinquante-huit jours après avoir reçu un dossier complet, dans les délais qu'il annonce. Les soixante et un autres jours sont les nôtres.</p>
-      <p>Sur ces soixante et un jours, nos outils de suivi n'en voient que la moitié. L'autre moitié se joue avant que la facture existe.</p>
-      <p class="scene-note">Cas type reconstitué à titre d'illustration. Le trajet, lui, est le nôtre.</p>
+    <h1>Note stratégique</h1>
+    <p class="subtitle">Recouvrement &amp; Trésorerie — cap 100 M€</p>
+
+    <dl class="ident">
+      <div><dt>Objet</dt><dd>Sécuriser l'encaissement et la trésorerie à l'horizon 100 M€</dd></div>
+      <div><dt>Émetteur</dt><dd>Recouvrement &amp; Trésorerie</dd></div>
+      <div><dt>Destinataires</dt><dd>Direction générale · DAF · CODIR</dd></div>
+      <div><dt>Date</dt><dd>10 septembre 2026</dd></div>
+      <div><dt>Périmètre</dt><dd>France et Allemagne</dd></div>
+      <div><dt>Statut</dt><dd>Pour décision</dd></div>
+    </dl>
+
+    <div class="synth">
+      <h2>Synthèse</h2>
+      <ul>
+        <li><b>Nos clients paient ; le délai vient de nous.</b> Aucun de nos financeurs ne fait défaut. Sur un dossier type encaissé en 119 jours, 61 sont imputables à un dossier administratif incomplet, en amont de la facture.</li>
+        <li><b>Le poste client est déjà piloté.</b> Balance âgée, délai moyen d'encaissement, relances, litiges et promesses de paiement sont suivis par deux applications développées et documentées en interne.</li>
+        <li><b>Ces outils ne passeront pas l'échelle.</b> Un seul mainteneur, aucune piste d'audit opposable, aucune gestion du multi-pays ni du multi-devises.</li>
+        <li><b>L'enjeu financier est de premier rang.</b> À 100 M€, chaque jour de délai immobilise 274 k€ ; quinze jours gagnés libèrent 4,1 M€ de trésorerie, de façon permanente.</li>
+        <li><b>Trois décisions sont soumises au CODIR</b> — un mandat sur l'amont et le choix d'un CRM unique, sans coût ; une enveloppe d'outillage de 40 à 90 k€ la première année, assortie d'un mandat de négociation bancaire.</li>
+      </ul>
     </div>
 
     <div class="kpis">
-      <div class="kpi k-day"><span class="kpi-n">274 k€</span><span class="kpi-t">Un jour de délai</span><span class="kpi-s">Ce que chaque journée d'encaissement immobilisera à 100 M€.</span></div>
-      <div class="kpi k-cash"><span class="kpi-n">4,1 M€</span><span class="kpi-t">Trésorerie libérée</span><span class="kpi-s">En passant de 60 à 45 jours. Une fois, et durablement.</span></div>
-      <div class="kpi k-lost"><span class="kpi-n">61 j</span><span class="kpi-t">Perdus sur un dossier type</span><span class="kpi-s">Sur 119 jours, sans qu'aucun payeur soit en retard.</span></div>
-      <div class="kpi k-chan"><span class="kpi-n">5</span><span class="kpi-t">Canaux d'encaissement</span><span class="kpi-s">OPCO, CPF, public, B2B, particuliers. Cinq métiers distincts.</span></div>
-      <div class="kpi k-team"><span class="kpi-n">7</span><span class="kpi-t">Personnes à la finance</span><span class="kpi-s">Pour un dispositif qui devra encaisser cinq fois plus.</span></div>
-      <div class="kpi k-due"><span class="kpi-n">10,40 %</span><span class="kpi-t">Intérêts non réclamés</span><span class="kpi-s">Dus de plein droit sur nos factures publiques en retard.</span></div>
+      <div class="kpi k-1"><span class="kpi-n">274 k€</span><span class="kpi-t">Un jour de délai</span><span class="kpi-s">Immobilisés à 100 M€</span></div>
+      <div class="kpi k-2"><span class="kpi-n">4,1 M€</span><span class="kpi-t">Trésorerie libérée</span><span class="kpi-s">En passant de 60 à 45 jours</span></div>
+      <div class="kpi k-3"><span class="kpi-n">61 j</span><span class="kpi-t">Perdus en amont</span><span class="kpi-s">Sur un dossier de 119 jours</span></div>
+      <div class="kpi k-4"><span class="kpi-n">5</span><span class="kpi-t">Canaux d'encaissement</span><span class="kpi-s">Cinq métiers distincts</span></div>
+      <div class="kpi k-5"><span class="kpi-n">7</span><span class="kpi-t">Personnes à la finance</span><span class="kpi-s">Pour encaisser 5 fois plus</span></div>
+      <div class="kpi k-6"><span class="kpi-n">10,40 %</span><span class="kpi-t">Intérêts non réclamés</span><span class="kpi-s">Dus sur nos factures publiques</span></div>
     </div>
 
-    <dl class="meta">
-      <div><dt>Émetteur</dt><dd>Recouvrement &amp; Trésorerie</dd></div>
-      <div><dt>Destinataires</dt><dd>DG · DAF · CODIR</dd></div>
-      <div><dt>Date</dt><dd>9 septembre 2026</dd></div>
-      <div><dt>Périmètre actuel</dt><dd>France + Allemagne</dd></div>
-      <div><dt>Trajectoire visée</dt><dd>100 M€ à 5 ans</dd></div>
-      <div><dt>Statut</dt><dd>Pour décision</dd></div>
-    </dl>
-    <p class="hyp">Les 100 M€ et l'international sont la trajectoire retenue à cinq ans, prise ici comme un fait pour dimensionner. Ce n'est pas notre chiffre d'affaires d'aujourd'hui.</p>
-
-    <div class="ask40">
-      <span class="ask40-lbl">La demande en 40 secondes</span>
-      <dl>
-        <div><dt>Le constat</dt><dd>Nos clients paient. Le retard vient de chez nous, en amont de la facture — dans le dossier administratif, pas dans la relance.</dd></div>
-        <div><dt>Le coût</dt><dd>À 100 M€, chaque jour de délai d'encaissement immobilise 274 k€. Quinze jours gagnés libèrent 4,1 M€ de trésorerie, définitivement.</dd></div>
-        <div><dt>Ce que nous demandons</dt><dd><strong>1.</strong> Un mandat sur l'amont, avec Sales et Ops — 0 €. <strong>2.</strong> Un CRM unique, Salesforce ou HubSpot — 0 €, économie probable. <strong>3.</strong> Une enveloppe de 40 à 90 k€ la première année, et un mandat pour négocier une ligne bancaire.</dd></div>
-      </dl>
-      <p class="ask40-foot">Le reste de la note explique pourquoi. Si vous ne lisez rien d'autre, lisez « Ce que vaut un jour » et « Ce que nous demandons ».</p>
-    </div>
-
+    <nav class="toc">
+      <h2>Sommaire</h2>
+      <ol>
+        <li><a href="#s1"><span class="n">1.</span> Contexte</a></li>
+        <li><a href="#s2"><span class="n">2.</span> Diagnostic</a></li>
+        <li><a href="#s3"><span class="n">3.</span> Analyse SWOT</a></li>
+        <li><a href="#s4"><span class="n">4.</span> Plan d'action</a></li>
+        <li><a href="#s5"><span class="n">5.</span> Recommandations</a></li>
+        <li><a href="#annexes"><span class="n">6.</span> Annexes</a></li>
+      </ol>
+    </nav>
   </div>
 </header>
 
 <main>
 
-<!-- 01 -->
-<section id="vois">
+<section id="s1">
   <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-num">§ 01</div>
-      <div><h2>L'essentiel en quatre constats</h2>
-      <div class="sec-sub">Le premier est rassurant. Le deuxième est le sujet de cette note. Le troisième engage la direction générale.</div></div>
-    </div>
+    <h2 class="sec"><span class="n">1.</span> Contexte</h2>
+    <p class="sec-lead">La trajectoire retenue à cinq ans porte le chiffre d'affaires à 100 M€ et ouvre plusieurs pays. Elle est prise ici comme une hypothèse de dimensionnement, non comme une description de la situation actuelle : Liora opère aujourd'hui en France et dispose d'une entité en Allemagne.</p>
 
-    <div class="takeaways">
-      <div class="tk"><div class="tk-n">01</div><p><span class="lead">Nos payeurs paient.</span> OPCO, Caisse des Dépôts, Transitions Pro, Régions, France Travail, grands comptes industriels : aucun ne fait défaut. Notre problème n'est pas l'argent. C'est le délai.</p></div>
-      <div class="tk"><div class="tk-n">02</div><p><span class="lead">Le retard se produit avant la facture.</span> Sur le dossier ci-dessus, vingt-six jours se sont écoulés entre la fin de la session et le dépôt du dossier. Vingt-six jours perdus avant même que l'horloge du payeur commence à tourner. C'est là qu'est le gisement, et aucun de nos outils ne le mesure aujourd'hui.</p></div>
-      <div class="tk"><div class="tk-n">03</div><p><span class="lead">Nos deux outils de pilotage n'ont qu'un seul mainteneur.</span> Développés et documentés en interne, ils font le travail et nous ont évité un budget logiciel. Mais une seule personne les fait vivre, ils n'offrent aucune piste d'audit opposable, et ils n'ont été conçus ni pour plusieurs pays ni pour plusieurs devises. Une entreprise à 100 M€ ne peut pas faire reposer son encaissement sur cette seule base. Mieux vaut le traiter maintenant que le découvrir en panne.</p></div>
-      <div class="tk"><div class="tk-n">04</div><p><span class="lead">À 100 M€, un jour de délai vaudra 274 k€.</span> Passer de soixante à quarante-cinq jours libérera 4,1 M€ de trésorerie. Une fois, et pour de bon. C'est le premier financement de notre croissance, et il ne coûte ni dilution ni intérêts.</p></div>
-    </div>
-
-    <blockquote class="pull">Sur cent dix-neuf jours, l'OPCO en a pris cinquante-huit.<br>Les soixante et un autres sont les nôtres.</blockquote>
-
-    <h3>Ce dont nous disposons déjà</h3>
-    <p class="prose">Contrairement à ce qu'on imagine souvent quand on parle de recouvrement, nous ne partons pas de zéro. Deux applications ont été développées en interne, et le reste de la chaîne est déjà financé.</p>
-
-    <div class="stack">
-      <div class="st mine"><span class="tag">Construit en interne</span><h4>Suivi Cash</h4><p>Lit les extractions bancaires, catégorise automatiquement les flux par financeur, par équipe et par mode de paiement. Produit la prévision, le solde cumulé et le runway.</p></div>
-      <div class="st mine"><span class="tag">Construit en interne</span><h4>Suivi Recouvrement</h4><p>Balance âgée, DSO calculé, relances organisées, suivi des litiges et des promesses de paiement. Alimenté automatiquement.</p></div>
-      <div class="st"><span class="tag">Déjà payé</span><h4>Agicap · Pennylane</h4><p>Trésorerie et comptabilité. Pennylane porte le grand livre clients qui alimente le suivi recouvrement.</p></div>
-      <div class="st"><span class="tag">Déjà payé</span><h4>Zoho · Stripe · GoCardless · Swan · Tomorro</h4><p>Facturation, encaissement carte et prélèvement, comptes et virements non-euro, contrats.</p></div>
-      <div class="st warnbox"><span class="tag">Le point faible</span><h4>Salesforce <em>et</em> HubSpot</h4><p>Deux CRM payés en parallèle. Aucun identifiant client unique ne circule donc du CRM jusqu'à l'encaissement. C'est ce qui empêche d'automatiser la suite.</p></div>
-      <div class="st warnbox"><span class="tag">Le vrai risque</span><h4>Un seul mainteneur</h4><p>Les deux applications sont documentées, mais un seul concepteur les fait vivre. Pas de doublure opérationnelle, et pas de piste d'audit opposable à un commissaire aux comptes.</p></div>
-    </div>
-
-    <p class="prose">Autrement dit : la brique qu'un éditeur nous aurait vendue, nous l'avons fabriquée. Elle fonctionne. La vraie question de cette note n'est donc pas « que faut-il mettre en place ». C'est <strong>ce qui tient à 100 M€, et ce qui casse</strong>.</p>
-  </div>
-</section>
-
-<!-- 02 EQUIPE -->
-<section id="equipe">
-  <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-num">§ 02</div>
-      <div><h2>Qui porte le sujet</h2>
-      <div class="sec-sub">Sept personnes couvrent aujourd'hui l'ensemble de la chaîne, de la commande à l'encaissement. C'est cette équipe qu'il faut projeter à 100 M€.</div></div>
-    </div>
-
-    <div class="team">
-      <div class="tm tm-adv"><span class="tm-n">3</span><span class="tm-r">Administration des ventes</span><span class="tm-d">Commandes, conventions, facturation, dossiers de financement. Le premier maillon du délai d'encaissement.</span></div>
-      <div class="tm tm-rec"><span class="tm-n">1</span><span class="tm-r">Recouvrement &amp; trésorerie</span><span class="tm-d">Poste client, relances, litiges, prévision de trésorerie et relation bancaire. Auteur des deux applications internes.</span></div>
-      <div class="tm tm-cdg"><span class="tm-n">1</span><span class="tm-r">Contrôle de gestion</span><span class="tm-d">Budget, analyse de la marge, suivi de la performance par activité.</span></div>
-      <div class="tm tm-cpt"><span class="tm-n">1</span><span class="tm-r">Comptabilité</span><span class="tm-d">Tenue, lettrage, clôtures, grand livre clients qui alimente le suivi du poste client.</span></div>
-      <div class="tm tm-daf"><span class="tm-n">1</span><span class="tm-r">Direction financière</span><span class="tm-d">Arbitrages, financement, relation banques et actionnaires.</span></div>
-    </div>
-
-    <p class="team-foot">Deux enseignements pour le CODIR. D'abord, <strong>le délai d'encaissement ne se joue pas seulement au recouvrement</strong> : les vingt-six premiers jours du dossier décrit plus loin appartiennent à l'ADV et aux opérations. Ensuite, <strong>cette équipe absorbera la croissance ou ne l'absorbera pas selon les choix pris maintenant</strong> : en restant artisanaux, le seul recouvrement réclamerait huit à dix personnes à 100 M€ ; industrialisé, il s'en tient à trois ou quatre.</p>
-  </div>
-</section>
-
-<!-- 03 FRISE -->
-<section id="voyage">
-  <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-num">§ 03</div>
-      <div><h2>Le voyage d'un dossier</h2>
-      <div class="sec-sub">Le même dossier de 48 000 €, déplié jour par jour. C'est le schéma le plus important de cette note.</div></div>
-    </div>
-
-    <div class="frise">
-      <div class="frise-legend">
-        <span class="fl fl-blind">Avant la facture — que personne ne mesure</span>
-        <span class="fl fl-rej">Attente, puis rejet du dossier</span>
-        <span class="fl fl-fix">Notre correction</span>
-        <span class="fl fl-them">Le délai réel du payeur</span>
-      </div>
-
-      <div class="frise-bar">
-        <div class="fs fs-blind" style="width:21.8%"><span class="fs-d">26 j</span></div>
-        <div class="fs fs-rej" style="width:18.5%"><span class="fs-d">22 j</span></div>
-        <div class="fs fs-fix" style="width:10.9%"><span class="fs-d">13 j</span></div>
-        <div class="fs fs-them" style="width:48.8%"><span class="fs-d">58 j</span></div>
-      </div>
-
-      <div class="frise-marks">
-        <div class="fm" style="left:0%"><span class="fm-t">J 0</span><span class="fm-l">Fin de session<br>12 juin</span></div>
-        <div class="fm fm-key" style="left:21.8%"><span class="fm-t">J+26</span><span class="fm-l"><strong>La facture part</strong><br>8 juillet</span></div>
-        <div class="fm" style="left:40.3%"><span class="fm-t">J+48</span><span class="fm-l">Rejet de l'OPCO<br>émargement manquant</span></div>
-        <div class="fm" style="left:51.2%"><span class="fm-t">J+61</span><span class="fm-l">Dossier complet<br>redéposé</span></div>
-        <div class="fm fm-end" style="left:100%"><span class="fm-t">J+119</span><span class="fm-l">Encaissement<br>9 octobre</span></div>
-      </div>
-
-      <div class="frise-split">
-        <div class="fsp"><span class="fsp-n">61 j</span><span class="fsp-l">à nous</span></div>
-        <div class="fsp"><span class="fsp-n">58 j</span><span class="fsp-l">à l'OPCO, dans ses délais annoncés</span></div>
-        <div class="fsp fsp-hi"><span class="fsp-n">26 j</span><span class="fsp-l">invisibles dans tous nos outils</span></div>
-      </div>
-      <p class="frise-foot">Les 61 jours qui nous reviennent, ce sont 26 jours avant l'émission, 22 jours d'examen qui se terminent par un rejet, et 13 jours pour corriger. Tous imputables à un dossier incomplet — aucun à une négligence du payeur.</p>
-    </div>
-
-    <div class="prose">
-      <p>Regardez où se situe le premier segment. Il est entièrement à gauche de la facture.</p>
-      <p>Les émargements sont remontés neuf jours après la fin de session. Le certificat de réalisation a ensuite attendu une signature pendant treize jours. Le dossier n'est parti que quatre jours plus tard, le 8 juillet. Neuf, treize, quatre : vingt-six. Pendant ces vingt-six jours, il n'y avait rien à relancer : la facture n'existait pas. Notre outil de recouvrement, lui, ne commence à compter qu'à partir du 8 juillet.</p>
-      <p>Puis l'OPCO a rejeté le dossier pour un émargement manquant, et nous avons mis treize jours à le corriger.</p>
-      <p><strong>Sur ce dossier, nous avons perdu soixante et un jours sans qu'aucun payeur soit en retard.</strong> Voilà pourquoi nous cherchons le retard au mauvais endroit. Ajouter un relanceur ne récupère aucun de ces soixante et un jours. Traiter l'amont les récupère presque tous.</p>
-    </div>
-  </div>
-</section>
-
-<!-- 03 CINQ -->
-<section id="cinq">
-  <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-num">§ 04</div>
-      <div><h2>Nous n'avons pas un recouvrement, nous en avons cinq</h2>
-      <div class="sec-sub">Chaque canal a son déclencheur de paiement et sa cause de retard. Un scénario de relance unique ne peut pas fonctionner — et pour trois d'entre eux, la relance n'est même pas le bon geste.</div></div>
-    </div>
-
-    <div class="tbl-scroll">
+    <h3 class="sub"><span class="n">1.1</span> L'équipe en charge</h3>
+    <div class="tbl">
       <table>
-        <caption>Nos cinq canaux d'encaissement</caption>
-        <thead>
-          <tr><th>Canal</th><th>Qui paie</th><th>Ce qui déclenche réellement le paiement</th><th>Délai</th><th>Cause n°1 de retard</th><th>Le bon geste</th></tr>
-        </thead>
+        <caption>Fonction finance — effectif actuel</caption>
+        <thead><tr><th style="width:14%">Effectif</th><th style="width:26%">Fonction</th><th>Périmètre</th></tr></thead>
         <tbody>
-          <tr><td><span class="dot d-opco"></span>OPCO</td><td>Atlas, AKTO, AFDAS, Constructys, OPCO 2i et les autres</td><td>Un dossier complet : accord de prise en charge, subrogation, émargements, certificat de réalisation</td><td class="num">30 à 60 j après un dossier complet</td><td>Pièce manquante, dossier déposé trop tard</td><td>Sécuriser le dossier en amont</td></tr>
-          <tr><td><span class="dot d-cpf"></span>CPF</td><td>Caisse des Dépôts, via EDOF</td><td>Fin de formation, service fait déclaré, validation du stagiaire</td><td class="num">Délai administratif fixe</td><td>Dossier en anomalie, non-validation</td><td>Traiter les anomalies chaque jour</td></tr>
-          <tr><td><span class="dot d-pub"></span>Public</td><td>Transitions Pro, France Travail, Régions, collectivités</td><td>Le mandatement de l'ordonnateur</td><td class="num">30 j (50 j pour les hôpitaux)</td><td>Mandatement, pièces de marché</td><td>Réclamer les intérêts moratoires</td></tr>
-          <tr><td><span class="dot d-b2b"></span>B2B</td><td>Entreprises — 181 comptes référencés, France et Allemagne</td><td>Facture conforme, bon de commande, dépôt sur le portail du client</td><td class="num">45 j fin de mois ou 60 j nets</td><td>Bon de commande manquant, mauvaise entité facturée</td><td>Cadrer la facturation dès la vente</td></tr>
-          <tr><td><span class="dot d-part"></span>Particuliers</td><td>Nos apprenants</td><td>Paiement en ligne ou échéancier</td><td class="num">Immédiat à 12 mois</td><td>Échec de prélèvement</td><td>Prélèvement par défaut</td></tr>
+          <tr><td class="k num">3</td><td class="k">Administration des ventes</td><td>Commandes, conventions, facturation, constitution des dossiers de financement</td></tr>
+          <tr><td class="k num">1</td><td class="k">Recouvrement &amp; trésorerie</td><td>Poste client, relances, litiges, prévision de trésorerie, relation bancaire</td></tr>
+          <tr><td class="k num">1</td><td class="k">Contrôle de gestion</td><td>Budget, analyse de la marge, suivi de la performance</td></tr>
+          <tr><td class="k num">1</td><td class="k">Comptabilité</td><td>Tenue, lettrage, clôtures, grand livre clients</td></tr>
+          <tr><td class="k num">1</td><td class="k">Direction financière</td><td>Arbitrages, financement, relations bancaires et actionnaires</td></tr>
         </tbody>
       </table>
     </div>
 
-    <div class="prose">
-      <p><strong>Trois de nos cinq canaux ne se relancent pas. Ils se documentent.</strong> Téléphoner à un OPCO pour une facture dont le dossier est incomplet ne sert à rien : il attend une pièce, pas un appel. Le même temps passé en amont, à sécuriser l'accord de prise en charge et les émargements, supprime le retard à la source.</p>
-      <p>Deux points d'actualité méritent d'être signalés au CODIR, parce qu'ils touchent directement l'encaissement.</p>
+    <h3 class="sub"><span class="n">1.2</span> Les moyens en place</h3>
+    <div class="tbl">
+      <table>
+        <caption>Outillage du cycle commande — encaissement</caption>
+        <thead><tr><th style="width:24%">Outil</th><th style="width:17%">Origine</th><th>Fonction</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Suivi Recouvrement</td><td>Développement interne</td><td>Balance âgée, délai moyen d'encaissement, relances, litiges, promesses de paiement. Alimentation automatique.</td></tr>
+          <tr><td class="k">Suivi Cash</td><td>Développement interne</td><td>Lecture des flux bancaires, catégorisation par financeur, prévision et solde cumulé.</td></tr>
+          <tr><td class="k">Pennylane</td><td>Éditeur</td><td>Comptabilité et grand livre clients, source du suivi du poste client.</td></tr>
+          <tr><td class="k">Agicap</td><td>Éditeur</td><td>Prévision et suivi de trésorerie.</td></tr>
+          <tr><td class="k">Zoho Invoice</td><td>Éditeur</td><td>Émission des factures.</td></tr>
+          <tr><td class="k">Stripe · GoCardless · Swan</td><td>Éditeurs</td><td>Encaissement carte et prélèvement, comptes et virements non-euro.</td></tr>
+          <tr><td class="k">Salesforce <em>et</em> HubSpot</td><td>Éditeurs</td><td>Deux CRM en parallèle. Aucun identifiant client unique ne circule jusqu'à l'encaissement.</td></tr>
+        </tbody>
+      </table>
     </div>
-
-    <div class="news">
-      <div class="nw">
-        <span class="nw-tag">Depuis le 2 avril 2026</span>
-        <h4>Le reste à charge CPF est passé à 150 €</h4>
-        <p>Contre 103,20 € en début d'année : une hausse de 45 % en cours d'exercice. Cette participation n'est pas encaissée par nous — l'apprenant la règle directement à la Caisse des Dépôts au moment de valider son inscription. L'effet est ailleurs : <strong>tant qu'elle n'est pas payée, le dossier n'est pas validé et le financement n'est pas acquis.</strong> C'est un jalon de plus avant le démarrage, et une friction commerciale de plus à l'inscription.</p>
-      </div>
-      <div class="nw">
-        <span class="nw-tag">Argent que nous laissons sur la table</span>
-        <h4>Les intérêts moratoires du secteur public sont à 10,40 %</h4>
-        <p>Sur une facture publique payée en retard, les intérêts courent dès le lendemain du trentième jour, sans mise en demeure, au taux BCE majoré de huit points — soit 10,40 % au second semestre 2026 — plus 40 € par facture. Une facture de 50 000 € réglée avec quarante jours de retard nous doit ainsi 610 €. L'enjeu est moins financier que comportemental : un fournisseur qui réclame remonte dans la pile de mandatement.</p>
-      </div>
+    <div class="note">
+      <span class="lbl">Point d'attention</span>
+      <p>L'essentiel du dispositif de pilotage du poste client a été développé en interne. Ce choix a évité un budget logiciel et a produit un outil adapté à nos canaux de financement. Il fait aujourd'hui reposer deux applications critiques sur un mainteneur unique.</p>
     </div>
   </div>
 </section>
 
-<!-- 04 JOUR -->
-<section id="jour">
+<section id="s2">
   <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-num">§ 05</div>
-      <div><h2>Ce que vaut un jour</h2>
-      <div class="sec-sub">L'arithmétique appliquée au chiffre d'affaires visé de 100 M€. C'est l'argument le plus court pour arbitrer un budget aujourd'hui.</div></div>
+    <h2 class="sec"><span class="n">2.</span> Diagnostic</h2>
+    <p class="sec-lead">Le délai d'encaissement ne se forme pas là où il est traditionnellement traité. Trois constats le documentent : la localisation du retard, la nature hétérogène de nos recouvrements, et l'enjeu financier à l'échelle visée.</p>
+
+    <h3 class="sub"><span class="n">2.1</span> Le retard se forme en amont de la facture</h3>
+    <p class="prose">L'analyse d'un dossier type — une session achevée le 12 juin, facturée 48 000 € et financée par un OPCO, encaissée le 9 octobre — fait apparaître la décomposition suivante.</p>
+
+    <div class="frise">
+      <div class="frise-legend">
+        <span class="fl fl1">Avant la facture, non mesuré</span>
+        <span class="fl fl2">Examen puis rejet du dossier</span>
+        <span class="fl fl3">Correction interne</span>
+        <span class="fl fl4">Délai propre du payeur</span>
+      </div>
+      <div class="fbar">
+        <div class="fs f1" style="width:21.8%"><span>26 j</span></div>
+        <div class="fs f2" style="width:18.5%"><span>22 j</span></div>
+        <div class="fs f3" style="width:10.9%"><span>13 j</span></div>
+        <div class="fs f4" style="width:48.8%"><span>58 j</span></div>
+      </div>
+      <div class="fmarks">
+        <div class="fm"><span class="d">J 0</span><span class="t">Fin de session<br>12 juin</span></div>
+        <div class="fm key" style="left:21.8%"><span class="d">J+26</span><span class="t"><b>Émission de la facture</b><br>8 juillet</span></div>
+        <div class="fm" style="left:40.3%"><span class="d">J+48</span><span class="t">Rejet OPCO<br>émargement manquant</span></div>
+        <div class="fm" style="left:51.2%"><span class="d">J+61</span><span class="t">Dossier complet<br>redéposé</span></div>
+        <div class="fm end" style="left:100%"><span class="d">J+119</span><span class="t">Encaissement<br>9 octobre</span></div>
+      </div>
+      <div class="fsum">
+        <div><span class="v">61 j</span><span class="l">Imputables à Liora</span></div>
+        <div><span class="v">58 j</span><span class="l">Délai propre du payeur</span></div>
+        <div class="hi"><span class="v">26 j</span><span class="l">Antérieurs à la facture</span></div>
+      </div>
     </div>
 
+    <ul class="pl">
+      <li><b>Vingt-six jours précèdent l'émission de la facture.</b> Neuf jours pour la remontée des émargements, treize pour la signature du certificat de réalisation, quatre pour le dépôt du dossier. Aucun dispositif de relance n'a prise sur cette période.</li>
+      <li><b>Trente-cinq jours supplémentaires résultent d'un dossier incomplet.</b> Vingt-deux jours d'examen conclus par un rejet, treize jours de correction.</li>
+      <li><b>Le payeur a respecté ses délais.</b> Cinquante-huit jours après réception d'un dossier complet, conformément à ses conditions annoncées.</li>
+      <li><b>Conséquence directe :</b> le renforcement des moyens de relance ne récupère aucun de ces soixante et un jours. Le traitement de l'amont documentaire les récupère en quasi-totalité.</li>
+    </ul>
+
+    <h3 class="sub"><span class="n">2.2</span> Cinq canaux, cinq recouvrements distincts</h3>
+    <div class="tbl">
+      <table>
+        <caption>Déclencheurs de paiement et causes de retard par canal</caption>
+        <thead><tr><th style="width:15%">Canal</th><th style="width:22%">Déclencheur réel du paiement</th><th style="width:15%">Délai</th><th style="width:23%">Cause principale de retard</th><th>Levier</th></tr></thead>
+        <tbody>
+          <tr><td class="k"><span class="dot d1"></span>OPCO</td><td>Dossier complet : accord de prise en charge, subrogation, émargements, certificat de réalisation</td><td class="num">30 à 60 j</td><td>Pièce manquante ou dépôt tardif</td><td>Sécurisation documentaire en amont</td></tr>
+          <tr><td class="k"><span class="dot d2"></span>CPF</td><td>Fin de formation, service fait déclaré, validation du bénéficiaire</td><td class="num">Délai fixe</td><td>Dossier en anomalie, non-validation</td><td>Traitement quotidien des anomalies</td></tr>
+          <tr><td class="k"><span class="dot d3"></span>Public</td><td>Mandatement de l'ordonnateur</td><td class="num">30 j · 50 j hôpitaux</td><td>Mandatement, pièces de marché</td><td>Réclamation des intérêts moratoires</td></tr>
+          <tr><td class="k"><span class="dot d4"></span>B2B</td><td>Facture conforme, bon de commande, dépôt sur le portail client</td><td class="num">45 j fin de mois ou 60 j nets</td><td>Bon de commande manquant, entité erronée</td><td>Cadrage dès la vente</td></tr>
+          <tr><td class="k"><span class="dot d5"></span>Particuliers</td><td>Paiement en ligne ou échéancier</td><td class="num">Immédiat à 12 mois</td><td>Échec de prélèvement</td><td>Prélèvement par défaut</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="prose">Trois de ces cinq canaux ne relèvent pas de la relance mais de la conformité documentaire. Cette distinction commande l'ordre des mesures du plan d'action.</p>
+
+    <h3 class="sub"><span class="n">2.3</span> L'enjeu financier</h3>
     <div class="chart">
-      <div class="chart-title">Ce que nous laissons dormir chez nos clients, selon le délai d'encaissement</div>
-      <div class="chart-sub">Encours = chiffre d'affaires annuel × délai / 365 · hypothèse 100 M€</div>
+      <div class="chart-t">Encours client immobilisé selon le délai moyen d'encaissement</div>
+      <div class="chart-s">Encours = chiffre d'affaires annuel × délai / 365 · hypothèse 100 M€</div>
       <div class="bars">
-        <div class="bar-row"><span class="bar-label">30 jours</span><div class="bar-track"><div class="bar" style="width:33.3%"></div></div><span class="bar-val">8,2 M€</span></div>
-        <div class="bar-row is-target"><span class="bar-label">45 jours</span><div class="bar-track"><div class="bar" style="width:50%"></div></div><span class="bar-val">12,3 M€</span></div>
-        <div class="bar-row is-ref"><span class="bar-label">60 jours</span><div class="bar-track"><div class="bar" style="width:66.7%"></div></div><span class="bar-val">16,4 M€</span></div>
-        <div class="bar-row"><span class="bar-label">75 jours</span><div class="bar-track"><div class="bar" style="width:83.3%"></div></div><span class="bar-val">20,5 M€</span></div>
-        <div class="bar-row"><span class="bar-label">90 jours</span><div class="bar-track"><div class="bar" style="width:100%"></div></div><span class="bar-val">24,7 M€</span></div>
+        <div class="br"><span class="lb">30 jours</span><div class="tr"><div class="bar" style="width:33.3%"></div></div><span class="vl">8,2 M€</span></div>
+        <div class="br tgt"><span class="lb">45 jours</span><div class="tr"><div class="bar" style="width:50%"></div></div><span class="vl">12,3 M€</span></div>
+        <div class="br ref"><span class="lb">60 jours</span><div class="tr"><div class="bar" style="width:66.7%"></div></div><span class="vl">16,4 M€</span></div>
+        <div class="br"><span class="lb">75 jours</span><div class="tr"><div class="bar" style="width:83.3%"></div></div><span class="vl">20,5 M€</span></div>
+        <div class="br"><span class="lb">90 jours</span><div class="tr"><div class="bar" style="width:100%"></div></div><span class="vl">24,7 M€</span></div>
       </div>
-      <dl class="chart-foot">
-        <div class="cf"><dt>Un jour de délai</dt><dd>274 k€</dd></div>
-        <div class="cf"><dt>De 60 à 45 jours</dt><dd class="accent">4,1 M€</dd></div>
-        <div class="cf"><dt>Portage évité à 4 %/an</dt><dd>165 k€</dd></div>
-        <div class="cf"><dt>Durée de l'effet</dt><dd>Permanent</dd></div>
-      </dl>
     </div>
-
-    <div class="prose">
-      <p>La formule vaut dès aujourd'hui : un jour de délai coûte notre chiffre d'affaires annuel divisé par 365. Notre chiffre d'affaires actuel est de <span class="tbd">à compléter</span>, ce qui met la journée à <span class="tbd">à compléter</span> et notre délai moyen actuel à <span class="tbd">à compléter</span> jours. Le gain n'attend donc pas les 100 M€. Il grandit avec nous.</p>
-      <p>Et il faut regarder l'autre moitié du calcul : ce que coûte de ne rien faire. En restant artisanaux, l'effectif de recouvrement grandit au même rythme que le nombre de factures — environ un poste pour 10 à 12 M€ de chiffre d'affaires, soit huit à dix personnes à 100 M€. En industrialisant, le même volume se tient à trois ou quatre. L'écart est de 300 à 400 k€ par an, et il se reproduit chaque année.</p>
+    <ul class="pl">
+      <li><b>Un jour de délai représente 274 k€</b> d'encours immobilisé à 100 M€. La même formule s'applique dès aujourd'hui, rapportée à notre chiffre d'affaires : <span class="tbd">à compléter</span>, pour un délai moyen actuel de <span class="tbd">à compléter</span> jours.</li>
+      <li><b>Le passage de 60 à 45 jours libère 4,1 M€</b> de trésorerie, sans dilution ni intérêts, et l'effet est permanent tant que le délai est tenu.</li>
+      <li><b>Le coût de la fonction est le second enjeu.</b> À dispositif inchangé, l'effectif de recouvrement croît avec le nombre de factures : de l'ordre de huit à dix postes à 100 M€, contre trois à quatre en dispositif industrialisé, soit 300 à 400 k€ par an.</li>
+    </ul>
+    <div class="note acc">
+      <span class="lbl">Principe directeur du plan d'action</span>
+      <p>Gagner quinze jours de délai libère 4,1 M€ sans coût. Mobiliser ces mêmes 4,1 M€ auprès d'une banque coûterait environ 165 k€ par an, de façon récurrente. Les mesures sans coût sont donc traitées en premier ; le financement externe intervient en sécurisation, non en substitution.</p>
     </div>
-
-    <div class="callout">
-      <span class="lbl">Le principe qui commande l'ordre du plan</span>
-      <p>L'euro le moins cher est celui qu'on n'a pas besoin de financer. Gagner quinze jours de délai libère 4,1 M€ et ne coûte rien. Mobiliser ces mêmes 4,1 M€ auprès d'une banque coûterait environ 165 k€ par an, tous les ans. <strong>D'où l'ordre du plan : d'abord ce qui est gratuit, ensuite la ligne de financement — comme sécurité, jamais comme substitut.</strong></p>
-    </div>
-
-    <blockquote class="pull">4,1 M€. L'équivalent d'une levée de fonds.<br>Sans dilution, sans intérêts, sans covenant.</blockquote>
   </div>
 </section>
 
-<!-- 05 SWOT -->
-<section id="casse">
+<section id="s3">
   <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-num">§ 06</div>
-      <div><h2>Ce qui tient, ce qui casse</h2>
-      <div class="sec-sub">Notre position à l'aune de la trajectoire à cinq ans. Seulement les points qui portent une décision.</div></div>
-    </div>
+    <h2 class="sec"><span class="n">3.</span> Analyse SWOT</h2>
+    <p class="sec-lead">Position de la fonction recouvrement et trésorerie, appréciée à l'aune de la trajectoire à cinq ans.</p>
 
     <div class="swot">
-      <div class="ax"></div>
-      <div class="ax ax-h">Ce qui joue pour nous</div>
-      <div class="ax ax-h">Ce qui joue contre nous</div>
-
-      <div class="ax ax-v">Chez nous</div>
-      <div class="q q--f">
-        <div class="q-axis">Interne · Favorable</div>
-        <div class="q-head"><h3>Forces</h3><span class="cnt">S</span></div>
+      <div class="q qf">
+        <div class="ax">Interne · Favorable</div>
+        <h3>Forces</h3>
         <ul>
-          <li><b>Nous savons déjà qui nous doit quoi</b> Balance âgée, délai moyen d'encaissement, relances, litiges, promesses de paiement : c'est mesuré et suivi, avec une alimentation automatique. Beaucoup d'entreprises deux fois plus grosses que nous n'en sont pas là.</li>
-          <li><b>Nos outils internes sont documentés</b> Fonctionnalités, architecture, règles de catégorisation, circuit de la donnée : tout est écrit. C'est ce qui rend la reprise possible par quelqu'un d'autre — et ce qui distingue un outil interne d'un bricolage.</li>
-          <li><b>Des payeurs solides et bien répartis</b> Institutionnels et grands comptes, 181 comptes B2B référencés : pas de dépendance à un client, pas de risque de perte finale. Notre encours est de très bonne qualité — donc facile à financer.</li>
-          <li><b>Des rails d'encaissement modernes</b> Stripe et GoCardless en production, Swan pour les flux non-euro. Le prélèvement automatique est déjà un réflexe chez nous, pas un projet.</li>
-          <li><b>Un premier pays déjà ouvert</b> Une entité en Allemagne, des clients allemands, des formateurs payés hors zone euro. Un terrain d'apprentissage réel, à faible risque.</li>
+          <li><b>Poste client déjà piloté</b> Balance âgée, délai moyen, relances, litiges et promesses de paiement suivis, avec alimentation automatique.</li>
+          <li><b>Outils internes documentés</b> Fonctionnalités, architecture et règles de gestion sont écrites, ce qui rend la reprise possible.</li>
+          <li><b>Portefeuille de payeurs solide</b> Financeurs institutionnels et 181 comptes B2B référencés, sans dépendance à un client unique.</li>
+          <li><b>Rails d'encaissement modernes</b> Prélèvement et paiement en ligne en production, flux non-euro déjà opérés.</li>
         </ul>
       </div>
-      <div class="q q--w">
-        <div class="q-axis">Interne · Défavorable</div>
-        <div class="q-head"><h3>Faiblesses</h3><span class="cnt">W</span></div>
+      <div class="q qw">
+        <div class="ax">Interne · Défavorable</div>
+        <h3>Faiblesses</h3>
         <ul>
-          <li><b>Nos outils n'ont qu'un mainteneur</b> Ils sont documentés, mais un seul concepteur les fait vivre, sans doublure opérationnelle ni piste d'audit opposable. Ce n'est pas un problème de compétence : c'est un problème de continuité, et il grandit avec nous.</li>
-          <li><b>L'amont de la facture n'est mesuré nulle part</b> Les vingt-six jours du dossier précédent n'apparaissent dans aucun tableau de bord. Nous pilotons ce qui vient après la facture, alors que la moitié du délai se joue avant.</li>
-          <li><b>Le référentiel client est éclaté</b> Deux CRM en parallèle, plus la facturation, plus la comptabilité. Aucun identifiant unique ne circule d'un bout à l'autre. C'est le verrou qui empêche d'automatiser la suite.</li>
-          <li><b>Nos outils ne parlent ni plusieurs langues, ni plusieurs devises</b> Ni plusieurs entités. Ils ont été conçus pour la France et pour un usage interne. Ce n'est pas un défaut : c'est leur limite d'emploi.</li>
+          <li><b>Mainteneur unique</b> Deux applications critiques sans doublure opérationnelle ni piste d'audit opposable.</li>
+          <li><b>Amont non mesuré</b> Les délais antérieurs à la facture n'apparaissent dans aucun tableau de bord.</li>
+          <li><b>Référentiel client éclaté</b> Deux CRM en parallèle, sans identifiant unique circulant jusqu'à l'encaissement.</li>
+          <li><b>Absence de multi-pays et de multi-devises</b> Les outils ont été conçus pour un périmètre national et un usage interne.</li>
         </ul>
       </div>
-
-      <div class="ax ax-v">Autour de nous</div>
-      <div class="q q--o">
-        <div class="q-axis">Externe · Favorable</div>
-        <div class="q-head"><h3>Opportunités</h3><span class="cnt">O</span></div>
+      <div class="q qo">
+        <div class="ax">Externe · Favorable</div>
+        <h3>Opportunités</h3>
         <ul>
-          <li><b>La facture électronique devient obligatoire</b> Réception pour toutes les entreprises depuis le 1<sup>er</sup> septembre 2026, émission généralisée au 1<sup>er</sup> septembre 2027. Chaque facture portera un statut normalisé : déposée, reçue, approuvée, rejetée, mise en paiement. Une facture rejetée se traitera le lendemain, plus six semaines après.</li>
-          <li><b>Nos créances valent cher auprès des banques</b> Créances sur OPCO et sur le secteur public : de la très bonne signature. Une cession Dailly nous avancerait le cash immédiatement, autour de 4 % l'an — Euribor 3 mois à 2,67 % plus la marge bancaire. À comparer au coût d'un jour de délai gagné : zéro.</li>
-          <li><b>Le prélèvement peut devenir la règle</b> Sur les particuliers, et sur le B2B de petit montant. C'est le seul levier qui agit sur le délai sans rien demander au client.</li>
-          <li><b>Construire propre à l'international</b> Ouvrir un pays permet d'imposer dès le départ un référentiel unique et des conditions de paiement standard, au lieu de dupliquer nos habitudes françaises.</li>
+          <li><b>Facturation électronique</b> Réception obligatoire depuis le 1<sup>er</sup> septembre 2026, émission généralisée au 1<sup>er</sup> septembre 2027. Les statuts normalisés deviennent des déclencheurs de relance.</li>
+          <li><b>Mobilisation de créances</b> Créances OPCO et publiques de très bonne signature : cession Dailly disponible autour de 4 % l'an.</li>
+          <li><b>Généralisation du prélèvement</b> Seul levier agissant sur le délai sans négociation avec le client.</li>
+          <li><b>Construction internationale</b> Ouvrir un pays permet d'imposer d'emblée un référentiel et des conditions de paiement uniques.</li>
         </ul>
       </div>
-      <div class="q q--t">
-        <div class="q-axis">Externe · Défavorable</div>
-        <div class="q-head"><h3>Menaces</h3><span class="cnt">T</span></div>
+      <div class="q qt">
+        <div class="ax">Externe · Défavorable</div>
+        <h3>Menaces</h3>
         <ul>
-          <li><b>La croissance consomme le cash avant d'en produire</b> Nous payons les salaires et les formateurs avant d'encaisser l'OPCO et le CPF. À 100 M€, l'encours client atteint 16 M€ si nous restons à soixante jours.</li>
-          <li><b>Le financement de la formation peut changer du jour au lendemain</b> Le reste à charge CPF est passé de 103,20 à 150 € en avril, sans préavis utile. Un changement de règle ne crée pas un impayé : il crée un décalage de trésorerie massif et simultané sur tout le portefeuille.</li>
-          <li><b>Nos payeurs institutionnels sont peu nombreux</b> Une dizaine d'OPCO et la Caisse des Dépôts. Un blocage administratif chez un seul peut geler plusieurs millions. Ajoutons Qualiopi : une réserve en audit coupe l'accès au financement mutualisé.</li>
-          <li><b>Chaque pays ouvert ajoute sa complexité</b> Délais locaux, change, TVA, obligations de facturation propres à chaque pays. Nous n'en subissons aujourd'hui qu'une fraction, avec l'Allemagne. C'est le bon moment pour apprendre.</li>
+          <li><b>Effet de ciseau du besoin en fonds de roulement</b> Salaires et formateurs réglés avant encaissement ; 16,4 M€ d'encours à 100 M€ si le délai reste à soixante jours.</li>
+          <li><b>Instabilité du financement de la formation</b> Reste à charge CPF porté de 103,20 à 150 € en avril 2026. Un changement de règle décale simultanément tout le portefeuille.</li>
+          <li><b>Concentration des financeurs institutionnels</b> Une dizaine d'OPCO et la Caisse des Dépôts ; un blocage administratif immobilise plusieurs millions. Risque Qualiopi associé.</li>
+          <li><b>Complexité par pays</b> Délais, change, fiscalité et obligations de facturation propres à chaque marché ouvert.</li>
         </ul>
       </div>
     </div>
   </div>
 </section>
 
-<!-- 06 PLAN -->
-<section id="plan">
+<section id="s4">
   <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-num">§ 07</div>
-      <div><h2>Le plan</h2>
-      <div class="sec-sub">Quinze mesures, séquencées. Une mesure pivot par horizon, signalée. L'horizon 1 ne demande aucun budget : il consiste à aller chercher les jours perdus en amont.</div></div>
-    </div>
+    <h2 class="sec"><span class="n">4.</span> Plan d'action</h2>
+    <p class="sec-lead">Quinze mesures réparties sur trois horizons. Les mesures signalées en couleur sont les mesures pivots, dont dépend l'efficacité des autres. L'horizon 1 ne mobilise aucun budget logiciel.</p>
 
-    <div class="horizon h1c">
-      <div class="h-head"><span class="h-when">Horizon 1 · 0–6 mois</span><h3>Aller chercher les jours perdus</h3><span class="h-goal">Aucun budget logiciel</span></div>
-      <p class="h-intro">Tout ce qui suit se fait avec ce que nous avons déjà. C'est là que se trouvent les gains les plus rapides, et ils ne coûtent que de la discipline.</p>
-      <div class="acts">
-        <div class="act is-pivot">
-          <span class="act-id">H1.1 · mesure pivot</span>
-          <h4>Pas de dossier complet, pas de démarrage</h4>
-          <p>Une règle opposable, validée en CODIR : accord de prise en charge signé, subrogation, convention, entité de facturation et bon de commande côté B2B — avant la première heure de formation. C'est la mesure au meilleur rapport gain sur coût de tout le plan.</p>
-          <div class="chips"><span class="chip hi">Gain : ~15 j</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : ADV + Sales + Ops</span></div>
-        </div>
-        <div class="act">
-          <span class="act-id">H1.2</span>
-          <h4>Mesurer le délai que personne ne mesure</h4>
-          <p>Ajouter un seul indicateur : le nombre de jours entre la fin de session et le dépôt du dossier complet. Objectif cinq jours ouvrés. C'est le chiffre qui manque à nos tableaux de bord, et celui qui explique la moitié de notre délai.</p>
-          <div class="chips"><span class="chip hi">Gain : ~10 j</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : Recouvrement</span></div>
-        </div>
-        <div class="act">
-          <span class="act-id">H1.3</span>
-          <h4>Traiter les anomalies EDOF tous les jours</h4>
-          <p>Un dossier CPF en anomalie ne se débloque pas tout seul, et chaque jour d'attente est un jour de trésorerie. Une revue quotidienne, dix minutes, avec une personne nommée.</p>
-          <div class="chips"><span class="chip">Gain : direct</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : Ops</span></div>
-        </div>
-        <div class="act">
-          <span class="act-id">H1.4</span>
-          <h4>Le prélèvement par défaut sur les particuliers</h4>
-          <p>Cent pour cent des paiements individuels en prélèvement ou en paiement en ligne, sans exception, sur le canal « financement personnel ». Et sur le B2B en dessous de 5 000 €, le prélèvement plutôt que le virement. Côté CPF, vérifier avant chaque démarrage que la participation de 150 € a bien été réglée à la Caisse des Dépôts : sans elle, le dossier n'est pas validé.</p>
-          <div class="chips"><span class="chip hi">Gain : immédiat</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : Recouvrement</span></div>
-        </div>
-        <div class="act">
-          <span class="act-id">H1.5</span>
-          <h4>Réclamer ce qui nous est dû</h4>
-          <p>Intérêts moratoires sur le secteur public, à 10,40 %, dus automatiquement. Pénalités et indemnité de 40 € sur le B2B. Cela coûte un modèle de courrier, et cela change durablement l'ordre dans lequel on nous paie.</p>
-          <div class="chips"><span class="chip">Gain : comportemental</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : Recouvrement</span></div>
-        </div>
-        <div class="act">
-          <span class="act-id">H1.6</span>
-          <h4>Formaliser la politique de recouvrement</h4>
-          <p>Cinq scénarios, un par canal. Qui relance, quand, jusqu'où, qui peut accorder un délai, quand on suspend la prestation. Tout cela existe aujourd'hui dans la pratique, mais nulle part par écrit. Formalisé, cela devient transmissible et opposable.</p>
-          <div class="chips"><span class="chip">Gain : structurel</span><span class="chip">Coût : 0 €</span><span class="chip">Porteur : Recouvrement</span></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="horizon h2c">
-      <div class="h-head"><span class="h-when">Horizon 2 · 6–18 mois</span><h3>Sécuriser et industrialiser</h3><span class="h-goal">40 à 90 k€ an 1 + 1 recrutement</span></div>
-      <p class="h-intro">Ici commence le vrai sujet. Non pas remplacer ce qui a été construit en interne, mais faire en sorte que cela survive à une absence et à un changement d'échelle.</p>
-      <div class="acts">
-        <div class="act is-pivot">
-          <span class="act-id">H2.1 · mesure pivot</span>
-          <h4>Un seul CRM, un seul identifiant client</h4>
-          <p>Trancher entre Salesforce et HubSpot, puis faire circuler le SIREN — et demain le numéro de TVA intracommunautaire — du CRM jusqu'à l'encaissement. Sans cela, aucune automatisation ne tiendra, et le rapprochement restera manuel.</p>
-          <div class="chips"><span class="chip hi">Bloquant</span><span class="chip ok">Économie probable</span><span class="chip">Porteur : DAF + Recouvrement</span></div>
-        </div>
-        <div class="act">
-          <span class="act-id">H2.2</span>
-          <h4>Décider ce qu'on garde en interne</h4>
-          <p>Les deux applications internes font le travail. La question honnête est : jusqu'où. Nous proposons d'arbitrer explicitement, sur deux critères — l'auditabilité et le multi-pays. Ce qui les franchit reste interne. Ce qui ne les franchit pas s'achète. Ce n'est pas une décision d'achat, c'est une décision d'architecture.</p>
-          <div class="chips"><span class="chip hi">Décision de fond</span><span class="chip">15 à 40 k€/an si achat</span><span class="chip">Porteur : Recouvrement + DSI</span></div>
-        </div>
-        <div class="act">
-          <span class="act-id">H2.3</span>
-          <h4>Brancher la facture électronique sur les relances</h4>
-          <p>Choisir la plateforme agréée et vérifier notre échéance d'émission selon notre catégorie d'entreprise. Puis, surtout, utiliser les statuts de facture comme déclencheurs : une facture rejetée doit générer une action le lendemain.</p>
-          <div class="chips"><span class="chip hi">Gain fort</span><span class="chip">Réglementaire · 2027</span><span class="chip">Porteur : Recouvrement + DAF</span></div>
-        </div>
-        <div class="act">
-          <span class="act-id">H2.4</span>
-          <h4>Ouvrir une ligne de mobilisation de créances</h4>
-          <p>Adossée aux créances OPCO et publiques, elle transforme un délai subi en cash immédiat. Deux instruments, deux coûts : la <strong>cession Dailly</strong> ne facture que l'argent avancé — Euribor 3 mois plus une marge, soit environ 4 % l'an — quand l'<strong>affacturage</strong> ajoute une commission de service de 0,1 à 1,5 % du volume cédé, parce que le factor gère aussi le poste client et les relances. Ce service, nous l'assurons déjà : la cession Dailly est donc l'instrument adapté. À négocier maintenant, tant que nous ne sommes pas sous pression.</p>
-          <div class="chips"><span class="chip hi">Gain fort</span><span class="chip">≈ 4 % l'an sur l'avance</span><span class="chip">Porteur : DAF + Recouvrement</span></div>
-        </div>
-        <div class="act">
-          <span class="act-id">H2.5</span>
-          <h4>Séparer les deux métiers et doubler les compétences</h4>
-          <p>Le recouvrement est un métier de relation et de dossier. La trésorerie est un métier de prévision et de financement. Ce sont deux compétences, portées aujourd'hui par une seule personne. Un recrutement, et l'appropriation de la documentation existante par une deuxième personne.</p>
-          <div class="chips"><span class="chip hi">Risque n°1</span><span class="chip">1 recrutement</span><span class="chip">Porteur : DG</span></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="horizon h3c">
-      <div class="h-head"><span class="h-when">Horizon 3 · 18–60 mois</span><h3>Changer d'échelle et de pays</h3><span class="h-goal">Cap 100 M€</span></div>
-      <p class="h-intro">À partir d'ici, les décisions engagent l'entreprise pour longtemps. Le seul vrai piège serait de les prendre trop tard, en pleine croissance.</p>
-      <div class="acts">
-        <div class="act is-pivot">
-          <span class="act-id">H3.1 · mesure pivot</span>
-          <h4>Faire de l'Allemagne notre pays modèle</h4>
-          <p>Avant d'ouvrir un troisième pays, normaliser l'existant franco-allemand : référentiel unique, conditions de paiement standard, remontée de trésorerie. Puis figer un modèle simple — une équipe centrale qui porte l'outil et les process, un relais local léger pour la langue, les usages de paiement et le contentieux.</p>
-          <div class="chips"><span class="chip hi">Structurant</span><span class="chip">Porteur : DAF</span></div>
-        </div>
-        <div class="act">
-          <span class="act-id">H3.2</span>
-          <h4>Choisir le socle financier avant d'en avoir besoin</h4>
-          <p>Un socle capable de gérer plusieurs entités, plusieurs devises et la consolidation. Cette décision se prend vers 40 ou 50 M€. La prendre à 80 M€, en pleine croissance, est le scénario le plus coûteux qui soit.</p>
-          <div class="chips"><span class="chip hi">Anticiper</span><span class="chip">Porteur : DAF + DSI</span></div>
-        </div>
-        <div class="act">
-          <span class="act-id">H3.3</span>
-          <h4>Une politique de crédit pour l'export</h4>
-          <p>Limites de crédit par client, assurance-crédit sur le B2B export, conditions de paiement par pays, conditions générales localisées. Hors de nos financeurs publics français, le risque d'impayé redevient réel.</p>
-          <div class="chips"><span class="chip">Nouveau risque</span><span class="chip">Porteur : Recouvrement + juridique</span></div>
-        </div>
-        <div class="act">
-          <span class="act-id">H3.4</span>
-          <h4>Le cash au tableau de bord du board</h4>
-          <p>Trésorerie disponible et cycle de conversion du cash suivis au même rang que l'EBITDA. À 100 M€, c'est le langage des investisseurs comme des acquéreurs — et c'est ce qui fait de notre fonction une fonction stratégique.</p>
-          <div class="chips"><span class="chip">Gouvernance</span><span class="chip">Porteur : Recouvrement</span></div>
-        </div>
-      </div>
+    <div class="tbl">
+      <table>
+        <caption>Mesures, gains attendus, coûts et responsables</caption>
+        <thead><tr><th style="width:11%">Horizon</th><th style="width:23%">Mesure</th><th style="width:27%">Objet</th><th style="width:12%">Gain attendu</th><th style="width:12%">Coût</th><th style="width:15%">Responsable</th></tr></thead>
+        <tbody>
+          <tr><td><span class="hz hz1">0–6 mois</span></td><td class="k piv"><span class="ref">H1.1</span>Pas de dossier complet, pas de démarrage</td><td>Règle opposable : accord de prise en charge, subrogation, convention, bon de commande obtenus avant la première heure de formation</td><td class="num">≈ 15 jours</td><td class="num">0 €</td><td>ADV, Sales, Ops</td></tr>
+          <tr><td><span class="hz hz1">0–6 mois</span></td><td class="k"><span class="ref">H1.2</span>Mesure du délai amont</td><td>Indicateur du nombre de jours entre fin de session et dépôt du dossier complet. Cible : 5 jours ouvrés</td><td class="num">≈ 10 jours</td><td class="num">0 €</td><td>Recouvrement</td></tr>
+          <tr><td><span class="hz hz1">0–6 mois</span></td><td class="k"><span class="ref">H1.3</span>Revue quotidienne des anomalies EDOF</td><td>Traitement journalier des dossiers CPF bloqués, avec responsable désigné</td><td class="num">Direct</td><td class="num">0 €</td><td>Ops</td></tr>
+          <tr><td><span class="hz hz1">0–6 mois</span></td><td class="k"><span class="ref">H1.4</span>Prélèvement par défaut</td><td>Généralisation sur le canal particuliers et sur le B2B inférieur à 5 000 €</td><td class="num">Immédiat</td><td class="num">0 €</td><td>Recouvrement</td></tr>
+          <tr><td><span class="hz hz1">0–6 mois</span></td><td class="k"><span class="ref">H1.5</span>Réclamation des pénalités</td><td>Intérêts moratoires du secteur public et indemnités forfaitaires B2B, dus de plein droit</td><td class="num">Indirect</td><td class="num">0 €</td><td>Recouvrement</td></tr>
+          <tr><td><span class="hz hz1">0–6 mois</span></td><td class="k"><span class="ref">H1.6</span>Formalisation de la politique de recouvrement</td><td>Cinq scénarios de relance, seuils de délégation, conditions de suspension et de contentieux</td><td class="num">Structurel</td><td class="num">0 €</td><td>Recouvrement</td></tr>
+          <tr><td><span class="hz hz2">6–18 mois</span></td><td class="k piv"><span class="ref">H2.1</span>Référentiel client unique</td><td>Désignation d'un CRM maître et circulation du SIREN, puis du numéro de TVA, jusqu'à l'encaissement</td><td class="num">Bloquant</td><td class="num">0 €</td><td>DAF, Recouvrement</td></tr>
+          <tr><td><span class="hz hz2">6–18 mois</span></td><td class="k"><span class="ref">H2.2</span>Arbitrage interne / externe</td><td>Décision d'architecture sur deux critères : auditabilité et multi-pays. Acquisition d'un outil de gestion du poste client si les critères ne sont pas franchis</td><td class="num">Structurant</td><td class="num">15 à 40 k€/an</td><td>Recouvrement, DSI</td></tr>
+          <tr><td><span class="hz hz2">6–18 mois</span></td><td class="k"><span class="ref">H2.3</span>Facturation électronique</td><td>Choix de la plateforme agréée et branchement des statuts de facture sur les scénarios de relance</td><td class="num">Élevé</td><td class="num">5 à 15 k€/an</td><td>Recouvrement, DAF</td></tr>
+          <tr><td><span class="hz hz2">6–18 mois</span></td><td class="k"><span class="ref">H2.4</span>Ligne de mobilisation de créances</td><td>Cession Dailly adossée aux créances OPCO et publiques, négociée hors période de tension</td><td class="num">Élevé</td><td class="num">≈ 4 % de l'avance</td><td>DAF, Recouvrement</td></tr>
+          <tr><td><span class="hz hz2">6–18 mois</span></td><td class="k"><span class="ref">H2.5</span>Séparation des métiers et doublure</td><td>Distinction entre gestion du poste client et trésorerie ; appropriation de la documentation par une seconde personne</td><td class="num">Risque n°1</td><td class="num">1 ETP</td><td>Direction générale</td></tr>
+          <tr><td><span class="hz hz3">18–60 mois</span></td><td class="k piv"><span class="ref">H3.1</span>Allemagne comme pays modèle</td><td>Normalisation du périmètre franco-allemand avant toute nouvelle ouverture, puis modèle centralisé avec relais locaux</td><td class="num">Structurant</td><td class="num">—</td><td>DAF</td></tr>
+          <tr><td><span class="hz hz3">18–60 mois</span></td><td class="k"><span class="ref">H3.2</span>Socle financier multi-entités</td><td>Décision à prendre vers 40 à 50 M€, avant la phase de forte croissance</td><td class="num">Structurant</td><td class="num">À instruire</td><td>DAF, DSI</td></tr>
+          <tr><td><span class="hz hz3">18–60 mois</span></td><td class="k"><span class="ref">H3.3</span>Politique de crédit export</td><td>Limites de crédit, assurance-crédit, conditions de paiement et conditions générales localisées</td><td class="num">Nouveau risque</td><td class="num">À instruire</td><td>Recouvrement, juridique</td></tr>
+          <tr><td><span class="hz hz3">18–60 mois</span></td><td class="k"><span class="ref">H3.4</span>Reporting cash au conseil</td><td>Trésorerie disponible et cycle de conversion suivis au même rang que l'EBITDA</td><td class="num">Gouvernance</td><td class="num">0 €</td><td>Recouvrement, DAF</td></tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </section>
 
-<!-- 07 OBJECTIONS -->
-<section id="objections">
+<section id="s5">
   <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-num">§ 08</div>
-      <div><h2>Ce qu'on nous répondra</h2>
-      <div class="sec-sub">Trois objections prévisibles, et les réponses que nous y apportons.</div></div>
+    <h2 class="sec"><span class="n">5.</span> Recommandations</h2>
+    <p class="sec-lead">Trois décisions sont soumises au CODIR. Les deux premières sont sans incidence budgétaire et conditionnent l'efficacité de l'ensemble du plan.</p>
+
+    <div class="tbl">
+      <table>
+        <caption>Décisions soumises</caption>
+        <thead><tr><th style="width:5%">N°</th><th style="width:22%">Décision</th><th>Motif</th><th style="width:17%">Coût</th><th style="width:20%">Retour attendu</th></tr></thead>
+        <tbody>
+          <tr><td class="num k">1</td><td class="k">Mandat sur l'amont documentaire</td><td>Imposer avec Sales et Ops la règle « pas de dossier complet, pas de démarrage », et indexer une part de la variable commerciale sur l'encaissement effectif</td><td class="num">0 €</td><td class="num">≈ 15 jours de délai</td></tr>
+          <tr><td class="num k">2</td><td class="k">Désignation d'un CRM maître</td><td>Salesforce et HubSpot coexistent ; aucun identifiant client unique ne circule jusqu'à l'encaissement, ce qui interdit toute automatisation</td><td class="num">0 €, économie probable</td><td class="num">Condition des mesures H2</td></tr>
+          <tr><td class="num k">3</td><td class="k">Enveloppe d'outillage et mandat bancaire</td><td>Ouvrir la possibilité d'acquérir les outils après consultation, et négocier dès maintenant une ligne de mobilisation de créances</td><td class="num">40 à 90 k€ an 1<br>25 à 60 k€ ensuite</td><td class="num">4,1 M€ de trésorerie<br>300 à 400 k€/an évités</td></tr>
+        </tbody>
+      </table>
     </div>
 
-    <div class="obj">
-      <div class="ob">
-        <p class="ob-q">« Nos clients paient toujours. Où est le problème ? »</p>
-        <p class="ob-a">Il n'y a pas de problème d'impayé, et nous ne prétendons pas le contraire. Il y a un problème de trésorerie immobilisée. Quinze jours de délai en trop, à 100 M€, ce sont 4,1 M€ qui dorment chez nos payeurs au lieu de financer nos recrutements. Ce n'est pas une perte comptable, c'est un manque à disposer.</p>
-      </div>
-      <div class="ob">
-        <p class="ob-q">« Vous avez déjà vos applications. Pourquoi un budget ? »</p>
-        <p class="ob-a">Parce qu'elles reposent sur une seule personne. Elles sont documentées — c'est déjà beaucoup, et cela rend la reprise possible —, mais elles ne sont ni auditables, ni multi-pays, ni multi-devises. Elles nous ont fait gagner beaucoup de temps et beaucoup d'argent, et elles resteront utiles. Mais une entreprise de 100 M€ ne fait pas reposer son encaissement sur du logiciel écrit et maintenu par une seule tête.</p>
-      </div>
-      <div class="ob">
-        <p class="ob-q">« Il suffirait de recruter deux recouvreurs et de voir venir. »</p>
-        <p class="ob-a">C'est le scénario par défaut, et c'est le plus cher. Il coûte 300 à 400 k€ par an à partir du moment où nous approchons les 100 M€, et il ne récupère aucun des vingt-six jours perdus en amont — parce qu'à ce stade, il n'y a rien à relancer. On ne relance pas un certificat de réalisation qui attend une signature.</p>
-      </div>
+    <h3 class="sub"><span class="n">5.1</span> Composition de l'enveloppe</h3>
+    <div class="tbl">
+      <table>
+        <caption>Décision n°3 — décomposition indicative</caption>
+        <thead><tr><th style="width:34%">Poste</th><th style="width:20%">Montant</th><th>Observations</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Outil de gestion du poste client</td><td class="num">15 à 40 k€ / an</td><td>Multi-entités, multi-devises, piste d'audit, connexion à Pennylane</td></tr>
+          <tr><td class="k">Intégration et reprise de données</td><td class="num">10 à 25 k€</td><td>Première année uniquement</td></tr>
+          <tr><td class="k">Plateforme agréée de facturation électronique</td><td class="num">5 à 15 k€ / an</td><td>Obligation réglementaire</td></tr>
+          <tr><td class="k">Formation et marge de sécurité</td><td class="num">≈ 10 k€</td><td>Prise en main par une seconde personne</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      <span class="lbl">Statut de ces montants</span>
+      <p>Ordres de grandeur du marché, à confirmer par la consultation de trois éditeurs avant tout engagement. Le mandat de négociation bancaire, lui, n'emporte aucun coût : une ligne ouverte et non tirée ne supporte qu'une commission d'engagement.</p>
     </div>
   </div>
 </section>
 
-<!-- 08 DEMANDE -->
-<section id="demande">
+<section id="annexes">
   <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-num">§ 09</div>
-      <div><h2>Ce que la direction financière demande</h2>
-      <div class="sec-sub">Trois décisions. Les deux premières ne coûtent rien et conditionnent tout le reste.</div></div>
+    <h2 class="sec"><span class="n">6.</span> Annexes</h2>
+
+    <h3 class="sub"><span class="n">6.1</span> Évolutions réglementaires à prendre en compte</h3>
+    <div class="tbl">
+      <table>
+        <caption>Environnement réglementaire au 10 septembre 2026</caption>
+        <thead><tr><th style="width:22%">Sujet</th><th style="width:15%">Échéance</th><th>Incidence sur l'encaissement</th></tr></thead>
+        <tbody>
+          <tr><td class="k">Reste à charge CPF</td><td class="num">2 avril 2026</td><td>Porté de 103,20 € à 150 €. La participation est réglée par le bénéficiaire à la Caisse des Dépôts, non à Liora. Tant qu'elle n'est pas acquittée, le dossier n'est pas validé et le financement n'est pas acquis : c'est un jalon supplémentaire avant démarrage.</td></tr>
+          <tr><td class="k">Intérêts moratoires publics</td><td class="num">S2 2026</td><td>Taux BCE majoré de 8 points, soit 10,40 %, plus 40 € par facture. Dus de plein droit dès le lendemain du trentième jour, sans mise en demeure. Une facture de 50 000 € réglée avec 40 jours de retard représente 610 €.</td></tr>
+          <tr><td class="k">Facturation électronique</td><td class="num">1<sup>er</sup> sept. 2026<br>1<sup>er</sup> sept. 2027</td><td>Réception obligatoire pour toutes les entreprises depuis septembre 2026 ; émission généralisée aux PME en septembre 2027. Le cycle de vie normalisé des factures fournit les motifs de non-paiement en temps réel.</td></tr>
+          <tr><td class="k">Délais de paiement B2B</td><td class="num">En vigueur</td><td>Plafonds de 60 jours nets ou 45 jours fin de mois. Pénalités au taux BCE majoré de 10 points et indemnité forfaitaire de 40 € par facture. Liora est également concernée en tant que débiteur.</td></tr>
+        </tbody>
+      </table>
     </div>
 
-    <div class="decisions">
-      <div class="dec">
-        <div class="dec-n">1</div>
-        <div>
-          <h4>Un mandat sur l'amont</h4>
-          <p>Le recouvrement ne commence pas à la facture, il commence à la signature. Nous demandons un mandat explicite pour imposer avec Sales et Ops la règle « pas de dossier complet, pas de démarrage », et pour qu'une part de la variable commerciale dépende de l'encaissement effectif, pas de la seule signature.</p>
-          <p class="ask">Coût : 0 € · Gain attendu : une quinzaine de jours de délai</p>
-        </div>
-      </div>
-      <div class="dec">
-        <div class="dec-n">2</div>
-        <div>
-          <h4>Un CRM unique</h4>
-          <p>Nous payons Salesforce et HubSpot en parallèle. Tant que les deux coexistent, aucun identifiant client unique ne circule jusqu'à l'encaissement, et toute automatisation restera hors de portée. Il faut désigner un CRM maître.</p>
-          <p class="ask">Coût : 0 €, économie probable · Décision : DG et DAF</p>
-        </div>
-      </div>
-      <div class="dec">
-        <div class="dec-n">3</div>
-        <div>
-          <h4>Une enveloppe et un mandat bancaire</h4>
-          <p>Deux choses distinctes. D'abord une <strong>enveloppe annuelle</strong> pour acheter ce qui doit l'être — celle-ci ne finance pas un outil précis, elle ouvre la possibilité d'en acquérir un après consultation :</p>
-          <ul class="budget">
-            <li><span class="bl">Outil de gestion du poste client</span><span class="bv">15 à 40 k€ / an</span><span class="bd">Multi-entités, multi-devises, piste d'audit, connecté à Pennylane.</span></li>
-            <li><span class="bl">Intégration et reprise de données</span><span class="bv">10 à 25 k€</span><span class="bd">La première année seulement.</span></li>
-            <li><span class="bl">Plateforme agréée de facturation électronique</span><span class="bv">5 à 15 k€ / an</span><span class="bd">Obligation réglementaire, pas un choix.</span></li>
-            <li><span class="bl">Formation et marge de sécurité</span><span class="bv">≈ 10 k€</span><span class="bd">Prise en main par une deuxième personne.</span></li>
-          </ul>
-          <p class="budget-tot"><strong>40 à 90 k€ la première année, 25 à 60 k€ ensuite.</strong> Ordres de grandeur du marché, à confirmer par la consultation de trois éditeurs avant tout engagement.</p>
-          <p>Ensuite un <strong>mandat pour négocier</strong> dès maintenant une ligne de mobilisation de créances adossée aux créances OPCO et publiques. Ce second point ne coûte rien : une ligne ouverte et non tirée ne supporte qu'une commission d'engagement. Les deux se préparent quand tout va bien, pas quand la trésorerie se tend — une banque qui sait que nous n'avons pas le choix tarife en conséquence.</p>
-          <p class="ask">Coût : 40 à 90 k€ la première année · Retour : 4,1 M€ de trésorerie libérée et 300 à 400 k€/an de masse salariale évitée</p>
-        </div>
-      </div>
+    <h3 class="sub"><span class="n">6.2</span> Objections anticipées</h3>
+    <div class="tbl">
+      <table>
+        <caption>Réponses aux objections prévisibles</caption>
+        <thead><tr><th style="width:32%">Objection</th><th>Réponse</th></tr></thead>
+        <tbody>
+          <tr><td class="k">« Nos clients paient toujours, où est le problème ? »</td><td>Il n'existe pas de problème d'impayé. Il existe un problème de trésorerie immobilisée : quinze jours de délai excédentaire représentent 4,1 M€ non disponibles pour financer la croissance.</td></tr>
+          <tr><td class="k">« Les applications internes existent, pourquoi un budget ? »</td><td>Elles sont documentées, ce qui rend la reprise possible, mais elles reposent sur une personne et ne sont ni auditables, ni multi-pays, ni multi-devises. Une entreprise de 100 M€ ne peut faire reposer son encaissement sur cette seule base.</td></tr>
+          <tr><td class="k">« Deux recouvreurs supplémentaires suffiraient. »</td><td>Ce scénario coûte 300 à 400 k€ par an à l'approche des 100 M€ et ne récupère aucun des vingt-six jours antérieurs à la facture, sur lesquels la relance est sans effet.</td></tr>
+        </tbody>
+      </table>
     </div>
 
-    <p class="signoff">L'équipe finance reste disponible pour détailler n'importe lequel de ces points et présenter le chiffrage complet en séance.</p>
-  </div>
-</section>
-
-<!-- ANNEXE -->
-<section id="annexe">
-  <div class="wrap">
-    <div class="sec-head">
-      <div class="sec-num">§ 10</div>
-      <div><h2>Annexe</h2>
-      <div class="sec-sub">Le vocabulaire, et ce qu'il me manque pour aller plus loin.</div></div>
-    </div>
-
-    <h3>Les six mots de cette note</h3>
+    <h3 class="sub"><span class="n">6.3</span> Lexique</h3>
     <dl class="lex">
-      <div><dt>Poste client</dt><dd>Tout ce qui va de « on accepte de vendre à ce client à trente jours » jusqu'à « l'argent est sur le compte ». On dit aussi <em>credit management</em>.</dd></div>
-      <div><dt>DSO</dt><dd>Le délai moyen entre l'émission d'une facture et son encaissement, en jours. C'est l'indicateur central de cette note.</dd></div>
-      <div><dt>Balance âgée</dt><dd>La liste de ce qu'on nous doit, classée par ancienneté : moins de 30 jours, 30 à 60, 60 à 90, au-delà.</dd></div>
-      <div><dt>Encours client</dt><dd>Le total de ce qui est facturé et pas encore encaissé. À 100 M€ et soixante jours de délai, il atteint 16,4 M€.</dd></div>
-      <div><dt>Lettrage</dt><dd>Rattacher chaque virement reçu à la facture correspondante. Automatique quand la référence de facture circule, manuel sinon.</dd></div>
-      <div><dt>Affacturage · cession Dailly</dt><dd>Vendre ou nantir une créance auprès d'une banque pour être payé tout de suite, contre une commission.</dd></div>
+      <div><dt>Poste client</dt><dd>Ensemble du cycle allant de l'octroi des conditions de paiement à l'encaissement effectif. Désigné en anglais par <em>credit management</em>.</dd></div>
+      <div><dt>DSO</dt><dd>Délai moyen, en jours, entre l'émission d'une facture et son encaissement.</dd></div>
+      <div><dt>Balance âgée</dt><dd>État des créances échues et non échues, classées par ancienneté.</dd></div>
+      <div><dt>Encours client</dt><dd>Total facturé et non encore encaissé. Il atteint 16,4 M€ à 100 M€ de chiffre d'affaires et soixante jours de délai.</dd></div>
+      <div><dt>Lettrage</dt><dd>Rapprochement de chaque encaissement avec la facture correspondante.</dd></div>
+      <div><dt>Cession Dailly</dt><dd>Mobilisation de créances professionnelles auprès d'une banque, rémunérée par un taux d'intérêt sur les sommes avancées.</dd></div>
+      <div><dt>Affacturage</dt><dd>Cession de créances à un factor, incluant la gestion du poste client et facturée en sus par une commission de service.</dd></div>
     </dl>
 
-    <h3>Ce qui manque pour chiffrer précisément</h3>
-    <ul class="plist">
-      <li><b>Notre chiffre d'affaires prévisionnel</b> par année jusqu'à 100 M€ — pour projeter l'encours à chaque palier plutôt qu'au seul point d'arrivée.</li>
-      <li><b>Le délai réel entre fin de session et dépôt du dossier</b>, sur les six derniers mois. Personne ne le mesure aujourd'hui. C'est le premier chantier de l'horizon 1.</li>
-      <li><b>Les conditions bancaires en vigueur</b> par entité, pour dimensionner la ligne de mobilisation et préparer la négociation.</li>
+    <h3 class="sub"><span class="n">6.4</span> Données nécessaires au chiffrage définitif</h3>
+    <ul class="pl">
+      <li><b>Chiffre d'affaires prévisionnel par exercice</b> jusqu'à 100 M€, afin de projeter l'encours à chaque palier.</li>
+      <li><b>Délai moyen constaté entre fin de session et dépôt du dossier</b> sur les six derniers mois. Cette donnée n'est aujourd'hui mesurée par aucun outil ; sa production constitue la mesure H1.2.</li>
+      <li><b>Conditions bancaires en vigueur par entité</b>, pour dimensionner la ligne de mobilisation et préparer la négociation.</li>
+      <li><b>Devis de trois éditeurs</b> d'outils de gestion du poste client, pour substituer un montant ferme à la fourchette de la décision n°3.</li>
     </ul>
   </div>
 </section>
@@ -1169,7 +638,6 @@ footer .mono{font-size:11px;letter-spacing:.08em;text-transform:uppercase;displa
 
 <footer>
   <div class="wrap">
-    <span class="mono">Note interne · diffusion CODIR</span>
-    <p>Le dossier décrit en ouverture est un cas type reconstitué à titre d'illustration ; les étapes et les ordres de grandeur sont ceux que nous observons. Les montants du §04 sont des calculs arithmétiques appliqués à la trajectoire visée de 100 M€ à cinq ans : ils ne décrivent ni notre chiffre d'affaires actuel, ni une prévision d'activité. Les références réglementaires — délais de paiement, calendrier de la facturation électronique, taux des intérêts moratoires, reste à charge CPF — sont citées à titre de cadrage et à confirmer avec notre conseil avant toute mise en œuvre.</p>
+    <p>Le dossier présenté au point 2.1 est un cas type reconstitué à titre d'illustration ; les étapes et les ordres de grandeur correspondent aux situations observées. Les montants du point 2.3 résultent de calculs arithmétiques appliqués à la trajectoire visée de 100 M€ à cinq ans : ils ne décrivent ni le chiffre d'affaires actuel, ni une prévision d'activité. Les références réglementaires figurant en annexe 6.1 sont citées à titre de cadrage et doivent être confirmées avec le conseil de l'entreprise avant toute mise en œuvre.</p>
   </div>
 </footer>
