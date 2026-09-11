@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.61.0';
+    const VERSION = '2.62.0';
     const VERSION_DATE = '11 septembre 2026';
 
     const R = window.LioraRules;
@@ -795,9 +795,24 @@
         // déjà en retard. C'est le pourcentage auquel on s'attend spontanément
         // en lisant « Reste à encaisser », et il n'est pas le même que le taux
         // de recouvrement, calculé lui sur le total facturé.
-        $('#kpi-encours-sub').textContent =
-            `${U.eurosCourt(v.eurosNonEchues)} pas encore échus · `
-            + `${U.pourcent(X.pct(v.eurosEnRetard, v.encoursTotal))} déjà en retard`;
+        // Trois parts, pas deux. « 3,0 M€ pas encore échus · 43,5 % en retard »
+        // laissait 28 % de l'encours sans explication : les factures dont
+        // l'échéance n'a pas pu être calculée, ni en retard ni non échues.
+        // Les taire faisait douter du total ; les nommer dit ce qu'il reste à
+        // qualifier.
+        const partsEncours = [
+            `${U.eurosCourt(v.eurosNonEchues)} pas encore échus`,
+            `${U.pourcent(X.pct(v.eurosEnRetard, v.encoursTotal))} déjà en retard`,
+        ];
+        if (v.eurosSansEcheance > 0) {
+            partsEncours.push(`${U.eurosCourt(v.eurosSansEcheance)} sans échéance calculable`);
+        }
+        $('#kpi-encours-sub').textContent = partsEncours.join(' · ');
+        $('#kpi-encours-sub').title = v.eurosSansEcheance > 0
+            ? `Les trois parts font le reste à encaisser : ${U.euros(v.eurosNonEchues)} non échus, `
+              + `${U.euros(v.eurosEnRetard)} en retard, ${U.euros(v.eurosSansEcheance)} sans échéance `
+              + `(${U.nombre(v.nbSansEcheance)} factures à qualifier).`
+            : '';
 
         $('#kpi-retard-moyen').textContent = U.jours(v.retardMoyen);
         $('#kpi-retard-moyen-sub').textContent = v.retardMedian != null
@@ -1046,6 +1061,186 @@
      * pourquoi. Échu et non échu séparés, parce qu'un blocage sur une facture
      * pas encore exigible n'a pas la même urgence.
      */
+    const MOTIF_AUCUN = '__aucun__';
+    const MOTIF_SANS_COLONNE = '__sans_colonne__';
+
+    /**
+     * La qualification, colonne par colonne.
+     *
+     * Vous n'avez pas une colonne de qualification mais quatre, une par
+     * tableau, et chacune a ses propres étiquettes : le recouvrement compte une
+     * vingtaine de valeurs dans « Qualification recouvrement avec
+     * basculement », le CPF en a d'autres dans « Compta Qualification ». Les
+     * fondre en une seule liste faisait perdre l'essentiel — la répartition à
+     * l'intérieur d'un tableau. On les sépare donc, et chaque colonne reçoit
+     * son camembert.
+     *
+     * Les factures sans qualification restent dans le camembert de leur
+     * tableau : ce sont elles qu'il faut voir, pas elles qu'il faut cacher.
+     */
+    function repartitionMotifs(ouvertes, reste) {
+        // Quelle colonne chaque tableau utilise-t-il ? Les factures qualifiées
+        // le disent ; les autres héritent de la colonne dominante de leur
+        // tableau, faute de quoi elles n'appartiendraient à aucun camembert.
+        const parTableau = new Map();
+        for (const f of ouvertes) {
+            if (!f.motifColonne) continue;
+            const b = f.board || '—';
+            let m = parTableau.get(b);
+            if (!m) { m = new Map(); parTableau.set(b, m); }
+            m.set(f.motifColonne, (m.get(f.motifColonne) || 0) + 1);
+        }
+        const dominante = b => {
+            const m = parTableau.get(b);
+            return m ? [...m.entries()].sort((x, y) => y[1] - x[1])[0][0] : null;
+        };
+
+        const par = new Map();
+        for (const f of ouvertes) {
+            const col = f.motifColonne || dominante(f.board) || MOTIF_SANS_COLONNE;
+            let g = par.get(col);
+            if (!g) {
+                g = { colonne: col, tableaux: new Set(), nb: 0, total: 0, echu: 0,
+                      nonEchu: 0, qualifie: 0, cats: new Map() };
+                par.set(col, g);
+            }
+            g.tableaux.add(f.board || '—');
+            const v = reste(f);
+            const enRetard = (f.retardJours || 0) > 0;
+            g.nb++; g.total += v;
+            if (enRetard) g.echu += v; else g.nonEchu += v;
+
+            const cle = (f.motif || '').trim() || MOTIF_AUCUN;
+            if (cle !== MOTIF_AUCUN) g.qualifie += v;
+            let c = g.cats.get(cle);
+            if (!c) {
+                c = { motif: cle, colonne: col, nb: 0, nbEchu: 0, total: 0,
+                      echu: 0, nonEchu: 0, plusAncienne: null };
+                g.cats.set(cle, c);
+            }
+            c.nb++; c.total += v;
+            if (enRetard) { c.echu += v; c.nbEchu++; } else c.nonEchu += v;
+            const d = f.dateEcheance || f.dateFacture;
+            if (d && (!c.plusAncienne || d < c.plusAncienne)) c.plusAncienne = d;
+        }
+
+        const groupes = [...par.values()].map(g => {
+            const cats = [...g.cats.values()].sort((a, b) => b.total - a.total);
+            // Le pourcentage se lit sur le montant : deux petites factures
+            // « Perdu » ne pèsent pas comme un impayé à 200 000 €.
+            for (const c of cats) {
+                c.part = g.total ? c.total / g.total * 100 : 0;
+                c.partNb = g.nb ? c.nb / g.nb * 100 : 0;
+            }
+            return Object.assign(g, { cats, tableaux: [...g.tableaux].sort() });
+        }).sort((a, b) => b.total - a.total);
+        return groupes;
+    }
+
+    /** Le libellé d'une catégorie de motif, en clair. */
+    function libelleMotif(m) {
+        if (m === MOTIF_AUCUN) return 'Aucun motif renseigné';
+        return m;
+    }
+
+    /** Le nom d'une colonne de qualification, en clair. */
+    function libelleColonneMotif(c) {
+        if (c === MOTIF_SANS_COLONNE) return 'Tableaux sans colonne de qualification';
+        return c;
+    }
+
+    /**
+     * Un camembert par colonne de qualification, avec le pourcentage de
+     * chaque catégorie.
+     *
+     * Au-delà de dix parts un camembert ne se lit plus : les petites
+     * catégories sont réunies sous « Autres », et la légende à côté donne le
+     * détail complet, part par part, en pourcentage et en euros.
+     */
+    function rendreCamembertsMotifs(groupes, suffixe) {
+        const hote = $('#motifs-colonnes' + suffixe);
+        if (!hote) return;
+        if (!groupes.length) { hote.innerHTML = ''; return; }
+
+        const MAX_PARTS = 9;
+        const prepares = groupes.map((g, i) => {
+            const visibles = g.cats.slice(0, MAX_PARTS);
+            const reste = g.cats.slice(MAX_PARTS);
+            const parts = visibles.map((c, k) => ({
+                label: libelleMotif(c.motif), total: c.total, nb: c.nb, part: c.part,
+                couleur: c.motif === MOTIF_AUCUN ? U.couleurs.inconnu : U.palette[k % U.palette.length],
+            }));
+            if (reste.length) {
+                const total = reste.reduce((a, c) => a + c.total, 0);
+                parts.push({
+                    label: `Autres (${reste.length} catégories)`, total,
+                    nb: reste.reduce((a, c) => a + c.nb, 0),
+                    part: g.total ? total / g.total * 100 : 0,
+                    couleur: 'rgba(139,146,165,0.45)',
+                });
+            }
+            return { g, parts, id: 'motifs-pie' + suffixe + '-' + i };
+        });
+
+        hote.innerHTML = prepares.map(({ g, parts, id }) => {
+            const sans = g.cats.find(c => c.motif === MOTIF_AUCUN);
+            const tauxQualif = g.total ? g.qualifie / g.total * 100 : 0;
+            const legende = parts.map(p => `
+                <li class="motifs-legende-ligne">
+                    <span class="motifs-puce" style="background:${p.couleur}"></span>
+                    <span class="motifs-legende-nom" title="${U.escapeHtml(p.label)}">${U.escapeHtml(p.label)}</span>
+                    <span class="motifs-legende-part">${U.pourcent(p.part)}</span>
+                    <span class="motifs-legende-euros">${U.euros(p.total)}</span>
+                    <span class="motifs-legende-nb">${U.nombre(p.nb)} fact.</span>
+                </li>`).join('');
+            return `
+            <section class="motifs-colonne">
+                <header class="motifs-colonne-tete">
+                    <h4>${U.escapeHtml(libelleColonneMotif(g.colonne))}</h4>
+                    <span class="cell-mini">${U.escapeHtml(g.tableaux.join(' · '))}</span>
+                    <span class="motifs-colonne-chiffres">
+                        <strong>${U.euros(g.total)}</strong> · ${U.nombre(g.nb)} factures ouvertes ·
+                        ${U.pourcent(tauxQualif, 0)} qualifiés${sans
+                            ? ` · ${U.nombre(sans.nb)} sans motif (${U.euros(sans.total)})` : ''}
+                    </span>
+                </header>
+                <div class="motifs-colonne-corps">
+                    <div class="motifs-pie"><canvas id="${id}"></canvas></div>
+                    <ol class="motifs-legende">${legende}</ol>
+                </div>
+            </section>`;
+        }).join('');
+
+        for (const { g, parts, id } of prepares) {
+            U.chart(id, {
+                type: 'doughnut',
+                data: {
+                    labels: parts.map(p => p.label),
+                    datasets: [{
+                        data: parts.map(p => Math.round(p.total)),
+                        backgroundColor: parts.map(p => p.couleur),
+                        borderColor: 'rgba(11,14,26,0.9)', borderWidth: 2,
+                    }],
+                },
+                options: {
+                    cutout: '58%',
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => {
+                                    const p = parts[ctx.dataIndex];
+                                    return `${U.pourcent(p.part)} · ${U.euros(p.total)} · ${U.nombre(p.nb)} factures`;
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+        }
+    }
+
     function rendreMotifs(data) {
         // Le tableau de bord et la balance âgée montrent le même tableau : la
         // question « pourquoi ce n'est pas payé » se pose aux deux endroits.
@@ -1062,7 +1257,7 @@
         const reste = f => (f.resteDu != null && f.resteDu > 0) ? f.resteDu : (f.montant || 0);
         const par = new Map();
         for (const f of ouvertes) {
-            const cle = (f.motif || '').trim() || '__aucun__';
+            const cle = (f.motif || '').trim() || MOTIF_AUCUN;
             let o = par.get(cle);
             if (!o) {
                 o = { motif: cle, colonnes: new Set(), nb: 0, total: 0, echu: 0, nonEchu: 0,
@@ -1079,11 +1274,16 @@
         }
         const rows = [...par.values()].sort((a, b) => b.total - a.total);
         state.motifsRows = rows;
+        // Une colonne de qualification par tableau, un camembert par colonne.
+        const groupes = repartitionMotifs(ouvertes, reste);
+        state.motifsParColonne = groupes;
+        rendreCamembertsMotifs(groupes, '');
+        rendreCamembertsMotifs(groupes, '-2');
 
         const total = rows.reduce((a, r) => ({
             nb: a.nb + r.nb, total: a.total + r.total, echu: a.echu + r.echu, nonEchu: a.nonEchu + r.nonEchu,
         }), { nb: 0, total: 0, echu: 0, nonEchu: 0 });
-        const sans = par.get('__aucun__');
+        const sans = par.get(MOTIF_AUCUN);
         const renseigne = total.total - (sans ? sans.total : 0);
 
         if (!rows.length) { note.textContent = ''; el.innerHTML = ''; return; }
@@ -1094,10 +1294,12 @@
             + 'plusieurs, la plus avancée dans le circuit l\'emporte. '
             + `<strong>${U.euros(renseigne)}</strong> sur ${U.euros(total.total)} sont qualifiés `
             + `(${U.pourcent(total.total ? renseigne / total.total * 100 : 0, 0)})`
-            + (sans ? ` — il reste ${U.nombre(sans.nb)} factures sans motif, ${U.euros(sans.total)}.` : '.');
+            + (sans ? ` — il reste ${U.nombre(sans.nb)} factures sans motif, ${U.euros(sans.total)}.` : '.')
+            + ' Chaque colonne a son camembert : les catégories y sont celles de vos étiquettes '
+            + 'Monday, et le pourcentage se lit sur le montant, pas sur le nombre de factures.';
 
         el.innerHTML = U.table([
-            { key: 'motif', label: 'Pourquoi', format: (v, r) => v === '__aucun__'
+            { key: 'motif', label: 'Pourquoi', format: (v, r) => v === MOTIF_AUCUN
                 ? '<span class="pill pill-muted">Aucun motif renseigné</span>'
                 : `<span class="pill">${U.escapeHtml(v)}</span>`
                   + `<span class="cell-mini">${U.escapeHtml([...r.colonnes].join(' · '))}</span>` },
@@ -1125,7 +1327,7 @@
         if (!rows.length) { U.toast('Aucun motif à exporter.', 'error'); return; }
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(r => ({
-            'Pourquoi': r.motif === '__aucun__' ? 'Aucun motif renseigné' : r.motif,
+            'Pourquoi': libelleMotif(r.motif),
             'Colonnes d’origine': [...r.colonnes].join(' · '),
             'Factures': r.nb,
             'Reste dû': arrondi(r.total),
@@ -1134,6 +1336,30 @@
             'Non échu': arrondi(r.nonEchu),
             'La plus ancienne': r.plusAncienne ? U.dateFR(r.plusAncienne) : '',
         }))), 'Pourquoi');
+
+        // Le détail colonne par colonne, dans l'ordre des camemberts : c'est
+        // sous cette forme que la répartition se discute avec chaque tableau.
+        const parColonne = [];
+        for (const g of (state.motifsParColonne || [])) {
+            for (const c of g.cats) {
+                parColonne.push({
+                    'Colonne de qualification': libelleColonneMotif(g.colonne),
+                    'Tableaux': g.tableaux.join(' · '),
+                    'Catégorie': libelleMotif(c.motif),
+                    'Factures': c.nb,
+                    'Part des factures': Math.round(c.partNb * 10) / 10,
+                    'Reste dû': arrondi(c.total),
+                    'Part du montant': Math.round(c.part * 10) / 10,
+                    'Dont échu': arrondi(c.echu),
+                    'Non échu': arrondi(c.nonEchu),
+                    'La plus ancienne': c.plusAncienne ? U.dateFR(c.plusAncienne) : '',
+                });
+            }
+        }
+        if (parColonne.length) {
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(parColonne), 'Par colonne');
+        }
+
         const reste = f => (f.resteDu != null && f.resteDu > 0) ? f.resteDu : (f.montant || 0);
         const detail = (state.factures || []).filter(f => !f.paye).map(f => ({
             'Facture': f.numero, 'Client': f.client,
@@ -5281,8 +5507,24 @@
         ];
 
         const el = $('#factures-table');
+        // Deux filtres peuvent s'annuler sans que rien ne le dise : une facture
+        // sans échéance n'a pas de mois d'échéance, donc demander « Échéance
+        // inconnue » ET une période calculée sur l'échéance ne peut rien
+        // donner. Le tableau restait vide et laissait croire qu'il n'y a aucune
+        // facture sans échéance.
+        const baseMois = state.filtres.baseMois || 'echeance';
+        const filtreContradictoire = !page.length
+            && state.filtres.mois
+            && state.filtres.etats && state.filtres.etats.has('Échéance inconnue')
+            && baseMois === 'echeance';
+        const vide = filtreContradictoire
+            ? 'Aucune facture — et c’est inévitable : une facture sans échéance n’a pas de mois '
+              + 'd’échéance, elle ne peut donc tomber dans aucune période calculée sur l’échéance. '
+              + 'Cliquez sur « Tout » dans la barre de période, ou basculez « Mois basé sur » '
+              + 'vers « Facture », pour les voir.'
+            : 'Aucune facture ne correspond aux filtres.';
         el.innerHTML = U.table(cols, page, {
-            vide: 'Aucune facture ne correspond aux filtres.',
+            vide,
             tri: t, onSort: true, onRowClick: true,
             rowClass: r => U.etatClass(r.etat) + '-row',
         });
@@ -6855,6 +7097,20 @@
             detail: trous.map(t => `${t.b.name} — ${t.e.nom} : ${t.txt} (${t.e.effet})`),
         });
 
+        // Pagination interrompue : le tableau contient plus de lignes que
+        // l'application n'a pu en recevoir en une fois.
+        const tronques = monday.filter(b => b.tronque);
+        if (tronques.length) out.push({
+            code: 'BOARD_TRONQUE', unite: 'tableau', gravite: 'haute',
+            titre: 'Tableaux trop grands : toutes les lignes n’ont pas été reçues',
+            nb: tronques.length, euros: 0,
+            conseil: 'La récupération s’arrête à 50 000 éléments par tableau pour ne pas bloquer '
+                + 'l’application. Chargez ce tableau seul, ou découpez-le dans Monday : tant qu’il '
+                + 'est tronqué, tous les montants qui en dépendent sont sous-estimés.',
+            detail: tronques.map(b => `${b.name} — ${U.nombre(b.charge || 0)} lignes reçues sur `
+                + `${U.nombre(b.itemsCount || 0)} annoncées`),
+        });
+
         // Tableaux cochés mais jamais chargés
         const jamais = monday.filter(b => b.actif && b.role !== 'ignore' && b.charge == null);
         if (jamais.length) out.push({
@@ -7807,8 +8063,12 @@
                     }
                     const mappingManuel = !!(b.mapping && Object.keys(b.mapping).length);
 
-                    const { board, items } = await M.fetchBoardItems(state.token, b.id, log);
+                    const { board, items, tronque } = await M.fetchBoardItems(state.token, b.id, log);
                     if (!board) throw new Error('Tableau inaccessible');
+                    // Une pagination interrompue par le garde-fou ne doit pas
+                    // passer pour un chargement complet : la balance serait
+                    // fausse sans que rien ne le dise.
+                    b.tronque = !!tronque;
 
                     // L'association se fait sur les noms de colonnes, puis se
                     // vérifie sur les valeurs. Les deux étapes sont menées
@@ -8419,11 +8679,54 @@
         }));
     }
 
+    /**
+     * Les filtres en vigueur, en clair.
+     *
+     * L'export porte la vue, filtres compris — c'est voulu, mais un classeur
+     * qui ne dit pas sur quoi il porte se relit mal trois semaines plus tard,
+     * et fait croire à des factures manquantes.
+     */
+    function resumeFiltresExport() {
+        const f = state.filtres, out = [];
+        const total = (state.factures || []).length;
+        const mois = f.mois ? [...f.mois].sort() : null;
+        out.push({ 'Filtre': 'Période',
+            'Valeur': mois && mois.length
+                ? (mois.length === 1 ? U.moisLabel(mois[0])
+                    : U.moisLabel(mois[0]) + ' → ' + U.moisLabel(mois[mois.length - 1])
+                      + ` (${mois.length} mois)`)
+                : 'tous les mois' });
+        out.push({ 'Filtre': 'Mois basé sur',
+            'Valeur': f.baseMois === 'facture' ? 'la date de facture'
+                : f.baseMois === 'paiement' ? 'la date de paiement' : "l'échéance" });
+        out.push({ 'Filtre': 'Arrêté au', 'Valeur': U.dateFR(f.dateRef) });
+        out.push({ 'Filtre': 'Périmètre', 'Valeur': f.perimetre || 'Tous' });
+        if (f.financements && f.financements.size) out.push({ 'Filtre': 'Financements',
+            'Valeur': [...f.financements].map(k => R.getRule(k, state.rules).label).join(', ') });
+        if (f.etats && f.etats.size) out.push({ 'Filtre': 'États', 'Valeur': [...f.etats].join(', ') });
+        if (f.etapes && f.etapes.size) out.push({ 'Filtre': 'Étapes du circuit', 'Valeur': [...f.etapes].join(', ') });
+        if (f.boards && f.boards.size) out.push({ 'Filtre': 'Tableaux', 'Valeur': [...f.boards].join(', ') });
+        if (f.client) out.push({ 'Filtre': 'Client', 'Valeur': f.client });
+        if (f.recherche) out.push({ 'Filtre': 'Recherche', 'Valeur': f.recherche });
+        if (f.bucket) out.push({ 'Filtre': "Tranche d'ancienneté", 'Valeur': f.bucket });
+        if (f.exclureTampon) out.push({ 'Filtre': 'Tampon', 'Valeur': 'exclu' });
+        if (f.sansEcheance) out.push({ 'Filtre': 'Échéance', 'Valeur': 'seulement les factures non datées' });
+        out.push({ 'Filtre': '—', 'Valeur': '' });
+        out.push({ 'Filtre': 'Factures exportées',
+            'Valeur': `${facturesFiltrees().length} sur ${total} dans l'application` });
+        out.push({ 'Filtre': 'Pour tout exporter',
+            'Valeur': 'cliquez « Réinitialiser » dans la barre de filtres, puis relancez l’export' });
+        return out;
+    }
+
     function exporterExcel() {
         const data = facturesFiltrees();
         if (!data.length) { U.toast('Aucune donnée à exporter.', 'error'); return; }
 
         const wb = XLSX.utils.book_new();
+        // En tête du classeur : sur quoi il porte. Sans cette feuille, un
+        // export filtré passe pour un export complet.
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumeFiltresExport()), 'Filtres appliqués');
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lignesExport(data)), 'Factures');
 
         // Synthèse
@@ -8520,7 +8823,15 @@
 
         const nom = `Suivi_Recouvrement_Liora_${new Date().toISOString().slice(0, 10)}.xlsx`;
         XLSX.writeFile(wb, nom);
-        U.toast('Export Excel généré.', 'success');
+        // Dire combien, et sur combien : c'est la seule façon de voir tout de
+        // suite qu'un filtre restreint l'export.
+        const total = (state.factures || []).length;
+        U.toast(data.length < total
+            ? `${U.nombre(data.length)} factures exportées sur ${U.nombre(total)} — `
+              + `l'export porte la vue filtrée. La feuille « Filtres appliqués » dit lesquels ; `
+              + `« Réinitialiser » les enlève.`
+            : `${U.nombre(data.length)} factures exportées — tout le portefeuille.`,
+            'success', data.length < total ? 12000 : 6000);
     }
 
     /**

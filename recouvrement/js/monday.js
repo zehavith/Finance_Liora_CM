@@ -179,7 +179,12 @@
         let cursor = board.items_page.cursor;
         let guard = 0;
 
-        while (cursor && guard < 500) {
+        // Le garde-fou existe pour qu'une pagination qui boucle n'immobilise
+        // pas l'application. Mais s'il se déclenche, il manque des lignes : le
+        // dire est indispensable — un tableau tronqué en silence donne une
+        // balance fausse sans que rien ne l'indique.
+        const MAX_PAGES = 500;
+        while (cursor && guard < MAX_PAGES) {
             guard++;
             const next = await gql(token, itemsQuery(fragment, true), { cursor, limit: PAGE_SIZE }, onLog);
             const page = next.next_items_page;
@@ -188,8 +193,13 @@
             cursor = page.cursor;
             if (onLog) onLog(`${board.name} : ${items.length} éléments…`);
         }
+        const tronque = !!cursor;
+        if (tronque && onLog) {
+            onLog(`⚠ ${board.name} : arrêt après ${items.length} éléments — `
+                + `le tableau en contient davantage. Chargez-le seul, ou découpez-le.`);
+        }
 
-        return { board: { id: board.id, name: board.name }, items };
+        return { board: { id: board.id, name: board.name }, items, tronque };
     }
 
     /**

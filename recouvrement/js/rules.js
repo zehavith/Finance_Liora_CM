@@ -467,6 +467,41 @@
             if (num > 32800 && num < 73100) return validate(new Date(Math.round((num - 25569) * MS_DAY)));
             return null;
         }
+
+        // Les mois écrits en français.
+        //
+        // Monday affiche ses dates dans la langue du compte : « avr. 23, 2026 »,
+        // « 4 nov. 2025 ». Le moteur de dates du navigateur ne connaît que
+        // l'anglais — « nov. » passe par chance, « avr. », « févr. », « juin »,
+        // « juil. », « août » et « déc. » échouent. La colonne était alors
+        // rejetée comme n'étant pas une colonne de dates, le tableau se
+        // retrouvait sans fin de formation, et ses factures sans échéance
+        // calculable. Trois millions d'euros y tenaient.
+        const MOIS_FR = [
+            [/\bjanv?(\.|ier)?\b/, 0], [/\bf[ée]vr?(\.|ier)?\b/, 1], [/\bmars\b/, 2],
+            [/\bavr(\.|il)?\b/, 3], [/\bmai\b/, 4], [/\bjuin\b/, 5],
+            [/\bjuil(\.|let)?\b/, 6], [/\bao[uû]t?\b/, 7], [/\bsept?(\.|embre)?\b/, 8],
+            [/\boct(\.|obre)?\b/, 9], [/\bnov(\.|embre)?\b/, 10], [/\bd[ée]c(\.|embre)?\b/, 11],
+        ];
+        const sansAccent = s.toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        let moisFr = null;
+        for (const [motif, mois] of MOIS_FR) {
+            if (motif.test(sansAccent)) { moisFr = mois; break; }
+        }
+        if (moisFr != null) {
+            // Le jour et l'année, dans l'ordre où ils se présentent :
+            // « avr. 23, 2026 » comme « 23 avril 2026 ».
+            const nombres = sansAccent.match(/\d{1,4}/g) || [];
+            const annee = nombres.find(n => n.length === 4);
+            const jour = nombres.find(n => n !== annee && +n >= 1 && +n <= 31);
+            // Un mois nommé sans jour ni année n'est pas une date. On s'arrête
+            // là plutôt que de laisser le navigateur deviner : « Facture avril
+            // 2026 » lui devenait le 1er janvier 2026, et cette date inventée
+            // se propageait jusque dans la balance âgée.
+            return (annee && jour) ? validate(new Date(+annee, moisFr, +jour)) : null;
+        }
+
         const d = new Date(s);
         return validate(d);
 

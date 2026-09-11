@@ -1209,6 +1209,19 @@
 
     function qualite(factures) {
         const anomalies = [];
+        /** Quels signaux ont parlé, et combien de fois — du plus fréquent au moins. */
+        function repartitionSignaux(items) {
+            const par = new Map();
+            for (const f of items) {
+                const m = f.motifSignalPaiement || 'Signal non nommé';
+                par.set(m, (par.get(m) || 0) + 1);
+            }
+            if (!par.size) return '';
+            return 'Ce qui les signale : '
+                + [...par.entries()].sort((a, b) => b[1] - a[1])
+                    .map(([m, n]) => `${m} — ${n}`).join(' · ') + '.';
+        }
+
         const push = (code, titre, gravite, items, conseil) => {
             if (items.length) anomalies.push({ code, titre, gravite, nb: items.length, euros: sum(items, x => x.montant), items, conseil });
         };
@@ -1312,10 +1325,13 @@
 
         push('SIGNAL_PAIEMENT_ORPHELIN', "Signes de règlement hors du tableau des factures payées", 'moyenne',
             factures.filter(f => f.signalPaiementHorsTableau),
-            "Ces factures portent une date de paiement, une date de contrôle, un statut « payée » ou "
-            + "un reste dû nul sur leur tableau opérationnel, mais n'apparaissent pas dans le tableau "
-            + "des factures payées. Elles restent comptées comme dues, seul ce tableau faisant "
-            + "règlement. Si elles sont bel et bien encaissées, il manque leur ligne dans le 0.1.");
+            "Ces factures portent un signe de règlement sur leur tableau opérationnel, mais "
+            + "n'apparaissent pas dans le tableau des factures payées. Elles restent comptées comme "
+            + "dues, seul ce tableau et le lettrage du grand livre faisant règlement. Si elles sont "
+            + "bel et bien encaissées, il manque leur ligne dans le 0.1. "
+            // Dire quel signal a parlé : sans cela, la liste ne se vérifie pas
+            // et une colonne mal associée reste introuvable.
+            + repartitionSignaux(factures.filter(f => f.signalPaiementHorsTableau)));
 
         push('ECHEANCE_DIVERGENTE', "Échéance Monday très éloignée de l'échéance calculée", 'haute',
             factures.filter(f => f.dateEcheance && f.dateEcheanceSource

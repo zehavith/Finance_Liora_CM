@@ -1185,8 +1185,15 @@
             // ces colonnes se sont révélées trop peu fiables, au point de faire
             // basculer la quasi-totalité du portefeuille en « payée ».
             let motif = null;
-            if (f.paye === true) motif = 'Présente dans le tableau des factures payées';
-            else if (f.grandLivreSoldee === true) motif = 'Lettrée dans le grand livre';
+            // Le lettrage d'abord. Il est testé avant le tableau des payées
+            // pour deux raisons : c'est la preuve la plus forte — une écriture
+            // comptable, pas une saisie — et sans cet ordre le motif ne
+            // pouvait jamais s'afficher. Le rapprochement au grand livre pose
+            // lui-même « payée » : la première branche l'attrapait donc
+            // systématiquement, et six mille factures lettrées passaient pour
+            // de simples lignes du tableau des payées.
+            if (f.grandLivreSoldee === true) motif = 'Lettrée dans le grand livre';
+            else if (f.paye === true) motif = 'Présente dans le tableau des factures payées';
             // Les groupes de comptabilité — « En traitement Comptabilité »,
             // « Pennylane non pointé », « Paiement non remonté sur Sellsy » —
             // désignent des factures encaissées dont le règlement n'est pas
@@ -1246,9 +1253,20 @@
             // être encaissée.
             const horsPortefeuille = f.groupeTechnique
                 || f.role === 'technique' || f.role === 'ignore';
-            f.signalPaiementHorsTableau = !paye && !f.soldeeParAvoir && !horsPortefeuille && !!(
-                f.datePaiement || f.dateControlePaiement || statutIndiquePaye(f.statut)
-                || (f.resteDu != null && f.montant != null && f.resteDu <= 0.01 && f.montant > 0));
+            // Quel signal exactement. Sans le nommer, la liste est
+            // incontestable au mauvais sens du terme : on ne peut ni la
+            // vérifier, ni corriger la colonne fautive.
+            f.motifSignalPaiement = null;
+            if (!paye && !f.soldeeParAvoir && !horsPortefeuille) {
+                if (f.datePaiement) f.motifSignalPaiement = 'Une date de paiement est saisie';
+                else if (f.dateControlePaiement) f.motifSignalPaiement = 'Une date de contrôle du paiement est saisie';
+                else if (statutIndiquePaye(f.statut)) {
+                    f.motifSignalPaiement = `Le statut du tableau dit « ${String(f.statut).slice(0, 40)} »`;
+                } else if (f.resteDu != null && f.montant != null && f.resteDu <= 0.01 && f.montant > 0) {
+                    f.motifSignalPaiement = 'Le reste dû est à zéro alors que la facture porte un montant';
+                }
+            }
+            f.signalPaiementHorsTableau = !!f.motifSignalPaiement;
 
             if (f.soldeeParAvoir) {
                 // Aucun euro n'est rentré : lui laisser une date d'encaissement
