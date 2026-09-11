@@ -830,16 +830,25 @@ appartient à celle qui le signe.
 | **Gmail** (par défaut) | un **vrai brouillon** est écrit dans votre Gmail, **pièces jointes comprises** ; l'onglet des brouillons s'ouvre, vous relisez, vous envoyez |
 | **Outlook** | le brouillon s'ouvre dans Outlook, pièces jointes comprises (demande `pywin32`, Windows) |
 
-**Les deux fichiers sont joints, pas l'un ou l'autre** : le PDF, qu'on relit
-et qu'on annote, *et* l'archive, qui porte tout. N'attacher que le PDF dès
-qu'il existait — ce qui était fait — laissait derrière lui tout ce qu'un PDF
-ne peut pas contenir : une feuille d'émargement photographiée, un relevé en
-tableur, les messages d'origine au format `.eml`. Le dossier partait amputé,
-et rien ne le disait.
+**Le PDF ouvre, puis les documents un par un.** Pas d'archive à décompresser :
+un destinataire qui reçoit « dossier.zip » doit l'ouvrir avant de voir quoi
+que ce soit, et un service contentieux repousse à plus tard ce qu'il ne peut
+pas lire tout de suite.
 
-Au-delà de ce qu'un message peut peser, le PDF passe d'abord — c'est lui
-qu'on relit — et ce qui a dû être écarté est **nommé à l'écran**, avec le
-répertoire d'où le glisser à la main.
+| Pièce jointe | Ce que c'est |
+| --- | --- |
+| `<dossier>.pdf` | le dossier entier, paginé : la note, les pièces, les échanges |
+| les documents | pièces clés d'abord — convention, facture, émargement, relevé, diplôme, progression —, puis les autres pièces jointes des messages, chacune sous son nom |
+
+Ce qui ne part **pas** séparément : les rendus de messages, qui sont déjà des
+pages du PDF, et les `.eml` d'origine, qui sont une preuve d'authenticité et
+non une pièce qu'on lit — les joindre ferait vingt fichiers de plus pour rien.
+Une pièce et sa copie ne font qu'un : c'est le contenu qui les rapproche, non
+le chemin.
+
+**L'archive ne sert plus que de recours.** Quand les documents séparés ne
+tiennent pas dans un message — la limite est d'environ 25 Mo —, elle les porte
+tous en un seul fichier, et l'écran dit lesquels ont dû y passer.
 
 Le réglage **Messagerie** choisit lequel.
 

@@ -15,6 +15,12 @@ Deux formes, produites côte à côte :
   contenir : les messages d'origine au format `.eml`, les tableurs, les
   images. C'est la forme complète, celle qu'on garde.
 
+Le brouillon, lui, ne joint pas l'archive : le PDF ouvre, puis **les documents
+un par un**. Un destinataire qui reçoit « dossier.zip » doit le décompresser
+avant de voir quoi que ce soit, et un service contentieux repousse à plus tard
+ce qu'il ne peut pas lire tout de suite. L'archive ne sert que de recours,
+quand les documents séparés ne tiennent pas dans un message.
+
 Le PDF demande `pypdf`. Sans lui, l'archive est produite seule et on le dit :
 un dossier transmissible vaut mieux qu'un échec au motif qu'il manque une
 bibliothèque.
@@ -267,9 +273,13 @@ def corps_du_message(dossier: dict) -> tuple[str, str]:
         )
     lignes += [
         "",
-        "La note de synthèse ouvre le document : elle résume la situation, "
-        "les pièces et les échanges, chaque constat renvoyant à un numéro de "
-        "pièce.",
+        "Le PDF réunit l'ensemble du dossier : la note de synthèse ouvre — "
+        "elle résume la situation, les pièces et les échanges, chaque constat "
+        "renvoyant à un numéro de pièce —, puis viennent les pièces et les "
+        "échanges eux-mêmes.",
+        "",
+        "Les pièces que le PDF ne peut pas porter, ou qu'il est plus commode "
+        "d'ouvrir séparément, sont jointes une à une.",
         "",
         "Bien cordialement,",
     ]
@@ -287,40 +297,155 @@ PIECE_MAX = 24 * 1024 * 1024
 MESSAGE_MAX = 24 * 1024 * 1024
 
 
-def pieces_du_brouillon(pret: dict, racine: Path) -> tuple[list[Path], str]:
-    """Ce qu'on attache : le PDF *et* l'archive, et non l'un ou l'autre.
+# Ce qui n'a pas à partir comme document séparé : les rendus de messages, que
+# le PDF unique porte déjà page à page, et les messages d'origine, qui sont
+# une preuve d'authenticité et non une pièce qu'on lit. Les joindre ferait
+# vingt-deux fichiers de plus dans le mail, pour rien.
+SUFFIXES_HORS_DOCUMENTS = (".eml", ".html", ".htm", ".json")
 
-    Le brouillon n'attachait que le PDF dès qu'il existait. Or un PDF ne peut
-    pas porter une feuille d'émargement photographiée, un relevé en tableur,
-    ni les messages d'origine au format `.eml` : le dossier partait amputé de
-    tout cela, et rien ne le disait. L'archive, elle, porte tout — c'est la
-    forme complète, celle qu'on garde.
+# La plomberie du dossier, qui ne se transmet pas. Écartée par son nom et non
+# par son extension : un relevé d'heures en CSV est un document, lui.
+NOMS_HORS_DOCUMENTS = ("index.csv", "_recapitulatif.csv")
+
+
+def documents_du_dossier(repertoire: Path, lignes: list[LigneIndex]) -> list[Path]:
+    """Les documents du dossier, un par un, dans l'ordre où on les présente.
+
+    Un destinataire à qui l'on envoie une archive doit la décompresser avant
+    de voir quoi que ce soit. Les pièces clés d'abord — convention, facture,
+    émargement, relevé, diplôme, progression —, parce qu'elles portent un nom
+    qui se reconnaît dans une liste de pièces jointes ; les autres pièces
+    jointes des messages ensuite.
+
+    Une pièce et sa copie ne font qu'un : les pièces clés sont des copies, et
+    c'est le contenu qui les rapproche, non le chemin.
+    """
+    ordre: list[Path] = []
+    vus: set[tuple[int, str]] = set()
+
+    def ajouter(chemin: Path) -> None:
+        if not chemin.is_file():
+            return
+        if chemin.suffix.lower() in SUFFIXES_HORS_DOCUMENTS:
+            return
+        if chemin.name in NOMS_HORS_DOCUMENTS:
+            return
+        empreinte = _empreinte(chemin)
+        if empreinte is None or empreinte in vus:
+            return
+        vus.add(empreinte)
+        ordre.append(chemin)
+
+    # Les rendus de messages sont dans le PDF unique : les joindre en plus
+    # ferait vingt-deux fichiers pour rien.
+    rendus = {
+        (repertoire / ligne.fichier_pdf).resolve()
+        for ligne in lignes if ligne.fichier_pdf
+    }
+
+    cles = repertoire / "pieces-cles"
+    if cles.is_dir():
+        for sous in sorted(cles.iterdir()):
+            if sous.is_dir():
+                for fichier in sorted(sous.iterdir()):
+                    ajouter(fichier)
+
+    for nom_annexe in ("documents-monday", "pieces-ajoutees"):
+        annexe = repertoire / nom_annexe
+        if annexe.is_dir():
+            for fichier in sorted(annexe.iterdir()):
+                ajouter(fichier)
+
+    for ligne in sorted(lignes, key=lambda l: l.piece_n):
+        sous = (ligne.dossier_pieces_jointes or "").strip()
+        if not sous:
+            continue
+        repertoire_piece = repertoire / sous
+        if repertoire_piece.is_dir():
+            for fichier in sorted(repertoire_piece.iterdir()):
+                if fichier.resolve() not in rendus:
+                    ajouter(fichier)
+
+    # Et tout le reste du dossier : une pièce jointe rangée ailleurs que là où
+    # l'index l'annonce — ou un index qu'on n'a pas pu relire — ne doit pas
+    # faire partir un dossier amputé. La note de synthèse est déjà la première
+    # page du PDF ; l'y rejoindre en pièce séparée ne servirait à rien.
+    synthese = (repertoire / "synthese.pdf").resolve()
+    for fichier in sorted(repertoire.rglob("*")):
+        if _a_exclure(fichier, repertoire):
+            continue
+        resolu = fichier.resolve()
+        if resolu in rendus or resolu == synthese:
+            continue
+        ajouter(fichier)
+
+    return ordre
+
+
+def pieces_du_brouillon(
+    pret: dict, racine: Path, documents: list[Path] | None = None,
+) -> tuple[list[Path], str]:
+    """Ce qu'on attache au brouillon, dans l'ordre de ce qu'on ouvre d'abord.
+
+    Le PDF unique ouvre : c'est le dossier entier, paginé, qui se lit sans
+    rien décompresser. Les documents suivent, **un par un** : une archive
+    oblige le destinataire à la décompresser avant de voir quoi que ce soit,
+    et un service contentieux qui reçoit « dossier.zip » repousse le dossier.
+
+    L'archive ne sert plus que de recours : quand les documents séparés ne
+    tiennent pas dans un message, elle les porte tous en un seul fichier, et
+    on le dit.
 
     Renvoie (pièces, motif). Un motif non vide dit ce qui n'a pas pu être
-    joint : au-delà de la limite d'un message, le PDF passe d'abord, parce
-    que c'est lui qu'on relit.
+    joint, et d'où le glisser à la main.
     """
-    voulues = [nom for nom in (pret.get("pdf"), pret.get("archive")) if nom]
+    def poids_de(chemin: Path) -> int | None:
+        try:
+            return chemin.stat().st_size
+        except OSError:
+            return None
+
     gardees: list[Path] = []
-    ecartees: list[str] = []
     total = 0
 
-    for nom in voulues:
-        chemin = racine / nom
-        try:
-            poids = chemin.stat().st_size
-        except OSError:
+    pdf = racine / pret["pdf"] if pret.get("pdf") else None
+    if pdf is not None:
+        poids = poids_de(pdf)
+        if poids is not None and poids <= PIECE_MAX:
+            gardees.append(pdf)
+            total += poids
+
+    ecartes: list[str] = []
+    for document in documents or []:
+        poids = poids_de(document)
+        if poids is None:
             continue
         if poids > PIECE_MAX or total + poids > MESSAGE_MAX:
-            ecartees.append(f"{nom} ({_lisible(poids)})")
+            ecartes.append(document.name)
             continue
-        gardees.append(chemin)
+        gardees.append(document)
         total += poids
 
+    # Rien ne tient, ou une partie manque : l'archive, elle, porte tout en un
+    # seul fichier. C'est le recours, pas la forme ordinaire.
+    archive = racine / pret["archive"] if pret.get("archive") else None
+    if (ecartes or not gardees) and archive is not None:
+        poids = poids_de(archive)
+        if poids is not None and poids <= PIECE_MAX \
+                and total + poids <= MESSAGE_MAX:
+            gardees.append(archive)
+            return gardees, (
+                f"{len(ecartes)} document(s) trop lourds pour être joints un "
+                "par un — l'archive les porte tous : "
+                + ", ".join(ecartes[:3])
+                + ("…" if len(ecartes) > 3 else "")
+            ) if ecartes else ""
+
     motif = ""
-    if ecartees:
+    if ecartes:
         motif = ("trop lourd pour un message, à joindre à la main depuis le "
-                 "répertoire : " + ", ".join(ecartees))
+                 "répertoire : " + ", ".join(ecartes[:5])
+                 + ("…" if len(ecartes) > 5 else ""))
     return gardees, motif
 
 
@@ -526,9 +651,10 @@ def preparer(
     # transmettre — pas après.
     autres = pieces_hors_pdf(repertoire) if pieces else []
     if autres:
-        dit = (f"{len(autres)} pièce(s) clé(s) hors du PDF, n'étant pas des "
-               "PDF (" + ", ".join(autres[:3])
-               + ("…" if len(autres) > 3 else "") + ") — dans l'archive")
+        dit = (f"{len(autres)} pièce(s) clé(s) ne sont pas dans le PDF, "
+               "n'étant pas des PDF (" + ", ".join(autres[:3])
+               + ("…" if len(autres) > 3 else "")
+               + ") — elles sont jointes à part")
         motif = f"{motif} ; {dit}" if motif else dit
 
     return {

@@ -1972,7 +1972,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
         # tableur, les messages d'origine au format .eml. Le dossier partait
         # amputé, et rien ne le disait.
         base = Path(pret["repertoire"])
-        pieces, motif_pieces = module_envoi.pieces_du_brouillon(pret, base)
+        pieces, motif_pieces = module_envoi.pieces_du_brouillon(
+            pret, base, module_envoi.documents_du_dossier(repertoire, lignes))
 
         destinataire = (
             preferences.get("responsable_entreprise")

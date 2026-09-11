@@ -5145,23 +5145,46 @@ def test_preparer_pour_envoi() -> None:
         # ne porte ni la feuille d'émargement photographiée, ni le relevé en
         # tableur, ni les messages d'origine au format .eml : le dossier
         # partait amputé de tout cela, et rien ne le disait.
-        jointes, sans_motif = module_envoi.pieces_du_brouillon(resultat, sortie / "pour-envoi")
-        noms = sorted(p.name for p in jointes)
-        verifier(noms == ["fact-2405-00409_sas-eden.pdf",
-                          "fact-2405-00409_sas-eden.zip"],
-                 f"le brouillon porte le PDF *et* l'archive ({noms})")
+        # Un destinataire qui reçoit « dossier.zip » doit le décompresser
+        # avant de voir quoi que ce soit. Le PDF ouvre, les documents
+        # suivent un par un, et l'archive ne sert plus que de recours.
+        documents = module_envoi.documents_du_dossier(dossier, lignes)
+        noms_docs = sorted(c.name for c in documents)
+        verifier("bon-de-commande.pdf" in noms_docs
+                 and "emargement.jpg" in noms_docs,
+                 f"les documents du dossier sont recensés ({noms_docs})")
+        # Le rendu d'un message est déjà une page du PDF unique ; le message
+        # d'origine est une preuve, pas une pièce qu'on lit.
+        verifier("001_relance.pdf" not in noms_docs
+                 and not any(n.endswith(".eml") for n in noms_docs)
+                 and "index.csv" not in noms_docs,
+                 f"sans les rendus de messages ni la plomberie ({noms_docs})")
+        # Une pièce clé est une copie : elle ne part pas en double.
+        verifier(noms_docs.count("FACT-2405-00409.pdf") <= 1
+                 and "Facture.pdf" not in noms_docs,
+                 f"ni les copies en double ({noms_docs})")
+
+        jointes, sans_motif = module_envoi.pieces_du_brouillon(
+            resultat, sortie / "pour-envoi", documents)
+        noms = [p.name for p in jointes]
+        verifier(noms and noms[0].endswith(".pdf")
+                 and not any(n.endswith(".zip") for n in noms),
+                 f"le brouillon ouvre sur le PDF, sans archive ({noms})")
+        verifier("emargement.jpg" in noms,
+                 f"et porte ce que le PDF ne peut pas contenir ({noms})")
         verifier(not sans_motif, f"sans rien laisser de côté ({sans_motif})")
 
-        # Au-delà de ce qu'un message peut peser, le PDF passe d'abord —
-        # c'est lui qu'on relit — et ce qui est écarté est nommé.
-        lourde = sortie / "pour-envoi" / "lourde.zip"
-        lourde.write_bytes(b"P" * (module_envoi.MESSAGE_MAX + 1))
+        # Au-delà de ce qu'un message peut peser, l'archive reprend la main :
+        # un seul fichier vaut mieux qu'un dossier amputé.
+        lourd = dossier / "pieces-cles" / "2-facture" / "lourd.pdf"
+        lourd.write_bytes(b"%PDF" + b"P" * module_envoi.MESSAGE_MAX)
         jointes, motif_lourd = module_envoi.pieces_du_brouillon(
-            dict(resultat, archive="lourde.zip"), sortie / "pour-envoi")
-        verifier([p.suffix for p in jointes] == [".pdf"]
-                 and "lourde.zip" in motif_lourd,
-                 f"et une archive trop lourde est nommée ({motif_lourd[:60]}…)")
-        lourde.unlink()
+            resultat, sortie / "pour-envoi",
+            module_envoi.documents_du_dossier(dossier, lignes))
+        verifier(any(p.suffix == ".zip" for p in jointes)
+                 and "lourd.pdf" in motif_lourd,
+                 f"l'archive sert de recours, et on le dit ({motif_lourd[:70]}…)")
+        lourd.unlink()
 
     # Le brouillon : l'application prepare, elle ne poste pas. Adresser un
     # courriel a un tiers est un geste qui appartient a celle qui le signe.
