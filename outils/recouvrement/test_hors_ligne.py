@@ -5168,6 +5168,21 @@ def test_preparer_pour_envoi() -> None:
                  and "Facture.pdf" not in noms_docs,
                  f"ni les copies en double ({noms_docs})")
 
+        # Une facture scannée jointe à un message est un document, pas un
+        # logo : s'en remettre à l'extension la perdait — image, donc
+        # supposée absorbée par le PDF, alors que seules les pièces clés
+        # l'étaient. C'est l'empreinte de ce qui est réellement entré dans le
+        # PDF qui décide, et rien ne se perd en silence.
+        scannee = dossier / "001-pieces-jointes" / "Facture scannee.jpg"
+        scannee.parent.mkdir(parents=True, exist_ok=True)
+        scannee.write_bytes(b"\xff\xd8" + b"s" * module_envoi.TAILLE_IMAGE_DOCUMENT)
+        sans_moteur = module_envoi.documents_du_dossier(dossier, lignes)
+        jointes_scan, _motif_scan = module_envoi.pieces_du_brouillon(
+            dict(resultat, absorbes=set()), sortie / "pour-envoi", sans_moteur)
+        verifier("Facture scannee.jpg" in [p.name for p in jointes_scan],
+                 "une facture scannée que le PDF n'a pas absorbée est jointe")
+        scannee.unlink()
+
         jointes, sans_motif = module_envoi.pieces_du_brouillon(
             resultat, sortie / "pour-envoi", documents)
         noms = [p.name for p in jointes]
@@ -5177,9 +5192,17 @@ def test_preparer_pour_envoi() -> None:
         # Un seul fichier, sauf ce qu'aucun PDF ne peut absorber. Le PDF
         # porte déjà les pièces — les rejoindre une à une les enverrait deux
         # fois, et c'est un fichier qu'elle veut, pas six.
-        verifier("Releve.xlsx" in noms
-                 and not any(n.endswith(".jpg") for n in noms),
-                 f"et rien d'autre que le tableur à côté ({noms})")
+        verifier("Releve.xlsx" in noms,
+                 f"et le tableur à côté, qu'aucun PDF ne peut porter ({noms})")
+        # L'émargement est une image : dans le PDF quand le poste a un moteur,
+        # joint tel quel sinon. Jamais perdu — c'est la seule promesse qui
+        # vaille, et elle ne dépend pas de ce qui est installé.
+        emargement = dossier / "pieces-cles" / "3-feuille-emargement" / "emargement.jpg"
+        dans_le_pdf = module_envoi._empreinte(emargement) in (
+            resultat.get("absorbes") or set())
+        verifier(dans_le_pdf or "emargement.jpg" in noms,
+                 "une pièce en image est dans le PDF, ou jointe — jamais perdue"
+                 f" (jointe : {'emargement.jpg' in noms})")
         verifier(not sans_motif, f"sans rien laisser de côté ({sans_motif})")
 
         # Sans moteur PDF sur le poste, il n'y a pas de PDF unique :

@@ -141,6 +141,13 @@ DOSSIER_CONVERTIES = "pieces-converties"
 # brouillon qui ne vient pas est pire que deux fichiers joints.
 CONVERSIONS_MAX = 12
 
+# Sous cette taille, une image jointe à un message n'est pas un document :
+# c'est un logo de signature. Les logos référencés dans le corps du message
+# ne sont pas écrits comme pièces jointes — ils sont intégrés au rendu —,
+# mais certaines signatures en attachent un sans le référencer. Une facture
+# scannée, un émargement photographié pèsent dix à cent fois cela.
+TAILLE_IMAGE_DOCUMENT = 40 * 1024
+
 
 def image_en_pdf(source: Path, cible: Path) -> bool:
     """Une image devient une page de PDF, pour que le dossier tienne en un seul.
@@ -193,7 +200,7 @@ def _echapper(texte: str) -> str:
 
 
 def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex],
-                    convertir=None) -> list[Path]:
+                    convertir=None, absorbes: set | None = None) -> list[Path]:
     """Les PDF à réunir, dans l'ordre où l'on présente un dossier.
 
     La note de synthèse ouvre : c'est elle qui dit de quoi il retourne. Les
@@ -228,6 +235,8 @@ def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex],
         vus.add(empreinte)
         if suffixe == ".pdf":
             ordre.append(chemin)
+            if absorbes is not None:
+                absorbes.add(empreinte)
             return
         if converties >= CONVERSIONS_MAX:
             return
@@ -235,6 +244,10 @@ def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex],
         converties += 1
         if converti is not None:
             ordre.append(converti)
+            # L'original est dans le PDF, sous une autre forme : le joindre
+            # en plus l'enverrait deux fois.
+            if absorbes is not None:
+                absorbes.add(empreinte)
 
     ajouter(repertoire / "synthese.pdf")
 
@@ -257,17 +270,23 @@ def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex],
             ajouter(repertoire / ligne.fichier_pdf)
 
     # Le reste du dossier, dans l'ordre du disque : ce que ni le classement
-    # ni les numéros de pièce n'ont ramassé. Les PDF seulement — une image
-    # rencontrée ici est un logo, pas une pièce.
+    # ni les numéros de pièce n'ont ramassé. Une image y est convertie si
+    # elle pèse le poids d'un document — une facture scannée, un émargement
+    # photographié — et laissée telle quelle si c'est un logo de signature.
+    # Ce qui n'est pas absorbé est joint à côté : rien n'est perdu.
     for chemin in sorted(repertoire.rglob("*")):
-        if not _a_exclure(chemin, repertoire):
-            ajouter(chemin)
+        if _a_exclure(chemin, repertoire) or not chemin.is_file():
+            continue
+        document = (chemin.suffix.lower() in IMAGES
+                    and chemin.stat().st_size >= TAILLE_IMAGE_DOCUMENT)
+        ajouter(chemin, convertible=document)
 
     return ordre
 
 
 def ecrire_pdf_unique(
-    repertoire: Path, lignes: list[LigneIndex], cible: Path
+    repertoire: Path, lignes: list[LigneIndex], cible: Path,
+    absorbes: set | None = None,
 ) -> tuple[int, int, str]:
     """Réunit les PDF du dossier en un seul. Renvoie (pièces, octets, motif).
 
@@ -300,7 +319,7 @@ def ecrire_pdf_unique(
             return vers
         return vers if image_en_pdf(source, vers) else None
 
-    sources = pdfs_du_dossier(repertoire, lignes, convertir)
+    sources = pdfs_du_dossier(repertoire, lignes, convertir, absorbes)
     if not sources:
         return 0, 0, "aucun PDF au dossier : rien à réunir"
 
@@ -484,6 +503,15 @@ def documents_du_dossier(repertoire: Path, lignes: list[LigneIndex]) -> list[Pat
     return ordre
 
 
+# Là où vivent les pièces qu'on a choisies : le classement par nature, les
+# documents du tableau, ce que le service a versé à la main.
+DOSSIERS_CHOISIS = ("pieces-cles", "documents-monday", "pieces-ajoutees")
+
+
+def _est_piece_choisie(chemin: Path) -> bool:
+    return any(nom in chemin.parts for nom in DOSSIERS_CHOISIS)
+
+
 def pieces_du_brouillon(
     pret: dict, racine: Path, documents: list[Path] | None = None,
 ) -> tuple[list[Path], str]:
@@ -529,13 +557,33 @@ def pieces_du_brouillon(
     gardees = [pdf]
     total = poids_de(pdf) or 0
     ecartes: list[str] = []
+    vignettes: list[str] = []
 
+    absorbes = pret.get("absorbes")
     for document in documents or []:
-        # Les PDF et les images sont déjà dans le PDF unique : les rejoindre
-        # un à un les enverrait deux fois, et c'est un fichier qu'on veut.
-        if document.suffix.lower() in (".pdf", *IMAGES):
+        # Un document n'est écarté que s'il est **réellement** dans le PDF —
+        # son empreinte le dit. S'en remettre à l'extension perdait une
+        # facture scannée jointe à un message : image, donc supposée absorbée,
+        # alors que seules les pièces clés le sont.
+        if absorbes is not None:
+            if _empreinte(document) in absorbes:
+                continue
+        elif document.suffix.lower() == ".pdf":
             continue
         poids = poids_de(document)
+        # Une image minuscule attachée à un message est un logo de signature,
+        # pas une pièce : vingt messages en portent vingt, et les joindre
+        # noierait le dossier. Elle reste au répertoire et dans l'archive, et
+        # l'écran la compte — rien n'est perdu en silence.
+        #
+        # Une pièce **choisie** ne subit jamais ce sort, si petite soit-elle :
+        # une feuille d'émargement que le moteur PDF n'a pas su convertir est
+        # jointe telle quelle. C'est un document, pas un ornement.
+        if (document.suffix.lower() in IMAGES
+                and not _est_piece_choisie(document)
+                and (poids or 0) < TAILLE_IMAGE_DOCUMENT):
+            vignettes.append(document.name)
+            continue
         if poids is None:
             continue
         if poids > PIECE_MAX or total + poids > MESSAGE_MAX:
@@ -544,12 +592,18 @@ def pieces_du_brouillon(
         gardees.append(document)
         total += poids
 
-    motif = ""
+    morceaux = []
     if ecartes:
-        motif = ("trop lourd pour un message, à joindre à la main depuis le "
-                 "répertoire : " + ", ".join(ecartes[:5])
-                 + ("…" if len(ecartes) > 5 else ""))
-    return gardees, motif
+        morceaux.append(
+            "trop lourd pour un message, à joindre à la main depuis le "
+            "répertoire : " + ", ".join(ecartes[:5])
+            + ("…" if len(ecartes) > 5 else ""))
+    if vignettes:
+        morceaux.append(
+            f"{len(vignettes)} petite(s) image(s) non jointe(s), des logos de "
+            "signature selon toute vraisemblance — elles restent au "
+            "répertoire et dans l'archive")
+    return gardees, " ; ".join(morceaux)
 
 
 def brouillon_gmail(
@@ -754,8 +808,9 @@ def preparer(
     base = repertoire.name
 
     fichiers, poids_zip = ecrire_archive(repertoire, destination / f"{base}.zip")
+    absorbes: set = set()
     pieces, poids_pdf, motif = ecrire_pdf_unique(
-        repertoire, lignes, destination / f"{base}.pdf"
+        repertoire, lignes, destination / f"{base}.pdf", absorbes
     )
 
     absents = messages_sans_pdf(repertoire, lignes) if pieces else []
@@ -791,6 +846,10 @@ def preparer(
         "octets_pdf": poids_pdf,
         "sans_pdf": len(absents),
         "hors_pdf": len(autres),
+        # Les empreintes des documents que le PDF a absorbés. Ce qui n'y
+        # figure pas est joint à côté : c'est ainsi qu'on tient la promesse
+        # « tout le dossier part », sans rien envoyer deux fois.
+        "absorbes": absorbes,
         "motif": motif,
     }
 

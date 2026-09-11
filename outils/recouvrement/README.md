@@ -850,10 +850,23 @@ verrouillé —, elle est **écartée seule** et nommée : le reste part quand m
 Et si rien n'a pu être joint, l'écran le dit **en premier** ; transmettre un
 dossier sans le dossier est pire que ne rien transmettre.
 
-Ne partent à côté que les pièces qu'**aucun PDF ne peut absorber** : un
-tableur, un document Word. Il faudrait une suite bureautique, qui n'est pas
-toujours là et dont la mise en page varierait d'un poste à l'autre. Elles sont
-nommées à l'écran.
+**La règle, en une phrase : un document est dans le PDF, ou joint à côté.**
+Jamais perdu. Ce n'est pas l'extension qui décide — elle faisait disparaître
+une facture scannée reçue par mail, image donc supposée absorbée — mais
+l'empreinte de ce qui est **réellement** entré dans le PDF.
+
+Partent donc à côté :
+
+- les pièces qu'**aucun PDF ne peut absorber** — un tableur, un document
+  Word : il faudrait une suite bureautique, qui n'est pas toujours là et dont
+  la mise en page varierait d'un poste à l'autre ;
+- toute image que le moteur PDF n'a pas su convertir, y compris une feuille
+  d'émargement : une pièce choisie est jointe telle quelle plutôt que perdue.
+
+La seule exception est la **vignette** : une image de moins de 40 Ko attachée
+à un message, qui n'est pas une pièce choisie. C'est un logo de signature —
+vingt messages en portent vingt. Elle reste au répertoire et dans l'archive,
+et l'écran la **compte**, pour que l'omission soit visible.
 
 **L'archive ne sert plus que de recours** : sans moteur PDF sur le poste, il
 n'y a pas de PDF unique, et c'est elle qui part — en disant qu'elle est à
