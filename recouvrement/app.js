@@ -11,8 +11,8 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.60.0';
-    const VERSION_DATE = '10 septembre 2026';
+    const VERSION = '2.61.0';
+    const VERSION_DATE = '11 septembre 2026';
 
     const R = window.LioraRules;
     const PR = window.LioraPrelevements;
@@ -79,6 +79,7 @@
                fichiers: [], unite: null },
         derniereActualisation: null,
         chargementEnCours: false,
+        progression: null,       // { fait, total, nom, lignes } pendant un chargement
         apprenants: [],
         gclOrphelins: 0,
         token: '',
@@ -2956,8 +2957,45 @@
             const vide = $('#pointage-vide'), contenu = $('#pointage-contenu');
             if (vide) vide.hidden = aGL;
             if (contenu) contenu.hidden = !aGL;
-            if (aGL) rendreOrphelins();
+            if (aGL) { rendreSourceGL(); rendreOrphelins(); }
         }
+    }
+
+    /**
+     * D'où viennent ces chiffres, et de quand ils datent.
+     *
+     * Un grand livre se dépose à la main : rien ne dit qu'il est récent, et
+     * une balance âgée lue sur un extrait d'il y a trois semaines se trompe
+     * sans prévenir. La ligne nomme le fichier, l'heure à laquelle il a été
+     * chargé, et le nombre d'écritures lues — de quoi savoir en un coup d'œil
+     * si ce qu'on regarde est à jour.
+     */
+    function rendreSourceGL() {
+        const g = state.glLecture;
+        const txt = !g ? ''
+            : `<strong>${U.escapeHtml(g.fichier || 'grand livre')}</strong>`
+              + (g.charge ? ` · chargé ${quandFichier(g.charge)}` : '')
+              + ` · ${U.nombre(g.nbLignes || 0)} écritures lues`
+              + ` · balance arrêtée au ${U.dateFR(state.filtres.dateRef)}`;
+        for (const id of ['#gl-source', '#pointage-source']) {
+            const el = $(id);
+            if (el) el.innerHTML = txt;
+        }
+    }
+
+    /** « aujourd'hui à 14:32 », « hier à 09:10 », « le 03/09/2026 à 17:45 ». */
+    function quandFichier(iso) {
+        const d = new Date(iso);
+        if (isNaN(d)) return '';
+        const heure = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        const jour = R.stripTime(d).getTime();
+        const auj = R.stripTime(new Date()).getTime();
+        const ecart = Math.round((auj - jour) / 86400000);
+        const quand = ecart === 0 ? "aujourd'hui" : ecart === 1 ? 'hier'
+            : ecart < 7 ? `il y a ${ecart} jours` : 'le ' + U.dateFR(d);
+        // Au-delà d'une semaine, le dire : un extrait qui traîne fausse la
+        // balance sans que rien ne le signale.
+        return quand + ' à ' + heure + (ecart >= 7 ? ' — pensez à le remettre à jour' : '');
     }
 
     /** Les colonnes d'ancienneté, de la plus ancienne à la plus récente. */
@@ -3116,6 +3154,7 @@
             onRowClick: true, rowClass: r => r.cle === GL.A_CLASSER ? 'ligne-a-classer' : '' });
         U.bindTable(el, rows, { onRowClick: r => montrerCreancesGL(r) });
 
+        rendreSourceGL();
         rendreActionsGL();
         rendreOrphelins();
         rendreReglesClassement();
@@ -6779,9 +6818,30 @@
         for (const b of monday) {
             if (!b.actif || b.role === 'ignore' || b.role === 'technique' || !b.charge) continue;
             for (const e of ESSENTIELS) {
+                // Réclamer une date de formation là où elle n'a pas de sens,
+                // c'est crier au loup. Le tableau des factures payées suit des
+                // règlements, pas des échéances : ses factures sont soldées, il
+                // n'y a plus rien à dater. Le tampon est un sas d'attente, où
+                // aucune relance n'est faite. Le montant, lui, compte partout.
+                if (e.champ !== 'montant' && (b.role === 'payees' || b.role === 'tampon')) continue;
                 const c = (b.couverture || {})[e.champ];
                 if (!c) continue;                       // tableau chargé avant cette mesure
-                if (!c.colId) trous.push({ b, e, txt: 'aucune colonne reconnue', nb: b.charge });
+                // Les colonnes de ce tableau qui pourraient convenir : sans
+                // elles, « aucune colonne reconnue » ne dit pas quoi faire.
+                const candidates = (b.columns || [])
+                    .filter(col => I.FIELD_BY_NAME && !Object.values(b.mapping || {}).includes(col.id))
+                    .map(col => col.title)
+                    .filter(t => {
+                        const n = R.norm(t || '');
+                        return e.champ === 'montant' ? /montant|total|prix|cout|tarif|somme/.test(n)
+                            : e.champ === 'dateFacture' ? /date|facture|emission/.test(n)
+                            : /fin|date|formation|service|session|sortie/.test(n);
+                    })
+                    .slice(0, 4);
+                const piste = candidates.length
+                    ? ` — à associer peut-être à : ${candidates.join(', ')}`
+                    : ' — aucune colonne de ce tableau n’y ressemble';
+                if (!c.colId) trous.push({ b, e, txt: 'aucune colonne reconnue' + piste, nb: b.charge });
                 else if (c.taux < 50) trous.push({ b, e, txt: `renseignée sur ${Math.round(c.taux)} % des lignes`, nb: b.charge });
             }
         }
@@ -6824,6 +6884,15 @@
             const parMotif = new Map();
             for (const f of payees) parMotif.set(f.motifPaye || 'Motif inconnu',
                 (parMotif.get(f.motifPaye || 'Motif inconnu') || 0) + 1);
+            // Les trois critères sont toujours listés, même à zéro : savoir
+            // qu'un critère existe et n'a rien conclu est une information —
+            // « Lettrée dans le grand livre » à zéro dit que le grand livre
+            // n'apporte rien de plus que le tableau des factures payées, ou
+            // qu'aucun numéro ne se rapproche.
+            const CRITERES = ['Présente dans le tableau des factures payées',
+                              'Lettrée dans le grand livre',
+                              'Groupe de comptabilité — règlement à rapprocher'];
+            for (const c of CRITERES) if (!parMotif.has(c)) parMotif.set(c, 0);
             const lignes = [...parMotif.entries()].sort((a, b) => b[1] - a[1]);
             const part = payees.length / Math.max(1, state.factures.length);
 
@@ -6840,7 +6909,11 @@
                       + "en cause : si c'est « Date de contrôle paiement » ou « Statut Monday », vérifiez "
                       + "dans l'onglet Données que cette colonne est bien celle que vous croyez."
                     : "Récapitulatif des critères ayant conclu au règlement, du plus fréquent au moins fréquent.",
-                detail: lignes.map(([m, n]) => `${m} — ${U.nombre(n)} factures`),
+                detail: lignes.map(([m, n]) => n
+                    ? `${m} — ${U.nombre(n)} factures`
+                    : `${m} — aucune facture retenue par ce critère`
+                      + (/grand livre/i.test(m) && !state.grandLivre.length
+                          ? ' (aucun grand livre chargé)' : '')),
             });
         }
 
@@ -7498,10 +7571,15 @@
                 ? `${U.nombre(st.rapprochees)} factures rapprochées · ${U.nombre(st.completees)} dates complétées`
                   + (st.remplacees ? ` · ${U.nombre(st.remplacees)} dates remplacées` : '')
                 : '';
+            // Le nom du fichier et sa date de dépôt : c'est ce qui dit si la
+            // balance qu'on lit est celle d'aujourd'hui ou celle d'il y a trois
+            // semaines.
+            const g = state.glLecture || {};
+            const quand = g.charge ? quandFichier(g.charge) : '';
             h += `<div class="import-row">
                 <span class="pill pill-role">Grand livre lettré</span>
-                <span>${U.nombre(state.grandLivre.length)} lignes</span>
-                <span class="fv-hint">${U.escapeHtml(detail)}</span>
+                <span>${U.escapeHtml(g.fichier || '')}${g.fichier ? ' · ' : ''}${U.nombre(state.grandLivre.length)} lignes</span>
+                <span class="fv-hint">${quand ? 'importé ' + U.escapeHtml(quand) + ' · ' : ''}${U.escapeHtml(detail)}</span>
                 <button class="btn btn-ghost btn-sm" id="btn-clear-gl">Retirer</button>
             </div>`;
         }
@@ -7684,6 +7762,10 @@
         }
 
         state.chargementEnCours = true;
+        // De quoi savoir où en est le chargement même quand il se fait en
+        // arrière-plan : « Actualisation… » sans rien d'autre ne dit pas s'il
+        // reste dix secondes ou trois minutes.
+        state.progression = { fait: 0, total: actifs.length, nom: '', lignes: 0 };
         majIndicateurActualisation();
 
         // Le poste doit rester éveillé le temps du chargement, sous peine
@@ -7711,6 +7793,9 @@
                 const b = actifs[i];
                 statut(`(${i + 1}/${actifs.length}) ${b.name}`);
                 log(`→ ${b.name}`);
+                state.progression = { fait: i, total: actifs.length, nom: b.name,
+                                      lignes: collecte.length };
+                majIndicateurActualisation();
                 b.erreurChargement = null;
 
                 // L'échec d'un tableau ne doit pas emporter les suivants :
@@ -7825,6 +7910,7 @@
             }
         } finally {
             state.chargementEnCours = false;
+            state.progression = null;
             await autoriserVeille();
             majIndicateurActualisation();
         }
@@ -7867,8 +7953,20 @@
                      set title(v) { els.forEach(x => { x.title = v; }); } };
 
         if (state.chargementEnCours) {
+            const p = state.progression;
             el.className = 'maj-indic en-cours';
-            el.textContent = 'Actualisation…';
+            if (p && p.total) {
+                // Le pourcentage porte sur les tableaux terminés : c'est la
+                // seule mesure honnête, Monday ne dit pas combien de lignes il
+                // reste à paginer avant d'avoir tout envoyé.
+                const pct = Math.round((p.fait / p.total) * 100);
+                el.textContent = `Actualisation… ${pct} % · tableau ${Math.min(p.fait + 1, p.total)}`
+                    + ` sur ${p.total}`;
+                el.title = (p.nom ? 'En cours : ' + p.nom + '\n' : '')
+                    + `${U.nombre(p.lignes || 0)} lignes déjà reçues`;
+            } else {
+                el.textContent = 'Actualisation…';
+            }
             return;
         }
         if (!state.derniereActualisation) { el.textContent = ''; el.className = 'maj-indic'; return; }
@@ -8185,6 +8283,9 @@
             // c'est par elles que l'export Payouts se rapproche de la
             // comptabilité, virement par virement.
             state.glLecture = { ...lu.stats, fichier: file.name,
+                                // Quand ce fichier a été déposé : sans cette date,
+                                // impossible de savoir si la balance est à jour.
+                                charge: new Date().toISOString(),
                                 refsVersement: [...GL.referencesVersement(lu)] };
 
             // Ce que ce fichier sait classer entre dans le référentiel, sans

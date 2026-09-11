@@ -1274,3 +1274,12 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
     display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 9px;
     background: rgba(255,255,255,.12); font-size: 11px; font-weight: 700;
 }
+
+/* D'où viennent les chiffres et de quand ils datent : discret, mais lisible. */
+.source-ligne {
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    border-left: 3px solid var(--accent, #F47458);
+    background: rgba(244, 116, 88, 0.06);
+    border-radius: 0 6px 6px 0;
+}

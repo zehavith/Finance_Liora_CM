@@ -1238,7 +1238,15 @@
             // le conseil « ajoutez la ligne manquante au tableau des payées »
             // n'aurait aucun sens, et la facture était pénalisée deux fois dans
             // le score de qualité.
-            f.signalPaiementHorsTableau = !paye && !f.soldeeParAvoir && !!(
+            // Ni une facture d'un groupe de service, ni celle d'un tableau
+            // technique : elles ne sont pas dans le portefeuille, et le conseil
+            // « il manque leur ligne dans le 0.1 » n'a aucun sens pour elles.
+            // FACT-2602-13738 vivait dans « 1.1.9. Technique - Service
+            // recouvrement » et se retrouvait signalée comme si elle devait
+            // être encaissée.
+            const horsPortefeuille = f.groupeTechnique
+                || f.role === 'technique' || f.role === 'ignore';
+            f.signalPaiementHorsTableau = !paye && !f.soldeeParAvoir && !horsPortefeuille && !!(
                 f.datePaiement || f.dateControlePaiement || statutIndiquePaye(f.statut)
                 || (f.resteDu != null && f.montant != null && f.resteDu <= 0.01 && f.montant > 0));
 
