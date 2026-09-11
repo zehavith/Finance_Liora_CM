@@ -159,16 +159,27 @@
      * Bascule automatiquement sur une requête simplifiée si les fragments
      * miroir/formule ne sont pas supportés par la version d'API du compte.
      */
-    async function fetchBoardItems(token, boardId, onLog) {
+    async function fetchBoardItems(token, boardId, onLog, onProgres) {
         let fragment = COLUMN_VALUES_FULL;
         let data;
+        // Un gros tableau se pagine en plusieurs dizaines d'appels et peut
+        // demander plusieurs minutes. Sans nouvelle à chaque page, l'écran
+        // reste figé sur le même pourcentage et rien ne dit si ça avance
+        // encore ou si c'est bloqué. On rend donc compte page par page, et
+        // l'on signale aussi les attentes imposées par Monday.
+        let recus = 0;
+        const tracer = m => {
+            if (onLog) onLog(m);
+            const attente = /nouvelle tentative dans (\d+)s/.exec(m);
+            if (attente && onProgres) onProgres({ recus, attente: +attente[1] });
+        };
         try {
-            data = await gql(token, itemsQuery(fragment, false), { ids: [String(boardId)], limit: PAGE_SIZE }, onLog);
+            data = await gql(token, itemsQuery(fragment, false), { ids: [String(boardId)], limit: PAGE_SIZE }, tracer);
         } catch (e) {
             if (/on (Mirror|Formula|BoardRelation|Dependency)Value|Fragment|Unknown type/i.test(e.message)) {
                 if (onLog) onLog('Colonnes miroir non supportées — requête simplifiée.');
                 fragment = COLUMN_VALUES_BASIC;
-                data = await gql(token, itemsQuery(fragment, false), { ids: [String(boardId)], limit: PAGE_SIZE }, onLog);
+                data = await gql(token, itemsQuery(fragment, false), { ids: [String(boardId)], limit: PAGE_SIZE }, tracer);
             } else throw e;
         }
 
@@ -176,6 +187,8 @@
         if (!board) return { board: null, items: [] };
 
         const items = [...(board.items_page.items || [])];
+        recus = items.length;
+        if (onProgres) onProgres({ recus });
         let cursor = board.items_page.cursor;
         let guard = 0;
 
@@ -186,12 +199,14 @@
         const MAX_PAGES = 500;
         while (cursor && guard < MAX_PAGES) {
             guard++;
-            const next = await gql(token, itemsQuery(fragment, true), { cursor, limit: PAGE_SIZE }, onLog);
+            const next = await gql(token, itemsQuery(fragment, true), { cursor, limit: PAGE_SIZE }, tracer);
             const page = next.next_items_page;
             if (!page) break;
             items.push(...(page.items || []));
+            recus = items.length;
             cursor = page.cursor;
             if (onLog) onLog(`${board.name} : ${items.length} éléments…`);
+            if (onProgres) onProgres({ recus });
         }
         const tronque = !!cursor;
         if (tronque && onLog) {

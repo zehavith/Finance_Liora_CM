@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.64.0';
+    const VERSION = '2.65.0';
     const VERSION_DATE = '11 septembre 2026';
 
     const R = window.LioraRules;
@@ -8070,14 +8070,14 @@
      * d'un seul tableau : rappeler les neuf tableaux pour en corriger un seul
      * coûte plusieurs minutes, et vous les passiez à attendre.
      */
-    async function chargerUnBoard(b, log) {
+    async function chargerUnBoard(b, log, onProgres) {
         if (!b.columns) {
             const meta = await M.boardColumns(state.token, b.id);
             b.columns = meta ? meta.columns : [];
         }
         const mappingManuel = !!(b.mapping && Object.keys(b.mapping).length);
 
-        const { board, items, tronque } = await M.fetchBoardItems(state.token, b.id, log);
+        const { board, items, tronque } = await M.fetchBoardItems(state.token, b.id, log, onProgres);
         if (!board) throw new Error('Tableau inaccessible');
         // Une pagination interrompue par le garde-fou ne doit pas
         // passer pour un chargement complet : la balance serait
@@ -8168,7 +8168,7 @@
         if (!b) { U.toast('Tableau introuvable.', 'error'); return; }
 
         state.chargementEnCours = true;
-        state.progression = { fait: 0, total: 1, nom: b.name, lignes: 0 };
+        state.progression = { fait: 0, total: 1, nom: b.name, lignes: 0, recus: 0, attente: 0 };
         majIndicateurActualisation();
         const veilleBloquee = await empecherVeille();
         const journal = [];
@@ -8176,7 +8176,12 @@
         U.toast(`Rechargement de « ${b.name} »…`, 'info', 4000);
         try {
             b.erreurChargement = null;
-            const factures = await chargerUnBoard(b, tracer);
+            const factures = await chargerUnBoard(b, tracer, info => {
+                if (!state.progression) return;
+                state.progression.recus = info.recus;
+                state.progression.attente = info.attente || 0;
+                majIndicateurActualisation();
+            });
             b.conserve = false;
             b.actif = true;
             // Seules les factures de ce tableau sont remplacées.
@@ -8222,7 +8227,7 @@
         // De quoi savoir où en est le chargement même quand il se fait en
         // arrière-plan : « Actualisation… » sans rien d'autre ne dit pas s'il
         // reste dix secondes ou trois minutes.
-        state.progression = { fait: 0, total: actifs.length, nom: '', lignes: 0 };
+        state.progression = { fait: 0, total: actifs.length, nom: actifs[0].name, lignes: 0 };
         majIndicateurActualisation();
 
         // Le poste doit rester éveillé le temps du chargement, sous peine
@@ -8244,6 +8249,15 @@
         const conserve = state.brutes.filter(f => String(f.boardId).startsWith('file:'));
         const collecte = [...conserve];
         const echecs = [];
+        // Les nouvelles de la pagination, page par page : sans elles le
+        // pourcentage reste sur le même chiffre pendant plusieurs minutes,
+        // et rien ne distingue un gros tableau d'un blocage.
+        const suivrePage = info => {
+            if (!state.progression) return;
+            state.progression.recus = info.recus;
+            state.progression.attente = info.attente || 0;
+            majIndicateurActualisation();
+        };
 
         try {
             for (let i = 0; i < actifs.length; i++) {
@@ -8251,7 +8265,7 @@
                 statut(`(${i + 1}/${actifs.length}) ${b.name}`);
                 log(`→ ${b.name}`);
                 state.progression = { fait: i, total: actifs.length, nom: b.name,
-                                      lignes: collecte.length };
+                                      lignes: collecte.length, recus: 0, attente: 0 };
                 majIndicateurActualisation();
                 b.erreurChargement = null;
 
@@ -8259,7 +8273,7 @@
                 // mieux vaut un chargement partiel, signalé, qu'un écran vide.
                 try {
                     b.conserve = false;
-                    collecte.push(...await chargerUnBoard(b, log));
+                    collecte.push(...await chargerUnBoard(b, log, suivrePage));
                 } catch (e) {
                     b.erreurChargement = e.message;
                     echecs.push(b.name);
@@ -8354,11 +8368,29 @@
                 // Le pourcentage porte sur les tableaux terminés : c'est la
                 // seule mesure honnête, Monday ne dit pas combien de lignes il
                 // reste à paginer avant d'avoir tout envoyé.
+                // Le pourcentage compte les tableaux terminés : il reste
+                // donc sur le même chiffre pendant tout un tableau, et un gros
+                // tableau demande plusieurs minutes. Ce n'est pas un blocage,
+                // mais rien ne permettait de le savoir. Le nombre de lignes
+                // reçues, lui, monte à chaque page — c'est lui qui dit que ça
+                // avance, et c'est pourquoi il passe devant le nom du tableau,
+                // là où il ne peut pas être coupé.
                 const pct = Math.round((p.fait / p.total) * 100);
-                el.textContent = `Actualisation… ${pct} % · tableau ${Math.min(p.fait + 1, p.total)}`
-                    + ` sur ${p.total}`;
-                el.title = (p.nom ? 'En cours : ' + p.nom + '\n' : '')
-                    + `${U.nombre(p.lignes || 0)} lignes déjà reçues`;
+                const morceaux = [`Actualisation… ${pct} %`];
+                if (p.attente) morceaux.push(`Monday impose une pause de ${p.attente} s`);
+                else if (p.recus) morceaux.push(`${U.nombre(p.recus)} lignes reçues`);
+                if (p.nom) morceaux.push(p.nom);
+                morceaux.push(`(${Math.min(p.fait + 1, p.total)}/${p.total})`);
+                el.textContent = morceaux.join(' · ');
+                el.title = `Rechargement des ${p.total} tableaux Monday cochés dans l'onglet Données.\n`
+                    + (p.nom ? 'En cours : ' + p.nom + '\n' : '')
+                    + `${U.nombre(p.recus || 0)} lignes reçues sur ce tableau, `
+                    + `${U.nombre(p.lignes || 0)} sur les précédents.\n`
+                    + (p.attente ? `Monday limite le débit : reprise dans ${p.attente} s.\n` : '')
+                    + 'Le pourcentage compte les tableaux terminés — un gros tableau peut '
+                    + 'rester plusieurs minutes sur le même chiffre.\n'
+                    + 'Les factures Monday sont remplacées à la fin ; le grand livre, '
+                    + 'Sellsy et GoCardless ne sont pas touchés.';
             } else {
                 el.textContent = 'Actualisation…';
             }
