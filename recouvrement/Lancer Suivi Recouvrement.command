@@ -33,6 +33,10 @@ if command -v python3 >/dev/null 2>&1; then
     echo "  GARDEZ CETTE FENÊTRE OUVERTE. Ctrl+C pour quitter."
     echo
     ouvrir &
+    # serveur.py sert les fichiers sans cache : sans cela le navigateur garde
+    # index.html plusieurs heures et l'application reste bloquée sur une
+    # version périmée après une mise à jour.
+    if [ -f serveur.py ]; then exec python3 serveur.py "$PORT"; fi
     exec python3 -m http.server "$PORT"
 elif command -v node >/dev/null 2>&1; then
     echo "  Ouverture de $URL"

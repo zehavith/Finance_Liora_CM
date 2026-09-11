@@ -43,10 +43,17 @@ echo.
 
 start "" "%URL%"
 
+rem serveur.py sert les fichiers sans cache : sans cela le navigateur
+rem garde index.html plusieurs heures et l'application reste bloquee sur
+rem une version perimee apres une mise a jour.
 if "!LANCEUR!"=="node" (
     npx --yes http-server -p %PORT% -c-1 --silent
 ) else (
-    !LANCEUR! -m http.server %PORT%
+    if exist "serveur.py" (
+        !LANCEUR! serveur.py %PORT%
+    ) else (
+        !LANCEUR! -m http.server %PORT%
+    )
 )
 goto :fin
 

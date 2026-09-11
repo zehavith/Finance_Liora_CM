@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.63.0';
+    const VERSION = '2.64.0';
     const VERSION_DATE = '11 septembre 2026';
 
     const R = window.LioraRules;
@@ -162,6 +162,42 @@
     //  Démarrage
     // ══════════════════════════════════════════════
 
+    /**
+     * La page affichée est-elle celle qui est installée sur le poste ?
+     *
+     * Sans réponse à cette question, une mise à jour peut sembler installée
+     * sans l'être : les fichiers sont bien remplacés, mais le navigateur
+     * continue de servir l'ancienne page depuis son cache, parfois des
+     * heures durant. Le bandeau le dit, et propose de charger la bonne.
+     */
+    async function verifierPageAJour() {
+        let installee;
+        try {
+            const r = await fetch('index.html', { cache: 'no-store' });
+            if (!r.ok) return;
+            installee = ((await r.text()).match(/app\.js\?v=([0-9.]+)/) || [])[1];
+        } catch {
+            return;   // ouverte en file:// : il n'y a rien à relire
+        }
+        if (!installee || installee === VERSION) return;
+
+        const bandeau = document.createElement('div');
+        bandeau.className = 'bandeau-version';
+        bandeau.innerHTML = '<span>Vous utilisez la version <strong>' + U.escapeHtml(VERSION)
+            + '</strong> alors que la <strong>' + U.escapeHtml(installee) + '</strong> est installée '
+            + 'sur ce poste : votre navigateur ressert la page depuis son cache.</span>';
+        const bouton = document.createElement('button');
+        bouton.className = 'btn btn-primary btn-sm';
+        bouton.textContent = 'Charger la ' + installee;
+        // Une adresse jamais vue ne peut pas venir du cache. L'origine ne
+        // change pas : le jeton Monday et les données chargées restent en place.
+        bouton.addEventListener('click', () => {
+            location.replace('index.html?maj=' + new Date().getTime());
+        });
+        bandeau.appendChild(bouton);
+        document.body.insertBefore(bandeau, document.body.firstChild);
+    }
+
     async function boot() {
         U.initChartDefaults();
         $$('#brand-version').forEach(el => {
@@ -180,6 +216,14 @@
                 + 'votre navigateur ressert d\'anciens fichiers. Faites Ctrl + F5 pour forcer le rechargement.',
                 'error', 15000);
         }
+        // Ce contrôle-là ne voit pas le cas le plus traître : index.html
+        // lui-même resservi depuis le cache. La page demande alors
+        // app.js?v=2.57.0, le navigateur la lui sert depuis le cache aussi,
+        // les deux versions concordent — et l'application tourne sur une
+        // version périmée sans que rien ne le signale, alors que les
+        // nouveaux fichiers sont bien sur le disque. On va donc relire
+        // index.html sur le disque, en court-circuitant le cache.
+        verifierPageAJour();
         brancherEvenements();
 
         const [token, boards, rules, options, imports, gl, factures, finManuels] = await Promise.all([

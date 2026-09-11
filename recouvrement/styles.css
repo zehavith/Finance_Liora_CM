@@ -1335,3 +1335,22 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
     .motifs-legende-ligne { grid-template-columns: 10px minmax(0, 1fr) 3.6rem 5.5rem; }
     .motifs-legende-nb { display: none; }
 }
+
+/* ============================
+   Bandeau de version périmée
+
+   Le cas le plus traître d'une mise à jour : les fichiers sont bien
+   remplacés sur le disque, mais le navigateur continue de servir l'ancienne
+   page depuis son cache. Rien ne le signalait ; ce bandeau le dit, et
+   propose de charger la bonne.
+   ============================ */
+.bandeau-version {
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+    padding: 0.7rem 1.1rem;
+    background: var(--amber-bg);
+    border-bottom: 1px solid var(--amber);
+    color: var(--text-primary);
+    font-size: 0.82rem;
+}
+.bandeau-version strong { color: var(--amber); }
+.bandeau-version button { margin-left: auto; flex-shrink: 0; }
