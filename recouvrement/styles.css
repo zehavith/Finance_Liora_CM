@@ -1359,3 +1359,38 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
 }
 .bandeau-version strong { color: var(--amber); }
 .bandeau-version button { margin-left: auto; flex-shrink: 0; }
+
+/* ============================
+   Ce qu'il faut retenir de la balance âgée
+
+   Les dix tranches disent tout, mais aucune ne répond seule aux questions
+   qu'on se pose. Ces cinq nombres-là y répondent, chacun avec le total dont
+   il est la part — un pourcentage dont on ignore le dénominateur ne se
+   décide pas.
+   ============================ */
+.synth-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+.synth-card {
+    position: relative;
+    display: flex; flex-direction: column; gap: 0.18rem;
+    padding: 0.9rem 1rem 0.9rem 1.2rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+}
+.synth-bar {
+    position: absolute; left: 0; top: 0.75rem; bottom: 0.75rem;
+    width: 3px; border-radius: 3px;
+}
+.synth-label { font-size: 0.74rem; color: var(--text-secondary); font-weight: 600; }
+.synth-value { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.01em; }
+.synth-sub { font-size: 0.72rem; color: var(--text-secondary); }
+.synth-phrase {
+    margin-top: 0.3rem; font-size: 0.72rem; line-height: 1.35;
+    color: var(--text-muted);
+}
+.synth-phrase strong { color: var(--text-primary); }

@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.66.0';
+    const VERSION = '2.67.0';
     const VERSION_DATE = '11 septembre 2026';
 
     const R = window.LioraRules;
@@ -1958,7 +1958,38 @@
      * populations différentes, c'était la confusion assurée ; elle est retirée,
      * le KPI « Retard moyen au paiement » la donne déjà.
      */
+    /**
+     * Ce qui fait monter les courbes d'historique sans que rien ne se dégrade.
+     *
+     * Le stock impayé de chaque fin de mois se reconstitue à partir du
+     * portefeuille d'aujourd'hui : une facture y figure si elle était échue à
+     * cette date et pas encore réglée à cette date. Encore faut-il savoir
+     * QUAND elle a été réglée. Une facture marquée payée mais sans date de
+     * règlement ne peut pas sortir du stock : elle y reste à toutes les fins
+     * de mois suivantes et vieillit d'un jour par jour. Le retard moyen monte
+     * alors mécaniquement, et le DSO avec lui, sans qu'un seul règlement ait
+     * pris du retard.
+     *
+     * Le nombre est donc affiché sous les deux courbes, quand il n'est pas
+     * nul : c'est la seule façon de savoir si l'on regarde une dégradation ou
+     * un trou de saisie.
+     */
+    function noteHistoriqueIncomplet(data) {
+        const sansDate = (data || []).filter(f => f.paye === true && !f.datePaiementEffective
+            && f.dateEcheance);
+        if (!sansDate.length) return '';
+        const euros = X.sum(sansDate, f => f.montant || 0);
+        return `<strong>Attention à la lecture :</strong> ${U.nombre(sansDate.length)} factures `
+            + `(${U.euros(euros)}) sont marquées payées sans date de règlement. `
+            + 'Faute de savoir quand elles sont rentrées, elles comptent comme impayées à '
+            + 'chaque fin de mois et vieillissent d’un jour par jour : elles font monter '
+            + 'cette courbe sans qu’aucun règlement n’ait pris de retard. '
+            + 'Renseigner la date d’encaissement sur ces factures redresse la courbe.';
+    }
+
     function rendreChartRetardEvolution(data) {
+        const note = $('#retard-evolution-note');
+        if (note) note.innerHTML = noteHistoriqueIncomplet(data);
         const toutes = X.fluxRecouvrement(data, state.moisDispo, state.filtres.dateRef);
         if (!toutes.length) { U.chart('chart-retard-evolution', videConfig('Aucun mois exploitable')); return; }
         const rows = derniersMois(toutes);
@@ -2014,6 +2045,8 @@
     }
 
     function rendreChartDSO(data) {
+        const noteDso = $('#dso-note');
+        if (noteDso) noteDso.innerHTML = noteHistoriqueIncomplet(data);
         const toutes = X.dsoParMois(data, state.moisDispo, state.filtres.dateRef);
         if (!toutes.length) { U.chart('chart-dso', videConfig('Aucun mois exploitable')); return; }
         const rows = derniersMois(toutes);
@@ -2681,9 +2714,16 @@
                 U.euros(r.euros), viaRecouv ? U.couleurs.payeRetard : U.couleurs.paye,
                 viaRecouv ? 'encaissées après être passées par le tableau de recouvrement'
                           : 'encaissées sans jamais y entrer', 'toutes'),
-            tuileDetail(U.pourcent(r.partEuros, 1), 'Part des règlements',
-                `${U.pourcent(r.partNb, 1)} en nombre`, U.couleurs.indigo,
-                'part de cette population dans tout ce qui a été encaissé'),
+            // « Part des règlements · 45,5 % · 37,8 % en nombre · part de cette
+            // population dans tout ce qui a été encaissé » : trois chiffres et
+            // pas une phrase qui dise part de quoi. La tuile nomme maintenant
+            // le total sur lequel le pourcentage est pris, et se lit d'un trait.
+            tuileDetail(U.pourcent(r.partEuros, 1),
+                viaRecouv ? 'De l’encaissé est passé par le recouvrement'
+                          : 'De l’encaissé n’est jamais passé par le recouvrement',
+                `${U.euros(r.euros)} sur ${U.euros(r.eurosBase)} encaissés`, U.couleurs.indigo,
+                `soit ${U.nombre(r.nb)} factures sur ${U.nombre(r.nbBase)} réglées `
+                + `(${U.pourcent(r.partNb, 1)})`),
             // La question posée à chaque fois : passer par le recouvrement ou
             // non ne dit rien du délai. Les deux sont donc affichés côte à côte.
             tuileDetail(U.nombre(r.nb - r.nbEnRetard), 'Payées avant échéance',
@@ -2935,11 +2975,77 @@
     //  Onglet : Balance âgée
     // ══════════════════════════════════════════════
 
+    /**
+     * Ce qu'il faut retenir de la balance âgée, en cinq nombres.
+     *
+     * Les dix tranches disent tout, mais aucune ne répond seule aux questions
+     * qu'on se pose : combien nous doit-on, combien est déjà en retard,
+     * combien traîne depuis plus d'un an. La dernière demandait d'additionner
+     * cinq tranches de tête — « 12 à 18 mois » plus « 18 à 24 » plus « 24 à
+     * 36 » plus « 36 à 48 » plus « au-delà ». Elle est calculée ici.
+     *
+     * Chaque nombre porte son dénominateur : un pourcentage dont on ignore de
+     * quoi il est la part ne se vérifie pas et ne se décide pas.
+     */
+    function rendreSyntheseAgee(buckets, totalEuros) {
+        const el = $('#aging-synthese');
+        if (!el) return;
+        const parCle = Object.fromEntries(buckets.map(b => [b.key, b]));
+        const somme = cles => cles.reduce((a, k) => ({
+            euros: a.euros + ((parCle[k] && parCle[k].euros) || 0),
+            nb: a.nb + ((parCle[k] && parCle[k].nb) || 0),
+        }), { euros: 0, nb: 0 });
+
+        const nonEchu = somme(['nonEchu']);
+        const sansEcheance = somme([X.ECHEANCE_MANQUANTE]);
+        const VIEUX = ['m12_18', 'm18_24', 'm24_36', 'm36_48', 'm48p'];
+        const plusDunAn = somme(VIEUX);
+        const echu = {
+            euros: totalEuros - nonEchu.euros - sansEcheance.euros,
+            nb: X.sum(buckets, b => b.nb) - nonEchu.nb - sansEcheance.nb,
+        };
+        const nbTotal = X.sum(buckets, b => b.nb);
+        const part = v => U.pourcent(totalEuros ? v / totalEuros * 100 : 0, 1);
+
+        const tuile = (t, euros, nb, phrase, couleur) => `
+            <div class="synth-card">
+                <span class="synth-bar" style="background:${couleur}"></span>
+                <span class="synth-label">${U.escapeHtml(t)}</span>
+                <span class="synth-value">${U.euros(euros)}</span>
+                <span class="synth-sub">${U.nombre(nb)} factures</span>
+                <span class="synth-phrase">${phrase}</span>
+            </div>`;
+
+        el.innerHTML = '<div class="synth-grid">'
+            + tuile('Reste à encaisser', totalEuros, nbTotal,
+                'tout ce qui n’est pas encore rentré, à la date d’arrêté',
+                U.couleurs.indigo)
+            + tuile('Déjà échu', echu.euros, echu.nb,
+                `<strong>${part(echu.euros)}</strong> du reste à encaisser — exigible, non payé`,
+                U.couleurs.retard)
+            + tuile('Depuis plus d’un an', plusDunAn.euros, plusDunAn.nb,
+                `<strong>${part(plusDunAn.euros)}</strong> du reste à encaisser — `
+                + 'les cinq tranches au-delà de 12 mois réunies',
+                '#991b1b')
+            + tuile('Non échu', nonEchu.euros, nonEchu.nb,
+                `<strong>${part(nonEchu.euros)}</strong> du reste à encaisser — pas encore exigible`,
+                U.couleurs.nonEchue)
+            + (sansEcheance.nb
+                ? tuile('Sans échéance', sansEcheance.euros, sansEcheance.nb,
+                    `<strong>${part(sansEcheance.euros)}</strong> du reste à encaisser — `
+                    + 'ni en retard ni non échu tant que la date manque',
+                    U.couleurs.inconnu)
+                : '')
+            + '</div>';
+    }
+
     function rendreAging(data) {
         rendreReglesGL();
         rendreMotifs(data);
         const buckets = X.balanceAgee(data);
         const totalEuros = X.sum(buckets, b => b.euros);
+
+        rendreSyntheseAgee(buckets, totalEuros);
 
         $('#bucket-cards').innerHTML = buckets.map(b => `
             <button class="bucket-card${state.filtres.bucket === b.key ? ' selected' : ''}" data-bucket="${b.key}">
@@ -7663,6 +7769,34 @@
             r.conserve = !!b.conserve;
             return r;
         });
+        // Ce qu'il faut voir sans faire défiler le tableau vers la droite :
+        // combien de factures n'ont pas d'échéance calculable, et où les
+        // trouver. La colonne existe, mais elle est la dernière d'un tableau
+        // de douze colonnes — autant dire qu'elle n'existe pas.
+        const resume = $('#boards-resume');
+        if (resume) {
+            const sans = state.factures.filter(f => !f.dateEcheance
+                && !(f.role === 'technique' || f.groupeTechnique));
+            const euros = X.sum(sans, f => (f.resteDu != null && f.resteDu > 0) ? f.resteDu : (f.montant || 0));
+            const analysees = state.factures.filter(f => !(f.role === 'technique' || f.groupeTechnique)).length;
+            resume.innerHTML = sans.length
+                ? `<div class="note note-warn">
+                       <div class="note-body">
+                           <strong>${U.nombre(sans.length)} factures sans échéance calculable</strong>
+                           <span>${U.euros(euros)} — ${U.pourcent(analysees ? sans.length / analysees * 100 : 0)}
+                           des ${U.nombre(analysees)} factures analysées. Elles ne sont ni en retard ni
+                           non échues : elles sortent de tous les taux.</span>
+                       </div>
+                       <button class="btn btn-ghost btn-sm" id="btn-sans-echeance-tout">Voir lesquelles</button>
+                   </div>`
+                : `<div class="note note-ok"><div class="note-body">
+                       <strong>Toutes les factures ont une échéance calculable.</strong>
+                       <span>${U.nombre(analysees)} factures analysées.</span>
+                   </div></div>`;
+            const bt = $('#btn-sans-echeance-tout');
+            if (bt) bt.addEventListener('click', () => montrerSansEcheance(null));
+        }
+
         el.innerHTML = U.table([
             {
                 key: 'actif', label: '', align: 'center', width: '40px', sortable: false,
@@ -7868,12 +8002,17 @@
      * produisent le même chiffre et appellent trois gestes différents.
      */
     function montrerSansEcheance(nomBoard) {
+        // Sans nom de tableau : tout le portefeuille. La colonne « Sans
+        // échéance » est la dernière du tableau des sources et sort de
+        // l'écran sur un portable ; il fallait un chemin qui ne dépende pas
+        // d'un défilement horizontal pour trouver ces factures.
         const lot = state.factures.filter(f =>
-            (f.board === nomBoard || f.boardOperationnel === nomBoard)
+            (!nomBoard || f.board === nomBoard || f.boardOperationnel === nomBoard)
             && !f.dateEcheance && !(f.role === 'technique' || f.groupeTechnique));
         const causes = X.causesSansEcheance(lot);
+        const titre = nomBoard ? U.escapeHtml(nomBoard) : 'Tous les tableaux';
 
-        U.modal(`${U.escapeHtml(nomBoard)} — ${U.nombre(lot.length)} factures sans échéance`,
+        U.modal(`${titre} — ${U.nombre(lot.length)} factures sans échéance`,
             `<p class="fv-hint">Ces factures ne peuvent être ni en retard ni non échues : elles sortent
              de tous les taux. Voici ce qui manque, du cas le plus fréquent au plus rare.</p>`
             + causes.map(c => `
@@ -7888,10 +8027,39 @@
                         { key: 'client', label: 'Client', format: v => `<span class="cell-clip" title="${U.escapeHtml(v)}">${U.escapeHtml(v)}</span>` },
                         { key: 'groupe', label: 'Groupe', format: v => `<span class="cell-clip" title="${U.escapeHtml(v)}">${U.escapeHtml(v || '—')}</span>` },
                         { key: 'montant', label: 'Montant', align: 'right', format: v => v != null ? U.euros(v) : '—' },
-                    ], c.items.slice(0, 25), { vide: '—' })
+                    ].concat(nomBoard ? [] : [
+                        { key: 'board', label: 'Tableau', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                    ]), c.items.slice(0, 25), { vide: '—' })
                     + (c.items.length > 25 ? `<p class="fv-hint">… et ${U.nombre(c.items.length - 25)} autres</p>` : '')
                     + `</div>
-                </div>`).join(''));
+                </div>`).join(''),
+            [{ label: 'Exporter la liste', close: false,
+               onClick: () => exporterSansEcheance(lot, causes, nomBoard) },
+             { label: 'Fermer', primary: true }], { large: true });
+    }
+
+    /** La liste complète des factures sans échéance, à corriger dans Monday. */
+    function exporterSansEcheance(lot, causes, nomBoard) {
+        if (!lot.length) { U.toast('Aucune facture sans échéance.', 'error'); return; }
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(causes.map(c => ({
+            'Ce qui manque': c.cause, 'Factures': c.nb, 'Montant': arrondi(c.euros),
+            'Ce qu’il faut faire': c.conseil,
+        }))), 'Pourquoi');
+        const cause = new Map();
+        for (const c of causes) for (const f of c.items) cause.set(f.id || f.cle, c.cause);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lot.map(f => ({
+            'Facture': f.numero, 'Client': f.client,
+            'Tableau': f.board || '', 'Groupe': f.groupe || f.groupeOrigine || '',
+            'Financement': f.financement ? R.getRule(f.financement, state.rules).label : '',
+            'Montant': arrondi(f.montant || 0),
+            'Date de facture': f.dateFacture ? U.dateFR(f.dateFacture) : '',
+            'Début de formation': f.dateDebutFormation ? U.dateFR(f.dateDebutFormation) : '',
+            'Fin de formation': f.dateFinFormation ? U.dateFR(f.dateFinFormation) : '',
+            'Ce qui manque': cause.get(f.id || f.cle) || '',
+        }))), 'Factures');
+        XLSX.writeFile(wb, `Factures_sans_echeance_${(nomBoard || 'tous').replace(/[^\w-]+/g, '_')}`
+            + `_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
 
     function exempleValeur(board, colId) {

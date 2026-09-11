@@ -581,6 +581,10 @@
             partNb: pct(lot.length, payees.length - inconnu.length),
             partEuros: pct(sum(lot, x => x.montant),
                 sum(payees.filter(f => origineRecouvrement(f) !== 'inconnu'), x => x.montant)),
+            // Le dénominateur, nommé : un pourcentage sans son total ne se
+            // vérifie pas, et « part des règlements » ne disait pas part de quoi.
+            nbBase: payees.length - inconnu.length,
+            eurosBase: sum(payees.filter(f => origineRecouvrement(f) !== 'inconnu'), x => x.montant),
             nbEnRetard: enRetard.length,
             eurosEnRetard: sum(enRetard, x => x.montant),
             retardMoyen: moyenne(enRetard.map(x => x.retardJours)),
