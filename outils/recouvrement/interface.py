@@ -1994,6 +1994,11 @@ class Gestionnaire(BaseHTTPRequestHandler):
         # clé qui n'est pas un PDF est dans l'archive, et il faut le savoir
         # avant de transmettre, pas après.
         avertissements = [m for m in (pret.get("motif"), motif_pieces) if m]
+        # Rien à joindre est un échec, pas un détail : un dossier transmis
+        # sans le dossier est pire que pas de transmission du tout.
+        if not pieces:
+            avertissements.insert(0, "aucune pièce jointe n'a pu être "
+                                     "préparée pour ce dossier")
 
         if messagerie == "outlook":
             ouvert, motif = module_envoi.brouillon_outlook(
@@ -3651,7 +3656,7 @@ async function ouvrirBrouillon(reference) {
       // tout. Les nommer toutes les deux, faute de quoi on croit n'en avoir
       // qu'une et l'on rouvre le repertoire pour rien.
       const jointes = (r.pieces && r.pieces.length)
-        ? r.pieces.map(echapper).join(" et ") : echapper(r.piece);
+        ? r.pieces.map(echapper).join(" et ") : "aucune pièce jointe";
       afficherBandeau(!r.motif,
         `Brouillon créé dans Gmail — ${jointes} en `
         + "pièce(s) jointe(s)"

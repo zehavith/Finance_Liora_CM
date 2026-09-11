@@ -136,6 +136,11 @@ IMAGES = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff")
 
 DOSSIER_CONVERTIES = "pieces-converties"
 
+# Chaque conversion lance le moteur PDF. Au-delà, ce ne sont plus des pièces
+# choisies mais un dossier d'images, et faire attendre cinq minutes devant un
+# brouillon qui ne vient pas est pire que deux fichiers joints.
+CONVERSIONS_MAX = 12
+
 
 def image_en_pdf(source: Path, cible: Path) -> bool:
     """Une image devient une page de PDF, pour que le dossier tienne en un seul.
@@ -205,12 +210,15 @@ def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex],
     """
     ordre: list[Path] = []
     vus: set[tuple[int, str]] = set()
+    converties = 0
 
-    def ajouter(chemin: Path) -> None:
+    def ajouter(chemin: Path, convertible: bool = False) -> None:
+        nonlocal converties
         if not chemin.is_file():
             return
         suffixe = chemin.suffix.lower()
-        if suffixe != ".pdf" and not (convertir and suffixe in IMAGES):
+        est_image = suffixe in IMAGES
+        if suffixe != ".pdf" and not (convertible and convertir and est_image):
             return
         # L'empreinte porte sur l'original : une image déjà convertie ne doit
         # pas l'être une seconde fois sous un autre chemin.
@@ -221,26 +229,36 @@ def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex],
         if suffixe == ".pdf":
             ordre.append(chemin)
             return
+        if converties >= CONVERSIONS_MAX:
+            return
         converti = convertir(chemin)
+        converties += 1
         if converti is not None:
             ordre.append(converti)
 
     ajouter(repertoire / "synthese.pdf")
 
-    cles = repertoire / "pieces-cles"
-    if cles.is_dir():
-        for sous in sorted(cles.iterdir()):
-            if sous.is_dir():
-                for fichier in sorted(sous.iterdir()):
-                    ajouter(fichier)
+    # Les pièces clés, et elles seules, valent d'être converties : ce sont
+    # des documents choisis, une feuille d'émargement, un diplôme scanné.
+    # Une image trouvée n'importe où dans le dossier, c'est d'abord un logo
+    # de signature de courriel — il y en a un par message. Les convertir
+    # toutes lançait le moteur PDF vingt fois pour un dossier de vingt
+    # messages : la préparation n'aboutissait plus, et le brouillon partait
+    # sans rien.
+    for nom_cle in ("pieces-cles", "documents-monday", "pieces-ajoutees"):
+        racine_cle = repertoire / nom_cle
+        if not racine_cle.is_dir():
+            continue
+        for chemin in sorted(racine_cle.rglob("*")):
+            ajouter(chemin, convertible=True)
 
     for ligne in sorted(lignes, key=lambda l: l.piece_n):
         if ligne.fichier_pdf:
             ajouter(repertoire / ligne.fichier_pdf)
 
     # Le reste du dossier, dans l'ordre du disque : ce que ni le classement
-    # ni les numéros de pièce n'ont ramassé. Ce qu'aucun PDF ne peut absorber
-    # — un tableur, un document Word — reste dehors, et « preparer » le dit.
+    # ni les numéros de pièce n'ont ramassé. Les PDF seulement — une image
+    # rencontrée ici est un logo, pas une pièce.
     for chemin in sorted(repertoire.rglob("*")):
         if not _a_exclure(chemin, repertoire):
             ajouter(chemin)
@@ -561,10 +579,15 @@ def brouillon_gmail(
 
     trop_lourdes = []
     for piece in pieces:
+        # Une pièce illisible — un PDF ouvert dans Acrobat, un fichier
+        # verrouillé — faisait renoncer au brouillon entier : la fenêtre de
+        # rédaction s'ouvrait vide, et le dossier ne partait pas. Elle est
+        # maintenant écartée seule, et nommée.
         try:
             octets = piece.read_bytes()
         except OSError as exc:
-            return "", f"pièce jointe illisible : {exc}"
+            trop_lourdes.append(f"{piece.name} (illisible : {exc.strerror or exc})")
+            continue
         if len(octets) > PIECE_MAX:
             trop_lourdes.append(f"{piece.name} ({_lisible(len(octets))})")
             continue
@@ -583,12 +606,25 @@ def brouillon_gmail(
     except Exception as exc:  # noqa: BLE001 - quota, réseau, autorisation
         return "", f"Gmail a refusé le brouillon : {exc}"
 
+    # Un brouillon sans le dossier n'est pas un brouillon. Il est écrit tout
+    # de même — le texte et le destinataire sont déjà du travail fait —, mais
+    # l'absence se dit en premier : le croire complet ferait transmettre un
+    # dossier vide.
+    jointes = sum(1 for part in message.walk() if part.get_filename())
     motif = ""
-    if trop_lourdes:
+    if trop_lourdes and not jointes:
+        motif = (
+            "aucune pièce n'a pu être jointe, trop lourde(s) ou illisible(s) "
+            "pour un brouillon — à joindre à la main : "
+            + ", ".join(trop_lourdes)
+        )
+    elif trop_lourdes:
         motif = (
             "pièce(s) trop lourde(s) pour un brouillon, à joindre à la main : "
             + ", ".join(trop_lourdes)
         )
+    elif pieces and not jointes:
+        motif = "aucune pièce n'a pu être jointe à ce brouillon"
     return str(cree.get("id") or ""), motif
 
 

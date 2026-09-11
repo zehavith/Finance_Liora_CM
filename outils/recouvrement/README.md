@@ -839,6 +839,17 @@ photographiée, une carte d'identité scannée entrent dans le PDF au lieu de
 voyager à côté. La conversion passe par le moteur PDF déjà utilisé pour les
 messages — rien de plus à installer.
 
+Seules les **pièces clés** sont converties — celles de `pieces-cles`, des
+documents du tableau et des pièces versées à la main. Une image trouvée
+ailleurs dans le dossier, c'est d'abord un **logo de signature** de courriel,
+et il y en a un par message : les convertir toutes lançait le moteur PDF vingt
+fois pour un dossier de vingt messages, et le brouillon n'arrivait plus.
+
+Si une pièce ne peut pas être jointe — un PDF ouvert dans Acrobat, un fichier
+verrouillé —, elle est **écartée seule** et nommée : le reste part quand même.
+Et si rien n'a pu être joint, l'écran le dit **en premier** ; transmettre un
+dossier sans le dossier est pire que ne rien transmettre.
+
 Ne partent à côté que les pièces qu'**aucun PDF ne peut absorber** : un
 tableur, un document Word. Il faudrait une suite bureautique, qui n'est pas
 toujours là et dont la mise en page varierait d'un poste à l'autre. Elles sont

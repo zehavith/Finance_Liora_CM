@@ -5318,6 +5318,42 @@ def test_preparer_pour_envoi() -> None:
         verifier("trop lourde" in motif and "à joindre à la main" in motif,
                  f"une pièce trop lourde est annoncée ({motif[:50]}…)")
 
+        # Une pièce illisible — un PDF ouvert dans Acrobat, un fichier
+        # verrouillé — faisait renoncer au brouillon entier : la fenêtre
+        # s'ouvrait vide et le dossier ne partait pas.
+        bon = Path(repertoire) / "dossier.pdf"
+        bon.write_bytes(b"%PDF-1.4 " + b"x" * 400)
+        perdu = Path(repertoire) / "verrouille.pdf"
+        identifiant, motif = module_envoi.brouillon_gmail(
+            _Service(), "a@liora.io", "b@x.fr", "Objet", "Corps", [bon, perdu])
+        verifier(identifiant and "verrouille.pdf" in motif,
+                 "une pièce illisible est écartée seule, le reste part")
+        # Et si rien n'a pu être joint, c'est dit en premier : transmettre un
+        # dossier sans le dossier est pire que ne rien transmettre.
+        _identifiant, motif = module_envoi.brouillon_gmail(
+            _Service(), "a@liora.io", "b@x.fr", "Objet", "Corps", [perdu])
+        verifier(motif.startswith("aucune pièce"),
+                 f"et l'absence de pièce jointe se dit d'abord ({motif[:40]}…)")
+
+        # Un logo de signature n'est pas une pièce : les convertir tous
+        # lançait le moteur PDF une fois par message, et la préparation
+        # n'aboutissait plus — le brouillon partait sans rien.
+        vus = []
+        avec_logos = Path(repertoire) / "avec-logos"
+        (avec_logos / "pieces-cles" / "3-feuille-emargement").mkdir(parents=True)
+        (avec_logos / "pieces-cles" / "3-feuille-emargement"
+         / "emargement.png").write_bytes(b"\x89PNG emargement")
+        for numero in range(1, 6):
+            pj = avec_logos / f"{numero:03d}-pieces-jointes"
+            pj.mkdir()
+            (pj / f"logo-{numero}.png").write_bytes(b"\x89PNG" + bytes([numero]))
+        module_envoi.pdfs_du_dossier(
+            avec_logos, [],
+            lambda source: (vus.append(source.name),
+                            avec_logos / "converti.pdf")[1])
+        verifier(vus == ["emargement.png"],
+                 f"seules les pièces clés sont converties ({vus})")
+
     source = Path("envoi.py").read_text(encoding="utf-8")
     verifier("drafts().create" in source and ".send(" not in source,
              "l'application écrit des brouillons, elle n'envoie jamais")
