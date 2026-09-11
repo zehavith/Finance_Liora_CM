@@ -15,11 +15,13 @@ Deux formes, produites côte à côte :
   contenir : les messages d'origine au format `.eml`, les tableurs, les
   images. C'est la forme complète, celle qu'on garde.
 
-Le brouillon, lui, ne joint pas l'archive : le PDF ouvre, puis **les documents
-un par un**. Un destinataire qui reçoit « dossier.zip » doit le décompresser
-avant de voir quoi que ce soit, et un service contentieux repousse à plus tard
-ce qu'il ne peut pas lire tout de suite. L'archive ne sert que de recours,
-quand les documents séparés ne tiennent pas dans un message.
+Le brouillon, lui, ne joint **qu'un seul fichier** : le PDF. Un destinataire
+qui reçoit « dossier.zip » doit le décompresser avant de voir quoi que ce
+soit, et six pièces jointes se recollent à la main. Les images du dossier —
+une feuille d'émargement photographiée — deviennent des pages du PDF pour
+cela. Ne partent à côté que les pièces qu'aucun PDF ne peut absorber : un
+tableur, un document Word. L'archive ne sert que de recours, quand le poste
+n'a pas de moteur PDF.
 
 Le PDF demande `pypdf`. Sans lui, l'archive est produite seule et on le dit :
 un dossier transmissible vaut mieux qu'un échec au motif qu'il manque une
@@ -95,11 +97,12 @@ def messages_sans_pdf(repertoire: Path, lignes: list[LigneIndex]) -> list[int]:
 
 
 def pieces_hors_pdf(repertoire: Path) -> list[str]:
-    """Les pièces clés qu'un PDF ne peut pas porter : images, tableurs, Word.
+    """Les pièces clés qu'un PDF ne peut vraiment pas porter.
 
-    Une feuille d'émargement photographiée, un relevé en tableur : la pièce
-    est au dossier et dans l'archive, mais elle ne peut pas entrer dans le PDF
-    unique. Le taire ferait transmettre un dossier amputé sans le savoir.
+    Les images en deviennent des pages ; un tableur ou un document Word, non
+    — il faudrait une suite bureautique, qui n'est pas toujours là. Ces
+    pièces-là voyagent donc à côté, et le taire ferait transmettre un dossier
+    amputé sans le savoir.
     """
     cles = repertoire / "pieces-cles"
     if not cles.is_dir():
@@ -107,7 +110,8 @@ def pieces_hors_pdf(repertoire: Path) -> list[str]:
     return sorted(
         chemin.name
         for chemin in cles.rglob("*")
-        if chemin.is_file() and chemin.suffix.lower() != ".pdf"
+        if chemin.is_file()
+        and chemin.suffix.lower() not in (".pdf", *IMAGES)
     )
 
 
@@ -125,7 +129,66 @@ def _empreinte(chemin: Path) -> tuple[int, str] | None:
     return len(contenu), hashlib.sha1(contenu).hexdigest()  # noqa: S324
 
 
-def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex]) -> list[Path]:
+# Ce qu'un PDF peut absorber : une image devient une page. Un tableur ou un
+# document Word, non — il faudrait une suite bureautique, qui n'est pas
+# toujours là, et dont la mise en page varierait d'un poste à l'autre.
+IMAGES = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff")
+
+DOSSIER_CONVERTIES = "pieces-converties"
+
+
+def image_en_pdf(source: Path, cible: Path) -> bool:
+    """Une image devient une page de PDF, pour que le dossier tienne en un seul.
+
+    Une feuille d'émargement photographiée est une pièce du dossier comme une
+    autre. Tant qu'elle restait une image, elle voyageait à part — et il
+    fallait deux fichiers là où l'on en voulait un.
+
+    Passe par le moteur PDF déjà utilisé pour les messages : rien à installer
+    de plus. L'image est intégrée à la page, jamais liée — un chemin ne
+    survivrait pas au rendu.
+    """
+    import base64  # noqa: PLC0415
+    import mimetypes  # noqa: PLC0415
+
+    try:
+        octets = source.read_bytes()
+    except OSError:
+        return False
+
+    type_devine, _ = mimetypes.guess_type(source.name)
+    if not (type_devine or "").startswith("image/"):
+        return False
+
+    donnees = base64.b64encode(octets).decode("ascii")
+    html = (
+        "<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\" />"
+        "<style>@page{margin:14mm}body{margin:0;font:12px system-ui,sans-serif}"
+        "h1{font-size:13px;font-weight:600;margin:0 0 10px}"
+        "img{max-width:100%;max-height:230mm;display:block}</style></head><body>"
+        f"<h1>{_echapper(source.name)}</h1>"
+        f"<img src=\"data:{type_devine};base64,{donnees}\" alt=\"\" />"
+        "</body></html>"
+    )
+
+    from rendu import ecrire_pdf  # noqa: PLC0415
+
+    cible.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        reussi, _motif = ecrire_pdf(html, cible)
+    except Exception:  # noqa: BLE001 - un moteur absent n'est pas une panne
+        return False
+    return bool(reussi) and cible.exists() and cible.stat().st_size > 0
+
+
+def _echapper(texte: str) -> str:
+    import html as module_html  # noqa: PLC0415
+
+    return module_html.escape(str(texte or ""))
+
+
+def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex],
+                    convertir=None) -> list[Path]:
     """Les PDF à réunir, dans l'ordre où l'on présente un dossier.
 
     La note de synthèse ouvre : c'est elle qui dit de quoi il retourne. Les
@@ -144,13 +207,23 @@ def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex]) -> list[Path]:
     vus: set[tuple[int, str]] = set()
 
     def ajouter(chemin: Path) -> None:
-        if not chemin.is_file() or chemin.suffix.lower() != ".pdf":
+        if not chemin.is_file():
             return
+        suffixe = chemin.suffix.lower()
+        if suffixe != ".pdf" and not (convertir and suffixe in IMAGES):
+            return
+        # L'empreinte porte sur l'original : une image déjà convertie ne doit
+        # pas l'être une seconde fois sous un autre chemin.
         empreinte = _empreinte(chemin)
         if empreinte is None or empreinte in vus:
             return
         vus.add(empreinte)
-        ordre.append(chemin)
+        if suffixe == ".pdf":
+            ordre.append(chemin)
+            return
+        converti = convertir(chemin)
+        if converti is not None:
+            ordre.append(converti)
 
     ajouter(repertoire / "synthese.pdf")
 
@@ -166,9 +239,9 @@ def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex]) -> list[Path]:
             ajouter(repertoire / ligne.fichier_pdf)
 
     # Le reste du dossier, dans l'ordre du disque : ce que ni le classement
-    # ni les numéros de pièce n'ont ramassé. Ce qui n'est pas un PDF ne peut
-    # pas y entrer — c'est l'archive qui le porte, et « preparer » le dit.
-    for chemin in sorted(repertoire.rglob("*.[pP][dD][fF]")):
+    # ni les numéros de pièce n'ont ramassé. Ce qu'aucun PDF ne peut absorber
+    # — un tableur, un document Word — reste dehors, et « preparer » le dit.
+    for chemin in sorted(repertoire.rglob("*")):
         if not _a_exclure(chemin, repertoire):
             ajouter(chemin)
 
@@ -186,16 +259,30 @@ def ecrire_pdf_unique(
     # Pas seulement ImportError : une installation abîmée de pypdf échoue à
     # l'import par une erreur d'un tout autre genre. L'archive, elle, est
     # déjà prête — et c'est elle qui compte le plus.
+    # BaseException et non Exception : la panique d'une extension native
+    # compilée n'est pas une exception ordinaire, et passait au travers.
     try:
         from pypdf import PdfWriter  # noqa: PLC0415
-    except Exception as exc:  # noqa: BLE001
+    except BaseException as exc:  # noqa: BLE001 - y compris une panique native
         return 0, 0, (
             "la réunion en un seul PDF demande la bibliothèque « pypdf », "
             f"qui n'a pas pu être chargée ({type(exc).__name__}) — "
             "l'archive zip, elle, est prête"
         )
 
-    sources = pdfs_du_dossier(repertoire, lignes)
+    # Les images deviennent des pages : une feuille d'émargement
+    # photographiée est une pièce du dossier, et le dossier doit tenir en un
+    # seul fichier. Les conversions vivent dans « pour-envoi », donc hors de
+    # l'archive et hors du balayage des documents.
+    atelier = cible.parent / DOSSIER_CONVERTIES
+
+    def convertir(source: Path) -> Path | None:
+        vers = atelier / (source.stem + ".pdf")
+        if vers.exists() and vers.stat().st_mtime >= source.stat().st_mtime:
+            return vers
+        return vers if image_en_pdf(source, vers) else None
+
+    sources = pdfs_du_dossier(repertoire, lignes, convertir)
     if not sources:
         return 0, 0, "aucun PDF au dossier : rien à réunir"
 
@@ -273,13 +360,10 @@ def corps_du_message(dossier: dict) -> tuple[str, str]:
         )
     lignes += [
         "",
-        "Le PDF réunit l'ensemble du dossier : la note de synthèse ouvre — "
-        "elle résume la situation, les pièces et les échanges, chaque constat "
-        "renvoyant à un numéro de pièce —, puis viennent les pièces et les "
-        "échanges eux-mêmes.",
-        "",
-        "Les pièces que le PDF ne peut pas porter, ou qu'il est plus commode "
-        "d'ouvrir séparément, sont jointes une à une.",
+        "Le PDF réunit l'ensemble du dossier, en un seul fichier : la note de "
+        "synthèse ouvre — elle résume la situation, les pièces et les "
+        "échanges, chaque constat renvoyant à un numéro de pièce —, puis "
+        "viennent les pièces et les échanges eux-mêmes.",
         "",
         "Bien cordialement,",
     ]
@@ -385,16 +469,19 @@ def documents_du_dossier(repertoire: Path, lignes: list[LigneIndex]) -> list[Pat
 def pieces_du_brouillon(
     pret: dict, racine: Path, documents: list[Path] | None = None,
 ) -> tuple[list[Path], str]:
-    """Ce qu'on attache au brouillon, dans l'ordre de ce qu'on ouvre d'abord.
+    """Ce qu'on attache : **un seul fichier**, autant que faire se peut.
 
-    Le PDF unique ouvre : c'est le dossier entier, paginé, qui se lit sans
-    rien décompresser. Les documents suivent, **un par un** : une archive
-    oblige le destinataire à la décompresser avant de voir quoi que ce soit,
-    et un service contentieux qui reçoit « dossier.zip » repousse le dossier.
+    Le PDF unique porte le dossier entier — la note, les pièces, les échanges,
+    et jusqu'aux feuilles d'émargement photographiées, devenues des pages. Un
+    destinataire n'a alors rien à décompresser ni à recoller : il ouvre, il
+    lit, il classe.
 
-    L'archive ne sert plus que de recours : quand les documents séparés ne
-    tiennent pas dans un message, elle les porte tous en un seul fichier, et
-    on le dit.
+    Ne partent à côté que les pièces qu'aucun PDF ne peut absorber : un
+    tableur, un document Word. Elles sont nommées.
+
+    Sans PDF unique — moteur absent du poste —, c'est l'archive qui part : un
+    dossier en un fichier vaut mieux qu'un dossier qui ne part pas, et l'on
+    dit qu'elle est à décompresser.
 
     Renvoie (pièces, motif). Un motif non vide dit ce qui n'a pas pu être
     joint, et d'où le glisser à la main.
@@ -405,18 +492,31 @@ def pieces_du_brouillon(
         except OSError:
             return None
 
-    gardees: list[Path] = []
-    total = 0
-
     pdf = racine / pret["pdf"] if pret.get("pdf") else None
-    if pdf is not None:
-        poids = poids_de(pdf)
-        if poids is not None and poids <= PIECE_MAX:
-            gardees.append(pdf)
-            total += poids
+    if pdf is not None and (poids_de(pdf) or 0) > PIECE_MAX:
+        pdf = None
 
+    archive = racine / pret["archive"] if pret.get("archive") else None
+
+    # Sans PDF unique, l'archive fait le dossier. Le dire : elle se
+    # décompresse, et c'est justement ce qu'on voulait éviter.
+    if pdf is None:
+        if archive is not None and (poids_de(archive) or 0) <= PIECE_MAX:
+            return [archive], (
+                "le PDF unique n'a pas pu être produit : c'est l'archive qui "
+                "part, à décompresser"
+            )
+        return [], "ni PDF ni archive : rien n'a pu être préparé"
+
+    gardees = [pdf]
+    total = poids_de(pdf) or 0
     ecartes: list[str] = []
+
     for document in documents or []:
+        # Les PDF et les images sont déjà dans le PDF unique : les rejoindre
+        # un à un les enverrait deux fois, et c'est un fichier qu'on veut.
+        if document.suffix.lower() in (".pdf", *IMAGES):
+            continue
         poids = poids_de(document)
         if poids is None:
             continue
@@ -425,21 +525,6 @@ def pieces_du_brouillon(
             continue
         gardees.append(document)
         total += poids
-
-    # Rien ne tient, ou une partie manque : l'archive, elle, porte tout en un
-    # seul fichier. C'est le recours, pas la forme ordinaire.
-    archive = racine / pret["archive"] if pret.get("archive") else None
-    if (ecartes or not gardees) and archive is not None:
-        poids = poids_de(archive)
-        if poids is not None and poids <= PIECE_MAX \
-                and total + poids <= MESSAGE_MAX:
-            gardees.append(archive)
-            return gardees, (
-                f"{len(ecartes)} document(s) trop lourds pour être joints un "
-                "par un — l'archive les porte tous : "
-                + ", ".join(ecartes[:3])
-                + ("…" if len(ecartes) > 3 else "")
-            ) if ecartes else ""
 
     motif = ""
     if ecartes:

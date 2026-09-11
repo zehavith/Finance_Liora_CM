@@ -5091,8 +5091,13 @@ def test_preparer_pour_envoi() -> None:
                  "une pièce clé et son original ne partent pas en double")
         verifier(module_envoi.messages_sans_pdf(dossier, lignes) == [2],
                  "un message resté en HTML est compté comme hors du PDF")
-        verifier(module_envoi.pieces_hors_pdf(dossier) == ["emargement.jpg"],
-                 "et une pièce clé qui n'est pas un PDF est nommée")
+        # Une image devient une page du PDF : elle ne reste plus dehors.
+        # Un tableur, lui, ne peut pas — et c'est lui qu'on nomme.
+        (dossier / "pieces-cles" / "2-facture"
+         / "Releve.xlsx").write_bytes(b"PK\x03\x04 releve")
+        verifier(module_envoi.pieces_hors_pdf(dossier) == ["Releve.xlsx"],
+                 f"seul ce qu'aucun PDF ne peut absorber est nommé "
+                 f"({module_envoi.pieces_hors_pdf(dossier)})")
 
         # Un faux pypdf : on éprouve l'assemblage, pas la bibliothèque.
         appels = []
@@ -5124,13 +5129,12 @@ def test_preparer_pour_envoi() -> None:
         verifier(resultat["pieces_pdf"] == 4 and resultat["pdf"].endswith(".pdf"),
                  f"il est écrit ({resultat['pdf']}, {resultat['pieces_pdf']} pièces)")
         verifier(resultat["sans_pdf"] == 1 and resultat["hors_pdf"] == 1
-                 and "dans l'archive" in resultat["motif"]
-                 and "emargement.jpg" in resultat["motif"],
+                 and "Releve.xlsx" in resultat["motif"],
                  f"et ce qui n'y est pas est dit ({resultat['motif']})")
 
         archive = sortie / "pour-envoi" / "fact-2405-00409_sas-eden.zip"
         noms = zipfile.ZipFile(archive).namelist()
-        verifier(archive.exists() and resultat["fichiers"] == 8,
+        verifier(archive.exists() and resultat["fichiers"] == 9,
                  f"l'archive porte tout le dossier ({resultat['fichiers']} fichiers)")
         # Les messages écartés ne doivent pas revenir par l'archive : les
         # transmettre reviendrait à joindre les échanges d'autres personnes.
@@ -5170,21 +5174,46 @@ def test_preparer_pour_envoi() -> None:
         verifier(noms and noms[0].endswith(".pdf")
                  and not any(n.endswith(".zip") for n in noms),
                  f"le brouillon ouvre sur le PDF, sans archive ({noms})")
-        verifier("emargement.jpg" in noms,
-                 f"et porte ce que le PDF ne peut pas contenir ({noms})")
+        # Un seul fichier, sauf ce qu'aucun PDF ne peut absorber. Le PDF
+        # porte déjà les pièces — les rejoindre une à une les enverrait deux
+        # fois, et c'est un fichier qu'elle veut, pas six.
+        verifier("Releve.xlsx" in noms
+                 and not any(n.endswith(".jpg") for n in noms),
+                 f"et rien d'autre que le tableur à côté ({noms})")
         verifier(not sans_motif, f"sans rien laisser de côté ({sans_motif})")
 
-        # Au-delà de ce qu'un message peut peser, l'archive reprend la main :
-        # un seul fichier vaut mieux qu'un dossier amputé.
-        lourd = dossier / "pieces-cles" / "2-facture" / "lourd.pdf"
-        lourd.write_bytes(b"%PDF" + b"P" * module_envoi.MESSAGE_MAX)
-        jointes, motif_lourd = module_envoi.pieces_du_brouillon(
-            resultat, sortie / "pour-envoi",
-            module_envoi.documents_du_dossier(dossier, lignes))
-        verifier(any(p.suffix == ".zip" for p in jointes)
-                 and "lourd.pdf" in motif_lourd,
-                 f"l'archive sert de recours, et on le dit ({motif_lourd[:70]}…)")
-        lourd.unlink()
+        # Sans moteur PDF sur le poste, il n'y a pas de PDF unique :
+        # l'archive reprend la main, et on dit qu'elle est à décompresser.
+        jointes, motif_sans = module_envoi.pieces_du_brouillon(
+            dict(resultat, pdf=""), sortie / "pour-envoi", documents)
+        verifier([p.suffix for p in jointes] == [".zip"]
+                 and "décompresser" in motif_sans,
+                 f"l'archive sert de recours, et on le dit ({motif_sans[:70]}…)")
+
+    # Se tromper de responsable est l'erreur qu'on ne rattrape pas. Un
+    # apprenant qui exerce en son nom propre — auto-entrepreneur — a une
+    # fiche au répertoire des entreprises, sous son prénom et son nom : le
+    # prendre pour une société envoyait son dossier au responsable des
+    # comptes entreprises.
+    import suivi as module_portefeuille  # noqa: PLC0415
+    for nom, fiche, attendu, quoi in (
+            ("Lucien Trazié", {"siren": "1", "forme_code": "1000"},
+             "personnel", "un auto-entrepreneur reste un financement personnel"),
+            ("JAADI PERFORM", {"siren": "2", "forme_code": "5710"},
+             "entreprise", "une SAS sans mention reste une entreprise"),
+            ("SAS EDEN", {"siren": "3", "forme_code": "5710"},
+             "entreprise", "et une société nommée aussi"),
+            ("Marie Dupont", None,
+             "personnel", "sans fiche, le nom décide")):
+        obtenu, _source = module_portefeuille.financement_du_dossier(
+            nom, {}, fiche)
+        verifier(obtenu == attendu, f"{quoi} ({nom} → {obtenu})")
+    # Ce que le service a saisi l'emporte sur toute déduction.
+    obtenu, source = module_portefeuille.financement_du_dossier(
+        "Lucien Trazié", {"financement": "entreprise"},
+        {"siren": "1", "forme_code": "1000"})
+    verifier(obtenu == "entreprise" and source == "saisi",
+             "et ce qui est saisi à la main l'emporte")
 
     # Le brouillon : l'application prepare, elle ne poste pas. Adresser un
     # courriel a un tiers est un geste qui appartient a celle qui le signe.

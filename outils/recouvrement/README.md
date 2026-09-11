@@ -830,25 +830,23 @@ appartient à celle qui le signe.
 | **Gmail** (par défaut) | un **vrai brouillon** est écrit dans votre Gmail, **pièces jointes comprises** ; l'onglet des brouillons s'ouvre, vous relisez, vous envoyez |
 | **Outlook** | le brouillon s'ouvre dans Outlook, pièces jointes comprises (demande `pywin32`, Windows) |
 
-**Le PDF ouvre, puis les documents un par un.** Pas d'archive à décompresser :
-un destinataire qui reçoit « dossier.zip » doit l'ouvrir avant de voir quoi
-que ce soit, et un service contentieux repousse à plus tard ce qu'il ne peut
-pas lire tout de suite.
+**Un seul fichier : le PDF.** Ni archive à décompresser, ni six pièces jointes
+à recoller — le PDF porte le dossier entier, paginé : la note de synthèse, les
+pièces, les échanges, chaque constat renvoyant à un numéro de pièce.
 
-| Pièce jointe | Ce que c'est |
-| --- | --- |
-| `<dossier>.pdf` | le dossier entier, paginé : la note, les pièces, les échanges |
-| les documents | pièces clés d'abord — convention, facture, émargement, relevé, diplôme, progression —, puis les autres pièces jointes des messages, chacune sous son nom |
+Pour cela, **les images deviennent des pages** : une feuille d'émargement
+photographiée, une carte d'identité scannée entrent dans le PDF au lieu de
+voyager à côté. La conversion passe par le moteur PDF déjà utilisé pour les
+messages — rien de plus à installer.
 
-Ce qui ne part **pas** séparément : les rendus de messages, qui sont déjà des
-pages du PDF, et les `.eml` d'origine, qui sont une preuve d'authenticité et
-non une pièce qu'on lit — les joindre ferait vingt fichiers de plus pour rien.
-Une pièce et sa copie ne font qu'un : c'est le contenu qui les rapproche, non
-le chemin.
+Ne partent à côté que les pièces qu'**aucun PDF ne peut absorber** : un
+tableur, un document Word. Il faudrait une suite bureautique, qui n'est pas
+toujours là et dont la mise en page varierait d'un poste à l'autre. Elles sont
+nommées à l'écran.
 
-**L'archive ne sert plus que de recours.** Quand les documents séparés ne
-tiennent pas dans un message — la limite est d'environ 25 Mo —, elle les porte
-tous en un seul fichier, et l'écran dit lesquels ont dû y passer.
+**L'archive ne sert plus que de recours** : sans moteur PDF sur le poste, il
+n'y a pas de PDF unique, et c'est elle qui part — en disant qu'elle est à
+décompresser.
 
 Le réglage **Messagerie** choisit lequel.
 
@@ -929,6 +927,16 @@ avec les autres éléments d'identité. Trois sources, dans cet ordre :
 2. **la convention de formation** — signée par le débiteur, elle porte
    l'adresse qu'il a donnée en s'engageant ;
 3. **la facture** — à défaut, l'adresse de facturation.
+
+Le portefeuille, lui, décide du **destinataire** — les dossiers d'entreprise
+partent au responsable des comptes entreprises, ceux en financement personnel
+à l'autre. Un apprenant qui exerce en son nom propre — auto-entrepreneur,
+entreprise individuelle — a bien une fiche au répertoire public, sous son
+prénom et son nom, avec un SIREN : le répertoire le range en *entrepreneur
+individuel*, catégorie `1xxx`. C'est une **personne physique**, et sa
+formation reste un financement personnel. Le prendre pour une société
+envoyait son dossier au mauvais responsable — l'erreur qu'on ne rattrape pas.
+Ce qui est saisi à la main dans la colonne **Financement** l'emporte toujours.
 
 Le **RIB** du pied de facture n'est jamais pris pour une adresse : « Banque :
 BNP Paribas, BIC : …, IBAN : FR76…, SAS EDEN, 31100 Toulouse » porte un code

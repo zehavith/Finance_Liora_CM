@@ -69,6 +69,18 @@ FAMILLES = (
 ETATS = {"A": "en activité", "C": "cessée"}
 
 
+def est_personne_physique(fiche: dict | None) -> bool:
+    """Le répertoire range-t-il ce débiteur parmi les personnes physiques ?
+
+    La catégorie juridique 1xxx est celle de l'entrepreneur individuel : une
+    personne qui exerce en son nom propre, inscrite sous son prénom et son
+    nom. Un apprenant auto-entrepreneur en a une, et sa formation n'en reste
+    pas moins un financement personnel — c'est lui qui paie, pas une société.
+    """
+    code = str((fiche or {}).get("forme_code") or "").strip()
+    return code.startswith("1")
+
+
 def forme_lisible(code: str) -> str:
     """« 5710 » devient « SAS ». Un code inconnu est rendu tel quel."""
     brut = str(code or "").strip()

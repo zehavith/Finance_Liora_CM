@@ -122,6 +122,17 @@ def financement_du_dossier(
     if saisi in FINANCEMENTS:
         return saisi, "saisi"
     if fiche and str(fiche.get("siren") or "").strip():
+        # Un apprenant qui exerce en son nom propre — auto-entrepreneur,
+        # entreprise individuelle — a bien une fiche et un SIREN, sous son
+        # prénom et son nom. Le répertoire le range en « entrepreneur
+        # individuel », catégorie 1xxx : c'est une personne physique, et sa
+        # formation reste un financement personnel. La prendre pour une
+        # société envoyait son dossier au mauvais responsable — l'erreur
+        # qu'on ne rattrape pas.
+        from entreprises import est_personne_physique  # noqa: PLC0415
+
+        if est_personne_physique(fiche):
+            return "personnel", "annuaire"
         return "entreprise", "annuaire"
 
     from entreprises import ressemble_a_une_societe  # noqa: PLC0415

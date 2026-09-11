@@ -173,9 +173,13 @@ def _texte_via_pypdf(chemin: Path) -> str:
     # à l'import par une erreur d'un tout autre genre, qui remontait jusqu'à
     # faire échouer l'export entier. Une lecture d'appoint qui ne marche pas
     # est une lecture qu'on abandonne, pas un export perdu.
+    # « except Exception » ne suffisait pas : la panique levée par une
+    # extension native compilée hérite de BaseException, et passait au
+    # travers. L'export s'arrêtait sur un poste où « pypdf » est installé
+    # mais cassé — le cas le plus courant, justement.
     try:
         from pypdf import PdfReader  # noqa: PLC0415
-    except Exception:  # noqa: BLE001
+    except BaseException:  # noqa: BLE001 - y compris une panique native
         return ""
     try:
         lecteur = PdfReader(str(chemin))
