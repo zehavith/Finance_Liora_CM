@@ -5241,6 +5241,9 @@ def test_preparer_pour_envoi() -> None:
         # n'est pas un document du dossier n'a rien à faire dans un mail.
         (dossier / "synthese.version").write_text("1", encoding="utf-8")
         (dossier / "journal.log").write_text("trace", encoding="utf-8")
+        # La table des pièces, elle, se lit : elle reste dans l'archive.
+        (dossier / "index.csv").write_text("piece_n;objet\n1;Relance\n",
+                                           encoding="utf-8")
         noms_docs = sorted(
             c.name for c in module_envoi.documents_du_dossier(dossier, lignes))
         verifier("001_relance.pdf" not in noms_docs
@@ -5255,50 +5258,52 @@ def test_preparer_pour_envoi() -> None:
                  and "Facture.pdf" not in noms_docs,
                  f"ni les copies en double ({noms_docs})")
 
-        # Une facture scannée jointe à un message est un document, pas un
-        # logo : s'en remettre à l'extension la perdait — image, donc
-        # supposée absorbée par le PDF, alors que seules les pièces clés
-        # l'étaient. C'est l'empreinte de ce qui est réellement entré dans le
-        # PDF qui décide, et rien ne se perd en silence.
+        # Deux pièces jointes, pour deux gestes : le PDF se lit d'une traite,
+        # l'archive donne le dossier rangé. Comme elle porte tout, rien n'a à
+        # être joint séparément — et c'est là que se retrouve ce qu'un PDF ne
+        # peut pas absorber : un tableur, une image, une facture scannée.
         scannee = dossier / "001-pieces-jointes" / "Facture scannee.jpg"
         scannee.parent.mkdir(parents=True, exist_ok=True)
-        scannee.write_bytes(b"\xff\xd8" + b"s" * module_envoi.TAILLE_IMAGE_DOCUMENT)
-        sans_moteur = module_envoi.documents_du_dossier(dossier, lignes)
-        jointes_scan, _motif_scan = module_envoi.pieces_du_brouillon(
-            dict(resultat, absorbes=set()), sortie / "pour-envoi", sans_moteur)
-        verifier("Facture scannee.jpg" in [p.name for p in jointes_scan],
-                 "une facture scannée que le PDF n'a pas absorbée est jointe")
+        scannee.write_bytes(b"\xff\xd8" + b"s" * 200)
+        (dossier / "synthese.version").write_text("1", encoding="utf-8")
+        (dossier / "journal.log").write_text("trace", encoding="utf-8")
+        module_envoi.ecrire_archive(
+            dossier, sortie / "pour-envoi" / resultat["archive"])
+        dans_archive = zipfile.ZipFile(
+            sortie / "pour-envoi" / resultat["archive"]).namelist()
+        for attendu in ("Facture scannee.jpg", "Releve.xlsx", "emargement.jpg",
+                        "index.csv"):
+            verifier(any(n.endswith(attendu) for n in dans_archive),
+                     f"l'archive porte « {attendu} »")
+        verifier(not any(n.endswith("synthese.version") for n in dans_archive)
+                 and not any(n.endswith("journal.log") for n in dans_archive),
+                 "et pas les rouages de l'outil")
         scannee.unlink()
 
         jointes, sans_motif = module_envoi.pieces_du_brouillon(
-            resultat, sortie / "pour-envoi", documents)
+            resultat, sortie / "pour-envoi")
         noms = [p.name for p in jointes]
-        verifier(noms and noms[0].endswith(".pdf")
-                 and not any(n.endswith(".zip") for n in noms),
-                 f"le brouillon ouvre sur le PDF, sans archive ({noms})")
-        # Un seul fichier, sauf ce qu'aucun PDF ne peut absorber. Le PDF
-        # porte déjà les pièces — les rejoindre une à une les enverrait deux
-        # fois, et c'est un fichier qu'elle veut, pas six.
-        verifier("Releve.xlsx" in noms,
-                 f"et le tableur à côté, qu'aucun PDF ne peut porter ({noms})")
-        # L'émargement est une image : dans le PDF quand le poste a un moteur,
-        # joint tel quel sinon. Jamais perdu — c'est la seule promesse qui
-        # vaille, et elle ne dépend pas de ce qui est installé.
-        emargement = dossier / "pieces-cles" / "3-feuille-emargement" / "emargement.jpg"
-        dans_le_pdf = module_envoi._empreinte(emargement) in (
-            resultat.get("absorbes") or set())
-        verifier(dans_le_pdf or "emargement.jpg" in noms,
-                 "une pièce en image est dans le PDF, ou jointe — jamais perdue"
-                 f" (jointe : {'emargement.jpg' in noms})")
+        verifier(len(noms) == 2 and noms[0].endswith(".pdf")
+                 and noms[1].endswith(".zip"),
+                 f"le PDF ouvre, l'archive suit ({noms})")
         verifier(not sans_motif, f"sans rien laisser de côté ({sans_motif})")
 
-        # Sans moteur PDF sur le poste, il n'y a pas de PDF unique :
-        # l'archive reprend la main, et on dit qu'elle est à décompresser.
-        jointes, motif_sans = module_envoi.pieces_du_brouillon(
-            dict(resultat, pdf=""), sortie / "pour-envoi", documents)
-        verifier([p.suffix for p in jointes] == [".zip"]
-                 and "décompresser" in motif_sans,
-                 f"l'archive sert de recours, et on le dit ({motif_sans[:70]}…)")
+        # Au-delà de ce qu'un message peut peser, le PDF passe d'abord —
+        # c'est lui qu'on relit — et l'archive écartée est nommée.
+        lourde = sortie / "pour-envoi" / "lourde.zip"
+        lourde.write_bytes(b"P" * (module_envoi.MESSAGE_MAX + 1))
+        jointes, motif_lourd = module_envoi.pieces_du_brouillon(
+            dict(resultat, archive="lourde.zip"), sortie / "pour-envoi")
+        verifier([p.suffix for p in jointes] == [".pdf"]
+                 and "lourde.zip" in motif_lourd,
+                 f"et l'archive trop lourde est nommée ({motif_lourd[:60]}…)")
+        lourde.unlink()
+
+        # Sans moteur PDF sur le poste, l'archive part seule.
+        jointes, _m = module_envoi.pieces_du_brouillon(
+            dict(resultat, pdf=""), sortie / "pour-envoi")
+        verifier([p.suffix for p in jointes] == [".zip"],
+                 "sans PDF, l'archive porte le dossier à elle seule")
 
     # Une feuille d'émargement est un PDF, nommé du nom de l'apprenant et des
     # deux dates de la formation. Elle entre dans le PDF unique telle quelle,

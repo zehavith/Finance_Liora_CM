@@ -866,33 +866,28 @@ appartient à celle qui le signe.
 | **Gmail** (par défaut) | un **vrai brouillon** est écrit dans votre Gmail, **pièces jointes comprises** ; l'onglet des brouillons s'ouvre, vous relisez, vous envoyez |
 | **Outlook** | le brouillon s'ouvre dans Outlook, pièces jointes comprises (demande `pywin32`, Windows) |
 
-**Un seul fichier : le PDF.** Ni archive à décompresser, ni six pièces jointes
-à recoller — le PDF porte le dossier entier, paginé : la note de synthèse, les
-pièces, les échanges, chaque constat renvoyant à un numéro de pièce.
+**Deux pièces jointes, pour deux gestes.** Le destinataire choisit selon ce
+qu'il veut faire — lire, ou classer :
+
+| Pièce jointe | Ce qu'elle sert |
+| --- | --- |
+| `<dossier>.pdf` | **se lit d'une traite**, sans rien décompresser : la note de synthèse ouvre, les pièces suivent, puis les échanges, chaque constat renvoyant à un numéro de pièce. C'est la forme qu'on annote, qu'on imprime, qu'on porte en réunion |
+| `<dossier>.zip` | **le dossier lui-même** : ouvert d'un double-clic, il donne l'arborescence — les pièces clés rangées par nature, les messages et leurs pièces jointes, la table des pièces. C'est la forme qu'on classe, et la seule qu'un mail puisse porter comme un vrai dossier |
+
+L'archive portant tout, **rien n'est joint séparément à côté d'elle**.
 
 Les pièces du dossier sont presque toujours des **PDF** — la convention, la
-facture, la feuille d'émargement (`Prénom_NOM_02_09_2024_31_12_2025_….pdf`)
-en sont — et elles entrent dans le PDF unique telles quelles.
+facture, la feuille d'émargement (`Prénom_NOM_02_09_2024_31_12_2025_….pdf`) en
+sont — et elles entrent dans le PDF unique telles quelles. Un document
+**scanné et envoyé en image** au fil d'un échange devient une page, au lieu de
+n'exister que dans l'archive ; la conversion passe par le moteur PDF déjà
+utilisé pour les messages, rien de plus à installer.
 
-Reste le cas d'un document **scanné et envoyé en image** au fil d'un échange :
-il devient une page, au lieu de voyager à côté. La conversion passe par le
-moteur PDF déjà utilisé pour les messages — rien de plus à installer.
-
-Seules les **pièces clés** sont converties — celles de `pieces-cles`, des
-documents du tableau et des pièces versées à la main. Une image trouvée
-ailleurs dans le dossier, c'est d'abord un **logo de signature** de courriel,
-et il y en a un par message : les convertir toutes lançait le moteur PDF vingt
-fois pour un dossier de vingt messages, et le brouillon n'arrivait plus.
-
-Si une pièce ne peut pas être jointe — un PDF ouvert dans Acrobat, un fichier
-verrouillé —, elle est **écartée seule** et nommée : le reste part quand même.
-Et si rien n'a pu être joint, l'écran le dit **en premier** ; transmettre un
-dossier sans le dossier est pire que ne rien transmettre.
-
-Ne part jamais la **plomberie** du dossier : `index.csv`, `journal.log`,
-`synthese.version` — l'octet qui dit quelle version de l'outil a écrit la
-note. Ce qui n'est pas un document du dossier n'a rien à faire dans un mail
-de transmission.
+Seules les **pièces choisies** sont converties — celles de `pieces-cles`, des
+documents du tableau et des pièces versées à la main —, plus toute image de
+plus de 40 Ko trouvée ailleurs. En dessous, c'est un **logo de signature** :
+il y en a un par message, et les convertir tous lançait le moteur PDF vingt
+fois pour un dossier de vingt messages — le brouillon n'arrivait plus.
 
 **Les messages restés en page HTML sont repris.** Sans moteur PDF au moment de
 l'export, un message est conservé en `.html` : le dossier est complet sur le
@@ -903,27 +898,18 @@ aujourd'hui, ces pages deviennent des pages du PDF : **l'export d'hier est
 réparé sans qu'on le refasse**, et les messages ne sont plus annoncés
 manquants.
 
-**La règle, en une phrase : un document est dans le PDF, ou joint à côté.**
-Jamais perdu. Ce n'est pas l'extension qui décide — elle faisait disparaître
-une facture scannée reçue par mail, image donc supposée absorbée — mais
-l'empreinte de ce qui est **réellement** entré dans le PDF.
+L'archive ne porte pas les **rouages de l'outil** — `synthese.version`,
+`journal.log`. La table des pièces, `index.csv`, y reste : elle se lit.
 
-Partent donc à côté :
+Si une pièce ne peut pas être jointe — un PDF ouvert dans Acrobat, un fichier
+verrouillé —, elle est **écartée seule** et nommée : le reste part quand même.
+Si rien n'a pu être joint, l'écran le dit **en premier** ; transmettre un
+dossier sans le dossier est pire que ne rien transmettre.
 
-- les pièces qu'**aucun PDF ne peut absorber** — un tableur, un document
-  Word : il faudrait une suite bureautique, qui n'est pas toujours là et dont
-  la mise en page varierait d'un poste à l'autre ;
-- toute image que le moteur PDF n'a pas su convertir, y compris une feuille
-  d'émargement : une pièce choisie est jointe telle quelle plutôt que perdue.
-
-La seule exception est la **vignette** : une image de moins de 40 Ko attachée
-à un message, qui n'est pas une pièce choisie. C'est un logo de signature —
-vingt messages en portent vingt. Elle reste au répertoire et dans l'archive,
-et l'écran la **compte**, pour que l'omission soit visible.
-
-**L'archive ne sert plus que de recours** : sans moteur PDF sur le poste, il
-n'y a pas de PDF unique, et c'est elle qui part — en disant qu'elle est à
-décompresser.
+Au-delà de ce qu'un message peut peser — environ 25 Mo —, le PDF passe
+d'abord, c'est lui qu'on relit, et l'archive écartée est nommée avec le
+répertoire d'où la glisser. Sans moteur PDF sur le poste, l'archive part
+seule.
 
 Le réglage **Messagerie** choisit lequel.
 

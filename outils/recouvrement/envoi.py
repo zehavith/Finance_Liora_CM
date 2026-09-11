@@ -47,6 +47,10 @@ EXCLUS = ("mails-hors-dossier", "pour-envoi")
 
 DOSSIER_ENVOI = "pour-envoi"
 
+# Les rouages de l'outil, qui ne se transmettent pas. « index.csv » n'en est
+# pas : c'est la table des pièces, et elle se lit.
+PLOMBERIE = ("synthese.version", "journal.log", "_recapitulatif.csv")
+
 
 def _lisible(octets: int) -> str:
     """« 4,2 Mo » — la taille est la première question quand on attache."""
@@ -71,6 +75,14 @@ def ecrire_archive(repertoire: Path, cible: Path) -> tuple[int, int]:
     with zipfile.ZipFile(provisoire, "w", zipfile.ZIP_DEFLATED) as archive:
         for chemin in sorted(repertoire.rglob("*")):
             if not chemin.is_file() or _a_exclure(chemin, repertoire):
+                continue
+            # L'archive est ce que reçoit un responsable : elle porte le
+            # dossier, pas les rouages de l'outil. « synthese.version » dit
+            # quelle version a écrit la note, « journal.log » trace
+            # l'export — ni l'un ni l'autre n'a sa place sous ses yeux.
+            # « index.csv », lui, reste : c'est la table des pièces.
+            if chemin.name in PLOMBERIE or chemin.suffix.lower() in (
+                    ".version", ".log", ".en-cours"):
                 continue
             # Le nom du dossier ouvre l'archive : décompressée, elle ne
             # déverse pas trente fichiers dans le répertoire courant.
@@ -450,10 +462,17 @@ def corps_du_message(dossier: dict) -> tuple[str, str]:
         )
     lignes += [
         "",
-        "Le PDF réunit l'ensemble du dossier, en un seul fichier : la note de "
-        "synthèse ouvre — elle résume la situation, les pièces et les "
-        "échanges, chaque constat renvoyant à un numéro de pièce —, puis "
-        "viennent les pièces et les échanges eux-mêmes.",
+        "Deux pièces jointes, pour deux usages :",
+        "",
+        "— le PDF réunit l'ensemble du dossier en un seul fichier, qui se lit "
+        "d'une traite : la note de synthèse ouvre — elle résume la situation, "
+        "les pièces et les échanges, chaque constat renvoyant à un numéro de "
+        "pièce —, puis viennent les pièces et les échanges eux-mêmes ;",
+        "",
+        "— l'archive porte le dossier lui-même : ouverte d'un double-clic, "
+        "elle donne les pièces rangées par nature — convention, facture, "
+        "feuille d'émargement, relevé, diplôme —, les messages avec leurs "
+        "pièces jointes, et la table des pièces.",
         "",
         "Bien cordialement,",
     ]
@@ -575,22 +594,27 @@ def _est_piece_choisie(chemin: Path) -> bool:
 def pieces_du_brouillon(
     pret: dict, racine: Path, documents: list[Path] | None = None,
 ) -> tuple[list[Path], str]:
-    """Ce qu'on attache : **un seul fichier**, autant que faire se peut.
+    """Ce qu'on attache : **le PDF et l'archive**, dans cet ordre.
 
-    Le PDF unique porte le dossier entier — la note, les pièces, les
-    échanges, et jusqu'aux documents reçus en image, devenus des pages. Un
-    destinataire n'a alors rien à décompresser ni à recoller : il ouvre, il
-    lit, il classe.
+    Les deux servent à deux gestes différents, et le destinataire choisit :
 
-    Ne partent à côté que les pièces qu'aucun PDF ne peut absorber : un
-    tableur, un document Word. Elles sont nommées.
+    - le **PDF** se lit d'une traite, sans rien décompresser : la note de
+      synthèse ouvre, les pièces suivent, puis les échanges. C'est la forme
+      qu'on annote, qu'on imprime, qu'on porte en réunion ;
+    - l'**archive** est le dossier lui-même : ouverte d'un double-clic, elle
+      donne l'arborescence — les pièces clés rangées par nature, les messages
+      et leurs pièces jointes, la table des pièces. C'est la forme qu'on
+      classe, et la seule qu'un mail puisse porter comme un vrai dossier.
 
-    Sans PDF unique — moteur absent du poste —, c'est l'archive qui part : un
-    dossier en un fichier vaut mieux qu'un dossier qui ne part pas, et l'on
-    dit qu'elle est à décompresser.
+    L'archive porte tout : rien n'a donc à être joint séparément à côté
+    d'elle. « documents » n'est plus lu que pour mémoire de ce qui la
+    compose.
 
-    Renvoie (pièces, motif). Un motif non vide dit ce qui n'a pas pu être
-    joint, et d'où le glisser à la main.
+    Au-delà de ce qu'un message peut peser, le PDF passe d'abord — c'est lui
+    qu'on relit — et ce qui a dû être écarté est nommé, avec le répertoire
+    d'où le glisser à la main.
+
+    Renvoie (pièces, motif).
     """
     def poids_de(chemin: Path) -> int | None:
         try:
@@ -598,72 +622,34 @@ def pieces_du_brouillon(
         except OSError:
             return None
 
-    pdf = racine / pret["pdf"] if pret.get("pdf") else None
-    if pdf is not None and (poids_de(pdf) or 0) > PIECE_MAX:
-        pdf = None
-
-    archive = racine / pret["archive"] if pret.get("archive") else None
-
-    # Sans PDF unique, l'archive fait le dossier. Le dire : elle se
-    # décompresse, et c'est justement ce qu'on voulait éviter.
-    if pdf is None:
-        if archive is not None and (poids_de(archive) or 0) <= PIECE_MAX:
-            return [archive], (
-                "le PDF unique n'a pas pu être produit : c'est l'archive qui "
-                "part, à décompresser"
-            )
-        return [], "ni PDF ni archive : rien n'a pu être préparé"
-
-    gardees = [pdf]
-    total = poids_de(pdf) or 0
+    gardees: list[Path] = []
     ecartes: list[str] = []
-    vignettes: list[str] = []
+    total = 0
 
-    absorbes = pret.get("absorbes")
-    for document in documents or []:
-        # Un document n'est écarté que s'il est **réellement** dans le PDF —
-        # son empreinte le dit. S'en remettre à l'extension perdait une
-        # facture scannée jointe à un message : image, donc supposée absorbée,
-        # alors que seules les pièces clés le sont.
-        if absorbes is not None:
-            if _empreinte(document) in absorbes:
-                continue
-        elif document.suffix.lower() == ".pdf":
+    for cle in ("pdf", "archive"):
+        nom = pret.get(cle)
+        if not nom:
             continue
-        poids = poids_de(document)
-        # Une image minuscule attachée à un message est un logo de signature,
-        # pas une pièce : vingt messages en portent vingt, et les joindre
-        # noierait le dossier. Elle reste au répertoire et dans l'archive, et
-        # l'écran la compte — rien n'est perdu en silence.
-        #
-        # Une pièce **choisie** ne subit jamais ce sort, si petite soit-elle :
-        # une pièce clé que le moteur PDF n'a pas su convertir est jointe
-        # telle quelle. C'est un document, pas un ornement.
-        if (document.suffix.lower() in IMAGES
-                and not _est_piece_choisie(document)
-                and (poids or 0) < TAILLE_IMAGE_DOCUMENT):
-            vignettes.append(document.name)
-            continue
+        chemin = racine / nom
+        poids = poids_de(chemin)
         if poids is None:
+            ecartes.append(f"{nom} (introuvable)")
             continue
         if poids > PIECE_MAX or total + poids > MESSAGE_MAX:
-            ecartes.append(document.name)
+            ecartes.append(f"{nom} ({_lisible(poids)})")
             continue
-        gardees.append(document)
+        gardees.append(chemin)
         total += poids
 
-    morceaux = []
+    if not gardees:
+        return [], ("ni le PDF ni l'archive n'ont pu être joints : "
+                    + ", ".join(ecartes or ["rien n'a été préparé"]))
+
+    motif = ""
     if ecartes:
-        morceaux.append(
-            "trop lourd pour un message, à joindre à la main depuis le "
-            "répertoire : " + ", ".join(ecartes[:5])
-            + ("…" if len(ecartes) > 5 else ""))
-    if vignettes:
-        morceaux.append(
-            f"{len(vignettes)} petite(s) image(s) non jointe(s), des logos de "
-            "signature selon toute vraisemblance — elles restent au "
-            "répertoire et dans l'archive")
-    return gardees, " ; ".join(morceaux)
+        motif = ("trop lourd pour un message, à joindre à la main depuis le "
+                 "répertoire : " + ", ".join(ecartes))
+    return gardees, motif
 
 
 def brouillon_gmail(
