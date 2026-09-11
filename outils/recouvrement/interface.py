@@ -1965,10 +1965,14 @@ class Gestionnaire(BaseHTTPRequestHandler):
         )
         pret = module_envoi.preparer(repertoire, reference, lignes, sortie)
 
-        # Le PDF unique s'il existe, l'archive sinon : c'est le PDF qu'on
-        # relit, l'archive qu'on garde.
+        # Le PDF *et* l'archive : c'est le PDF qu'on relit, l'archive qui
+        # porte tout. N'attacher que le PDF — ce qui était fait dès qu'il
+        # existait — laissait derrière lui les pièces qu'un PDF ne peut pas
+        # contenir : une feuille d'émargement photographiée, un relevé en
+        # tableur, les messages d'origine au format .eml. Le dossier partait
+        # amputé, et rien ne le disait.
         base = Path(pret["repertoire"])
-        pieces = [base / (pret["pdf"] or pret["archive"])]
+        pieces, motif_pieces = module_envoi.pieces_du_brouillon(pret, base)
 
         destinataire = (
             preferences.get("responsable_entreprise")
@@ -1984,6 +1988,11 @@ class Gestionnaire(BaseHTTPRequestHandler):
         # sert à rien, et lui fait perdre le temps de comprendre pourquoi.
         messagerie = (preferences.get("messagerie") or "gmail").strip().lower()
         ouvert, motif, lien, brouillon = False, "", "", ""
+
+        # Ce que la préparation a dû laisser de côté se dit aussi : une pièce
+        # clé qui n'est pas un PDF est dans l'archive, et il faut le savoir
+        # avant de transmettre, pas après.
+        avertissements = [m for m in (pret.get("motif"), motif_pieces) if m]
 
         if messagerie == "outlook":
             ouvert, motif = module_envoi.brouillon_outlook(
@@ -2008,7 +2017,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
 
         self._json(200, {
             "ouvert": ouvert,
-            "motif": motif,
+            "motif": " ; ".join([m for m in [motif, *avertissements] if m]),
             "messagerie": messagerie,
             "lien": lien,
             "brouillon": brouillon,
@@ -2018,7 +2027,8 @@ class Gestionnaire(BaseHTTPRequestHandler):
             "expediteur": (preferences.get("expediteur") or "").strip(),
             "objet": objet,
             "corps": corps,
-            "piece": str(pieces[0]),
+            "piece": str(pieces[0]) if pieces else "",
+            "pieces": [p.name for p in pieces],
             "repertoire": pret["repertoire"],
             "poids": pret["poids_pdf"] or pret["poids_archive"],
             "financement": dossier.get("financement") or "",
@@ -2911,14 +2921,14 @@ button:disabled{opacity:.45;cursor:not-allowed}
       </div>
       <span class="compte-recherche" id="compteSuivi"></span>
       <button class="secondaire" id="exporterSuivi"
-              title="Écrit un tableau des dossiers affichés — nom, adresse, mail, téléphone, montant, état.">Exporter ce tableau</button>
+              title="Écrit un tableau des dossiers affichés — nom, adresse, mail, téléphone, montant, état, convention, diplôme, frais, note et contexte.">Exporter ce tableau</button>
     </div>
     <!-- Les deux listes qu'on trie en reunion. Elles vivent ici, avec les
          dossiers, et non sur le tableau de bord : c'est en regardant la liste
          qu'on se dit « sors-moi tous ceux sous trois mille ». -->
     <div class="exports-trancher">
       <button class="secondaire" id="exporterPetitsMontants"
-              title="Écrit un tableau de tous les dossiers en cours dont le montant dû est inférieur au seuil. Nom du débiteur — l'apprenant ou l'entreprise —, adresse postale, adresse mail, téléphone, montant, échéance, retard, état et portefeuille.">Exporter les dossiers de moins de</button>
+              title="Écrit un tableau de tous les dossiers en cours dont le montant dû est inférieur au seuil. Nom du débiteur — l'apprenant ou l'entreprise —, adresse postale, adresse mail, téléphone, montant, échéance, retard, état, portefeuille, convention, diplôme, frais, durée, note et contexte.">Exporter les dossiers de moins de</button>
       <label class="seuil">
         <input type="number" id="seuilPetitMontant" min="1" step="100"
                value="__SEUIL_PETIT_MONTANT__"
@@ -2927,9 +2937,12 @@ button:disabled{opacity:.45;cursor:not-allowed}
       <button class="secondaire" id="exporterATrancher"
               title="Les deux à la fois : les possibles abandons et les petits montants. C'est la liste qu'on trie en réunion.">Exporter tous les dossiers à trancher</button>
     </div>
-    <p class="note">Ces deux tableaux portent de quoi joindre le débiteur :
-       nom de l'apprenant ou de l'entreprise, adresse postale, adresse mail et
-       téléphone. La colonne <b>Financement</b> dit lequel des deux c'est.</p>
+    <p class="note">Les trois exports de cet onglet portent les mêmes colonnes :
+       de quoi joindre le débiteur — nom de l'apprenant ou de l'entreprise,
+       adresse postale, adresse mail, téléphone — et ce que vous avez établi
+       sur le dossier : montant, échéance, retard, état, financement,
+       convention, diplôme, frais engagés, durée, <b>note</b> et
+       <b>contexte</b>.</p>
     <div id="tableSuivi"></div>
   </section>
 </div>
@@ -3633,9 +3646,14 @@ async function ouvrirBrouillon(reference) {
       window.open("https://mail.google.com/mail/"
         + (r.expediteur ? "?authuser=" + encodeURIComponent(r.expediteur) : "")
         + "#drafts", "_blank", "noopener");
+      // Deux pieces jointes : le PDF qu'on relit, l'archive qui porte
+      // tout. Les nommer toutes les deux, faute de quoi on croit n'en avoir
+      // qu'une et l'on rouvre le repertoire pour rien.
+      const jointes = (r.pieces && r.pieces.length)
+        ? r.pieces.map(echapper).join(" et ") : echapper(r.piece);
       afficherBandeau(!r.motif,
-        `Brouillon créé dans Gmail — ${echapper(r.piece)} (${r.poids}) en `
-        + "pièce jointe"
+        `Brouillon créé dans Gmail — ${jointes} en `
+        + "pièce(s) jointe(s)"
         + (r.destinataire ? `, à ${echapper(r.destinataire)}` : "")
         + (r.expediteur ? `, depuis ${echapper(r.expediteur)}` : "")
         + ". Relisez-le et envoyez-le : rien n'est parti."

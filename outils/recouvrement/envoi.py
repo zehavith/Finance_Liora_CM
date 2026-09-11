@@ -281,6 +281,48 @@ def corps_du_message(dossier: dict) -> tuple[str, str]:
 # façon, une messagerie d'entreprise refuse en général au-delà de 25 Mo.
 PIECE_MAX = 24 * 1024 * 1024
 
+# Ce qu'un message entier peut peser. Gmail refuse au-delà d'environ
+# vingt-cinq mégaoctets de pièces jointes, et le codage en base64 en ajoute un
+# tiers : la limite se juge sur le total, pas pièce par pièce.
+MESSAGE_MAX = 24 * 1024 * 1024
+
+
+def pieces_du_brouillon(pret: dict, racine: Path) -> tuple[list[Path], str]:
+    """Ce qu'on attache : le PDF *et* l'archive, et non l'un ou l'autre.
+
+    Le brouillon n'attachait que le PDF dès qu'il existait. Or un PDF ne peut
+    pas porter une feuille d'émargement photographiée, un relevé en tableur,
+    ni les messages d'origine au format `.eml` : le dossier partait amputé de
+    tout cela, et rien ne le disait. L'archive, elle, porte tout — c'est la
+    forme complète, celle qu'on garde.
+
+    Renvoie (pièces, motif). Un motif non vide dit ce qui n'a pas pu être
+    joint : au-delà de la limite d'un message, le PDF passe d'abord, parce
+    que c'est lui qu'on relit.
+    """
+    voulues = [nom for nom in (pret.get("pdf"), pret.get("archive")) if nom]
+    gardees: list[Path] = []
+    ecartees: list[str] = []
+    total = 0
+
+    for nom in voulues:
+        chemin = racine / nom
+        try:
+            poids = chemin.stat().st_size
+        except OSError:
+            continue
+        if poids > PIECE_MAX or total + poids > MESSAGE_MAX:
+            ecartees.append(f"{nom} ({_lisible(poids)})")
+            continue
+        gardees.append(chemin)
+        total += poids
+
+    motif = ""
+    if ecartees:
+        motif = ("trop lourd pour un message, à joindre à la main depuis le "
+                 "répertoire : " + ", ".join(ecartees))
+    return gardees, motif
+
 
 def brouillon_gmail(
     service, expediteur: str, destinataire: str, objet: str, corps: str,
@@ -528,6 +570,18 @@ COLONNES_A_TRANCHER = [
     "jours_de_retard",
     "etat",
     "financement",
+    # Ce que le service a établi ou saisi, et qui décide en réunion. La
+    # convention et le diplôme disent si le dossier est défendable ; les frais,
+    # ce qu'on a déjà engagé dessus ; la note et le contexte, pourquoi il en
+    # est là — « Perdu / Ne répond pas au téléphone » ne se retrouve nulle
+    # part ailleurs, et exporter la liste sans lui obligeait à rouvrir
+    # l'application dossier par dossier.
+    "convention",
+    "diplome",
+    "frais",
+    "duree_jours",
+    "note",
+    "contexte",
     "motif",
 ]
 
@@ -543,8 +597,65 @@ ENTETES_A_TRANCHER = {
     "jours_de_retard": "Jours de retard",
     "etat": "État du dossier",
     "financement": "Financement",
+    "convention": "Convention signée",
+    "diplome": "Diplôme",
+    "frais": "Frais engagés",
+    "duree_jours": "Durée (jours)",
+    "note": "Note",
+    "contexte": "Contexte",
     "motif": "Pourquoi ce dossier est dans la liste",
 }
+
+# « non renseigné » et « non » ne disent pas la même chose : un tableau qui se
+# tait n'affirme pas que la convention manque, et les confondre ferait
+# renoncer à un dossier défendable.
+def _oui_non(valeur) -> str:
+    if valeur is True:
+        return "oui"
+    if valeur is False:
+        return "non"
+    return "non renseigné"
+
+
+def _euros(valeur) -> str:
+    montant = valeur or 0
+    return f"{montant:.2f}".replace(".", ",") if montant else ""
+
+
+def rangee_de_dossier(dossier: dict, motif: str = "") -> dict[str, str]:
+    """Une ligne de tableau, la même pour tous les exports.
+
+    Les deux exports construisaient leur ligne chacun de leur côté, et ils
+    avaient déjà divergé : l'un lisait « retard », un champ qui n'existe pas,
+    et sa colonne « Jours de retard » sortait vide.
+    """
+    return {
+        "reference": dossier.get("reference") or "",
+        "nom": dossier.get("nom") or "",
+        "adresse_postale": dossier.get("adresse_postale") or "",
+        # Dit franchement : une adresse tronquée ne s'utilise pas telle
+        # quelle, et l'apprendre après l'envoi coûte un courrier.
+        "adresse_a_completer": (
+            "" if dossier.get("adresse_complete", True) else "à compléter"),
+        "emails": dossier.get("emails") or "",
+        "telephone": dossier.get("telephone") or "",
+        "montant_du": _euros(dossier.get("montant_du")),
+        "date_echeance": dossier.get("date_echeance") or "",
+        "jours_de_retard": str(dossier.get("anciennete_jours") or ""),
+        "etat": dossier.get("statut_libelle") or dossier.get("statut") or "",
+        "financement": {
+            "entreprise": "Entreprise",
+            "personnel": "Financement personnel",
+        }.get(dossier.get("financement") or "", ""),
+        "convention": _oui_non(dossier.get("convention_signee")),
+        "diplome": _oui_non(dossier.get("diplome")),
+        "frais": _euros(dossier.get("frais")),
+        "duree_jours": ("" if dossier.get("duree_jours") is None
+                        else str(dossier.get("duree_jours"))),
+        "note": dossier.get("note") or "",
+        "contexte": dossier.get("contexte") or "",
+        "motif": motif,
+    }
 
 
 # Les deux raisons d'être dans la liste, nommées : elles se demandent
@@ -613,29 +724,7 @@ def liste_a_trancher(
         motif = a_trancher(dossier, seuil, raisons)
         if not motif:
             continue
-        montant = dossier.get("montant_du") or 0
-        rangees.append({
-            "reference": dossier.get("reference") or "",
-            "nom": dossier.get("nom") or "",
-            "adresse_postale": dossier.get("adresse_postale") or "",
-            # Dit franchement : une adresse tronquée ne s'utilise pas telle
-            # quelle, et l'apprendre après l'envoi coûte un courrier.
-            "adresse_a_completer": (
-                "" if dossier.get("adresse_complete", True)
-                else "à compléter"
-            ),
-            "emails": dossier.get("emails") or "",
-            "telephone": dossier.get("telephone") or "",
-            "montant_du": f"{montant:.2f}".replace(".", ",") if montant else "",
-            "date_echeance": dossier.get("date_echeance") or "",
-            "jours_de_retard": str(dossier.get("retard") or ""),
-            "etat": dossier.get("statut_libelle") or dossier.get("statut") or "",
-            "financement": {
-                "entreprise": "Entreprise",
-                "personnel": "Financement personnel",
-            }.get(dossier.get("financement") or "", ""),
-            "motif": motif,
-        })
+        rangees.append(rangee_de_dossier(dossier, motif))
     # Le plus lourd d'abord : c'est par là qu'on commence une réunion.
     rangees.sort(key=lambda r: -_montant_trie(r["montant_du"]))
     return rangees
@@ -651,33 +740,13 @@ def _montant_trie(texte: str) -> float:
 def ecrire_liste(cible: Path, dossiers: list[dict], motif: str = "") -> tuple[int, Path]:
     """Écrit un tableau des dossiers donnés, tels quels.
 
-    Mêmes colonnes que la liste à trancher — nom, adresse, mail, téléphone,
-    montant, échéance, retard, état — parce que ce sont celles dont on a
-    besoin pour agir, quel que soit le tableau qu'on exporte.
+    Mêmes colonnes que la liste à trancher — et la même construction, pour
+    qu'elles ne puissent plus diverger : ce sont celles dont on a besoin pour
+    agir, quel que soit le tableau qu'on exporte.
     """
     from indexation import _ecrire_csv  # noqa: PLC0415
 
-    rangees = []
-    for dossier in dossiers:
-        montant = dossier.get("montant_du") or 0
-        rangees.append({
-            "reference": dossier.get("reference") or "",
-            "nom": dossier.get("nom") or "",
-            "adresse_postale": dossier.get("adresse_postale") or "",
-            "adresse_a_completer": (
-                "" if dossier.get("adresse_complete", True) else "à compléter"),
-            "emails": dossier.get("emails") or "",
-            "telephone": dossier.get("telephone") or "",
-            "montant_du": f"{montant:.2f}".replace(".", ",") if montant else "",
-            "date_echeance": dossier.get("date_echeance") or "",
-            "jours_de_retard": str(dossier.get("anciennete_jours") or ""),
-            "etat": dossier.get("statut_libelle") or dossier.get("statut") or "",
-            "financement": {
-                "entreprise": "Entreprise",
-                "personnel": "Financement personnel",
-            }.get(dossier.get("financement") or "", ""),
-            "motif": motif,
-        })
+    rangees = [rangee_de_dossier(dossier, motif) for dossier in dossiers]
     rangees.sort(key=lambda r: -_montant_trie(r["montant_du"]))
     _ecrire_csv(
         cible,

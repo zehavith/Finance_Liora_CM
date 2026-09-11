@@ -4708,7 +4708,9 @@ def test_dossiers_a_trancher() -> None:
          "emails": "a@x.fr", "telephone": "01 23 45 67 89",
          "adresse_postale": "14 bis avenue de la République, 93300 AUBERVILLIERS",
          "adresse_complete": True, "financement": "entreprise",
-         "date_echeance": "21/05/2024", "retard": 840},
+         # Le champ que « inventaire » produit réellement : c'est lui que
+         # l'export doit lire, et il lisait « retard », qui n'existe pas.
+         "date_echeance": "21/05/2024", "anciennete_jours": 840},
         # Petit montant : les frais approchent la créance.
         {"reference": "F-2", "nom": "MCAPI", "statut": "non-transmis",
          "montant_du": 2500.0, "montant_renseigne": True, "clos": False,
@@ -4812,6 +4814,46 @@ def test_dossiers_a_trancher() -> None:
         verifier("Téléphone" in entetes and "Adresse postale" in entetes
                  and "Nom du débiteur" in entetes,
                  f"avec des en-têtes lisibles dans Excel ({entetes[:4]}…)")
+        # Ce que le service a établi sur le dossier part avec lui : « Perdu /
+        # Ne répond pas au téléphone » ne se retrouve nulle part ailleurs, et
+        # exporter la liste sans la note obligeait à rouvrir l'application
+        # dossier par dossier.
+        for colonne in ("Note", "Contexte", "Convention signée", "Diplôme",
+                        "Frais engagés", "Durée (jours)"):
+            verifier(colonne in entetes, f"et la colonne « {colonne} »")
+        rangees_csv = list(csv.DictReader(
+            cible.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"))
+        # Les deux exports construisaient leur ligne chacun de leur côté, et
+        # ils avaient divergé : celui-ci lisait « retard », un champ qui
+        # n'existe pas, et sa colonne « Jours de retard » sortait vide.
+        verifier(any(r["Jours de retard"] for r in rangees_csv),
+                 "le retard est renseigné, et non lu sur un champ inexistant")
+
+    # Un point-virgule dans une note ne doit pas casser le tableau : c'est le
+    # séparateur, et une note en porte volontiers un.
+    with tempfile.TemporaryDirectory() as repertoire:
+        cible = Path(repertoire) / "t.csv"
+        module_envoi.ecrire_liste_a_trancher(cible, [dict(
+            dossiers[0], note="Perdu ; ne répond plus",
+            contexte="appelé 3 fois", convention_signee=False,
+            frais=12.5, duree_jours=7)])
+        relu = list(csv.DictReader(
+            cible.read_text(encoding="utf-8-sig").splitlines(), delimiter=";"))[0]
+        verifier(relu["Note"] == "Perdu ; ne répond plus"
+                 and relu["Contexte"] == "appelé 3 fois",
+                 "un point-virgule dans une note est échappé")
+        verifier(relu["Convention signée"] == "non"
+                 and relu["Diplôme"] == "non renseigné",
+                 "et « non » ne se confond pas avec « non renseigné »")
+        verifier(relu["Frais engagés"] == "12,50" and relu["Durée (jours)"] == "7",
+                 f"frais et durée sont écrits ({relu['Frais engagés']}, "
+                 f"{relu['Durée (jours)']} j)")
+
+    # « Exporter ce tableau » et la liste à trancher partagent la même
+    # construction : deux constructions divergeaient déjà.
+    une = module_envoi.rangee_de_dossier(dossiers[0], "essai")
+    verifier(sorted(une) == sorted(module_envoi.COLONNES_A_TRANCHER),
+             "une seule construction de ligne pour tous les exports")
 
     # Une barre du tableau de bord mène aux dossiers qu'elle compte.
     page = module_interface.PAGE
@@ -5098,6 +5140,28 @@ def test_preparer_pour_envoi() -> None:
                  "et se décompresse dans un dossier, pas en vrac")
         verifier("Mo" in resultat["poids_archive"] or "Ko" in resultat["poids_archive"],
                  f"son poids est dit ({resultat['poids_archive']})")
+
+        # Le brouillon n'attachait que le PDF dès qu'il existait. Or un PDF
+        # ne porte ni la feuille d'émargement photographiée, ni le relevé en
+        # tableur, ni les messages d'origine au format .eml : le dossier
+        # partait amputé de tout cela, et rien ne le disait.
+        jointes, sans_motif = module_envoi.pieces_du_brouillon(resultat, sortie / "pour-envoi")
+        noms = sorted(p.name for p in jointes)
+        verifier(noms == ["fact-2405-00409_sas-eden.pdf",
+                          "fact-2405-00409_sas-eden.zip"],
+                 f"le brouillon porte le PDF *et* l'archive ({noms})")
+        verifier(not sans_motif, f"sans rien laisser de côté ({sans_motif})")
+
+        # Au-delà de ce qu'un message peut peser, le PDF passe d'abord —
+        # c'est lui qu'on relit — et ce qui est écarté est nommé.
+        lourde = sortie / "pour-envoi" / "lourde.zip"
+        lourde.write_bytes(b"P" * (module_envoi.MESSAGE_MAX + 1))
+        jointes, motif_lourd = module_envoi.pieces_du_brouillon(
+            dict(resultat, archive="lourde.zip"), sortie / "pour-envoi")
+        verifier([p.suffix for p in jointes] == [".pdf"]
+                 and "lourde.zip" in motif_lourd,
+                 f"et une archive trop lourde est nommée ({motif_lourd[:60]}…)")
+        lourde.unlink()
 
     # Le brouillon : l'application prepare, elle ne poste pas. Adresser un
     # courriel a un tiers est un geste qui appartient a celle qui le signe.

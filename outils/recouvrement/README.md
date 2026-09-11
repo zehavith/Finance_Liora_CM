@@ -606,9 +606,23 @@ justement d'éviter.
 Un dossier clos n'y figure pas : la décision a été prise. Un montant non
 renseigné non plus — ce n'est pas zéro, et zéro n'est pas un petit montant.
 
-Le tableau porte de quoi joindre le débiteur : **nom, adresse postale,
-adresse mail, téléphone**, plus le montant, l'échéance, le retard, l'état,
-le portefeuille et **le motif** de sa présence dans la liste. Le plus lourd
+Les trois exports de l'onglet — *Exporter ce tableau*, et les deux listes
+ci-dessus — portent **les mêmes colonnes**, construites au même endroit pour
+qu'elles ne puissent pas diverger :
+
+- de quoi **joindre** le débiteur : nom de l'apprenant ou de l'entreprise,
+  adresse postale, adresse mail, téléphone ;
+- ce qui **situe** la créance : montant, échéance, jours de retard, état,
+  portefeuille, durée de la procédure ;
+- ce qui dit si le dossier est **défendable** : convention signée, diplôme,
+  frais engagés ;
+- ce que **vous** avez écrit : la **note** et le **contexte** — « Perdu / Ne
+  répond pas au téléphone » ne se retrouve nulle part ailleurs, et exporter
+  la liste sans eux obligeait à rouvrir l'application dossier par dossier ;
+- et **le motif** de sa présence dans la liste.
+
+Un point-virgule dans une note ne casse pas le tableau, bien qu'il soit le
+séparateur : la valeur est échappée. Le plus lourd
 en premier — c'est par là qu'on commence une réunion. Une adresse tronquée
 est marquée *« à compléter »*, et le compte des dossiers sans adresse ni
 téléphone est annoncé à l'écran.
@@ -813,8 +827,19 @@ appartient à celle qui le signe.
 
 | Messagerie | Ce qui se passe |
 |---|---|
-| **Gmail** (par défaut) | un **vrai brouillon** est écrit dans votre Gmail, **pièce jointe comprise** ; l'onglet des brouillons s'ouvre, vous relisez, vous envoyez |
-| **Outlook** | le brouillon s'ouvre dans Outlook, pièce jointe comprise (demande `pywin32`, Windows) |
+| **Gmail** (par défaut) | un **vrai brouillon** est écrit dans votre Gmail, **pièces jointes comprises** ; l'onglet des brouillons s'ouvre, vous relisez, vous envoyez |
+| **Outlook** | le brouillon s'ouvre dans Outlook, pièces jointes comprises (demande `pywin32`, Windows) |
+
+**Les deux fichiers sont joints, pas l'un ou l'autre** : le PDF, qu'on relit
+et qu'on annote, *et* l'archive, qui porte tout. N'attacher que le PDF dès
+qu'il existait — ce qui était fait — laissait derrière lui tout ce qu'un PDF
+ne peut pas contenir : une feuille d'émargement photographiée, un relevé en
+tableur, les messages d'origine au format `.eml`. Le dossier partait amputé,
+et rien ne le disait.
+
+Au-delà de ce qu'un message peut peser, le PDF passe d'abord — c'est lui
+qu'on relit — et ce qui a dû être écarté est **nommé à l'écran**, avec le
+répertoire d'où le glisser à la main.
 
 Le réglage **Messagerie** choisit lequel.
 
