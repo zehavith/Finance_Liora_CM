@@ -106,6 +106,22 @@
         }
 
         const SEUIL = 0.5;
+        // Une colonne d'étiquettes ne contient pas des dates.
+        //
+        // « Date de passage en recouvrement » emportait le champ
+        // « Qualification recouvrement » sur le seul mot « recouvrement », et
+        // ses dates devenaient des motifs : la répartition des motifs comptait
+        // 252 catégories, dont des dizaines de jours de calendrier, à la place
+        // des étiquettes Monday. Aucun contrôle ne s'y opposait — seuls les
+        // champs de dates, de montants et de numéros étaient vérifiés sur
+        // leurs valeurs.
+        const ETIQUETTES = ['qualifRecouvrement', 'qualifBascule', 'statut', 'litige', 'typeClient'];
+        if (ETIQUETTES.includes(champ)) {
+            const n = brutes.filter(v => R.parseDate(v)).length;
+            if (n / brutes.length >= SEUIL) {
+                return { ok: false, raison: 'contient des dates, pas des étiquettes' };
+            }
+        }
         if (champ.startsWith('date')) {
             const n = brutes.filter(v => R.parseDate(v)).length;
             return n / brutes.length >= SEUIL
@@ -501,7 +517,11 @@
      */
     function motifDeQualification(qualifs) {
         const entrees = Object.entries(qualifs || {})
-            .filter(([, v]) => String(v || '').trim());
+            // Une date n'est pas un motif. Le contrôle des colonnes écarte
+            // déjà celles qui n'en portent que ; celui-ci écarte la valeur
+            // isolée, pour qu'un jour de calendrier ne se présente jamais
+            // comme une réponse à « pourquoi ce n'est pas payé ».
+            .filter(([, v]) => String(v || '').trim() && !R.parseDate(v));
         if (!entrees.length) return { motif: '', motifColonne: '' };
         for (const c of COLONNES_MOTIF) {
             for (const [nom, val] of entrees) {

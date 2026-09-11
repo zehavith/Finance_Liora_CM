@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.65.0';
+    const VERSION = '2.66.0';
     const VERSION_DATE = '11 septembre 2026';
 
     const R = window.LioraRules;
@@ -1201,10 +1201,24 @@
      * catégories sont réunies sous « Autres », et la légende à côté donne le
      * détail complet, part par part, en pourcentage et en euros.
      */
-    function rendreCamembertsMotifs(groupes, suffixe) {
+    function rendreCamembertsMotifs(groupes, suffixe, financements) {
         const hote = $('#motifs-colonnes' + suffixe);
         if (!hote) return;
-        if (!groupes.length) { hote.innerHTML = ''; return; }
+        if (!financements) {
+            hote.innerHTML = '<p class="fv-hint">Cliquez sur un type de financement pour voir '
+                + 'la répartition de ses motifs, colonne de qualification par colonne '
+                + 'de qualification.</p>';
+            return;
+        }
+        // Un camembert entièrement gris ne dit rien de plus que la ligne
+        // « Aucun motif renseigné » du tableau. Les tableaux sans colonne de
+        // qualification restent comptés, mais ne prennent plus un bloc à eux.
+        groupes = groupes.filter(g => g.colonne !== MOTIF_SANS_COLONNE);
+        if (!groupes.length) {
+            hote.innerHTML = `<p class="fv-hint">Aucune colonne de qualification sur les tableaux `
+                + `qui portent ${U.escapeHtml(financements.join(', '))}.</p>`;
+            return;
+        }
 
         const MAX_PARTS = 9;
         const prepares = groupes.map((g, i) => {
@@ -1226,7 +1240,10 @@
             return { g, parts, id: 'motifs-pie' + suffixe + '-' + i };
         });
 
-        hote.innerHTML = prepares.map(({ g, parts, id }) => {
+        const entete = `<p class="fv-hint">Répartition des motifs sur `
+            + `<strong>${U.escapeHtml(financements.join(', '))}</strong>. `
+            + `Le pourcentage se lit sur le montant, pas sur le nombre de factures.</p>`;
+        hote.innerHTML = entete + prepares.map(({ g, parts, id }) => {
             const sans = g.cats.find(c => c.motif === MOTIF_AUCUN);
             const tauxQualif = g.total ? g.qualifie / g.total * 100 : 0;
             const legende = parts.map(p => `
@@ -1319,10 +1336,19 @@
         const rows = [...par.values()].sort((a, b) => b.total - a.total);
         state.motifsRows = rows;
         // Une colonne de qualification par tableau, un camembert par colonne.
+        //
+        // Les camemberts ne s'affichent que sur un financement choisi. Sur le
+        // portefeuille entier, ils tiennent la moitié de l'écran pour dire ce
+        // que le tableau dit déjà — et la répartition des motifs ne se lit de
+        // toute façon pas de la même façon d'un dispositif à l'autre.
         const groupes = repartitionMotifs(ouvertes, reste);
         state.motifsParColonne = groupes;
-        rendreCamembertsMotifs(groupes, '');
-        rendreCamembertsMotifs(groupes, '-2');
+        const sel = state.filtres.financements;
+        const financements = (sel && sel.size)
+            ? [...sel].map(k => R.getRule(k, state.rules).label)
+            : null;
+        rendreCamembertsMotifs(financements ? groupes : [], '', financements);
+        rendreCamembertsMotifs(financements ? groupes : [], '-2', financements);
 
         const total = rows.reduce((a, r) => ({
             nb: a.nb + r.nb, total: a.total + r.total, echu: a.echu + r.echu, nonEchu: a.nonEchu + r.nonEchu,
@@ -1339,8 +1365,8 @@
             + `<strong>${U.euros(renseigne)}</strong> sur ${U.euros(total.total)} sont qualifiés `
             + `(${U.pourcent(total.total ? renseigne / total.total * 100 : 0, 0)})`
             + (sans ? ` — il reste ${U.nombre(sans.nb)} factures sans motif, ${U.euros(sans.total)}.` : '.')
-            + ' Chaque colonne a son camembert : les catégories y sont celles de vos étiquettes '
-            + 'Monday, et le pourcentage se lit sur le montant, pas sur le nombre de factures.';
+            + ' Cliquez sur un type de financement pour voir la répartition en camembert, '
+            + 'colonne par colonne.';
 
         el.innerHTML = U.table([
             { key: 'motif', label: 'Pourquoi', format: (v, r) => v === MOTIF_AUCUN
