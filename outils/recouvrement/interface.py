@@ -2054,6 +2054,11 @@ class Gestionnaire(BaseHTTPRequestHandler):
             "corps": corps,
             "piece": str(pieces[0]) if pieces else "",
             "pieces": [p.name for p in pieces],
+            # Ce que le PDF réunit : combien, et lesquelles. Un PDF qui ne
+            # porterait que la note de synthèse se voit alors d'un coup
+            # d'œil, au lieu de se découvrir en l'ouvrant.
+            "pieces_pdf": pret.get("pieces_pdf") or 0,
+            "pieces_noms": (pret.get("pieces_noms") or [])[:40],
             "repertoire": pret["repertoire"],
             "poids": pret["poids_pdf"] or pret["poids_archive"],
             "financement": dossier.get("financement") or "",
@@ -3686,9 +3691,15 @@ async function ouvrirBrouillon(reference) {
       // qu'une et l'on rouvre le repertoire pour rien.
       const jointes = (r.pieces && r.pieces.length)
         ? r.pieces.map(echapper).join(" et ") : "aucune pièce jointe";
+      // Ce que le PDF réunit, dit en clair : « 24 pièces réunies ». Un PDF
+      // qui ne porterait que la note de synthèse se voit alors sans
+      // l'ouvrir, et l'infobulle nomme ce qu'il contient.
+      const dedans = r.pieces_pdf
+        ? ` — <b title="${echapper((r.pieces_noms || []).join(", "))}">`
+          + `${r.pieces_pdf} pièce(s) réunie(s) dans le PDF</b>` : "";
       afficherBandeau(!r.motif,
         `Brouillon créé dans Gmail — ${jointes} en `
-        + "pièce(s) jointe(s)"
+        + "pièce(s) jointe(s)" + dedans
         + (r.destinataire ? `, à ${echapper(r.destinataire)}` : "")
         + (r.expediteur ? `, depuis ${echapper(r.expediteur)}` : "")
         + ". Relisez-le et envoyez-le : rien n'est parti."

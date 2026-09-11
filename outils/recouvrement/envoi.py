@@ -289,7 +289,7 @@ def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex],
 
 def ecrire_pdf_unique(
     repertoire: Path, lignes: list[LigneIndex], cible: Path,
-    absorbes: set | None = None,
+    absorbes: set | None = None, reunies: list | None = None,
 ) -> tuple[int, int, str]:
     """Réunit les PDF du dossier en un seul. Renvoie (pièces, octets, motif).
 
@@ -335,6 +335,11 @@ def ecrire_pdf_unique(
             refuses.append(source.name)
             continue
         reunis += 1
+        # Non seulement combien, mais lesquelles : « le PDF ne contient que
+        # la synthèse » ne se vérifie pas avec un nombre qu'on ne voit nulle
+        # part. L'application doit pouvoir dire ce qu'elle a réuni.
+        if reunies is not None:
+            reunies.append(source.name)
 
     if not reunis:
         return 0, 0, "aucun des PDF du dossier n'a pu être lu"
@@ -819,8 +824,9 @@ def preparer(
 
     fichiers, poids_zip = ecrire_archive(repertoire, destination / f"{base}.zip")
     absorbes: set = set()
+    reunies: list[str] = []
     pieces, poids_pdf, motif = ecrire_pdf_unique(
-        repertoire, lignes, destination / f"{base}.pdf", absorbes
+        repertoire, lignes, destination / f"{base}.pdf", absorbes, reunies
     )
 
     absents = messages_sans_pdf(repertoire, lignes) if pieces else []
@@ -860,6 +866,10 @@ def preparer(
         # figure pas est joint à côté : c'est ainsi qu'on tient la promesse
         # « tout le dossier part », sans rien envoyer deux fois.
         "absorbes": absorbes,
+        # Ce que le PDF réunit, nommément : la note, les pièces, les
+        # échanges. Sans cette liste, « il n'y a que la synthèse » ne peut ni
+        # se confirmer ni se démentir depuis l'application.
+        "pieces_noms": reunies,
         "motif": motif,
     }
 

@@ -5175,6 +5175,15 @@ def test_preparer_pour_envoi() -> None:
                 sys.modules["pypdf"] = vrai
 
         verifier(appels == ordre, f"le PDF unique reprend cet ordre ({appels})")
+        # Non seulement combien, mais lesquelles : « le PDF ne contient que
+        # la synthèse » ne se vérifie pas avec un nombre invisible.
+        verifier(resultat.get("pieces_noms")
+                 and len(resultat["pieces_noms"]) == resultat["pieces_pdf"]
+                 and "synthese.pdf" in resultat["pieces_noms"],
+                 f"le PDF dit ce qu'il réunit ({resultat.get('pieces_noms')})")
+        verifier('r.pieces_pdf' in module_interface.PAGE
+                 and "pièce(s) réunie(s) dans le PDF" in module_interface.PAGE,
+                 "et la page l'annonce après l'écriture du brouillon")
         verifier(resultat["pieces_pdf"] == 4 and resultat["pdf"].endswith(".pdf"),
                  f"il est écrit ({resultat['pdf']}, {resultat['pieces_pdf']} pièces)")
         verifier(resultat["sans_pdf"] == 1 and resultat["hors_pdf"] == 1
