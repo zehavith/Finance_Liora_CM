@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.62.0';
+    const VERSION = '2.63.0';
     const VERSION_DATE = '11 septembre 2026';
 
     const R = window.LioraRules;
@@ -7590,6 +7590,7 @@
             r.nonCharge = !aDesLignes;
             r.manquantes = (!aDesLignes || b.itemsCount == null || b.charge == null)
                 ? null : Math.max(0, b.itemsCount - b.charge);
+            r.conserve = !!b.conserve;
             return r;
         });
         el.innerHTML = U.table([
@@ -7597,7 +7598,19 @@
                 key: 'actif', label: '', align: 'center', width: '40px', sortable: false,
                 format: (v, r) => `<input type="checkbox" class="board-actif" data-id="${U.escapeHtml(r.id)}" ${v ? 'checked' : ''}>`,
             },
-            { key: 'name', label: 'Tableau' },
+            { key: 'name', label: 'Tableau',
+              format: (v, r) => U.escapeHtml(v)
+                  + (r.conserve
+                      ? '<span class="cell-mini cell-danger">factures conservées du chargement précédent</span>'
+                      : '') },
+            {
+                key: 'id', label: '', align: 'center', width: '34px', sortable: false,
+                title: 'Recharger ce seul tableau depuis Monday',
+                // Un tableau venu d'un fichier n'a rien à recharger depuis Monday.
+                format: (v, r) => String(v).startsWith('file:') ? ''
+                    : `<button class="lien-cellule board-refresh" data-id="${U.escapeHtml(String(v))}"`
+                      + ` title="Recharger « ${U.escapeHtml(r.name)} » depuis Monday, sans toucher aux autres">⟳</button>`,
+            },
             {
                 key: 'role', label: 'Rôle', sortable: false,
                 format: (v, r) => `<select class="input input-sm board-role" data-id="${U.escapeHtml(r.id)}">`
@@ -7641,6 +7654,9 @@
             payees: U.nombre(X.sum(rows, r => r.payees)),
         } });
 
+        $$('.board-refresh', el).forEach(b => b.addEventListener('click', () => {
+            rechargerUnSeulBoard(b.dataset.id);
+        }));
         $$('.board-actif', el).forEach(c => c.addEventListener('change', () => {
             const b = state.boards.find(x => String(x.id) === c.dataset.id);
             if (b) { b.actif = c.checked; sauverBoards(); }
@@ -8003,6 +8019,147 @@
         if (!document.hidden && state.chargementEnCours) empecherVeille();
     });
 
+    /**
+     * Charge un tableau Monday et en tire ses factures.
+     *
+     * Extrait de la boucle de chargement pour servir aussi au rafraîchissement
+     * d'un seul tableau : rappeler les neuf tableaux pour en corriger un seul
+     * coûte plusieurs minutes, et vous les passiez à attendre.
+     */
+    async function chargerUnBoard(b, log) {
+        if (!b.columns) {
+            const meta = await M.boardColumns(state.token, b.id);
+            b.columns = meta ? meta.columns : [];
+        }
+        const mappingManuel = !!(b.mapping && Object.keys(b.mapping).length);
+
+        const { board, items, tronque } = await M.fetchBoardItems(state.token, b.id, log);
+        if (!board) throw new Error('Tableau inaccessible');
+        // Une pagination interrompue par le garde-fou ne doit pas
+        // passer pour un chargement complet : la balance serait
+        // fausse sans que rien ne le dise.
+        b.tronque = !!tronque;
+
+        // L'association se fait sur les noms de colonnes, puis se
+        // vérifie sur les valeurs. Les deux étapes sont menées
+        // ensemble : un candidat démenti par les données — la
+        // colonne « Problématique Pré-échéance », qui contient le
+        // mot échéance sans porter de dates — laisse ainsi la place
+        // au candidat suivant sur ce champ, au lieu de l'emporter
+        // puis de le laisser vide.
+        const echantillon = items.slice(0, 200);
+        const valeursDe = colId => echantillon.map(it => {
+            const cv = (it.column_values || []).find(c => c.id === colId);
+            return cv ? M.columnValue(cv) : '';
+        });
+
+        let rejets = [];
+        if (mappingManuel) {
+            // Une correspondance choisie à la main fait foi : elle
+            // est contrôlée, jamais remplacée.
+            const contr = I.validerMapping(b.mapping, valeursDe);
+            b.mapping = contr.mapping;
+            rejets = contr.rejets;
+        } else {
+            const auto = I.autoMapColumns(b.columns || [], valeursDe);
+            b.mapping = auto.mapping;
+            rejets = auto.rejets;
+            const manquants = ['numero', 'montant'].filter(k => !b.mapping[k]);
+            if (manquants.length) log(`   ⚠ colonnes non reconnues : ${manquants.join(', ')}`);
+        }
+        b.rejetsMapping = rejets;
+        rejets.forEach(r => {
+            const repris = b.mapping[r.champ];
+            log(`   ⚠ « ${r.colonne} » écartée du champ ${r.champ} : ${r.raison}`
+                + (repris ? ` — « ${repris} » retenue à la place` : ''));
+        });
+
+        // Une colonne correctement nommée peut n'être jamais
+        // renseignée. Le taux de remplissage est mesuré ici, sur les
+        // valeurs réelles, et conservé pour l'écran de
+        // correspondance : un montant absent doit se voir avant de
+        // ressortir en zéros dans les indicateurs.
+        b.couverture = I.couvertureMapping(b.mapping, colId =>
+            echantillon.map(it => {
+                const cv = (it.column_values || []).find(c => c.id === colId);
+                return cv ? M.columnValue(cv) : '';
+            }), echantillon.length);
+
+        for (const champ of ['montant', 'dateFacture', 'dateFinFormation']) {
+            const c = b.couverture[champ];
+            const nom = (I.FIELD_BY_NAME[champ] || {}).label || champ;
+            if (!c || !c.colId) log(`   ⚠ ${nom} : aucune colonne reconnue sur ce tableau`);
+            else if (c.taux < 50) log(`   ⚠ ${nom} : colonne renseignée sur ${Math.round(c.taux)} % des lignes seulement`);
+        }
+
+        const factures = I.facturesFromMondayBoard(board, items, b.mapping, b);
+        // Conserver les valeurs brutes pour l'aperçu du mapping
+        items.forEach((it, idx) => {
+            const brut = {};
+            for (const cv of (it.column_values || [])) { const v = M.columnValue(cv); if (v) brut[cv.id] = v; }
+            if (factures[idx]) factures[idx].__brut = brut;
+        });
+
+        b.charge = factures.length;
+        log(`   ✓ ${factures.length} factures`);
+
+        if (b.itemsCount != null && factures.length < b.itemsCount) {
+            log(`   ⚠ ${b.itemsCount - factures.length} éléments manquants sur ${b.itemsCount}`);
+        }
+        return factures;
+    }
+
+    /**
+     * Recharger un seul tableau, sans toucher aux autres.
+     *
+     * Rappeler les neuf tableaux quand un seul a bougé coûte plusieurs
+     * minutes d'attente pour rien — et quand une correction ne concerne qu'un
+     * tableau, c'est ce tableau-là qu'il faut aller rechercher. Les factures
+     * des autres tableaux restent en place, telles qu'elles ont été chargées.
+     */
+    async function rechargerUnSeulBoard(id) {
+        if (state.chargementEnCours) { U.toast('Un chargement est déjà en cours.', 'error'); return; }
+        if (!state.token) { U.toast('Connectez-vous à Monday d\'abord.', 'error'); return; }
+        const b = state.boards.find(x => String(x.id) === String(id));
+        if (!b) { U.toast('Tableau introuvable.', 'error'); return; }
+
+        state.chargementEnCours = true;
+        state.progression = { fait: 0, total: 1, nom: b.name, lignes: 0 };
+        majIndicateurActualisation();
+        const veilleBloquee = await empecherVeille();
+        const journal = [];
+        const tracer = m => { journal.push(m); };
+        U.toast(`Rechargement de « ${b.name} »…`, 'info', 4000);
+        try {
+            b.erreurChargement = null;
+            const factures = await chargerUnBoard(b, tracer);
+            b.conserve = false;
+            b.actif = true;
+            // Seules les factures de ce tableau sont remplacées.
+            state.brutes = state.brutes.filter(f => String(f.boardId) !== String(b.id))
+                .concat(factures);
+            state.derniereActualisation = new Date();
+            await sauverFactures();
+            await sauverBoards();
+            await S.set('rec_derniere_actualisation', state.derniereActualisation.toISOString());
+            recalculer({ conserverPeriode: true });
+            U.toast(`« ${b.name} » : ${U.nombre(factures.length)} factures rechargées. `
+                + `${U.nombre(state.brutes.length)} au total.`, 'success', 8000);
+        } catch (e) {
+            b.erreurChargement = e.message;
+            // Rien n'est retiré : le portefeuille reste celui d'avant.
+            U.toast(`« ${b.name} » non rechargé : ${e.message} — les factures précédentes sont conservées.`,
+                    'error', 12000);
+        } finally {
+            state.chargementEnCours = false;
+            state.progression = null;
+            await autoriserVeille();
+            majIndicateurActualisation();
+            rendreTableBoards();
+        }
+        if (journal.length) console.info('[Recouvrement] ' + b.name + '\n' + journal.join('\n'));
+    }
+
     async function chargerBoardsActifs(opts) {
         const silencieux = !!(opts && opts.silencieux);
         if (state.chargementEnCours) return;
@@ -8057,91 +8214,25 @@
                 // L'échec d'un tableau ne doit pas emporter les suivants :
                 // mieux vaut un chargement partiel, signalé, qu'un écran vide.
                 try {
-                    if (!b.columns) {
-                        const meta = await M.boardColumns(state.token, b.id);
-                        b.columns = meta ? meta.columns : [];
-                    }
-                    const mappingManuel = !!(b.mapping && Object.keys(b.mapping).length);
-
-                    const { board, items, tronque } = await M.fetchBoardItems(state.token, b.id, log);
-                    if (!board) throw new Error('Tableau inaccessible');
-                    // Une pagination interrompue par le garde-fou ne doit pas
-                    // passer pour un chargement complet : la balance serait
-                    // fausse sans que rien ne le dise.
-                    b.tronque = !!tronque;
-
-                    // L'association se fait sur les noms de colonnes, puis se
-                    // vérifie sur les valeurs. Les deux étapes sont menées
-                    // ensemble : un candidat démenti par les données — la
-                    // colonne « Problématique Pré-échéance », qui contient le
-                    // mot échéance sans porter de dates — laisse ainsi la place
-                    // au candidat suivant sur ce champ, au lieu de l'emporter
-                    // puis de le laisser vide.
-                    const echantillon = items.slice(0, 200);
-                    const valeursDe = colId => echantillon.map(it => {
-                        const cv = (it.column_values || []).find(c => c.id === colId);
-                        return cv ? M.columnValue(cv) : '';
-                    });
-
-                    let rejets = [];
-                    if (mappingManuel) {
-                        // Une correspondance choisie à la main fait foi : elle
-                        // est contrôlée, jamais remplacée.
-                        const contr = I.validerMapping(b.mapping, valeursDe);
-                        b.mapping = contr.mapping;
-                        rejets = contr.rejets;
-                    } else {
-                        const auto = I.autoMapColumns(b.columns || [], valeursDe);
-                        b.mapping = auto.mapping;
-                        rejets = auto.rejets;
-                        const manquants = ['numero', 'montant'].filter(k => !b.mapping[k]);
-                        if (manquants.length) log(`   ⚠ colonnes non reconnues : ${manquants.join(', ')}`);
-                    }
-                    b.rejetsMapping = rejets;
-                    rejets.forEach(r => {
-                        const repris = b.mapping[r.champ];
-                        log(`   ⚠ « ${r.colonne} » écartée du champ ${r.champ} : ${r.raison}`
-                            + (repris ? ` — « ${repris} » retenue à la place` : ''));
-                    });
-
-                    // Une colonne correctement nommée peut n'être jamais
-                    // renseignée. Le taux de remplissage est mesuré ici, sur les
-                    // valeurs réelles, et conservé pour l'écran de
-                    // correspondance : un montant absent doit se voir avant de
-                    // ressortir en zéros dans les indicateurs.
-                    b.couverture = I.couvertureMapping(b.mapping, colId =>
-                        echantillon.map(it => {
-                            const cv = (it.column_values || []).find(c => c.id === colId);
-                            return cv ? M.columnValue(cv) : '';
-                        }), echantillon.length);
-
-                    for (const champ of ['montant', 'dateFacture', 'dateFinFormation']) {
-                        const c = b.couverture[champ];
-                        const nom = (I.FIELD_BY_NAME[champ] || {}).label || champ;
-                        if (!c || !c.colId) log(`   ⚠ ${nom} : aucune colonne reconnue sur ce tableau`);
-                        else if (c.taux < 50) log(`   ⚠ ${nom} : colonne renseignée sur ${Math.round(c.taux)} % des lignes seulement`);
-                    }
-
-                    const factures = I.facturesFromMondayBoard(board, items, b.mapping, b);
-                    // Conserver les valeurs brutes pour l'aperçu du mapping
-                    items.forEach((it, idx) => {
-                        const brut = {};
-                        for (const cv of (it.column_values || [])) { const v = M.columnValue(cv); if (v) brut[cv.id] = v; }
-                        if (factures[idx]) factures[idx].__brut = brut;
-                    });
-
-                    collecte.push(...factures);
-                    b.charge = factures.length;
-                    log(`   ✓ ${factures.length} factures`);
-
-                    if (b.itemsCount != null && factures.length < b.itemsCount) {
-                        log(`   ⚠ ${b.itemsCount - factures.length} éléments manquants sur ${b.itemsCount}`);
-                    }
+                    b.conserve = false;
+                    collecte.push(...await chargerUnBoard(b, log));
                 } catch (e) {
                     b.erreurChargement = e.message;
-                    b.charge = 0;
                     echecs.push(b.name);
                     log(`   ✗ ${e.message}`);
+                    // Un tableau injoignable ne doit pas vider le portefeuille
+                    // de ses factures. Celles du chargement précédent sont
+                    // gardées, et le tableau dit qu'elles datent d'avant.
+                    const anciennes = state.brutes.filter(f => String(f.boardId) === String(b.id));
+                    if (anciennes.length) {
+                        collecte.push(...anciennes);
+                        b.charge = anciennes.length;
+                        b.conserve = true;
+                        log(`   ↺ ${anciennes.length} factures conservées du chargement précédent`);
+                    } else {
+                        b.charge = 0;
+                        b.conserve = false;
+                    }
                 }
             }
 
