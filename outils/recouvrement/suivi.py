@@ -579,6 +579,38 @@ def purger_references_parasites(chemin_suivi: Path) -> list[str]:
     return sorted(touches)
 
 
+def raison_note_perimee(repertoire: Path, etat: dict) -> str:
+    """Pourquoi cette note est à refaire : « version », « suivi », ou rien.
+
+    « 37 notes sont en cours de mise à jour » devant un écran qu'on vient
+    d'ouvrir fait craindre que l'outil se refasse tout seul tous les jours. Ce
+    n'est pas le cas — mais rien ne le disait, et la question s'est posée.
+    Distinguer les deux causes y répond dans l'application, une fois pour
+    toutes : une mise à jour de l'outil périme les notes d'un coup, un
+    changement de suivi n'en périme que les siennes.
+    """
+    ecrites = [(repertoire / nom).stat().st_mtime
+               for nom in ("synthese.pdf", "synthese.html")
+               if (repertoire / nom).exists()]
+    if not ecrites:
+        return ""
+
+    marque = repertoire / "synthese.version"
+    try:
+        version = marque.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "version"
+    if version != VERSION:
+        return "version"
+
+    enregistre = _horodatage(etat.get("maj") or "")
+    if enregistre is None:
+        return ""
+    if enregistre.timestamp() > max(ecrites) + BATTEMENT_NOTE:
+        return "suivi"
+    return ""
+
+
 def note_perimee(repertoire: Path, etat: dict) -> bool:
     """Vrai si la note de synthèse ne dit plus ce qu'elle dirait aujourd'hui.
 
@@ -755,6 +787,11 @@ def inventaire(racine_sortie: Path, chemin_suivi: Path,
                     "synthese.pdf" if (repertoire / "synthese.pdf").exists()
                     else "synthese.html"),
                 "note_perimee": note_perimee(repertoire, etat),
+                # Pourquoi elle l'est : « version » quand l'outil a changé —
+                # toutes les notes d'un coup —, « suivi » quand c'est ce
+                # dossier-là qui a bougé. La page le dit, faute de quoi un
+                # bandeau à chaque ouverture passe pour un défaut.
+                "note_raison": raison_note_perimee(repertoire, etat),
                 "a_index": (repertoire / "index.csv").exists(),
                 # État de suivi
                 "statut": statut,

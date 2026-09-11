@@ -449,6 +449,20 @@ Les deux portefeuilles, eux, **partitionnent** les dossiers : chacun est
 d'entreprise ou en financement personnel, jamais les deux, jamais aucun. Leur
 somme est donc toujours le total — 37 + 16 font 53, et c'est normal.
 
+### Pourquoi les notes se refont à l'ouverture
+
+Elles ne se refont **pas tous les jours**. Une note est réécrite dans deux cas
+seulement, et le bandeau dit maintenant lequel :
+
+| Cause | Ce qui se passe |
+| --- | --- |
+| **L'outil a changé de version** | toutes les notes d'un coup : chacune porte la version qui l'a écrite, et une note de la v150 dirait encore ce que la v150 disait — l'adresse pourrait y venir d'un RIB, la même facture y tenir sept lignes |
+| **Le suivi de ce dossier a bougé** | celle-là seulement : échéance, convention, diplôme, contexte, note, étape — tout ce qui entre dans la note est daté, et l'outil compare les deux dates |
+
+La première explique le bandeau vu à chaque nouvelle livraison. La seconde,
+celui qui suit un « Compléter depuis Monday » ou un fichier de suivi déposé.
+Ouvrir l'application le lendemain sans rien changer ne refait rien.
+
 ### Ce qui tourne le dit, et dit où il en est
 
 Deux traitements durent : l'**export**, qui va chercher les messages dossier
@@ -874,6 +888,11 @@ Si une pièce ne peut pas être jointe — un PDF ouvert dans Acrobat, un fichie
 verrouillé —, elle est **écartée seule** et nommée : le reste part quand même.
 Et si rien n'a pu être joint, l'écran le dit **en premier** ; transmettre un
 dossier sans le dossier est pire que ne rien transmettre.
+
+Ne part jamais la **plomberie** du dossier : `index.csv`, `journal.log`,
+`synthese.version` — l'octet qui dit quelle version de l'outil a écrit la
+note. Ce qui n'est pas un document du dossier n'a rien à faire dans un mail
+de transmission.
 
 **La règle, en une phrase : un document est dans le PDF, ou joint à côté.**
 Jamais perdu. Ce n'est pas l'extension qui décide — elle faisait disparaître

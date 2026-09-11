@@ -4102,6 +4102,9 @@ const NATURES_PIECES = __NATURES_PIECES__;
 // vient du serveur : le coder ici en dur ferait diverger le libelle du
 // bouton et ce que le fichier contient.
 const SEUIL_PETIT_MONTANT = __SEUIL_PETIT_MONTANT__;
+// La version qui tourne. Chaque note porte celle qui l'a ecrite : quand les
+// deux different, la note ne dirait plus ce qu'elle dirait aujourd'hui.
+const VERSION = "__VERSION__";
 let ENTREPRISES = null, ANNUAIRE_CONNU = false, ANNUAIRE_MANQUANTS = 0;
 // Les notes qu'on n'a pas pu reecrire, et pourquoi. Elles restent en retard,
 // donc remises en chantier a chaque affichage : sans le dire, le bandeau
@@ -5011,11 +5014,29 @@ function rendreDocuments() {
   const barre = barreAvancement(
     avancement, "Avancement de la mise à jour des notes");
 
+  // Pourquoi elles se refont. « Sont en cours de mise à jour » a fait
+  // craindre que l'outil se refasse tout seul tous les jours : ce n'est pas
+  // le cas, et la cause se dit. Une mise à jour de l'outil les périme d'un
+  // coup ; un changement de suivi n'en périme que les siennes.
+  const parVersion = DOSSIERS.filter(
+    (d) => d.note_perimee && d.note_raison === "version").length;
+  const cause = !perimees ? ""
+    : parVersion === perimees
+      ? `parce que l'outil est passé en version ${VERSION} : une note porte la
+         version qui l'a écrite, et celle-ci ne dirait plus ce qu'elle dirait
+         aujourd'hui. Cela n'arrive qu'à un changement de version, pas tous
+         les jours`
+      : parVersion
+        ? `${parVersion} parce que l'outil est passé en version ${VERSION}, les
+           autres parce que leur échéance, convention, contexte ou étape ont
+           changé depuis qu'elles ont été écrites`
+        : `parce que leur échéance, convention, contexte ou étape ont changé
+           depuis qu'elles ont été écrites`;
+
   const avertissement = perimees ? `
     <p class="aide perimees">↻ ${perimees} note(s) de synthèse ${EXPORT_EN_COURS
       ? "seront mises à jour à la fin de l'export en cours"
-      : "sont en cours de mise à jour"} — échéance, convention, contexte ou
-       étape ont changé depuis qu'elles ont été écrites. Cela se fait tout
+      : "sont en cours de mise à jour"} — ${cause}. Cela se fait tout
        seul, à partir des messages déjà au dossier, sans retourner sur
        Gmail.${barre}</p>`
     : "";

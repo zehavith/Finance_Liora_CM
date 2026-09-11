@@ -425,11 +425,18 @@ MESSAGE_MAX = 24 * 1024 * 1024
 # le PDF unique porte déjà page à page, et les messages d'origine, qui sont
 # une preuve d'authenticité et non une pièce qu'on lit. Les joindre ferait
 # vingt-deux fichiers de plus dans le mail, pour rien.
-SUFFIXES_HORS_DOCUMENTS = (".eml", ".html", ".htm", ".json")
+SUFFIXES_HORS_DOCUMENTS = (".eml", ".html", ".htm", ".json", ".version",
+                           ".log", ".en-cours")
 
 # La plomberie du dossier, qui ne se transmet pas. Écartée par son nom et non
 # par son extension : un relevé d'heures en CSV est un document, lui.
-NOMS_HORS_DOCUMENTS = ("index.csv", "_recapitulatif.csv")
+#
+# « synthese.version » est parti en pièce jointe à un responsable : c'est le
+# fichier qui dit quelle version de l'outil a écrit la note, un octet de
+# plomberie interne. Ce qui n'est pas un document du dossier n'a rien à faire
+# dans un mail de transmission.
+NOMS_HORS_DOCUMENTS = ("index.csv", "_recapitulatif.csv", "journal.log",
+                       "synthese.version", "synthese.html", "synthese.pdf")
 
 
 def documents_du_dossier(repertoire: Path, lignes: list[LigneIndex]) -> list[Path]:

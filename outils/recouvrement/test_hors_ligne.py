@@ -4868,6 +4868,31 @@ def test_dossiers_a_trancher() -> None:
              "la remise à jour des notes dit son avancement")
     verifier("RAPPEL_NOTES = setTimeout(chargerDossiers" in page,
              "et la page revient voir, sans qu'on ait à cliquer")
+
+    # « Pourquoi les notes s'actualisent quand j'ouvre l'appli ? » Parce que
+    # l'outil a changé de version, presque toujours — et rien ne le disait.
+    import suivi as module_peremption  # noqa: PLC0415
+    with tempfile.TemporaryDirectory() as coin:
+        repertoire = Path(coin)
+        (repertoire / "synthese.pdf").write_bytes(b"%PDF note")
+        (repertoire / "synthese.version").write_text("1", encoding="utf-8")
+        verifier(module_peremption.raison_note_perimee(repertoire, {}) == "version",
+                 "une note d'une version antérieure le dit : « version »")
+        (repertoire / "synthese.version").write_text(
+            module_peremption.VERSION, encoding="utf-8")
+        verifier(module_peremption.raison_note_perimee(repertoire, {}) == "",
+                 "à jour, elle ne demande plus rien")
+        # Le suivi enregistré après la note, lui, la périme seule.
+        demain = datetime.now() + timedelta(days=1)
+        verifier(module_peremption.raison_note_perimee(
+            repertoire, {"maj": demain.strftime("%d/%m/%Y %H:%M")}) == "suivi",
+            "un suivi enregistré depuis le dit autrement : « suivi »")
+    # Le texte est replié dans la source ; c'est le navigateur qui recolle.
+    replie = " ".join(page.split())
+    verifier("l'outil est passé en version" in replie
+             and "pas tous les jours" in replie
+             and 'd.note_raison === "version"' in replie,
+             "et le bandeau explique laquelle des deux causes")
     # L'export dit déjà son avancement dans son journal : « [12/53] FACT-… ».
     # Le relever évite d'inventer un second canal pour la même information.
     import re as module_motif  # noqa: PLC0415
@@ -5183,9 +5208,19 @@ def test_preparer_pour_envoi() -> None:
                  f"les documents du dossier sont recensés ({noms_docs})")
         # Le rendu d'un message est déjà une page du PDF unique ; le message
         # d'origine est une preuve, pas une pièce qu'on lit.
+        # « synthese.version » — un octet qui dit quelle version de l'outil a
+        # écrit la note — est parti en pièce jointe à un responsable. Ce qui
+        # n'est pas un document du dossier n'a rien à faire dans un mail.
+        (dossier / "synthese.version").write_text("1", encoding="utf-8")
+        (dossier / "journal.log").write_text("trace", encoding="utf-8")
+        noms_docs = sorted(
+            c.name for c in module_envoi.documents_du_dossier(dossier, lignes))
         verifier("001_relance.pdf" not in noms_docs
                  and not any(n.endswith(".eml") for n in noms_docs)
-                 and "index.csv" not in noms_docs,
+                 and "index.csv" not in noms_docs
+                 and "synthese.version" not in noms_docs
+                 and "synthese.html" not in noms_docs
+                 and "journal.log" not in noms_docs,
                  f"sans les rendus de messages ni la plomberie ({noms_docs})")
         # Une pièce clé est une copie : elle ne part pas en double.
         verifier(noms_docs.count("FACT-2405-00409.pdf") <= 1
