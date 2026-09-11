@@ -432,6 +432,12 @@ def signaler_activite() -> None:
 _VERROU_NOTES = threading.Lock()
 NOTES_EN_COURS: set[str] = set()
 
+# Ou en est la remise a jour. Refaire deux cents notes prend plusieurs
+# minutes, pendant lesquelles la page annoncait « en cours » sans rien de
+# plus : on ne savait pas s'il restait dix secondes ou dix minutes, ni meme
+# si quelque chose avancait. Le compte est tenu ici, et la page le montre.
+AVANCEMENT_NOTES: dict[str, int] = {"faites": 0, "total": 0}
+
 # Les notes qu'on n'a pas pu réécrire, et pourquoi. Sans ce relevé, une note
 # qu'un lecteur PDF tient ouverte reste en retard, la page la remet en
 # chantier à chaque affichage, et le bandeau « mise à jour en cours » ne
@@ -447,6 +453,8 @@ def rafraichir_notes(references: list[str]) -> None:
     def travail() -> None:
         if not _VERROU_NOTES.acquire(blocking=False):
             return
+        AVANCEMENT_NOTES["faites"] = 0
+        AVANCEMENT_NOTES["total"] = len(set(references))
         try:
             sortie = Path(lire_preferences().get("sortie") or sortie_par_defaut())
             suivi = module_suivi.charger(SUIVI)
@@ -466,12 +474,19 @@ def rafraichir_notes(references: list[str]) -> None:
                 except Exception as exc:  # noqa: BLE001 - jamais bloquant
                     NOTES_EN_ECHEC[reference] = str(exc)
                     continue
+                finally:
+                    # Compte tenu a chaque note, echec compris : une note qui
+                    # resiste fait avancer l'attente autant qu'une autre, et
+                    # une barre qui se fige laisse croire a un blocage.
+                    AVANCEMENT_NOTES["faites"] += 1
+                    NOTES_EN_COURS.discard(reference)
                 if refaite:
                     NOTES_EN_ECHEC.pop(reference, None)
                 else:
                     NOTES_EN_ECHEC[reference] = motif or "cause inconnue"
         finally:
             NOTES_EN_COURS.difference_update(references)
+            AVANCEMENT_NOTES["faites"] = AVANCEMENT_NOTES["total"]
             _VERROU_NOTES.release()
 
     NOTES_EN_COURS.update(references)
@@ -1414,6 +1429,10 @@ class Gestionnaire(BaseHTTPRequestHandler):
                 # Celles qu'un fichier de suivi applique apres coup, ou une
                 # mise a jour de l'outil, ont laissees en retard.
                 "notes_en_cours": sorted(_lancer_rafraichissement(dossiers)),
+                # Ou en est la remise a jour : « 12 sur 37 » et un
+                # pourcentage. « En cours » tout court ne dit pas s'il reste
+                # dix secondes ou dix minutes, ni meme si cela avance.
+                "avancement_notes": dict(AVANCEMENT_NOTES),
                 # Une note qu'on n'arrive pas à réécrire est remise en
                 # chantier à chaque affichage : sans le dire, le bandeau
                 # tourne indéfiniment sans que rien n'avance.
@@ -2649,6 +2668,16 @@ details.absents li{break-inside:avoid}
 #tableDocuments .etat{white-space:nowrap}
 /* « Exporter les dossiers de moins de [3000] € » : le seuil est au milieu de
    la phrase, pas dans un reglage a chercher ailleurs. */
+/* Une barre d'avancement, la meme partout : sous le bandeau d'export comme
+   sous celui des notes. Elle tient sur la ligne du texte qu'elle precise. */
+.avancement{display:inline-flex;align-items:center;gap:9px;margin-left:10px;
+  vertical-align:middle}
+.avancement b{font-size:12px;font-variant-numeric:tabular-nums;
+  white-space:nowrap;font-weight:600}
+.piste-avancement{display:inline-block;width:150px;height:7px;border-radius:4px;
+  background:rgba(255,255,255,.12);overflow:hidden}
+.part-avancement{display:block;height:100%;border-radius:4px;
+  background:currentColor;transition:width .35s ease}
 .exports-trancher{display:flex;align-items:center;flex-wrap:wrap;gap:8px;
   margin-top:16px}
 .exports-trancher .seuil{display:inline-flex;align-items:center;gap:5px;
@@ -3993,7 +4022,11 @@ async function rafraichir() {
   if (etat.lignes.length) {
     position = etat.total;
     const journal = $("journal");
-    for (const ligne of etat.lignes) journal.appendChild(elementLigne(ligne));
+    for (const ligne of etat.lignes) {
+      relverAvancement(ligne);
+      journal.appendChild(elementLigne(ligne));
+    }
+    majBandeauExport();
     // Un export d'une heure ecrit des milliers de lignes : les garder toutes
     // dans la page finit par la rendre poussive, et c'est alors l'export qui
     // parait s'etre arrete. Le journal complet reste dans journal.log.
@@ -4074,6 +4107,11 @@ let ENTREPRISES = null, ANNUAIRE_CONNU = false, ANNUAIRE_MANQUANTS = 0;
 // donc remises en chantier a chaque affichage : sans le dire, le bandeau
 // « mise a jour en cours » tourne sans que rien n'avance.
 let NOTES_EN_ECHEC = [];
+// Ou en est la remise a jour des notes : { faites, total }. « En cours » tout
+// court ne dit pas s'il reste dix secondes ou dix minutes.
+let AVANCEMENT_NOTES = null;
+let AVANCEMENT_EXPORT = null;
+let RAPPEL_NOTES = null;
 // Les factures que le tableau de suivi connait et que l'export n'a pas
 // ramenees. Elles n'existent nulle part dans la page — ni dans la liste,
 // ni dans la recherche — et rien ne disait pourquoi.
@@ -4128,6 +4166,7 @@ async function chargerDossiers() {
   ABSENTS_SUIVI = donnees.absents_suivi || [];
   A_REFAIRE = donnees.a_refaire || [];
   NOTES_EN_ECHEC = donnees.notes_en_echec || [];
+  AVANCEMENT_NOTES = donnees.avancement_notes || null;
   SAUVEGARDES = donnees.sauvegardes || null;
   $("cheminSortie").textContent = donnees.sortie;
   remplirFiltresEtat();
@@ -4963,13 +5002,22 @@ function rendreDocuments() {
   // Pendant un export, la remise a jour est volontairement suspendue : deux
   // ecritures dans les memes repertoires se marcheraient dessus. Annoncer
   // « en cours » serait promettre ce qui n'a pas lieu.
+  // Ou en est la remise a jour, en toutes lettres et en barre : « 12 sur
+  // 37 · 32 % ». Un bandeau qui dit « en cours » sans rien de plus laisse
+  // devant un ecran immobile sans savoir s'il reste dix secondes ou dix
+  // minutes — ni meme si quelque chose avance.
+  const avancement = (!EXPORT_EN_COURS && AVANCEMENT_NOTES
+                      && AVANCEMENT_NOTES.total) ? AVANCEMENT_NOTES : null;
+  const barre = barreAvancement(
+    avancement, "Avancement de la mise à jour des notes");
+
   const avertissement = perimees ? `
     <p class="aide perimees">↻ ${perimees} note(s) de synthèse ${EXPORT_EN_COURS
       ? "seront mises à jour à la fin de l'export en cours"
       : "sont en cours de mise à jour"} — échéance, convention, contexte ou
        étape ont changé depuis qu'elles ont été écrites. Cela se fait tout
        seul, à partir des messages déjà au dossier, sans retourner sur
-       Gmail.</p>`
+       Gmail.${barre}</p>`
     : "";
 
   // Une note qu'on n'arrive pas à réécrire est remise en chantier à chaque
@@ -4989,6 +5037,15 @@ function rendreDocuments() {
     + `<div class="defilable"><table class="donnees">
     ${entetesTriables(COLONNES_DOCUMENTS, "documents")}
     ${lignes}</table></div>`;
+
+  // Sans ce rappel, la barre ne bougerait qu'au prochain clic : on resterait
+  // devant « 0 sur 37 » en croyant l'outil bloque. Un seul rappel en vol, et
+  // il s'arrete des que la remise a jour est finie.
+  clearTimeout(RAPPEL_NOTES);
+  RAPPEL_NOTES = null;
+  if (avancement && avancement.faites < avancement.total) {
+    RAPPEL_NOTES = setTimeout(chargerDossiers, 2500);
+  }
 
   brancherTri($("tableDocuments"));
   $("tableDocuments").querySelectorAll(".choix-note").forEach((coche) =>
@@ -5433,11 +5490,40 @@ function majBandeauExport() {
   const zone = $("exportEnCours");
   if (!zone) return;
   zone.hidden = !EXPORT_EN_COURS;
-  if (EXPORT_EN_COURS) {
-    zone.textContent = "Un export est en cours : la liste se reconstitue "
-      + "dossier par dossier, et les chiffres ci-dessous montent au fur et à "
-      + "mesure. Ils ne seront complets qu'à la fin.";
-  }
+  if (!EXPORT_EN_COURS) return;
+  const texte = "Un export est en cours : la liste se reconstitue "
+    + "dossier par dossier, et les chiffres ci-dessous montent au fur et à "
+    + "mesure. Ils ne seront complets qu'à la fin.";
+  zone.innerHTML = echapper(texte) + barreAvancement(AVANCEMENT_EXPORT,
+    "Avancement de l'export");
+}
+
+// Une barre et un compte, partout où quelque chose tourne. « En cours » tout
+// court laisse devant un écran immobile sans savoir s'il reste dix secondes
+// ou dix minutes — ni même si quelque chose avance.
+function barreAvancement(avancement, intitule) {
+  if (!avancement || !avancement.total) return "";
+  const part = Math.min(100,
+    Math.round(100 * avancement.faites / avancement.total));
+  return `
+    <span class="avancement" role="progressbar" aria-valuemin="0"
+          aria-valuemax="100" aria-valuenow="${part}"
+          aria-label="${echapper(intitule)}">
+      <span class="piste-avancement"><span class="part-avancement"
+            style="width:${part}%"></span></span>
+      <b>${avancement.faites} sur ${avancement.total} · ${part} %</b>
+    </span>`;
+}
+
+// L'export dit son avancement dans son journal — « [12/53] FACT-2405-00409 ».
+// Le relever évite d'inventer un second canal pour une information qui passe
+// déjà, et qui est celle que le service lit de toute façon.
+const MOTIF_AVANCEMENT = /^\[(\d+)\/(\d+)\]/;
+
+function relverAvancement(ligne) {
+  const trouve = MOTIF_AVANCEMENT.exec(String(ligne || "").trim());
+  if (!trouve) return;
+  AVANCEMENT_EXPORT = { faites: Number(trouve[1]), total: Number(trouve[2]) };
 }
 
 // Ce que l'annuaire public de l'Etat dit des debiteurs. Ce n'est pas une note

@@ -4855,6 +4855,30 @@ def test_dossiers_a_trancher() -> None:
     verifier(sorted(une) == sorted(module_envoi.COLONNES_A_TRANCHER),
              "une seule construction de ligne pour tous les exports")
 
+    # Une actualisation qui dure doit dire où elle en est : « en cours » tout
+    # court laisse devant un écran immobile sans savoir s'il reste dix
+    # secondes ou dix minutes, ni même si quelque chose avance.
+    page = module_interface.PAGE
+    verifier("function barreAvancement" in page
+             and 'class="avancement"' in page
+             and "aria-valuenow" in page,
+             "une barre d'avancement, annoncée aussi aux lecteurs d'écran")
+    verifier('"avancement_notes"' in module_interface.PAGE
+             or "AVANCEMENT_NOTES" in page,
+             "la remise à jour des notes dit son avancement")
+    verifier("RAPPEL_NOTES = setTimeout(chargerDossiers" in page,
+             "et la page revient voir, sans qu'on ait à cliquer")
+    # L'export dit déjà son avancement dans son journal : « [12/53] FACT-… ».
+    # Le relever évite d'inventer un second canal pour la même information.
+    import re as module_motif  # noqa: PLC0415
+    motif = module_motif.compile(r"^\[(\d+)\/(\d+)\]")
+    trouve = motif.match("[12/53] FACT-2405-00409 — SAS EDEN")
+    verifier(trouve and trouve.group(1) == "12" and trouve.group(2) == "53",
+             "l'avancement de l'export se lit dans son journal")
+    verifier("relverAvancement(ligne)" in page
+             and "MOTIF_AVANCEMENT" in page,
+             "et la page le relève à chaque ligne")
+
     # Une barre du tableau de bord mène aux dossiers qu'elle compte.
     page = module_interface.PAGE
     verifier('class="rangee${s.nombre ? " menante" : ""}"' in page

@@ -449,6 +449,28 @@ Les deux portefeuilles, eux, **partitionnent** les dossiers : chacun est
 d'entreprise ou en financement personnel, jamais les deux, jamais aucun. Leur
 somme est donc toujours le total — 37 + 16 font 53, et c'est normal.
 
+### Ce qui tourne le dit, et dit où il en est
+
+Deux traitements durent : l'**export**, qui va chercher les messages dossier
+par dossier, et la **remise à jour des notes**, qui réécrit les synthèses
+qu'un changement d'échéance ou d'étape a laissées en retard. L'un comme
+l'autre annonçaient « en cours » et rien de plus : on restait devant un écran
+immobile sans savoir s'il restait dix secondes ou dix minutes — ni même si
+quelque chose avançait.
+
+Les deux portent désormais une **barre et un compte** : « 12 sur 37 · 32 % ».
+
+- l'**export** le dit déjà dans son journal — `[12/53] FACT-2405-00409 — …` —
+  et la page le relève de là, plutôt que d'inventer un second canal pour une
+  information qui passe déjà ;
+- la **remise à jour des notes** compte chaque note terminée, échec compris :
+  une note qui résiste fait avancer l'attente autant qu'une autre, et une
+  barre qui se fige laisse croire à un blocage.
+
+La page **revient voir toute seule** pendant la remise à jour, sans qu'on
+clique : sinon la barre ne bougerait qu'au prochain geste. Elle ne recule
+jamais, et le bandeau s'efface quand il n'y a plus rien à refaire.
+
 ### Les indicateurs du tableau de bord
 
 Neuf tuiles : dossiers suivis, montant en contentieux, frais engagés,
