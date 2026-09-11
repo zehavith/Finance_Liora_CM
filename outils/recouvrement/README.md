@@ -807,8 +807,8 @@ désormais, après les pièces classées.
 Une pièce et sa copie ne partent pas en double : les pièces clés sont des
 copies, et c'est le **contenu** qui les rapproche, non le chemin.
 
-Ce qu'un PDF ne peut pas porter — une feuille d'émargement photographiée, un
-relevé en tableur — est **nommé à l'écran** : la pièce est dans l'archive, et
+Ce qu'un PDF ne peut pas porter — un relevé en tableur, un document Word —
+est **nommé à l'écran** : la pièce est dans l'archive, et
 il faut le savoir avant de transmettre, pas après.
 
 Ce que l'archive **ne reprend pas** : `mails-hors-dossier`. L'y remettre
@@ -834,10 +834,13 @@ appartient à celle qui le signe.
 à recoller — le PDF porte le dossier entier, paginé : la note de synthèse, les
 pièces, les échanges, chaque constat renvoyant à un numéro de pièce.
 
-Pour cela, **les images deviennent des pages** : une feuille d'émargement
-photographiée, une carte d'identité scannée entrent dans le PDF au lieu de
-voyager à côté. La conversion passe par le moteur PDF déjà utilisé pour les
-messages — rien de plus à installer.
+Les pièces du dossier sont presque toujours des **PDF** — la convention, la
+facture, la feuille d'émargement (`Prénom_NOM_02_09_2024_31_12_2025_….pdf`)
+en sont — et elles entrent dans le PDF unique telles quelles.
+
+Reste le cas d'un document **scanné et envoyé en image** au fil d'un échange :
+il devient une page, au lieu de voyager à côté. La conversion passe par le
+moteur PDF déjà utilisé pour les messages — rien de plus à installer.
 
 Seules les **pièces clés** sont converties — celles de `pieces-cles`, des
 documents du tableau et des pièces versées à la main. Une image trouvée

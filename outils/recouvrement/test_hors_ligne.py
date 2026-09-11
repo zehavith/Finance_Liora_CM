@@ -5146,7 +5146,7 @@ def test_preparer_pour_envoi() -> None:
                  f"son poids est dit ({resultat['poids_archive']})")
 
         # Le brouillon n'attachait que le PDF dès qu'il existait. Or un PDF
-        # ne porte ni la feuille d'émargement photographiée, ni le relevé en
+        # ne porte ni un document scanné reçu en image, ni le relevé en
         # tableur, ni les messages d'origine au format .eml : le dossier
         # partait amputé de tout cela, et rien ne le disait.
         # Un destinataire qui reçoit « dossier.zip » doit le décompresser
@@ -5212,6 +5212,18 @@ def test_preparer_pour_envoi() -> None:
         verifier([p.suffix for p in jointes] == [".zip"]
                  and "décompresser" in motif_sans,
                  f"l'archive sert de recours, et on le dit ({motif_sans[:70]}…)")
+
+    # Une feuille d'émargement est un PDF, nommé du nom de l'apprenant et des
+    # deux dates de la formation. Elle entre dans le PDF unique telle quelle,
+    # sans passer par le moteur de conversion — qui ne sert qu'aux documents
+    # reçus en image.
+    import synthese as module_pieces  # noqa: PLC0415
+    nom_emargement = "Anas_AIT_BELAID_02_09_2024_31_12_2025_880ceucmlwnozdz_1.pdf"
+    verifier(module_pieces.piece_cle(nom_emargement) == "3-feuille-emargement",
+             "une feuille d'émargement se reconnaît à sa forme, pas à un mot")
+    verifier(nom_emargement.lower().endswith(".pdf")
+             and nom_emargement.lower()[-4:] not in module_envoi.IMAGES,
+             "et c'est un PDF : il entre dans le dossier transmis tel quel")
 
     # Se tromper de responsable est l'erreur qu'on ne rattrape pas. Un
     # apprenant qui exerce en son nom propre — auto-entrepreneur — a une

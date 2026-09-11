@@ -1968,7 +1968,7 @@ class Gestionnaire(BaseHTTPRequestHandler):
         # Le PDF *et* l'archive : c'est le PDF qu'on relit, l'archive qui
         # porte tout. N'attacher que le PDF — ce qui était fait dès qu'il
         # existait — laissait derrière lui les pièces qu'un PDF ne peut pas
-        # contenir : une feuille d'émargement photographiée, un relevé en
+        # contenir : un document scanné reçu en image, un relevé en
         # tableur, les messages d'origine au format .eml. Le dossier partait
         # amputé, et rien ne le disait.
         base = Path(pret["repertoire"])

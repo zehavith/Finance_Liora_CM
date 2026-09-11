@@ -17,11 +17,12 @@ Deux formes, produites côte à côte :
 
 Le brouillon, lui, ne joint **qu'un seul fichier** : le PDF. Un destinataire
 qui reçoit « dossier.zip » doit le décompresser avant de voir quoi que ce
-soit, et six pièces jointes se recollent à la main. Les images du dossier —
-une feuille d'émargement photographiée — deviennent des pages du PDF pour
-cela. Ne partent à côté que les pièces qu'aucun PDF ne peut absorber : un
-tableur, un document Word. L'archive ne sert que de recours, quand le poste
-n'a pas de moteur PDF.
+soit, et six pièces jointes se recollent à la main. Les pièces du dossier sont
+presque toujours des PDF — la convention, la facture, la feuille d'émargement
+en sont —, et elles y entrent directement. Une pièce reçue en **image**, un
+document scanné au fil d'un échange, devient une page. Ne partent à côté que
+les pièces qu'aucun PDF ne peut absorber : un tableur, un document Word.
+L'archive ne sert que de recours, quand le poste n'a pas de moteur PDF.
 
 Le PDF demande `pypdf`. Sans lui, l'archive est produite seule et on le dit :
 un dossier transmissible vaut mieux qu'un échec au motif qu'il manque une
@@ -144,17 +145,19 @@ CONVERSIONS_MAX = 12
 # Sous cette taille, une image jointe à un message n'est pas un document :
 # c'est un logo de signature. Les logos référencés dans le corps du message
 # ne sont pas écrits comme pièces jointes — ils sont intégrés au rendu —,
-# mais certaines signatures en attachent un sans le référencer. Une facture
-# scannée, un émargement photographié pèsent dix à cent fois cela.
+# mais certaines signatures en attachent un sans le référencer. Un document
+# scanné et envoyé en image pèse dix à cent fois cela.
 TAILLE_IMAGE_DOCUMENT = 40 * 1024
 
 
 def image_en_pdf(source: Path, cible: Path) -> bool:
     """Une image devient une page de PDF, pour que le dossier tienne en un seul.
 
-    Une feuille d'émargement photographiée est une pièce du dossier comme une
-    autre. Tant qu'elle restait une image, elle voyageait à part — et il
-    fallait deux fichiers là où l'on en voulait un.
+    Les pièces du dossier sont presque toujours des PDF — la convention, la
+    facture, la feuille d'émargement en sont — et entrent dans le PDF unique
+    telles quelles. Reste le cas d'un document **scanné et envoyé en image**
+    au fil d'un échange : pièce du dossier comme une autre, mais qui
+    voyageait à part, et il fallait deux fichiers là où l'on en voulait un.
 
     Passe par le moteur PDF déjà utilisé pour les messages : rien à installer
     de plus. L'image est intégrée à la page, jamais liée — un chemin ne
@@ -271,9 +274,9 @@ def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex],
 
     # Le reste du dossier, dans l'ordre du disque : ce que ni le classement
     # ni les numéros de pièce n'ont ramassé. Une image y est convertie si
-    # elle pèse le poids d'un document — une facture scannée, un émargement
-    # photographié — et laissée telle quelle si c'est un logo de signature.
-    # Ce qui n'est pas absorbé est joint à côté : rien n'est perdu.
+    # elle pèse le poids d'un document — un document scanné et envoyé en
+    # image — et laissée telle quelle si c'est un logo de signature. Ce qui
+    # n'est pas absorbé est joint à côté : rien n'est perdu.
     for chemin in sorted(repertoire.rglob("*")):
         if _a_exclure(chemin, repertoire) or not chemin.is_file():
             continue
@@ -307,9 +310,9 @@ def ecrire_pdf_unique(
             "l'archive zip, elle, est prête"
         )
 
-    # Les images deviennent des pages : une feuille d'émargement
-    # photographiée est une pièce du dossier, et le dossier doit tenir en un
-    # seul fichier. Les conversions vivent dans « pour-envoi », donc hors de
+    # Les images deviennent des pages : un document scanné et envoyé en
+    # image est une pièce du dossier, et le dossier doit tenir en un seul
+    # fichier. Les conversions vivent dans « pour-envoi », donc hors de
     # l'archive et hors du balayage des documents.
     atelier = cible.parent / DOSSIER_CONVERTIES
 
@@ -517,8 +520,8 @@ def pieces_du_brouillon(
 ) -> tuple[list[Path], str]:
     """Ce qu'on attache : **un seul fichier**, autant que faire se peut.
 
-    Le PDF unique porte le dossier entier — la note, les pièces, les échanges,
-    et jusqu'aux feuilles d'émargement photographiées, devenues des pages. Un
+    Le PDF unique porte le dossier entier — la note, les pièces, les
+    échanges, et jusqu'aux documents reçus en image, devenus des pages. Un
     destinataire n'a alors rien à décompresser ni à recoller : il ouvre, il
     lit, il classe.
 
@@ -577,8 +580,8 @@ def pieces_du_brouillon(
         # l'écran la compte — rien n'est perdu en silence.
         #
         # Une pièce **choisie** ne subit jamais ce sort, si petite soit-elle :
-        # une feuille d'émargement que le moteur PDF n'a pas su convertir est
-        # jointe telle quelle. C'est un document, pas un ornement.
+        # une pièce clé que le moteur PDF n'a pas su convertir est jointe
+        # telle quelle. C'est un document, pas un ornement.
         if (document.suffix.lower() in IMAGES
                 and not _est_piece_choisie(document)
                 and (poids or 0) < TAILLE_IMAGE_DOCUMENT):
