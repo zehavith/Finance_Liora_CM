@@ -1394,3 +1394,7 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
     color: var(--text-muted);
 }
 .synth-phrase strong { color: var(--text-primary); }
+
+/* La portée réelle du grand livre chargé, sous la ligne d'import. */
+.import-note { margin: 0.35rem 0 0.9rem; line-height: 1.45; }
+.import-note strong { color: var(--text-primary); }

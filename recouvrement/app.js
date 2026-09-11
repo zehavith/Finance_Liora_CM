@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.67.0';
+    const VERSION = '2.68.0';
     const VERSION_DATE = '11 septembre 2026';
 
     const R = window.LioraRules;
@@ -2960,8 +2960,20 @@
 
     function rendreParTableau(rows) {
         const el = $('#par-tableau');
+        // Un tableau sans une seule facture en retard n'a rien à faire dans la
+        // liste des factures en retard. Le tableau des factures payées y
+        // figurait à 0 € et 0 %, et c'est un zéro trompeur : une facture qui
+        // s'y trouve est réglée par construction, elle ne PEUT pas être en
+        // retard. Affiché, ce zéro se lit comme un chiffre manquant.
+        const muets = rows.filter(r => !r.nbRetard);
+        rows = rows.filter(r => r.nbRetard);
+
         const max = rows.length ? Math.max(...rows.map(r => r.eurRetard)) : 0;
-        el.innerHTML = U.table([
+        el.innerHTML = (muets.length
+            ? `<p class="fv-hint">${U.nombre(muets.length)} tableau${muets.length > 1 ? 'x' : ''} `
+              + `sans aucune facture en retard ${muets.length > 1 ? 'ne sont' : 'n’est'} pas listé`
+              + `${muets.length > 1 ? 's' : ''} : ${U.escapeHtml(muets.map(r => r.board).join(', '))}.</p>`
+            : '') + U.table([
             { key: 'board', label: 'Tableau' },
             { key: 'role', label: 'Rôle', format: v => `<span class="pill pill-role">${U.escapeHtml(R.ROLE_LABELS[v] || v || '—')}</span>` },
             { key: 'eurRetard', label: 'En retard', align: 'right', format: v => `${U.eurosCourt(v)} ${U.barre(v, max, U.couleurs.retard)}` },
@@ -8092,6 +8104,25 @@
                 <span class="fv-hint">${quand ? 'importé ' + U.escapeHtml(quand) + ' · ' : ''}${U.escapeHtml(detail)}</span>
                 <button class="btn btn-ghost btn-sm" id="btn-clear-gl">Retirer</button>
             </div>`;
+
+            // « J'ai importé le grand livre, donc tous les paiements doivent
+            // être à jour ? » — pour les factures qu'il contient, oui. Pour
+            // les autres, non : l'extrait ne couvre qu'un exercice, et ce
+            // qu'il ignore garde le statut saisi dans Monday. Le nombre est
+            // donné ici, faute de quoi la question reste sans réponse.
+            const ouvertes = state.factures.filter(f => !f.paye);
+            const hors = ouvertes.filter(f => !f.grandLivreSoldee && !f.grandLivreOuverte
+                && !f.soldeeParAvoir);
+            if (ouvertes.length) {
+                h += `<p class="fv-hint import-note">`
+                    + `Sur ${U.nombre(ouvertes.length)} factures encore ouvertes, `
+                    + `<strong>${U.nombre(ouvertes.length - hors.length)}</strong> sont reconnues par `
+                    + `ce grand livre et <strong>${U.nombre(hors.length)}</strong> n'y figurent pas `
+                    + `(${U.euros(X.sum(hors, f => (f.resteDu != null && f.resteDu > 0) ? f.resteDu : (f.montant || 0)))}). `
+                    + `Le statut de ces dernières vient de Monday seul : un règlement encaissé hors de `
+                    + `la période de l'extrait n'y est pas visible.`
+                    + `</p>`;
+            }
         }
         h += state.imports.map(im => `<div class="import-row">
             <span class="pill pill-role">${U.escapeHtml(R.ROLE_LABELS[im.role] || im.role)}</span>
