@@ -81,19 +81,27 @@ def ecrire_archive(repertoire: Path, cible: Path) -> tuple[int, int]:
     return fichiers, cible.stat().st_size
 
 
-def messages_sans_pdf(repertoire: Path, lignes: list[LigneIndex]) -> list[int]:
-    """Les pièces dont le PDF manque, et qui ne peuvent donc pas être réunies.
+def messages_sans_pdf(repertoire: Path, lignes: list[LigneIndex],
+                      absorbes: set | None = None) -> list[int]:
+    """Les messages que le PDF unique ne porte pas. Rarement aucun, parfois.
 
-    Sans moteur PDF sur le poste, un message est conservé en page HTML : il
-    est bien au dossier, et dans l'archive, mais un PDF unique ne peut pas le
-    porter. Le taire ferait transmettre un dossier amputé sans le savoir.
+    Sans moteur PDF au moment de l'export, un message est conservé en page
+    HTML. Si le poste a un moteur aujourd'hui, cette page devient une page du
+    PDF et le message y est : « absorbes » le dit. Sinon il reste au dossier
+    et dans l'archive, mais hors du PDF — et le taire ferait transmettre un
+    dossier amputé sans le savoir.
     """
     manquants = []
     for ligne in sorted(lignes, key=lambda l: l.piece_n):
         chemin = repertoire / (ligne.fichier_pdf or "")
-        if not ligne.fichier_pdf or chemin.suffix.lower() != ".pdf" \
-                or not chemin.is_file():
-            manquants.append(ligne.piece_n)
+        if ligne.fichier_pdf and chemin.suffix.lower() == ".pdf" \
+                and chemin.is_file():
+            continue
+        # Repris depuis sa page HTML : il est dans le PDF, et le signaler
+        # absent enverrait chercher un manque qui n'existe plus.
+        if absorbes and chemin.is_file() and _empreinte(chemin) in absorbes:
+            continue
+        manquants.append(ligne.piece_n)
     return manquants
 
 
@@ -203,7 +211,8 @@ def _echapper(texte: str) -> str:
 
 
 def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex],
-                    convertir=None, absorbes: set | None = None) -> list[Path]:
+                    convertir=None, absorbes: set | None = None,
+                    page_en_pdf=None) -> list[Path]:
     """Les PDF à réunir, dans l'ordre où l'on présente un dossier.
 
     La note de synthèse ouvre : c'est elle qui dit de quoi il retourne. Les
@@ -269,8 +278,35 @@ def pdfs_du_dossier(repertoire: Path, lignes: list[LigneIndex],
             ajouter(chemin, convertible=True)
 
     for ligne in sorted(lignes, key=lambda l: l.piece_n):
-        if ligne.fichier_pdf:
-            ajouter(repertoire / ligne.fichier_pdf)
+        if not ligne.fichier_pdf:
+            continue
+        rendu_message = repertoire / ligne.fichier_pdf
+        if rendu_message.suffix.lower() == ".pdf" and rendu_message.is_file():
+            ajouter(rendu_message)
+            continue
+        # Sans moteur PDF au moment de l'export, le message a été conservé en
+        # page HTML : le dossier est complet sur le disque, mais le PDF unique
+        # ne pouvait pas le porter — il ne réunissait alors que la note de
+        # synthèse, et le dossier transmis paraissait vide de ses échanges.
+        # Le poste a un moteur aujourd'hui : la page devient une page du PDF,
+        # et l'export d'hier est réparé sans qu'on le refasse.
+        if page_en_pdf is None:
+            continue
+        page = rendu_message if rendu_message.is_file() else None
+        if page is None or page.suffix.lower() not in (".html", ".htm"):
+            page = next((repertoire / (ligne.fichier_pdf[:-4] + suffixe)
+                         for suffixe in (".html", ".htm")
+                         if (repertoire / (ligne.fichier_pdf[:-4] + suffixe)).is_file()),
+                        None)
+        if page is None:
+            continue
+        converti = page_en_pdf(page)
+        if converti is not None:
+            ordre.append(converti)
+            if absorbes is not None:
+                empreinte = _empreinte(page)
+                if empreinte is not None:
+                    absorbes.add(empreinte)
 
     # Le reste du dossier, dans l'ordre du disque : ce que ni le classement
     # ni les numéros de pièce n'ont ramassé. Une image y est convertie si
@@ -322,7 +358,16 @@ def ecrire_pdf_unique(
             return vers
         return vers if image_en_pdf(source, vers) else None
 
-    sources = pdfs_du_dossier(repertoire, lignes, convertir, absorbes)
+    def convertir_page(source: Path) -> Path | None:
+        vers = atelier / (source.stem + ".pdf")
+        if vers.exists() and vers.stat().st_mtime >= source.stat().st_mtime:
+            return vers
+        from rendu import pdf_depuis_page  # noqa: PLC0415
+
+        return vers if pdf_depuis_page(source, vers) else None
+
+    sources = pdfs_du_dossier(repertoire, lignes, convertir, absorbes,
+                              convertir_page)
     if not sources:
         return 0, 0, "aucun PDF au dossier : rien à réunir"
 
@@ -829,7 +874,7 @@ def preparer(
         repertoire, lignes, destination / f"{base}.pdf", absorbes, reunies
     )
 
-    absents = messages_sans_pdf(repertoire, lignes) if pieces else []
+    absents = messages_sans_pdf(repertoire, lignes, absorbes) if pieces else []
     if absents:
         manque = (f"{len(absents)} message(s) hors du PDF, faute d'en avoir un "
                   f"(pièce{'s' if len(absents) > 1 else ''} n° "

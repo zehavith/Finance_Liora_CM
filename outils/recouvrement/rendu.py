@@ -423,6 +423,30 @@ def _essayer_moteurs(contenu_html: str, chemin_html: Path, chemin_pdf: Path) -> 
     return None
 
 
+def pdf_depuis_page(chemin_html: Path, chemin_pdf: Path) -> bool:
+    """Transforme une page déjà écrite sur le disque en PDF.
+
+    Sans moteur PDF au moment de l'export, un message est conservé en page
+    HTML. Le dossier est complet sur le disque, mais le PDF unique ne peut pas
+    porter ces messages-là : il ne réunissait alors que la note de synthèse,
+    et le dossier transmis paraissait vide de ses échanges.
+
+    La page est rendue **à sa place**, et non recopiée ailleurs : ses images
+    et ses pièces jointes sont référencées en chemins relatifs, qui ne
+    survivraient pas au déplacement.
+    """
+    if not chemin_html.is_file():
+        return False
+    chemin_pdf.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if _pdf_via_chrome(chemin_html, chemin_pdf):
+            return True
+    except Exception:  # noqa: BLE001 - un moteur qui refuse n'est pas une panne
+        pass
+    chemin_pdf.unlink(missing_ok=True)
+    return False
+
+
 def moteur_pdf_disponible() -> str:
     if _trouver_chrome():
         return f"Chrome/Edge ({_trouver_chrome()})"

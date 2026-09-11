@@ -5140,6 +5140,25 @@ def test_preparer_pour_envoi() -> None:
                  "une pièce clé et son original ne partent pas en double")
         verifier(module_envoi.messages_sans_pdf(dossier, lignes) == [2],
                  "un message resté en HTML est compté comme hors du PDF")
+        # Sans moteur PDF au moment de l'export, les messages restent en
+        # pages HTML : le PDF transmis ne portait alors que la note et les
+        # pièces, et le dossier paraissait vide de ses échanges. Le poste a
+        # un moteur aujourd'hui : la page devient une page du PDF, et
+        # l'export d'hier est réparé sans qu'on le refasse.
+        reprises = []
+        repris = module_envoi.pdfs_du_dossier(
+            dossier, lignes, None, None,
+            lambda page: (reprises.append(page.name),
+                          dossier / "repris.pdf")[1])
+        verifier(reprises == ["002_reponse.html"],
+                 f"la page HTML d'un message est reprise en PDF ({reprises})")
+        verifier(any(c.name == "repris.pdf" for c in repris),
+                 "et prend sa place dans le PDF unique")
+        # Et l'on cesse alors de l'annoncer manquante.
+        page_reprise = dossier / "mails" / "002_reponse.html"
+        verifier(module_envoi.messages_sans_pdf(
+            dossier, lignes, {module_envoi._empreinte(page_reprise)}) == [],
+            "un message repris n'est plus annoncé hors du PDF")
         # Une image devient une page du PDF : elle ne reste plus dehors.
         # Un tableur, lui, ne peut pas — et c'est lui qu'on nomme.
         (dossier / "pieces-cles" / "2-facture"

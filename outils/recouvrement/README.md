@@ -894,6 +894,15 @@ Ne part jamais la **plomberie** du dossier : `index.csv`, `journal.log`,
 note. Ce qui n'est pas un document du dossier n'a rien à faire dans un mail
 de transmission.
 
+**Les messages restés en page HTML sont repris.** Sans moteur PDF au moment de
+l'export, un message est conservé en `.html` : le dossier est complet sur le
+disque, mais le PDF unique ne pouvait pas le porter. Il ne réunissait alors
+que la note et les pièces — un dossier de vingt-deux échanges tenait en trois
+pages, et paraissait vide de ce qui fait sa force. Si le poste a un moteur
+aujourd'hui, ces pages deviennent des pages du PDF : **l'export d'hier est
+réparé sans qu'on le refasse**, et les messages ne sont plus annoncés
+manquants.
+
 **La règle, en une phrase : un document est dans le PDF, ou joint à côté.**
 Jamais perdu. Ce n'est pas l'extension qui décide — elle faisait disparaître
 une facture scannée reçue par mail, image donc supposée absorbée — mais
