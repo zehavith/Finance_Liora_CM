@@ -1031,18 +1031,45 @@
             .slice(0, n || 15);
     }
 
+    /**
+     * Le retard par tableau, dans ses deux temps.
+     *
+     * « En retard » ne désigne que ce qui est encore dû. Une facture réglée
+     * après son échéance n'y figure plus — et le tableau des factures payées
+     * ressortait donc à zéro, comme s'il n'avait jamais rien eu en retard.
+     * C'est faux au sens qui compte : ces factures ONT été payées en retard,
+     * et c'est la matière même de la statistique de recouvrement.
+     *
+     * Les deux sont donc comptés séparément et ne se confondent pas : l'un
+     * est un encours à récupérer, l'autre un délai déjà subi.
+     */
     function parTableau(factures) {
         const map = new Map();
         for (const f of factures) {
             const k = f.board || '—';
             let g = map.get(k);
-            if (!g) { g = { board: k, role: f.role, nb: 0, euros: 0, nbRetard: 0, eurRetard: 0, retards: [] }; map.set(k, g); }
+            if (!g) {
+                g = { board: k, role: f.role, nb: 0, euros: 0, nbRetard: 0, eurRetard: 0, retards: [],
+                      nbPayeRetard: 0, eurPayeRetard: 0, retardsPayes: [] };
+                map.set(k, g);
+            }
             g.nb++; g.euros += f.montant || 0;
             if (f.etat === 'En retard') { g.nbRetard++; g.eurRetard += f.montant || 0; g.retards.push(f.retardJours); }
+            else if (f.etat === 'Payée en retard') {
+                g.nbPayeRetard++; g.eurPayeRetard += f.montant || 0; g.retardsPayes.push(f.retardJours);
+            }
         }
         return [...map.values()]
-            .map(g => ({ ...g, tauxNb: pct(g.nbRetard, g.nb), retardMoyen: moyenne(g.retards) }))
-            .sort((a, b) => b.eurRetard - a.eurRetard);
+            .map(g => ({ ...g,
+                tauxNb: pct(g.nbRetard, g.nb),
+                retardMoyen: moyenne(g.retards),
+                // Tout ce qui a connu du retard, payé ou non : c'est le taux
+                // qui dit si un tableau tient ses échéances.
+                nbTouche: g.nbRetard + g.nbPayeRetard,
+                tauxTouche: pct(g.nbRetard + g.nbPayeRetard, g.nb),
+                retardMoyenPaye: moyenne(g.retardsPayes),
+            }))
+            .sort((a, b) => (b.eurRetard + b.eurPayeRetard) - (a.eurRetard + a.eurPayeRetard));
     }
 
     function parGroupe(factures) {
