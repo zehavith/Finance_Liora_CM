@@ -596,6 +596,38 @@
             { comptable: true },
             { champ: rule.fallback, jours: rule.fallbackJours != null ? rule.fallbackJours : rule.jours },
         ];
+
+        // Une facture réglée AVANT d'avoir été émise a été refaite.
+        //
+        // Sa date de facture ne dit plus quand la créance est née : elle dit
+        // quand le document a été réédité, souvent des mois plus tard. Une
+        // échéance calculée dessus repart à zéro alors que l'argent est déjà
+        // rentré, et la facture ressort « payée en avance » au lieu de
+        // « payée en retard ». C'est la formation qui fait foi dans ces
+        // cas-là — début ou fin selon le dispositif, comme le dit la règle.
+        const regleeAvantEmission = inv.datePaiementEffective && inv.dateFacture
+            && inv.datePaiementEffective < inv.dateFacture;
+        if (regleeAvantEmission) {
+            const surFormation = bases.filter(b =>
+                b.champ === 'dateDebutFormation' || b.champ === 'dateFinFormation');
+            if (surFormation.length) {
+                for (const b of surFormation) {
+                    const src = inv[b.champ];
+                    if (!src) continue;
+                    return { date: addDays(src, b.jours || 0), origine: 'Règle', regle: rule,
+                             baseUtilisee: b.champ,
+                             motif: 'Règlement antérieur à la facture — la facture a été refaite' };
+                }
+            } else if (inv.dateFinFormation || inv.dateDebutFormation) {
+                // La règle du dispositif ne compte que sur la date de facture.
+                // Faute de mieux, la formation, sans délai ajouté : elle dit au
+                // moins quand la créance est née.
+                const src = inv.dateFinFormation || inv.dateDebutFormation;
+                return { date: addDays(src, principale.jours || 0), origine: 'Règle', regle: rule,
+                         baseUtilisee: inv.dateFinFormation ? 'dateFinFormation' : 'dateDebutFormation',
+                         motif: 'Règlement antérieur à la facture — la facture a été refaite' };
+            }
+        }
         for (const b of bases) {
             if (b.comptable) {
                 if (!inv.dateEcheanceComptable) continue;

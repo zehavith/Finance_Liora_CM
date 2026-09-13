@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.76.0';
+    const VERSION = '2.77.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -516,11 +516,20 @@
 
         if (!conserver) state.filtres.mois = null;
         else if (state.filtres.mois) {
-            // Retirer les mois qui n'existent plus
+            // Retirer les mois qui n'existent plus, et surtout ajouter ceux qui
+            // apparaissent : une facture émise dans un mois non sélectionné
+            // n'aurait sinon jamais surgi après une actualisation, et l'on
+            // aurait cru que l'application ne se mettait pas à jour.
             const valides = new Set(state.moisDispo);
-            state.filtres.mois = new Set([...state.filtres.mois].filter(m => valides.has(m)));
+            const connus = state.moisConnus || new Set();
+            const nouveaux = state.moisDispo.filter(m => !connus.has(m));
+            state.filtres.mois = new Set([
+                ...[...state.filtres.mois].filter(m => valides.has(m)),
+                ...nouveaux,
+            ]);
             if (state.filtres.mois.size === state.moisDispo.length) state.filtres.mois = null;
         }
+        state.moisConnus = new Set(state.moisDispo);
         rendreBoutonsMois();
     }
 
@@ -8038,6 +8047,15 @@
                 { key: 'board', label: 'Tableau' },
                 { key: 'montant', label: 'Montant', align: 'right', format: v => U.euros(v) },
                 { key: 'dateFacture', label: 'Date facture', align: 'center', format: U.dateFR },
+                // Sans la date de règlement, « paiement antérieur à la facture »
+                // s'affirme sans se montrer : c'est elle qu'on vient vérifier.
+                { key: 'datePaiementEffective', label: 'Date de paiement', align: 'center',
+                  format: (v, r) => v
+                      ? `${U.dateFR(v)}${r.delaiPaiement != null && r.delaiPaiement < 0
+                            ? `<span class="cell-mini cell-danger">${U.jours(-r.delaiPaiement)} avant la facture</span>` : ''}`
+                      : '<span class="ag-zero">·</span>' },
+                { key: 'dateDebutFormation', label: 'Début de formation', align: 'center', format: U.dateFR },
+                { key: 'dateFinFormation', label: 'Fin de formation', align: 'center', format: U.dateFR },
                 { key: 'dateEcheance', label: 'Échéance', align: 'center', format: U.dateFR },
                 { key: 'etat', label: 'État', format: v => `<span class="pill ${U.etatClass(v)}">${U.escapeHtml(v)}</span>` },
             ], rows, { vide: '—' })
@@ -9237,6 +9255,20 @@
                 U.toast(`${echecs.length} tableau(x) non chargé(s) — voir Data Quality.`, 'error', 10000);
             }
 
+            // Ce que ce chargement a changé.
+            //
+            // « J'ai l'impression que les nouvelles factures qui entrent dans
+            // Monday ne s'actualisent pas. » Rien ne permettait de le vérifier :
+            // l'actualisation se terminait sur un total, jamais sur un écart.
+            // On compare donc les numéros d'avant et d'après, et on le dit.
+            const avant = new Set(state.brutes.map(f => f.cle).filter(Boolean));
+            const apres = new Set(collecte.map(f => f.cle).filter(Boolean));
+            state.dernierDelta = {
+                ajoutees: [...apres].filter(c => !avant.has(c)).length,
+                disparues: [...avant].filter(c => !apres.has(c)).length,
+                avant: avant.size, apres: apres.size,
+            };
+
             state.brutes = collecte;
             state.derniereActualisation = new Date();
             await sauverFactures();
@@ -9245,7 +9277,13 @@
             statut('Calcul des indicateurs');
             recalculer({ conserverPeriode: silencieux });
             if (!silencieux) montrerEcran('app');
-            U.toast(`${U.nombre(collecte.length)} factures chargées depuis Monday.`, 'success');
+            const d = state.dernierDelta;
+            U.toast(`${U.nombre(collecte.length)} factures chargées depuis Monday`
+                + (d && (d.ajoutees || d.disparues)
+                    ? ` — ${U.nombre(d.ajoutees)} nouvelle${d.ajoutees > 1 ? 's' : ''}`
+                      + (d.disparues ? `, ${U.nombre(d.disparues)} disparue${d.disparues > 1 ? 's' : ''}` : '')
+                    : (d && d.avant ? ' — aucune nouvelle facture' : ''))
+                + '.', 'success', 9000);
         } catch (e) {
             log('✗ ' + e.message);
             state.derniereErreur = e.message;
@@ -9345,7 +9383,9 @@
 
         const auto = parseInt(state.options.actualisationAuto, 10) || 0;
         el.className = 'maj-indic';
-        el.textContent = 'Données de ' + quand;
+        const d = state.dernierDelta;
+        el.textContent = 'Données de ' + quand
+            + (d && d.ajoutees ? ` · ${U.nombre(d.ajoutees)} nouvelles` : '');
         el.title = auto
             ? `Actualisation automatique toutes les ${auto} minutes`
             : "Actualisation automatique désactivée — cliquez sur Actualiser, ou activez-la dans l'onglet Données";
