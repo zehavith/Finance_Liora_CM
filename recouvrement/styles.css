@@ -1398,3 +1398,12 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
 /* La portée réelle du grand livre chargé, sous la ligne d'import. */
 .import-note { margin: 0.35rem 0 0.9rem; line-height: 1.45; }
 .import-note strong { color: var(--text-primary); }
+
+/* L'écart entre la date que porte Monday et celle que donne la règle : c'est
+   là que deux balances âgées se mettent à diverger. */
+.fiche-ecart {
+    margin-top: 0.5rem; padding: 0.5rem 0.7rem;
+    border-left: 3px solid var(--amber);
+    background: var(--amber-bg);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}

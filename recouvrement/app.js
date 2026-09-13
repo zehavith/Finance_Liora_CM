@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.69.0';
+    const VERSION = '2.70.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -244,6 +244,29 @@
         state.grandLivre = gl || [];
         if (rules && rules.length) state.rules = rules;
         if (options && options.options) Object.assign(state.options, options.options);
+
+        // « Je t'ai dit de prendre début de formation + 10 jours, tu as pris
+        // l'échéance calculée et ça a faussé. »
+        //
+        // Le réglage « préférer l'échéance de Monday » faisait passer la
+        // colonne du tableau avant la règle du dispositif. Sur une facture
+        // B2C-Perso commencée le 12 janvier, la règle donne le 22 janvier et
+        // Monday portait le 1er août : six mois d'écart, et une créance en
+        // retard qui ressortait non échue. Les règles font foi — elles
+        // reproduisent vos formules — et la colonne Monday ne sert plus que
+        // de repli quand aucune date de formation ne permet de calculer.
+        //
+        // Le réglage reste disponible dans l'onglet Données pour qui veut
+        // l'inverse ; il est simplement remis à sa place une fois, et dit
+        // qu'il l'a fait.
+        if (state.options.prefereEcheanceMonday === true && !state.options.echeanceRegleImposee) {
+            state.options.prefereEcheanceMonday = false;
+            state.options.echeanceRegleImposee = true;
+            await sauverReglages();
+            U.toast('Les échéances sont désormais calculées par les règles de dispositif, et non '
+                + 'reprises de la colonne Monday : cette colonne décalait certaines créances de '
+                + 'plusieurs mois. Réglage réversible dans l’onglet Données.', 'info', 14000);
+        }
 
         if (state.token) {
             $('#monday-token').value = state.token;
@@ -6006,6 +6029,31 @@
                     ? `Échéance calculée : ${baseLabel[f.echeanceBase] || f.echeanceBase} (${U.dateFR(f[f.echeanceBase])}) + ${R.getRule(f.financement, state.rules).jours} jours.`
                     : "Échéance non calculable : ni date de facture ni date de fin de formation.";
 
+        // Quand la colonne Monday et la règle ne disent pas la même date, il
+        // faut le voir. C'est là que les balances âgées divergent, et une
+        // facture dont la règle donne le 22 janvier mais dont Monday porte le
+        // 1er août ressort non échue alors qu'elle traîne depuis six mois.
+        const ecart = (() => {
+            if (!f.dateEcheanceSource || !f.dateEcheance) return '';
+            // La date que donnerait la règle seule, recalculée ici : quand
+            // c'est Monday qui l'a emporté, elle n'a jamais été calculée.
+            const parRegle = R.computeEcheance(f,
+                { rules: state.rules, prefereEcheanceMonday: false }).date;
+            if (!parRegle) return '';
+            const jours = R.diffDays(f.dateEcheanceSource, parRegle);
+            if (!jours) return '';
+            const viaMonday = f.echeanceOrigine === 'Monday';
+            return `<p class="fiche-ecart"><strong>Écart de ${U.jours(Math.abs(jours))}</strong> `
+                + `entre les deux dates possibles : la colonne Monday donne `
+                + `${U.dateFR(f.dateEcheanceSource)}, la règle du dispositif donne `
+                + `${U.dateFR(parRegle)}. `
+                + (viaMonday
+                    ? `C'est celle de Monday qui compte ici — décochez « préférer l'échéance `
+                      + `de Monday » dans l'onglet Données pour que la règle l'emporte.`
+                    : `C'est la règle qui compte ici, et c'est elle qui alimente la balance âgée.`)
+                + `</p>`;
+        })();
+
         U.modal(`Facture ${f.numero || '—'}`, `
             <div class="fiche">
                 <div class="fiche-head">
@@ -6046,6 +6094,7 @@
                     <strong>Règle appliquée — ${U.escapeHtml(R.getRule(f.financement, state.rules).label)}</strong>
                     <p>${U.escapeHtml(R.getRule(f.financement, state.rules).note || '')}</p>
                     <p>${U.escapeHtml(explication)}</p>
+                    ${ecart}
                 </div>
             </div>`, [{ label: 'Fermer', primary: true }]);
 
