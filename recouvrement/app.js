@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.75.0';
+    const VERSION = '2.76.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -106,6 +106,13 @@
             etapes: null,
             qualif: null,
             exclureTampon: false,
+            // Les créances annulées par un avoir : hors du portefeuille par
+            // défaut, puisque rien n'est rentré et que rien n'est à relancer.
+            inclureAvoirs: false,
+            // Les factures que Sellsy connaît et que Monday ignore. Hors du
+            // portefeuille par défaut : elles ne viennent pas du circuit, et
+            // les faire entrer change tous les totaux — ce doit être un choix.
+            inclureSellsyManquantes: false,
             sansEcheance: false,     // n'afficher que les créances non datées
             recherche: '',
             retardMin: null,
@@ -369,6 +376,73 @@
     //  Pipeline de calcul
     // ══════════════════════════════════════════════
 
+    /**
+     * Des factures Sellsy que Monday ignore, en factures du portefeuille.
+     *
+     * Ce que Sellsy donne : le numéro, le client, le montant, le reste dû, le
+     * statut, la date de facture. Ce qu'il ne donne pas : les dates de début
+     * et de fin de formation, sur lesquelles reposent vos règles d'échéance.
+     *
+     * L'échéance est donc cherchée dans cet ordre, et pas autrement :
+     *   1. vos règles, si le dispositif est identifiable et qu'une date le
+     *      permet — en pratique la date de facture, quand la règle s'y adosse ;
+     *   2. l'échéance que porte le grand livre, quand la facture y figure :
+     *      elle vient de votre classeur de trésorerie, pas d'une saisie ;
+     *   3. rien. La facture est alors « à qualifier », comme toute créance que
+     *      les règles ne savent pas dater.
+     *
+     * La colonne « échéance » de Sellsy n'est pas reprise : c'est une saisie,
+     * au même titre que celle de Monday, et vous avez demandé que seules vos
+     * règles fassent foi. Elle reste lisible dans l'onglet Contrôle Sellsy.
+     */
+    function facturesDepuisSellsy(absentes) {
+        // L'échéance comptable, quand le grand livre connaît la facture.
+        const parNumero = new Map();
+        for (const l of (state.glToutes || [])) {
+            if (l.cle && l.dateEcheance) parNumero.set(l.cle, l.dateEcheance);
+        }
+        return absentes.map(l => {
+            const fin = l.financement || R.detectFinancement(
+                [l.alternance, l.financementBrut, l.client, l.numero].filter(Boolean).join(' ')) || null;
+            return {
+                id: 'sellsy:' + l.cle,
+                itemId: 'sellsy:' + l.cle,
+                boardId: 'sellsy:absentes',
+                board: 'Sellsy — absente de Monday',
+                role: 'sellsy',
+                perimetre: R.perimetreDepuisTexte(l.client || '') || 'Inconnu',
+                source: 'sellsy',
+                groupe: 'Absente de Monday',
+                groupeOrigine: '',
+                cle: l.cle,
+                cleManuelle: l.cle,
+                numero: l.numero,
+                client: l.client || '—',
+                montant: l.montant || 0,
+                resteDu: l.resteDu,
+                financement: fin,
+                dateFacture: l.dateFacture || null,
+                dateDebutFormation: null,
+                dateFinFormation: null,
+                // La saisie Sellsy n'est pas une règle : elle n'entre pas dans
+                // le calcul, seule l'échéance comptable sert de repli.
+                dateEcheanceSource: null,
+                dateEcheanceComptable: parNumero.get(l.cle) || null,
+                datePaiement: l.datePaiement || null,
+                paye: !!l.paye,
+                originePaiement: l.paye ? 'Sellsy' : null,
+                statut: l.statutLabel || '',
+                proprietaire: '—',
+                presenceTableaux: ['Sellsy — absente de Monday'],
+                presenceRoles: ['sellsy'],
+                doublon: false,
+                // De quoi la reconnaître partout où elle apparaît.
+                venueDeSellsy: true,
+                qualifs: {},
+            };
+        });
+    }
+
     /** Consolide, enrichit et rafraîchit toute l'interface. */
     function recalculer(options) {
         const o = options || {};
@@ -385,6 +459,26 @@
             : state.brutes;
 
         let consolidees = I.consolider(retenues);
+
+        // Les factures que Sellsy connaît et que Monday n'a jamais reprises.
+        //
+        // L'import Monday a commencé en cours de route : les factures déjà
+        // réglées à ce moment-là n'y sont jamais entrées. Elles manquent donc
+        // au total facturé comme à l'encaissé, et les taux du tableau de bord
+        // portent sur un portefeuille amputé. Les inclure les rétablit, à
+        // partir de ce que dit Sellsy et de rien d'autre.
+        //
+        // Elles sont ajoutées après la consolidation, jamais avant : ce sont
+        // par définition des factures qu'aucun numéro Monday ne rejoint, et
+        // les faire passer par le rapprochement ne pourrait que créer des
+        // doublons avec les lignes déjà consolidées.
+        state.nbSellsyInjectees = 0;
+        if (state.filtres.inclureSellsyManquantes && state.sellsyResultat
+            && state.sellsyResultat.absentes.length) {
+            const ajoutees = facturesDepuisSellsy(state.sellsyResultat.absentes);
+            state.nbSellsyInjectees = ajoutees.length;
+            consolidees = consolidees.concat(ajoutees);
+        }
         state.glStats = state.grandLivre.length
             ? I.appliquerGrandLivre(consolidees, state.grandLivre)
             : null;
@@ -696,6 +790,13 @@
         if (f.recherche) add('Recherche : ' + f.recherche, () => { f.recherche = ''; $('#search-input').value = ''; });
         if (f.mois) add(`Période : ${f.mois.size} mois sur ${state.moisDispo.length}`, () => { f.mois = null; rendreBoutonsMois(); });
         if (f.exclureTampon) add('Tampon exclu', () => { f.exclureTampon = false; majSegments(); });
+        if (f.inclureAvoirs) add('Avoirs inclus', () => { f.inclureAvoirs = false; majSegments(); });
+        if (f.inclureSellsyManquantes) {
+            add('Absentes de Monday incluses', () => {
+                f.inclureSellsyManquantes = false;
+                recalculer({ conserverPeriode: true });
+            });
+        }
 
         if (!chips.length) { c.classList.add('hidden'); c.innerHTML = ''; return; }
         c.classList.remove('hidden');
@@ -726,11 +827,32 @@
         rendreTout();
     }
 
+    /**
+     * Le filtre des absentes de Sellsy ne s'affiche qu'une fois l'export
+     * chargé : sans lui, il n'y a rien à inclure et le choix n'a pas de sens.
+     * Le compte est dit dans le libellé, parce qu'il change tous les totaux.
+     */
+    function majFiltreSellsyManquantes() {
+        const bloc = $('#filter-block-sellsy-manquantes');
+        if (!bloc) return;
+        const n = (state.sellsyResultat && state.sellsyResultat.absentes.length) || 0;
+        bloc.hidden = !n;
+        const btn = $('#seg-sellsy-manquantes .seg-btn[data-sellsym="inclure"]');
+        if (btn) btn.textContent = n ? `Incluses (${U.nombre(n)})` : 'Incluses';
+        $$('#seg-sellsy-manquantes .seg-btn').forEach(x =>
+            x.classList.toggle('active',
+                (x.dataset.sellsym === 'inclure') === !!state.filtres.inclureSellsyManquantes));
+    }
+
     function majSegments() {
         $$('#seg-perimetre .seg-btn').forEach(b =>
             b.classList.toggle('active', b.dataset.perimetre === state.filtres.perimetre));
         $$('#seg-base-mois .seg-btn').forEach(b =>
             b.classList.toggle('active', b.dataset.base === state.filtres.baseMois));
+        majFiltreSellsyManquantes();
+        $$('#seg-avoirs .seg-btn').forEach(b =>
+            b.classList.toggle('active',
+                (b.dataset.avoirs === 'inclure') === !!state.filtres.inclureAvoirs));
         $$('#seg-tampon .seg-btn').forEach(b =>
             b.classList.toggle('active',
                 (b.dataset.tampon === 'exclure') === !!state.filtres.exclureTampon));
@@ -768,6 +890,7 @@
         rendreChipsFinancements();
         rendreChipsEtats();
         rendreAideTampon();
+        majFiltreSellsyManquantes();
         rendreFiltresActifs();
         majBadgesPeriode(data);
 
@@ -7211,6 +7334,91 @@
         return el;
     }
 
+    /**
+     * Les écarts Sellsy ↔ Monday, détaillés par nature.
+     *
+     * « 1 548 écarts sur les factures communes, dont 1 545 de statut » ne dit
+     * pas dans quel sens ils vont — et les deux sens n'ont ni la même cause ni
+     * la même conséquence. Une facture encaissée dans Sellsy et encore ouverte
+     * dans Monday, c'est une relance envoyée pour rien et un encours surévalué.
+     * L'inverse, c'est une créance qu'on croit rentrée et que personne ne va
+     * chercher. Chaque ligne s'ouvre sur ses factures.
+     */
+    function rendreDetailEcartsSellsy(res) {
+        const el = $('#sellsy-ecarts-detail');
+        if (!el) return;
+        const avecEcart = (res.rapprochees || []).filter(r => r.ecartMontant != null || r.ecartStatut);
+        if (!avecEcart.length) { el.innerHTML = ''; return; }
+
+        const NATURES = [
+            { key: 'payee_sellsy_seulement',
+              label: 'Encaissée dans Sellsy, encore ouverte dans Monday',
+              quoi: 'Le règlement n’a pas été reporté dans Monday. Votre encours est surévalué d’autant, '
+                  + 'et ces factures sont relancées pour rien.',
+              test: r => r.ecartStatut === 'payee_sellsy_seulement' },
+            { key: 'payee_monday_seulement',
+              label: 'Réglée dans Monday, impayée dans Sellsy',
+              quoi: 'Monday la dit encaissée, la facturation non. Soit le règlement a été saisi par avance, '
+                  + 'soit la créance est bien vivante et personne ne la relance.',
+              test: r => r.ecartStatut === 'payee_monday_seulement' },
+            { key: 'montant',
+              label: 'Montant différent entre les deux',
+              quoi: 'Sellsy fait foi sur le montant : c’est la saisie Monday qui est à corriger. '
+                  + 'Un avoir passé d’un côté seulement produit le même écart.',
+              test: r => r.ecartMontant != null },
+        ];
+
+        const lignes = NATURES.map(n => {
+            const lot = avecEcart.filter(n.test);
+            return { ...n, lot, nb: lot.length,
+                     euros: X.sum(lot, r => (r.sellsy && r.sellsy.montant) || 0),
+                     ecart: X.sum(lot, r => Math.abs(r.ecartMontant || 0)) };
+        }).filter(n => n.nb);
+
+        el.innerHTML = '<h4 class="qualif-col-titre">Ces écarts, dans le détail'
+            + '<span class="fv-hint">chaque ligne s’ouvre sur ses factures ; le sens de l’écart '
+            + 'dit ce qu’il y a à faire</span></h4>'
+            + '<div class="table-wrap">' + U.table([
+                { key: 'label', label: 'Nature de l’écart',
+                  format: (v, r) => `<button class="lien-cellule" data-ecart="${U.escapeHtml(r.key)}">`
+                      + `${U.escapeHtml(v)}</button>`
+                      + `<span class="cell-mini">${U.escapeHtml(r.quoi)}</span>` },
+                { key: 'nb', label: 'Factures', align: 'right', format: U.nombre },
+                { key: 'euros', label: 'Montant Sellsy', align: 'right', format: U.euros },
+                { key: 'ecart', label: 'Écart cumulé', align: 'right',
+                  format: v => v ? U.euros(v) : '<span class="ag-zero">·</span>' },
+            ], lignes, { vide: '—' }) + '</div>';
+
+        $$('[data-ecart]', el).forEach(b => b.addEventListener('click', () => {
+            const n = lignes.find(x => x.key === b.dataset.ecart);
+            if (!n) return;
+            montrerFacturesListe(n.label, n.lot.map(r => r.facture), n.quoi,
+                { colonnesSup: [
+                    { key: r => (r.__sellsy && r.__sellsy.statutLabel) || '', label: 'Statut Sellsy',
+                      format: v => `<span class="pill">${U.escapeHtml(v || '—')}</span>` },
+                  ],
+                  onExport: () => exporterEcartsSellsy(n) });
+        }));
+    }
+
+    /** Le détail d'une nature d'écart, en Excel, pour la corriger dans Monday. */
+    function exporterEcartsSellsy(n) {
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(n.lot.map(r => ({
+            'Facture': r.sellsy.numero,
+            'Client': r.sellsy.client || r.facture.client,
+            'Nature de l’écart': n.label,
+            'Montant Sellsy': arrondi(r.sellsy.montant || 0),
+            'Montant Monday': arrondi(r.facture.montant || 0),
+            'Écart': r.ecartMontant == null ? '' : arrondi(r.ecartMontant),
+            'Statut Sellsy': r.sellsy.statutLabel || '',
+            'État Monday': r.facture.etat || '',
+            'Tableau Monday': r.facture.board || '',
+            'Groupe Monday': r.facture.groupe || '',
+        }))), 'Écarts');
+        XLSX.writeFile(wb, `Ecarts_Sellsy_${n.key}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+
     const VUES_SELLSY = {
         absentes: {
             titre: 'Factures absentes de Monday',
@@ -7306,6 +7514,7 @@
     }
 
     function rendreTableSellsy(res) {
+        rendreDetailEcartsSellsy(res);
         const vue = state.ui.sellsyVue;
         const def = VUES_SELLSY[vue];
         $('#sellsy-titre-table').textContent = def.titre;
@@ -7329,19 +7538,27 @@
                 b.classList.toggle('active', b.dataset.portee === state.ui.sellsyPortee));
         }
         let masquees = 0;
-        if (filtrable && state.ui.sellsyPortee === 'traiter') {
+        const portee = state.ui.sellsyPortee;
+        if (filtrable && portee !== 'tout') {
             const avant = rows.length;
-            rows = rows.filter(r => !r.paye
-                && Math.abs(r.montant || 0) > 1
-                && Math.abs(r.resteDu == null ? (r.montant || 0) : r.resteDu) > 1);
+            if (portee === 'traiter') {
+                // Ce qu'il y a à faire : ni les réglées, ni les montants nuls,
+                // ni les restes dûs d'un euro, qui ne sont que des arrondis.
+                rows = rows.filter(r => !r.paye
+                    && Math.abs(r.montant || 0) > 1
+                    && Math.abs(r.resteDu == null ? (r.montant || 0) : r.resteDu) > 1);
+            } else {
+                rows = rows.filter(r => r.statut === portee);
+            }
             masquees = avant - rows.length;
         }
         const noteP = $('#sellsy-note-portee');
         if (noteP) {
-            noteP.innerHTML = masquees
-                ? `${U.nombre(masquees)} absentes écartées de cette vue : déjà réglées, `
-                  + 'montant nul, ou reste dû inférieur à un euro. « Tout » les réaffiche.'
-                : '';
+            noteP.innerHTML = !filtrable || !masquees ? ''
+                : portee === 'traiter'
+                    ? `${U.nombre(masquees)} absentes écartées de cette vue : déjà réglées, `
+                      + 'montant nul, ou reste dû inférieur à un euro. « Toutes » les réaffiche.'
+                    : `${U.nombre(masquees)} absentes d'un autre statut ne sont pas affichées.`;
         }
         if (cols.some(c => c.key === t.key)) {
             rows.sort((a, b) => {
@@ -10176,6 +10393,18 @@
             majSegments();
             state.ui.page = 1;
             rendreTout();
+        }));
+        $$('#seg-avoirs .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.filtres.inclureAvoirs = b.dataset.avoirs === 'inclure';
+            majSegments();
+            state.ui.page = 1;
+            rendreTout();
+        }));
+        $$('#seg-sellsy-manquantes .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.filtres.inclureSellsyManquantes = b.dataset.sellsym === 'inclure';
+            majSegments();
+            state.ui.page = 1;
+            recalculer({ conserverPeriode: true });
         }));
 
         $$('#seg-unite-mois .seg-btn').forEach(b => b.addEventListener('click', () => {

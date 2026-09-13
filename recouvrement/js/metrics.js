@@ -78,7 +78,11 @@
             // les taux, la balance âgée, et des tuiles qui ne totalisent plus
             // cent pour cent. Elle reste consultable en la demandant par son
             // état, et le tableau de bord en donne le compte.
-            if (x.etat === ETAT_AVOIR && !(f.etats && f.etats.has(ETAT_AVOIR))) return false;
+            // Le choix vous revient : « inclureAvoirs » les remet dans tous les
+            // écrans, pour lire le portefeuille tel qu'il a été facturé plutôt
+            // que tel qu'il reste à encaisser.
+            if (x.etat === ETAT_AVOIR && !f.inclureAvoirs
+                && !(f.etats && f.etats.has(ETAT_AVOIR))) return false;
 
             // Tampon : le sas d'attente avant le circuit. Aucune relance n'y
             // est faite, donc rien de ce qui s'y trouve ne mesure le travail
@@ -93,7 +97,13 @@
 
             // Source : les factures issues du tableau « payées » sont rattachées
             // à leur source d'origine si elle est connue, sinon toujours retenues.
-            if (f.sources && f.sources.size) {
+            //
+            // Les factures que Sellsy connaît et que Monday ignore n'ont, elles,
+            // aucune source de circuit : elles ne sont passées par aucun
+            // tableau. Les soumettre à ce filtre les faisait disparaître de
+            // tous les écrans alors qu'on venait de demander leur inclusion.
+            // C'est leur propre bouton qui les commande, et lui seul.
+            if (f.sources && f.sources.size && !x.venueDeSellsy) {
                 const src = sourceDe(x);
                 if (src && !f.sources.has(src)) return false;
             }
