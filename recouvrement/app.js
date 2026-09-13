@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.74.0';
+    const VERSION = '2.75.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -145,6 +145,7 @@
             vueEcheance: 'retard',
             finDetail: null,
             sellsyVue: 'absentes',
+            sellsyPortee: 'traiter',
             sellsyPage: 1,
             triSellsy: { key: 'montant', sens: 'desc' },
             // Fenêtre des graphiques mensuels : l'historique remonte à 2021,
@@ -797,8 +798,66 @@
     //  Onglet : Tableau de bord
     // ══════════════════════════════════════════════
 
+    /**
+     * Chaque indicateur du tableau de bord s'ouvre sur ses factures.
+     *
+     * « À chaque fois qu'il y a un nombre de factures, je dois pouvoir savoir
+     * de quelles factures il s'agit. » Les tuiles du haut donnaient huit
+     * chiffres et aucune porte d'entrée ; il fallait deviner quel filtre du
+     * tableau des factures reproduisait le même périmètre — et se tromper ne
+     * se voyait pas.
+     */
+    const LOTS_KPI = {
+        total:        { titre: 'Total facturé',
+                        filtre: () => true,
+                        note: 'Toutes les factures de la vue, réglées ou non.' },
+        encaisse:     { titre: 'Encaissé',
+                        filtre: f => f.paye,
+                        note: 'Les factures réglées, à la date d’arrêté.' },
+        encours:      { titre: 'Reste à encaisser',
+                        filtre: f => !f.paye,
+                        note: 'Les factures non réglées, échues ou non.' },
+        retard:       { titre: 'En retard',
+                        filtre: f => f.etat === 'En retard',
+                        titreNonEchu: 'Pas encore échu',
+                        filtreNonEchu: f => f.etat === 'Non échue',
+                        note: 'Échues à la date d’arrêté et toujours pas encaissées.',
+                        noteNonEchu: 'Non réglées, mais dont l’échéance n’est pas encore atteinte.' },
+        impayees:     { titre: 'Factures impayées',
+                        filtre: f => f.etat === 'En retard',
+                        note: 'Les factures sur lesquelles se calcule le retard moyen.' },
+        payeesRetard: { titre: 'Payées en retard',
+                        filtre: f => f.etat === 'Payée en retard',
+                        note: 'Réglées, mais après leur échéance : le retard a été subi.' },
+    };
+
+    function brancherKPIs() {
+        $$('[data-kpi]').forEach(carte => {
+            if (carte.__branche) return;
+            carte.__branche = true;
+            carte.addEventListener('click', () => {
+                const lot = LOTS_KPI[carte.dataset.kpi];
+                if (!lot) return;
+                // La bascule « en retard / pas encore échu » se lit au clic et
+                // non au branchement : l'écouteur n'est posé qu'une fois, et
+                // une valeur figée à ce moment-là ouvrait toujours la même
+                // liste quelle que soit la vue affichée.
+                const bascule = state.ui.vueEcheance === 'nonEchu' && lot.filtreNonEchu;
+                const items = (state.dernieresFactures || []).filter(
+                    bascule ? lot.filtreNonEchu : lot.filtre);
+                montrerFacturesListe(bascule ? lot.titreNonEchu : lot.titre, items,
+                    bascule ? lot.noteNonEchu : lot.note,
+                    { onExport: rows => exporterFacturesSimple(rows,
+                        bascule ? lot.titreNonEchu : lot.titre) });
+            });
+        });
+    }
+
     function rendreDashboard(data) {
         const v = X.vueEnsemble(data);
+        // Les factures de la vue courante, pour les tuiles qui s'ouvrent.
+        state.dernieresFactures = data;
+        brancherKPIs();
 
         // ── KPIs ──
         // Le groupe central se lit de deux façons : ce qui est en retard, ou ce
@@ -1231,7 +1290,7 @@
                 { key: 'financement', label: 'Financement',
                   format: v => U.escapeHtml(v ? R.getRule(v, state.rules).label : '—') },
                 { key: 'groupe', label: 'Groupe Monday', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
-            ], rows.slice(0, 300), { vide: 'Aucune facture.', onRowClick: true })
+            ].concat(o.colonnesSup || []), rows.slice(0, 300), { vide: 'Aucune facture.', onRowClick: true })
             + (rows.length > 300
                 ? `<p class="fv-hint">300 premières sur ${U.nombre(rows.length)} — l'export les donne toutes.</p>`
                 : '');
@@ -2513,9 +2572,21 @@
                 },
                 onClick: (evt, els) => {
                     if (!els.length) return;
-                    state.filtres.financements = new Set([top[els[0].index].key]);
-                    state.ui.page = 1;
-                    rendreApresClic();
+                    const f = top[els[0].index];
+                    const impayees = (f.items || []).filter(x => x.etat === 'En retard');
+                    montrerFacturesListe(`${f.label} — en retard`, impayees,
+                        `${U.escapeHtml(f.label)} : factures échues et toujours pas encaissées. `
+                        + `${U.pourcent(f.tauxEur)} du portefeuille, `
+                        + `retard moyen ${U.jours(f.retardMoyen)}.`,
+                        {
+                            onExport: rows => exporterFacturesSimple(rows, f.label + '_en_retard'),
+                            labelFiltre: 'Filtrer le tableau sur ce financement',
+                            onFiltrer: () => {
+                                state.filtres.financements = new Set([f.key]);
+                                state.ui.page = 1;
+                                rendreApresClic();
+                            },
+                        });
                 },
             },
         });
@@ -7081,15 +7152,63 @@
         const total = res.absentes.length;
         const couleur = k => k === 'payee' ? U.couleurs.paye
             : k === 'partielle' ? U.couleurs.payeRetard : U.couleurs.retard;
+        state.sellsyParStatut = parStatut;
         el.innerHTML = parStatut.map(s => `
-            <div class="recup-card">
+            <button class="recup-card" data-statut-sellsy="${U.escapeHtml(s.key)}"
+                    title="Voir les ${U.nombre(s.nb)} factures">
                 <span class="recup-bar" style="background:${couleur(s.key)}"></span>
                 <span class="recup-taux">${U.nombre(s.nb)}</span>
                 <span class="recup-label">Absentes — ${U.escapeHtml(s.label)}</span>
                 <span class="recup-value">${U.euros(s.euros)} facturés</span>
                 <span class="recup-sub">${U.pourcent(total ? s.nb / total * 100 : null, 0)} des absentes${
                     s.key !== 'payee' ? ' · ' + U.euros(s.resteDu) + ' à encaisser' : ''}</span>
-            </div>`).join('');
+            </button>`).join('');
+
+        $$('[data-statut-sellsy]', el).forEach(b => b.addEventListener('click', () => {
+            const k = b.dataset.statutSellsy;
+            const lot = res.absentes.filter(a => a.statut === k);
+            montrerLignesSellsy(`Absentes de Monday — ${(parStatut.find(x => x.key === k) || {}).label || k}`,
+                lot);
+        }));
+    }
+
+    /**
+     * Les lignes Sellsy d'un lot, ouvertes depuis un compte.
+     *
+     * Ce ne sont pas des factures Monday : elles n'ont ni échéance calculée ni
+     * fiche. Les colonnes sont donc celles de l'export — ce que Sellsy dit,
+     * et rien de plus.
+     */
+    function montrerLignesSellsy(titre, lignes) {
+        if (!lignes.length) { U.toast('Aucune facture dans ce lot.', 'error'); return; }
+        const rows = lignes.slice().sort((a, b) => (b.montant || 0) - (a.montant || 0));
+        const el = U.modal(`${titre} — ${U.nombre(rows.length)} factures · `
+            + `${U.euros(X.sum(rows, l => l.montant || 0))}`,
+            U.table([
+                { key: 'numero', label: 'Facture', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'client', label: 'Client', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'montant', label: 'Montant TTC', align: 'right', format: U.euros },
+                { key: 'resteDu', label: 'Reste dû', align: 'right', format: v => v == null ? '—' : U.euros(v) },
+                { key: 'statutLabel', label: 'Statut Sellsy', format: v => `<span class="pill">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'dateFacture', label: 'Date de facture', align: 'center', format: U.dateFR },
+                { key: 'dateEcheance', label: 'Échéance Sellsy', align: 'center', format: U.dateFR },
+            ], rows.slice(0, 300), { vide: 'Aucune ligne.' })
+            + (rows.length > 300 ? `<p class="fv-hint">300 premières sur ${U.nombre(rows.length)} — l'export les donne toutes.</p>` : ''),
+            [{ label: 'Exporter', close: false, onClick: () => {
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(l => ({
+                    'Facture': l.numero, 'Client': l.client,
+                    'Montant TTC': arrondi(l.montant || 0),
+                    'Reste dû': l.resteDu == null ? '' : arrondi(l.resteDu),
+                    'Statut Sellsy': l.statutLabel || '',
+                    'Date de facture': l.dateFacture ? U.dateFR(l.dateFacture) : '',
+                    'Échéance Sellsy': l.dateEcheance ? U.dateFR(l.dateEcheance) : '',
+                }))), 'Sellsy');
+                XLSX.writeFile(wb, `Sellsy_${String(titre).replace(/[^\w\u00C0-\u024F-]+/g, '_').slice(0, 40)}`
+                    + `_${new Date().toISOString().slice(0, 10)}.xlsx`);
+            } },
+             { label: 'Fermer', primary: true }], { large: true });
+        return el;
     }
 
     const VUES_SELLSY = {
@@ -7195,7 +7314,35 @@
 
         const cols = colonnesVueSellsy(vue);
         const t = state.ui.triSellsy;
-        const rows = lignesVueSellsy(res, vue).slice();
+        let rows = lignesVueSellsy(res, vue).slice();
+
+        // Une absente déjà réglée n'appelle aucune action : elle explique un
+        // écart de comptage, elle ne se relance pas. Mêmes remarques pour un
+        // montant nul et pour un reste dû d'un euro, qui n'est qu'un arrondi.
+        // La vue s'ouvre donc sur ce qu'il y a à traiter, et le bouton « Tout »
+        // rend la liste entière quand on veut vérifier.
+        const seg = $('#seg-sellsy-portee');
+        const filtrable = vue === 'absentes';
+        if (seg) {
+            seg.hidden = !filtrable;
+            $$('.seg-btn', seg).forEach(b =>
+                b.classList.toggle('active', b.dataset.portee === state.ui.sellsyPortee));
+        }
+        let masquees = 0;
+        if (filtrable && state.ui.sellsyPortee === 'traiter') {
+            const avant = rows.length;
+            rows = rows.filter(r => !r.paye
+                && Math.abs(r.montant || 0) > 1
+                && Math.abs(r.resteDu == null ? (r.montant || 0) : r.resteDu) > 1);
+            masquees = avant - rows.length;
+        }
+        const noteP = $('#sellsy-note-portee');
+        if (noteP) {
+            noteP.innerHTML = masquees
+                ? `${U.nombre(masquees)} absentes écartées de cette vue : déjà réglées, `
+                  + 'montant nul, ou reste dû inférieur à un euro. « Tout » les réaffiche.'
+                : '';
+        }
         if (cols.some(c => c.key === t.key)) {
             rows.sort((a, b) => {
                 let va = a[t.key], vb = b[t.key];
@@ -8012,7 +8159,8 @@
             let d = parBoard.get(k);
             if (!d) {
                 d = { retenues: 0, ecartees: 0, sansEcheance: 0, enRetard: 0, payees: 0,
-                      nonEchues: 0, ailleurs: 0, ailleursOu: new Map() };
+                      nonEchues: 0, ailleurs: 0, ailleursOu: new Map(), ailleursItems: [],
+                      retenuesItems: [] };
                 parBoard.set(k, d);
             }
             return d;
@@ -8021,7 +8169,7 @@
             const k = f.board || '—';
             const d = du(k);
             if (f.role === 'technique' || f.groupeTechnique) { d.ecartees++; continue; }
-            d.retenues++;
+            d.retenues++; d.retenuesItems.push(f);
             if (f.etat === 'Échéance inconnue') d.sansEcheance++;
             else if (f.etat === 'En retard') d.enRetard++;
             else if (f.etat === 'Non échue') d.nonEchues++;
@@ -8037,12 +8185,14 @@
                 if (autre === k) continue;
                 const a = du(autre);
                 a.ailleurs++;
+                a.ailleursItems.push(f);
                 a.ailleursOu.set(k, (a.ailleursOu.get(k) || 0) + 1);
             }
         }
 
         const vide = { retenues: 0, ecartees: 0, sansEcheance: 0, enRetard: 0, payees: 0,
-                       nonEchues: 0, ailleurs: 0, ailleursOu: new Map() };
+                       nonEchues: 0, ailleurs: 0, ailleursOu: new Map(), ailleursItems: [],
+                       retenuesItems: [] };
         const rows = state.boards.map(b => {
             const r = { ...b, ...(parBoard.get(b.name) || vide) };
 
@@ -8138,7 +8288,10 @@
                   : '0') },
             { key: 'ecartees', label: 'Écartées', align: 'right', format: v => v ? U.nombre(v) : '—',
               title: 'Groupes de service : archives, technique, corbeille' },
-            { key: 'retenues', label: 'Analysées ici', align: 'right', format: v => `<strong>${U.nombre(v)}</strong>`,
+            { key: 'retenues', label: 'Analysées ici', align: 'right',
+              format: (v, r) => v
+                  ? `<button class="lien-cellule" data-lot="ici" data-board="${U.escapeHtml(r.name)}"><strong>${U.nombre(v)}</strong></button>`
+                  : '<strong>0</strong>',
               title: 'Factures rattachées à ce tableau dans les indicateurs. '
                    + 'Une facture vue sur plusieurs tableaux n’est comptée qu’une fois, '
                    + 'sur le plus avancé du circuit.' },
@@ -8147,7 +8300,8 @@
                    + 'le circuit fait passer une même facture par plusieurs tableaux, '
                    + 'et elle ne doit être comptée qu’une fois.',
               format: (v, r) => v
-                  ? `${U.nombre(v)}<span class="cell-mini">${U.escapeHtml(
+                  ? `<button class="lien-cellule" data-lot="ailleurs" data-board="${U.escapeHtml(r.name)}">`
+                    + `${U.nombre(v)}</button><span class="cell-mini">${U.escapeHtml(
                         [...r.ailleursOu.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2)
                             .map(([nom, n]) => `${U.nombre(n)} sur ${nom}`).join(' · '))}</span>`
                   : '<span class="ag-zero">·</span>' },
@@ -8171,6 +8325,29 @@
             nonEchues: U.nombre(X.sum(rows, r => r.nonEchues)),
             payees: U.nombre(X.sum(rows, r => r.payees)),
         } });
+
+        // Les deux comptes s'ouvrent : c'est la seule façon de vérifier où
+        // sont passées les factures d'un tableau, cas par cas.
+        el.addEventListener('click', e => {
+            const b = e.target.closest('[data-lot]');
+            if (!b) return;
+            const d = parBoard.get(b.dataset.board);
+            if (!d) return;
+            const ici = b.dataset.lot === 'ici';
+            montrerFacturesListe(
+                `${b.dataset.board} — ${ici ? 'analysées ici' : 'analysées ailleurs'}`,
+                ici ? d.retenuesItems : d.ailleursItems,
+                ici
+                    ? 'Factures de ce tableau, comptées sur ce tableau.'
+                    : 'Factures présentes sur ce tableau mais comptées sur un autre — '
+                      + 'la colonne « Comptée sur » dit lequel.',
+                { colonnesSup: ici ? [] : [
+                    { key: 'board', label: 'Comptée sur',
+                      format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                  ],
+                  onExport: rows => exporterFacturesSimple(rows,
+                      b.dataset.board + (ici ? '_ici' : '_ailleurs')) });
+        });
 
         $$('.board-refresh', el).forEach(b => b.addEventListener('click', () => {
             rechargerUnSeulBoard(b.dataset.id);
@@ -9888,6 +10065,11 @@
         $('#btn-sellsy-export').addEventListener('click', exporterSellsy);
         $$('#seg-sellsy-vue .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.sellsyVue = b.dataset.vue;
+            state.ui.sellsyPage = 1;
+            rendreTout();
+        }));
+        $$('#seg-sellsy-portee .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.sellsyPortee = b.dataset.portee;
             state.ui.sellsyPage = 1;
             rendreTout();
         }));

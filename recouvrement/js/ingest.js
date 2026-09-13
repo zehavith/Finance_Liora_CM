@@ -730,7 +730,22 @@
 
             // Facture porteuse : la ligne de règlement si elle existe, sinon la
             // plus avancée dans le circuit opérationnel.
-            const porteuse = groupe.slice().sort((a, b) =>
+            //
+            // « Dans le tampon je dois avoir 4 factures non payées, dans l'ADV
+            // 440. » L'ADV en affichait une seule. La cause : le tableau des
+            // factures payées héberge aussi un groupe « Factures non payées :
+            // Perte / Contentieux ». Une facture qui s'y trouve n'est pas
+            // réglée — son groupe dit l'inverse du tableau — mais le rôle
+            // « payées » l'emportait quand même, et la créance était rattachée
+            // au tableau des règlements. Elle disparaissait du compte de son
+            // tableau opérationnel, où elle est pourtant toujours à relancer.
+            //
+            // Une créance non réglée vit donc sur son tableau opérationnel, et
+            // c'est là qu'elle est comptée. Le tableau des payées ne reprend
+            // la main que lorsqu'il porte réellement un règlement.
+            const candidats = (!payees.length && operationnelles.length)
+                ? operationnelles : groupe;
+            const porteuse = candidats.slice().sort((a, b) =>
                 (ROLE_PRIORITE[b.role] || 0) - (ROLE_PRIORITE[a.role] || 0))[0];
 
             let f = { ...porteuse };

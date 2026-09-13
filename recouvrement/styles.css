@@ -1417,3 +1417,7 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
 .synth-card { cursor: pointer; text-align: left; width: 100%; font: inherit; color: inherit; }
 .synth-card:hover { border-color: var(--border-hover); background: var(--bg-card-hover); }
 .bucket-card { cursor: pointer; }
+
+/* Les tuiles d'indicateur s'ouvrent sur leurs factures. */
+.kpi-cliquable { cursor: pointer; }
+.kpi-cliquable:hover { border-color: var(--border-hover); background: var(--bg-card-hover); }
