@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.72.0';
+    const VERSION = '2.73.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -1197,15 +1197,30 @@
             U.toast('Aucune facture dans cette part.', 'error');
             return;
         }
+        montrerFacturesListe(part.label, part.items,
+            `${U.escapeHtml(libelleColonneMotif(groupe.colonne))} · `
+            + `${U.escapeHtml(groupe.tableaux.join(', '))}. `
+            + `${U.pourcent(part.part)} du reste à encaisser de cette colonne.`,
+            { onExport: rows => exporterFacturesMotif(groupe, part, rows) });
+    }
+
+    /**
+     * Une liste de factures, ouverte depuis un chiffre.
+     *
+     * Le même écran sert partout où un montant agrégé se clique : une part de
+     * camembert, une tranche de balance âgée, une ligne de motif. Les
+     * colonnes sont celles qu'on veut voir en sortant d'un total — reste dû,
+     * échéance, retard — et une ligne mène à la fiche, où se lit la règle qui
+     * a servi à calculer l'échéance.
+     */
+    function montrerFacturesListe(titre, items, contexte, opts) {
+        const o = opts || {};
+        if (!items || !items.length) { U.toast('Aucune facture ici.', 'error'); return; }
         const reste = f => (f.resteDu != null && f.resteDu > 0) ? f.resteDu : (f.montant || 0);
-        const rows = part.items.slice().sort((a, b) => reste(b) - reste(a));
+        const rows = items.slice().sort((a, b) => reste(b) - reste(a));
         const total = X.sum(rows, reste);
 
-        const corps = `<p class="fv-hint">`
-            + `${U.escapeHtml(libelleColonneMotif(groupe.colonne))} · `
-            + `${U.escapeHtml(groupe.tableaux.join(', '))}. `
-            + `${U.pourcent(part.part)} du reste à encaisser de cette colonne.`
-            + `</p>`
+        const corps = (contexte ? `<p class="fv-hint">${contexte}</p>` : '')
             + U.table([
                 { key: 'numero', label: 'Facture', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
                 { key: 'client', label: 'Client', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
@@ -1221,11 +1236,18 @@
                 ? `<p class="fv-hint">300 premières sur ${U.nombre(rows.length)} — l'export les donne toutes.</p>`
                 : '');
 
-        const el = U.modal(`${part.label} — ${U.nombre(rows.length)} factures · ${U.euros(total)}`,
-            corps,
-            [{ label: 'Exporter ces factures', close: false,
-               onClick: () => exporterFacturesMotif(groupe, part, rows) },
-             { label: 'Fermer', primary: true }], { large: true });
+        const actions = [];
+        if (o.onExport) {
+            actions.push({ label: 'Exporter ces factures', close: false,
+                           onClick: () => o.onExport(rows) });
+        }
+        if (o.onFiltrer) {
+            actions.push({ label: o.labelFiltre || 'Filtrer le tableau sur cette sélection',
+                           onClick: () => o.onFiltrer() });
+        }
+        actions.push({ label: 'Fermer', primary: true });
+        const el = U.modal(`${titre} — ${U.nombre(rows.length)} factures · ${U.euros(total)}`,
+            corps, actions, { large: true });
         // Une ligne mène à la fiche : c'est là que se lisent les dates et la
         // règle qui a servi à calculer l'échéance.
         U.bindTable(el, rows.slice(0, 300), {
@@ -2528,12 +2550,47 @@
                 },
                 onClick: (evt, els) => {
                     if (!els.length) return;
-                    state.filtres.bucket = actifs[els[0].index].key;
-                    state.ui.page = 1;
-                    rendreApresClic();
+                    montrerFacturesBucket(actifs[els[0].index]);
                 },
             },
         });
+    }
+
+    /** Les factures d'une tranche d'ancienneté, et de quoi filtrer dessus. */
+    function montrerFacturesBucket(b) {
+        montrerFacturesListe(b.label, b.items || [],
+            `Tranche d'ancienneté « ${U.escapeHtml(b.label)} » — `
+            + `${U.pourcent(b.partEuros)} du reste à encaisser, `
+            + `${U.pourcent(b.partNb)} des factures non réglées.`,
+            {
+                onExport: rows => exporterFacturesSimple(rows, 'Tranche_' + b.label),
+                labelFiltre: 'Filtrer le tableau sur cette tranche',
+                onFiltrer: () => {
+                    state.filtres.bucket = b.key;
+                    state.ui.page = 1;
+                    rendreApresClic();
+                },
+            });
+    }
+
+    /** Une liste de factures en Excel, sans contexte particulier. */
+    function exporterFacturesSimple(rows, nom) {
+        const reste = f => (f.resteDu != null && f.resteDu > 0) ? f.resteDu : (f.montant || 0);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(f => ({
+            'Facture': f.numero, 'Client': f.client,
+            'Tableau': f.board || '', 'Groupe': f.groupe || f.groupeOrigine || '',
+            'Financement': f.financement ? R.getRule(f.financement, state.rules).label : '',
+            'Montant': arrondi(f.montant || 0),
+            'Reste dû': arrondi(reste(f)),
+            'Date de facture': f.dateFacture ? U.dateFR(f.dateFacture) : '',
+            'Échéance': f.dateEcheance ? U.dateFR(f.dateEcheance) : 'à qualifier',
+            'Jours de retard': f.retardJours == null ? '' : f.retardJours,
+            'État': f.etat || '',
+            'Pourquoi': f.motif || '',
+        }))), 'Factures');
+        const fichier = String(nom).replace(/[^\w\u00C0-\u024F-]+/g, '_').slice(0, 50);
+        XLSX.writeFile(wb, `${fichier}_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
 
     function videConfig(message) {
@@ -3129,56 +3186,77 @@
      * Chaque nombre porte son dénominateur : un pourcentage dont on ignore de
      * quoi il est la part ne se vérifie pas et ne se décide pas.
      */
-    function rendreSyntheseAgee(buckets, totalEuros) {
+    function rendreSyntheseAgee(buckets, totalEuros, data) {
         const el = $('#aging-synthese');
         if (!el) return;
+        // Chaque tuile porte ses factures, pas seulement un total : c'est
+        // elles qu'on veut voir en cliquant.
+        //
+        // Les créances non datées sont rangées dans « non échu » par la
+        // balance âgée — faute d'ancienneté, c'est la seule tranche qui
+        // n'affirme rien. Mais ce n'est pas la même chose, et elles ont leur
+        // propre tuile : on les distingue ici sur la seule question qui les
+        // sépare, l'existence d'une date d'échéance.
         const parCle = Object.fromEntries(buckets.map(b => [b.key, b]));
-        const somme = cles => cles.reduce((a, k) => ({
-            euros: a.euros + ((parCle[k] && parCle[k].euros) || 0),
-            nb: a.nb + ((parCle[k] && parCle[k].nb) || 0),
-        }), { euros: 0, nb: 0 });
+        const lotDe = cles => cles.flatMap(k => (parCle[k] && parCle[k].items) || []);
+        const resteDe = f => (f.resteDu != null && f.resteDu > 0) ? f.resteDu : (f.montant || 0);
+        const totalise = items => ({ items, nb: items.length, euros: X.sum(items, f => f.montant || 0) });
 
-        const nonEchu = somme(['nonEchu']);
-        const sansEcheance = somme([X.ECHEANCE_MANQUANTE]);
         const VIEUX = ['m12_18', 'm18_24', 'm24_36', 'm36_48', 'm48p'];
-        const plusDunAn = somme(VIEUX);
-        const echu = {
-            euros: totalEuros - nonEchu.euros - sansEcheance.euros,
-            nb: X.sum(buckets, b => b.nb) - nonEchu.nb - sansEcheance.nb,
-        };
-        const nbTotal = X.sum(buckets, b => b.nb);
+        const nonEchuBrut = lotDe(['nonEchu']);
+        const sansEcheance = totalise(nonEchuBrut.filter(f => !f.dateEcheance));
+        const nonEchu = totalise(nonEchuBrut.filter(f => f.dateEcheance));
+        const plusDunAn = totalise(lotDe(VIEUX));
+        const tout = totalise(buckets.flatMap(b => b.items || []));
+        const echu = totalise(lotDe(buckets.map(b => b.key).filter(k => k !== 'nonEchu')));
+        const nbTotal = tout.nb;
         const part = v => U.pourcent(totalEuros ? v / totalEuros * 100 : 0, 1);
 
-        const tuile = (t, euros, nb, phrase, couleur) => `
-            <div class="synth-card">
+        // Chaque tuile s'ouvre sur ses factures : un nombre de factures qu'on
+        // ne peut pas ouvrir ne se vérifie pas.
+        const lots = [];
+        const tuile = (t, euros, nb, phrase, couleur, items) => {
+            const i = lots.push({ titre: t, items: items || [] }) - 1;
+            return `
+            <button class="synth-card" data-synth="${i}" title="Voir les ${U.nombre(nb)} factures">
                 <span class="synth-bar" style="background:${couleur}"></span>
                 <span class="synth-label">${U.escapeHtml(t)}</span>
                 <span class="synth-value">${U.euros(euros)}</span>
                 <span class="synth-sub">${U.nombre(nb)} factures</span>
                 <span class="synth-phrase">${phrase}</span>
-            </div>`;
+            </button>`;
+        };
 
         el.innerHTML = '<div class="synth-grid">'
             + tuile('Reste à encaisser', totalEuros, nbTotal,
                 'tout ce qui n’est pas encore rentré, à la date d’arrêté',
-                U.couleurs.indigo)
+                U.couleurs.indigo, tout.items)
             + tuile('Déjà échu', echu.euros, echu.nb,
                 `<strong>${part(echu.euros)}</strong> du reste à encaisser — exigible, non payé`,
-                U.couleurs.retard)
+                U.couleurs.retard, echu.items)
             + tuile('Depuis plus d’un an', plusDunAn.euros, plusDunAn.nb,
                 `<strong>${part(plusDunAn.euros)}</strong> du reste à encaisser — `
                 + 'les cinq tranches au-delà de 12 mois réunies',
-                '#991b1b')
+                '#991b1b', plusDunAn.items)
             + tuile('Non échu', nonEchu.euros, nonEchu.nb,
                 `<strong>${part(nonEchu.euros)}</strong> du reste à encaisser — pas encore exigible`,
-                U.couleurs.nonEchue)
+                U.couleurs.nonEchue, nonEchu.items)
             + (sansEcheance.nb
                 ? tuile('Sans échéance', sansEcheance.euros, sansEcheance.nb,
                     `<strong>${part(sansEcheance.euros)}</strong> du reste à encaisser — `
                     + 'ni en retard ni non échu tant que la date manque',
-                    U.couleurs.inconnu)
+                    U.couleurs.inconnu, sansEcheance.items)
                 : '')
             + '</div>';
+
+        $$('[data-synth]', el).forEach(b => b.addEventListener('click', () => {
+            const lot = lots[+b.dataset.synth];
+            if (!lot) return;
+            montrerFacturesListe(lot.titre, lot.items,
+                `${U.escapeHtml(lot.titre)} — ${part(X.sum(lot.items, resteDe))} `
+                + 'du reste à encaisser.',
+                { onExport: rows => exporterFacturesSimple(rows, lot.titre) });
+        }));
     }
 
     function rendreAging(data) {
@@ -3187,7 +3265,7 @@
         const buckets = X.balanceAgee(data);
         const totalEuros = X.sum(buckets, b => b.euros);
 
-        rendreSyntheseAgee(buckets, totalEuros);
+        rendreSyntheseAgee(buckets, totalEuros, data);
 
         $('#bucket-cards').innerHTML = buckets.map(b => `
             <button class="bucket-card${state.filtres.bucket === b.key ? ' selected' : ''}" data-bucket="${b.key}">
@@ -3202,10 +3280,12 @@
                  <span class="bucket-sub">${U.nombre(X.sum(buckets, b => b.nb))} factures non réglées</span>
                </div>`;
 
-        $$('#bucket-cards [data-bucket]').forEach(b => b.addEventListener('click', () => {
-            state.filtres.bucket = state.filtres.bucket === b.dataset.bucket ? null : b.dataset.bucket;
-            state.ui.page = 1;
-            rendreTout();
+        // La tuile ouvre ses factures ; le filtre reste à un clic de là, dans
+        // la modale. Un nombre de factures qu'on ne peut pas ouvrir ne se
+        // vérifie pas — c'est vrai de toutes les tuiles de cet écran.
+        $$('#bucket-cards [data-bucket]').forEach(el => el.addEventListener('click', () => {
+            const b = buckets.find(x => x.key === el.dataset.bucket);
+            if (b) montrerFacturesBucket(b);
         }));
 
         rendreAgingTable(data);
@@ -3279,9 +3359,15 @@
               format: (v, r) => v ? `<strong>${fmtAg(v)}</strong><span class="cell-mini">${U.nombre(r.echuNb)} en retard</span>`
                                   : '<span class="ag-zero">·</span>',
               cls: () => 'ag-total' },
+            // Chaque case s'ouvre sur ses factures. C'est la case qu'on
+            // regarde en se demandant « lesquelles ? » — pas la ligne.
             ...R.AGING_BUCKETS.map(b => ({
                 key: b.key, label: b.label, align: 'right',
-                format: (v, row) => v ? `<span class="ag-cell" title="${row[b.key + '_nb']} factures">${fmtAg(v)}</span>` : '<span class="ag-zero">·</span>',
+                format: (v, row) => v
+                    ? `<button class="ag-cell lien-cellule" data-case="${U.escapeHtml(row.key)}"`
+                      + ` data-tranche="${b.key}"`
+                      + ` title="Voir les ${row[b.key + '_nb']} factures">${fmtAg(v)}</button>`
+                    : '<span class="ag-zero">·</span>',
                 cls: () => 'ag-col',
             })),
             { key: 'total', label: 'Total', align: 'right', format: U.euros, cls: () => 'ag-total' },
@@ -3305,6 +3391,20 @@
 
         const el = $('#aging-table');
         el.innerHTML = U.table(cols, rows, { vide: 'Aucun encours non réglé.', total, onRowClick: true });
+        el.addEventListener('click', e => {
+            const c = e.target.closest('[data-case]');
+            if (!c) return;
+            // Le clic sur une case ne doit pas déclencher aussi le filtre de
+            // la ligne : les deux gestes ne demandent pas la même chose.
+            e.stopPropagation();
+            const row = rows.find(r => String(r.key) === c.dataset.case);
+            const tranche = R.AGING_BUCKETS.find(b => b.key === c.dataset.tranche);
+            if (!row || !tranche) return;
+            const items = (row.itemsParTranche || {})[tranche.key] || [];
+            montrerFacturesListe(`${row.label} — ${tranche.label}`, items,
+                `${U.escapeHtml(row.label)}, tranche « ${U.escapeHtml(tranche.label)} ».`,
+                { onExport: r2 => exporterFacturesSimple(r2, row.label + '_' + tranche.label) });
+        });
         U.bindTable(el, rows, {
             onRowClick: r => {
                 // La ligne des échéances manquantes n'est pas un dispositif :

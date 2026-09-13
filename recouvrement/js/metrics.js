@@ -695,6 +695,10 @@
                 : b.key === 'nonEchu');
             return {
                 ...b,
+                // Les factures de la tranche : un montant qu'on ne peut pas
+                // ouvrir ne se vérifie pas, et « 288 157 € sur 62 factures »
+                // appelle immédiatement « lesquelles ».
+                items,
                 nb: items.length,
                 euros: sum(items, x => x.montant),
                 partNb: pct(items.length, nonPayees.length),
@@ -717,12 +721,19 @@
             if (!row) {
                 row = { key: k,
                         label: sansEcheance ? LABEL_ECHEANCE_MANQUANTE : (labelFn ? labelFn(k, f) : k),
-                        sansEcheance, total: 0, nb: 0, echu: 0, echuNb: 0 };
+                        sansEcheance, total: 0, nb: 0, echu: 0, echuNb: 0,
+                        // Les factures de chaque case : une case qu'on ne peut
+                        // pas ouvrir ne se vérifie pas.
+                        items: [], itemsParTranche: {} };
                 for (const b of R.AGING_BUCKETS) { row[b.key] = 0; row[b.key + '_nb'] = 0; }
                 map.set(k, row);
             }
+            row.items.push(f);
             const b = sansEcheance ? { key: 'nonEchu' } : f.bucket;
-            if (b) { row[b.key] += f.montant || 0; row[b.key + '_nb']++; }
+            if (b) {
+                row[b.key] += f.montant || 0; row[b.key + '_nb']++;
+                (row.itemsParTranche[b.key] || (row.itemsParTranche[b.key] = [])).push(f);
+            }
             // Ce qui est échu et toujours dû : tout sauf la tranche « non
             // échu ». C'est le montant en retard, celui sur lequel il y a
             // quelque chose à faire.
