@@ -523,15 +523,26 @@
      * Retourne { date, origine, regle, baseUtilisee } — origine ∈ 'Monday' | 'Règle' | null.
      *
      * @param {object} inv    facture normalisée
-     * @param {object} opts   { rules, prefereEcheanceMonday }
+     * @param {object} opts   { rules, grandLivre }
      */
     function computeEcheance(inv, opts) {
         const o = opts || {};
         const rule = getRule(inv.financement, o.rules);
 
-        if (o.prefereEcheanceMonday !== false && inv.dateEcheanceSource) {
-            return { date: inv.dateEcheanceSource, origine: 'Monday', regle: rule, baseUtilisee: 'colonne Monday' };
-        }
+        // Vos règles font autorité, et rien d'autre.
+        //
+        // La colonne « Date d'échéance » de Monday ne les remplace plus, ni en
+        // premier choix ni en repli. Elle donnait des dates qui ne sortent
+        // d'aucune règle : sur une facture B2C-Perso commencée le 12 janvier,
+        // la règle donne le 22 janvier et la colonne portait le 1er août —
+        // 191 jours d'écart, et une créance en retard depuis six mois qui
+        // ressortait non échue.
+        //
+        // Une facture que les règles ne savent pas dater n'a donc plus
+        // d'échéance du tout : elle rejoint « Date d'échéance manquante — à
+        // qualifier », où elle se voit et se corrige, au lieu de porter une
+        // date empruntée dont personne ne sait d'où elle vient. La date que
+        // Monday portait reste lisible dans la fiche et dans les exports.
 
         // Le grand livre et le suivi recouvrement ne mesurent pas la même
         // chose : l'un le solde du compte, l'autre le travail de relance. Les
@@ -608,9 +619,6 @@
                 if (plafond < date) { date = plafond; base = 'dateDebutFormation'; }
             }
             return { date, origine: 'Règle', regle: rule, baseUtilisee: base };
-        }
-        if (inv.dateEcheanceSource) {
-            return { date: inv.dateEcheanceSource, origine: 'Monday', regle: rule, baseUtilisee: 'colonne Monday' };
         }
         // Faute de date de formation, l'échéance que porte le grand livre : elle
         // vaut mieux qu'aucune échéance du tout, et c'est ce que fait le

@@ -17,12 +17,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.70.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.70.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.70.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.70.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.70.0">
-    <link rel="stylesheet" href="styles.css?v=2.70.0">
+    <script src="../vendor/chart.umd.min.js?v=2.71.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.71.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.71.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.71.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.71.0">
+    <link rel="stylesheet" href="styles.css?v=2.71.0">
 </head>
 <body>
 
@@ -1405,11 +1405,17 @@
             <div class="chart-card chart-wide settings-card">
                 <div class="chart-header"><h3>Options de calcul</h3></div>
                 <div class="settings-body">
-                    <label class="check">
-                        <input type="checkbox" id="opt-prefere-monday">
-                        Faire primer la date d'échéance saisie dans Monday sur les règles
-                        <span class="fv-hint">(décoché : l'échéance est toujours recalculée selon les règles de financement)</span>
-                    </label>
+                    <!-- Le réglage « faire primer la date d'échéance de Monday » a été
+                         retiré : les règles de financement font autorité, sans exception.
+                         La colonne de Monday donnait des dates qui ne sortent d'aucune
+                         règle — jusqu'à 191 jours d'écart sur une même facture. -->
+                    <p class="fv-hint">
+                        Les dates d'échéance sont toujours calculées selon vos règles de financement,
+                        visibles et modifiables dans l'onglet <strong>Financements</strong>. La colonne
+                        « Date d'échéance » de Monday n'est jamais reprise : une facture que les règles
+                        ne savent pas dater est classée « Date d'échéance manquante — à qualifier »
+                        plutôt que de porter une date d'origine inconnue.
+                    </p>
                     <label class="check">
                         <input type="checkbox" id="opt-masquer-technique" checked>
                         Exclure les tableaux et les groupes de service (Technique, Archive, Corbeille…)
@@ -1504,16 +1510,16 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.70.0"></script>
-<script src="js/store.js?v=2.70.0"></script>
-<script src="js/monday.js?v=2.70.0"></script>
-<script src="js/ingest.js?v=2.70.0"></script>
-<script src="js/metrics.js?v=2.70.0"></script>
-<script src="js/prelevements.js?v=2.70.0"></script>
-    <script src="js/grandlivre.js?v=2.70.0"></script>
-    <script src="js/sellsy.js?v=2.70.0"></script>
-    <script src="js/zoho.js?v=2.70.0"></script>
-<script src="js/ui.js?v=2.70.0"></script>
-<script src="app.js?v=2.70.0"></script>
+<script src="js/rules.js?v=2.71.0"></script>
+<script src="js/store.js?v=2.71.0"></script>
+<script src="js/monday.js?v=2.71.0"></script>
+<script src="js/ingest.js?v=2.71.0"></script>
+<script src="js/metrics.js?v=2.71.0"></script>
+<script src="js/prelevements.js?v=2.71.0"></script>
+    <script src="js/grandlivre.js?v=2.71.0"></script>
+    <script src="js/sellsy.js?v=2.71.0"></script>
+    <script src="js/zoho.js?v=2.71.0"></script>
+<script src="js/ui.js?v=2.71.0"></script>
+<script src="app.js?v=2.71.0"></script>
 </body>
 </html>

@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.70.0';
+    const VERSION = '2.71.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -86,7 +86,6 @@
         compte: null,
 
         options: {
-            prefereEcheanceMonday: false,   // les règles font foi
             masquerTechnique: true,
             payeesHorsPortefeuille: false,
             montantsExacts: true,         // balances âgées : à l'euro, pas en k€
@@ -245,28 +244,6 @@
         if (rules && rules.length) state.rules = rules;
         if (options && options.options) Object.assign(state.options, options.options);
 
-        // « Je t'ai dit de prendre début de formation + 10 jours, tu as pris
-        // l'échéance calculée et ça a faussé. »
-        //
-        // Le réglage « préférer l'échéance de Monday » faisait passer la
-        // colonne du tableau avant la règle du dispositif. Sur une facture
-        // B2C-Perso commencée le 12 janvier, la règle donne le 22 janvier et
-        // Monday portait le 1er août : six mois d'écart, et une créance en
-        // retard qui ressortait non échue. Les règles font foi — elles
-        // reproduisent vos formules — et la colonne Monday ne sert plus que
-        // de repli quand aucune date de formation ne permet de calculer.
-        //
-        // Le réglage reste disponible dans l'onglet Données pour qui veut
-        // l'inverse ; il est simplement remis à sa place une fois, et dit
-        // qu'il l'a fait.
-        if (state.options.prefereEcheanceMonday === true && !state.options.echeanceRegleImposee) {
-            state.options.prefereEcheanceMonday = false;
-            state.options.echeanceRegleImposee = true;
-            await sauverReglages();
-            U.toast('Les échéances sont désormais calculées par les règles de dispositif, et non '
-                + 'reprises de la colonne Monday : cette colonne décalait certaines créances de '
-                + 'plusieurs mois. Réglage réversible dans l’onglet Données.', 'info', 14000);
-        }
 
         if (state.token) {
             $('#monday-token').value = state.token;
@@ -423,7 +400,6 @@
         I.enrichir(consolidees, {
             dateRef: state.filtres.dateRef,
             rules: state.rules,
-            prefereEcheanceMonday: state.options.prefereEcheanceMonday,
             financementsManuels: state.financementsManuels,
         });
 
@@ -775,7 +751,6 @@
     }
 
     function appliquerOptionsAuxCases() {
-        $('#opt-prefere-monday').checked = state.options.prefereEcheanceMonday;
         $('#opt-masquer-technique').checked = state.options.masquerTechnique;
         $('#opt-payees-hors-portefeuille').checked = state.options.payeesHorsPortefeuille;
         $('#opt-actualisation-auto').value = String(state.options.actualisationAuto);
@@ -6033,25 +6008,24 @@
         // faut le voir. C'est là que les balances âgées divergent, et une
         // facture dont la règle donne le 22 janvier mais dont Monday porte le
         // 1er août ressort non échue alors qu'elle traîne depuis six mois.
+        // La date que Monday porte, quand elle n'est pas celle de la règle.
+        // Elle n'entre plus dans aucun calcul — vos règles font autorité — mais
+        // la voir reste utile : c'est ce qu'un collègue lit dans le tableau, et
+        // l'écart explique une discussion avant qu'elle n'ait lieu.
         const ecart = (() => {
-            if (!f.dateEcheanceSource || !f.dateEcheance) return '';
-            // La date que donnerait la règle seule, recalculée ici : quand
-            // c'est Monday qui l'a emporté, elle n'a jamais été calculée.
-            const parRegle = R.computeEcheance(f,
-                { rules: state.rules, prefereEcheanceMonday: false }).date;
-            if (!parRegle) return '';
-            const jours = R.diffDays(f.dateEcheanceSource, parRegle);
+            if (!f.dateEcheanceSource) return '';
+            if (!f.dateEcheance) {
+                return `<p class="fiche-ecart">Monday porte une date d'échéance `
+                    + `(${U.dateFR(f.dateEcheanceSource)}), mais elle ne sort d'aucune de vos règles : `
+                    + `elle n'est pas reprise. Cette facture est classée « Date d'échéance manquante — `
+                    + `à qualifier » tant que les dates de formation manquent.</p>`;
+            }
+            const jours = R.diffDays(f.dateEcheanceSource, f.dateEcheance);
             if (!jours) return '';
-            const viaMonday = f.echeanceOrigine === 'Monday';
-            return `<p class="fiche-ecart"><strong>Écart de ${U.jours(Math.abs(jours))}</strong> `
-                + `entre les deux dates possibles : la colonne Monday donne `
-                + `${U.dateFR(f.dateEcheanceSource)}, la règle du dispositif donne `
-                + `${U.dateFR(parRegle)}. `
-                + (viaMonday
-                    ? `C'est celle de Monday qui compte ici — décochez « préférer l'échéance `
-                      + `de Monday » dans l'onglet Données pour que la règle l'emporte.`
-                    : `C'est la règle qui compte ici, et c'est elle qui alimente la balance âgée.`)
-                + `</p>`;
+            return `<p class="fiche-ecart">Monday porte une autre date : `
+                + `${U.dateFR(f.dateEcheanceSource)}, soit <strong>${U.jours(Math.abs(jours))}</strong> `
+                + `d'écart avec celle de la règle. C'est la règle qui compte, ici comme dans la `
+                + `balance âgée ; la date de Monday n'est affichée que pour mémoire.</p>`;
         })();
 
         U.modal(`Facture ${f.numero || '—'}`, `
@@ -7859,7 +7833,20 @@
                            <strong>${U.nombre(sans.length)} factures sans échéance calculable</strong>
                            <span>${U.euros(euros)} — ${U.pourcent(analysees ? sans.length / analysees * 100 : 0)}
                            des ${U.nombre(analysees)} factures analysées. Elles ne sont ni en retard ni
-                           non échues : elles sortent de tous les taux.</span>
+                           non échues : elles sortent de tous les taux.${
+                               // Vos règles font autorité : une date saisie dans Monday
+                               // ne les remplace pas. Mais il faut savoir ce que cela
+                               // laisse de côté, sans quoi le choix ne se juge pas.
+                               (() => {
+                                   const avecMonday = sans.filter(f => f.dateEcheanceSource);
+                                   if (!avecMonday.length) return '';
+                                   return ` Parmi elles, ${U.nombre(avecMonday.length)} portent une date`
+                                       + ` d'échéance dans Monday (${U.euros(X.sum(avecMonday, f =>
+                                           (f.resteDu != null && f.resteDu > 0) ? f.resteDu : (f.montant || 0)))})`
+                                       + ` : elle n'est pas reprise, parce qu'elle ne sort d'aucune de vos`
+                                       + ` règles. Compléter les dates de formation les fera rentrer.`;
+                               })()
+                           }</span>
                        </div>
                        <button class="btn btn-ghost btn-sm" id="btn-sans-echeance-tout">Voir lesquelles</button>
                    </div>`
@@ -9987,7 +9974,6 @@
             await sauverReglages();
             if (recalc) recalculer({ conserverPeriode: true }); else rendreTout();
         });
-        opt('#opt-prefere-monday', 'prefereEcheanceMonday', true);
         opt('#opt-masquer-technique', 'masquerTechnique', false);
         $('#opt-masquer-technique').addEventListener('change', rendreExclusions);
         opt('#opt-payees-hors-portefeuille', 'payeesHorsPortefeuille', true);
