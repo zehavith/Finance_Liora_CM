@@ -17,12 +17,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.73.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.73.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.73.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.73.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.73.0">
-    <link rel="stylesheet" href="styles.css?v=2.73.0">
+    <script src="../vendor/chart.umd.min.js?v=2.74.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.74.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.74.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.74.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.74.0">
+    <link rel="stylesheet" href="styles.css?v=2.74.0">
 </head>
 <body>
 
@@ -1380,9 +1380,14 @@
                 </div>
                 <span class="fv-hint">
                     Le rôle est déduit du nom du tableau : il détermine le périmètre (Corporate / B2C),
-                    la source de retard et le financement par défaut. Les colonnes de droite montrent
-                    ce que deviennent les factures de chaque tableau — c'est là qu'on voit si un tableau
-                    est mal chargé ou si ses échéances ne se calculent pas.
+                    la source de retard et le financement par défaut. Les colonnes de droite suivent les
+                    factures de chaque tableau : <strong>chargées</strong> = <strong>écartées</strong>
+                    (groupes de service) + <strong>analysées ici</strong> + <strong>analysées
+                    ailleurs</strong>. Une même facture passe par plusieurs tableaux au fil du circuit —
+                    tampon, ADV, recouvrement, puis factures payées — et n'est comptée qu'une fois, sur
+                    le plus avancé. Un tableau qui affiche peu d'« analysées ici » n'a donc rien perdu :
+                    ses factures sont comptées plus loin. Seules les <strong>manquantes</strong> sont une
+                    perte réelle.
                 </span>
                 <div id="boards-resume"></div>
                 <div class="table-wrap" id="boards-table"></div>
@@ -1513,16 +1518,16 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.73.0"></script>
-<script src="js/store.js?v=2.73.0"></script>
-<script src="js/monday.js?v=2.73.0"></script>
-<script src="js/ingest.js?v=2.73.0"></script>
-<script src="js/metrics.js?v=2.73.0"></script>
-<script src="js/prelevements.js?v=2.73.0"></script>
-    <script src="js/grandlivre.js?v=2.73.0"></script>
-    <script src="js/sellsy.js?v=2.73.0"></script>
-    <script src="js/zoho.js?v=2.73.0"></script>
-<script src="js/ui.js?v=2.73.0"></script>
-<script src="app.js?v=2.73.0"></script>
+<script src="js/rules.js?v=2.74.0"></script>
+<script src="js/store.js?v=2.74.0"></script>
+<script src="js/monday.js?v=2.74.0"></script>
+<script src="js/ingest.js?v=2.74.0"></script>
+<script src="js/metrics.js?v=2.74.0"></script>
+<script src="js/prelevements.js?v=2.74.0"></script>
+    <script src="js/grandlivre.js?v=2.74.0"></script>
+    <script src="js/sellsy.js?v=2.74.0"></script>
+    <script src="js/zoho.js?v=2.74.0"></script>
+<script src="js/ui.js?v=2.74.0"></script>
+<script src="app.js?v=2.74.0"></script>
 </body>
 </html>

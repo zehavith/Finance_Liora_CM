@@ -145,7 +145,7 @@
                }`
             : `query ($ids: [ID!], $limit: Int!) {
                    boards (ids: $ids) {
-                       id name
+                       id name items_count
                        items_page (limit: $limit) {
                            cursor
                            items { id name group { id title } ${colFragment} }
@@ -214,7 +214,13 @@
                 + `le tableau en contient davantage. Chargez-le seul, ou découpez-le.`);
         }
 
-        return { board: { id: board.id, name: board.name }, items, tronque };
+        // Le nombre annoncé par Monday est relu au moment du chargement, et
+        // non repris de la liste des tableaux : celle-ci date du dernier
+        // « Rafraîchir la liste », et un décompte vieux de trois semaines
+        // faisait apparaître des factures « chargées en trop » ou
+        // « manquantes » qui n'étaient qu'un écart de date.
+        return { board: { id: board.id, name: board.name, itemsCount: board.items_count },
+                 items, tronque };
     }
 
     /**

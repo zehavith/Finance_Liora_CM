@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.73.0';
+    const VERSION = '2.74.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -8008,19 +8008,41 @@
         // Inventaire par tableau, calculé sur TOUTES les factures et non sur
         // la vue filtrée : c'est ce qui permet de comprendre où elles passent.
         const parBoard = new Map();
+        const du = k => {
+            let d = parBoard.get(k);
+            if (!d) {
+                d = { retenues: 0, ecartees: 0, sansEcheance: 0, enRetard: 0, payees: 0,
+                      nonEchues: 0, ailleurs: 0, ailleursOu: new Map() };
+                parBoard.set(k, d);
+            }
+            return d;
+        };
         for (const f of state.factures) {
             const k = f.board || '—';
-            let d = parBoard.get(k);
-            if (!d) { d = { retenues: 0, ecartees: 0, sansEcheance: 0, enRetard: 0, payees: 0, nonEchues: 0 }; parBoard.set(k, d); }
+            const d = du(k);
             if (f.role === 'technique' || f.groupeTechnique) { d.ecartees++; continue; }
             d.retenues++;
             if (f.etat === 'Échéance inconnue') d.sansEcheance++;
             else if (f.etat === 'En retard') d.enRetard++;
             else if (f.etat === 'Non échue') d.nonEchues++;
             else d.payees++;
+
+            // Une facture vue sur plusieurs tableaux n'est comptée qu'une fois,
+            // sur le tableau le plus avancé du circuit — celui des factures
+            // payées d'abord, puis le recouvrement, puis l'ADV, puis le tampon.
+            // Les autres tableaux ne l'ont pas perdue : elle y est, mais elle
+            // est analysée ailleurs. Sans cette colonne, l'ADV affichait « 1
+            // analysée » sur 3 569 chargées et cela ressemblait à une perte.
+            for (const autre of (f.presenceTableaux || [])) {
+                if (autre === k) continue;
+                const a = du(autre);
+                a.ailleurs++;
+                a.ailleursOu.set(k, (a.ailleursOu.get(k) || 0) + 1);
+            }
         }
 
-        const vide = { retenues: 0, ecartees: 0, sansEcheance: 0, enRetard: 0, payees: 0, nonEchues: 0 };
+        const vide = { retenues: 0, ecartees: 0, sansEcheance: 0, enRetard: 0, payees: 0,
+                       nonEchues: 0, ailleurs: 0, ailleursOu: new Map() };
         const rows = state.boards.map(b => {
             const r = { ...b, ...(parBoard.get(b.name) || vide) };
 
@@ -8116,8 +8138,19 @@
                   : '0') },
             { key: 'ecartees', label: 'Écartées', align: 'right', format: v => v ? U.nombre(v) : '—',
               title: 'Groupes de service : archives, technique, corbeille' },
-            { key: 'retenues', label: 'Analysées', align: 'right', format: v => `<strong>${U.nombre(v)}</strong>`,
-              title: 'Factures qui entrent dans les indicateurs' },
+            { key: 'retenues', label: 'Analysées ici', align: 'right', format: v => `<strong>${U.nombre(v)}</strong>`,
+              title: 'Factures rattachées à ce tableau dans les indicateurs. '
+                   + 'Une facture vue sur plusieurs tableaux n’est comptée qu’une fois, '
+                   + 'sur le plus avancé du circuit.' },
+            { key: 'ailleurs', label: 'Analysées ailleurs', align: 'right',
+              title: 'Présentes sur ce tableau, mais comptées sur un autre : '
+                   + 'le circuit fait passer une même facture par plusieurs tableaux, '
+                   + 'et elle ne doit être comptée qu’une fois.',
+              format: (v, r) => v
+                  ? `${U.nombre(v)}<span class="cell-mini">${U.escapeHtml(
+                        [...r.ailleursOu.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2)
+                            .map(([nom, n]) => `${U.nombre(n)} sur ${nom}`).join(' · '))}</span>`
+                  : '<span class="ag-zero">·</span>' },
             { key: 'sansEcheance', label: 'Sans échéance', align: 'right',
               title: "Échéance non calculable : ces factures sortent de tous les taux. Cliquez pour savoir pourquoi.",
               format: (v, r) => v
@@ -8132,6 +8165,7 @@
             manquantes: U.nombre(X.sum(rows, r => r.manquantes || 0)),
             ecartees: U.nombre(X.sum(rows, r => r.ecartees)),
             retenues: U.nombre(X.sum(rows, r => r.retenues)),
+            ailleurs: U.nombre(X.sum(rows, r => r.ailleurs)),
             sansEcheance: U.nombre(X.sum(rows, r => r.sansEcheance)),
             enRetard: U.nombre(X.sum(rows, r => r.enRetard)),
             nonEchues: U.nombre(X.sum(rows, r => r.nonEchues)),
@@ -8588,6 +8622,8 @@
 
         const { board, items, tronque } = await M.fetchBoardItems(state.token, b.id, log, onProgres);
         if (!board) throw new Error('Tableau inaccessible');
+        // Le décompte annoncé, relu à l'instant du chargement.
+        if (board.itemsCount != null) b.itemsCount = board.itemsCount;
         // Une pagination interrompue par le garde-fou ne doit pas
         // passer pour un chargement complet : la balance serait
         // fausse sans que rien ne le dise.
