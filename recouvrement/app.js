@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.81.0';
+    const VERSION = '2.82.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -1509,8 +1509,15 @@
         // qualification restent comptés, mais ne prennent plus un bloc à eux.
         groupes = groupes.filter(g => g.colonne !== MOTIF_SANS_COLONNE);
         if (!groupes.length) {
-            hote.innerHTML = `<p class="fv-hint">Aucune colonne de qualification sur les tableaux `
-                + `qui portent ${U.escapeHtml(financements.join(', '))}.</p>`;
+            // Tous les dispositifs n'ont pas de colonne de qualification, et
+            // c'est normal : le financement personnel, le CPF et l'entreprise
+            // en ont une, les financements publics n'en ont pas. Le dire évite
+            // de chercher un camembert qui n'a pas lieu d'être.
+            hote.innerHTML = `<p class="fv-hint">Pas de camembert pour `
+                + `<strong>${U.escapeHtml(financements.join(', '))}</strong> : les tableaux qui portent `
+                + `ce dispositif n'ont pas de colonne de qualification. Ce n'est pas une donnée manquante, `
+                + `c'est que la question ne s'y pose pas — seuls le financement personnel, le CPF et `
+                + `l'entreprise (ADV et recouvrement) en tiennent une.</p>`;
             return;
         }
 

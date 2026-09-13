@@ -17,12 +17,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.81.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.81.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.81.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.81.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.81.0">
-    <link rel="stylesheet" href="styles.css?v=2.81.0">
+    <script src="../vendor/chart.umd.min.js?v=2.82.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.82.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.82.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.82.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.82.0">
+    <link rel="stylesheet" href="styles.css?v=2.82.0">
 </head>
 <body>
 
@@ -412,22 +412,6 @@
                 <button class="acte-toggle" data-acte-toggle="1" aria-expanded="true">Replier</button>
             </div>
             <div class="acte-corps" data-acte-corps="1">
-            <!-- Pourquoi ce n'est pas payé : le motif porté par vos colonnes
-                 de qualification, quel que soit le tableau qui le porte. -->
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Pourquoi ce n'est pas payé</h3>
-                        <div class="chart-controls">
-                            <button class="btn btn-ghost btn-sm" id="btn-motifs-export">Exporter</button>
-                        </div>
-                    </div>
-                    <span class="fv-hint" id="motifs-note"></span>
-                    <div class="motifs-colonnes" id="motifs-colonnes"></div>
-                    <div class="table-wrap" id="motifs-table"></div>
-                </div>
-            </div>
-
             <!-- Treemap : outil de fouille, dimension au choix -->
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
@@ -444,12 +428,33 @@
                             </div>
                         </div>
                     </div>
-                    <span class="fv-hint">La surface est proportionnelle au montant en retard. Cliquez sur une case pour filtrer.</span>
+                    <span class="fv-hint">La surface est proportionnelle au montant en retard. Cliquez sur une case
+                        pour filtrer l'application dessus — et lire juste en dessous pourquoi cet argent n'est
+                        pas rentré, colonne de qualification par colonne de qualification.</span>
                     <div class="chart-container chart-tall">
                         <canvas id="chart-treemap"></canvas>
                     </div>
                 </div>
             </div>
+
+            <!-- Pourquoi ce n'est pas payé, juste sous la carte des montants :
+                 on clique une case, on lit dans la foulée pourquoi cet argent
+                 n'est pas rentré. Placé au-dessus, le bloc répondait à une
+                 question qu'on ne s'était pas encore posée. -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Pourquoi ce n'est pas payé</h3>
+                        <div class="chart-controls">
+                            <button class="btn btn-ghost btn-sm" id="btn-motifs-export">Exporter</button>
+                        </div>
+                    </div>
+                    <span class="fv-hint" id="motifs-note"></span>
+                    <div class="motifs-colonnes" id="motifs-colonnes"></div>
+                    <div class="table-wrap" id="motifs-table"></div>
+                </div>
+            </div>
+
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header">
@@ -1559,16 +1564,16 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.81.0"></script>
-<script src="js/store.js?v=2.81.0"></script>
-<script src="js/monday.js?v=2.81.0"></script>
-<script src="js/ingest.js?v=2.81.0"></script>
-<script src="js/metrics.js?v=2.81.0"></script>
-<script src="js/prelevements.js?v=2.81.0"></script>
-    <script src="js/grandlivre.js?v=2.81.0"></script>
-    <script src="js/sellsy.js?v=2.81.0"></script>
-    <script src="js/zoho.js?v=2.81.0"></script>
-<script src="js/ui.js?v=2.81.0"></script>
-<script src="app.js?v=2.81.0"></script>
+<script src="js/rules.js?v=2.82.0"></script>
+<script src="js/store.js?v=2.82.0"></script>
+<script src="js/monday.js?v=2.82.0"></script>
+<script src="js/ingest.js?v=2.82.0"></script>
+<script src="js/metrics.js?v=2.82.0"></script>
+<script src="js/prelevements.js?v=2.82.0"></script>
+    <script src="js/grandlivre.js?v=2.82.0"></script>
+    <script src="js/sellsy.js?v=2.82.0"></script>
+    <script src="js/zoho.js?v=2.82.0"></script>
+<script src="js/ui.js?v=2.82.0"></script>
+<script src="app.js?v=2.82.0"></script>
 </body>
 </html>
