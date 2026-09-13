@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.79.0';
+    const VERSION = '2.80.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -844,7 +844,14 @@
     function majFiltreSellsyManquantes() {
         const bloc = $('#filter-block-sellsy-manquantes');
         if (!bloc) return;
-        const n = (state.sellsyResultat && state.sellsyResultat.absentes.length) || 0;
+        // Une fois incluses, ces factures ne sont plus absentes de Monday : le
+        // contrôle Sellsy les retrouve dans le portefeuille et n'en compte plus
+        // aucune. Le bouton disparaissait alors, et il n'y avait plus moyen de
+        // revenir en arrière. On compte donc celles qu'on a injectées quand
+        // l'option est active.
+        const n = state.filtres.inclureSellsyManquantes
+            ? (state.nbSellsyInjectees || 0)
+            : ((state.sellsyResultat && state.sellsyResultat.absentes.length) || 0);
         bloc.hidden = !n;
         const btn = $('#seg-sellsy-manquantes .seg-btn[data-sellsym="inclure"]');
         if (btn) btn.textContent = n ? `Incluses (${U.nombre(n)})` : 'Incluses';
