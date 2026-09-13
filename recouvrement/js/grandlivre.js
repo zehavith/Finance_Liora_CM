@@ -1514,12 +1514,25 @@
                 // font foi, pour que la balance se recoupe avec le classeur.
                 // La facturation ne complète que ce que l'extrait ignore et que
                 // l'échéance comptable ne rattrape pas.
-                dateDebutFormation: c.dateDebutFormation
-                    || (!c.dateEcheance && d ? d.debut : null) || null,
-                dateFinFormation: c.dateFinFormation
-                    || (!c.dateEcheance && d ? d.fin : null) || null,
-                dateFactureFacturation: c.dateFactureFacturation
-                    || (!c.dateEcheance && d ? d.facture : null) || null,
+                // Les dates de formation viennent toujours de la facturation
+                // quand l'extrait ne les porte pas.
+                //
+                // Elles étaient reprises à une condition : que la créance n'ait
+                // pas déjà d'échéance comptable. L'idée était de ne pas
+                // contredire l'extrait ; l'effet était de jeter la seule
+                // donnée qui permette d'appliquer vos règles. Sur les 145
+                // créances AIF ouvertes, deux seulement avaient une fin de
+                // formation — alors que Sellsy la porte pour 134 d'entre
+                // elles. La règle « fin de formation + 60 » ne pouvait donc
+                // pas s'appliquer, et l'échéance retombait sur celle du grand
+                // livre, qui ne sait rien du dispositif.
+                //
+                // Une date de formation n'est pas une échéance concurrente :
+                // c'est un fait sur la formation. Elle est reprise, et c'est
+                // la règle du dispositif qui décide ensuite quoi en faire.
+                dateDebutFormation: c.dateDebutFormation || (d ? d.debut : null) || null,
+                dateFinFormation: c.dateFinFormation || (d ? d.fin : null) || null,
+                dateFactureFacturation: c.dateFactureFacturation || (d ? d.facture : null) || null,
                 // AA : l'échéance du grand livre, sinon celle de la facturation,
                 // sinon la date lue dans le libellé, sinon l'enregistrement.
                 dateEcheance: c.dateEcheance || (d && d.echeance) || c.dateEcheanceRepli || null,
