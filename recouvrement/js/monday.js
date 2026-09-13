@@ -168,6 +168,11 @@
         // encore ou si c'est bloqué. On rend donc compte page par page, et
         // l'on signale aussi les attentes imposées par Monday.
         let recus = 0;
+        // Quand Monday refuse la requête complète, les colonnes miroir et
+        // formule reviennent vides. Une colonne au bon nom paraît alors
+        // entièrement vide et se fait écarter — sans que rien ne dise que
+        // c'est la requête, et non le tableau, qui est en cause.
+        let simplifiee = false;
         const tracer = m => {
             if (onLog) onLog(m);
             const attente = /nouvelle tentative dans (\d+)s/.exec(m);
@@ -178,6 +183,7 @@
         } catch (e) {
             if (/on (Mirror|Formula|BoardRelation|Dependency)Value|Fragment|Unknown type/i.test(e.message)) {
                 if (onLog) onLog('Colonnes miroir non supportées — requête simplifiée.');
+                simplifiee = true;
                 fragment = COLUMN_VALUES_BASIC;
                 data = await gql(token, itemsQuery(fragment, false), { ids: [String(boardId)], limit: PAGE_SIZE }, tracer);
             } else throw e;
@@ -220,7 +226,7 @@
         // faisait apparaître des factures « chargées en trop » ou
         // « manquantes » qui n'étaient qu'un écart de date.
         return { board: { id: board.id, name: board.name, itemsCount: board.items_count },
-                 items, tronque };
+                 items, tronque, simplifiee };
     }
 
     /**

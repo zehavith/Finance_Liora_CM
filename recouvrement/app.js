@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.77.0';
+    const VERSION = '2.78.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -7896,9 +7896,20 @@
                             : /fin|date|formation|service|session|sortie/.test(n);
                     })
                     .slice(0, 4);
-                const piste = candidates.length
-                    ? ` — à associer peut-être à : ${candidates.join(', ')}`
-                    : ' — aucune colonne de ce tableau n’y ressemble';
+                // Une colonne au bon nom peut avoir été écartée sur ses
+                // valeurs — vide, ou ne contenant pas de dates. Le dire épargne
+                // une longue recherche : « Fin de service » figurait parmi les
+                // pistes alors qu'elle avait été essayée et refusée, et rien
+                // n'indiquait pourquoi.
+                const refus = (b.rejetsMapping || [])
+                    .filter(r => r.champ === e.champ)
+                    .map(r => `« ${r.colonne} » écartée : ${r.raison}`);
+                const piste = refus.length
+                    ? ` — ${refus.join(' ; ')}`
+                      + (candidates.length ? `. Autres pistes : ${candidates.join(', ')}` : '')
+                    : candidates.length
+                        ? ` — à associer peut-être à : ${candidates.join(', ')}`
+                        : ' — aucune colonne de ce tableau n’y ressemble';
                 if (!c.colId) trous.push({ b, e, txt: 'aucune colonne reconnue' + piste, nb: b.charge });
                 else if (c.taux < 50) trous.push({ b, e, txt: `renseignée sur ${Math.round(c.taux)} % des lignes`, nb: b.charge });
             }
@@ -7911,6 +7922,21 @@
                 + 'Ouvrez « Correspondance des colonnes » dans l\'onglet Données, choisissez le tableau '
                 + 'concerné et associez la bonne colonne, puis rechargez ce tableau.',
             detail: trous.map(t => `${t.b.name} — ${t.e.nom} : ${t.txt} (${t.e.effet})`),
+        });
+
+        // Colonnes miroir vidées par la requête simplifiée : une colonne au bon
+        // nom paraît alors vide, et se fait écarter pour cette raison.
+        const miroirs = monday.filter(b => b.miroirsIgnores);
+        if (miroirs.length) out.push({
+            code: 'MIROIRS_IGNORES', unite: 'tableau', gravite: 'moyenne',
+            titre: 'Colonnes miroir et formule non lues sur ces tableaux',
+            nb: miroirs.length, euros: 0,
+            conseil: 'Monday a refusé la requête complète sur ces tableaux : leurs colonnes miroir '
+                + '(celles qui reprennent une valeur d’un autre tableau) et leurs colonnes formule '
+                + 'reviennent vides. Une colonne au bon nom y paraît entièrement vide et se fait '
+                + 'écarter. Si une date ou un montant vous manque sur ces tableaux, recopiez la '
+                + 'valeur dans une colonne ordinaire de Monday, puis rechargez le tableau.',
+            detail: miroirs.map(b => `${b.name} — requête simplifiée, miroirs et formules non lus`),
         });
 
         // Pagination interrompue : le tableau contient plus de lignes que
@@ -9026,13 +9052,28 @@
      * coûte plusieurs minutes, et vous les passiez à attendre.
      */
     async function chargerUnBoard(b, log, onProgres) {
-        if (!b.columns) {
-            const meta = await M.boardColumns(state.token, b.id);
-            b.columns = meta ? meta.columns : [];
+        // Les colonnes sont relues à chaque chargement, jamais reprises du
+        // cache. Une colonne ajoutée dans Monday depuis la dernière fois — une
+        // « Date de facture » créée ce matin, par exemple — n'existait sinon
+        // pas pour l'application, qui continuait de chercher parmi les
+        // anciennes et concluait qu'aucune n'était reconnue. Une requête de
+        // métadonnées par tableau, c'est le prix d'une vérité à jour.
+        const meta = await M.boardColumns(state.token, b.id);
+        if (meta && meta.columns && meta.columns.length) {
+            const avant = new Set((b.columns || []).map(c => c.id));
+            const nouvelles = meta.columns.filter(c => !avant.has(c.id));
+            if (avant.size && nouvelles.length) {
+                log(`   + ${nouvelles.length} nouvelle(s) colonne(s) : `
+                    + nouvelles.map(c => c.title).join(', '));
+            }
+            b.columns = meta.columns;
+        } else if (!b.columns) {
+            b.columns = [];
         }
         const mappingManuel = !!(b.mapping && Object.keys(b.mapping).length);
 
-        const { board, items, tronque } = await M.fetchBoardItems(state.token, b.id, log, onProgres);
+        const { board, items, tronque, simplifiee } = await M.fetchBoardItems(state.token, b.id, log, onProgres);
+        b.miroirsIgnores = !!simplifiee;
         if (!board) throw new Error('Tableau inaccessible');
         // Le décompte annoncé, relu à l'instant du chargement.
         if (board.itemsCount != null) b.itemsCount = board.itemsCount;
