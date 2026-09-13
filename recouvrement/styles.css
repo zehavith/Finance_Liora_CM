@@ -1421,3 +1421,7 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
 /* Les tuiles d'indicateur s'ouvrent sur leurs factures. */
 .kpi-cliquable { cursor: pointer; }
 .kpi-cliquable:hover { border-color: var(--border-hover); background: var(--bg-card-hover); }
+
+/* Une tuile qui porte un lot de factures s'ouvre au clic. */
+.recup-cliquable { cursor: pointer; text-align: left; width: 100%; font: inherit; color: inherit; }
+.recup-cliquable:hover { border-color: var(--border-hover); background: var(--bg-card-hover); }

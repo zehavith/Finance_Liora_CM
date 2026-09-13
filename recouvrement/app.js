@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.80.0';
+    const VERSION = '2.81.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -232,6 +232,7 @@
         // index.html sur le disque, en court-circuitant le cache.
         verifierPageAJour();
         brancherEvenements();
+        brancherLotsTuiles();
 
         const [token, boards, rules, options, imports, gl, factures, finManuels] = await Promise.all([
             S.get(S.KEYS.settings, {}).then(s => (s && s.token) || ''),
@@ -3102,12 +3103,14 @@
             // population dans tout ce qui a été encaissé » : trois chiffres et
             // pas une phrase qui dise part de quoi. La tuile nomme maintenant
             // le total sur lequel le pourcentage est pris, et se lit d'un trait.
-            tuileDetail(U.pourcent(r.partEuros, 1),
+            tuileLot(U.pourcent(r.partEuros, 1),
                 viaRecouv ? 'De l’encaissé est passé par le recouvrement'
                           : 'De l’encaissé n’est jamais passé par le recouvrement',
                 `${U.euros(r.euros)} sur ${U.euros(r.eurosBase)} encaissés`, U.couleurs.indigo,
                 `soit ${U.nombre(r.nb)} factures sur ${U.nombre(r.nbBase)} réglées `
-                + `(${U.pourcent(r.partNb, 1)})`),
+                + `(${U.pourcent(r.partNb, 1)})`,
+                r.factures,
+                viaRecouv ? 'Encaissé via le recouvrement' : 'Encaissé hors recouvrement'),
             // La question posée à chaque fois : passer par le recouvrement ou
             // non ne dit rien du délai. Les deux sont donc affichés côte à côte.
             tuileDetail(U.nombre(r.nb - r.nbEnRetard), 'Payées avant échéance',
@@ -3117,10 +3120,12 @@
             tuileDetail(U.nombre(r.nbEnRetard), 'Payées après échéance',
                 U.euros(r.eurosEnRetard), U.couleurs.retard,
                 'réglées après leur date d’échéance calculée', 'apres'),
-            tuileDetail(U.jours(r.retardMoyen), 'Retard moyen des retardataires',
+            tuileLot(U.jours(r.retardMoyen), 'Retard moyen des retardataires',
                 r.delaiMoyen != null ? `délai facture → règlement : ${U.jours(r.delaiMoyen)}` : '—',
                 U.couleurs.nonEchue,
-                'moyenne du seul groupe payé en retard, pas de l’ensemble'),
+                'moyenne du seul groupe payé en retard, pas de l’ensemble',
+                (r.factures || []).filter(f => f.etat === 'Payée en retard'),
+                'Les factures du retard moyen'),
         ].join('');
 
         // Hors de la grille : dans une case de 215 px, l'explication s'étirait
@@ -6276,13 +6281,22 @@
                 </div>
                 <span class="fv-hint">Règle d'échéance : ${U.escapeHtml(regle.note || '—')}</span>
                 <div class="recup-grid">
-                    ${tuileDetail(U.nombre(ligne.nbTotal), 'Factures', U.euros(ligne.eurTotal), U.couleurs.indigo)}
-                    ${tuileDetail(U.nombre(ligne.nbEnRetard), 'En retard', U.euros(ligne.eurEnRetard), U.couleurs.retard)}
-                    ${tuileDetail(U.nombre(ligne.nbNonEchues), 'Pas encore échu', U.euros(ligne.eurNonEchues), U.couleurs.nonEchue)}
-                    ${tuileDetail(U.jours(ligne.retardMoyen), 'Retard moyen', `${U.pourcent(ligne.tauxNb, 1)} des factures en retard`, U.couleurs.payeRetard)}
+                    ${tuileLot(U.nombre(ligne.nbTotal), 'Factures', U.euros(ligne.eurTotal),
+                        U.couleurs.indigo, '', lot, ligne.label + ' — toutes les factures')}
+                    ${tuileLot(U.nombre(ligne.nbEnRetard), 'En retard', U.euros(ligne.eurEnRetard),
+                        U.couleurs.retard, '', lot.filter(f => f.etat === 'En retard'),
+                        ligne.label + ' — en retard')}
+                    ${tuileLot(U.nombre(ligne.nbNonEchues), 'Pas encore échu', U.euros(ligne.eurNonEchues),
+                        U.couleurs.nonEchue, '', lot.filter(f => f.etat === 'Non échue'),
+                        ligne.label + ' — pas encore échu')}
+                    ${tuileLot(U.jours(ligne.retardMoyen), 'Retard moyen',
+                        `${U.pourcent(ligne.tauxNb, 1)} des factures en retard`, U.couleurs.payeRetard,
+                        '', lot.filter(f => f.etat === 'En retard'),
+                        ligne.label + ' — les factures du retard moyen')}
                     ${douteuses.nb
-                        ? tuileDetail(U.nombre(douteuses.nb), 'Créances douteuses',
-                            `${U.euros(douteuses.euros)} — contentieux et pertes`, U.couleurs.inconnu)
+                        ? tuileLot(U.nombre(douteuses.nb), 'Créances douteuses',
+                            `${U.euros(douteuses.euros)} — contentieux et pertes`, U.couleurs.inconnu,
+                            '', douteuses.items, ligne.label + ' — créances douteuses')
                         : ''}
                 </div>
                 ${blocsQualif || '<p class="fv-hint">Aucune colonne de qualification sur les tableaux de cette catégorie.</p>'}
@@ -6346,6 +6360,43 @@
         const el = U.modal(`${titre} — ${U.nombre(rows.length)} factures`, corps,
             [{ label: 'Fermer', primary: true }]);
         U.bindTable(el, rows.slice(0, 300), { onRowClick: f => { U.closeModal(); ouvrirFiche(f); } });
+    }
+
+    /**
+     * Une tuile qui s'ouvre sur ses factures, où qu'elle soit.
+     *
+     * « À chaque fois qu'il y a un nombre de factures, je dois pouvoir savoir
+     * de quelles factures il s'agit. » Plutôt que de rebrancher chaque écran,
+     * la tuile enregistre son lot et porte son numéro ; un seul écouteur,
+     * posé une fois sur la page, ouvre la liste. Toute tuile écrite plus tard
+     * n'a qu'à passer ses factures pour hériter du même comportement.
+     */
+    const LOTS_TUILES = [];
+    function tuileLot(valeur, label, detail, couleur, sub, items, titre) {
+        if (!items || !items.length) return tuileDetail(valeur, label, detail, couleur, sub);
+        const i = LOTS_TUILES.push({ titre: titre || label, items }) - 1;
+        return `
+        <button class="recup-card recup-cliquable" data-lot-tuile="${i}"
+                title="Voir les ${U.nombre(items.length)} factures">
+            <span class="recup-bar" style="background:${couleur}"></span>
+            <span class="recup-taux">${valeur}</span>
+            <span class="recup-label">${U.escapeHtml(label)}</span>
+            <span class="recup-value">${detail}</span>
+            ${sub ? `<span class="recup-sub">${U.escapeHtml(sub)}</span>` : ''}
+        </button>`;
+    }
+
+    function brancherLotsTuiles() {
+        if (document.body.__lotsBranches) return;
+        document.body.__lotsBranches = true;
+        document.body.addEventListener('click', e => {
+            const b = e.target.closest('[data-lot-tuile]');
+            if (!b) return;
+            const lot = LOTS_TUILES[+b.dataset.lotTuile];
+            if (!lot) return;
+            montrerFacturesListe(lot.titre, lot.items, '',
+                { onExport: rows => exporterFacturesSimple(rows, lot.titre) });
+        });
     }
 
     const tuileDetail = (valeur, label, detail, couleur, sub, cle) => `
