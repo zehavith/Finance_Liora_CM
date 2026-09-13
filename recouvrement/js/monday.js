@@ -203,9 +203,41 @@
         // dire est indispensable — un tableau tronqué en silence donne une
         // balance fausse sans que rien ne l'indique.
         const MAX_PAGES = 500;
+        // Le curseur de pagination expire.
+        //
+        // Sur un gros tableau, la récupération dure plusieurs minutes et Monday
+        // finit par refuser le curseur : « CursorExpiredError ». Le chargement
+        // échouait alors entièrement, et le tableau des factures payées — près
+        // de sept mille lignes — revenait vide après dix minutes d'attente.
+        //
+        // Le curseur ne se renouvelle pas : il faut reprendre la pagination
+        // depuis la première page. On le fait une fois, automatiquement, plutôt
+        // que de rendre la main sur une erreur technique. Deux tentatives
+        // perdues valent mieux qu'un tableau manquant.
+        let reprises = 0;
         while (cursor && guard < MAX_PAGES) {
             guard++;
-            const next = await gql(token, itemsQuery(fragment, true), { cursor, limit: PAGE_SIZE }, tracer);
+            let next;
+            try {
+                next = await gql(token, itemsQuery(fragment, true), { cursor, limit: PAGE_SIZE }, tracer);
+            } catch (e) {
+                if (!/cursor.*expire|expired.*cursor/i.test(e.message) || reprises >= 1) throw e;
+                reprises++;
+                if (onLog) onLog(`${board.name} : le curseur de pagination a expiré — `
+                    + 'reprise depuis le début du tableau.');
+                if (onProgres) onProgres({ recus: 0, reprise: true });
+                const relance = await gql(token, itemsQuery(fragment, false),
+                    { ids: [String(boardId)], limit: PAGE_SIZE }, tracer);
+                const nb = (relance.boards && relance.boards[0]) || null;
+                if (!nb) throw e;
+                items.length = 0;
+                items.push(...(nb.items_page.items || []));
+                recus = items.length;
+                cursor = nb.items_page.cursor;
+                guard = 0;
+                if (onProgres) onProgres({ recus });
+                continue;
+            }
             const page = next.next_items_page;
             if (!page) break;
             items.push(...(page.items || []));
