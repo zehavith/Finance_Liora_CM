@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.71.0';
+    const VERSION = '2.72.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -1157,9 +1157,13 @@
             let c = g.cats.get(cle);
             if (!c) {
                 c = { motif: cle, colonne: col, nb: 0, nbEchu: 0, total: 0,
-                      echu: 0, nonEchu: 0, plusAncienne: null };
+                      echu: 0, nonEchu: 0, plusAncienne: null, items: [] };
                 g.cats.set(cle, c);
             }
+            // Les factures elles-mêmes : un pourcentage qu'on ne peut pas
+            // ouvrir ne se vérifie pas, et « 74,6 % sans motif » appelle
+            // immédiatement la question « lesquelles ? ».
+            c.items.push(f);
             c.nb++; c.total += v;
             if (enRetard) { c.echu += v; c.nbEchu++; } else c.nonEchu += v;
             const d = f.dateEcheance || f.dateFacture;
@@ -1177,6 +1181,77 @@
             return Object.assign(g, { cats, tableaux: [...g.tableaux].sort() });
         }).sort((a, b) => b.total - a.total);
         return groupes;
+    }
+
+    /**
+     * Les factures derrière une part de camembert.
+     *
+     * « 74,6 % sans motif » appelle immédiatement « lesquelles ? », et un
+     * pourcentage qu'on ne peut pas ouvrir ne se vérifie pas. La part se
+     * clique donc, dans le disque comme dans la légende, et rend la liste —
+     * triée par montant, avec l'échéance et le retard, et l'export pour la
+     * transmettre.
+     */
+    function montrerFacturesMotif(groupe, part) {
+        if (!part || !part.items || !part.items.length) {
+            U.toast('Aucune facture dans cette part.', 'error');
+            return;
+        }
+        const reste = f => (f.resteDu != null && f.resteDu > 0) ? f.resteDu : (f.montant || 0);
+        const rows = part.items.slice().sort((a, b) => reste(b) - reste(a));
+        const total = X.sum(rows, reste);
+
+        const corps = `<p class="fv-hint">`
+            + `${U.escapeHtml(libelleColonneMotif(groupe.colonne))} · `
+            + `${U.escapeHtml(groupe.tableaux.join(', '))}. `
+            + `${U.pourcent(part.part)} du reste à encaisser de cette colonne.`
+            + `</p>`
+            + U.table([
+                { key: 'numero', label: 'Facture', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'client', label: 'Client', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                { key: reste, label: 'Reste dû', align: 'right', format: U.euros },
+                { key: 'dateEcheance', label: 'Échéance', align: 'center',
+                  format: v => v ? U.dateFR(v) : '<span class="pill pill-muted">à qualifier</span>' },
+                { key: 'retardJours', label: 'Retard', align: 'right', format: U.pastilleRetard },
+                { key: 'financement', label: 'Financement',
+                  format: v => U.escapeHtml(v ? R.getRule(v, state.rules).label : '—') },
+                { key: 'groupe', label: 'Groupe Monday', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+            ], rows.slice(0, 300), { vide: 'Aucune facture.', onRowClick: true })
+            + (rows.length > 300
+                ? `<p class="fv-hint">300 premières sur ${U.nombre(rows.length)} — l'export les donne toutes.</p>`
+                : '');
+
+        const el = U.modal(`${part.label} — ${U.nombre(rows.length)} factures · ${U.euros(total)}`,
+            corps,
+            [{ label: 'Exporter ces factures', close: false,
+               onClick: () => exporterFacturesMotif(groupe, part, rows) },
+             { label: 'Fermer', primary: true }], { large: true });
+        // Une ligne mène à la fiche : c'est là que se lisent les dates et la
+        // règle qui a servi à calculer l'échéance.
+        U.bindTable(el, rows.slice(0, 300), {
+            onRowClick: f => { U.closeModal(); ouvrirFiche(f); },
+        });
+    }
+
+    /** La liste d'une part de camembert, en Excel. */
+    function exporterFacturesMotif(groupe, part, rows) {
+        const reste = f => (f.resteDu != null && f.resteDu > 0) ? f.resteDu : (f.montant || 0);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(f => ({
+            'Facture': f.numero, 'Client': f.client,
+            'Motif': part.label,
+            'Colonne de qualification': libelleColonneMotif(groupe.colonne),
+            'Tableau': f.board || '', 'Groupe': f.groupe || f.groupeOrigine || '',
+            'Financement': f.financement ? R.getRule(f.financement, state.rules).label : '',
+            'Montant': arrondi(f.montant || 0),
+            'Reste dû': arrondi(reste(f)),
+            'Date de facture': f.dateFacture ? U.dateFR(f.dateFacture) : '',
+            'Échéance': f.dateEcheance ? U.dateFR(f.dateEcheance) : 'à qualifier',
+            'Jours de retard': f.retardJours == null ? '' : f.retardJours,
+            'État': f.etat || '',
+        }))), 'Factures');
+        const nom = String(part.label).replace(/[^\w\u00C0-\u024F-]+/g, '_').slice(0, 40);
+        XLSX.writeFile(wb, `Motif_${nom}_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
 
     /** Le libellé d'une catégorie de motif, en clair. */
@@ -1224,6 +1299,7 @@
             const reste = g.cats.slice(MAX_PARTS);
             const parts = visibles.map((c, k) => ({
                 label: libelleMotif(c.motif), total: c.total, nb: c.nb, part: c.part,
+                items: c.items,
                 couleur: c.motif === MOTIF_AUCUN ? U.couleurs.inconnu : U.palette[k % U.palette.length],
             }));
             if (reste.length) {
@@ -1232,6 +1308,7 @@
                     label: `Autres (${reste.length} catégories)`, total,
                     nb: reste.reduce((a, c) => a + c.nb, 0),
                     part: g.total ? total / g.total * 100 : 0,
+                    items: reste.flatMap(c => c.items),
                     couleur: 'rgba(139,146,165,0.45)',
                 });
             }
@@ -1244,10 +1321,11 @@
         hote.innerHTML = entete + prepares.map(({ g, parts, id }) => {
             const sans = g.cats.find(c => c.motif === MOTIF_AUCUN);
             const tauxQualif = g.total ? g.qualifie / g.total * 100 : 0;
-            const legende = parts.map(p => `
-                <li class="motifs-legende-ligne">
+            const legende = parts.map((p, k) => `
+                <li class="motifs-legende-ligne" data-part="${k}" data-pie="${id}"
+                    title="Voir les ${U.nombre(p.nb)} factures">
                     <span class="motifs-puce" style="background:${p.couleur}"></span>
-                    <span class="motifs-legende-nom" title="${U.escapeHtml(p.label)}">${U.escapeHtml(p.label)}</span>
+                    <span class="motifs-legende-nom">${U.escapeHtml(p.label)}</span>
                     <span class="motifs-legende-part">${U.pourcent(p.part)}</span>
                     <span class="motifs-legende-euros">${U.euros(p.total)}</span>
                     <span class="motifs-legende-nb">${U.nombre(p.nb)} fact.</span>
@@ -1271,6 +1349,9 @@
         }).join('');
 
         for (const { g, parts, id } of prepares) {
+            $$(`[data-pie="${id}"]`, hote).forEach(li => li.addEventListener('click', () => {
+                montrerFacturesMotif(g, parts[+li.dataset.part]);
+            }));
             U.chart(id, {
                 type: 'doughnut',
                 data: {
@@ -1292,8 +1373,12 @@
                                     const p = parts[ctx.dataIndex];
                                     return `${U.pourcent(p.part)} · ${U.euros(p.total)} · ${U.nombre(p.nb)} factures`;
                                 },
+                                footer: () => 'Cliquez pour voir les factures',
                             },
                         },
+                    },
+                    onClick: (evt, els) => {
+                        if (els.length) montrerFacturesMotif(g, parts[els[0].index]);
                     },
                 },
             });
@@ -1320,9 +1405,10 @@
             let o = par.get(cle);
             if (!o) {
                 o = { motif: cle, colonnes: new Set(), nb: 0, total: 0, echu: 0, nonEchu: 0,
-                      nbEchu: 0, plusAncienne: null };
+                      nbEchu: 0, plusAncienne: null, items: [] };
                 par.set(cle, o);
             }
+            o.items.push(f);
             if (f.motifColonne) o.colonnes.add(f.motifColonne);
             o.nb++; o.total += reste(f);
             const enRetard = (f.retardJours || 0) > 0;
@@ -1383,10 +1469,23 @@
             { key: 'plusAncienne', label: 'La plus ancienne', align: 'center', format: U.dateFR },
         ], rows, {
             vide: 'Aucune facture ouverte.',
+            onRowClick: true,
             total: { motif: '<strong>Total</strong>', nb: `<strong>${U.nombre(total.nb)}</strong>`,
                      total: `<strong>${U.euros(total.total)}</strong>`,
                      echu: U.euros(total.echu), nonEchu: U.euros(total.nonEchu) },
         });
+
+        // Une ligne du tableau se lit comme une part de camembert : elle mène
+        // aux factures. La question « lesquelles ? » suit immédiatement le
+        // pourcentage, et y répondre ne doit pas demander un détour.
+        tables.forEach(t => U.bindTable(t, rows, {
+            onRowClick: r => montrerFacturesMotif(
+                { colonne: [...r.colonnes].join(' · ') || MOTIF_SANS_COLONNE,
+                  tableaux: [...new Set(r.items.map(f => f.board || '—'))].sort(),
+                  total: total.total },
+                { label: libelleMotif(r.motif), items: r.items,
+                  part: total.total ? r.total / total.total * 100 : 0 }),
+        }));
     }
 
     /** Les motifs, en Excel, avec le détail des factures de chacun. */
@@ -1643,6 +1742,26 @@
         const arbre = X.repartitionMontants(data, dims);
         const totalGeneral = X.agreger(data);
 
+        // « Comment ça se fait, aucun % hors recouvrement ? »
+        //
+        // Parce que la vue ne contient que des factures en retard : le partage
+        // est alors vrai mais vide de sens — 100 % d'un côté, rien de l'autre,
+        // par construction du filtre et non par état du portefeuille. Le dire
+        // vaut mieux que laisser chercher.
+        const noteRep = $('#repartition-note');
+        if (noteRep) {
+            const seulEnRetard = totalGeneral.nb && !totalGeneral.nbHorsRecouvrement;
+            const seulHors = totalGeneral.nb && !totalGeneral.nbEnRecouvrement;
+            noteRep.innerHTML = seulEnRetard
+                ? '<strong>Un filtre ne laisse que des factures en retard :</strong> le partage affiche '
+                  + '100 % de ce côté par construction, et rien en face. Retirez le filtre d’état pour '
+                  + 'retrouver les deux colonnes.'
+                : seulHors
+                    ? '<strong>Un filtre écarte toutes les factures en retard :</strong> la colonne '
+                      + '« échu et impayé » est vide par construction.'
+                    : '';
+        }
+
         // Aplatit l'arbre en lignes, en respectant les nœuds dépliés
         const lignes = [];
         (function parcourir(noeuds, niveau) {
@@ -1676,19 +1795,19 @@
                 format: (v, r) => `${U.euros(v)} ${U.barre(v, maxTotal, 'rgba(99,102,241,0.5)')}`,
             },
             {
-                key: 'eurHorsRecouvrement', label: 'Hors recouvrement', align: 'right',
-                title: 'Réglé, non échu, ou échéance non calculable',
+                key: 'eurHorsRecouvrement', label: 'Pas en retard', align: 'right',
+                title: 'Réglé, non échu, ou échéance non calculable — passez la souris pour le détail',
                 format: (v, r) => `<span title="${U.escapeHtml(detailHors(r))}">${U.euros(v)}<span class="cell-mini">${U.nombre(r.nbHorsRecouvrement)} fact.</span></span>`,
             },
             {
-                key: 'eurEnRecouvrement', label: 'En recouvrement', align: 'right',
-                title: 'Factures échues et impayées',
+                key: 'eurEnRecouvrement', label: 'Échu et impayé', align: 'right',
+                title: 'Échues à la date d’arrêté et toujours pas encaissées',
                 format: (v, r) => v
                     ? `<span class="cell-danger" title="Reste dû : ${U.euros(r.encoursEnRecouvrement)}">${U.euros(v)}<span class="cell-mini">${U.nombre(r.nbEnRecouvrement)} fact.</span></span>`
                     : '<span class="ag-zero">—</span>',
             },
             {
-                key: 'tauxEur', label: '% en recouv.', align: 'right',
+                key: 'tauxEur', label: '% échu impayé', align: 'right',
                 format: (v, r) => `<span class="taux-cell">${U.pourcent(v, 1)}${U.barre(v, 100, U.couleurs.retard)}</span>`,
             },
             { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },

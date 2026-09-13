@@ -17,12 +17,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.71.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.71.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.71.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.71.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.71.0">
-    <link rel="stylesheet" href="styles.css?v=2.71.0">
+    <script src="../vendor/chart.umd.min.js?v=2.72.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.72.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.72.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.72.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.72.0">
+    <link rel="stylesheet" href="styles.css?v=2.72.0">
 </head>
 <body>
 
@@ -428,7 +428,7 @@
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header">
-                        <h3>Montants — hors recouvrement / en recouvrement</h3>
+                        <h3>Montants — ce qui est en retard, et le reste</h3>
                         <div class="chart-controls">
                             <div class="seg seg-sm" id="seg-repartition">
                                 <button class="seg-btn active" data-dims="perimetre,financement">Périmètre › Financement</button>
@@ -441,9 +441,12 @@
                         </div>
                     </div>
                     <span class="fv-hint">
-                        Montant total = hors recouvrement + en recouvrement. Cliquez sur une flèche pour
-                        déplier, sur une ligne pour ouvrir les factures correspondantes.
+                        Montant total = « pas en retard » + « échu et impayé ». « Pas en retard » réunit
+                        le réglé, le non échu et ce dont l'échéance n'est pas calculable — le détail
+                        s'affiche en passant la souris. Cliquez sur une flèche pour déplier, sur une
+                        ligne pour ouvrir les factures correspondantes.
                     </span>
+                    <span class="fv-hint" id="repartition-note"></span>
                     <div class="table-wrap" id="repartition-table"></div>
                 </div>
             </div>
@@ -1510,16 +1513,16 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.71.0"></script>
-<script src="js/store.js?v=2.71.0"></script>
-<script src="js/monday.js?v=2.71.0"></script>
-<script src="js/ingest.js?v=2.71.0"></script>
-<script src="js/metrics.js?v=2.71.0"></script>
-<script src="js/prelevements.js?v=2.71.0"></script>
-    <script src="js/grandlivre.js?v=2.71.0"></script>
-    <script src="js/sellsy.js?v=2.71.0"></script>
-    <script src="js/zoho.js?v=2.71.0"></script>
-<script src="js/ui.js?v=2.71.0"></script>
-<script src="app.js?v=2.71.0"></script>
+<script src="js/rules.js?v=2.72.0"></script>
+<script src="js/store.js?v=2.72.0"></script>
+<script src="js/monday.js?v=2.72.0"></script>
+<script src="js/ingest.js?v=2.72.0"></script>
+<script src="js/metrics.js?v=2.72.0"></script>
+<script src="js/prelevements.js?v=2.72.0"></script>
+    <script src="js/grandlivre.js?v=2.72.0"></script>
+    <script src="js/sellsy.js?v=2.72.0"></script>
+    <script src="js/zoho.js?v=2.72.0"></script>
+<script src="js/ui.js?v=2.72.0"></script>
+<script src="app.js?v=2.72.0"></script>
 </body>
 </html>

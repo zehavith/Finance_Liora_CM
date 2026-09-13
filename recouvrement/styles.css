@@ -1407,3 +1407,8 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
     background: var(--amber-bg);
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
+
+/* Une part de camembert se clique : la légende doit le dire. */
+.motifs-legende-ligne { cursor: pointer; border-radius: var(--radius-sm); }
+.motifs-legende-ligne:hover { background: rgba(255, 255, 255, 0.05); }
+.motifs-pie canvas { cursor: pointer; }
