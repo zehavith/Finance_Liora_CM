@@ -386,6 +386,30 @@ avec leur liste et leur numéro de dossier.
 Côté Monday, la colonne **N° dossier** est reconnue automatiquement (`N° dossier`,
 `Numéro de dossier`, `Filiz`…) : c'est elle qui sert de clé.
 
+### Une colonne ajoutée dans Monday entre au rechargement
+
+La correspondance des colonnes calculée au premier chargement était enregistrée,
+puis relue comme si elle avait été **choisie à la main** : elle n'était plus
+jamais recalculée. Une colonne ajoutée depuis dans Monday — *Date de facture*
+sur l'ADV, *Type* sur le 2.4 — n'entrait donc jamais, quel que soit le nombre de
+rechargements, et aucun message ne le disait.
+
+Désormais, seul un choix fait dans *Données → Correspondance des colonnes* vaut
+comme manuel. Et même lui ne bloque que **les champs qu'il renseigne** : les
+autres sont complétés par la reconnaissance automatique, et le journal de
+chargement nomme les colonnes ainsi ajoutées.
+
+Conséquence pratique : après une mise à jour de l'application, **un simple
+rechargement (⟳) d'un tableau suffit** pour que les colonnes nouvellement
+reconnues soient prises en compte.
+
+> **Une fois, au passage à la v2.87** : les correspondances enregistrées avant
+> cette version ne disent pas si elles venaient d'un choix ou du calcul
+> automatique. Elles sont donc toutes traitées comme automatiques et
+> recalculées. Si vous aviez corrigé une colonne à la main, vérifiez-la dans
+> *Données → Correspondance des colonnes* après le premier rechargement : à
+> partir de là, vos choix sont conservés.
+
 ### Inventaire par groupe
 
 Un tableau peut être complet et un de ses groupes manquer entièrement. Le

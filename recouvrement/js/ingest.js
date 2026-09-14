@@ -608,13 +608,22 @@
         // démenti par les données laisse la place au suivant sur ce champ.
         const valeursDe = col => rows.map(r => r[col]);
         let mapping, rejets, suppleants = {};
-        if (boardCfg.mapping && Object.keys(boardCfg.mapping).length) {
+        // Un mappage automatique enregistré au premier import était relu comme
+        // un choix définitif : une colonne ajoutée depuis — « Date de facture »,
+        // « Type » — n'entrait plus jamais. Seul un choix fait dans l'écran de
+        // correspondance vaut comme manuel, et même lui ne bloque que les
+        // champs qu'il renseigne.
+        if (boardCfg.mappingManuel && boardCfg.mapping && Object.keys(boardCfg.mapping).length) {
             const contr = validerMapping(boardCfg.mapping, valeursDe);
             mapping = contr.mapping; rejets = contr.rejets;
             // Un mapping choisi à la main ne dit rien des colonnes voisines :
-            // on redemande les suppléantes au mappage automatique.
+            // on redemande les suppléantes au mappage automatique, et on
+            // complète les champs qu'il ne renseigne pas.
             const auto = autoMapColumns(columns, valeursDe);
             suppleants = auto.suppleants || {};
+            for (const [champ, col] of Object.entries(auto.mapping || {})) {
+                if (!mapping[champ] && col) mapping[champ] = col;
+            }
         } else {
             const auto = autoMapColumns(columns, valeursDe);
             mapping = auto.mapping; rejets = auto.rejets;

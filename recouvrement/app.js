@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.86.0';
+    const VERSION = '2.87.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -9177,6 +9177,10 @@
         $$('.candidat', el).forEach(b => b.addEventListener('click', () => {
             board.mapping = board.mapping || {};
             board.mapping[b.dataset.champ] = b.dataset.col;
+            // C'est ici, et seulement ici, qu'un mappage devient « choisi à la
+            // main » — et donc intouchable. Un mappage automatique enregistré
+            // ne doit pas se faire passer pour un choix.
+            board.mappingManuel = true;
             sauverBoards();
             rendreTableMapping();
             U.toast('Correspondance mise à jour — rechargez ce tableau pour l\'appliquer.', 'info', 7000);
@@ -9186,6 +9190,7 @@
             board.mapping = board.mapping || {};
             if (s.value) board.mapping[s.dataset.field] = s.value;
             else delete board.mapping[s.dataset.field];
+            board.mappingManuel = true;
             sauverBoards();
             U.toast('Correspondance mise à jour — rechargez le tableau pour l\'appliquer.', 'info');
         }));
@@ -9577,7 +9582,13 @@
         } else if (!b.columns) {
             b.columns = [];
         }
-        const mappingManuel = !!(b.mapping && Object.keys(b.mapping).length);
+        // Un mappage automatique était enregistré après le premier chargement,
+        // puis relu comme s'il avait été choisi à la main : il n'était plus
+        // jamais recalculé. Une colonne ajoutée dans Monday — « Date de
+        // facture » sur l'ADV, « Type » sur le 2.4 — n'entrait donc jamais,
+        // quel que soit le nombre de rechargements. Seul un choix fait dans
+        // l'écran de correspondance vaut désormais comme manuel.
+        const mappingManuel = !!(b.mappingManuel && b.mapping && Object.keys(b.mapping).length);
 
         const { board, items, tronque, simplifiee } = await M.fetchBoardItems(state.token, b.id, log, onProgres);
         b.miroirsIgnores = !!simplifiee;
@@ -9609,6 +9620,18 @@
             const contr = I.validerMapping(b.mapping, valeursDe);
             b.mapping = contr.mapping;
             rejets = contr.rejets;
+            // Vos choix sont intouchables, mais ils ne disent rien des champs
+            // que vous n'avez pas renseignés : ceux-là sont complétés par le
+            // mappage automatique, sans quoi une colonne nouvellement reconnue
+            // resterait inutilisée sur un tableau déjà corrigé une fois.
+            const auto = I.autoMapColumns(b.columns || [], valeursDe);
+            const ajouts = [];
+            for (const [champ, col] of Object.entries(auto.mapping || {})) {
+                if (!b.mapping[champ] && col) { b.mapping[champ] = col; ajouts.push(champ); }
+            }
+            if (ajouts.length) {
+                log(`   + colonnes reconnues en complément de vos choix : ${ajouts.join(', ')}`);
+            }
         } else {
             const auto = I.autoMapColumns(b.columns || [], valeursDe);
             b.mapping = auto.mapping;
