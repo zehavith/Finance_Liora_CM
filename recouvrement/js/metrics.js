@@ -186,7 +186,8 @@
     //  Vue d'ensemble
     // ──────────────────────────────────────────────
 
-    function vueEnsemble(factures) {
+    function vueEnsemble(factures, dateRef) {
+        const ref = dateRef || R.stripTime(new Date());
         const total = factures.length;
         const totalEuros = sum(factures, x => x.montant);
 
@@ -202,8 +203,17 @@
         const montantRetard = sum(enRetard, x => x.montant);
         const resteAEncaisser = sum(factures.filter(x => !x.paye), x => x.montant);
 
-        // Assiette du taux : factures dont l'échéance est connue et dépassée
-        const assiette = factures.filter(x => x.dateEcheance && x.etat !== 'Non échue');
+        // Assiette du taux de cohorte : les factures qui ont eu l'occasion
+        // d'être en retard, c'est-à-dire dont l'échéance est passée à la date
+        // d'arrêté.
+        //
+        // Elle se lisait sur l'état, pas sur les dates. Or une facture réglée
+        // d'avance porte l'état « Payée », jamais « Non échue » : les 1 013
+        // factures de ce cas — 5,7 M€, la formation se paie au démarrage et
+        // l'échéance tombe des mois plus tard — entraient au dénominateur sans
+        // avoir jamais pu être en retard. Le taux de cohorte en ressortait
+        // dilué de treize points.
+        const assiette = factures.filter(x => x.dateEcheance && x.dateEcheance <= ref);
         const assietteEuros = sum(assiette, x => x.montant);
         const retardCohorte = assiette.filter(x => x.etat === 'En retard' || x.etat === 'Payée en retard');
 
@@ -211,6 +221,14 @@
         // Assiette = factures arrivées à échéance. Les trois postes
         // (réglé à temps · réglé en retard · encore dû) totalisent 100 %.
         const regleATemps = assiette.filter(x => x.etat === 'Payée');
+        // Deux lectures, deux assiettes, et il ne faut pas les confondre.
+        //
+        // Les quatre tuiles « Où en est le portefeuille » découpent le
+        // portefeuille entier — réglé à temps, réglé en retard, encore dû, non
+        // échu — et doivent totaliser 100 %. Une facture réglée d'avance y est
+        // bien « réglée avant l'échéance ». Elle compte donc ici, sur le total,
+        // là où le taux de cohorte ci-dessus l'écarte faute d'échéance passée.
+        const regleATempsPortefeuille = factures.filter(x => x.etat === 'Payée');
         // Ce qui est rentré sur une facture : la part réglée quand un avoir en
         // a effacé une partie, son montant sinon.
         const encaisse = x => (x.montantEncaisse != null ? x.montantEncaisse : x.montant);
@@ -254,7 +272,7 @@
             // ── Répartition du portefeuille entier ──
             // Base : toutes les factures, échues ou non. C'est la lecture
             // trésorerie : ce qui est rentré, ce qui est bloqué, ce qui arrive.
-            tauxPortefeuilleRegleATemps: pct(sum(regleATemps, x => x.montant), totalEuros),
+            tauxPortefeuilleRegleATemps: pct(sum(regleATempsPortefeuille, x => x.montant), totalEuros),
             tauxPortefeuilleRegleRetard: pct(sum(payeesRetard, x => x.montant), totalEuros),
             tauxPortefeuilleEnRetard: pct(sum(enRetard, x => x.montant), totalEuros),
             tauxPortefeuilleNonEchu: pct(sum(nonEchues, x => x.montant), totalEuros),
@@ -262,8 +280,11 @@
             eurosNonEchuesFacture: sum(nonEchues, x => x.montant),
 
             // Réglé sans jamais être en retard
-            nbRegleATemps: regleATemps.length,
-            eurosRegleATemps: sum(regleATemps, x => x.montant),
+            // La tuile du portefeuille compte toutes les factures réglées à
+            // temps ; les deux taux qui suivent sont des taux de cohorte et se
+            // lisent sur l'assiette échue.
+            nbRegleATemps: regleATempsPortefeuille.length,
+            eurosRegleATemps: sum(regleATempsPortefeuille, x => x.montant),
             tauxRegleATempsNb: pct(regleATemps.length, assiette.length),
             tauxRegleATempsEuros: pct(sum(regleATemps, x => x.montant), assietteEuros),
 
@@ -358,7 +379,8 @@
     //  Par type de financement
     // ──────────────────────────────────────────────
 
-    function parFinancement(factures, rules) {
+    function parFinancement(factures, rules, dateRef) {
+        const ref = dateRef || R.stripTime(new Date());
         const map = new Map();
         for (const f of factures) {
             const key = f.financement || 'INCONNU';
@@ -378,7 +400,9 @@
         const rows = [...map.values()].map(g => {
             const enRetard = g.items.filter(x => x.etat === 'En retard');
             const payeeRetard = g.items.filter(x => x.etat === 'Payée en retard');
-            const assiette = g.items.filter(x => x.dateEcheance && x.etat !== 'Non échue');
+            // Même assiette que le tableau de bord : les factures qui ont eu
+            // l'occasion d'être en retard, donc dont l'échéance est passée.
+            const assiette = g.items.filter(x => x.dateEcheance && x.dateEcheance <= ref);
             const eurTotal = sum(g.items, x => x.montant);
             const eurAssiette = sum(assiette, x => x.montant);
             const regleATemps = assiette.filter(x => x.etat === 'Payée');
@@ -429,21 +453,35 @@
     }
 
     /** Croisement mois × financement — taux en nb et en €. */
-    function croiseMoisFinancement(factures, baseMois, rules) {
+    function croiseMoisFinancement(factures, baseMois, rules, dateRef) {
         const champ = baseMois === 'facture' ? 'moisFacture'
             : baseMois === 'paiement' ? 'moisPaiement' : 'moisEcheance';
-        const mois = [...new Set(factures.map(f => f[champ]).filter(Boolean))].sort();
+        // La carte thermique et la courbe montrent la même chose : elles
+        // doivent la compter pareil. Deux écarts les séparaient.
+        //
+        // · La maturité se jugeait sur l'état — une facture réglée d'avance
+        //   porte « Payée », pas « Non échue », et entrait dans l'assiette d'un
+        //   mois à venir, qui ressortait à 0 %. Elle se juge sur les dates.
+        // · Le retard ne comptait que « En retard », laissant de côté « Payée
+        //   en retard » : une créance récupérée disparaissait du taux, et la
+        //   case s'éclaircissait à mesure que le recouvrement travaillait.
+        const ref = dateRef || R.stripTime(new Date());
+        const limite = R.monthKey(ref);
+        const mois = [...new Set(factures.map(f => f[champ]).filter(Boolean))]
+            .sort().filter(m => m <= limite);
         const fins = [...new Set(factures.map(f => f.financement || 'INCONNU'))];
 
         const cell = {};
         for (const f of factures) {
-            const mk = f[champ]; if (!mk) continue;
+            const mk = f[champ]; if (!mk || mk > limite) continue;
             const fin = f.financement || 'INCONNU';
             const k = mk + '|' + fin;
             const c = cell[k] || (cell[k] = { nbTotal: 0, eurTotal: 0, nbRetard: 0, eurRetard: 0, nbAssiette: 0, eurAssiette: 0 });
             c.nbTotal++; c.eurTotal += f.montant || 0;
-            if (f.dateEcheance && f.etat !== 'Non échue') { c.nbAssiette++; c.eurAssiette += f.montant || 0; }
-            if (f.etat === 'En retard') { c.nbRetard++; c.eurRetard += f.montant || 0; }
+            if (f.dateEcheance && f.dateEcheance <= ref) { c.nbAssiette++; c.eurAssiette += f.montant || 0; }
+            if (f.etat === 'En retard' || f.etat === 'Payée en retard') {
+                c.nbRetard++; c.eurRetard += f.montant || 0;
+            }
         }
 
         fins.sort((a, b) => {

@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.93.0';
+    const VERSION = '2.94.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -1001,7 +1001,7 @@
     }
 
     function rendreDashboard(data) {
-        const v = X.vueEnsemble(data);
+        const v = X.vueEnsemble(data, state.filtres.dateRef);
         // Les factures de la vue courante, pour les tuiles qui s'ouvrent.
         state.dernieresFactures = data;
         brancherKPIs();
@@ -1102,7 +1102,7 @@
         rendreTreemap(data);
 
         // ── Financement / balance âgée ──
-        const fins = X.parFinancement(data, state.rules);
+        const fins = X.parFinancement(data, state.rules, state.filtres.dateRef);
         rendreChartFinancement(fins);
         rendreChartAging(X.balanceAgee(data));
 
@@ -1111,7 +1111,8 @@
         const detail = $('#evo-detail');
         if (detail) detail.hidden = !state.ui.evoDetail;
         if (state.ui.evoDetail) {
-            rendreHeatmap(X.croiseMoisFinancement(data, state.filtres.baseMois, state.rules));
+            rendreHeatmap(X.croiseMoisFinancement(data, state.filtres.baseMois, state.rules,
+                                                  state.filtres.dateRef));
         }
         rendreChartEvoCategorie(data);
         rendreQualifB2C(data);
@@ -6049,7 +6050,7 @@
     // ══════════════════════════════════════════════
 
     function rendreFinancements(data) {
-        let rows = X.parFinancement(data, state.rules);
+        let rows = X.parFinancement(data, state.rules, state.filtres.dateRef);
         const t = state.ui.triFin;
         rows.sort((a, b) => {
             const va = a[t.key], vb = b[t.key];
@@ -6145,7 +6146,7 @@
         rendreDetailFinancement(data, rows);
 
         // Graphiques
-        const top = X.parFinancement(data, state.rules).filter(r => r.nbTotal > 0).slice(0, 12);
+        const top = X.parFinancement(data, state.rules, state.filtres.dateRef).filter(r => r.nbTotal > 0).slice(0, 12);
         U.chart('chart-fin-taux', {
             type: 'bar',
             data: {
@@ -10469,7 +10470,7 @@
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lignesExport(data)), 'Factures');
 
         // Synthèse
-        const v = X.vueEnsemble(data);
+        const v = X.vueEnsemble(data, state.filtres.dateRef);
         const synthese = [
             { Indicateur: "Version de l'application", Valeur: VERSION + ' — ' + VERSION_DATE },
             { Indicateur: 'Factures analysées', Valeur: v.total },
@@ -10513,7 +10514,7 @@
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(mois), 'Par mois');
 
         // Par financement
-        const fins = X.parFinancement(data, state.rules).map(r => ({
+        const fins = X.parFinancement(data, state.rules, state.filtres.dateRef).map(r => ({
             'Type de financement': r.label,
             'Périmètre': r.perimetre,
             'Factures': r.nbTotal,

@@ -237,6 +237,37 @@ Deux causes, toutes deux corrigées :
 Les mois écartés ne disparaissent pas en silence : une ligne sous le graphique
 dit où la courbe s'arrête et pourquoi.
 
+### Ce qui a « eu l'occasion » d'être en retard
+
+Le même défaut se cachait derrière plusieurs chiffres : **la maturité d'une
+facture se jugeait sur son état, pas sur ses dates**. Or une facture réglée
+d'avance porte l'état « Payée », jamais « Non échue » — et la formation se paie
+souvent au démarrage, l'échéance tombant des mois plus tard.
+
+Sur le jeu réel : **1 013 factures réglées ont une échéance à venir, pour
+5,7 M€**. Elles entraient au dénominateur du taux de cohorte sans avoir jamais
+pu être en retard.
+
+| Assiette du taux de cohorte | Factures | Montant | Taux |
+|---|---|---|---|
+| par l'état (avant) | 8 107 | 34,3 M€ | 68,3 % |
+| **par les dates (après)** | **7 095** | **28,7 M€** | **81,8 %** |
+
+Treize points d'écart. L'assiette est désormais *« les factures dont l'échéance
+est passée à la date d'arrêté »*, dans le tableau de bord comme dans le détail
+par financement, la courbe et la carte thermique.
+
+**Les quatre tuiles « Où en est le portefeuille » ne bougent pas**, et c'est
+voulu : elles découpent le portefeuille entier — réglé à temps, récupéré,
+encore dû, non échu, sans échéance — et doivent totaliser 100 %. Une facture
+réglée d'avance y est bien « réglée avant l'échéance ». Deux lectures, deux
+assiettes, chacune juste dans son rôle.
+
+La carte thermique portait un second écart : elle ne comptait que « En
+retard », laissant de côté « Payée en retard ». Une créance récupérée
+disparaissait du taux, et la case s'éclaircissait à mesure que le recouvrement
+travaillait. Elle compte maintenant les deux, comme la courbe.
+
 ### Le tampon n'est pas une catégorie
 
 Le **tampon** est le sas où la facture attend avant d'entrer dans le circuit.
