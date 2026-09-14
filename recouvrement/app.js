@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.83.0';
+    const VERSION = '2.84.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -1399,8 +1399,16 @@
         montrerFacturesListe(part.label, part.items,
             `${U.escapeHtml(libelleColonneMotif(groupe.colonne))} · `
             + `${U.escapeHtml(groupe.tableaux.join(', '))}. `
-            + `${U.pourcent(part.part)} du reste à encaisser de cette colonne.`,
-            { onExport: rows => exporterFacturesMotif(groupe, part, rows) });
+            + `${U.pourcent(part.part)} du reste à encaisser de cette colonne.`
+            + (part.autres
+                ? ` Cette part réunit les catégories au-delà des neuf premières : `
+                  + `${U.escapeHtml(part.autres.join(', '))}.`
+                : ''),
+            { colonnesSup: part.autres ? [
+                  { key: 'motif', label: 'Catégorie',
+                    format: v => `<span class="pill">${U.escapeHtml(v || '—')}</span>` },
+              ] : [],
+              onExport: rows => exporterFacturesMotif(groupe, part, rows) });
     }
 
     /**
@@ -1538,6 +1546,11 @@
                     part: g.total ? total / g.total * 100 : 0,
                     items: reste.flatMap(c => c.items),
                     couleur: 'rgba(139,146,165,0.45)',
+                    // « Autres » n'est pas un motif : c'est le reste de la
+                    // liste, réuni pour que le disque reste lisible. Les
+                    // catégories qu'il contient sont nommées ici, faute de
+                    // quoi la part la plus grosse est parfois la moins claire.
+                    autres: reste.map(c => libelleMotif(c.motif)),
                 });
             }
             return { g, parts, id: 'motifs-pie' + suffixe + '-' + i };
@@ -10072,6 +10085,45 @@
             '% de l\'encours': +b.partEuros.toFixed(2),
         }));
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(aging), 'Balance âgée');
+
+        // Le pourquoi accompagne la balance âgée dans le classeur, plutôt que
+        // de pousser cette dernière sous la ligne de flottaison à l'écran :
+        // on vient sur cet onglet pour la balance, on lit les motifs après.
+        const motifs = (state.motifsRows || []).map(r => ({
+            'Pourquoi': libelleMotif(r.motif),
+            'Colonnes d’origine': [...r.colonnes].join(' · '),
+            'Factures': r.nb,
+            'Reste dû': arrondi(r.total),
+            'Dont échu': arrondi(r.echu),
+            'Factures échues': r.nbEchu,
+            'Non échu': arrondi(r.nonEchu),
+            'La plus ancienne': r.plusAncienne ? U.dateFR(r.plusAncienne) : '',
+        }));
+        if (motifs.length) {
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(motifs),
+                'Pourquoi ce n’est pas payé');
+        }
+        const parColonne = [];
+        for (const g of (state.motifsParColonne || [])) {
+            for (const c of g.cats) {
+                parColonne.push({
+                    'Colonne de qualification': libelleColonneMotif(g.colonne),
+                    'Tableaux': g.tableaux.join(' · '),
+                    'Catégorie': libelleMotif(c.motif),
+                    'Factures': c.nb,
+                    'Part des factures': Math.round(c.partNb * 10) / 10,
+                    'Reste dû': arrondi(c.total),
+                    'Part du montant': Math.round(c.part * 10) / 10,
+                    'Dont échu': arrondi(c.echu),
+                    'Non échu': arrondi(c.nonEchu),
+                    'La plus ancienne': c.plusAncienne ? U.dateFR(c.plusAncienne) : '',
+                });
+            }
+        }
+        if (parColonne.length) {
+            XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(parColonne),
+                'Pourquoi — par colonne');
+        }
 
         const nom = `Suivi_Recouvrement_Liora_${new Date().toISOString().slice(0, 10)}.xlsx`;
         XLSX.writeFile(wb, nom);

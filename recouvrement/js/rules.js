@@ -117,7 +117,11 @@
             key: 'REGION', label: 'Region',
             base: 'dateFinFormation', jours: 60,
             fallback: 'dateFacture', fallbackJours: 60,
-            note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
+            // Le financement régional a sa propre ligne dans votre balance
+            // âgée : il était rangé sous « B2C » avec le CPF et le
+            // financement personnel, et ses 294 170 € de créances anciennes
+            // s'y diluaient au lieu de se voir.
+            note: 'Fin de formation +60 jours', categorie: 'Region', perimetre: 'B2C',
             match: ['region', 'conseil regional', 'regional'],
             gl: { base: 'dateFinFormation', jours: 60 },
         },
