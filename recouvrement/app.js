@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.85.0';
+    const VERSION = '2.86.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -56,6 +56,10 @@
         // Contrôle d'exhaustivité Sellsy ↔ Monday
         sellsy: { lignes: [], mapping: {}, entetes: [], ignorees: 0, nomFichier: null, date: null },
         sellsyResultat: null,
+        // Le fichier du financeur — Filiz, Transition Pro, OPCO — qui porte les
+        // dates de formation absentes des tableaux d'alternance.
+        dossiers: { lignes: [], mapping: {}, colonnes: [], ignorees: 0, nomFichier: null, date: null },
+        dossiersStats: null,
         glLecture: null,
         glOuvertes: [],
         // Correspondances numéro de facture → financement, apprises des
@@ -301,6 +305,11 @@
             if (sellsy && sellsy.lignes.length) state.sellsy = sellsy;
         } catch (e) { console.warn('[Recouvrement] Rechargement Sellsy impossible', e); }
 
+        try {
+            const dossiers = revivreDossiers(await S.get(S.KEYS.dossiers, null));
+            if (dossiers && dossiers.lignes.length) state.dossiers = dossiers;
+        } catch (e) { console.warn('[Recouvrement] Rechargement des dossiers impossible', e); }
+
         const brutes = (factures || []).map(revivre);
         if (brutes.length) state.brutes = brutes;
 
@@ -491,6 +500,14 @@
         const facturation = lignesFacturation();
         state.sellsyStats = facturation.length
             ? I.appliquerSellsy(consolidees, facturation)
+            : null;
+
+        // Le fichier du financeur — Filiz, Transition Pro — n'apporte que les
+        // dates de formation qui manquent à Monday, et seulement là où elles
+        // manquent. Il passe après Sellsy, qui reste la source de référence,
+        // et avant le calcul : ce sont vos règles qui en tirent l'échéance.
+        state.dossiersStats = (state.dossiers && state.dossiers.lignes.length)
+            ? I.appliquerDossiers(consolidees, state.dossiers.lignes)
             : null;
 
         I.enrichir(consolidees, {
@@ -4076,6 +4093,15 @@
                    + 'qui compte dans le total mais dans aucune tranche d’ancienneté',
               format: v => v ? `<span class="ag-cell">${fmtAg(v)}</span>` : '<span class="ag-zero">·</span>',
               cls: () => 'ag-col' },
+            // Ni échéance ni date de facture : aucune ancienneté ne peut être
+            // affirmée. Ces créances se comptaient auparavant en « non échu »
+            // avec un retard de zéro jour, ce qui leur inventait une date.
+            { key: 'sansDate', label: 'Sans date', align: 'right',
+              title: 'Ni date d’échéance, ni date de facture : aucune ancienneté ne peut être '
+                   + 'affirmée. Ces créances comptent dans le total, mais dans aucune tranche — '
+                   + 'et pas non plus en « non échu ».',
+              format: v => v ? `<span class="ag-cell cell-danger">${fmtAg(v)}</span>` : '<span class="ag-zero">·</span>',
+              cls: () => 'ag-col' },
             { key: 'total', label: 'Total', align: 'right', format: U.euros, cls: () => 'ag-total' },
             { key: 'nb', label: 'Créances', align: 'right',
               title: 'Créances ouvertes : les factures, et les soldes sans facture (acomptes, écarts de règlement)',
@@ -4090,6 +4116,7 @@
             nbLignes: lignesParFin.get(r.cle) || lignesParFin.get(r.financement) || 0 }));
         const total = { label: 'TOTAL', echu: fmtAg(b.total.echu),
             crediteur: fmtAg(b.total.crediteur),
+            sansDate: fmtAg(b.total.sansDate || 0),
             total: U.euros(b.total.total),
             nb: `${U.nombre(b.total.nb)}<span class="cell-mini">${U.nombre(b.total.nbFactures)} factures`
                 + `${b.total.nbSansFacture ? ' · ' + U.nombre(b.total.nbSansFacture) + ' sans facture' : ''}</span>`,
@@ -4106,10 +4133,14 @@
         // condition de savoir ce qui s'additionne.
         const somme = $('#aging-gl-somme');
         if (somme) {
-            const ecart = b.total.total - (b.total.echu + b.total.nonEchu + (b.total.crediteur || 0));
+            const sd = b.total.sansDate || 0;
+            const ecart = b.total.total
+                - (b.total.echu + b.total.nonEchu + (b.total.crediteur || 0) + sd);
             somme.innerHTML = `Comment se lit la ligne TOTAL : `
                 + `<strong>${U.euros(b.total.echu)}</strong> échu`
                 + `<span class="somme-signe">+</span><strong>${U.euros(b.total.nonEchu)}</strong> non échu`
+                + (sd ? `<span class="somme-signe">+</span><strong>${U.euros(sd)}</strong> sans date`
+                      + ` (${U.nombre(b.total.nbSansDate)} créances)` : '')
                 // Le solde créditeur est négatif : « + −1 405 512 € » se lit
                 // mal. Le signe est sorti du nombre.
                 + `<span class="somme-signe">${(b.total.crediteur || 0) < 0 ? '−' : '+'}</span>`
@@ -5351,7 +5382,7 @@
             let g = parCompte.get(cle);
             if (!g) {
                 g = { compte: cle, tiers: c.tiers || '', nb: 0, resteDu: 0, echu: 0,
-                      nbFactures: 0, nbSansFacture: 0, nonEchu: 0,
+                      nbFactures: 0, nbSansFacture: 0, nonEchu: 0, sansDate: 0,
                       plusAncienne: null, retardMax: null };
                 for (const b of R.AGING_BUCKETS) g[b.key] = 0;
                 parCompte.set(cle, g);
@@ -5359,8 +5390,14 @@
             g.nb++;
             if (c.sansNumero) g.nbSansFacture++; else g.nbFactures++;
             g.resteDu += c.resteDu || 0;
-            if ((c.retardJours || 0) > 0) g.echu += c.resteDu || 0; else g.nonEchu += c.resteDu || 0;
-            if (c.bucket && c.bucket !== 'crediteur') g[c.bucket] = (g[c.bucket] || 0) + (c.resteDu || 0);
+            // Sans date, la créance n'est ni échue ni non échue : elle ne peut
+            // pas l'être, faute de date. Même règle qu'au niveau du financement.
+            if (c.bucket === 'sansDate') g.sansDate += c.resteDu || 0;
+            else if ((c.retardJours || 0) > 0) g.echu += c.resteDu || 0;
+            else g.nonEchu += c.resteDu || 0;
+            if (c.bucket && c.bucket !== 'crediteur' && c.bucket !== 'sansDate') {
+                g[c.bucket] = (g[c.bucket] || 0) + (c.resteDu || 0);
+            }
             const d = c.dateEcheance || c.dateFacture;
             if (d && (!g.plusAncienne || d < g.plusAncienne)) g.plusAncienne = d;
             if (c.retardJours != null && (g.retardMax == null || c.retardJours > g.retardMax)) {
@@ -5551,6 +5588,7 @@
             for (const b of buckets) if (b.key !== 'nonEchu') o[b.label] = arrondi(r.buckets[b.key]);
             o['Non échu'] = arrondi(r.nonEchu);
             o['Solde créditeur'] = arrondi(r.crediteur || 0);
+            o['Sans date'] = arrondi(r.sansDate || 0);
             o['Total'] = arrondi(r.total);
             o['Nb de créances'] = r.nb;
             o['Dont factures'] = r.nbFactures || 0;
@@ -5704,7 +5742,7 @@
         {
             const entetes = ['Financement', 'Clé', 'Restant dû', 'Échu']
                 .concat(buckets.filter(b => b.key !== 'nonEchu').map(b => b.label))
-                .concat(['Non échu', 'Solde créditeur', 'Nb de créances', 'Dont factures',
+                .concat(['Non échu', 'Solde créditeur', 'Sans date', 'Nb de créances', 'Dont factures',
                          'Dont soldes sans facture', 'Lignes du grand livre',
                          'Retard max (jours)', 'Plus ancienne échéance']);
             const aoa = [entetes];
@@ -5720,7 +5758,7 @@
             for (const r of parFin.rows) {
                 const ligne = [r.label, '', arrondi(r.total), arrondi(r.echu)]
                     .concat(buckets.filter(b => b.key !== 'nonEchu').map(b => arrondi(r.buckets[b.key])))
-                    .concat([arrondi(r.nonEchu), arrondi(r.crediteur || 0), r.nb,
+                    .concat([arrondi(r.nonEchu), arrondi(r.crediteur || 0), arrondi(r.sansDate || 0), r.nb,
                         r.nbFactures || 0, r.nbSansFacture || 0,
                         lignesGL.get(r.cle) || lignesGL.get(r.financement) || '', '', '']);
                 aoa.push(ligne);
@@ -5729,7 +5767,8 @@
                     aoa.push([r.label, (g.compte + ' - ' + (g.tiers || '')).trim().replace(/ -$/, ''),
                         arrondi(g.resteDu), arrondi(g.echu)]
                         .concat(buckets.filter(b => b.key !== 'nonEchu').map(b => arrondi(g[b.key] || 0)))
-                        .concat([arrondi(g.nonEchu || 0), arrondi(g.resteDu < 0 ? g.resteDu : 0), g.nb,
+                        .concat([arrondi(g.nonEchu || 0), arrondi(g.resteDu < 0 ? g.resteDu : 0),
+                            arrondi(g.sansDate || 0), g.nb,
                             g.nbFactures || 0, g.nbSansFacture || 0,
                             lignesParCompte.get(g.compte) || '',
                             g.retardMax == null ? '' : g.retardMax,
@@ -7914,6 +7953,89 @@
         } catch (e) { console.warn('[Recouvrement] Sauvegarde Sellsy impossible', e); }
     }
 
+    /**
+     * Importe un fichier de dossiers du financeur — Filiz, Transition Pro, OPCO.
+     *
+     * Il n'apporte que des dates de formation, et seulement là où Monday n'en a
+     * pas. Aucune échéance n'en sort : vos règles font seules autorité.
+     */
+    async function importerDossiers(files) {
+        const liste = Array.isArray(files) ? files : [files];
+        if (!liste.length) return;
+        try {
+            const toutes = [];
+            const journal = [], colonnes = [];
+            let mapping = null, ignorees = 0;
+
+            for (const file of liste) {
+                const rows = await lireFichier(file);
+                if (!rows.length) { journal.push(`${file.name} : fichier vide`); continue; }
+                const lu = I.lireDossiers(rows);
+                if (!lu.lignes.length) {
+                    journal.push(`${file.name} : ni numéro de dossier ni dates de formation `
+                        + `exploitables (colonnes lues : ${lu.colonnes.slice(0, 8).join(', ')})`);
+                    continue;
+                }
+                if (!mapping) mapping = lu.mapping;
+                else for (const [k, v] of Object.entries(lu.mapping)) if (!mapping[k]) mapping[k] = v;
+                colonnes.push(...lu.colonnes.filter(h => !colonnes.includes(h)));
+                ignorees += lu.ignorees;
+                toutes.push(...lu.lignes);
+            }
+
+            if (!toutes.length) {
+                U.toast('Aucun dossier exploitable. Il faut un numéro de dossier (ou de facture) '
+                    + 'et au moins une date de formation. ' + journal.join(' · '), 'error', 14000);
+                return;
+            }
+
+            state.dossiers = {
+                lignes: toutes, mapping: mapping || {}, colonnes, ignorees, fichiers: journal,
+                nomFichier: liste.length === 1 ? liste[0].name : `${liste.length} fichiers`,
+                date: new Date().toISOString(),
+            };
+            await sauverDossiers();
+            recalculer({ conserverPeriode: true });
+
+            const st = state.dossiersStats || {};
+            U.toast(`Dossiers intégrés : ${U.nombre(toutes.length)} lignes lues, `
+                + `${U.nombre(st.rapprochees || 0)} factures rapprochées `
+                + `(${U.nombre(st.parNumero || 0)} par numéro de facture, `
+                + `${U.nombre(st.parDossier || 0)} par numéro de dossier) — `
+                + `${U.nombre(st.debuts || 0)} dates de début et ${U.nombre(st.fins || 0)} de fin `
+                + `de formation ajoutées.`, 'success', 12000);
+            rendreDonnees();
+        } catch (e) {
+            console.error(e);
+            U.toast('Import des dossiers impossible : ' + e.message, 'error');
+        }
+    }
+
+    async function sauverDossiers() {
+        try {
+            await S.set(S.KEYS.dossiers, {
+                ...state.dossiers,
+                lignes: state.dossiers.lignes.map(l => ({
+                    ...l,
+                    dateDebutFormation: l.dateDebutFormation ? l.dateDebutFormation.toISOString() : null,
+                    dateFinFormation: l.dateFinFormation ? l.dateFinFormation.toISOString() : null,
+                })),
+            });
+        } catch (e) { console.warn('[Recouvrement] Sauvegarde des dossiers impossible', e); }
+    }
+
+    function revivreDossiers(o) {
+        if (!o || !o.lignes) return null;
+        return {
+            ...o,
+            lignes: o.lignes.map(l => ({
+                ...l,
+                dateDebutFormation: l.dateDebutFormation ? R.parseDate(l.dateDebutFormation) : null,
+                dateFinFormation: l.dateFinFormation ? R.parseDate(l.dateFinFormation) : null,
+            })),
+        };
+    }
+
     function revivreSellsy(o) {
         if (!o || !o.lignes) return null;
         return {
@@ -8283,6 +8405,7 @@
         rendreSelectMapping();
         rendreTableMapping();
         rendreHistoriqueImports();
+        rendreDossiersResume();
         rendreInfoStockage();
 
         const st = $('#settings-monday-status');
@@ -9233,6 +9356,68 @@
             recalculer({ conserverPeriode: true });
             rendreHistoriqueImports();
         });
+    }
+
+    /**
+     * Ce que le fichier du financeur a réellement apporté.
+     *
+     * Un fichier déposé sans effet visible ne se distingue pas d'un fichier
+     * mal lu : le rapprochement, la voie empruntée et les dates ajoutées sont
+     * dits, et les factures d'alternance encore sans dates restent nommées.
+     */
+    function rendreDossiersResume() {
+        const el = $('#dossiers-resume');
+        if (!el) return;
+        const d = state.dossiers;
+        // Ce que les règles ne peuvent toujours pas dater, faute de dates de
+        // formation : c'est la mesure de ce qui reste à apporter.
+        const orphelines = state.factures.filter(f =>
+            !(f.role === 'technique' || f.groupeTechnique || f.role === 'ignore')
+            && !f.dateEcheance && !f.dateDebutFormation && !f.dateFinFormation);
+
+        if (!d || !d.lignes.length) {
+            el.innerHTML = orphelines.length
+                ? `<div class="note note-warn"><div class="note-body">
+                       <strong>${U.nombre(orphelines.length)} factures sans aucune date de formation</strong>
+                       <span>Leurs règles ne peuvent pas calculer d'échéance : elles sortent de tous les
+                       taux. Déposez le fichier du financeur ci-dessus — il suffit qu'il porte un numéro
+                       de dossier et les dates de formation.</span>
+                   </div>
+                   <button class="btn btn-ghost btn-sm" id="btn-orphelines-dates">Voir lesquelles</button>
+                   </div>`
+                : '';
+        } else {
+            const st = state.dossiersStats || {};
+            el.innerHTML = `<div class="note ${st.rapprochees ? 'note-ok' : 'note-warn'}">
+                   <div class="note-body">
+                       <strong>${U.escapeHtml(d.nomFichier || 'Fichier de dossiers')} — ${U.nombre(d.lignes.length)} dossiers lus</strong>
+                       <span>${U.nombre(st.rapprochees || 0)} factures rapprochées
+                       (${U.nombre(st.parNumero || 0)} par numéro de facture,
+                       ${U.nombre(st.parDossier || 0)} par numéro de dossier) ·
+                       ${U.nombre(st.debuts || 0)} dates de début et ${U.nombre(st.fins || 0)} dates de fin
+                       de formation ajoutées, là où Monday n'en avait pas.
+                       ${st.sansCorrespondance ? U.nombre(st.sansCorrespondance) + ' dossiers du fichier ne correspondent à aucune facture. ' : ''}
+                       ${orphelines.length ? U.nombre(orphelines.length) + ' factures restent sans aucune date de formation.' : 'Plus aucune facture sans date de formation.'}
+                       Aucune échéance ne vient de ce fichier : ce sont vos règles qui la calculent.</span>
+                   </div>
+                   ${orphelines.length ? '<button class="btn btn-ghost btn-sm" id="btn-orphelines-dates">Voir celles qui restent</button>' : ''}
+               </div>`;
+        }
+        const b = $('#btn-orphelines-dates');
+        if (b) {
+            b.addEventListener('click', () => montrerFacturesListe(
+                'Factures sans aucune date de formation', orphelines,
+                'Ni début, ni fin de formation, et aucune échéance calculable par vos règles. '
+                + 'Le numéro de dossier, quand Monday le porte, permet de les retrouver dans le '
+                + 'fichier du financeur.',
+                { colonnesSup: [
+                    { key: 'numeroDossier', label: 'N° de dossier',
+                      format: v => v ? `<span class="mono">${U.escapeHtml(v)}</span>` : '<span class="ag-zero">·</span>' },
+                    { key: 'board', label: 'Tableau',
+                      format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                  ],
+                  onExport: rows => exporterFacturesSimple(rows, 'Sans_dates_de_formation') }));
+        }
     }
 
     async function rendreInfoStockage() {
@@ -10735,6 +10920,7 @@
 
         brancherZoneDepot('#prlv-drop', '#prlv-file-input', files => importerGoCardless(files));
         brancherZoneDepot('#gcl-drop', '#gcl-file-input', files => importerGoCardless(files));
+        brancherZoneDepot('#dossiers-drop', '#dossiers-file-input', files => importerDossiers(files));
 
         $('#btn-prlv-remplacer').addEventListener('click', () => $('#prlv-file-input-2').click());
         $('#prlv-file-input-2').addEventListener('change', e => {

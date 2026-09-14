@@ -280,7 +280,11 @@ contraire.
 
 Du plus fiable au plus approximatif, la première source renseignée l'emporte :
 
-1. la colonne **Type de financement** ;
+1. la colonne **Type de financement** — y compris une colonne nommée simplement
+   **Type**, comme sur le tableau 2.4, à condition que ses valeurs soient bien
+   des dispositifs. Sans elle, le nom du tableau *« REGION / TRANSITION /
+   AGEFIPH »* décidait pour toutes ses factures, et 74 créances Region plus 5
+   Agefiph — 559 252 € — ressortaient en Transition Pro ;
 2. la colonne **Type de client** — « B2C - Entreprise » y désigne bien un
    financement ;
 3. le libellé du **groupe** ;
@@ -288,9 +292,13 @@ Du plus fiable au plus approximatif, la première source renseignée l'emporte :
 5. la valeur par défaut attachée au rôle du tableau.
 
 Ces règles sont **modifiables dans l'application** (onglet *Financements* →
-« Modifier les règles ») et conservées sur le poste. Quand Monday fournit
-déjà une date d'échéance, elle est utilisée en priorité — comportement
-désactivable dans l'onglet *Données*.
+« Modifier les règles ») et conservées sur le poste.
+
+**Aucune date d'échéance n'est reprise d'un fichier.** Ni celle de Monday, ni
+celle de Sellsy : vos règles font seules autorité, et une facture qu'aucune
+règle ne peut dater reste *« échéance à qualifier »* plutôt que de recevoir une
+date venue d'ailleurs. La seule exception est l'échéance de votre propre
+classeur de trésorerie, reprise du grand livre en dernier recours.
 
 Chaque facture indique la règle qui l'a calculée : dans la table, le symbole
 **ƒ** à côté de l'échéance ouvre l'info-bulle ; la fiche détaillée (clic sur
@@ -351,6 +359,32 @@ C'est le premier endroit à regarder quand un chiffre paraît trop bas. Une
 colonne *Sans échéance* élevée signale des colonnes de dates non reconnues sur
 ce tableau : la correspondance se corrige juste en dessous. Un écart entre
 *Sur Monday* et *Chargées* signale un chargement incomplet.
+
+### Le fichier du financeur (Filiz, Transition Pro…)
+
+Les tableaux d'alternance ne portent **ni date de début ni date de fin de
+formation**. Les règles ne trouvant pas leur base, seules **24 %** des créances
+Corporate-Alternance et **20 %** des OPCO-Alternance obtenaient une échéance ;
+les autres sortaient de tous les taux. Ces factures portent un **numéro de
+dossier** — Filiz pour l'alternance, `25IF11024` pour Transition Pro — et c'est
+le fichier du financeur qui détient les dates.
+
+La zone de dépôt **Dossiers du financeur** de l'onglet *Données* lit ce fichier.
+Il lui faut deux choses : une clé de rapprochement (numéro de dossier **ou**
+numéro de facture) et au moins une date de formation. Le rapprochement se fait
+du plus sûr au moins sûr — numéro de facture, puis numéro de dossier — et, comme
+toutes les autres sources, **le fichier ne remplit que les vides** : une date
+déjà présente dans Monday n'est jamais remplacée.
+
+**Aucune échéance n'en sort.** Une colonne « date d'échéance » présente dans le
+fichier n'est pas lue : le fichier apporte des faits sur la formation, et ce
+sont vos règles qui en tirent la date. Sous la zone de dépôt, un bloc dit
+combien de factures ont été rapprochées, par quelle voie, combien de dates ont
+été ajoutées, et combien de factures restent sans aucune date de formation —
+avec leur liste et leur numéro de dossier.
+
+Côté Monday, la colonne **N° dossier** est reconnue automatiquement (`N° dossier`,
+`Numéro de dossier`, `Filiz`…) : c'est elle qui sert de clé.
 
 ### Inventaire par groupe
 
@@ -511,9 +545,11 @@ explicitement :
 |---|---|
 | Élément, Factures | numéro de facture |
 | Total Facture | montant TTC |
-| Montant dû TTC, Reste à payer | reste dû |
+| Montant dû TTC, Reste à payer, Montant Restant Sellsy | reste dû |
 | Début de service, Fin de service | dates de formation |
 | Date contrôle paiement | contrôle du règlement |
+| Type | type de financement, si les valeurs sont des dispositifs |
+| N° dossier, Filiz | numéro de dossier du financeur |
 
 Deux pièges qui coûtaient cher :
 
@@ -522,6 +558,12 @@ Deux pièges qui coûtaient cher :
   mettait des tableaux entiers à zéro. Il alimente le reste dû, d'où le montant
   est déduit quand aucune autre colonne ne le porte — et la déduction est
   marquée, car une facture partiellement réglée le sous-estime.
+- **« Montant Restant Sellsy » passe devant « Montant Restant Penny ».** Le
+  tableau 2.4 porte les deux, et aucun n'était reconnu : le reste dû retombait
+  sur le total de la facture — 8 484,69 € affichés là où 3 688,99 € restaient
+  dus, soit 281 583 € d'acomptes déjà encaissés comptés comme encours sur ce
+  seul tableau. C'est la facturation qui dit ce qui reste à encaisser ; la
+  comptabilité a sa propre balance, dans l'onglet *Balance âgée*.
 - **« Début » et « Fin de service » sont les dates de formation.** Sans ces
   libellés, les règles qui comptent sur la fin de formation ne trouvaient rien
   et des milliers de factures sortaient en « échéance impossible à calculer ».
@@ -1442,7 +1484,13 @@ L'onglet **Balance âgée** propose trois lectures, au choix :
   ligne : c'est la somme des seules tranches d'ancienneté. Le *Non échu* et le
   *Solde créditeur* sont à part, et c'est la dernière colonne qui totalise :
 
-  > Échu + Non échu + Solde créditeur = **Total**, le solde des comptes clients.
+  > Échu + Non échu + Solde créditeur + Sans date = **Total**, le solde des comptes clients.
+
+  La colonne **Sans date** est la quatrième à part. Une créance qui ne porte ni
+  date d'échéance ni date de facture prenait auparavant un retard de zéro jour :
+  elle tombait dans la tranche la plus récente et se comptait en *non échu*. On
+  lui inventait ainsi une date. Elle compte désormais dans le total, et dans
+  aucune tranche.
 
   L'addition est écrite sous le tableau, avec les trois montants du moment ; un
   écart de plus d'un euro entre elle et la colonne *Total* s'affiche en rouge.

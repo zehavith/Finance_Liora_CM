@@ -41,7 +41,13 @@
         // acompte, et c'est cette colonne qui porte ce qui reste dû après lui.
         // La différence avec le montant de la facture est déjà encaissée.
         { field: 'montantRAC',           label: 'Montant RAC (reste à charge)', aliases: ['montant rac', 'montant r a c', 'rac', 'reste a charge', 'montant reste a charge', 'rac ttc', 'montant rac ttc'] },
-        { field: 'resteDu',              label: 'Reste dû',               aliases: ['montant du ttc', 'montant du ht', 'montant du', 'reste du', 'restant du', 'reste a payer', 'reste a regler', 'montant a payer', 'solde du', 'solde restant', 'solde', 'reliquat'] },
+        // « Montant Restant Sellsy » et « Montant Restant Penny » cohabitent sur
+        // le tableau 2.4 : ni l'un ni l'autre n'était reconnu, et le reste dû
+        // retombait sur le total de la facture — 8 484,69 € affichés là où
+        // 3 688,99 € restaient dus. Sellsy passe devant Pennylane, comme pour
+        // le « Montant RAC » du CPF : c'est la facturation qui dit ce qui reste
+        // à encaisser, la comptabilité a sa propre balance.
+        { field: 'resteDu',              label: 'Reste dû',               aliases: ['montant restant sellsy', 'restant sellsy', 'montant du ttc', 'montant du ht', 'montant du', 'reste du', 'restant du', 'montant restant', 'restant', 'reste a payer', 'reste a regler', 'montant a payer', 'solde du', 'solde restant', 'solde', 'reliquat', 'montant restant penny', 'restant penny'] },
         { field: 'dateFacture',          label: 'Date de facture',        aliases: ['date de facture', 'date facture', 'date d emission', 'date emission', 'date de la facture', 'date piece', 'date facturation', 'date de facturation', 'facturation', 'date creation facture', 'date edition'] },
         { field: 'dateEcheanceSource',   label: 'Date d’échéance',   aliases: ['date d echeance', 'date echeance', 'echeance', 'date limite de paiement', 'date limite', 'date de reglement prevue', 'date calculee', 'date negociee', 'date calcule negocie'] },
         // « Début de service » et « Fin de service » sont le vocabulaire de Liora :
@@ -53,7 +59,18 @@
         { field: 'dateFinFormation',     label: 'Fin de formation',       aliases: ['fin de formation', 'date de fin de formation', 'date fin formation', 'fin formation', 'fin de service', 'date de fin de service', 'date fin service', 'fin service', 'date de fin', 'date fin', 'fin de session', 'date fin session', 'fin parcours', 'date de fin de parcours', 'fin de cursus', 'date de sortie', 'sortie de formation'] },
         { field: 'datePaiement',         label: 'Date de paiement',       aliases: ['date de paiement', 'date paiement', 'date de reglement', 'date reglement', 'date encaissement', 'date d encaissement'] },
         { field: 'dateControlePaiement', label: 'Date contrôle paiement', aliases: ['date controle paiement', 'date de controle paiement', 'controle paiement', 'date de controle', 'date validation paiement', 'validation paiement', 'date pointage'] },
-        { field: 'financement',          label: 'Type de financement',    aliases: ['type de financement', 'financement', 'type financement', 'mode de financement', 'dispositif', 'financeur', 'type de financeur', 'source de financement'] },
+        // « Type » tout court est le nom de la colonne sur le tableau 2.4, et
+        // c'est elle qui distingue Transition Pro, Region et Agefiph. Sans
+        // elle, le nom du tableau — « REGION / TRANSITION / AGEFIPH » —
+        // décidait pour toutes, et les 349 factures ressortaient en Transition
+        // Pro. L'alias est court, donc faible : le contrôle sur les valeurs
+        // ci-dessous refuse la colonne si elle ne contient pas des dispositifs.
+        { field: 'financement',          label: 'Type de financement',    aliases: ['type de financement', 'financement', 'type financement', 'mode de financement', 'dispositif', 'financeur', 'type de financeur', 'source de financement', 'type'] },
+        // Le numéro de dossier du financeur — « 25IF11024 » pour Transition
+        // Pro, le numéro Filiz pour l'alternance. Il ne sert pas au calcul,
+        // mais c'est la clé qui permet de rapprocher un fichier du financeur
+        // et d'y retrouver les dates de formation qui manquent à Monday.
+        { field: 'numeroDossier',        label: 'N° de dossier',          aliases: ['n dossier', 'no dossier', 'numero de dossier', 'numero dossier', 'n de dossier', 'dossier', 'n filiz', 'numero filiz', 'filiz', 'reference dossier', 'ref dossier'] },
         { field: 'typeClient',           label: 'Type de client',         aliases: ['type de client', 'type client', 'typologie client', 'typologie', 'segment client', 'segment', 'categorie client'] },
         { field: 'statut',               label: 'Statut',                 aliases: ['statut', 'status', 'etat', 'statut facture', 'statut de la facture'] },
         { field: 'proprietaire',         label: 'Propriétaire',           aliases: ['proprietaire', 'owner', 'responsable', 'charge de recouvrement', 'charge d affaire', 'gestionnaire', 'personne'] },
@@ -126,6 +143,15 @@
             const n = brutes.filter(v => R.parseDate(v)).length;
             return n / brutes.length >= SEUIL
                 ? { ok: true } : { ok: false, raison: 'ne contient pas de dates' };
+        }
+        // Une colonne de financement doit contenir des dispositifs. « Type »
+        // est un nom qu'on rencontre partout — type de document, type de
+        // client, type de relance — et l'alias, ajouté pour le tableau 2.4,
+        // ouvrirait la porte à n'importe laquelle sans ce contrôle.
+        if (champ === 'financement') {
+            const n = brutes.filter(v => R.detectFinancement(v)).length;
+            return n / brutes.length >= SEUIL
+                ? { ok: true } : { ok: false, raison: 'ne contient pas de dispositifs de financement' };
         }
         if (champ.startsWith('montant') || champ === 'resteDu') {
             const n = brutes.filter(v => parseMontant(v) != null).length;
@@ -396,6 +422,7 @@
             qualifRecouvrement,
             relance: String(v.relance || '').trim(),
             commentaire: String(v.commentaire || '').trim(),
+            numeroDossier: String(v.numeroDossier || '').trim(),
             litige: String(v.litige || '').trim(),
         };
     }
@@ -688,7 +715,8 @@
         const champs = ['client', 'financement', 'financementBrut', 'typeClient', 'montant', 'montantHT', 'montantRegle', 'montantRAC',
             'resteDu', 'dateFacture', 'dateDebutFormation', 'dateFinFormation', 'dateEcheanceSource',
             'datePaiement', 'dateControlePaiement', 'statut', 'proprietaire', 'qualifRecouvrement', 'qualifBascule',
-            'relance', 'commentaire', 'litige', 'groupeOrigine', 'motif', 'motifColonne'];
+            'relance', 'commentaire', 'litige', 'groupeOrigine', 'motif', 'motifColonne',
+            'numeroDossier'];
         // Les qualifications de chaque source se cumulent : une facture vue sur
         // deux tableaux porte les colonnes de qualification des deux.
         out.qualifs = { ...(extra.qualifs || {}), ...(base.qualifs || {}) };
@@ -1050,6 +1078,98 @@
         }
 
         return lignes.length ? { lignes, groupes, tableau, totaux } : null;
+    }
+
+    /**
+     * Lit un fichier de dossiers du financeur — Filiz, Transition Pro, OPCO.
+     *
+     * Les tableaux d'alternance de Monday ne portent ni date de début ni date
+     * de fin de formation : 24 % seulement des créances Corporate-Alternance et
+     * 20 % des OPCO-Alternance obtenaient une échéance par vos règles. Les
+     * factures concernées portent un numéro de dossier — Filiz — et c'est le
+     * fichier du financeur qui détient les dates.
+     *
+     * Ce fichier ne sert qu'à ça : apporter les dates manquantes. Il n'apporte
+     * aucune échéance. Une colonne « date d'échéance » qui s'y trouverait n'est
+     * pas lue — vos règles font seules autorité.
+     *
+     * @param {Array<Object>} rows  lignes du fichier, clés = en-têtes
+     * @returns {{lignes:Array, mapping:Object, colonnes:Array, ignorees:number}}
+     */
+    function lireDossiers(rows) {
+        const vide = { lignes: [], mapping: {}, colonnes: [], ignorees: 0 };
+        if (!rows || !rows.length) return vide;
+        const headers = Object.keys(rows[0]).filter(h => h && !h.startsWith('__'));
+        const columns = headers.map(h => ({ id: h, title: h }));
+        const valeursDe = col => rows.map(r => r[col]);
+        const auto = autoMapColumns(columns, valeursDe);
+        const mapping = auto.mapping || auto;
+
+        const lignes = [];
+        let ignorees = 0;
+        for (const r of rows) {
+            const val = champ => {
+                const c = mapping[champ];
+                return c == null ? '' : (r[c] == null ? '' : String(r[c]).trim());
+            };
+            const dossier = R.norm(val('numeroDossier')).replace(/\s+/g, '');
+            const numero = val('numero');
+            const cle = factureKey(numero);
+            const debut = R.parseDate(val('dateDebutFormation'));
+            const fin = R.parseDate(val('dateFinFormation'));
+            // Sans clé de rapprochement, ou sans aucune date à apporter, la
+            // ligne n'a rien à donner.
+            if ((!dossier && !cle) || (!debut && !fin)) { ignorees++; continue; }
+            lignes.push({ dossier, cle, numero,
+                          client: val('client'), dateDebutFormation: debut, dateFinFormation: fin });
+        }
+        return { lignes, mapping, colonnes: headers, ignorees };
+    }
+
+    /**
+     * Complète les factures avec les dates du fichier de dossiers.
+     *
+     * Rapprochement, du plus sûr au moins sûr : le numéro de facture, puis le
+     * numéro de dossier. Comme partout ailleurs, une valeur déjà présente n'est
+     * jamais remplacée — le fichier ne remplit que les vides.
+     *
+     * @returns {{rapprochees:number, debuts:number, fins:number, parNumero:number,
+     *            parDossier:number, sansCorrespondance:number}}
+     */
+    function appliquerDossiers(factures, lignes) {
+        const st = { rapprochees: 0, debuts: 0, fins: 0, parNumero: 0, parDossier: 0,
+                     sansCorrespondance: 0 };
+        if (!lignes || !lignes.length) return st;
+
+        const parNumero = new Map(), parDossier = new Map();
+        for (const l of lignes) {
+            if (l.cle && !parNumero.has(l.cle)) parNumero.set(l.cle, l);
+            if (l.dossier && !parDossier.has(l.dossier)) parDossier.set(l.dossier, l);
+        }
+        const utilisees = new Set();
+
+        for (const f of factures) {
+            const dossier = R.norm(f.numeroDossier || '').replace(/\s+/g, '');
+            let l = (f.cle && parNumero.get(f.cle)) || null;
+            let voie = 'numero';
+            if (!l && dossier) { l = parDossier.get(dossier) || null; voie = 'dossier'; }
+            if (!l) continue;
+            utilisees.add(l);
+            st.rapprochees++;
+            if (voie === 'numero') st.parNumero++; else st.parDossier++;
+            if (!f.dateDebutFormation && l.dateDebutFormation) {
+                f.dateDebutFormation = l.dateDebutFormation;
+                f.datesViennentDuDossier = true;
+                st.debuts++;
+            }
+            if (!f.dateFinFormation && l.dateFinFormation) {
+                f.dateFinFormation = l.dateFinFormation;
+                f.datesViennentDuDossier = true;
+                st.fins++;
+            }
+        }
+        st.sansCorrespondance = lignes.filter(l => !utilisees.has(l)).length;
+        return st;
     }
 
     /**
@@ -1418,6 +1538,7 @@
         COLONNES_MOTIF, motifDeQualification,
         validerMapping, couvertureMapping, verifierValeurs, colonnesCandidates,
         consolider, appliquerGrandLivre, appliquerSellsy, enrichir, statutIndiquePaye,
+        lireDossiers, appliquerDossiers,
         aplatirExportMonday,
     };
 })(window);

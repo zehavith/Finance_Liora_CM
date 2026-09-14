@@ -22,6 +22,7 @@
         gocardless: 'rec_gocardless',    // exports GoCardless (prélèvements)
         finManuels: 'rec_fin_manuels',   // financements corrigés à la main
         sellsy:     'rec_sellsy',        // export Sellsy pour le contrôle d'exhaustivité
+        dossiers:   'rec_dossiers',      // fichier du financeur (Filiz…) : dates de formation
     };
 
     function openDB() {

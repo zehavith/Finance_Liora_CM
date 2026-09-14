@@ -2163,6 +2163,7 @@
                       label: !c.financement ? 'À classer'
                           : parCategorie ? cle : R.getRule(c.financement, rules).label,
                       total: 0, echu: 0, nonEchu: 0, nb: 0, crediteur: 0, nbCrediteur: 0,
+                      sansDate: 0, nbSansDate: 0,
                       // « Nb » compte les créances, et une créance n'est pas
                       // toujours une facture : un solde sans facture — acompte,
                       // écart de règlement — en est une aussi. Les deux sont
@@ -2180,6 +2181,20 @@
             l.nb++;
             if (c.sansNumero) l.nbSansFacture++; else l.nbFactures++;
             l.total += c.resteDu;
+
+            // Une créance sans la moindre date — ni échéance, ni date de
+            // facture — prenait un retard de zéro jour, tombait dans la tranche
+            // la plus récente et se comptait en « non échu ». Elle avait donc
+            // une ancienneté et une échéance qu'aucune donnée ne soutient. Elle
+            // compte dans le total, comme le solde créditeur, mais à part : la
+            // dater reviendrait à inventer une règle, et vos règles font seules
+            // autorité.
+            if (!base) {
+                l.sansDate += c.resteDu;
+                l.nbSansDate++;
+                l.creances.push({ ...c, retardJours: null, bucket: 'sansDate' });
+                continue;
+            }
             // Un solde créditeur — acompte, trop-perçu, avoir non imputé — n'est
             // pas une créance vieillie : c'est de l'argent déjà reçu. Le ranger
             // dans la tranche d'ancienneté de sa facture l'y soustrairait et
@@ -2204,11 +2219,13 @@
         });
 
         const total = { label: 'TOTAL', cle: '__TOTAL__', total: 0, echu: 0, nonEchu: 0, nb: 0,
-                        crediteur: 0, nbCrediteur: 0, nbFactures: 0, nbSansFacture: 0, buckets: {} };
+                        crediteur: 0, nbCrediteur: 0, sansDate: 0, nbSansDate: 0,
+                        nbFactures: 0, nbSansFacture: 0, buckets: {} };
         for (const b of R.AGING_BUCKETS) total.buckets[b.key] = 0;
         for (const r of rows) {
             total.total += r.total; total.echu += r.echu; total.nonEchu += r.nonEchu; total.nb += r.nb;
             total.crediteur += r.crediteur; total.nbCrediteur += r.nbCrediteur;
+            total.sansDate += r.sansDate; total.nbSansDate += r.nbSansDate;
             total.nbFactures += r.nbFactures; total.nbSansFacture += r.nbSansFacture;
             for (const b of R.AGING_BUCKETS) total.buckets[b.key] += r.buckets[b.key];
         }
