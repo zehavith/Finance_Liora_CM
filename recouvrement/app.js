@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.90.0';
+    const VERSION = '2.91.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -8692,6 +8692,8 @@
                        retenuesItems: [] };
         const rows = state.boards.map(b => {
             const r = { ...b, ...(parBoard.get(b.name) || vide) };
+            r.chargeLe = b.chargeLe || null;
+            r.actif = b.actif !== false;
 
             // Un tableau dont aucune ligne n'est arrivée n'a pas « perdu » ses
             // factures : il n'a pas été chargé. Les confondre affichait la
@@ -8770,6 +8772,22 @@
                     + roles.map(k => `<option value="${k}"${k === v ? ' selected' : ''}>${U.escapeHtml(R.ROLE_LABELS[k])}</option>`).join('')
                     + '</select>',
             },
+            // « Les nouvelles factures remontent-elles ? » — la réponse est
+            // ici, tableau par tableau. Un tableau décoché n'est jamais
+            // rechargé, un tableau en échec garde ses factures d'avant : dans
+            // les deux cas ses nouveautés manquent, et seule la date le dit.
+            { key: 'chargeLe', label: 'Chargé le', align: 'center',
+              title: "Dernière lecture de ce tableau depuis Monday. Un tableau plus ancien "
+                   + "que les autres n'a pas vu les factures créées depuis.",
+              format: (v, r) => {
+                  if (!r.actif) return '<span class="pill pill-muted" title="Tableau décoché : il n’est jamais rechargé">décoché</span>';
+                  if (!v) return '<span class="ag-zero">jamais</span>';
+                  const d = new Date(v);
+                  const jours = Math.floor((Date.now() - d.getTime()) / 86400000);
+                  const txt = jours <= 0 ? "aujourd'hui" : jours === 1 ? 'hier' : `il y a ${U.jours(jours)}`;
+                  return (jours >= 2 ? `<span class="cell-danger">${txt}</span>` : txt)
+                      + `<span class="cell-mini">${U.dateFR(d)}</span>`;
+              } },
             { key: 'itemsCount', label: 'Sur Monday', align: 'right', format: v => v == null ? '—' : U.nombre(v),
               title: "Nombre d'éléments annoncé par Monday" },
             { key: 'charge', label: 'Chargées', align: 'right',
@@ -9612,6 +9630,12 @@
         });
 
         b.charge = factures.length;
+        // L'heure du chargement, tableau par tableau. « Les nouvelles factures
+        // remontent-elles ? » — la réponse dépend de la dernière fois que ce
+        // tableau-là a été lu, pas de la dernière actualisation en général : un
+        // tableau décoché, ou en échec, garde ses factures d'avant sans que
+        // rien ne le dise.
+        b.chargeLe = new Date().toISOString();
         log(`   ✓ ${factures.length} factures`);
 
         if (b.itemsCount != null && factures.length < b.itemsCount) {
@@ -9651,6 +9675,13 @@
             });
             b.conserve = false;
             b.actif = true;
+            // Ce que ce rechargement a changé sur ce tableau : c'est la seule
+            // façon de répondre à « les nouvelles factures remontent-elles ? ».
+            const avant = new Set(state.brutes
+                .filter(f => String(f.boardId) === String(b.id)).map(f => f.cle).filter(Boolean));
+            const apres = new Set(factures.map(f => f.cle).filter(Boolean));
+            const nouvelles = [...apres].filter(c => !avant.has(c));
+            const parties = [...avant].filter(c => !apres.has(c));
             // Seules les factures de ce tableau sont remplacées.
             state.brutes = state.brutes.filter(f => String(f.boardId) !== String(b.id))
                 .concat(factures);
@@ -9659,8 +9690,12 @@
             await sauverBoards();
             await S.set('rec_derniere_actualisation', state.derniereActualisation.toISOString());
             recalculer({ conserverPeriode: true });
-            U.toast(`« ${b.name} » : ${U.nombre(factures.length)} factures rechargées. `
-                + `${U.nombre(state.brutes.length)} au total.`, 'success', 8000);
+            U.toast(`« ${b.name} » : ${U.nombre(factures.length)} factures rechargées — `
+                + (nouvelles.length
+                    ? `${U.nombre(nouvelles.length)} nouvelle${nouvelles.length > 1 ? 's' : ''}`
+                      + (parties.length ? `, ${U.nombre(parties.length)} partie${parties.length > 1 ? 's' : ''}` : '')
+                    : (avant.size ? 'aucune nouvelle' : 'premier chargement'))
+                + `. ${U.nombre(state.brutes.length)} au total.`, 'success', 9000);
         } catch (e) {
             b.erreurChargement = e.message;
             // Rien n'est retiré : le portefeuille reste celui d'avant.

@@ -457,6 +457,32 @@ fichier travaille.
 
 Un classeur à plusieurs feuilles — *Alternance*, *Stage* — est lu **en entier**.
 
+### Les nouvelles factures de Monday remontent-elles ?
+
+Oui — et l'application le dit maintenant, au lieu de se terminer sur un total
+qui ne prouvait rien.
+
+- Une **actualisation générale** remplace les factures venues de Monday et
+  annonce l'écart : *« 2 431 factures chargées — 12 nouvelles, 3 disparues »*.
+- Un **rechargement d'un seul tableau** (⟳) fait de même pour ce tableau :
+  *« 3 factures rechargées — 1 nouvelle. »*
+- La colonne **Chargé le** de l'inventaire des tableaux donne la date de la
+  dernière lecture, tableau par tableau. Elle passe en rouge au-delà de deux
+  jours, et affiche **décoché** pour un tableau que la case a désactivé.
+
+C'est là qu'il faut regarder quand une facture semble manquer : les trois cas
+où ses nouveautés ne sont pas entrées se voient tous dans cette colonne.
+
+| Ce qui se passe | Ce que montre la colonne |
+|---|---|
+| Le tableau est décoché | **décoché** — il n'est jamais rechargé |
+| Son chargement a échoué | une date ancienne, et *factures conservées du chargement précédent* sous son nom |
+| Le tableau n'existe pas encore dans l'application | il est absent de la liste — *Rafraîchir la liste* l'ajoute |
+
+Un **nouveau tableau** créé dans Monday n'apparaît qu'après *Rafraîchir la
+liste* : l'application ne découvre pas les tableaux toute seule, pour ne pas
+ramener des tableaux que vous ne suivez pas.
+
 ### Une colonne ajoutée dans Monday entre au rechargement
 
 La correspondance des colonnes calculée au premier chargement était enregistrée,
