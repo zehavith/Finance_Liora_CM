@@ -256,6 +256,13 @@ contraire.
 
 Du plus fiable au plus approximatif, la première source renseignée l'emporte :
 
+L'**alternance** de Sellsy se lit dans *Type de facture*, *Type de contrat* ou
+*Type de client*. Elle ne se lisait que dans un champ personnalisé qu'aucun autre
+champ n'avait pris — or *Type de client* est pris, et c'est là qu'elle se trouve
+sur votre export : les 531 factures concernées étaient traitées comme des
+factures ordinaires. Un libellé de formation contenant le mot ne suffit toujours
+pas à faire basculer un export.
+
 1. la colonne **Type de financement** — y compris une colonne nommée simplement
    **Type**, comme sur le tableau 2.4, à condition que ses valeurs soient bien
    des dispositifs. Sans elle, le nom du tableau *« REGION / TRANSITION /
@@ -419,6 +426,22 @@ Le rapprochement se fait sur **trois clés**, du plus sûr au moins sûr :
    prénom seul ne rapproche rien, et un apprenant présent deux fois dans le
    fichier — deux contrats — est écarté plutôt que de dater une facture avec la
    formation d'à côté.
+
+**L'alternance se partage en deux, et une seule moitié pose problème.** Mesuré
+sur le grand livre de septembre, 457 créances d'alternance, dont 356 sans date
+de fin de formation :
+
+| Numéro | Créances | Sans date de fin de formation |
+|---|---|---|
+| `FCT-FILIZ-…` | 379 | **347** |
+| `FACT-…` | 54 | **0** |
+| autre / sans numéro | 24 | 9 |
+
+Les **`FACT-…`** sont dans Sellsy — 531 factures y portent « Alternance » en
+*Type de client*, et **toutes les 531 ont leurs dates de service**. Elles sont
+datées sans rien faire. Les **`FCT-FILIZ-…`** sont émises par Filiz : l'export
+Sellsy n'en contient aucune. Ce sont ces 347 créances, et elles seules, qui
+attendent Monday et le fichier du financeur.
 
 L'alternance n'a pas de tableau à elle : elle vit dans les tableaux **ADV**,
 **Recouvrement** et **OPCO**. C'est donc à eux qu'il faut donner la colonne

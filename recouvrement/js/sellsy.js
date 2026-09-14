@@ -202,6 +202,20 @@
         // formation contenant le mot suffirait à tout basculer.
         const MOTIF_ALTERNANCE = /alternan|apprenti|professionnalisation|contrat pro|\bproa\b/i;
         const colonneAlternance = (() => {
+            // « Type de facture » d'abord, nommément : c'est là que vit
+            // l'alternance dans votre export, et cette colonne peut très bien
+            // avoir déjà été retenue pour un autre champ — l'heuristique qui
+            // suit ne regarde que les colonnes libres et ne la verrait pas.
+            const nomme = entetes.find(h => {
+                const n = R.norm(h);
+                return n === 'type de facture' || n === 'type facture'
+                    || n === 'type de contrat' || n === 'type contrat'
+                    || n === 'type de dispositif';
+            });
+            if (nomme) {
+                const vals = rows.map(r => String(r[nomme] == null ? '' : r[nomme]).trim()).filter(Boolean);
+                if (vals.some(v => MOTIF_ALTERNANCE.test(v))) return nomme;
+            }
             const libres = entetes.filter(h => !pris.has(h));
             let meilleure = null, meilleurNb = 0;
             for (const col of libres) {
@@ -265,9 +279,22 @@
                 // Le contrat en alternance, tel que votre champ personnalisé
                 // le nomme. Vide quand l'export ne porte pas la colonne — et
                 // rien ne change alors, l'alternance se lit au numéro Filiz.
-                alternance: colonneAlternance
-                    ? MOTIF_ALTERNANCE.test(String(r[colonneAlternance] || '')) : false,
-                alternanceTexte: colonneAlternance ? String(r[colonneAlternance] || '').trim() : '',
+                // Le « Type de client » le dit aussi, et il ne pouvait pas être
+                // entendu : l'heuristique ne regarde que les colonnes qu'aucun
+                // champ n'a prises, et celle-là est prise. Sur votre export,
+                // 531 factures portent « Alternance » dans cette colonne, et
+                // toutes les 531 ont leurs dates de service — elles étaient
+                // pourtant traitées comme des factures ordinaires.
+                alternance: [
+                    colonneAlternance ? r[colonneAlternance] : '',
+                    mapping.typeClient ? r[mapping.typeClient] : '',
+                    colonneFinancement ? r[colonneFinancement] : '',
+                ].some(v => MOTIF_ALTERNANCE.test(String(v || ''))),
+                alternanceTexte: [
+                    colonneAlternance ? r[colonneAlternance] : '',
+                    mapping.typeClient ? r[mapping.typeClient] : '',
+                ].map(v => String(v || '').trim())
+                 .find(v => MOTIF_ALTERNANCE.test(v)) || '',
                 // Le dispositif nommé par un champ personnalisé, s'il y en a un.
                 financementPersonnalise: colonneFinancement
                     ? String(r[colonneFinancement] || '').trim() : '',

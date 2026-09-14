@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.89.0';
+    const VERSION = '2.90.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -10896,6 +10896,7 @@
         brancherZoneDepot('#prlv-drop', '#prlv-file-input', files => importerGoCardless(files));
         brancherZoneDepot('#gcl-drop', '#gcl-file-input', files => importerGoCardless(files));
         brancherZoneDepot('#dossiers-drop', '#dossiers-file-input', files => importerDossiers(files));
+        brancherZoneDepot('#sellsy-drop-2', '#sellsy-file-input-3', files => importerSellsy(files));
 
         $('#btn-prlv-remplacer').addEventListener('click', () => $('#prlv-file-input-2').click());
         $('#prlv-file-input-2').addEventListener('change', e => {
