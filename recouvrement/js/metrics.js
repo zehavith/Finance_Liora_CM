@@ -479,29 +479,46 @@
      *        soit tracé — trois factures ne font pas un taux
      * @returns {{mois:Array, series:Array}}
      */
-    function evolutionParFinancement(factures, baseMois, rules, minAssiette) {
+    function evolutionParFinancement(factures, baseMois, rules, minAssiette, dateRef) {
         const seuil = minAssiette == null ? 5 : minAssiette;
+        // La maturité d'une cohorte se juge sur les dates, pas sur les états :
+        // une facture réglée d'avance porte l'état « Payée », pas « Non échue »,
+        // et passait donc pour exigible. Un mois à venir se retrouvait tracé à
+        // 0 % sur ses seules factures payées d'avance — la chute finale de la
+        // courbe, qui se lisait comme un redressement.
+        const ref = dateRef || R.stripTime(new Date());
         const champ = baseMois === 'facture' ? 'moisFacture'
             : baseMois === 'paiement' ? 'moisPaiement' : 'moisEcheance';
 
+        // Une cohorte encore largement non échue ne se mesure pas.
+        //
+        // Les derniers mois de la courbe tombaient à 0 % : leurs factures ne
+        // sont pas en retard parce qu'elles ne sont pas encore exigibles. Le
+        // taux était calculé sur la poignée déjà échue — souvent réglée à
+        // l'heure — et se lisait comme un redressement. On compte donc aussi
+        // les non échues, pour savoir si le mois est mûr.
+        const COMPLETUDE = 0.8;
         const parFin = new Map();
         const moisVus = new Set();
         for (const f of factures) {
             const mk = f[champ];
-            if (!mk) continue;
-            // Assiette : les factures dont l'échéance est connue et passée.
-            if (!f.dateEcheance || f.etat === 'Non échue') continue;
-            moisVus.add(mk);
+            if (!mk || !f.dateEcheance) continue;
             const cle = f.financement || 'INCONNU';
             let g = parFin.get(cle);
             if (!g) { g = { cle, mois: new Map() }; parFin.set(cle, g); }
             let c = g.mois.get(mk);
-            if (!c) { c = { nb: 0, eur: 0, nbRetard: 0, eurRetard: 0 }; g.mois.set(mk, c); }
+            if (!c) { c = { nb: 0, eur: 0, nbRetard: 0, eurRetard: 0, nbTotal: 0 }; g.mois.set(mk, c); }
+            c.nbTotal++;
+            // Assiette : les factures dont l'échéance est passée à la date
+            // d'arrêté, qu'elles soient réglées ou non.
+            if (f.dateEcheance > ref) continue;
+            moisVus.add(mk);
             c.nb++; c.eur += f.montant || 0;
             if (f.etat === 'En retard' || f.etat === 'Payée en retard') {
                 c.nbRetard++; c.eurRetard += f.montant || 0;
             }
         }
+        const mure = c => c && c.nbTotal > 0 && c.nb / c.nbTotal >= COMPLETUDE;
 
         const mois = [...moisVus].sort();
         const series = [...parFin.values()].map(g => ({
@@ -513,17 +530,39 @@
             // courbe s'interrompt au lieu de sauter de 0 à 100 %.
             pointsNb: mois.map(m => {
                 const c = g.mois.get(m);
-                return c && c.nb >= seuil ? pct(c.nbRetard, c.nb) : null;
+                return mure(c) && c.nb >= seuil ? pct(c.nbRetard, c.nb) : null;
             }),
             pointsEur: mois.map(m => {
                 const c = g.mois.get(m);
-                return c && c.nb >= seuil && c.eur > 0 ? pct(c.eurRetard, c.eur) : null;
+                return mure(c) && c.nb >= seuil && c.eur > 0 ? pct(c.eurRetard, c.eur) : null;
             }),
             cohortes: mois.map(m => (g.mois.get(m) || { nb: 0 }).nb),
+            // La part déjà exigible de chaque mois : c'est elle qui décide si
+            // le point est traçable, et elle se dit dans l'infobulle.
+            maturites: mois.map(m => {
+                const c = g.mois.get(m);
+                return c && c.nbTotal ? Math.round(c.nb / c.nbTotal * 100) : null;
+            }),
         })).filter(s => s.pointsNb.some(v => v != null))
            .sort((a, b) => b.eurRetard - a.eurRetard);
 
-        return { mois, series };
+        // Les derniers mois où plus aucune série n'a de point traçable : ce
+        // sont les cohortes encore en cours. Les garder laissait la courbe
+        // plonger dans le vide et se lire comme une amélioration.
+        let dernier = mois.length - 1;
+        while (dernier >= 0 && !series.some(s2 => s2.pointsNb[dernier] != null)) dernier--;
+        const coupes = mois.length - 1 - dernier;
+        if (coupes > 0) {
+            mois.length = dernier + 1;
+            for (const s2 of series) {
+                s2.pointsNb.length = mois.length;
+                s2.pointsEur.length = mois.length;
+                s2.cohortes.length = mois.length;
+                s2.maturites.length = mois.length;
+            }
+        }
+
+        return { mois, series, moisEnCours: coupes };
     }
 
     /**

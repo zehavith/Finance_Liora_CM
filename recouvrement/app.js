@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.92.0';
+    const VERSION = '2.93.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -3270,7 +3270,22 @@
      */
     function rendreChartEvoCategorie(data) {
         const eur = state.ui.evoCatUnite === 'euros';
-        const { mois, series } = X.evolutionParFinancement(data, state.filtres.baseMois, state.rules);
+        const { mois, series, moisEnCours } = X.evolutionParFinancement(
+            data, state.filtres.baseMois, state.rules, null, state.filtres.dateRef);
+
+        // Ce que la courbe ne montre pas, et pourquoi : sans cette phrase, la
+        // coupure passerait pour un manque de données.
+        const note = $('#evo-cat-note');
+        if (note) {
+            note.innerHTML = moisEnCours
+                ? `La courbe s'arrête à <strong>${U.escapeHtml(U.moisLabel(mois[mois.length - 1]))}</strong> : `
+                  + (moisEnCours === 1
+                      ? `le mois suivant n'est pas encore échu`
+                      : `les ${U.nombre(moisEnCours)} mois suivants ne sont pas encore échus`)
+                  + ` aux quatre cinquièmes. Leur taux ne porterait que sur la poignée de factures `
+                  + `déjà exigibles, et se lirait comme un redressement.`
+                : '';
+        }
 
         if (!mois.length || !series.length) {
             U.chart('chart-evo-categorie', videConfig('Pas assez de factures échues pour tracer une évolution'));

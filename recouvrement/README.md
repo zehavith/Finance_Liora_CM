@@ -217,6 +217,26 @@ Le groupe *Factures non payées : Perte / Contentieux* contient le mot « payée
 sans rien devoir au règlement : la négation est vérifiée avant tout, et ces
 factures sont classées en contentieux, non en réglées.
 
+### Une cohorte encore en cours ne se mesure pas
+
+La courbe *Évolution du % en recouvrement par catégorie* plongeait à zéro sur
+ses derniers mois. Ce zéro était faux, et il se lisait comme un redressement.
+
+Deux causes, toutes deux corrigées :
+
+- Un mois récent n'a presque aucune facture échue : son taux se calculait sur
+  la poignée déjà exigible — souvent réglée à l'heure. Un mois n'est désormais
+  tracé que lorsque **quatre cinquièmes de ses factures sont exigibles**.
+- La maturité se jugeait sur l'état de la facture, pas sur les dates. Or une
+  facture **réglée d'avance** porte l'état « Payée », pas « Non échue » : elle
+  passait pour exigible et fabriquait un taux de 0 % sur des mois à venir — la
+  courbe descendait jusqu'en février 2028, dix-huit mois après la date
+  d'arrêté. La maturité se lit maintenant sur la date d'échéance comparée à la
+  date d'arrêté.
+
+Les mois écartés ne disparaissent pas en silence : une ligne sous le graphique
+dit où la courbe s'arrête et pourquoi.
+
 ### Le tampon n'est pas une catégorie
 
 Le **tampon** est le sas où la facture attend avant d'entrer dans le circuit.
