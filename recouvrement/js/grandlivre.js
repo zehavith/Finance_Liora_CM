@@ -1340,6 +1340,26 @@
         // sont elles qui font l'échéance. Sans elles, la balance âgée vieillit
         // sur la date de facture, qui ne dit rien du dispositif.
         const datesSellsy = new Map();
+        // Les dates de formation que portent les factures Monday.
+        //
+        // Monday ne servait qu'à établir le financement d'une créance, jamais à
+        // la dater — alors que ses tableaux portent « Début de service » et
+        // « Fin de service ». Pour l'alternance, c'est le seul chemin : les
+        // factures « FCT-FILIZ-… » sont émises par Filiz et n'existent pas dans
+        // Sellsy, qui ne peut donc rien en dire. C'est aussi par là que le
+        // fichier du financeur atteint la balance âgée comptable : il complète
+        // Monday, et Monday complète la créance.
+        const datesMonday = new Map();
+        for (const f of (o.factures || [])) {
+            if (!f.cle) continue;
+            if (!f.dateDebutFormation && !f.dateFinFormation && !f.dateFacture) continue;
+            if (datesMonday.has(f.cle)) continue;
+            datesMonday.set(f.cle, {
+                debut: f.dateDebutFormation || null,
+                fin: f.dateFinFormation || null,
+                facture: f.dateFacture || null,
+            });
+        }
         // Les factures que le champ personnalisé de Sellsy déclare en
         // alternance. C'est la source la plus sûre pour les factures « FACT-… »,
         // là où le numéro Filiz le dit pour les autres.
@@ -1396,7 +1416,7 @@
             if (nom && !mandats.has(nom)) mandats.set(nom, v);
         }
         return { parCle, parSellsy, parCompte, parTiers, parNom, parNomSellsy, brutSellsy,
-                 datesSellsy, statutsSellsy, alternanceSellsy, mandats, noter };
+                 datesSellsy, datesMonday, statutsSellsy, alternanceSellsy, mandats, noter };
     }
 
     /**
@@ -1493,13 +1513,26 @@
         const avecSellsy = c => {
             const d = c.cle ? idx.datesSellsy.get(c.cle) : null;
             const type = c.cle ? idx.brutSellsy.get(c.cle) : null;
+            // Ce que Monday sait de la formation. Sur l'alternance, c'est la
+            // seule source : les factures « FCT-FILIZ-… » ne passent pas par
+            // Sellsy. Elle ne remplit que les vides, après l'extrait et après
+            // la facturation.
+            const m = c.cle ? idx.datesMonday.get(c.cle) : null;
             // Même sans rien trouver à la facturation, l'échéance doit suivre
             // la colonne AA jusqu'au bout : la date lue dans le libellé, puis
             // la date d'enregistrement. Sortir ici privait d'échéance mille
             // sept cents créances sur un extrait sans colonne d'échéance.
             if (!d && !type) {
-                return c.dateEcheance ? c
-                    : { ...c, dateEcheance: c.dateEcheanceRepli || null };
+                // Monday peut malgré tout porter les dates de formation : les
+                // abandonner ici, c'était renoncer à dater toute l'alternance.
+                const base = m ? {
+                    ...c,
+                    dateDebutFormation: c.dateDebutFormation || m.debut || null,
+                    dateFinFormation: c.dateFinFormation || m.fin || null,
+                    dateFactureFacturation: c.dateFactureFacturation || m.facture || null,
+                } : c;
+                return base.dateEcheance ? base
+                    : { ...base, dateEcheance: base.dateEcheanceRepli || null };
             }
             const email = (d && d.email) ? '@' + d.email : '';
             const nom = R.norm((d && d.client) || c.tiers || '');
@@ -1530,9 +1563,9 @@
                 // Une date de formation n'est pas une échéance concurrente :
                 // c'est un fait sur la formation. Elle est reprise, et c'est
                 // la règle du dispositif qui décide ensuite quoi en faire.
-                dateDebutFormation: c.dateDebutFormation || (d ? d.debut : null) || null,
-                dateFinFormation: c.dateFinFormation || (d ? d.fin : null) || null,
-                dateFactureFacturation: c.dateFactureFacturation || (d ? d.facture : null) || null,
+                dateDebutFormation: c.dateDebutFormation || (d ? d.debut : null) || (m ? m.debut : null) || null,
+                dateFinFormation: c.dateFinFormation || (d ? d.fin : null) || (m ? m.fin : null) || null,
+                dateFactureFacturation: c.dateFactureFacturation || (d ? d.facture : null) || (m ? m.facture : null) || null,
                 // AA : l'échéance du grand livre, sinon celle de la facturation,
                 // sinon la date lue dans le libellé, sinon l'enregistrement.
                 dateEcheance: c.dateEcheance || (d && d.echeance) || c.dateEcheanceRepli || null,

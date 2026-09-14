@@ -1383,36 +1383,6 @@
             }
             if (finRededuit) f.financement = finRededuit;
 
-            // Tampon : le sas où la facture attend avant d'entrer dans le
-            // circuit. Aucune relance n'y est faite — ni ADV, ni recouvrement.
-            // Une facture qui y est encore, ou qui a été réglée sans jamais en
-            // sortir, gonfle les taux sans qu'aucun travail ait été fourni :
-            // pouvoir l'écarter est le seul moyen de mesurer ce travail.
-            //
-            // Le tampon se lit partout où la facture a laissé une trace : le
-            // tableau où elle est, celui d'où elle vient, son rôle, et les
-            // groupes traversés — une facture passée au tampon puis réglée ne
-            // porte plus que son groupe d'origine pour le dire.
-            //
-            // Deux faits distincts, qui se confondaient sous un seul nom et
-            // donnaient deux nombres contradictoires sur le même écran : le
-            // sélecteur retirait un millier de factures là où la puce du
-            // circuit en annonçait deux.
-            //
-            //  · enTampon    — elle y est aujourd'hui. C'est ce que retire le
-            //                  sélecteur « Factures en tampon : Exclues ».
-            //  · traceTampon — elle y est passée. Sortir du tampon est déjà du
-            //                  travail : une facture arrivée en ADV ou en
-            //                  recouvrement n'est plus dans le sas, même si son
-            //                  groupe d'origine en garde le souvenir.
-            const auTampon = t => /tampon/.test(R.norm(t || ''));
-            f.enTampon = f.role === 'tampon'
-                || auTampon(f.boardOperationnel || f.board)
-                || auTampon(f.groupeOperationnel || f.groupe);
-            f.traceTampon = f.enTampon
-                || (f.presenceRoles || [f.role]).includes('tampon')
-                || [f.groupeOrigine, f.groupePaiement, ...(f.presenceTableaux || [])].some(auTampon);
-
             // Une correction saisie à la main l'emporte sur toute déduction, et
             // précède le calcul de l'échéance : c'est la règle du financement
             // choisi qui doit s'appliquer. La correction est retenue sur le

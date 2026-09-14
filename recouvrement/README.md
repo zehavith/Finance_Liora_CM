@@ -217,38 +217,14 @@ Le groupe *Factures non payées : Perte / Contentieux* contient le mot « payée
 sans rien devoir au règlement : la négation est vérifiée avant tout, et ces
 factures sont classées en contentieux, non en réglées.
 
-### Écarter les factures en tampon
+### Le tampon n'est pas une catégorie
 
-Le **tampon** est le sas où la facture attend avant d'entrer dans le circuit :
-ni l'ADV ni le recouvrement n'y touchent. Une facture qui s'y trouve encore, ou
-qui a été réglée sans jamais en sortir, entre dans les totaux facturés et
-encaissés alors qu'**aucune relance n'a été faite dessus**.
-
-Le sélecteur **Factures en tampon** de la barre de filtres — *Incluses* /
-*Exclues* — les retire de toute l'application : indicateurs, graphiques,
-tableaux et export. Sous le sélecteur, deux nombres, toujours visibles et
-cliquables, disent exactement ce qui bouge.
-
-- **Incluses** (par défaut) : la photographie complète du portefeuille, telle
-  qu'elle sort de Monday.
-- **Exclues** : le travail réellement fourni par l'ADV et le recouvrement.
-
-Deux faits distincts, qui portaient le même nom et donnaient deux nombres
-contradictoires sur le même écran :
-
-| Fait | Ce qu'il dit | Effet du sélecteur |
-|---|---|---|
-| **En tampon** | la facture y est aujourd'hui : son tableau ou son groupe est le tampon | *Exclues* la retire |
-| **Passée par le tampon** | elle en a gardé la trace — rôle, groupe d'origine conservé au règlement — mais elle a depuis atteint l'ADV, le recouvrement ou le règlement | elle reste comptée |
-
-**Sortir du tampon est déjà du travail.** Une facture qui a atteint l'ADV ou le
-recouvrement n'est plus dans le sas, même si son groupe d'origine en garde le
-souvenir : la retirer reviendrait à effacer les relances qui ont suivi. Les deux
-nombres sont affichés côte à côte, et chacun ouvre sa liste.
-
-Les puces **Étape du circuit** comptent, elles aussi, tout le portefeuille de
-l'étape — comme les puces de financement et d'état juste au-dessus. Le détail du
-retard est dans l'infobulle.
+Le **tampon** est le sas où la facture attend avant d'entrer dans le circuit.
+C'est un endroit, pas une nature : une facture qui s'y trouve est une créance
+comme une autre, et **elle est traitée d'après son échéance**, comme toutes les
+autres. Il n'y a donc ni filtre ni catégorie « tampon » — le tableau reste un
+tableau, visible dans l'inventaire par tableau et dans les puces *Étape du
+circuit*, et ses factures comptent partout.
 
 ### Corriger un financement à la main
 
@@ -392,6 +368,23 @@ passées, et toutes portent l'étape « Réglée ».
 
 Le chemin API de Monday n'était pas concerné : il lit le groupe de l'élément.
 
+### Les dates de Monday atteignent la balance âgée comptable
+
+Une créance du grand livre tirait ses dates de formation de l'extrait, puis de
+Sellsy — jamais de Monday, qui ne servait qu'à établir son financement. Pour
+l'alternance, c'était une impasse : les factures **« FCT-FILIZ-… »** sont émises
+par Filiz et **n'existent pas dans Sellsy**, qui ne peut donc rien en dire. Seuls
+les tableaux Monday portent leurs « Début de service » et « Fin de service ».
+
+La chaîne est désormais complète, et chaque maillon ne remplit que les vides :
+
+> fichier du financeur → **facture Monday** → **créance du grand livre** → vos règles
+
+L'ordre reste le même : l'extrait d'abord, la facturation ensuite, Monday en
+dernier. Une date déjà portée n'est jamais remplacée, et aucune échéance ne
+voyage — seules les dates de formation, à qui vos règles appliquent ensuite le
+délai du dispositif.
+
 ### Le fichier du financeur (Filiz, Transition Pro…)
 
 Les tableaux d'alternance ne portent **ni date de début ni date de fin de
@@ -426,6 +419,11 @@ Le rapprochement se fait sur **trois clés**, du plus sûr au moins sûr :
    prénom seul ne rapproche rien, et un apprenant présent deux fois dans le
    fichier — deux contrats — est écarté plutôt que de dater une facture avec la
    formation d'à côté.
+
+L'alternance n'a pas de tableau à elle : elle vit dans les tableaux **ADV**,
+**Recouvrement** et **OPCO**. C'est donc à eux qu'il faut donner la colonne
+*Nom Prénom Apprenant* — 1 640 factures *FCT-FILIZ* la portent déjà sur le
+tableau des factures payées.
 
 Mesuré sur l'export Filiz réel (498 dossiers) et *0.1. ALL - Factures payées* :
 **1 163 factures rapprochées par le nom**, dont **844 portent exactement la même

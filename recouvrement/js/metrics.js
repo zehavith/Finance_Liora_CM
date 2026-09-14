@@ -84,11 +84,6 @@
             if (x.etat === ETAT_AVOIR && !f.inclureAvoirs
                 && !(f.etats && f.etats.has(ETAT_AVOIR))) return false;
 
-            // Tampon : le sas d'attente avant le circuit. Aucune relance n'y
-            // est faite, donc rien de ce qui s'y trouve ne mesure le travail
-            // fourni.
-            if (f.exclureTampon && x.enTampon) return false;
-
             if (f.perimetre && f.perimetre !== 'Tous' && x.perimetre !== f.perimetre) return false;
 
             // Ne montrer que les créances qu'on ne sait pas dater : c'est la

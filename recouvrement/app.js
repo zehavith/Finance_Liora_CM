@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.88.0';
+    const VERSION = '2.89.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -109,7 +109,6 @@
             client: null,
             etapes: null,
             qualif: null,
-            exclureTampon: false,
             // Les créances annulées par un avoir : hors du portefeuille par
             // défaut, puisque rien n'est rentré et que rien n'est à relancer.
             inclureAvoirs: false,
@@ -828,7 +827,6 @@
         if (f.etats && f.etats.size) add('État : ' + [...f.etats].join(', '), () => { f.etats = null; rendreChipsEtats(); });
         if (f.recherche) add('Recherche : ' + f.recherche, () => { f.recherche = ''; $('#search-input').value = ''; });
         if (f.mois) add(`Période : ${f.mois.size} mois sur ${state.moisDispo.length}`, () => { f.mois = null; rendreBoutonsMois(); });
-        if (f.exclureTampon) add('Tampon exclu', () => { f.exclureTampon = false; majSegments(); });
         if (f.inclureAvoirs) add('Avoirs inclus', () => { f.inclureAvoirs = false; majSegments(); });
         if (f.inclureSellsyManquantes) {
             add('Absentes de Monday incluses', () => {
@@ -856,7 +854,6 @@
         f.mois = null; f.perimetre = 'Tous'; f.financements = null; f.etats = null;
         f.boards = null; f.bucket = null; f.client = null; f.recherche = '';
         f.retardMin = null; f.retardMax = null; f.etapes = null; f.qualif = null;
-        f.exclureTampon = false;
         f.sansEcheance = false;
         f.sources = new Set(['recouvrement', 'adv', 'opco', 'b2c']);
         $('#search-input').value = '';
@@ -899,65 +896,6 @@
         $$('#seg-avoirs .seg-btn').forEach(b =>
             b.classList.toggle('active',
                 (b.dataset.avoirs === 'inclure') === !!state.filtres.inclureAvoirs));
-        $$('#seg-tampon .seg-btn').forEach(b =>
-            b.classList.toggle('active',
-                (b.dataset.tampon === 'exclure') === !!state.filtres.exclureTampon));
-        rendreAideTampon();
-    }
-
-    /**
-     * Rappelle combien de factures sont passées par le tampon, pour que le choix
-     * « Incluses / Exclues » se fasse en connaissance de cause.
-     */
-    function rendreAideTampon() {
-        const el = $('#compte-tampon');
-        const aide = $('#aide-tampon');
-        if (aide) {
-            aide.textContent = 'Le sas d\'attente avant le circuit : aucune relance n\'y est faite. '
-                + 'Les exclure montre le travail réellement fourni par ADV et le recouvrement. '
-                + 'Une facture qui en est sortie — vers l\'ADV, le recouvrement, le règlement — '
-                + 'n\'est plus dans le sas : elle reste comptée.';
-        }
-        if (!el) return;
-        const utiles = state.factures.filter(f =>
-            !(f.role === 'technique' || f.groupeTechnique || f.role === 'ignore'));
-        const dedans = utiles.filter(f => f.enTampon);
-        const passees = utiles.filter(f => f.traceTampon && !f.enTampon);
-        const lien = (n, cle) => `<button class="lien-cellule" data-tampon="${cle}">`
-            + `<strong>${U.nombre(n)}</strong></button>`;
-
-        el.innerHTML = '« Exclues » retire '
-            + (dedans.length ? lien(dedans.length, 'dedans') : '<strong>0</strong>')
-            + ' facture' + (dedans.length > 1 ? 's' : '')
-            + (passees.length
-                ? ' · ' + lien(passees.length, 'passees') + ' en sont sorties, et restent comptées'
-                : '');
-
-        $$('[data-tampon]', el).forEach(b => b.addEventListener('click', () => {
-            const dedansCi = b.dataset.tampon === 'dedans';
-            const items = dedansCi ? dedans : passees;
-            montrerFacturesListe(
-                dedansCi ? 'Factures actuellement en tampon' : 'Factures passées par le tampon',
-                items,
-                dedansCi
-                    ? 'Leur tableau ou leur groupe est le tampon : elles attendent d\'entrer dans '
-                      + 'le circuit. Ce sont celles que « Exclues » retire de tous les chiffres.'
-                    : 'Elles ont laissé une trace du tampon — rôle, groupe d\'origine conservé au '
-                      + 'règlement — mais elles ont depuis atteint l\'ADV, le recouvrement ou le '
-                      + 'règlement. Elles comptent donc dans tous les chiffres.',
-                { colonnesSup: [
-                    { key: 'board', label: 'Tableau',
-                      format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
-                    { key: 'groupeOrigine', label: 'Groupe d’origine',
-                      format: (v, r) => U.escapeHtml(v || r.groupePaiement || '—') },
-                    { key: 'presenceRoles', label: 'Tableaux traversés',
-                      format: v => U.escapeHtml((v || []).map(k => R.ROLE_LABELS[k] || k).join(' · ') || '—') },
-                    { key: 'etat', label: 'État',
-                      format: v => `<span class="pill ${U.etatClass(v)}">${U.escapeHtml(v || '—')}</span>` },
-                  ],
-                  onExport: rows => exporterFacturesSimple(rows,
-                      dedansCi ? 'Factures en tampon' : 'Factures passées par le tampon') });
-        }));
     }
 
     function appliquerOptionsAuxCases() {
@@ -976,7 +914,6 @@
         rendreChipsSources();
         rendreChipsFinancements();
         rendreChipsEtats();
-        rendreAideTampon();
         majFiltreSellsyManquantes();
         rendreFiltresActifs();
         majBadgesPeriode(data);
@@ -10442,7 +10379,6 @@
         if (f.client) out.push({ 'Filtre': 'Client', 'Valeur': f.client });
         if (f.recherche) out.push({ 'Filtre': 'Recherche', 'Valeur': f.recherche });
         if (f.bucket) out.push({ 'Filtre': "Tranche d'ancienneté", 'Valeur': f.bucket });
-        if (f.exclureTampon) out.push({ 'Filtre': 'Tampon', 'Valeur': 'exclu' });
         if (f.sansEcheance) out.push({ 'Filtre': 'Échéance', 'Valeur': 'seulement les factures non datées' });
         out.push({ 'Filtre': '—', 'Valeur': '' });
         out.push({ 'Filtre': 'Factures exportées',
@@ -11055,12 +10991,6 @@
             rendreTout();
         }));
 
-        $$('#seg-tampon .seg-btn').forEach(b => b.addEventListener('click', () => {
-            state.filtres.exclureTampon = b.dataset.tampon === 'exclure';
-            majSegments();
-            state.ui.page = 1;
-            rendreTout();
-        }));
         $$('#seg-avoirs .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.filtres.inclureAvoirs = b.dataset.avoirs === 'inclure';
             majSegments();
