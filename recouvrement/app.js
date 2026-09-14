@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.91.0';
+    const VERSION = '2.92.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -1063,8 +1063,20 @@
             : '';
 
         $('#kpi-retard-moyen').textContent = U.jours(v.retardMoyen);
-        $('#kpi-retard-moyen-sub').textContent = v.retardMedian != null
-            ? `médiane ${U.jours(v.retardMedian)} · max ${U.jours(v.retardMax)}` : '';
+        // « C'est tiré par quelques vieux dossiers » est la première objection
+        // qu'on oppose à un retard moyen élevé. La médiane y répond, mais
+        // seulement si on sait la lire : au-dessus de la moyenne, la moitié des
+        // factures est encore plus en retard que la moyenne ne le dit — ce
+        // n'est pas la queue de la distribution, c'est le gros du stock.
+        const mediane = v.retardMedian;
+        $('#kpi-retard-moyen-sub').innerHTML = mediane != null
+            ? `médiane ${U.escapeHtml(U.jours(mediane))} · max ${U.escapeHtml(U.jours(v.retardMax))}`
+              + (mediane >= v.retardMoyen
+                  ? `<span class="cell-mini">la médiane dépasse la moyenne : la moitié des factures `
+                    + `est plus en retard que ça — ce n'est pas quelques vieux dossiers, c'est le gros du stock</span>`
+                  : `<span class="cell-mini">la médiane est sous la moyenne : quelques créances très `
+                    + `anciennes tirent la moyenne vers le haut</span>`)
+            : '';
 
         $('#kpi-retard-pondere').textContent = U.jours(v.retardMoyenPondere);
 
@@ -1152,9 +1164,13 @@
                 couleur: U.couleurs.payeRetard,
                 taux: eur ? v.tauxPortefeuilleRegleRetard : pct(v.nbPayeesRetard, v.total),
                 etats: ['Payée en retard'],
-                label: 'Réglé en recouvrement',
+                // « Réglé en recouvrement » et « % en recouvrement » voisinaient
+                // sur le même écran sans compter la même chose : l'un est la
+                // part du portefeuille récupérée après coup, l'autre la part du
+                // facturé encore en retard. Le mot ne sert plus qu'une fois.
+                label: 'Récupéré par le recouvrement',
                 valeur: val(v.eurosPayeesRetard, v.nbPayeesRetard),
-                sub: "tombé en recouvrement, puis finalement encaissé",
+                sub: "réglé après l'échéance, donc allé le chercher",
             }),
             tuile({
                 couleur: U.couleurs.retard,
@@ -2873,10 +2889,12 @@
             l2: 'Factures en retard',
             a2: "Nombre de factures dont l'échéance calculée est dépassée et qui ne sont pas réglées, "
               + 'tous tableaux confondus.',
-            l3: '% en recouvrement (€)',
+            l3: '% du facturé en retard',
             a3: 'Montant en retard divisé par le <strong>total facturé</strong> de la période. '
               + "À ne pas confondre avec la part du reste à encaisser qui est en retard : ce second "
-              + 'pourcentage, plus élevé, figure sous « Reste à encaisser ».',
+              + 'pourcentage, plus élevé, figure sous « Reste à encaisser ». Ni avec '
+              + '« Récupéré par le recouvrement », qui mesure ce qui est <strong>rentré</strong> '
+              + 'après échéance, là où celui-ci mesure ce qui est <strong>encore dehors</strong>.',
         };
         const poser = (n, label, aide) => {
             const l = $(`#aide-kpi-${n}-label`); if (l) l.textContent = label;
@@ -3160,15 +3178,17 @@
         const note = $('#regl-note');
         const avant = r.nb - r.nbEnRetard;
         if (note) {
+            // Une hypothèse n'a rien à faire sur un tableau de bord qu'on
+            // présente : elle appelle une question à laquelle on ne peut pas
+            // répondre en réunion. Le fait est rappelé en une ligne, et la
+            // tuile ouvre les factures ; l'explication et son incertitude sont
+            // dans l'onglet Data Quality, qui est fait pour ça.
             note.hidden = !(viaRecouv && avant > 0);
             note.innerHTML = (viaRecouv && avant > 0)
-                ? `<p><strong>${U.nombre(avant)} factures passées par le recouvrement apparaissent
-                   payées avant leur échéance.</strong> Vous avez raison de trouver ça contradictoire :
-                   une facture n'entre en recouvrement qu'une fois échue. L'explication la plus probable
-                   est la <strong>réémission après correction</strong> — la nouvelle date de facture
-                   repousse l'échéance calculée après la date de règlement. Mais c'est une hypothèse :
-                   <strong>ouvrez la tuile « Payées avant échéance » pour voir ces factures</strong> et
-                   juger sur pièces.</p>`
+                ? `<p>${U.nombre(avant)} de ces factures apparaissent réglées avant leur échéance
+                   calculée. Ce sont, pour l'essentiel, des factures refaites — la nouvelle date
+                   repousse l'échéance après le règlement. La tuile « Payées avant échéance »
+                   les ouvre ; l'onglet <strong>Data Quality</strong> en tient le détail.</p>`
                 : '';
         }
 
@@ -10442,13 +10462,13 @@
             { Indicateur: 'Factures en retard', Valeur: v.nbEnRetard },
             { Indicateur: 'Montant en retard (€)', Valeur: Math.round(v.eurosEnRetard) },
             { Indicateur: '% en recouvrement (nombre)', Valeur: +v.tauxNb.toFixed(2) },
-            { Indicateur: '% en recouvrement (€)', Valeur: +v.tauxEuros.toFixed(2) },
+            { Indicateur: '% du facturé en retard', Valeur: +v.tauxEuros.toFixed(2) },
             { Indicateur: '% cohorte échue en retard (nombre)', Valeur: +v.tauxCohorteNb.toFixed(2) },
             { Indicateur: '% cohorte échue en retard (€)', Valeur: +v.tauxCohorteEuros.toFixed(2) },
             { Indicateur: "Réglé avant l'échéance — nombre", Valeur: v.nbRegleATemps },
             { Indicateur: "Réglé avant l'échéance — % (nombre)", Valeur: +v.tauxRegleATempsNb.toFixed(2) },
             { Indicateur: "Réglé avant l'échéance — % (€)", Valeur: +v.tauxRegleATempsEuros.toFixed(2) },
-            { Indicateur: 'Réglé en recouvrement — % (€)', Valeur: +v.tauxRegleRetardEuros.toFixed(2) },
+            { Indicateur: 'Récupéré par le recouvrement — % (€)', Valeur: +v.tauxRegleRetardEuros.toFixed(2) },
             { Indicateur: 'Reste à recouvrer — % (€)', Valeur: +v.tauxResteEuros.toFixed(2) },
             { Indicateur: 'Jamais passé par le recouvrement — % (€)', Valeur: +v.tauxHorsRecouvrementEuros.toFixed(2) },
             { Indicateur: 'Retard moyen (jours)', Valeur: v.retardMoyen == null ? '' : Math.round(v.retardMoyen) },
@@ -10510,7 +10530,7 @@
                     'dont non échu (€)': Math.round(n.eurNonEchu),
                     'En recouvrement (€)': Math.round(n.eurEnRecouvrement),
                     'Reste dû (€)': Math.round(n.encoursEnRecouvrement),
-                    '% en recouvrement (€)': +n.tauxEur.toFixed(2),
+                    '% du facturé en retard': +n.tauxEur.toFixed(2),
                     'Retard moyen (j)': n.retardMoyen == null ? '' : Math.round(n.retardMoyen),
                 });
                 if (n.enfants.length) aplatir(n.enfants);
