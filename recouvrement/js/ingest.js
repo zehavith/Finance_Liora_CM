@@ -710,6 +710,17 @@
      *   · paye / datePaiementEffective / originePaiement
      *   · presenceTableaux : liste des tableaux où elle apparaît
      */
+    /**
+     * Le couple « tableau › groupe », écrit une fois pour toutes.
+     *
+     * Le nom du tableau ne suffit pas à situer une facture : « 0.1. ALL -
+     * Factures payées » porte un groupe par origine, et c'est au groupe que se
+     * voit une récupération incomplète.
+     */
+    function cleGroupe(l) {
+        return (l.board || '—') + ' › ' + (l.groupe || '(sans groupe)');
+    }
+
     function consolider(toutes) {
         const parCle = new Map();
         const sansCle = [];
@@ -767,6 +778,12 @@
             f.cle = cle;
             f.presenceTableaux = [...new Set(groupe.map(g => g.board))];
             f.presenceRoles = [...new Set(groupe.map(g => g.role))];
+            // Le tableau seul ne suffit plus : « 0.1. ALL - Factures payées »
+            // porte un groupe par origine — ADV, B2C… — et c'est au groupe que
+            // se voit une récupération incomplète. Le couple tableau › groupe
+            // permet de rendre chaque facture à son groupe, même quand elle est
+            // comptée ailleurs.
+            f.presenceGroupes = [...new Set(groupe.map(g => cleGroupe(g)))];
             f.doublon = groupe.length > 1;
 
             // Deux familles de doublons, qui ne se corrigent pas pareil.
@@ -823,6 +840,7 @@
         for (const f of sansCle) {
             f.presenceTableaux = [f.board];
             f.presenceRoles = [f.role];
+            f.presenceGroupes = [cleGroupe(f)];
             f.doublon = false;
             if (f.role === 'payees' && !/non pay/.test(R.norm(f.groupe || ''))) {
                 f.paye = true; f.originePaiement = 'Tableau factures payées';
@@ -1154,12 +1172,25 @@
             // tableau où elle est, celui d'où elle vient, son rôle, et les
             // groupes traversés — une facture passée au tampon puis réglée ne
             // porte plus que son groupe d'origine pour le dire.
-            f.enTampon = (f.presenceRoles || [f.role]).includes('tampon')
-                || /tampon/.test(R.norm([
-                    f.board, f.groupe, f.groupeOrigine, f.groupePaiement,
-                    f.boardOperationnel, f.groupeOperationnel,
-                    ...(f.presenceTableaux || []),
-                ].filter(Boolean).join(' ')));
+            //
+            // Deux faits distincts, qui se confondaient sous un seul nom et
+            // donnaient deux nombres contradictoires sur le même écran : le
+            // sélecteur retirait un millier de factures là où la puce du
+            // circuit en annonçait deux.
+            //
+            //  · enTampon    — elle y est aujourd'hui. C'est ce que retire le
+            //                  sélecteur « Factures en tampon : Exclues ».
+            //  · traceTampon — elle y est passée. Sortir du tampon est déjà du
+            //                  travail : une facture arrivée en ADV ou en
+            //                  recouvrement n'est plus dans le sas, même si son
+            //                  groupe d'origine en garde le souvenir.
+            const auTampon = t => /tampon/.test(R.norm(t || ''));
+            f.enTampon = f.role === 'tampon'
+                || auTampon(f.boardOperationnel || f.board)
+                || auTampon(f.groupeOperationnel || f.groupe);
+            f.traceTampon = f.enTampon
+                || (f.presenceRoles || [f.role]).includes('tampon')
+                || [f.groupeOrigine, f.groupePaiement, ...(f.presenceTableaux || [])].some(auTampon);
 
             // Une correction saisie à la main l'emporte sur toute déduction, et
             // précède le calcul de l'échéance : c'est la règle du financement

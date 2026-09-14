@@ -565,6 +565,43 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
 }
 .regles-bloc > summary:hover { color: var(--accent); }
 .regles-bloc > div { margin-top: 0.9rem; }
+
+/* Même mécanique partout où un détail long suit une lecture courte :
+   présent, replié, ouvert d'un clic. */
+.bloc-repli { margin-top: 1rem; }
+.bloc-repli > summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    padding: 0.35rem 0;
+}
+.bloc-repli > summary:hover { color: var(--accent); }
+.bloc-repli > div, .bloc-repli > ol, .bloc-repli > ul { margin-top: 0.75rem; }
+
+/* Le compte qui accompagne un sélecteur de filtre : petit, sous les boutons,
+   et cliquable — un nombre de factures doit toujours mener à ses factures. */
+.filter-compte {
+    display: block;
+    margin-top: 0.3rem;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    line-height: 1.35;
+}
+.filter-compte .lien-cellule { font-size: 0.72rem; }
+
+/* L'addition d'une ligne TOTAL, posée sous son tableau. */
+.aging-somme {
+    margin-top: 0.7rem;
+    padding: 0.6rem 0.9rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    background: var(--bg-elevated, rgba(255,255,255,0.02));
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+.aging-somme strong { color: var(--text-primary); }
+.aging-somme .somme-signe { color: var(--text-muted); margin: 0 0.35rem; }
 .st-inconnu { background: rgba(255, 255, 255, 0.05); color: var(--text-muted); }
 
 /* ============================

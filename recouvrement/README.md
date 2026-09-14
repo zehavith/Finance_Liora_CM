@@ -226,19 +226,29 @@ encaissés alors qu'**aucune relance n'a été faite dessus**.
 
 Le sélecteur **Factures en tampon** de la barre de filtres — *Incluses* /
 *Exclues* — les retire de toute l'application : indicateurs, graphiques,
-tableaux et export. La ligne d'aide indique combien de factures sont
-concernées, et un badge rappelle le filtre tant qu'il est actif.
+tableaux et export. Sous le sélecteur, deux nombres, toujours visibles et
+cliquables, disent exactement ce qui bouge.
 
 - **Incluses** (par défaut) : la photographie complète du portefeuille, telle
   qu'elle sort de Monday.
 - **Exclues** : le travail réellement fourni par l'ADV et le recouvrement.
 
-Le tampon est reconnu partout où la facture en a gardé la trace — le tableau où
-elle est, celui d'où elle vient, son rôle, et les groupes traversés. Une facture
-passée au tampon puis réglée ne porte plus que son groupe d'origine pour le
-dire : la chercher uniquement sur le tableau courant en manquerait la moitié.
+Deux faits distincts, qui portaient le même nom et donnaient deux nombres
+contradictoires sur le même écran :
 
-Les deux lectures sont justes ; c'est la question posée qui change.
+| Fait | Ce qu'il dit | Effet du sélecteur |
+|---|---|---|
+| **En tampon** | la facture y est aujourd'hui : son tableau ou son groupe est le tampon | *Exclues* la retire |
+| **Passée par le tampon** | elle en a gardé la trace — rôle, groupe d'origine conservé au règlement — mais elle a depuis atteint l'ADV, le recouvrement ou le règlement | elle reste comptée |
+
+**Sortir du tampon est déjà du travail.** Une facture qui a atteint l'ADV ou le
+recouvrement n'est plus dans le sas, même si son groupe d'origine en garde le
+souvenir : la retirer reviendrait à effacer les relances qui ont suivi. Les deux
+nombres sont affichés côte à côte, et chacun ouvre sa liste.
+
+Les puces **Étape du circuit** comptent, elles aussi, tout le portefeuille de
+l'étape — comme les puces de financement et d'état juste au-dessus. Le détail du
+retard est dans l'infobulle.
 
 ### Corriger un financement à la main
 
@@ -341,6 +351,23 @@ C'est le premier endroit à regarder quand un chiffre paraît trop bas. Une
 colonne *Sans échéance* élevée signale des colonnes de dates non reconnues sur
 ce tableau : la correspondance se corrige juste en dessous. Un écart entre
 *Sur Monday* et *Chargées* signale un chargement incomplet.
+
+### Inventaire par groupe
+
+Un tableau peut être complet et un de ses groupes manquer entièrement. Le
+tableau *0.1. ALL - Factures payées* porte un groupe par origine — *0.1.1.
+Factures Payées ADV*, *0.1.5. Factures payées B2C* — et un groupe absent se
+noyait dans les milliers de lignes du total.
+
+Le bloc replié **Chaque groupe, ligne par ligne**, sous l'inventaire par
+tableau, donne pour chaque couple tableau › groupe : les lignes chargées, les
+écartées, celles analysées ici, celles analysées ailleurs, et la répartition
+entre sans échéance, en retard, non échues et payées. Chaque nombre ouvre ses
+factures.
+
+Monday affiche le nombre d'éléments en tête de chaque groupe replié : c'est ce
+nombre-là qu'il faut comparer à la colonne *Chargées*. Un groupe qui n'apparaît
+pas du tout dans la liste n'a jamais été récupéré.
 
 ### Trois familles de doublons
 
@@ -717,7 +744,7 @@ classeur qui reprend la structure du fichier de trésorerie, neuf onglets :
 
 Les deux synthèses sont recalculées à l'export, quel que soit le niveau affiché
 à l'écran : un export n'a pas à dépendre de l'onglet ouvert. Chaque synthèse
-suit l'ordre de colonnes du classeur — *Restant dû*, *Total échu*, les tranches
+suit l'ordre de colonnes du classeur — *Restant dû*, *Échu*, les tranches
 de la plus ancienne à la plus récente, *Non échu*, *Solde créditeur*, *Total*,
 *Nb* — et se termine par sa ligne TOTAL.
 
@@ -1408,8 +1435,19 @@ L'onglet **Balance âgée** propose trois lectures, au choix :
   appliqués. C'est la vue historique.
 - **D'après le grand livre** — le solde des comptes clients, ventilé par
   financement et par ancienneté, dans la présentation du tableau de trésorerie :
-  *Total échu*, puis les tranches de la plus ancienne à la plus récente, puis
-  *Non échu*.
+  *Échu*, puis les tranches de la plus ancienne à la plus récente, puis
+  *Non échu*, *Solde créditeur* et *Total*.
+
+  **Comment se lit la ligne TOTAL.** La colonne *Échu* n'est pas le total d'une
+  ligne : c'est la somme des seules tranches d'ancienneté. Le *Non échu* et le
+  *Solde créditeur* sont à part, et c'est la dernière colonne qui totalise :
+
+  > Échu + Non échu + Solde créditeur = **Total**, le solde des comptes clients.
+
+  L'addition est écrite sous le tableau, avec les trois montants du moment ; un
+  écart de plus d'un euro entre elle et la colonne *Total* s'affiche en rouge.
+  La colonne s'appelait *Total échu*, ce qui la faisait lire comme un total de
+  ligne et donnait l'impression que la ligne TOTAL ne tombait pas juste.
 - **Comparer les deux** — l'écart par financement, et où il se creuse.
 
 Aucun filtre de la barre ne s'applique aux deux dernières : la comptabilité

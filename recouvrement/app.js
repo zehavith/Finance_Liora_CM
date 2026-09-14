@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.84.0';
+    const VERSION = '2.85.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -720,10 +720,22 @@
         for (const s of R.SOURCES) {
             const b = document.createElement('button');
             b.className = 'chip' + (state.filtres.sources.has(s.key) ? ' active' : '');
-            b.title = s.hint;
             b.textContent = s.label;
-            const n = state.factures.filter(f => X.sourceDe(f) === s.key && f.etat === 'En retard').length;
-            if (n) b.innerHTML += ` <span class="chip-count">${U.nombre(n)}</span>`;
+            // Cette rangée comptait les seules factures en retard, quand les
+            // puces de financement et d'état, juste au-dessus, comptent tout le
+            // portefeuille. Trois rangées, deux définitions : « ADV / Tampon 2 »
+            // voisinait avec un sélecteur qui retirait un millier de factures.
+            // Les trois disent maintenant la même chose — le nombre de factures
+            // portant cette valeur — et le retard passe dans l'infobulle.
+            const lot = state.factures.filter(f =>
+                !(f.role === 'technique' || f.groupeTechnique || f.role === 'ignore')
+                && X.sourceDe(f) === s.key);
+            const nRetard = lot.filter(f => f.etat === 'En retard').length;
+            b.title = s.hint + ` — ${U.nombre(lot.length)} factures, dont `
+                + `${U.nombre(nRetard)} en retard`;
+            if (lot.length) {
+                b.innerHTML += ` <span class="chip-count">${U.nombre(lot.length)}</span>`;
+            }
             b.addEventListener('click', () => {
                 const set = state.filtres.sources;
                 if (set.has(s.key)) set.delete(s.key); else set.add(s.key);
@@ -881,13 +893,54 @@
      * « Incluses / Exclues » se fasse en connaissance de cause.
      */
     function rendreAideTampon() {
-        const el = $('#aide-tampon');
+        const el = $('#compte-tampon');
+        const aide = $('#aide-tampon');
+        if (aide) {
+            aide.textContent = 'Le sas d\'attente avant le circuit : aucune relance n\'y est faite. '
+                + 'Les exclure montre le travail réellement fourni par ADV et le recouvrement. '
+                + 'Une facture qui en est sortie — vers l\'ADV, le recouvrement, le règlement — '
+                + 'n\'est plus dans le sas : elle reste comptée.';
+        }
         if (!el) return;
-        const n = state.factures.filter(f => f.enTampon).length;
-        const base = 'Le sas d\'attente avant le circuit : aucune relance n\'y est faite. '
-            + 'Les exclure montre le travail réellement fourni par ADV et le recouvrement.';
-        el.textContent = n ? base + ' ' + U.nombre(n) + ' facture' + (n > 1 ? 's' : '') + ' concernée'
-            + (n > 1 ? 's' : '') + '.' : base;
+        const utiles = state.factures.filter(f =>
+            !(f.role === 'technique' || f.groupeTechnique || f.role === 'ignore'));
+        const dedans = utiles.filter(f => f.enTampon);
+        const passees = utiles.filter(f => f.traceTampon && !f.enTampon);
+        const lien = (n, cle) => `<button class="lien-cellule" data-tampon="${cle}">`
+            + `<strong>${U.nombre(n)}</strong></button>`;
+
+        el.innerHTML = '« Exclues » retire '
+            + (dedans.length ? lien(dedans.length, 'dedans') : '<strong>0</strong>')
+            + ' facture' + (dedans.length > 1 ? 's' : '')
+            + (passees.length
+                ? ' · ' + lien(passees.length, 'passees') + ' en sont sorties, et restent comptées'
+                : '');
+
+        $$('[data-tampon]', el).forEach(b => b.addEventListener('click', () => {
+            const dedansCi = b.dataset.tampon === 'dedans';
+            const items = dedansCi ? dedans : passees;
+            montrerFacturesListe(
+                dedansCi ? 'Factures actuellement en tampon' : 'Factures passées par le tampon',
+                items,
+                dedansCi
+                    ? 'Leur tableau ou leur groupe est le tampon : elles attendent d\'entrer dans '
+                      + 'le circuit. Ce sont celles que « Exclues » retire de tous les chiffres.'
+                    : 'Elles ont laissé une trace du tampon — rôle, groupe d\'origine conservé au '
+                      + 'règlement — mais elles ont depuis atteint l\'ADV, le recouvrement ou le '
+                      + 'règlement. Elles comptent donc dans tous les chiffres.',
+                { colonnesSup: [
+                    { key: 'board', label: 'Tableau',
+                      format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                    { key: 'groupeOrigine', label: 'Groupe d’origine',
+                      format: (v, r) => U.escapeHtml(v || r.groupePaiement || '—') },
+                    { key: 'presenceRoles', label: 'Tableaux traversés',
+                      format: v => U.escapeHtml((v || []).map(k => R.ROLE_LABELS[k] || k).join(' · ') || '—') },
+                    { key: 'etat', label: 'État',
+                      format: v => `<span class="pill ${U.etatClass(v)}">${U.escapeHtml(v || '—')}</span>` },
+                  ],
+                  onExport: rows => exporterFacturesSimple(rows,
+                      dedansCi ? 'Factures en tampon' : 'Factures passées par le tampon') });
+        }));
     }
 
     function appliquerOptionsAuxCases() {
@@ -3605,7 +3658,9 @@
                     : '<span class="ag-zero">·</span>',
                 cls: () => 'ag-col',
             })),
-            { key: 'total', label: 'Total', align: 'right', format: U.euros, cls: () => 'ag-total' },
+            { key: 'total', label: 'Total', align: 'right',
+              title: 'Échu + non échu + solde créditeur — le solde du compte client',
+              format: U.euros, cls: () => 'ag-total' },
             // Deux comptages, et ils ne disent pas la même chose : sous le
             // montant en retard, les factures échues et impayées ; ici, toutes
             // les factures non réglées de la ligne, échues et non échues. Les
@@ -3911,7 +3966,15 @@
                 categorie: R.categorieDe(r.key, state.rules),
                 base: (libelle[r.base] || r.base) + (r.jours ? ` + ${r.jours} j` : ' (sans délai)')
                     + (r.plafondDebutFormation ? ', plafonné à début de formation + ' + r.jours + ' j' : '')
-                    + (r.fallback ? ` — à défaut ${libelle[r.fallback] || r.fallback}` : ''),
+                    // Le délai de repli était tu : « à défaut date de facture »
+                    // se lisait « date de facture, sans délai », alors que la
+                    // règle ajoute bien ses 60 jours. Le nombre s'affiche.
+                    + (r.fallback
+                        ? ` — à défaut ${libelle[r.fallback] || r.fallback}`
+                          + ((r.fallbackJours != null ? r.fallbackJours : r.jours)
+                              ? ` + ${r.fallbackJours != null ? r.fallbackJours : r.jours} j`
+                              : ' (sans délai)')
+                        : ''),
                 perimetre: r.perimetre,
             })), { vide: 'Aucune règle.' })}
             <p class="fv-hint"><strong>Classement d'une créance du grand livre</strong>, du plus sûr au moins
@@ -3995,7 +4058,12 @@
         const buckets = colonnesAnciennete();
         const cols = [
             { key: 'label', label: parCat ? 'Type de client' : 'Sous-catégorie' },
-            { key: 'echu', label: 'Total échu', align: 'right',
+            // « Total échu » se lisait comme le total de la ligne : ce n'en
+            // est qu'une part, celle qui est en retard. Le mot « total » est
+            // réservé à la dernière colonne, qui l'est vraiment.
+            { key: 'echu', label: 'Échu', align: 'right',
+              title: 'La part en retard : la somme des tranches d’ancienneté ci-contre, '
+                   + 'sans le non échu ni le solde créditeur',
               format: v => v ? `<strong>${fmtAg(v)}</strong>` : '<span class="ag-zero">·</span>',
               cls: () => 'ag-total' },
             ...buckets.map(bk => ({
@@ -4032,6 +4100,28 @@
         el.innerHTML = U.table(cols, rows, { vide: 'Aucune créance ouverte au grand livre.', total,
             onRowClick: true, rowClass: r => r.cle === GL.A_CLASSER ? 'ligne-a-classer' : '' });
         U.bindTable(el, rows, { onRowClick: r => montrerCreancesGL(r) });
+
+        // L'addition, écrite. La colonne « Échu » n'est pas le total d'une
+        // ligne et la ligne TOTAL semblait donc fausse : elle tombe juste, à
+        // condition de savoir ce qui s'additionne.
+        const somme = $('#aging-gl-somme');
+        if (somme) {
+            const ecart = b.total.total - (b.total.echu + b.total.nonEchu + (b.total.crediteur || 0));
+            somme.innerHTML = `Comment se lit la ligne TOTAL : `
+                + `<strong>${U.euros(b.total.echu)}</strong> échu`
+                + `<span class="somme-signe">+</span><strong>${U.euros(b.total.nonEchu)}</strong> non échu`
+                // Le solde créditeur est négatif : « + −1 405 512 € » se lit
+                // mal. Le signe est sorti du nombre.
+                + `<span class="somme-signe">${(b.total.crediteur || 0) < 0 ? '−' : '+'}</span>`
+                + `<strong>${U.euros(Math.abs(b.total.crediteur || 0))}</strong> de solde créditeur`
+                + `<span class="somme-signe">=</span><strong>${U.euros(b.total.total)}</strong>, `
+                + `le solde des comptes clients. La colonne « Échu » ne compte que les tranches `
+                + `d'ancienneté : le non échu et le solde créditeur sont à part, c'est pourquoi elle `
+                + `est inférieure au total.`
+                + (Math.abs(ecart) > 1
+                    ? ` <span class="cell-danger">Écart inexpliqué de ${U.euros(ecart)} — à signaler.</span>`
+                    : '');
+        }
 
         rendreSourceGL();
         rendreActionsGL();
@@ -5457,7 +5547,7 @@
             const o = {};
             o[colonne] = r.label;
             o['Restant dû'] = arrondi(r.total);
-            o['Total échu'] = arrondi(r.echu);
+            o['Échu'] = arrondi(r.echu);
             for (const b of buckets) if (b.key !== 'nonEchu') o[b.label] = arrondi(r.buckets[b.key]);
             o['Non échu'] = arrondi(r.nonEchu);
             o['Solde créditeur'] = arrondi(r.crediteur || 0);
@@ -5519,7 +5609,7 @@
                 const o = { 'Clé': (g.compte + ' - ' + (g.tiers || '')).trim().replace(/ -$/, ''),
                     'N° de compte': g.compte, 'Client': g.tiers,
                     'Financements': [...g.financements].join(' / ') || 'À classer',
-                    'Restant dû': arrondi(g.total), 'Total échu': arrondi(g.echu) };
+                    'Restant dû': arrondi(g.total), 'Échu': arrondi(g.echu) };
                 for (const b of buckets) if (b.key !== 'nonEchu') o[b.label] = arrondi(g.buckets[b.key]);
                 o['Non échu'] = arrondi(g.nonEchu);
                 o['Nb'] = g.nb;
@@ -5612,7 +5702,7 @@
         // C'est la forme du classeur de trésorerie : on ouvre CPF et on voit
         // qui doit quoi, et depuis quand.
         {
-            const entetes = ['Financement', 'Clé', 'Restant dû', 'Total échu']
+            const entetes = ['Financement', 'Clé', 'Restant dû', 'Échu']
                 .concat(buckets.filter(b => b.key !== 'nonEchu').map(b => b.label))
                 .concat(['Non échu', 'Solde créditeur', 'Nb de créances', 'Dont factures',
                          'Dont soldes sans facture', 'Lignes du grand livre',
@@ -5718,7 +5808,14 @@
                 'Périmètre': r.perimetre,
                 'Échéance calculée sur': (libelle[r.base] || r.base) + (r.jours ? ` + ${r.jours} j` : ''),
                 'Plafond début de formation': r.plafondDebutFormation ? 'oui' : '',
-                'À défaut': libelle[r.fallback] || r.fallback || '',
+                // Le repli porte son délai, comme la base : sans lui, la
+                // colonne disait « date de facture » là où la règle calcule
+                // date de facture + 60 jours.
+                'À défaut': r.fallback
+                    ? (libelle[r.fallback] || r.fallback)
+                      + ((r.fallbackJours != null ? r.fallbackJours : r.jours)
+                          ? ` + ${r.fallbackJours != null ? r.fallbackJours : r.jours} j` : '')
+                    : '',
             }))), 'Règles appliquées');
 
         // ── Le grand livre lui-même, enrichi ──
@@ -8705,6 +8802,153 @@
             sauverBoards();
             rendreTableBoards();
         }));
+
+        rendreBoardsGroupes();
+    }
+
+    /**
+     * L'inventaire groupe par groupe, le seul endroit où se voit une
+     * récupération incomplète.
+     *
+     * Monday affiche « 907 Factures » en tête de chaque groupe replié. Le
+     * tableau ci-dessus ne donne que le total d'un tableau : un groupe entier
+     * jamais récupéré — « 0.1.5. Factures payées B2C », par exemple — s'y noyait
+     * dans les milliers de lignes du tableau des factures payées. Ligne par
+     * ligne, l'écart se lit.
+     */
+    function rendreBoardsGroupes() {
+        const el = $('#boards-groupes');
+        if (!el) return;
+        if (!state.brutes.length) {
+            el.innerHTML = '<p class="fv-hint">Chargez des tableaux pour voir le détail par groupe.</p>';
+            return;
+        }
+
+        const CLE = (board, groupe) => (board || '—') + ' › ' + (groupe || '(sans groupe)');
+        const par = new Map();
+        const du = (board, groupe) => {
+            const k = CLE(board, groupe);
+            let d = par.get(k);
+            if (!d) {
+                d = { board: board || '—', groupe: groupe || '(sans groupe)', cle: k,
+                      charge: 0, ecartees: 0, ici: 0, ailleurs: 0, sansEcheance: 0,
+                      enRetard: 0, nonEchues: 0, payees: 0, iciItems: [], ailleursItems: [],
+                      lots: { sansEcheance: [], enRetard: [], nonEchues: [], payees: [] } };
+                par.set(k, d);
+            }
+            return d;
+        };
+
+        // Les lignes brutes disent ce qui est entré : c'est ce nombre que
+        // Monday affiche en tête du groupe.
+        for (const b of state.brutes) {
+            if (b.role === 'ignore') continue;
+            du(b.board, b.groupe).charge++;
+        }
+
+        // Les factures consolidées disent ce qu'il en reste, et où elles sont
+        // comptées. Une facture vue dans trois groupes n'est analysée que dans
+        // un seul ; les deux autres la voient « ailleurs ».
+        for (const f of state.factures) {
+            const ici = du(f.board, f.groupe);
+            if (f.role === 'technique' || f.groupeTechnique) { ici.ecartees++; }
+            else {
+                ici.ici++; ici.iciItems.push(f);
+                const lot = f.etat === 'Échéance inconnue' ? 'sansEcheance'
+                    : f.etat === 'En retard' ? 'enRetard'
+                    : f.etat === 'Non échue' ? 'nonEchues' : 'payees';
+                ici[lot]++; ici.lots[lot].push(f);
+            }
+            for (const autre of (f.presenceGroupes || [])) {
+                if (autre === ici.cle) continue;
+                const sep = autre.indexOf(' › ');
+                const d = du(autre.slice(0, sep), autre.slice(sep + 3));
+                d.ailleurs++; d.ailleursItems.push(f);
+            }
+        }
+
+        const rows = [...par.values()].sort((a, b) =>
+            a.board.localeCompare(b.board) || b.charge - a.charge);
+
+        el.innerHTML = U.table([
+            { key: 'board', label: 'Tableau',
+              format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v)}">${U.escapeHtml(v)}</span>` },
+            { key: 'groupe', label: 'Groupe',
+              format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v)}">${U.escapeHtml(v)}</span>` },
+            { key: 'charge', label: 'Chargées', align: 'right',
+              title: 'Lignes récupérées pour ce groupe — à comparer au nombre affiché par Monday en tête du groupe',
+              format: v => U.nombre(v) },
+            { key: 'ecartees', label: 'Écartées', align: 'right',
+              title: 'Groupe de service : archive, technique, corbeille',
+              format: v => v ? U.nombre(v) : '—' },
+            { key: 'ici', label: 'Analysées ici', align: 'right',
+              format: (v, r) => v
+                  ? `<button class="lien-cellule" data-grp="ici" data-cle="${U.escapeHtml(r.cle)}"><strong>${U.nombre(v)}</strong></button>`
+                  : '<strong>0</strong>' },
+            { key: 'ailleurs', label: 'Analysées ailleurs', align: 'right',
+              title: 'Présentes dans ce groupe, comptées dans un autre — le circuit déplace les factures',
+              format: (v, r) => v
+                  ? `<button class="lien-cellule" data-grp="ailleurs" data-cle="${U.escapeHtml(r.cle)}">${U.nombre(v)}</button>`
+                  : '<span class="ag-zero">·</span>' },
+            // Chaque nombre ouvre ses factures : un compte qui ne se vérifie
+            // pas ne sert à rien.
+            { key: 'sansEcheance', label: 'Sans échéance', align: 'right',
+              format: (v, r) => v
+                  ? `<button class="lien-cellule cell-danger" data-grp="sansEcheance" data-cle="${U.escapeHtml(r.cle)}">${U.nombre(v)}</button>`
+                  : '—' },
+            { key: 'enRetard', label: 'En retard', align: 'right',
+              format: (v, r) => v
+                  ? `<button class="lien-cellule" data-grp="enRetard" data-cle="${U.escapeHtml(r.cle)}">${U.nombre(v)}</button>`
+                  : '—' },
+            { key: 'nonEchues', label: 'Non échues', align: 'right',
+              format: (v, r) => v
+                  ? `<button class="lien-cellule" data-grp="nonEchues" data-cle="${U.escapeHtml(r.cle)}">${U.nombre(v)}</button>`
+                  : '—' },
+            { key: 'payees', label: 'Payées', align: 'right',
+              format: (v, r) => v
+                  ? `<button class="lien-cellule" data-grp="payees" data-cle="${U.escapeHtml(r.cle)}">${U.nombre(v)}</button>`
+                  : '—' },
+        ], rows, { vide: 'Aucun groupe.', total: {
+            board: 'Total', groupe: `${U.nombre(rows.length)} groupes`,
+            charge: U.nombre(X.sum(rows, r => r.charge)),
+            ecartees: U.nombre(X.sum(rows, r => r.ecartees)),
+            ici: U.nombre(X.sum(rows, r => r.ici)),
+            ailleurs: U.nombre(X.sum(rows, r => r.ailleurs)),
+            sansEcheance: U.nombre(X.sum(rows, r => r.sansEcheance)),
+            enRetard: U.nombre(X.sum(rows, r => r.enRetard)),
+            nonEchues: U.nombre(X.sum(rows, r => r.nonEchues)),
+            payees: U.nombre(X.sum(rows, r => r.payees)),
+        } });
+
+        const LIBELLES = { ici: 'analysées ici', ailleurs: 'analysées ailleurs',
+                           sansEcheance: 'sans échéance calculable', enRetard: 'en retard',
+                           nonEchues: 'non échues', payees: 'réglées' };
+        el.addEventListener('click', e => {
+            const b = e.target.closest('[data-grp]');
+            if (!b) return;
+            const d = par.get(b.dataset.cle);
+            if (!d) return;
+            const quoi = b.dataset.grp;
+            const ailleurs = quoi === 'ailleurs';
+            const items = ailleurs ? d.ailleursItems
+                : quoi === 'ici' ? d.iciItems
+                : (d.lots[quoi] || []);
+            montrerFacturesListe(
+                `${d.board} › ${d.groupe} — ${LIBELLES[quoi] || quoi}`,
+                items,
+                ailleurs
+                    ? 'Factures présentes dans ce groupe mais comptées ailleurs — '
+                      + 'la colonne « Comptée sur » dit où.'
+                    : 'Factures rattachées à ce groupe dans tous les indicateurs.',
+                { colonnesSup: ailleurs ? [
+                    { key: 'board', label: 'Comptée sur',
+                      format: (v, r) => `<span class="cell-clip" title="${U.escapeHtml((v || '') + ' › ' + (r.groupe || ''))}">${U.escapeHtml(v || '—')}</span>` },
+                  ] : [
+                    { key: 'etat', label: 'État',
+                      format: v => `<span class="pill ${U.etatClass(v)}">${U.escapeHtml(v || '—')}</span>` },
+                  ],
+                  onExport: rows2 => exporterFacturesSimple(rows2, d.board + '_' + d.groupe) });
+        });
     }
 
     const ROLE_META = {

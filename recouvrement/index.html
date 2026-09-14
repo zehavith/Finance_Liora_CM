@@ -17,12 +17,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=2.84.0"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.84.0"></script>
-    <script src="../vendor/papaparse.min.js?v=2.84.0"></script>
-    <script src="../vendor/xlsx.full.min.js?v=2.84.0"></script>
-    <link rel="stylesheet" href="../styles.css?v=2.84.0">
-    <link rel="stylesheet" href="styles.css?v=2.84.0">
+    <script src="../vendor/chart.umd.min.js?v=2.85.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=2.85.0"></script>
+    <script src="../vendor/papaparse.min.js?v=2.85.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=2.85.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=2.85.0">
+    <link rel="stylesheet" href="styles.css?v=2.85.0">
 </head>
 <body>
 
@@ -197,6 +197,10 @@
                     <button class="seg-btn active" data-tampon="inclure">Incluses</button>
                     <button class="seg-btn" data-tampon="exclure">Exclues</button>
                 </div>
+                <!-- Le nombre exact de factures retirées, toujours visible :
+                     sans lui, « Exclues » changeait le portefeuille d'un
+                     millier de factures sans dire lesquelles. -->
+                <span class="filter-compte" id="compte-tampon"></span>
             </div>
 
             <div class="filter-block" id="filter-block-avoirs">
@@ -231,8 +235,8 @@
             </div>
 
             <div class="filter-block filter-block-grow">
-                <span class="filter-label" title="Périmètre des factures comptées comme en retard">Étape du circuit</span>
-                <span class="aide-ligne">Où en est la facture dans le circuit Monday — à ne pas confondre avec son financement, filtré juste avant. Éteignez-en une pour l'exclure de tous les chiffres.</span>
+                <span class="filter-label" title="Où la facture est suivie dans le circuit Monday">Étape du circuit</span>
+                <span class="aide-ligne">Où en est la facture dans le circuit Monday — à ne pas confondre avec son financement, filtré juste avant. Éteignez-en une pour l'exclure de tous les chiffres. Le nombre compte toutes les factures de l'étape, payées comprises, comme les deux rangées au-dessus ; le détail du retard est dans l'infobulle.</span>
                 <div class="chips" id="chips-sources"></div>
             </div>
 
@@ -451,7 +455,13 @@
                     </div>
                     <span class="fv-hint" id="motifs-note"></span>
                     <div class="motifs-colonnes" id="motifs-colonnes"></div>
-                    <div class="table-wrap" id="motifs-table"></div>
+                    <!-- Le détail ligne à ligne double les camemberts : utile
+                         pour chercher un motif précis, encombrant le reste du
+                         temps. Il est là, replié. -->
+                    <details class="bloc-repli">
+                        <summary>Le détail, motif par motif</summary>
+                        <div class="table-wrap" id="motifs-table"></div>
+                    </details>
                 </div>
             </div>
 
@@ -843,6 +853,12 @@
                                 dans « À classer ».
                             </span>
                             <div class="table-wrap" id="aging-gl-table"></div>
+                            <!-- L'addition de la ligne TOTAL, écrite en toutes
+                                 lettres : la première colonne chiffrée n'est
+                                 pas le total d'une ligne, c'est la part échue.
+                                 Sans cette phrase, la ligne TOTAL semblait ne
+                                 pas tomber juste. -->
+                            <div id="aging-gl-somme" class="aging-somme"></div>
                         </div>
                     </div>
                     <div class="section-header section-header-sub" id="sec-regles">
@@ -1429,6 +1445,15 @@
                 </span>
                 <div id="boards-resume"></div>
                 <div class="table-wrap" id="boards-table"></div>
+                <details class="bloc-repli">
+                    <summary>Chaque groupe, ligne par ligne</summary>
+                    <span class="fv-hint">Monday affiche le nombre d'éléments en tête de chaque groupe replié.
+                        Comparez-le à la colonne <strong>Chargées</strong> ci-dessous : c'est le seul endroit
+                        où une perte de lignes se voit, groupe par groupe. Les factures payées sont réparties
+                        sur plusieurs groupes (ADV, B2C…) et un groupe absent de cette liste n'a jamais été
+                        récupéré.</span>
+                    <div class="mini-table-wrap" id="boards-groupes"></div>
+                </details>
                 <h4 class="qualif-col-titre">Le retard par tableau
                     <span class="fv-hint">ce qui est encore dû d'un côté, ce qui est rentré en retard de l'autre : un tableau
                         dont tout est encaissé a pu subir beaucoup de retard. Le tableau Monday dit où la facture se trouve,
@@ -1556,16 +1581,16 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=2.84.0"></script>
-<script src="js/store.js?v=2.84.0"></script>
-<script src="js/monday.js?v=2.84.0"></script>
-<script src="js/ingest.js?v=2.84.0"></script>
-<script src="js/metrics.js?v=2.84.0"></script>
-<script src="js/prelevements.js?v=2.84.0"></script>
-    <script src="js/grandlivre.js?v=2.84.0"></script>
-    <script src="js/sellsy.js?v=2.84.0"></script>
-    <script src="js/zoho.js?v=2.84.0"></script>
-<script src="js/ui.js?v=2.84.0"></script>
-<script src="app.js?v=2.84.0"></script>
+<script src="js/rules.js?v=2.85.0"></script>
+<script src="js/store.js?v=2.85.0"></script>
+<script src="js/monday.js?v=2.85.0"></script>
+<script src="js/ingest.js?v=2.85.0"></script>
+<script src="js/metrics.js?v=2.85.0"></script>
+<script src="js/prelevements.js?v=2.85.0"></script>
+    <script src="js/grandlivre.js?v=2.85.0"></script>
+    <script src="js/sellsy.js?v=2.85.0"></script>
+    <script src="js/zoho.js?v=2.85.0"></script>
+<script src="js/ui.js?v=2.85.0"></script>
+<script src="app.js?v=2.85.0"></script>
 </body>
 </html>
