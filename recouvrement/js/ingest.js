@@ -28,7 +28,7 @@
         // facture. Le contrôle de valeurs fait le tri — une colonne de ce nom
         // qui ne contient pas de numéros exploitables est écartée.
         { field: 'numero',               label: 'Numéro de facture',      aliases: ['numero de facture', 'numero facture', 'n facture', 'no facture', 'num facture', 'reference facture', 'numero de piece', 'invoice number', 'facture', 'element', 'elements', 'name', 'nom'] },
-        { field: 'client',               label: 'Client / Entreprise',    aliases: ['entreprise', 'client', 'societe', 'raison sociale', 'nom du client', 'compte', 'apprenant', 'stagiaire', 'beneficiaire', 'nom prenom'] },
+        { field: 'client',               label: 'Client / Entreprise',    aliases: ['raison sociale', 'nom entreprise', 'nom de l entreprise', 'entreprise', 'client', 'societe', 'nom du client', 'compte', 'apprenant', 'stagiaire', 'beneficiaire', 'nom prenom'] },
         // « Montant dû » n'est pas le montant de la facture mais ce qu'il en
         // reste à payer : sur une facture réglée il vaut zéro. Le prendre pour
         // le montant mettait à zéro des tableaux entiers — tout le financement
@@ -41,13 +41,13 @@
         // acompte, et c'est cette colonne qui porte ce qui reste dû après lui.
         // La différence avec le montant de la facture est déjà encaissée.
         { field: 'montantRAC',           label: 'Montant RAC (reste à charge)', aliases: ['montant rac', 'montant r a c', 'rac', 'reste a charge', 'montant reste a charge', 'rac ttc', 'montant rac ttc'] },
-        // « Montant Restant Sellsy » et « Montant Restant Penny » cohabitent sur
+        // « Montant Restant Penny » et « Montant Restant Sellsy » cohabitent sur
         // le tableau 2.4 : ni l'un ni l'autre n'était reconnu, et le reste dû
         // retombait sur le total de la facture — 8 484,69 € affichés là où
-        // 3 688,99 € restaient dus. Sellsy passe devant Pennylane, comme pour
-        // le « Montant RAC » du CPF : c'est la facturation qui dit ce qui reste
-        // à encaisser, la comptabilité a sa propre balance.
-        { field: 'resteDu',              label: 'Reste dû',               aliases: ['montant restant sellsy', 'restant sellsy', 'montant du ttc', 'montant du ht', 'montant du', 'reste du', 'restant du', 'montant restant', 'restant', 'reste a payer', 'reste a regler', 'montant a payer', 'solde du', 'solde restant', 'solde', 'reliquat', 'montant restant penny', 'restant penny'] },
+        // 3 688,99 € restaient dus. C'est Pennylane qui fait foi : la
+        // comptabilité sait ce qui est réellement rentré, la facturation ne
+        // voit que ce qu'elle a émis.
+        { field: 'resteDu',              label: 'Reste dû',               aliases: ['montant restant penny', 'restant penny', 'montant restant pennylane', 'montant du ttc', 'montant du ht', 'montant du', 'reste du', 'restant du', 'montant restant', 'restant', 'reste a payer', 'reste a regler', 'montant a payer', 'solde du', 'solde restant', 'solde', 'reliquat', 'montant restant sellsy', 'restant sellsy'] },
         { field: 'dateFacture',          label: 'Date de facture',        aliases: ['date de facture', 'date facture', 'date d emission', 'date emission', 'date de la facture', 'date piece', 'date facturation', 'date de facturation', 'facturation', 'date creation facture', 'date edition'] },
         { field: 'dateEcheanceSource',   label: 'Date d’échéance',   aliases: ['date d echeance', 'date echeance', 'echeance', 'date limite de paiement', 'date limite', 'date de reglement prevue', 'date calculee', 'date negociee', 'date calcule negocie'] },
         // « Début de service » et « Fin de service » sont le vocabulaire de Liora :
@@ -70,7 +70,11 @@
         // Pro, le numéro Filiz pour l'alternance. Il ne sert pas au calcul,
         // mais c'est la clé qui permet de rapprocher un fichier du financeur
         // et d'y retrouver les dates de formation qui manquent à Monday.
-        { field: 'numeroDossier',        label: 'N° de dossier',          aliases: ['n dossier', 'no dossier', 'numero de dossier', 'numero dossier', 'n de dossier', 'dossier', 'n filiz', 'numero filiz', 'filiz', 'reference dossier', 'ref dossier'] },
+        // Le nom de l'apprenant : sur les tableaux d'alternance, c'est souvent
+        // la seule clé commune avec le fichier du financeur, qui ne connaît pas
+        // les numéros de facture.
+        { field: 'apprenant',            label: 'Apprenant',              aliases: ['nom prenom apprenant', 'nom et prenom apprenant', 'apprenant', 'nom de l apprenant', 'nom et prenom', 'nom prenom', 'nom  prenom', 'stagiaire', 'beneficiaire'] },
+        { field: 'numeroDossier',        label: 'N° de dossier',          aliases: ['id filiz', 'identifiant filiz', 'n filiz', 'numero filiz', 'filiz', 'n dossier', 'no dossier', 'numero de dossier', 'numero dossier', 'n de dossier', 'reference dossier', 'ref dossier', 'id dossier', 'dossier'] },
         { field: 'typeClient',           label: 'Type de client',         aliases: ['type de client', 'type client', 'typologie client', 'typologie', 'segment client', 'segment', 'categorie client'] },
         { field: 'statut',               label: 'Statut',                 aliases: ['statut', 'status', 'etat', 'statut facture', 'statut de la facture'] },
         { field: 'proprietaire',         label: 'Propriétaire',           aliases: ['proprietaire', 'owner', 'responsable', 'charge de recouvrement', 'charge d affaire', 'gestionnaire', 'personne'] },
@@ -144,6 +148,15 @@
             return n / brutes.length >= SEUIL
                 ? { ok: true } : { ok: false, raison: 'ne contient pas de dates' };
         }
+        // Un numéro de dossier n'est pas une date. « Dernière date mise à jour
+        // dossier » emportait le champ sur le seul mot « dossier », et la clé
+        // de rapprochement du fichier Filiz devenait un calendrier.
+        if (champ === 'numeroDossier') {
+            const n = brutes.filter(v => R.parseDate(v)).length;
+            if (n / brutes.length >= SEUIL) {
+                return { ok: false, raison: 'contient des dates, pas des numéros de dossier' };
+            }
+        }
         // Une colonne de financement doit contenir des dispositifs. « Type »
         // est un nom qu'on rencontre partout — type de document, type de
         // client, type de relance — et l'alias, ajouté pour le tableau 2.4,
@@ -199,6 +212,17 @@
                     if (!isDateField && col.type === 'date') best -= 40;
                     if (def.field.startsWith('montant') && (col.type === 'numbers' || col.type === 'formula')) best += 20;
                     if (def.field === 'proprietaire' && (col.type === 'people' || col.type === 'person')) best += 20;
+                }
+                // Deux colonnes également bien nommées : c'est la source qui
+                // départage. Sur le tableau 2.4, « Montant Restant Penny » et
+                // « Montant Restant Sellsy » obtiennent le même score, et
+                // l'ordre des colonnes décidait seul. La comptabilité fait foi
+                // sur ce qui reste dû — elle sait ce qui est rentré, la
+                // facturation ne voit que ce qu'elle a émis.
+                if (best > 0 && def.field === 'resteDu') {
+                    const n = R.norm(col.title);
+                    if (/penny|pennylane/.test(n)) best += 6;
+                    else if (/sellsy/.test(n)) best += 3;
                 }
                 if (best > 0) pairs.push({ colId: col.id, field: def.field, score: best });
             }
@@ -358,7 +382,17 @@
         let finKey = R.detectFinancement(v.financement);
         if (!finKey) finKey = R.detectFinancement(v.typeClient);
         if (!finKey) finKey = R.detectFinancement(ctx.groupTitle);
+        // Le groupe d'origine dit d'où vient la facture réglée : sur le tableau
+        // des factures payées, c'est lui qui nomme « CPF problématique » ou
+        // « BTC-Financement personnel » quand rien d'autre ne le fait.
+        if (!finKey) finKey = R.detectFinancement(v.groupeOrigine);
         if (!finKey) finKey = R.detectFinancement(ctx.boardName);
+        // La raison sociale en dernier recours : « TRANSITIONS PRO ILE-DE-
+        // FRANCE », « REGION NORMANDIE », « AGEFIPH », « OPCO ATLAS » nomment
+        // le dispositif aussi sûrement qu'une colonne dédiée. C'est le plus
+        // approximatif des signaux — d'où sa place en fin de chaîne — mais il
+        // vaut mieux qu'un financement manquant.
+        if (!finKey) finKey = R.detectFinancement(v.client);
         if (!finKey) finKey = ctx.financementDefaut || null;
 
         const qualifRecouvrement = String(v.qualifRecouvrement || '').trim();
@@ -423,6 +457,7 @@
             relance: String(v.relance || '').trim(),
             commentaire: String(v.commentaire || '').trim(),
             numeroDossier: String(v.numeroDossier || '').trim(),
+            apprenant: String(v.apprenant || '').trim(),
             litige: String(v.litige || '').trim(),
         };
     }
@@ -681,8 +716,12 @@
             if (grp && !qualifs['Groupe']) qualifs['Groupe'] = grp;
             rowValues.__qualifs = qualifs;
 
-            // Le groupe peut venir d'une colonne « Groupe » du fichier
-            const groupTitle = rowValues.groupeOrigine || row['Groupe'] || row['Group'] || '';
+            // Le groupe où Monday range l'élément fait foi. La colonne
+            // « Groupe » du fichier ne sert qu'à défaut — un export à plat n'a
+            // pas de titre de groupe — et reste par ailleurs le groupe
+            // d'origine, qui est une autre information.
+            const groupTitle = row['__groupeMonday']
+                || rowValues.groupeOrigine || row['Groupe'] || row['Group'] || '';
             return buildFacture(rowValues, {
                 boardId: 'file:' + boardName,
                 boardName,
@@ -725,7 +764,7 @@
             'resteDu', 'dateFacture', 'dateDebutFormation', 'dateFinFormation', 'dateEcheanceSource',
             'datePaiement', 'dateControlePaiement', 'statut', 'proprietaire', 'qualifRecouvrement', 'qualifBascule',
             'relance', 'commentaire', 'litige', 'groupeOrigine', 'motif', 'motifColonne',
-            'numeroDossier'];
+            'numeroDossier', 'apprenant'];
         // Les qualifications de chaque source se cumulent : une facture vue sur
         // deux tableaux porte les colonnes de qualification des deux.
         out.qualifs = { ...(extra.qualifs || {}), ...(base.qualifs || {}) };
@@ -754,6 +793,19 @@
      * Factures payées » porte un groupe par origine, et c'est au groupe que se
      * voit une récupération incomplète.
      */
+    /**
+     * Clé d'une personne, insensible à l'ordre et à la casse.
+     *
+     * Le fichier du financeur écrit « HAMDI » / « RAJA » en deux colonnes,
+     * Monday « Raja Hamdi » en une seule. Les mots sont donc triés : les deux
+     * écritures donnent la même clé. En dessous de deux mots, la clé est vide —
+     * un prénom seul rapprocherait n'importe qui.
+     */
+    function clePersonne(txt) {
+        const mots = R.norm(txt || '').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(m => m.length > 1);
+        return mots.length >= 2 ? mots.sort().join(' ') : '';
+    }
+
     function cleGroupe(l) {
         return (l.board || '—') + ' › ' + (l.groupe || '(sans groupe)');
     }
@@ -1081,6 +1133,16 @@
             // « Facture a annuler / Modifier ». Sa valeur propre est conservée
             // à part, pour ne pas la confondre avec le titre du groupe qui la
             // remplace quand elle est vide.
+            //
+            // Le titre du groupe est un fait : c'est là que Monday range
+            // l'élément. Il était perdu dès qu'une colonne s'appelait
+            // « Groupe » — sur « 0.1. ALL - Factures payées », cette colonne
+            // porte l'origine (« Tampon », « ADV », « Recouvrement ») et
+            // effaçait les vrais groupes : « 0.1.5. Factures payées B2C »
+            // n'existait plus nulle part, 622 factures passaient pour être en
+            // tampon, et l'étape du circuit disait ADV là où la facture est
+            // réglée. Les deux sont désormais conservés, chacun à sa place.
+            o.__groupeMonday = groupe || '';
             o.__groupeQualif = String(o.Groupe == null ? '' : o.Groupe).trim();
             if (!o.__groupeQualif) o.Groupe = groupe;
             lignes.push(o);
@@ -1114,6 +1176,14 @@
         const auto = autoMapColumns(columns, valeursDe);
         const mapping = auto.mapping || auto;
 
+        // « NOM » et « PRENOM » ne sont pas des champs de l'application : ils
+        // sont cherchés directement dans les en-têtes du fichier, sans passer
+        // par le mappage, pour ne rien lui disputer.
+        const entete = n => headers.find(h => R.norm(h) === n) || null;
+        const colNom = entete('nom') || entete('nom apprenant') || entete('nom de famille');
+        const colPrenom = entete('prenom') || entete('prenom apprenant');
+        const brut = (r, col) => (col && r[col] != null) ? String(r[col]).trim() : '';
+
         const lignes = [];
         let ignorees = 0;
         for (const r of rows) {
@@ -1122,14 +1192,21 @@
                 return c == null ? '' : (r[c] == null ? '' : String(r[c]).trim());
             };
             const dossier = R.norm(val('numeroDossier')).replace(/\s+/g, '');
+            // Le nom de l'apprenant : soit une colonne unique, soit les deux
+            // colonnes « NOM » et « PRENOM » du fichier Filiz, réunies.
+            const personne = clePersonne(val('apprenant')
+                || [brut(r, colNom), brut(r, colPrenom)].filter(Boolean).join(' '));
+            // « NOM » — le patronyme de l'apprenant — passait pour un numéro de
+            // facture et créait des rapprochements au hasard. Un numéro de
+            // facture porte des chiffres.
             const numero = val('numero');
-            const cle = factureKey(numero);
+            const cle = /\d/.test(numero) ? factureKey(numero) : '';
             const debut = R.parseDate(val('dateDebutFormation'));
             const fin = R.parseDate(val('dateFinFormation'));
             // Sans clé de rapprochement, ou sans aucune date à apporter, la
             // ligne n'a rien à donner.
-            if ((!dossier && !cle) || (!debut && !fin)) { ignorees++; continue; }
-            lignes.push({ dossier, cle, numero,
+            if ((!dossier && !cle && !personne) || (!debut && !fin)) { ignorees++; continue; }
+            lignes.push({ dossier, cle, numero, personne,
                           client: val('client'), dateDebutFormation: debut, dateFinFormation: fin });
         }
         return { lignes, mapping, colonnes: headers, ignorees };
@@ -1147,13 +1224,22 @@
      */
     function appliquerDossiers(factures, lignes) {
         const st = { rapprochees: 0, debuts: 0, fins: 0, parNumero: 0, parDossier: 0,
-                     sansCorrespondance: 0 };
+                     parPersonne: 0, sansCorrespondance: 0 };
         if (!lignes || !lignes.length) return st;
 
         const parNumero = new Map(), parDossier = new Map();
+        // Un apprenant qui revient deux fois — deux contrats, deux promotions —
+        // ne peut pas trancher : son nom est écarté plutôt que de dater une
+        // facture avec la formation d'à côté.
+        const vus = new Map();
         for (const l of lignes) {
             if (l.cle && !parNumero.has(l.cle)) parNumero.set(l.cle, l);
             if (l.dossier && !parDossier.has(l.dossier)) parDossier.set(l.dossier, l);
+            if (l.personne) vus.set(l.personne, (vus.get(l.personne) || 0) + 1);
+        }
+        const parPersonne = new Map();
+        for (const l of lignes) {
+            if (l.personne && vus.get(l.personne) === 1) parPersonne.set(l.personne, l);
         }
         const utilisees = new Set();
 
@@ -1162,10 +1248,16 @@
             let l = (f.cle && parNumero.get(f.cle)) || null;
             let voie = 'numero';
             if (!l && dossier) { l = parDossier.get(dossier) || null; voie = 'dossier'; }
+            if (!l) {
+                const personne = clePersonne(f.apprenant || '');
+                if (personne) { l = parPersonne.get(personne) || null; voie = 'personne'; }
+            }
             if (!l) continue;
             utilisees.add(l);
             st.rapprochees++;
-            if (voie === 'numero') st.parNumero++; else st.parDossier++;
+            if (voie === 'numero') st.parNumero++;
+            else if (voie === 'dossier') st.parDossier++;
+            else st.parPersonne++;
             if (!f.dateDebutFormation && l.dateDebutFormation) {
                 f.dateDebutFormation = l.dateDebutFormation;
                 f.datesViennentDuDossier = true;

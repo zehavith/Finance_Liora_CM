@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.87.0';
+    const VERSION = '2.88.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -7968,7 +7968,7 @@
             let mapping = null, ignorees = 0;
 
             for (const file of liste) {
-                const rows = await lireFichier(file);
+                const rows = await lireFichier(file, { toutesFeuilles: true });
                 if (!rows.length) { journal.push(`${file.name} : fichier vide`); continue; }
                 const lu = I.lireDossiers(rows);
                 if (!lu.lignes.length) {
@@ -8001,7 +8001,8 @@
             U.toast(`Dossiers intégrés : ${U.nombre(toutes.length)} lignes lues, `
                 + `${U.nombre(st.rapprochees || 0)} factures rapprochées `
                 + `(${U.nombre(st.parNumero || 0)} par numéro de facture, `
-                + `${U.nombre(st.parDossier || 0)} par numéro de dossier) — `
+                + `${U.nombre(st.parDossier || 0)} par numéro de dossier, `
+                + `${U.nombre(st.parPersonne || 0)} par nom d'apprenant) — `
                 + `${U.nombre(st.debuts || 0)} dates de début et ${U.nombre(st.fins || 0)} de fin `
                 + `de formation ajoutées.`, 'success', 12000);
             rendreDonnees();
@@ -9398,7 +9399,8 @@
                        <strong>${U.escapeHtml(d.nomFichier || 'Fichier de dossiers')} — ${U.nombre(d.lignes.length)} dossiers lus</strong>
                        <span>${U.nombre(st.rapprochees || 0)} factures rapprochées
                        (${U.nombre(st.parNumero || 0)} par numéro de facture,
-                       ${U.nombre(st.parDossier || 0)} par numéro de dossier) ·
+                       ${U.nombre(st.parDossier || 0)} par numéro de dossier,
+                       ${U.nombre(st.parPersonne || 0)} par nom d'apprenant) ·
                        ${U.nombre(st.debuts || 0)} dates de début et ${U.nombre(st.fins || 0)} dates de fin
                        de formation ajoutées, là où Monday n'en avait pas.
                        ${st.sansCorrespondance ? U.nombre(st.sansCorrespondance) + ' dossiers du fichier ne correspondent à aucune facture. ' : ''}
@@ -9966,7 +9968,8 @@
     //  Import de fichiers
     // ══════════════════════════════════════════════
 
-    function lireFichier(file) {
+    function lireFichier(file, opts) {
+        const toutesFeuilles = !!(opts && opts.toutesFeuilles);
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             const estCSV = /\.csv$/i.test(file.name);
@@ -9981,14 +9984,27 @@
                         matrice = Papa.parse(e.target.result, { header: false, skipEmptyLines: true, delimiter: '' }).data;
                     } else {
                         const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
-                        const sheet = wb.Sheets[wb.SheetNames[0]];
+                        // Un classeur du financeur sépare ses populations en
+                        // feuilles — « Alternance », « Stage ». Ne lire que la
+                        // première perdrait les autres sans rien dire.
+                        if (toutesFeuilles && wb.SheetNames.length > 1) {
+                            const tout = [];
+                            for (const nom of wb.SheetNames) {
+                                const m = XLSX.utils.sheet_to_json(wb.Sheets[nom],
+                                    { header: 1, defval: '', raw: true, blankrows: false });
+                                if (m.length) tout.push(...(tout.length ? m.slice(1) : m));
+                            }
+                            matrice = tout;
+                        } else {
                         // raw:true, sinon un numéro de compte long revient dans
                         // le format d'affichage de sa cellule — « 4.1106E+12 »
                         // au lieu de 4110600400000 — et les chiffres sont
                         // perdus, pas seulement masqués. Les dates arrivent en
                         // objets Date grâce à cellDates, les montants en
                         // nombres : les deux sont déjà gérés en aval.
-                        matrice = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true, blankrows: false });
+                        matrice = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],
+                            { header: 1, defval: '', raw: true, blankrows: false });
+                        }
                     }
                     const groupe = I.aplatirExportMonday(matrice);
                     if (groupe) {

@@ -288,8 +288,14 @@ Du plus fiable au plus approximatif, la première source renseignée l'emporte :
 2. la colonne **Type de client** — « B2C - Entreprise » y désigne bien un
    financement ;
 3. le libellé du **groupe** ;
-4. le nom du **tableau** ;
-5. la valeur par défaut attachée au rôle du tableau.
+4. le **groupe d'origine** — sur le tableau des factures payées, c'est lui qui
+   nomme « CPF problématique » ou « BTC-Financement personnel » ;
+5. le nom du **tableau** ;
+6. la **raison sociale** du client — « TRANSITIONS PRO ILE-DE-FRANCE »,
+   « REGION NORMANDIE », « AGEFIPH », « OPCO ATLAS » nomment le dispositif aussi
+   sûrement qu'une colonne dédiée. C'est le plus approximatif des signaux, d'où
+   sa place en fin de chaîne ;
+7. la valeur par défaut attachée au rôle du tableau.
 
 Ces règles sont **modifiables dans l'application** (onglet *Financements* →
 « Modifier les règles ») et conservées sur le poste.
@@ -360,6 +366,32 @@ colonne *Sans échéance* élevée signale des colonnes de dates non reconnues s
 ce tableau : la correspondance se corrige juste en dessous. Un écart entre
 *Sur Monday* et *Chargées* signale un chargement incomplet.
 
+### Le groupe Monday ne se laisse plus effacer
+
+Sur un export de tableau, le titre du groupe — *0.1.5. Factures payées B2C* —
+était perdu dès qu'une colonne s'appelait *Groupe*. Or sur *0.1. ALL - Factures
+payées*, cette colonne porte l'**origine** de la facture (« Tampon », « ADV »,
+« Recouvrement »), et elle écrasait le vrai groupe. Trois conséquences, toutes
+visibles à l'écran :
+
+- les groupes *0.1.x* n'existaient nulle part — impossible de vérifier qu'un
+  groupe entier avait bien été récupéré ;
+- **581 factures réglées passaient pour être « en tampon »**, parce que leur
+  colonne d'origine dit « Tampon » : c'est l'écart de 1 060 factures que
+  montrait le sélecteur ;
+- l'**étape du circuit** disait « ADV » ou « Tampon » là où la facture est
+  réglée depuis longtemps.
+
+Les deux informations sont désormais conservées, chacune à sa place : le
+**groupe** est celui où Monday range l'élément, le **groupe d'origine** est la
+colonne. Mesuré sur l'export réel de *0.1. ALL - Factures payées* : 6 979 lignes
+chargées, 6 926 factures après fusion des doublons, les treize groupes
+retrouvés, *0.1.5. Factures payées B2C* à 907 lignes — le nombre même qu'affiche
+Monday. Après correction, aucune de ces factures n'est « en tampon », 581 y sont
+passées, et toutes portent l'étape « Réglée ».
+
+Le chemin API de Monday n'était pas concerné : il lit le groupe de l'élément.
+
 ### Le fichier du financeur (Filiz, Transition Pro…)
 
 Les tableaux d'alternance ne portent **ni date de début ni date de fin de
@@ -383,8 +415,26 @@ combien de factures ont été rapprochées, par quelle voie, combien de dates on
 été ajoutées, et combien de factures restent sans aucune date de formation —
 avec leur liste et leur numéro de dossier.
 
-Côté Monday, la colonne **N° dossier** est reconnue automatiquement (`N° dossier`,
-`Numéro de dossier`, `Filiz`…) : c'est elle qui sert de clé.
+Le rapprochement se fait sur **trois clés**, du plus sûr au moins sûr :
+
+1. le **numéro de facture**, quand le fichier le porte ;
+2. le **numéro de dossier** — `ID FILIZ`, `N° dossier`, `Numéro de dossier` — à
+   rapprocher de la colonne du même nom côté Monday ;
+3. le **nom de l'apprenant**, reconstitué depuis les colonnes `NOM` et `PRENOM`
+   du fichier et comparé à la colonne *Nom Prénom Apprenant* de Monday. Les mots
+   sont triés, donc « Raja Hamdi » et « HAMDI RAJA » donnent la même clé ; un
+   prénom seul ne rapproche rien, et un apprenant présent deux fois dans le
+   fichier — deux contrats — est écarté plutôt que de dater une facture avec la
+   formation d'à côté.
+
+Mesuré sur l'export Filiz réel (498 dossiers) et *0.1. ALL - Factures payées* :
+**1 163 factures rapprochées par le nom**, dont **844 portent exactement la même
+date de fin de formation** que le fichier — le reste s'explique par l'arrondi de
+Monday en fin de mois. Aucune date n'a été ajoutée sur ce tableau, puisqu'il en
+avait déjà : c'est sur les tableaux d'alternance, qui n'en ont pas, que le
+fichier travaille.
+
+Un classeur à plusieurs feuilles — *Alternance*, *Stage* — est lu **en entier**.
 
 ### Une colonne ajoutée dans Monday entre au rechargement
 
@@ -569,7 +619,7 @@ explicitement :
 |---|---|
 | Élément, Factures | numéro de facture |
 | Total Facture | montant TTC |
-| Montant dû TTC, Reste à payer, Montant Restant Sellsy | reste dû |
+| Montant dû TTC, Reste à payer, Montant Restant Penny | reste dû |
 | Début de service, Fin de service | dates de formation |
 | Date contrôle paiement | contrôle du règlement |
 | Type | type de financement, si les valeurs sont des dispositifs |
@@ -582,12 +632,12 @@ Deux pièges qui coûtaient cher :
   mettait des tableaux entiers à zéro. Il alimente le reste dû, d'où le montant
   est déduit quand aucune autre colonne ne le porte — et la déduction est
   marquée, car une facture partiellement réglée le sous-estime.
-- **« Montant Restant Sellsy » passe devant « Montant Restant Penny ».** Le
+- **« Montant Restant Penny » passe devant « Montant Restant Sellsy ».** Le
   tableau 2.4 porte les deux, et aucun n'était reconnu : le reste dû retombait
   sur le total de la facture — 8 484,69 € affichés là où 3 688,99 € restaient
   dus, soit 281 583 € d'acomptes déjà encaissés comptés comme encours sur ce
-  seul tableau. C'est la facturation qui dit ce qui reste à encaisser ; la
-  comptabilité a sa propre balance, dans l'onglet *Balance âgée*.
+  seul tableau. C'est **Pennylane** qui fait foi : la comptabilité sait ce qui
+  est réellement rentré, la facturation ne voit que ce qu'elle a émis.
 - **« Début » et « Fin de service » sont les dates de formation.** Sans ces
   libellés, les règles qui comptent sur la fin de formation ne trouvaient rien
   et des milliers de factures sortaient en « échéance impossible à calculer ».
