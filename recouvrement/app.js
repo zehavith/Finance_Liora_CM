@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.94.0';
+    const VERSION = '2.95.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -150,6 +150,7 @@
             triPrlv: { key: 'montantEchoue', sens: 'desc' },
             evoCatUnite: 'nb',
             cmpBase: 'precedent',
+            cmpCatBase: 'precedent',
             evoDetail: false,
             reglOrigine: 'recouvrement',
             vueEcheance: 'retard',
@@ -1094,6 +1095,7 @@
         const rows = X.parMois(data, state.filtres.baseMois);
         rendreChartMois(rows);
         rendreComparaison(rows);
+        rendreComparaisonCategorie(data);
 
         rendreChartFlux(data);
         rendreChartRetardEvolution(data);
@@ -2678,12 +2680,122 @@
     }
 
 
+    /**
+     * Le mois écoulé, catégorie par catégorie, comparé au précédent.
+     *
+     * « Combien de factures sont passées en recouvrement ce mois, dans quelle
+     * catégorie, et de combien cela a-t-il bougé » n'avait pas de réponse
+     * directe : la comparaison mensuelle est globale, et le détail par
+     * catégorie ne donnait qu'un niveau, jamais une variation.
+     */
+    function rendreComparaisonCategorie(data) {
+        const el = $('#cmp-categorie');
+        const titre = $('#cmpcat-titre');
+        if (!el) return;
+        const base = state.ui.cmpCatBase || 'precedent';
+        $$('#seg-cmpcat-base .seg-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.base === base));
+
+        const c = X.comparaisonParCategorie(data, R.monthKey(state.filtres.dateRef), base,
+                                            state.rules, state.filtres.dateRef);
+        if (!c) {
+            el.innerHTML = '<p class="fv-hint">Deux mois échus au minimum sont nécessaires.</p>';
+            if (titre) titre.textContent = '';
+            return;
+        }
+        if (c.indisponible) {
+            el.innerHTML = `<p class="fv-hint">${U.moisLabel(c.moisCible)} n'est pas dans l'historique
+                chargé : la comparaison d'une année sur l'autre n'est pas possible.</p>`;
+            if (titre) titre.textContent = '';
+            return;
+        }
+        if (titre) {
+            titre.innerHTML = `<strong>${U.escapeHtml(U.moisLabel(c.mois))}</strong> comparé à `
+                + `<strong>${U.escapeHtml(U.moisLabel(c.moisPrec))}</strong>`
+                + (base === 'annee' ? ' — un an plus tôt' : '');
+        }
+
+        // Un écart se lit d'abord par son signe : le vert et le rouge doivent
+        // dire « mieux » et « moins bien », pas « plus » et « moins ». Sur le
+        // retard et le délai, une hausse est une mauvaise nouvelle.
+        const fleche = (d, fmt, inverse) => {
+            if (d == null || Math.round(d * 10) === 0) return '<span class="ag-zero">=</span>';
+            const bon = inverse ? d < 0 : d > 0;
+            const signe = d > 0 ? '+' : '−';
+            return `<span class="${bon ? 'cell-ok' : 'cell-danger'}">${signe}${fmt(Math.abs(d))}</span>`;
+        };
+        const ouvrir = (titreListe, items, contexte) => () => montrerFacturesListe(
+            titreListe, items, contexte,
+            { colonnesSup: [
+                { key: 'etat', label: 'État',
+                  format: v => `<span class="pill ${U.etatClass(v)}">${U.escapeHtml(v || '—')}</span>` },
+              ],
+              onExport: rows2 => exporterFacturesSimple(rows2, titreListe) });
+
+        const lignes = c.lignes.concat([c.total]);
+        el.innerHTML = U.table([
+            { key: 'categorie', label: 'Catégorie',
+              format: (v, r) => r.categorie === 'Toutes catégories'
+                  ? `<strong>${U.escapeHtml(v)}</strong>` : U.escapeHtml(v) },
+            { key: r => r.cur.nb, label: 'Factures échues', align: 'right',
+              title: 'Factures dont l’échéance tombe dans le mois',
+              format: (v, r) => v
+                  ? `<button class="lien-cellule" data-cmpcat="cohorte" data-cat="${U.escapeHtml(r.categorie)}">${U.nombre(v)}</button>`
+                    + `<span class="cell-mini">${U.euros(r.cur.euros)}</span>`
+                  : '<span class="ag-zero">·</span>' },
+            { key: r => r.cur.nbRecouv, label: 'Passées en recouvrement', align: 'right',
+              title: 'Factures de la cohorte qui sont ou ont été en retard',
+              format: (v, r) => (v
+                  ? `<button class="lien-cellule" data-cmpcat="recouv" data-cat="${U.escapeHtml(r.categorie)}"><strong>${U.nombre(v)}</strong></button>`
+                  : '<strong>0</strong>')
+                  + `<span class="cell-mini">${U.euros(r.cur.eurRecouv)}</span>` },
+            { key: r => r.dNbRecouv, label: 'Écart', align: 'right',
+              title: 'Par rapport au mois de comparaison — moins, c’est mieux',
+              format: (v, r) => fleche(v, x => U.nombre(x), true)
+                  + `<span class="cell-mini">${r.prec.nbRecouv ? U.nombre(r.prec.nbRecouv) + ' avant' : ''}</span>` },
+            { key: r => r.cur.tauxATemps, label: 'Réglé à l’heure', align: 'right',
+              title: 'Part de la cohorte réglée sans jamais dépasser son échéance',
+              format: v => v == null ? '<span class="ag-zero">·</span>' : U.pourcent(v, 0) },
+            { key: r => r.dTauxATemps, label: 'Écart', align: 'right',
+              title: 'En points de pourcentage — plus, c’est mieux',
+              format: v => fleche(v, x => `${Math.round(x)} pts`) },
+            { key: r => r.cur.retardMoyen, label: 'Retard moyen', align: 'right',
+              title: 'Sur les seules factures de la cohorte passées en recouvrement',
+              format: v => v == null ? '<span class="ag-zero">·</span>' : U.jours(v) },
+            { key: r => r.dRetardMoyen, label: 'Écart', align: 'right',
+              format: v => fleche(v, x => U.jours(x), true) },
+            { key: r => r.cur.delaiReglement, label: 'Délai de règlement', align: 'right',
+              title: 'Facture → encaissement, en moyenne, sur les factures réglées de la cohorte',
+              format: v => v == null ? '<span class="ag-zero">·</span>' : U.jours(v) },
+            { key: r => r.dDelai, label: 'Écart', align: 'right',
+              format: v => fleche(v, x => U.jours(x), true) },
+        ], lignes, { vide: 'Aucune catégorie sur ces deux mois.',
+                     rowClass: r => r.categorie === 'Toutes catégories' ? 'ligne-total' : '' });
+
+        el.addEventListener('click', e => {
+            const b = e.target.closest('[data-cmpcat]');
+            if (!b) return;
+            const l = lignes.find(x => x.categorie === b.dataset.cat);
+            if (!l) return;
+            const recouv = b.dataset.cmpcat === 'recouv';
+            const items = recouv
+                ? l.cur.items.filter(x => x.etat === 'En retard' || x.etat === 'Payée en retard')
+                : l.cur.items;
+            ouvrir(`${l.categorie} — ${U.moisLabel(c.mois)}`
+                   + (recouv ? ' — passées en recouvrement' : ' — factures échues'),
+                   items,
+                   recouv
+                       ? 'Factures dont l’échéance tombe dans le mois et qui sont ou ont été en retard.'
+                       : 'Toutes les factures dont l’échéance tombe dans le mois.')();
+        });
+    }
+
     function rendreComparaison(rows) {
         const el = $('#month-compare-body');
         const base = state.ui.cmpBase || 'precedent';
         $$('#seg-cmp-base .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.base === base));
 
-        const cmp = X.comparaisonMensuelle(rows, R.monthKey(state.filtres.dateRef), base);
+        const cmp = X.comparaisonMensuelle(rows, R.monthKey(state.filtres.dateRef), base, state.filtres.dateRef);
         if (!cmp) { el.innerHTML = '<p class="fv-hint">Deux mois au minimum sont nécessaires pour comparer.</p>'; $('#month-compare-title').textContent = ''; return; }
         if (cmp.indisponible) {
             el.innerHTML = `<p class="fv-hint">${U.moisLabel(cmp.moisCible)} n'est pas dans l'historique
@@ -10992,6 +11104,11 @@
         }));
         $$('#seg-cmp-base .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.cmpBase = b.dataset.base;
+            rendreApresClic(() => rendreTout());
+        }));
+
+        $$('#seg-cmpcat-base .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.cmpCatBase = b.dataset.base;
             rendreApresClic(() => rendreTout());
         }));
 

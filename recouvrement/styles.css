@@ -590,6 +590,15 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
 }
 .filter-compte .lien-cellule { font-size: 0.72rem; }
 
+/* La ligne de synthèse d'un tableau de comparaison : elle se détache sans
+   crier, et se lit comme un total. */
+tr.ligne-total td {
+    background: rgba(255, 255, 255, 0.04);
+    border-top: 1px solid var(--border-color);
+    font-weight: 600;
+}
+.cell-ok { color: var(--green, #22c55e); }
+
 /* L'addition d'une ligne TOTAL, posée sous son tableau. */
 .aging-somme {
     margin-top: 0.7rem;

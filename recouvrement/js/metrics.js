@@ -1501,9 +1501,14 @@
      *
      * @param {string} [base] 'precedent' (défaut) ou 'annee'
      */
-    function comparaisonMensuelle(rowsMois, moisRef, base) {
+    function comparaisonMensuelle(rowsMois, moisRef, base, dateRef) {
         let rows = rowsMois.filter(m => m.assietteNb > 0);
-        if (moisRef) rows = rows.filter(m => m.mois <= moisRef);
+        if (moisRef) {
+            // Même règle que la comparaison par catégorie : un mois d'arrêté
+            // qui n'est pas terminé ne se compare pas à un mois entier.
+            const limite = moisComplet(moisRef, dateRef) ? moisRef : moisAvant(moisRef);
+            rows = rows.filter(m => m.mois <= limite);
+        }
         if (rows.length < 2) return null;
         const cur = rows[rows.length - 1];
         let prev;
@@ -1528,6 +1533,117 @@
         };
     }
 
+    /**
+     * Le mois qui vient de s'écouler, catégorie par catégorie, comparé au
+     * précédent.
+     *
+     * La comparaison mensuelle existante est globale : elle dit que le retard
+     * moyen a bougé, pas où. Or les questions qui se posent en réunion sont
+     * toujours catégorielles — combien de factures sont tombées en recouvrement
+     * ce mois-ci et dans quel dispositif, quelle part est rentrée à l'heure,
+     * de combien le retard a bougé.
+     *
+     * La cohorte d'un mois, ce sont les factures dont l'échéance y tombe. On ne
+     * retient que les mois dont l'échéance est passée : une cohorte en cours
+     * n'a pas de taux.
+     *
+     * @param {Array}  factures
+     * @param {string} moisRef  mois d'arrêté (AAAA-MM)
+     * @param {string} base     'precedent' | 'annee'
+     * @returns {{mois, moisPrec, lignes:Array, total:Object}|null}
+     */
+    /** Le mois « AAAA-MM » est-il terminé à la date d'arrêté ? */
+    function moisComplet(mk, dateRef) {
+        const ref = dateRef || R.stripTime(new Date());
+        return R.stripTime(finDeMois(mk)) <= ref;
+    }
+
+    /** Le mois qui précède « AAAA-MM ». */
+    function moisAvant(mk) {
+        const [a, m] = mk.split('-').map(Number);
+        return m === 1 ? (a - 1) + '-12' : a + '-' + String(m - 1).padStart(2, '0');
+    }
+
+    function comparaisonParCategorie(factures, moisRef, base, rules, dateRef) {
+        const ref = dateRef || R.stripTime(new Date());
+        // Le mois d'arrêté n'est comparable que s'il est terminé. Arrêté au 14,
+        // sa cohorte n'a que quatorze jours d'échéances face à un mois entier :
+        // « réglé à l'heure » y bondit, le retard moyen s'effondre, et la
+        // variation ne mesure que la moitié manquante.
+        const moisArrete = moisRef || R.monthKey(ref);
+        const limite = moisComplet(moisArrete, ref) ? moisArrete : moisAvant(moisArrete);
+        const echues = factures.filter(f => f.dateEcheance && f.dateEcheance <= ref && f.moisEcheance);
+        const mois = [...new Set(echues.map(f => f.moisEcheance))].sort().filter(m => m <= limite);
+        if (mois.length < 2) return null;
+
+        const cur = mois[mois.length - 1];
+        let prec;
+        if (base === 'annee') {
+            const [a, m] = cur.split('-');
+            prec = (Number(a) - 1) + '-' + m;
+            if (!mois.includes(prec)) return { indisponible: true, mois: cur, moisCible: prec };
+        } else {
+            prec = mois[mois.length - 2];
+        }
+
+        // Les indicateurs d'une cohorte : ce qui est tombé en retard, ce qui
+        // est rentré à l'heure, de combien on a dérapé, et en combien de temps
+        // l'argent est rentré.
+        const mesurer = items => {
+            const enRetard = items.filter(x => x.etat === 'En retard' || x.etat === 'Payée en retard');
+            const aTemps = items.filter(x => x.etat === 'Payée');
+            const regles = items.filter(x => x.paye && x.delaiPaiement != null && x.delaiPaiement >= 0);
+            return {
+                nb: items.length,
+                euros: sum(items, x => x.montant),
+                nbRecouv: enRetard.length,
+                eurRecouv: sum(enRetard, x => x.montant),
+                tauxATemps: pct(aTemps.length, items.length),
+                retardMoyen: moyenne(enRetard.map(x => x.retardJours).filter(v => v != null)),
+                delaiReglement: moyenne(regles.map(x => x.delaiPaiement)),
+                items,
+            };
+        };
+
+        const parCat = new Map();
+        for (const f of echues) {
+            if (f.moisEcheance !== cur && f.moisEcheance !== prec) continue;
+            const cat = f.financement ? R.categorieDe(f.financement, rules) : 'À qualifier';
+            let g = parCat.get(cat);
+            if (!g) { g = { cat, cur: [], prec: [] }; parCat.set(cat, g); }
+            (f.moisEcheance === cur ? g.cur : g.prec).push(f);
+        }
+
+        const ecart = (a, b) => (a == null || b == null) ? null : a - b;
+        const lignes = [...parCat.values()].map(g => {
+            const c = mesurer(g.cur), p = mesurer(g.prec);
+            return {
+                categorie: g.cat, cur: c, prec: p,
+                dNbRecouv: c.nbRecouv - p.nbRecouv,
+                dEurRecouv: c.eurRecouv - p.eurRecouv,
+                dTauxATemps: ecart(c.tauxATemps, p.tauxATemps),
+                dRetardMoyen: ecart(c.retardMoyen, p.retardMoyen),
+                dDelai: ecart(c.delaiReglement, p.delaiReglement),
+            };
+        }).filter(l => l.cur.nb > 0 || l.prec.nb > 0)
+          .sort((a, b) => b.cur.eurRecouv - a.cur.eurRecouv);
+
+        const tousCur = lignes.flatMap(l => l.cur.items);
+        const tousPrec = lignes.flatMap(l => l.prec.items);
+        const tc = mesurer(tousCur), tp = mesurer(tousPrec);
+        return {
+            mois: cur, moisPrec: prec, lignes,
+            total: {
+                categorie: 'Toutes catégories', cur: tc, prec: tp,
+                dNbRecouv: tc.nbRecouv - tp.nbRecouv,
+                dEurRecouv: tc.eurRecouv - tp.eurRecouv,
+                dTauxATemps: ecart(tc.tauxATemps, tp.tauxATemps),
+                dRetardMoyen: ecart(tc.retardMoyen, tp.retardMoyen),
+                dDelai: ecart(tc.delaiReglement, tp.delaiReglement),
+            },
+        };
+    }
+
     global.LioraMetrics = {
         sum, pct, moyenne, moyennePonderee, mediane,
         filtrer, sourceDe, origineRecouvrement, vueEnsemble, parMois, parFinancement, croiseMoisFinancement,
@@ -1535,7 +1651,7 @@
         agreger, repartitionMontants, fluxRecouvrement, parDimension, finDeMois,
         dsoParMois, histogrammeRetards, TRANCHES_RETARD, joursDuMois,
         balanceAgee, balanceAgeeParDimension, ECHEANCE_MANQUANTE, LABEL_ECHEANCE_MANQUANTE, causesSansEcheance, topClients, parTableau, parGroupe,
-        qualite, scoreQualite, comparaisonMensuelle,
+        qualite, scoreQualite, comparaisonMensuelle, comparaisonParCategorie,
         inventaireQualifications, repartitionQualification,
         qualificationsParTableau, estColonneQualification, creancesDouteuses,
     };

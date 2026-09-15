@@ -237,6 +237,37 @@ Deux causes, toutes deux corrigées :
 Les mois écartés ne disparaissent pas en silence : une ligne sous le graphique
 dit où la courbe s'arrête et pourquoi.
 
+### Le mois écoulé, catégorie par catégorie
+
+La comparaison mensuelle existante est globale : elle dit que le retard moyen a
+bougé, jamais où. Le détail par financement, lui, ne donne qu'un niveau, jamais
+une variation. Entre les deux, les questions qui se posent réellement n'avaient
+pas de réponse directe.
+
+Le bloc **Le mois écoulé, par catégorie** les traite ensemble. Pour chaque
+catégorie de client, sur la cohorte du mois — les factures dont l'échéance y
+tombe :
+
+| Colonne | Ce qu'elle dit |
+|---|---|
+| Factures échues | la taille de la cohorte, en nombre et en euros |
+| Passées en recouvrement | celles qui sont ou ont été en retard, **et son écart** |
+| Réglé à l'heure | la part rentrée sans jamais dépasser l'échéance, **et son écart en points** |
+| Retard moyen | sur les seules factures passées en recouvrement, **et son écart en jours** |
+| Délai de règlement | facture → encaissement, **et son écart** |
+
+Le vert et le rouge disent *mieux* et *moins bien*, pas *plus* et *moins* : sur
+le retard et le délai, une hausse est une mauvaise nouvelle. Chaque nombre ouvre
+ses factures, et une bascule compare au mois précédent ou au même mois un an
+plus tôt.
+
+**Un mois d'arrêté non terminé ne compte pas.** Arrêté au 14, la cohorte de
+septembre n'a que quatorze jours d'échéances face à un mois entier : « réglé à
+l'heure » y bondit, le retard moyen s'effondre, et la variation ne mesure que la
+moitié manquante. La comparaison porte donc sur le dernier mois **complet** —
+la même règle que la courbe d'évolution, appliquée aussi à la comparaison
+globale, qui en souffrait également.
+
 ### Ce qui a « eu l'occasion » d'être en retard
 
 Le même défaut se cachait derrière plusieurs chiffres : **la maturité d'une
