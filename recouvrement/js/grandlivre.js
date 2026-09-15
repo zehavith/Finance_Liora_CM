@@ -1623,22 +1623,35 @@
 
         return ouvertes.map(brut => {
             const c = avecSellsy(brut);
-            const direct = c.cle ? idx.parCle.get(c.cle) : null;
-            if (direct) return poser(c, direct, 'Facture', 'Facture Monday ' + (c.numero || ''));
-            const refFin = duReferentiel(c);
-            if (refFin) return poser(c, refFin, 'Référentiel qualifié', 'Validé à la main sur ' + (c.numero || ''));
-            const parRegle = desRegles(c);
-            if (parRegle) return poser(c, parRegle.financement, 'Règle : ' + etiquetteRegle(parRegle.regle),
-                etiquetteRegle(parRegle.regle));
-            // L'ancien grand livre, classé à la main : c'est du travail déjà
-            // fait, et il passe donc avant tout ce qui se devine. Trois
-            // recherches, dans l'ordre de vos formules — le numéro de facture
-            // désigne une facture précise, l'identifiant du tiers un client,
-            // le compte une famille de clients.
+            // Vos lignes d'abord.
+            //
+            // « Tu dois prendre mes lignes comme base si je les ai déjà
+            // rangées. » La facture Monday passait devant le référentiel
+            // qualifié et devant votre colonne de classement : une créance que
+            // vous aviez rangée à la main pouvait être reclassée par une
+            // déduction de l'application. L'ordre est inversé — d'abord ce que
+            // vous avez tranché sur cette créance-là, ensuite seulement ce que
+            // l'application sait en déduire.
             const parAncien = quoi => {
                 const v = c.ancien ? c.ancien[quoi] : '';
                 return v ? R.detectFinancement(v, o.rules) : null;
             };
+            const refFin = duReferentiel(c);
+            if (refFin) return poser(c, refFin, 'Référentiel qualifié', 'Validé à la main sur ' + (c.numero || ''));
+            // Votre colonne de classement, sur cette facture précise : c'est du
+            // travail déjà fait, pas une déduction.
+            const ancienNumDAbord = parAncien('numero');
+            if (ancienNumDAbord && !c.filiz) {
+                return poser(c, ancienNumDAbord, 'Ancien grand livre (n° de facture)', c.ancien.numero);
+            }
+            const direct = c.cle ? idx.parCle.get(c.cle) : null;
+            if (direct) return poser(c, direct, 'Facture', 'Facture Monday ' + (c.numero || ''));
+            const parRegle = desRegles(c);
+            if (parRegle) return poser(c, parRegle.financement, 'Règle : ' + etiquetteRegle(parRegle.regle),
+                etiquetteRegle(parRegle.regle));
+            // Les deux autres recherches de vos formules — l'identifiant du
+            // tiers désigne un client, le compte une famille de clients. Moins
+            // précises que le numéro de facture, elles restent après les règles.
             const ancienNum = parAncien('numero');
             // Une facture Filiz est une alternance, sans exception : la marque
             // est dans le numéro même — « FCT-FILIZ-DST-2025-276 ». L'ancien
