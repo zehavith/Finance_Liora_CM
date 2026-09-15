@@ -1687,7 +1687,9 @@ L'onglet **Balance âgée** propose trois lectures, au choix :
   ligne : c'est la somme des seules tranches d'ancienneté. Le *Non échu* et le
   *Solde créditeur* sont à part, et c'est la dernière colonne qui totalise :
 
-  > Échu + Non échu + Solde créditeur + Sans date = **Total**, le solde des comptes clients.
+  > Échu + Non échu + Sans date = **Restant dû**
+  >
+  > Restant dû − Solde créditeur = **Solde des comptes clients**
 
   La colonne **Sans date** est la quatrième à part. Une créance qui ne porte ni
   date d'échéance ni date de facture prenait auparavant un retard de zéro jour :
@@ -1695,10 +1697,24 @@ L'onglet **Balance âgée** propose trois lectures, au choix :
   lui inventait ainsi une date. Elle compte désormais dans le total, et dans
   aucune tranche.
 
-  L'addition est écrite sous le tableau, avec les trois montants du moment ; un
-  écart de plus d'un euro entre elle et la colonne *Total* s'affiche en rouge.
-  La colonne s'appelait *Total échu*, ce qui la faisait lire comme un total de
-  ligne et donnait l'impression que la ligne TOTAL ne tombait pas juste.
+  L'addition est écrite sous le tableau, avec les montants du moment ; un écart
+  de plus d'un euro s'affiche en rouge. La colonne s'appelait *Total échu*, ce
+  qui la faisait lire comme un total de ligne et donnait l'impression que la
+  ligne TOTAL ne tombait pas juste.
+
+  **Le solde créditeur n'est plus dans la balance âgée.** Il y comptait, dans le
+  total mais hors des tranches — si bien que le *total échu* d'une ligne pouvait
+  dépasser son *restant dû* : B2C-Perso affichait 2 254 726 € dus et
+  2 429 359 € échus, ce qui ne veut rien dire. Or les **1 086 soldes créditeurs**
+  du grand livre de septembre viennent **tous, sans exception, de groupes déjà
+  lettrés** : ce sont des trop-perçus pointés, pas des créances à recouvrer, et
+  cette balance ne retient que le non pointé et le partiellement pointé.
+
+  Ils ne disparaissent pas : comptés à part, ils font le pont avec la
+  comptabilité, et l'écran l'écrit —
+  15 714 192 € − 1 405 512 € = **14 308 680 €**, le solde des comptes clients.
+  Au passage, la balance perd 1 086 lignes qui n'avaient rien à y faire :
+  4 150 créances au lieu de 5 236.
 - **Comparer les deux** — l'écart par financement, et où il se creuse.
 
 Aucun filtre de la barre ne s'applique aux deux dernières : la comptabilité

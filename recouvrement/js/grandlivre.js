@@ -2206,6 +2206,28 @@
                 for (const b of R.AGING_BUCKETS) l.buckets[b.key] = 0;
                 lignes.set(cle, l);
             }
+            // Un solde créditeur n'est pas une créance : c'est de l'argent déjà
+            // reçu, et il sort de la balance âgée — avant tout autre test.
+            //
+            // Il y comptait, dans le total mais hors des tranches. Conséquence :
+            // le « total échu » d'une ligne pouvait dépasser son « restant dû »
+            // — B2C-Perso affichait 2 254 726 € dus et 2 429 359 € échus, ce qui
+            // ne veut rien dire. Les 1 086 soldes créditeurs du grand livre de
+            // septembre viennent tous, sans exception, de groupes lettrés : ce
+            // sont des trop-perçus déjà pointés, pas des créances à recouvrer.
+            // Vous ne voulez dans cette balance que le non pointé et le
+            // partiellement pointé ; ils n'y ont donc pas leur place, ni dans le
+            // total, ni dans le nombre de créances.
+            //
+            // Ils ne disparaissent pas pour autant : comptés à part, ils font le
+            // pont avec le solde des comptes clients, et l'écran l'écrit.
+            if (c.resteDu < 0) {
+                l.crediteur += c.resteDu;
+                l.nbCrediteur++;
+                l.creances.push({ ...c, retardJours: null, bucket: 'crediteur' });
+                continue;
+            }
+
             const base = c.dateEcheance || c.dateFacture;
             if (!base) sansDate++;
             const retard = base ? R.diffDays(ref, base) : 0;
@@ -2218,27 +2240,16 @@
             // Une créance sans la moindre date — ni échéance, ni date de
             // facture — prenait un retard de zéro jour, tombait dans la tranche
             // la plus récente et se comptait en « non échu ». Elle avait donc
-            // une ancienneté et une échéance qu'aucune donnée ne soutient. Elle
-            // compte dans le total, comme le solde créditeur, mais à part : la
-            // dater reviendrait à inventer une règle, et vos règles font seules
-            // autorité.
+            // une ancienneté que rien ne soutient. Elle compte dans le total,
+            // mais dans aucune tranche : la dater reviendrait à inventer une
+            // règle, et vos règles font seules autorité.
             if (!base) {
                 l.sansDate += c.resteDu;
                 l.nbSansDate++;
                 l.creances.push({ ...c, retardJours: null, bucket: 'sansDate' });
                 continue;
             }
-            // Un solde créditeur — acompte, trop-perçu, avoir non imputé — n'est
-            // pas une créance vieillie : c'est de l'argent déjà reçu. Le ranger
-            // dans la tranche d'ancienneté de sa facture l'y soustrairait et
-            // effacerait des arriérés bien réels. Il compte dans le total, qui
-            // reste le solde du compte, mais à part dans les tranches.
-            if (c.resteDu < 0) {
-                l.crediteur += c.resteDu;
-                l.nbCrediteur++;
-                l.creances.push({ ...c, retardJours: retard, bucket: 'crediteur' });
-                continue;
-            }
+
             l.buckets[bucket.key] += c.resteDu;
             if (retard > 0) l.echu += c.resteDu; else l.nonEchu += c.resteDu;
             l.creances.push({ ...c, retardJours: retard, bucket: bucket.key });
@@ -2263,6 +2274,9 @@
             for (const b of R.AGING_BUCKETS) total.buckets[b.key] += r.buckets[b.key];
         }
 
+        // Le solde comptable : la balance âgée plus l'argent déjà reçu mais pas
+        // encore imputé. C'est lui qui se recoupe avec le grand livre.
+        total.soldeComptable = total.total + total.crediteur;
         return { rows, total, sansDate, dateRef: ref,
                  nbAClasser: (lignes.get(A_CLASSER) || { nb: 0 }).nb,
                  eurosAClasser: (lignes.get(A_CLASSER) || { total: 0 }).total };
