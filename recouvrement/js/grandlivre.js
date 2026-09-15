@@ -2206,27 +2206,21 @@
                 for (const b of R.AGING_BUCKETS) l.buckets[b.key] = 0;
                 lignes.set(cle, l);
             }
-            // Un solde créditeur n'est pas une créance : c'est de l'argent déjà
-            // reçu, et il sort de la balance âgée — avant tout autre test.
+            // La balance âgée ne compte pas que des factures : elle porte tout
+            // ce qui n'est pas pointé, ou ne l'est que partiellement — les
+            // règlements non lettrés compris. Un solde créditeur est donc une
+            // ligne de la balance comme une autre, et il vieillit comme les
+            // autres, à sa date.
             //
-            // Il y comptait, dans le total mais hors des tranches. Conséquence :
-            // le « total échu » d'une ligne pouvait dépasser son « restant dû »
-            // — B2C-Perso affichait 2 254 726 € dus et 2 429 359 € échus, ce qui
-            // ne veut rien dire. Les 1 086 soldes créditeurs du grand livre de
-            // septembre viennent tous, sans exception, de groupes lettrés : ce
-            // sont des trop-perçus déjà pointés, pas des créances à recouvrer.
-            // Vous ne voulez dans cette balance que le non pointé et le
-            // partiellement pointé ; ils n'y ont donc pas leur place, ni dans le
-            // total, ni dans le nombre de créances.
-            //
-            // Ils ne disparaissent pas pour autant : comptés à part, ils font le
-            // pont avec le solde des comptes clients, et l'écran l'écrit.
-            if (c.resteDu < 0) {
-                l.crediteur += c.resteDu;
-                l.nbCrediteur++;
-                l.creances.push({ ...c, retardJours: null, bucket: 'crediteur' });
-                continue;
-            }
+            // Il en a longtemps été sorti — compté dans le total, mais dans
+            // aucune tranche. Le total d'une ligne s'en trouvait rabaissé sous
+            // la somme de ses tranches, et le « total échu » pouvait dépasser
+            // le « restant dû » : B2C-Perso affichait 2 254 726 € dus pour
+            // 2 429 359 € échus, ce qui ne veut rien dire. Remis dans les
+            // tranches, il y entre en négatif — comme dans votre classeur, où
+            // le compte 4110AFFA00100 figure à −149 €, échu — et l'égalité
+            // « restant dû = somme des tranches » se rétablit d'elle-même.
+            if (c.resteDu < 0) { l.crediteur += c.resteDu; l.nbCrediteur++; }
 
             const base = c.dateEcheance || c.dateFacture;
             if (!base) sansDate++;
@@ -2274,9 +2268,9 @@
             for (const b of R.AGING_BUCKETS) total.buckets[b.key] += r.buckets[b.key];
         }
 
-        // Le solde comptable : la balance âgée plus l'argent déjà reçu mais pas
-        // encore imputé. C'est lui qui se recoupe avec le grand livre.
-        total.soldeComptable = total.total + total.crediteur;
+        // Le solde comptable, c'est la balance âgée elle-même : elle porte tout
+        // le non pointé et le partiellement pointé, crédits compris.
+        total.soldeComptable = total.total;
         return { rows, total, sansDate, dateRef: ref,
                  nbAClasser: (lignes.get(A_CLASSER) || { nb: 0 }).nb,
                  eurosAClasser: (lignes.get(A_CLASSER) || { total: 0 }).total };

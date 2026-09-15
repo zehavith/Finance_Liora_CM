@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '2.96.0';
+    const VERSION = '2.97.0';
     const VERSION_DATE = '13 septembre 2026';
 
     const R = window.LioraRules;
@@ -3761,8 +3761,8 @@
                 cls: () => 'ag-col',
             })),
             { key: 'total', label: 'Restant dû', align: 'right',
-              title: 'Échu + non échu + sans date — ce qui reste à encaisser. '
-                   + 'Les soldes créditeurs n’y sont pas : voir la colonne à côté.',
+              title: 'Échu + non échu + sans date — le solde du compte client. '
+                   + 'Les règlements non lettrés y sont, en négatif, dans la tranche de leur date.',
               format: U.euros, cls: () => 'ag-total' },
             // Deux comptages, et ils ne disent pas la même chose : sous le
             // montant en retard, les factures échues et impayées ; ici, toutes
@@ -4174,10 +4174,10 @@
                 format: (v, row) => v ? `<span class="ag-cell">${fmtAg(v)}</span>` : '<span class="ag-zero">·</span>',
                 cls: () => 'ag-col',
             })),
-            { key: 'crediteur', label: 'Solde créditeur', align: 'right',
-              title: 'Acomptes, trop-perçus et avoirs non imputés : de l’argent déjà reçu. '
-                   + 'Hors de la balance âgée — tous viennent de groupes déjà lettrés — '
-                   + 'mais rappelé ici, car il fait le pont avec le solde du compte client.',
+            { key: 'crediteur', label: 'dont créditeur', align: 'right',
+              title: 'Acomptes, trop-perçus, règlements et avoirs non encore imputés. '
+                   + 'Ils sont déjà compris dans les tranches et dans le restant dû, en négatif : '
+                   + 'cette colonne les rappelle, elle ne s’ajoute pas.',
               format: v => v ? `<span class="ag-cell">${fmtAg(v)}</span>` : '<span class="ag-zero">·</span>',
               cls: () => 'ag-col' },
             // Ni échéance ni date de facture : aucune ancienneté ne peut être
@@ -4223,24 +4223,23 @@
             const sd = b.total.sansDate || 0;
             const cred = b.total.crediteur || 0;
             const ecart = b.total.total - (b.total.echu + b.total.nonEchu + sd);
-            const comptable = b.total.total + cred;
             somme.innerHTML = `Comment se lit la ligne TOTAL : `
                 + `<strong>${U.euros(b.total.echu)}</strong> échu`
                 + `<span class="somme-signe">+</span><strong>${U.euros(b.total.nonEchu)}</strong> non échu`
                 + (sd ? `<span class="somme-signe">+</span><strong>${U.euros(sd)}</strong> sans date`
-                      + ` (${U.nombre(b.total.nbSansDate)} créances)` : '')
-                + `<span class="somme-signe">=</span><strong>${U.euros(b.total.total)}</strong> `
-                + `restant dû sur ${U.nombre(b.total.nb)} créances.`
-                // Le pont avec la comptabilité, écrit : la balance âgée ne
-                // porte que ce qui reste à encaisser, le solde du compte y
-                // ajoute l'argent déjà reçu qui n'est pas encore imputé.
+                      + ` (${U.nombre(b.total.nbSansDate)} lignes)` : '')
+                + `<span class="somme-signe">=</span><strong>${U.euros(b.total.total)}</strong>, `
+                + `le solde des comptes clients, sur ${U.nombre(b.total.nb)} lignes.`
+                // Ce que la balance contient vraiment : pas seulement des
+                // factures. Sans cette phrase, une tranche négative passe pour
+                // une erreur alors que c'est un règlement qui n'a pas encore
+                // trouvé sa facture.
+                + ` <br>Elle porte tout ce qui n'est pas pointé, ou ne l'est que partiellement :`
+                + ` les factures, mais aussi les règlements et les avoirs non lettrés.`
                 + (cred
-                    ? ` <br>S'ajoutent <strong>${U.euros(Math.abs(cred))}</strong> de soldes créditeurs `
-                      + `sur ${U.nombre(b.total.nbCrediteur)} comptes — acomptes, trop-perçus et avoirs `
-                      + `non imputés, tous issus de groupes déjà lettrés. Ce n'est pas une créance : `
-                      + `cette balance ne retient que le non pointé et le partiellement pointé. `
-                      + `<strong>${U.euros(b.total.total)} − ${U.euros(Math.abs(cred))} = `
-                      + `${U.euros(comptable)}</strong>, le solde des comptes clients.`
+                    ? ` Ces derniers pèsent <strong>${U.euros(Math.abs(cred))}</strong> sur `
+                      + `${U.nombre(b.total.nbCrediteur)} lignes, et entrent <strong>en négatif</strong> `
+                      + `dans la tranche de leur date — une tranche négative n'est donc pas une erreur.`
                     : '')
                 + (Math.abs(ecart) > 1
                     ? ` <span class="cell-danger">Écart inexpliqué de ${U.euros(ecart)} — à signaler.</span>`
@@ -5685,7 +5684,7 @@
             // « Restant dû » est la balance âgée ; « Solde du compte » y ajoute
             // l'argent déjà reçu et non imputé. Les deux colonnes portaient le
             // même chiffre, et le pont avec la comptabilité ne se lisait pas.
-            o['Solde du compte'] = arrondi(r.total + (r.crediteur || 0));
+            o['Solde du compte'] = arrondi(r.total);
             o['Nb de créances'] = r.nb;
             o['Dont factures'] = r.nbFactures || 0;
             o['Dont soldes sans facture'] = r.nbSansFacture || 0;
@@ -5856,7 +5855,7 @@
                 const ligne = [r.label, '', arrondi(r.total), arrondi(r.echu)]
                     .concat(buckets.filter(b => b.key !== 'nonEchu').map(b => arrondi(r.buckets[b.key])))
                     .concat([arrondi(r.nonEchu), arrondi(r.crediteur || 0), arrondi(r.sansDate || 0),
-                        arrondi(r.total + (r.crediteur || 0)), r.nb,
+                        arrondi(r.total), r.nb,
                         r.nbFactures || 0, r.nbSansFacture || 0,
                         lignesGL.get(r.cle) || lignesGL.get(r.financement) || '', '', '']);
                 aoa.push(ligne);

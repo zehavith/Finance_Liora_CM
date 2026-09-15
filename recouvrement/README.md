@@ -1702,19 +1702,29 @@ L'onglet **Balance âgée** propose trois lectures, au choix :
   qui la faisait lire comme un total de ligne et donnait l'impression que la
   ligne TOTAL ne tombait pas juste.
 
-  **Le solde créditeur n'est plus dans la balance âgée.** Il y comptait, dans le
-  total mais hors des tranches — si bien que le *total échu* d'une ligne pouvait
-  dépasser son *restant dû* : B2C-Perso affichait 2 254 726 € dus et
-  2 429 359 € échus, ce qui ne veut rien dire. Or les **1 086 soldes créditeurs**
-  du grand livre de septembre viennent **tous, sans exception, de groupes déjà
-  lettrés** : ce sont des trop-perçus pointés, pas des créances à recouvrer, et
-  cette balance ne retient que le non pointé et le partiellement pointé.
+  **La balance âgée ne compte pas que des factures.** Elle porte tout ce qui
+  n'est pas pointé, ou ne l'est que partiellement : les factures, mais aussi les
+  **règlements et les avoirs non lettrés**. Sur le grand livre de septembre,
+  1 086 lignes sont dans ce cas, pour 1 405 512 €.
 
-  Ils ne disparaissent pas : comptés à part, ils font le pont avec la
-  comptabilité, et l'écran l'écrit —
-  15 714 192 € − 1 405 512 € = **14 308 680 €**, le solde des comptes clients.
-  Au passage, la balance perd 1 086 lignes qui n'avaient rien à y faire :
-  4 150 créances au lieu de 5 236.
+  Ces lignes étaient sorties des tranches — comptées dans le total, mais dans
+  aucune colonne d'ancienneté. Le total d'une ligne s'en trouvait rabaissé sous
+  la somme de ses tranches, et le *total échu* pouvait dépasser le *restant dû* :
+  B2C-Perso affichait 2 254 726 € dus pour 2 429 359 € échus, ce qui ne veut
+  rien dire. Treize lignes sur quinze étaient dans ce cas.
+
+  Elles vieillissent désormais comme les autres, **en négatif, dans la tranche de
+  leur date** — comme dans votre classeur, où le compte `4110AFFA00100` figure à
+  −149 €, échu. **Une tranche négative n'est donc pas une erreur** : c'est un
+  règlement qui n'a pas encore trouvé sa facture. Et l'égalité se rétablit
+  d'elle-même : 9 491 587 € échu + 4 817 093 € non échu = **14 308 680 €**, le
+  solde des comptes clients, à l'euro.
+
+  Une précision sur le périmètre : aucun groupe **entièrement lettré et soldé**
+  n'entre dans cette balance — il n'y en a d'ailleurs aucun dans l'extrait de
+  septembre. La règle « non pointé ou partiellement pointé » était donc déjà
+  respectée ; c'est le traitement des crédits, pas le périmètre, qui produisait
+  l'anomalie.
 - **Comparer les deux** — l'écart par financement, et où il se creuse.
 
 Aucun filtre de la barre ne s'applique aux deux dernières : la comptabilité
