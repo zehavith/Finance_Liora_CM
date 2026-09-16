@@ -1105,7 +1105,8 @@ SI( « facture postérieure » = oui   →  date de facture de la facturation + 
 Les **17 barèmes** de la cascade sont repris à l'identique : *fin de formation
 + 60* pour Agefiph, AIF, B2B, B2C-Entreprise, CPF, Interco, Interne - DST
 Allemagne, POEI, Region et Transition Pro ; *fin de formation + 30* pour
-Alternance, ETAT, OPCO et OPCO - Alternance ; *début de formation, sans délai*
+Alternance, ETAT et OPCO ; *fin de formation + **60*** pour OPCO - Alternance
+(voir ci-dessous) ; *début de formation, sans délai*
 pour B2C-Perso et Perso-Alternance ; *date de facture de la facturation + 30*
 pour Corporate - Alternance.
 
@@ -1128,6 +1129,31 @@ avance pour 54, d'un écart médian de 170 jours, et **environ 900 créances /
 4,2 M€** repassent de *échu* à *non échu*. Ce n'est pas une divergence de
 règle — c'est votre règle appliquée là où votre classeur ne pouvait pas
 l'appliquer.
+
+#### L'alternance Filiz : qui paie décide du barème (v3.1.0)
+
+Une facture d'alternance est émise par Filiz, et son échéance ne se lit pas
+comme celle d'une formation ordinaire. Votre règle :
+
+| Qui paie | Barème |
+|---|---|
+| **un OPCO** → OPCO - Alternance | fin de formation **+ 60 j** |
+| **l'entreprise** → Corporate - Alternance | date de facture **+ 30 j** |
+
+L'aiguillage se fait sur le payeur lu au grand livre, pas sur le numéro de
+facture : un compte AKTO, Atlas ou OPCO 2i donne une OPCO - Alternance, un
+compte d'entreprise une Corporate - Alternance.
+
+OPCO - Alternance passe donc de **+30 à +60 jours**. À noter : votre classeur
+de trésorerie porte encore +30 sur ce dispositif — c'est le classeur qui est en
+retard sur la règle, pas l'application, et la concordance de 100 % avec sa
+formule s'en écarte désormais sur ce seul barème.
+
+Sur l'extrait de septembre, la règle ne touche aujourd'hui que **42 des 207
+créances OPCO - Alternance** (184 263 €) : les 165 autres (244 090 €) n'ont
+aucune date de formation, parce que les factures `FCT-FILIZ-…` n'existent ni
+dans Sellsy ni dans Zoho. Elles restent sur l'échéance du grand livre tant que
+la base Filiz n'est pas chargée.
 
 #### Trois corrections de la v3.0.0
 
