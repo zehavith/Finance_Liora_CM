@@ -195,22 +195,22 @@
         {
             // Un OPCO qui finance une alternance : même payeur, autre dispositif.
             //
-            // Soixante jours, et non trente : c'est la règle que vous avez
-            // posée pour l'alternance Filiz — « si c'est OPCO, date de fin
-            // + 60 jours ; si c'est l'entreprise, date de facture + 30 ».
-            // La branche « entreprise » est Corporate - Alternance, qui suit
-            // déjà la date de facture + 30.
+            // Quinze jours : c'est la règle que vous avez posée pour
+            // l'alternance Filiz — « si c'est OPCO, date de fin + 15 jours ;
+            // si c'est l'entreprise, date de facture + 30 ». La branche
+            // « entreprise » est Corporate - Alternance, qui suit déjà la
+            // date de facture + 30.
             //
             // À noter : votre classeur de trésorerie porte encore +30 sur ce
             // dispositif. C'est donc le classeur qui est en retard sur la
             // règle, pas l'application.
             key: 'OPCO_ALTERNANCE', label: 'OPCO - Alternance',
-            base: 'dateFinFormation', jours: 60,
-            fallback: 'dateFacture', fallbackJours: 60,
-            note: 'Fin de formation +60 jours — pas de recouvrement OPCO, suivi du retard uniquement',
+            base: 'dateFinFormation', jours: 15,
+            fallback: 'dateFacture', fallbackJours: 15,
+            note: 'Fin de formation +15 jours — pas de recouvrement OPCO, suivi du retard uniquement',
             categorie: 'Alternance', perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco alternance', 'opco-alternance'],
-            gl: { base: 'dateFinFormation', jours: 60 },
+            gl: { base: 'dateFinFormation', jours: 15 },
         },
         {
             key: 'BTC_PERSO', label: 'B2C-Perso',

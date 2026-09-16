@@ -1105,7 +1105,7 @@ SI( « facture postérieure » = oui   →  date de facture de la facturation + 
 Les **17 barèmes** de la cascade sont repris à l'identique : *fin de formation
 + 60* pour Agefiph, AIF, B2B, B2C-Entreprise, CPF, Interco, Interne - DST
 Allemagne, POEI, Region et Transition Pro ; *fin de formation + 30* pour
-Alternance, ETAT et OPCO ; *fin de formation + **60*** pour OPCO - Alternance
+Alternance, ETAT et OPCO ; *fin de formation + **15*** pour OPCO - Alternance
 (voir ci-dessous) ; *début de formation, sans délai*
 pour B2C-Perso et Perso-Alternance ; *date de facture de la facturation + 30*
 pour Corporate - Alternance.
@@ -1137,14 +1137,14 @@ comme celle d'une formation ordinaire. Votre règle :
 
 | Qui paie | Barème |
 |---|---|
-| **un OPCO** → OPCO - Alternance | fin de formation **+ 60 j** |
+| **un OPCO** → OPCO - Alternance | fin de formation **+ 15 j** |
 | **l'entreprise** → Corporate - Alternance | date de facture **+ 30 j** |
 
 L'aiguillage se fait sur le payeur lu au grand livre, pas sur le numéro de
 facture : un compte AKTO, Atlas ou OPCO 2i donne une OPCO - Alternance, un
 compte d'entreprise une Corporate - Alternance.
 
-OPCO - Alternance passe donc de **+30 à +60 jours**. À noter : votre classeur
+OPCO - Alternance passe donc de **+30 à +15 jours**. À noter : votre classeur
 de trésorerie porte encore +30 sur ce dispositif — c'est le classeur qui est en
 retard sur la règle, pas l'application, et la concordance de 100 % avec sa
 formule s'en écarte désormais sur ce seul barème.
