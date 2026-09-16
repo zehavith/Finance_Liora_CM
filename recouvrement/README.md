@@ -1087,8 +1087,79 @@ ne suffit pas : beaucoup d'entreprises tiennent en deux mots.
 L'échéance ne se lit pas dans le grand livre : celui-ci porte bien une date,
 mais elle vient de la facturation et ignore le dispositif. Elle est donc
 **recalculée**, exactement comme la colonne *Date d'échéance recalculée* du
-classeur de trésorerie — et vérifiée contre elle : **15 769 lignes, aucun
-écart**.
+classeur de trésorerie — et vérifiée contre elle : **la feuille *Grand livre -
+Clients Non lettré* 16 054 lignes sur 16 054, la feuille *Copie de Grand livre -
+Clients* 15 770 sur 15 770, aucun écart**.
+
+Ce contrôle porte sur le **moteur seul** : on lui donne vos entrées — votre
+sous-catégorie, vos dates de formation, votre date de facture — et il rejoue
+votre colonne. Sa formule est une cascade de SI que le code reprend branche par
+branche :
+
+```
+SI( « facture postérieure » = oui   →  date de facture de la facturation + 60 j
+ ;  SI( mandat de prélèvement ≠ vide →  fin de formation, sans délai
+     ;  le barème du dispositif, à défaut la date d'échéance du grand livre ))
+```
+
+Les **17 barèmes** de la cascade sont repris à l'identique : *fin de formation
++ 60* pour Agefiph, AIF, B2B, B2C-Entreprise, CPF, Interco, Interne - DST
+Allemagne, POEI, Region et Transition Pro ; *fin de formation + 30* pour
+Alternance, ETAT, OPCO et OPCO - Alternance ; *début de formation, sans délai*
+pour B2C-Perso et Perso-Alternance ; *date de facture de la facturation + 30*
+pour Corporate - Alternance.
+
+#### Ce que ce 100 % ne dit pas
+
+Sur l'extrait de septembre, **12 651 lignes sur 16 054 (79 %)** ne passent par
+aucun barème : vos colonnes de dates de formation y sont vides, et votre formule
+retombe alors sur la date d'échéance du grand livre. Vos règles ne décident
+réellement que sur **21 %** des lignes — 3 402 lignes, 1 751 numéros de facture.
+
+L'application, elle, va chercher la date de formation dans Sellsy quand la
+colonne est vide, puis applique votre règle. Sur **3 018 créances / 12 742 080 €**
+elle trouve une fin de formation là où votre feuille n'en a pas — et dans
+**3 017 cas sur 3 017**, c'est exactement la date que porte votre propre base
+*BdD - Toutes les factures Sellsy*. La donnée est dans votre classeur ; seul son
+report dans la balance manquait.
+
+Conséquence chiffrée : l'échéance **recule** pour 2 964 de ces créances et
+avance pour 54, d'un écart médian de 170 jours, et **environ 900 créances /
+4,2 M€** repassent de *échu* à *non échu*. Ce n'est pas une divergence de
+règle — c'est votre règle appliquée là où votre classeur ne pouvait pas
+l'appliquer.
+
+#### Trois corrections de la v3.0.0
+
+Comparée créance par créance à votre colonne recalculée sur l'extrait de
+septembre — jointure par le n° de facture **et** par le numéro extrait du
+libellé de ligne — la concordance était de **1 208 sur 4 697 (26 %)**. Trois
+défauts en expliquaient une part, et ils sont corrigés :
+
+- **L'échéance de la facturation ne se substitue plus au recalcul.** Elle se
+  glissait en deuxième position dans la liste des dates de repli et servait
+  ensuite de base de calcul : une date trouvée dans un fichier prenait la place
+  de votre règle, ce que vous avez interdit. Sellsy reste la source des dates
+  de **formation**, qui sont des faits ; son échéance à elle, non.
+- **Un mandat de prélèvement simplement cité dans le libellé d'une écriture ne
+  redate plus rien.** Le commentaire du code l'annonçait déjà — « montrés et
+  exportés, sans changer l'échéance » — mais le code faisait l'inverse : **409
+  créances / 529 044 €** étaient datées « fin de formation, sans délai » au
+  motif d'un identifiant de mandat lu dans un libellé, alors que votre colonne
+  de mandat est vide sur la totalité de l'extrait. Seuls votre colonne et
+  l'export GoCardless retrouvé par l'e-mail décident désormais.
+- **Une écriture est datée par la facture qu'elle nomme, pas par celle d'à
+  côté.** Dans le pool non lettré d'un compte, toutes les écritures partagent
+  une seule clé de groupe, et le groupe ne retenait que la première créance
+  rencontrée : **2 585 lignes de facture** recevaient l'échéance d'une *autre*
+  facture du même client — différente de la leur 2 487 fois — et 611 règlements
+  et avoirs citaient une facture qu'on ne regardait pas. La facture nommée passe
+  maintenant en premier ; le lettrage reste la réponse quand la ligne ne nomme
+  personne.
+
+Après correction : **1 396 sur 4 697 (30 %)**, +188 créances, et plus aucune
+créance datée par un mandat deviné. Le solde des comptes clients reste à
+**14 308 680 €** ; l'échu passe de 9 536 745 € à 9 621 070 €.
 
 **Deux règles, pas une.** Le suivi de recouvrement et la balance âgée comptable
 ne mesurent pas la même chose — l'un le travail de relance, l'autre le solde du
@@ -1214,6 +1285,63 @@ l'indice le plus fort, un virement soldant presque toujours une facture
 entière — et à défaut compte les créances ouvertes du compte. L'export du
 classeur en fait deux onglets : *Règlements* (tous, avec leur dispositif) et
 *Paiements à pointer* (les orphelins, avec leurs candidates).
+
+### Là où il n'y a pas de facture
+
+Une ligne de la balance âgée comptable peut n'avoir **aucun numéro de facture** :
+un règlement non pointé, un acompte, un avoir sans facture désignée, un report à
+nouveau. Sur l'extrait de septembre, elles sont **539 créances** — 10 % des
+lignes, **564 304 € nets** (1 393 396 € au débit, 829 092 € au crédit).
+
+**Comment elles sont classées.** Elles passent dans la même cascade que les
+factures, mais toutes les voies qui interrogent la facturation par numéro sont
+hors jeu. Ce qui les classe, mesuré :
+
+| Voie | Créances | Montant |
+|---|---:|---:|
+| Votre colonne, par n° de facture (ancien grand livre) | 380 | 450 521 € |
+| Votre colonne, par identifiant du tiers | 151 | 130 158 € |
+| Facture Filiz : alternance | 5 | −6 663 € |
+| Même client chez Sellsy | 3 | −9 711 € |
+| **À classer** | **0** | **0 €** |
+
+**98,5 % sont classées par vos propres colonnes.** Sans elles — sur un extrait
+Pennylane brut — l'application en classe 263 par le libellé du compte, 190 par
+le même client chez Sellsy, 14 par le nom d'entreprise, 13 par GoCardless ou
+Stripe, 5 par Filiz, et il en reste 48 à classer ; le dispositif diffère alors
+du vôtre sur 90 des 539 (**83 % d'accord**).
+
+**Comment elles sont datées.** 310 reçoivent une échéance, toutes par la règle
+du dispositif — jamais par l'échéance du grand livre. Mais la base à laquelle
+cette règle s'applique n'est pas une date d'émission :
+
+| Base utilisée | Créances |
+|---|---:|
+| la date du **dernier mouvement** du groupe | 213 |
+| une fin de formation trouvée dans le pool du compte | 73 |
+| un début de formation trouvé dans le pool du compte | 12 |
+| **aucune base : pas d'échéance** | **229** |
+
+C'est le point faible, et il est signalé comme tel : pour ces 213 créances, un
+virement reçu se voit attribuer une échéance **postérieure de 30 ou 60 jours au
+jour où l'argent est arrivé**. Et sur les 97 datées par une date de formation,
+15 (781 352 €) la tirent d'un pool de compte qui en porte plusieurs.
+
+Les **229 sans échéance** ne disparaissent pas pour autant : la balance âgée les
+vieillit sur `échéance, à défaut date de facture`, et pour une créance sans
+facture cette « date de facture » est la date du dernier mouvement. Le
+compartiment *Sans date* affiche donc **0 €** — non parce que tout est daté,
+mais parce que le repli fonctionne toujours.
+
+**Ce que fait votre classeur, et en quoi il diffère.** Vous datez **100 % de vos
+12 298 lignes sans numéro de facture**, et votre date n'est pas une exigibilité :
+c'est **la date de l'opération elle-même**, lue dans le libellé de ligne
+(« 2025-04-24 – VIR SEPA RECU /FRM ALMA » → 24/04/2025). 6 249 gardent
+l'échéance brute, 1 954 prennent le début de formation, 1 631 la date
+d'enregistrement, 1 048 la date lue dans le libellé, 886 la fin de formation.
+L'application, elle, recopie l'échéance d'une facture du compte. D'où un accord
+de **5,8 %** seulement (719 lignes sur 12 298) et un **écart médian de 345
+jours** — le plus gros désaccord de datation qui reste entre nous.
 
 ### Vos règles de classement
 

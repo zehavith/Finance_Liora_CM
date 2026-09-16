@@ -1481,6 +1481,20 @@
         // Les règles écrites à la main passent juste après ce qui est établi
         // facture par facture : elles sont délibérées, mais un rapprochement
         // nominatif reste plus précis qu'un motif.
+        // Le mandat qui décide de l'échéance est le vôtre : votre colonne
+        // d'extrait, ou l'export GoCardless retrouvé par l'e-mail. Un mandat
+        // simplement CITÉ dans le libellé d'une écriture ne décide de rien.
+        //
+        // Le commentaire d'à côté l'annonçait déjà — « montrés et exportés,
+        // sans changer l'échéance » — mais le code faisait l'inverse : il
+        // recopiait le mandat deviné dans mandatEtatFichier, et la branche
+        // prioritaire « mandat en place → échéance = fin de formation, sans
+        // délai » se déclenchait. 409 créances étaient redatées ainsi, dont
+        // 370 avancées, alors que votre colonne de mandat est vide sur la
+        // totalité de l'extrait. Les rapprocher de votre classeur en gagne 187.
+        const mandatQuiDecide = c => !!c.mandatEtatFichier
+            && c.origineMandat !== 'Grand livre (libellé de l’écriture)';
+
         const desRegles = c => {
             const hit = financementParRegles(c, o.regles);
             return hit ? hit : null;
@@ -1573,9 +1587,16 @@
                 dateDebutFormation: c.dateDebutFormation || (d ? d.debut : null) || (m ? m.debut : null) || null,
                 dateFinFormation: c.dateFinFormation || (d ? d.fin : null) || (m ? m.fin : null) || null,
                 dateFactureFacturation: c.dateFactureFacturation || (d ? d.facture : null) || (m ? m.facture : null) || null,
-                // AA : l'échéance du grand livre, sinon celle de la facturation,
-                // sinon la date lue dans le libellé, sinon l'enregistrement.
-                dateEcheance: c.dateEcheance || (d && d.echeance) || c.dateEcheanceRepli || null,
+                // AA : l'échéance du grand livre, sinon la date lue dans le
+                // libellé, sinon l'enregistrement.
+                //
+                // L'échéance que porte l'export de facturation a été retirée de
+                // cette liste. Elle s'y glissait en deuxième position et servait
+                // ensuite de base de calcul — c'est-à-dire qu'une date trouvée
+                // dans un fichier se substituait au recalcul, exactement ce que
+                // votre règle interdit. Sellsy reste la source des dates de
+                // FORMATION, qui sont des faits ; son échéance à elle, non.
+                dateEcheance: c.dateEcheance || c.dateEcheanceRepli || null,
                 // Le mandat change la règle d'échéance ; le montant prélevé dit
                 // ce qui est déjà rentré par ce canal, rejets exclus.
                 // Le mandat qui décide de l'échéance est celui que vous
@@ -1588,7 +1609,7 @@
                 // la concordance d'échéance tombe de 96 % à 92 %. Ils sont donc
                 // montrés et exportés, sans changer l'échéance : c'est à vous
                 // de trancher, pas à l'application de décider en silence.
-                mandatGocardless: !!(gcl && gcl.etat) || !!c.mandatEtatFichier,
+                mandatGocardless: !!(gcl && gcl.etat) || mandatQuiDecide(c),
                 etatMandat: gcl ? gcl.etat : '',
                 montantPreleve: (gcl && gcl.preleve) || c.preleveLivre || 0,
                 nbPrelevements: (gcl && gcl.nb) || c.nbPrelevementsLivre || 0,
@@ -1614,7 +1635,7 @@
             }
             const ech = R.computeEcheance(
                 { ...c, financement: fin, dateEcheanceSource: null,
-                  mandatGocardless: c.mandatGocardless || !!c.mandatEtatFichier,
+                  mandatGocardless: c.mandatGocardless || mandatQuiDecide(c),
                   dateEcheanceComptable: c.dateEcheance || null },
                 { rules: o.rules, prefereEcheanceMonday: false, grandLivre: true });
             return {
@@ -2036,14 +2057,23 @@
                         reglementsClasses: 0, reglementsOrphelins: 0, eurosReglementsOrphelins: 0 };
 
         for (const l of (lignesAPlat || [])) {
-            let source = parGroupe.get(l.cleGroupe);
-            // La facture que la ligne nomme, quand le lettrage n'en donne pas.
-            // Elle apporte tout : le dispositif, l'échéance, la preuve.
-            if (!source && l.numero) {
+            // La facture que la ligne NOMME passe d'abord : c'est la sienne.
+            //
+            // Elle venait en second, après le groupe de lettrage. Or dans le
+            // pool non lettré d'un compte, toutes les écritures partagent une
+            // seule clé de groupe, et le groupe ne retient que la première
+            // créance rencontrée : 2 585 lignes de facture recevaient ainsi la
+            // date d'échéance d'une AUTRE facture du même client — alors que
+            // leur propre échéance existait et différait 2 487 fois — et 611
+            // règlements et avoirs citaient une facture qu'on ne regardait pas.
+            // Le lettrage reste la réponse quand la ligne ne nomme personne.
+            let source = null;
+            if (l.numero) {
                 const f = parFacture.get(I.factureKey(l.numero));
                 if (f) source = { ...f, origineClassement: 'Facture citée par la ligne',
                                   preuveClassement: l.numero };
             }
+            if (!source) source = parGroupe.get(l.cleGroupe);
             // Un règlement sans facture dans son lettrage, mais qui cite une
             // facture Filiz, relève de l'alternance comme elle.
             if (!source && /filiz/i.test((l.numero || '') + ' ' + (l.libelle || ''))) {
