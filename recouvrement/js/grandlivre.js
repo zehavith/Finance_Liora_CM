@@ -1008,7 +1008,11 @@
         { libelle: 'Caisse des Dépôts, CDC, Mon Compte Formation, EDOF', motif: /caisse des depots|caisse des depot|\bcdc\b|mon compte formation|\bedof\b/, fin: 'CPF' },
         { libelle: 'Transitions Pro, Fongecif, ATpro', motif: /transitions? pro|fongecif|\batpro\b/, fin: 'TRANSITION' },
         { libelle: 'Agefiph', motif: /\bagefiph\b/, fin: 'AGEFIPH' },
-        { libelle: 'Le client est une Région', motif: /\bregion\b/, fin: 'REGION' },
+        // « Conseil régional d'Île-de-France » — 120 685 € — n'était pas reconnu :
+        // le motif exigeait le mot « région » nu, et « régional » lui échappait.
+        // Faute de quoi c'est le « Type de client » de Sellsy qui tranchait, et
+        // il disait B2C-Perso. Le nom du client prime : c'est votre règle.
+        { libelle: 'Le client est une Région', motif: /\bregion(s|al|ale|ales|aux)?\b/, fin: 'REGION' },
         // France Travail : le type est POEI, la sous-catégorie s'arbitre.
         { libelle: 'Pôle emploi, France Travail', motif: /pole emploi|pole emploie|france travail|\bdr pole\b/, fin: 'AIF', arbitrage: 'poleEmploi' },
         // OPCO : la sous-catégorie s'arbitre entre OPCO et OPCO - Alternance.
@@ -1317,7 +1321,10 @@
         for (const l of (o.sellsy || [])) {
             const fin = R.detectFinancement(l.typeClient, o.rules);
             const n = R.norm(l.client || '');
-            if (!fin || n.length < 4) continue;
+            // Trois lettres suffisent à nommer une entreprise : « LHH » était
+            // écartée par un minimum de quatre caractères, et ses 6 000 €
+            // partaient en « À classer » alors que la facturation la connaît.
+            if (!fin || n.length < 3) continue;
             let m = parNomSellsy.get(n);
             if (!m) { m = new Map(); parNomSellsy.set(n, m); }
             m.set(fin, (m.get(fin) || 0) + 1);

@@ -1025,6 +1025,32 @@ nomment eux-mêmes — *B2c - reglement direct*, *Clients b2c - cpf*,
 raison sociale : *CAISSE DES DEPOTS* → CPF, *Transitions Pro* → Transition Pro,
 *Agefiph*, *REGION …*, *DR Pôle Emploi …*, *AKTO / AFDAS / ATLAS* → OPCO.
 
+#### Deux corrections venues de votre balance de juin
+
+Comparée ligne à ligne à votre classement de juin — **4 754 créances que votre
+colonne avait tranchées** — l'application en retrouvait 4 512. Deux des causes
+d'écart étaient des défauts de reconnaissance du nom, pas des désaccords de
+règle :
+
+- **« régional » ne valait pas « région ».** Le motif exigeait le mot nu, et
+  le *Conseil régional d'Île-de-France* — **120 685 €** — lui échappait. Faute
+  de le reconnaître, c'est le *Type de client* de Sellsy qui tranchait, et il
+  disait B2C-Perso. Le motif accepte désormais *région, régions, régional,
+  régionale, régionales, régionaux* — sans attraper *Régis* ni *Régie*.
+- **Un nom de trois lettres était trop court.** Quand la facture n'est pas chez
+  Sellsy mais que le client y est, son type vaut pour la créance. Ce
+  rapprochement exigeait quatre caractères : *LHH* et ses 6 000 € restaient en
+  « À classer » alors que la facturation la connaît. Trois suffisent
+  désormais ; deux restent trop peu — *SA*, *CE* rapprocheraient n'importe quoi.
+
+Après ces deux corrections : **4 516 accords, 238 écarts**. Le poste *« Type de
+client (même client chez Sellsy) »* passe de 189 449 € à 71 458 €.
+
+Les écarts restants tiennent presque tous au *Type de client* de Sellsy qui
+vous contredit sur la frontière **B2B / B2C-Entreprise**, dans les deux sens.
+La règle est conservée pour les lignes nouvelles ; sur ces créances-là, c'est
+**votre référentiel qui passe devant** — il est consulté avant toute déduction.
+
 #### Les trois arbitrages
 
 Trois familles de comptes ne se laissent pas trancher par leur seul nom :
