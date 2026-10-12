@@ -2253,6 +2253,16 @@
                 dateEcheance: source ? (source.dateEcheance || null) : null,
                 echeanceBase: source ? (source.echeanceBase || '') : '',
                 echeanceMotif: source ? (source.echeanceMotif || '') : '',
+                // De quoi justifier la date sur la ligne elle-même, sans avoir
+                // à remonter à la créance : le délai réellement appliqué,
+                // l'échéance que portait le grand livre, et l'origine.
+                echeanceJours: source && source.echeanceJours != null ? source.echeanceJours : null,
+                echeanceOrigine: source ? (source.echeanceOrigine || '') : '',
+                dateEcheanceGrandLivre: source ? (source.dateEcheanceGrandLivre || null) : null,
+                dateFactureFacturationSource: source ? (source.dateFactureFacturation || null) : null,
+                dateDebutFormationSource: source ? (source.dateDebutFormation || null) : null,
+                dateFinFormationSource: source ? (source.dateFinFormation || null) : null,
+                complementLe: source ? (source.complementLe || '') : '',
                 numeroFacture: source ? (source.numero || '') : '',
             };
             if (ligne.financement) {

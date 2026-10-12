@@ -1130,6 +1130,18 @@ avance pour 54, d'un écart médian de 170 jours, et **environ 900 créances /
 règle — c'est votre règle appliquée là où votre classeur ne pouvait pas
 l'appliquer.
 
+#### La justification sur la ligne même (v3.4.1)
+
+La feuille **Grand livre** de l'export — votre fichier ligne à ligne, dans votre
+ordre de colonnes — porte désormais la même justification que la feuille
+*Créances* : barème du dispositif, base retenue et sa valeur, délai réellement
+appliqué, calcul en toutes lettres, origine de la date, pourquoi le barème n'a
+pas pu s'appliquer, et « à compléter ». 73 colonnes.
+
+Les deux feuilles emploient **les mêmes fonctions**, pour qu'elles ne puissent
+pas diverger : une écriture porte les dates de la créance dont elle relève, et
+le calcul s'écrit à l'identique des deux côtés.
+
 #### Une balance déjà classée en classe une nouvelle (v3.4.0)
 
 Déposez votre ancienne balance âgée, puis la nouvelle : la première classe la

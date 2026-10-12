@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '3.4.0';
+    const VERSION = '3.4.1';
     const VERSION_DATE = '12 octobre 2026';
 
     const R = window.LioraRules;
@@ -5919,6 +5919,16 @@
             }
             return '';
         };
+        // Une écriture porte les dates de la créance dont elle relève : on les
+        // remet en place pour que les mêmes fonctions de justification servent
+        // des deux côtés, et disent donc exactement la même chose.
+        const ligneSource = l => ({
+            ...l,
+            dateFactureFacturation: l.dateFactureFacturationSource || l.dateFacturation || null,
+            dateDebutFormation: l.dateDebutFormationSource || l.dateDebutFormation || null,
+            dateFinFormation: l.dateFinFormationSource || l.dateFinFormation || null,
+            sansNumero: !l.numero,
+        });
         const ligneCreance = c => {
             const base = c.dateEcheance || c.dateFacture;
             const retard = base ? R.diffDays(ref, base) : null;
@@ -6228,11 +6238,26 @@
                         'Ce qui l’a décidé': l.preuveClassement || '',
                         'Facture du lettrage': l.numeroFacture || '',
                         'Échéance calculée sur': l.echeanceBase
-                            ? (({ dateFacture: 'date de facture', dateDebutFormation: 'début de formation',
-                                  dateFinFormation: 'fin de formation',
-                                  dateFactureFacturation: 'date de facture de la facturation',
-                                  dateEcheanceComptable: 'échéance portée par le grand livre' })[l.echeanceBase]
-                                || l.echeanceBase) : '',
+                            ? ((BASES[l.echeanceBase] || l.echeanceBase)
+                               + (l.echeanceJours ? ` + ${l.echeanceJours} j`
+                                  : (l.echeanceJours === 0 ? ' (sans délai)' : ''))) : '',
+                        // ── La justification, sur la ligne même ──
+                        // L'auditeur refait le calcul sans quitter sa ligne : le
+                        // barème du dispositif, la base et sa valeur, le délai
+                        // réellement appliqué, et le résultat. Les mêmes
+                        // fonctions servent ici et sur la feuille « Créances »,
+                        // pour que les deux disent exactement la même chose.
+                        'Barème du dispositif': baremeDe(l),
+                        'Base retenue': l.echeanceBase ? (BASES[l.echeanceBase] || l.echeanceBase) : '',
+                        'Valeur de la base': valeurBase(ligneSource(l))
+                            ? U.dateFR(valeurBase(ligneSource(l))) : '',
+                        'Délai appliqué (jours)': l.echeanceJours == null ? '' : l.echeanceJours,
+                        'Calcul': calculEcheance(ligneSource(l)),
+                        'Origine de la date': l.echeanceOrigine || (l.dateEcheance ? '' : 'aucune'),
+                        'Pourquoi pas le barème': pourquoiPasLeBareme(l),
+                        'À compléter': aCompleter(ligneSource(l)),
+                        'Échéance du grand livre (avant recalcul)': l.dateEcheanceGrandLivre
+                            ? U.dateFR(l.dateEcheanceGrandLivre) : '',
                         'Motif particulier': l.echeanceMotif || '',
                         'Type de client (fichier)': b.typeClientFichier || '',
                         'Sous catégorie de type de client (fichier)': b.sousCategorieFichier || '',
