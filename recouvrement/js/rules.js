@@ -564,6 +564,16 @@
         // de trésorerie qui fait foi côté comptable.
         const gl = o.grandLivre === true;
 
+        // Chaque branche rend désormais « jours » : le délai RÉELLEMENT ajouté
+        // à la base, et non celui que le barème du dispositif laisserait
+        // supposer. Les deux ne coïncident pas : sous mandat de prélèvement le
+        // délai est nul quand le barème dit soixante, la refacturation après
+        // formation ajoute soixante jours quel que soit le dispositif, et le
+        // repli sur l'échéance du grand livre n'ajoute rien du tout. L'export
+        // annonçait jusqu'ici le barème à la place du délai appliqué, et se
+        // trompait donc près d'une fois sur deux — ce qu'un auditeur ne peut
+        // pas vérifier sans refaire le calcul à la main.
+
         // ── Les deux cas qui passent avant la règle du dispositif ──
         // Ils ne valent que pour la balance âgée comptable : c'est la règle du
         // classeur de trésorerie, pas celle du suivi de relance.
@@ -581,7 +591,8 @@
         // lui, ne s'arrête pas pour attendre soixante jours.
         if (gl && inv.mandatGocardless && inv.dateFinFormation) {
             return { date: stripTime(inv.dateFinFormation), origine: 'Règle', regle: rule,
-                     baseUtilisee: 'dateFinFormation', motif: 'Mandat de prélèvement en place' };
+                     baseUtilisee: 'dateFinFormation', jours: 0,
+                     motif: 'Mandat de prélèvement en place' };
         }
         // Une facture émise APRÈS la fin de la formation n'est pas une facture
         // d'avance : c'est une régularisation, et le délai court depuis son
@@ -595,7 +606,7 @@
         if (gl && inv.dateFactureFacturation && inv.dateFinFormation
             && inv.dateFactureFacturation > inv.dateFinFormation) {
             return { date: addDays(inv.dateFactureFacturation, 60), origine: 'Règle', regle: rule,
-                     baseUtilisee: 'dateFactureFacturation',
+                     baseUtilisee: 'dateFactureFacturation', jours: 60,
                      motif: 'Facture postérieure à la fin de formation' };
         }
 
@@ -629,7 +640,7 @@
                     const src = inv[b.champ];
                     if (!src) continue;
                     return { date: addDays(src, b.jours || 0), origine: 'Règle', regle: rule,
-                             baseUtilisee: b.champ,
+                             baseUtilisee: b.champ, jours: b.jours || 0,
                              motif: 'Règlement antérieur à la facture — la facture a été refaite' };
                 }
             } else if (inv.dateFinFormation || inv.dateDebutFormation) {
@@ -639,6 +650,7 @@
                 const src = inv.dateFinFormation || inv.dateDebutFormation;
                 return { date: addDays(src, principale.jours || 0), origine: 'Règle', regle: rule,
                          baseUtilisee: inv.dateFinFormation ? 'dateFinFormation' : 'dateDebutFormation',
+                         jours: principale.jours || 0,
                          motif: 'Règlement antérieur à la facture — la facture a été refaite' };
             }
         }
@@ -646,7 +658,7 @@
             if (b.comptable) {
                 if (!inv.dateEcheanceComptable) continue;
                 return { date: inv.dateEcheanceComptable, origine: 'Grand livre', regle: rule,
-                         baseUtilisee: 'dateEcheanceComptable' };
+                         baseUtilisee: 'dateEcheanceComptable', jours: 0 };
             }
             if (!b.champ) continue;
             const src = inv[b.champ];
@@ -664,16 +676,16 @@
                 const plafond = addDays(inv.dateDebutFormation, b.jours || 0);
                 if (plafond < date) { date = plafond; base = 'dateDebutFormation'; }
             }
-            return { date, origine: 'Règle', regle: rule, baseUtilisee: base };
+            return { date, origine: 'Règle', regle: rule, baseUtilisee: base, jours: b.jours || 0 };
         }
         // Faute de date de formation, l'échéance que porte le grand livre : elle
         // vaut mieux qu'aucune échéance du tout, et c'est ce que fait le
         // classeur de trésorerie.
         if (inv.dateEcheanceComptable) {
             return { date: inv.dateEcheanceComptable, origine: 'Grand livre', regle: rule,
-                     baseUtilisee: 'dateEcheanceComptable' };
+                     baseUtilisee: 'dateEcheanceComptable', jours: 0 };
         }
-        return { date: null, origine: null, regle: rule, baseUtilisee: null };
+        return { date: null, origine: null, regle: rule, baseUtilisee: null, jours: null };
     }
 
     // ──────────────────────────────────────────────

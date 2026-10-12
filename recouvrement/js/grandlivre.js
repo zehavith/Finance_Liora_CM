@@ -519,10 +519,21 @@
             // tiers, puis par numéro de compte — l'ordre de vos formules. La
             // sous-catégorie prime sur le type : « B2C » ne dit pas si c'est du
             // CPF, de l'AIF ou du financement personnel.
+            //
+            // Les six valeurs sont gardées une à une, en plus de la fusion :
+            // « B2C » et « CPF » ne disent pas la même chose, et un auditeur
+            // qui refait votre raisonnement doit voir les deux. La fusion sert
+            // au classement, le détail à la justification.
             const ancien = {
                 numero: utile(col(r, 'ancienSousParNumero')) || utile(col(r, 'ancienTypeParNumero')),
                 tiers:  utile(col(r, 'ancienSousParTiers'))  || utile(col(r, 'ancienTypeParTiers')),
                 compte: utile(col(r, 'ancienSousParCompte')) || utile(col(r, 'ancienTypeParCompte')),
+                numeroType: utile(col(r, 'ancienTypeParNumero')),
+                numeroSousType: utile(col(r, 'ancienSousParNumero')),
+                tiersType: utile(col(r, 'ancienTypeParTiers')),
+                tiersSousType: utile(col(r, 'ancienSousParTiers')),
+                compteType: utile(col(r, 'ancienTypeParCompte')),
+                compteSousType: utile(col(r, 'ancienSousParCompte')),
             };
             // Tout ce que la ligne porte et que l'application n'utilise pas :
             // conservé tel quel pour que l'export rende votre fichier entier.
@@ -549,6 +560,10 @@
                 typeClientFichier: String(col(r, 'typeClient') || '').trim(),
                 sousCategorieFichier: String(col(r, 'sousCategorie') || '').trim(),
                 numeroZoho: texteBrut(col(r, 'numeroExtrait')),
+                // La date de l'écriture — la colonne E. Elle était perdue dès
+                // qu'une date de facturation existait : « dateFacture » prend
+                // alors la seconde, et la première ne figurait plus nulle part.
+                dateComptable: date || null,
             };
             // Les traces GoCardless que porte le libellé : mandat, sort du
             // prélèvement, référence du versement reçu en banque.
@@ -808,6 +823,11 @@
             // sert de base à l'alternance corporate ; la date comptable, non.
             dateFactureFacturation: f.dateFacturation || null,
             dateEcheance: f.dateEcheance || null,
+            // La colonne AA de votre fichier, gardée intacte. Le recalcul
+            // écrase « dateEcheance » : sans cette copie, l'auditeur lit la
+            // date retenue sans jamais pouvoir lire celle que le grand livre
+            // portait, et ne peut donc pas vérifier qu'on l'a bien écartée.
+            dateEcheanceLivre: f.dateEcheance || null,
             dateEcheanceRepli: f.dateEcheanceRepli || null,
             // Les dates de formation ne se propagent pas d'une
             // ligne à l'autre : un lettrage réunit plusieurs
@@ -825,6 +845,11 @@
             // dit — « FCT-FILIZ-DST-2025-276 ».
             filiz: /filiz/i.test((f.numero || '') + ' ' + (f.libelle || '')),
             sansNumero: false,
+            // Tout ce que votre ligne portait et que l'application n'utilise
+            // pas pour calculer. Il était lu, rangé dans « brut », puis
+            // abandonné ici : quinze de vos colonnes n'atteignaient jamais la
+            // créance, et la balance âgée ne pouvait pas les rendre.
+            brut: f.brut || null,
         };
     }
 
@@ -1646,6 +1671,11 @@
                 echeanceBase: ech.baseUtilisee,
                 echeanceOrigine: ech.origine,
                 echeanceMotif: ech.motif || null,
+                // Le délai réellement ajouté à la base, tel que le moteur l'a
+                // appliqué — pas celui que le barème laisserait supposer.
+                echeanceJours: ech.jours == null ? null : ech.jours,
+                // L'échéance que portait le grand livre, avant tout recalcul.
+                dateEcheanceGrandLivre: c.dateEcheanceLivre || null,
             };
         };
 

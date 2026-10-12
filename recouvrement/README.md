@@ -1130,6 +1130,48 @@ avance pour 54, d'un écart médian de 170 jours, et **environ 900 créances /
 règle — c'est votre règle appliquée là où votre classeur ne pouvait pas
 l'appliquer.
 
+#### Une balance âgée auditable (v3.2.0)
+
+Un auditeur doit pouvoir refaire, ligne par ligne, le chemin qui mène à la date
+d'échéance. La feuille **Créances** de l'export le porte désormais en entier —
+**78 colonnes** au lieu de 38 :
+
+| Colonne | Ce qu'elle dit |
+|---|---|
+| **À compléter** | ce qui reste à trancher sur cette ligne, et pourquoi |
+| **Barème du dispositif** | la règle telle qu'elle est écrite — *fin de formation + 60 j* |
+| **Base retenue** · **Valeur de la base** | sur quelle date on est parti, et laquelle |
+| **Délai appliqué (jours)** | le délai **réellement** ajouté |
+| **Calcul** | la phrase entière — *fin de formation 30/06/2026 + 60 j = 29/08/2026* |
+| **Origine de la date** | *Règle* ou *Grand livre* |
+| **Pourquoi pas le barème** | la date qui manquait, quand la règle n'a pas pu s'appliquer |
+| **Échéance du grand livre (avant recalcul)** | votre colonne AA, intacte |
+
+**Le barème et le délai appliqué ne coïncident pas toujours**, et c'est
+précisément ce que l'export taisait. Sous mandat de prélèvement, la base est la
+fin de formation mais le délai est **nul** — la colonne annonçait pourtant
+« + 60 j ». Sur une refacturation après formation, le délai est de **60 jours
+quel que soit le dispositif** — la colonne se taisait. Sur le repli vers
+l'échéance du grand livre, rien n'est ajouté — elle se taisait aussi. Au total
+le délai affiché était faux ou tu **dans près d'un cas sur deux**. Le moteur rend
+maintenant le délai qu'il a appliqué, et c'est celui-là qui est écrit.
+
+**Trois pertes d'information sont réparées :**
+
+- **L'échéance du grand livre était écrasée** par le recalcul et irrécupérable.
+  L'auditeur lisait la date retenue sans pouvoir lire celle qu'on avait écartée.
+  Elle est conservée à part.
+- **« Date de facture » portait deux dates différentes** — la date comptable de
+  l'écriture, ou celle de la facturation — sans que rien ne dise laquelle. Trois
+  colonnes les séparent : *(comptable)*, *(facturation)*, et *retenue*.
+- **Quinze de vos colonnes n'atteignaient jamais la balance.** Elles étaient lues
+  à l'import, rangées de côté, puis abandonnées au moment où l'écriture devenait
+  une créance. N° de facture Zoho, commentaire, statut Sellsy, avoir apparenté,
+  n° de pièce, journal, auteur, catégories analytiques, devise, taux de change :
+  toutes rendues. De même, le *type* et la *sous-catégorie* de l'ancien grand
+  livre étaient fusionnés en une seule valeur — « B2C » et « CPF » ne disent pas
+  la même chose, les six sont désormais séparées.
+
 #### L'alternance Filiz : qui paie décide du barème (v3.1.0)
 
 Une facture d'alternance est émise par Filiz, et son échéance ne se lit pas

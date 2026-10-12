@@ -11,8 +11,8 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '3.1.1';
-    const VERSION_DATE = '16 septembre 2026';
+    const VERSION = '3.2.0';
+    const VERSION_DATE = '12 octobre 2026';
 
     const R = window.LioraRules;
     const PR = window.LioraPrelevements;
@@ -5759,18 +5759,86 @@
             dateEcheanceComptable: 'échéance portée par le grand livre',
             'colonne Monday': 'date d’échéance de Monday',
         };
+        // ── La justification de l'échéance, telle qu'un auditeur doit la lire ──
+        //
+        // L'ancienne version devinait le délai en comparant la base retenue à
+        // celle du barème : « si la règle part de la fin de formation et qu'on
+        // a bien utilisé la fin de formation, alors le délai est celui du
+        // barème ». C'était faux une fois sur deux. Sous mandat de prélèvement
+        // la base EST la fin de formation mais le délai est nul — la colonne
+        // annonçait « + 60 j ». Sur une refacturation après formation le délai
+        // est de soixante jours quel que soit le dispositif — la colonne se
+        // taisait. Sur le repli vers l'échéance du grand livre, rien n'est
+        // ajouté — la colonne se taisait aussi.
+        //
+        // Le moteur rend désormais le délai qu'il a réellement appliqué. On
+        // l'écrit tel quel, et on n'écrit plus rien quand on ne le sait pas.
+        const valeurBase = c => {
+            switch (c.echeanceBase) {
+                case 'dateFacture': return c.dateFacture || null;
+                case 'dateDebutFormation': return c.dateDebutFormation || null;
+                case 'dateFinFormation': return c.dateFinFormation || null;
+                case 'dateFactureFacturation': return c.dateFactureFacturation || null;
+                case 'dateEcheanceComptable': return c.dateEcheanceGrandLivre || c.dateEcheance || null;
+                default: return null;
+            }
+        };
         const surQuoi = c => {
             if (!c.echeanceBase) return '';
             const nom = BASES[c.echeanceBase] || c.echeanceBase;
-            const r = c.financement ? R.getRule(c.financement, state.rules) : null;
-            const regle = r && r.gl ? r.gl : r;
-            const jours = (regle && regle.base === c.echeanceBase) ? (regle.jours || 0) : null;
-            return nom + (jours ? ` + ${jours} j` : '');
+            const j = c.echeanceJours;
+            return nom + (j ? ` + ${j} j` : (j === 0 ? ' (sans délai)' : ''));
+        };
+        // Le calcul écrit en toutes lettres : base, valeur, délai, résultat.
+        // C'est la ligne que l'auditeur refait de tête.
+        const calculEcheance = c => {
+            if (!c.dateEcheance) return '';
+            const v = valeurBase(c);
+            if (!v || !c.echeanceBase) return U.dateFR(c.dateEcheance);
+            const nom = BASES[c.echeanceBase] || c.echeanceBase;
+            const j = c.echeanceJours || 0;
+            return `${nom} ${U.dateFR(v)}${j ? ` + ${j} j` : ''} = ${U.dateFR(c.dateEcheance)}`;
+        };
+        // Le barème du dispositif, tel qu'il est écrit dans vos règles — à
+        // distinguer de ce qui a été appliqué, les deux pouvant différer.
+        const baremeDe = c => {
+            if (!c.financement) return '';
+            const r = R.getRule(c.financement, state.rules);
+            const g = r && r.gl ? r.gl : r;
+            if (!g || !g.base) return '';
+            return (BASES[g.base] || g.base) + (g.jours ? ` + ${g.jours} j` : ' (sans délai)');
+        };
+        // Pourquoi le barème n'a pas pu s'appliquer : on nomme la date qui
+        // manquait. Dans quatre cas sur cinq c'est la fin de formation.
+        const pourquoiPasLeBareme = c => {
+            if (c.echeanceOrigine !== 'Grand livre') return '';
+            if (!c.financement) return 'aucun dispositif reconnu';
+            const r = R.getRule(c.financement, state.rules);
+            const g = r && r.gl ? r.gl : r;
+            const nom = g && g.base ? (BASES[g.base] || g.base) : 'la base du barème';
+            return `${nom} absente — l’échéance du grand livre a servi de repli`;
+        };
+        // « À compléter » : les lignes dont on n'est pas sûr, pour que vous
+        // puissiez les filtrer et les reprendre. Une seule mention par ligne,
+        // la plus bloquante d'abord.
+        const aCompleter = c => {
+            if (!c.financement) return 'à compléter — dispositif à qualifier';
+            if (!c.dateEcheance) return 'à compléter — aucune date d’échéance calculable';
+            if (c.sansNumero) return 'à compléter — solde sans facture : l’ancienneté court sur le dernier mouvement';
+            if (c.echeanceOrigine === 'Grand livre') {
+                return 'à compléter — ' + pourquoiPasLeBareme(c);
+            }
+            return '';
         };
         const ligneCreance = c => {
             const base = c.dateEcheance || c.dateFacture;
             const retard = base ? R.diffDays(ref, base) : null;
+            const B = c.brut || {};
             return {
+                // En tête de ligne : ce qui reste à trancher. Vous filtrez
+                // là-dessus, l'auditeur voit tout de suite ce qui est tenu et
+                // ce qui ne l'est pas.
+                'À compléter': aCompleter(c),
                 'Clé': ((c.compte || '') + ' - ' + (c.tiers || '')).trim().replace(/^- | -$/g, ''),
                 'Nature': c.sansNumero
                     ? 'Solde sans facture (acompte, écart de règlement, avoir non imputé)'
@@ -5788,19 +5856,52 @@
                 'Ce qui l’a décidé': c.preuveClassement || '',
                 'Montant facture': arrondi(c.montant),
                 'Restant dû': arrondi(c.resteDu),
-                'Date de facture': c.dateFacture ? U.dateFR(c.dateFacture) : '',
+                // ── Les deux dates de facture, nommées ──
+                // Une seule colonne portait tantôt l'une tantôt l'autre : la
+                // date comptable de l'écriture, ou celle de la facturation.
+                // Vingt-trois pour cent des lignes affichaient la seconde sans
+                // que rien ne le dise. Elles sont désormais séparées, et la
+                // colonne « Date de facture retenue » dit laquelle a servi.
+                'Date de facture (comptable)': B.dateComptable ? U.dateFR(B.dateComptable)
+                    : (c.dateFactureFacturation ? '' : (c.dateFacture ? U.dateFR(c.dateFacture) : '')),
+                'Date de facture (facturation)': c.dateFactureFacturation ? U.dateFR(c.dateFactureFacturation) : '',
+                'Date de facture retenue': c.dateFacture ? U.dateFR(c.dateFacture) : '',
+                'Début de formation': c.dateDebutFormation ? U.dateFR(c.dateDebutFormation) : '',
+                'Fin de formation': c.dateFinFormation ? U.dateFR(c.dateFinFormation) : '',
+
+                // ── La justification de l'échéance, de bout en bout ──
+                'Échéance du grand livre (avant recalcul)': c.dateEcheanceGrandLivre
+                    ? U.dateFR(c.dateEcheanceGrandLivre) : '',
+                'Barème du dispositif': baremeDe(c),
+                'Base retenue': c.echeanceBase ? (BASES[c.echeanceBase] || c.echeanceBase) : '',
+                'Valeur de la base': valeurBase(c) ? U.dateFR(valeurBase(c)) : '',
+                'Délai appliqué (jours)': c.echeanceJours == null ? '' : c.echeanceJours,
                 'Échéance': c.dateEcheance ? U.dateFR(c.dateEcheance) : '',
+                'Calcul': calculEcheance(c),
+                'Origine de la date': c.echeanceOrigine || (c.dateEcheance ? '' : 'aucune'),
+                'Motif particulier': c.echeanceMotif || '',
+                'Pourquoi pas le barème': pourquoiPasLeBareme(c),
                 'Échéance calculée sur': surQuoi(c)
                     || (c.sansNumero ? 'aucune échéance : l’ancienneté court depuis le dernier mouvement' : ''),
                 'Date retenue pour l’ancienneté': (c.dateEcheance || c.dateFacture)
                     ? U.dateFR(c.dateEcheance || c.dateFacture) : '',
                 'Libellé de l’écriture': c.libelle || '',
-                'Motif particulier': c.echeanceMotif || '',
-                'Début de formation': c.dateDebutFormation ? U.dateFR(c.dateDebutFormation) : '',
-                'Fin de formation': c.dateFinFormation ? U.dateFR(c.dateFinFormation) : '',
+
+                // ── Vos colonnes de classement, une par une ──
+                // La fusion « sous-catégorie sinon type » sert au classement ;
+                // ici les six valeurs sont rendues séparément, parce que
+                // « B2C » et « CPF » ne disent pas la même chose.
                 'Ancien grand livre — par n° de facture': (c.ancien && c.ancien.numero) || '',
                 'Ancien grand livre — par identifiant du tiers': (c.ancien && c.ancien.tiers) || '',
                 'Ancien grand livre — par n° de compte': (c.ancien && c.ancien.compte) || '',
+                'Type de facture (n° de facture → ancien GL)': (c.ancien && c.ancien.numeroType) || '',
+                'Sous-type de facture (n° de facture → ancien GL)': (c.ancien && c.ancien.numeroSousType) || '',
+                'Type de client (identifiant tiers → ancien GL)': (c.ancien && c.ancien.tiersType) || '',
+                'Sous-catégorie (identifiant tiers → ancien GL)': (c.ancien && c.ancien.tiersSousType) || '',
+                'Type de client (n° de compte → ancien GL)': (c.ancien && c.ancien.compteType) || '',
+                'Sous-catégorie (n° de compte → ancien GL)': (c.ancien && c.ancien.compteSousType) || '',
+                'Type de client porté par le fichier': B.typeClientFichier || '',
+                'Sous-catégorie portée par le fichier': B.sousCategorieFichier || c.qualif || '',
                 'Qualification portée par le fichier': c.qualif || '',
                 'Jours de retard': retard == null ? '' : retard,
                 'Tranche': ((R.bucketFor(retard) || {}).label) || '',
@@ -5817,6 +5918,31 @@
                 'Nb de rejets': c.nbRejetsLivre || '',
                 'Versements reçus pour ce compte': c.versementsLivre || '',
                 'Numéro lu dans le libellé': c.numeroExtrait ? 'oui' : '',
+
+                // ── Ce que votre fichier portait, rendu tel quel ──
+                // Lu à l'import, rangé de côté, puis abandonné avant d'arriver
+                // ici : quinze colonnes n'atteignaient jamais la balance âgée.
+                'N° de facture Zoho extrait du libellé': B.numeroZoho || '',
+                'Nb jours échus (du fichier)': B.nbJoursEchus == null ? '' : B.nbJoursEchus,
+                'Facture postérieure à la fin de formation (fichier)': B.facturePosterieure || '',
+                'Mandat GoCardless — montant PAID (fichier)': B.mandatPaid == null ? '' : B.mandatPaid,
+                'Mandat GoCardless — état (fichier)': B.mandatEtat || '',
+                'N° de l’avoir apparenté': B.avoirApparente || '',
+                'Commentaire': B.commentaire || '',
+                'Statut Sellsy': B.statutSellsy || '',
+                'N° de pièce': B.numeroPiece || '',
+                'Libellé de pièce': B.libellePiece || '',
+                'Libellé de ligne': B.libelleLigne || '',
+                'Journal': c.journal || '',
+                'Date d’enregistrement': B.dateEnregistrement ? U.dateFR(B.dateEnregistrement) : '',
+                'Auteur': B.auteur || '',
+                'Catégories analytiques': B.categories || '',
+                'Taux d’attribution TVA': B.tauxTva == null ? '' : B.tauxTva,
+                'Devise': B.devise || '',
+                'Taux de change': B.tauxChange == null ? '' : B.tauxChange,
+                'Débit en devise d’origine': B.debitDevise == null ? '' : B.debitDevise,
+                'Crédit en devise d’origine': B.creditDevise == null ? '' : B.creditDevise,
+                'Balance (fichier)': B.balance == null ? '' : B.balance,
             };
         };
         // La balance âgée ne compte pas que des factures : les soldes sans
