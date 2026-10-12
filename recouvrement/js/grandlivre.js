@@ -61,6 +61,9 @@
         solde:        ['solde', 'solde progressif'],
         tiers:        ['tiers', 'nom du tiers', 'client', 'raison sociale'],
         dateEcheance: ['date d echeance', 'date echeance', 'echeance'],
+        // Cette colonne ne figure que dans VOTRE balance travaillée : elle sert
+        // à reconnaître votre feuille d'un export Pennylane brut.
+        echeanceRecalculee: ['date d echeance recalculee', 'date echeance recalculee'],
         // La date à laquelle l'écriture est entrée en comptabilité. Dernier
         // recours pour dater une créance : le classeur s'en sert quand ni la
         // facturation ni le libellé ne donnent de date.
@@ -407,6 +410,11 @@
         const col = (r, champ) => (mapping[champ] ? r[mapping[champ]] : '');
 
         const sansColonneNumero = !mapping.numero;
+        // Votre balance déjà travaillée porte la colonne « Date d'échéance
+        // recalculée » ; un export Pennylane brut, non. C'est à cela qu'on
+        // reconnaît lequel des deux on lit — et donc si la colonne « Date
+        // d'échéance » est votre AA ou celle de Pennylane.
+        const saBalance = !!mapping.echeanceRecalculee;
         const groupes = new Map();
         // Les colonnes AO, AP et AQ du classeur sont renseignées ligne à ligne
         // par recherche du numéro de facture : la même facture les porte sur
@@ -615,12 +623,24 @@
                 brut,
                 numero, numeroExtrait, qualif, date, debit, credit, journal,
                 libelle: String(col(r, 'libelle') || '').trim(),
-                dateEcheance: R.parseDate(col(r, 'dateEcheance')),
-                // La colonne AA du classeur n'est pas une donnée du grand livre :
-                // c'est une formule — l'échéance de la facture chez Sellsy, à
-                // défaut la date lue dans le libellé de ligne, à défaut la date
-                // d'enregistrement. Un extrait brut, sans cette colonne, doit
-                // suivre le même chemin.
+                // Votre colonne AA n'est pas une donnée du grand livre : c'est
+                // une formule — la dernière date lue dans le libellé de ligne,
+                // à défaut la date d'enregistrement.
+                //
+                // L'export Pennylane porte, lui, sa PROPRE « Date d'échéance ».
+                // Votre feuille ne la reprend pas : vos vingt-trois colonnes
+                // « Extraction Grand livre » s'arrêtent au crédit en devise, et
+                // vous recalculez la vôtre. Les deux divergent — Pennylane n'en
+                // donne une que sur 3 979 lignes sur 16 082, et là où les deux
+                // existent elles ne s'accordent que 36 fois sur 100, à 87 jours
+                // d'écart médian. La lire revenait donc à dater autrement que
+                // vous sur 2 561 lignes.
+                //
+                // Elle n'est donc retenue que si le fichier est votre balance
+                // déjà travaillée, reconnaissable à sa colonne « Date
+                // d'échéance recalculée » : là, « Date d'échéance » EST votre
+                // AA. Sur un extrait brut, on refait votre calcul.
+                dateEcheance: saBalance ? R.parseDate(col(r, 'dateEcheance')) : null,
                 dateEcheanceRepli: dateTexte || R.parseDate(col(r, 'dateEnregistrement')) || null,
                 // Les dates de la facturation, telles que l'extrait les porte.
                 dateDebutFormation: R.parseDate(utile(col(r, 'dateDebutFormation'))),

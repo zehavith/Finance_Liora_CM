@@ -1105,8 +1105,7 @@ SI( « facture postérieure » = oui   →  date de facture de la facturation + 
 Les **17 barèmes** de la cascade sont repris à l'identique : *fin de formation
 + 60* pour Agefiph, AIF, B2B, B2C-Entreprise, CPF, Interco, Interne - DST
 Allemagne, POEI, Region et Transition Pro ; *fin de formation + 30* pour
-Alternance, ETAT et OPCO ; *fin de formation + **15*** pour OPCO - Alternance
-(voir ci-dessous) ; *début de formation, sans délai*
+Alternance, ETAT et OPCO ; *fin de formation + 30* pour OPCO - Alternance ; *début de formation, sans délai*
 pour B2C-Perso et Perso-Alternance ; *date de facture de la facturation + 30*
 pour Corporate - Alternance.
 
@@ -1129,6 +1128,41 @@ avance pour 54, d'un écart médian de 170 jours, et **environ 900 créances /
 4,2 M€** repassent de *échu* à *non échu*. Ce n'est pas une divergence de
 règle — c'est votre règle appliquée là où votre classeur ne pouvait pas
 l'appliquer.
+
+#### L'échéance de dernier recours, exactement comme votre feuille (v3.5.0)
+
+Votre colonne **AA** n'est pas une donnée du grand livre : c'est une formule.
+Reproduite sur vos 3 609 lignes, elle s'explique **entièrement** :
+
+| d'où vient votre AA | lignes | |
+|---|---:|---|
+| la **dernière** date lue dans le libellé de ligne | 884 | 24 % |
+| la date d'enregistrement | 2 506 | 69 % |
+| l'échéance Sellsy *(le `XLOOKUP`)* | 219 | 6 % |
+| la date par défaut du 02/08/2024 | 0 | — |
+
+Le `XLOOKUP` ne décide jamais seul : sur les 1 834 lignes dont la facture est
+connue de Sellsy, **aucune** ne prend sa date de Sellsy sans qu'une autre source
+donne la même. Votre AA est donc, en pratique, **libellé puis enregistrement** —
+et la regex `.*(…)` étant gourmande, c'est la **dernière** date du libellé qui
+compte, pas la première.
+
+**L'export Pennylane porte sa propre « Date d'échéance ». Votre feuille ne la
+reprend pas** — vos 23 colonnes *Extraction Grand livre* s'arrêtent au crédit en
+devise. L'application la lisait : c'était dater autrement que vous. Mesuré sur
+la balance de juillet 2026, Pennylane n'en donne une que sur **3 979 des 16 082**
+lignes, et là où les deux existent elles ne s'accordent que **36 fois sur 100**,
+à **87 jours** d'écart médian.
+
+Elle n'est donc retenue que si le fichier est **votre balance déjà travaillée**,
+reconnaissable à sa colonne *Date d'échéance recalculée* : là, « Date d'échéance »
+**est** votre AA. Sur un extrait brut, le calcul est refait comme le vôtre.
+
+Effet sur la balance de juillet 2026 : l'échu passe de 9 624 233 € à
+**10 811 937 €**, le total restant à 14 635 123 €.
+
+Aucune date arbitraire n'est inventée : la valeur par défaut du 02/08/2024 n'est
+pas reprise, et une créance sans aucune date reste « à compléter ».
 
 #### La justification sur la ligne même (v3.4.1)
 
@@ -1255,14 +1289,14 @@ comme celle d'une formation ordinaire. Votre règle :
 
 | Qui paie | Barème |
 |---|---|
-| **un OPCO** → OPCO - Alternance | fin de formation **+ 15 j** |
+| **un OPCO** → OPCO - Alternance | fin de formation **+ 30 j** |
 | **l'entreprise** → Corporate - Alternance | date de facture **+ 30 j** |
 
 L'aiguillage se fait sur le payeur lu au grand livre, pas sur le numéro de
 facture : un compte AKTO, Atlas ou OPCO 2i donne une OPCO - Alternance, un
 compte d'entreprise une Corporate - Alternance.
 
-OPCO - Alternance passe donc de **+30 à +15 jours**. À noter : votre classeur
+OPCO - Alternance reste à **+30 jours**, comme votre feuille. À noter : votre classeur
 de trésorerie porte encore +30 sur ce dispositif — c'est le classeur qui est en
 retard sur la règle, pas l'application, et la concordance de 100 % avec sa
 formule s'en écarte désormais sur ce seul barème.
