@@ -1489,6 +1489,30 @@
             return src === source ? (fin || null) : null;
         };
         const duReferentiel = c => entree(c, 'valide');
+        // Ce que vous avez complété à la main sur cette créance : une date de
+        // formation qui manquait, ou, en dernier recours, une échéance posée
+        // directement.
+        //
+        // Une date de formation n'est pas une échéance : c'est un fait sur la
+        // formation, et c'est VOTRE règle de dispositif qui décide ensuite
+        // quoi en faire. La compléter rend donc son barème applicable, au lieu
+        // de le contourner — c'est la façon dont il faut combler un trou.
+        // L'échéance posée à la main, elle, court-circuite la règle : elle
+        // reste possible pour les lignes qu'aucune formation ne date, mais
+        // elle est nommée comme telle dans la justification.
+        const complement = c => {
+            const v = c.cle ? ref[c.cle] : null;
+            if (!v || typeof v === 'string') return null;
+            if ((v.source || 'valide') !== 'valide') return null;
+            if (!v.debutFormation && !v.finFormation && !v.echeance) return null;
+            return {
+                debut: v.debutFormation ? R.parseDate(v.debutFormation) : null,
+                fin: v.finFormation ? R.parseDate(v.finFormation) : null,
+                echeance: v.echeance ? R.parseDate(v.echeance) : null,
+                note: v.note || '',
+                le: v.le || '',
+            };
+        };
         // Le libellé du compte, seul ou presque : « B2c - cpf », « CAISSE DES
         // DEPOTS », « DR Pôle Emploi Occitanie ». Il couvre à lui seul 44 %
         // des lignes de l'ancien grand livre classé.
@@ -1564,6 +1588,8 @@
             // Sellsy. Elle ne remplit que les vides, après l'extrait et après
             // la facturation.
             const m = c.cle ? idx.datesMonday.get(c.cle) : null;
+            // Ce que vous avez complété à la main sur cette créance.
+            const comp = complement(c);
             // Même sans rien trouver à la facturation, l'échéance doit suivre
             // la colonne AA jusqu'au bout : la date lue dans le libellé, puis
             // la date d'enregistrement. Sortir ici privait d'échéance mille
@@ -1571,11 +1597,15 @@
             if (!d && !type) {
                 // Monday peut malgré tout porter les dates de formation : les
                 // abandonner ici, c'était renoncer à dater toute l'alternance.
-                const base = m ? {
+                const comp0 = comp;
+                const base = (m || comp0) ? {
                     ...c,
-                    dateDebutFormation: c.dateDebutFormation || m.debut || null,
-                    dateFinFormation: c.dateFinFormation || m.fin || null,
-                    dateFactureFacturation: c.dateFactureFacturation || m.facture || null,
+                    dateDebutFormation: (comp0 && comp0.debut) || c.dateDebutFormation
+                        || (m ? m.debut : null) || null,
+                    dateFinFormation: (comp0 && comp0.fin) || c.dateFinFormation
+                        || (m ? m.fin : null) || null,
+                    dateFactureFacturation: c.dateFactureFacturation || (m ? m.facture : null) || null,
+                    complement: comp0 || null,
                 } : c;
                 return base.dateEcheance ? base
                     : { ...base, dateEcheance: base.dateEcheanceRepli || null };
@@ -1609,8 +1639,13 @@
                 // Une date de formation n'est pas une échéance concurrente :
                 // c'est un fait sur la formation. Elle est reprise, et c'est
                 // la règle du dispositif qui décide ensuite quoi en faire.
-                dateDebutFormation: c.dateDebutFormation || (d ? d.debut : null) || (m ? m.debut : null) || null,
-                dateFinFormation: c.dateFinFormation || (d ? d.fin : null) || (m ? m.fin : null) || null,
+                // Ce que vous avez complété à la main passe devant tout le
+                // reste : c'est du travail déjà fait, pas une déduction.
+                dateDebutFormation: (comp && comp.debut) || c.dateDebutFormation
+                    || (d ? d.debut : null) || (m ? m.debut : null) || null,
+                dateFinFormation: (comp && comp.fin) || c.dateFinFormation
+                    || (d ? d.fin : null) || (m ? m.fin : null) || null,
+                complement: comp || null,
                 dateFactureFacturation: c.dateFactureFacturation || (d ? d.facture : null) || (m ? m.facture : null) || null,
                 // AA : l'échéance du grand livre, sinon la date lue dans le
                 // libellé, sinon l'enregistrement.
@@ -1663,19 +1698,37 @@
                   mandatGocardless: c.mandatGocardless || mandatQuiDecide(c),
                   dateEcheanceComptable: c.dateEcheance || null },
                 { rules: o.rules, prefereEcheanceMonday: false, grandLivre: true });
+            // Une échéance que vous avez posée vous-même passe devant le
+            // calcul. C'est le dernier recours — la ligne qu'aucune date de
+            // formation ne peut dater — et elle se voit : son origine le dit,
+            // avec le jour de la saisie et votre note. Compléter une date de
+            // FORMATION reste préférable : elle rend votre barème applicable
+            // au lieu de le contourner.
+            const pose = c.complement && c.complement.echeance ? c.complement : null;
             return {
                 ...c, financement: fin, origineClassement: origine,
                 preuveClassement: preuve == null ? '' : String(preuve),
                 typeClient: typeDeClient(fin, c, o),
-                dateEcheance: ech.date || c.dateEcheance || null,
-                echeanceBase: ech.baseUtilisee,
-                echeanceOrigine: ech.origine,
-                echeanceMotif: ech.motif || null,
+                dateEcheance: pose ? pose.echeance : (ech.date || c.dateEcheance || null),
+                echeanceBase: pose ? 'saisieManuelle' : ech.baseUtilisee,
+                echeanceOrigine: pose ? 'Saisie à la main' : ech.origine,
+                echeanceMotif: pose ? (pose.note || 'échéance posée à la main')
+                    : (ech.motif || null),
                 // Le délai réellement ajouté à la base, tel que le moteur l'a
                 // appliqué — pas celui que le barème laisserait supposer.
-                echeanceJours: ech.jours == null ? null : ech.jours,
+                echeanceJours: pose ? 0 : (ech.jours == null ? null : ech.jours),
                 // L'échéance que portait le grand livre, avant tout recalcul.
                 dateEcheanceGrandLivre: c.dateEcheanceLivre || null,
+                // La trace de ce que vous avez complété : le jour, la note, et
+                // ce qui a été fourni. Sans elle, l'auditeur voit une date
+                // sortie de nulle part.
+                complementLe: c.complement ? (c.complement.le || '') : '',
+                complementNote: c.complement ? (c.complement.note || '') : '',
+                complementQuoi: c.complement
+                    ? [c.complement.debut ? 'début de formation' : null,
+                       c.complement.fin ? 'fin de formation' : null,
+                       c.complement.echeance ? 'échéance' : null].filter(Boolean).join(', ')
+                    : '',
             };
         };
 

@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '3.2.0';
+    const VERSION = '3.3.0';
     const VERSION_DATE = '12 octobre 2026';
 
     const R = window.LioraRules;
@@ -5073,9 +5073,23 @@
     }
 
     /** Les créances qu'aucun recoupement n'a su classer. */
+    /**
+     * Ce qu'il reste à compléter, selon ce qu'on cherche à combler.
+     *
+     * « Sans dispositif » : aucun recoupement n'a trouvé le financement.
+     * « Sans date de formation » : le dispositif est connu, mais la date que
+     * son barème réclame manque, et l'échéance est retombée sur celle du grand
+     * livre. C'est la famille la plus lourde, et c'est une date — pas un
+     * classement — qui la débloque.
+     */
     function creancesAClasser() {
-        return (state.glCreances || []).filter(c => !c.financement)
-            .sort((a, b) => Math.abs(b.resteDu) - Math.abs(a.resteDu));
+        const quoi = state.ui.quoiAClasser || 'dispositif';
+        const lot = quoi === 'date'
+            ? (state.glCreances || []).filter(c => c.financement
+                && c.echeanceOrigine === 'Grand livre'
+                && !c.complementLe)
+            : (state.glCreances || []).filter(c => !c.financement);
+        return lot.sort((a, b) => Math.abs(b.resteDu) - Math.abs(a.resteDu));
     }
 
     /**
@@ -5139,6 +5153,17 @@
         const vue = state.ui.vueAClasser || 'compte';
         $$('#seg-gl-aclasser .seg-btn').forEach(b =>
             b.classList.toggle('active', b.dataset.vue === vue));
+        const quoi = state.ui.quoiAClasser || 'dispositif';
+        $$('#seg-gl-quoi .seg-btn').forEach(b =>
+            b.classList.toggle('active', b.dataset.quoi === quoi));
+        const titre = $('#sec-aclasser-titre'), aide = $('#sec-aclasser-aide');
+        if (titre) titre.textContent = quoi === 'date'
+            ? 'Les créances sans date de formation' : 'Les créances à classer';
+        if (aide) aide.textContent = quoi === 'date'
+            ? 'Leur dispositif est connu, mais la date que son barème réclame manque : '
+              + 'l’échéance est retombée sur celle du grand livre. Complétez la date, '
+              + 'et votre règle s’applique.'
+            : 'Aucun recoupement n’a permis de leur attribuer un financement';
 
         const toutes = creancesAClasser();
         rendreSuggestionsRegles(toutes);
@@ -5332,18 +5357,68 @@
                 + `→ ${U.nombre(comptes.length)} règle${comptes.length > 1 ? 's' : ''} de compte` : '')
             + (perdues ? ` · ${U.nombre(perdues)} sans numéro ni compte, impossibles à mémoriser` : '')
             + `</span>
+            ${(state.ui.quoiAClasser || 'dispositif') === 'date' ? `
+            <label class="barre-champ">Fin de formation
+                <input type="date" id="gl-fin-formation" class="input input-sm"></label>
+            <label class="barre-champ">Début de formation
+                <input type="date" id="gl-debut-formation" class="input input-sm"></label>
+            <label class="barre-champ" title="Dernier recours : une date posée ici court-circuite votre barème. Préférez compléter la fin de formation.">Échéance, à défaut
+                <input type="date" id="gl-echeance" class="input input-sm"></label>
+            <input type="text" id="gl-note" class="input input-sm" placeholder="Note (facultatif)" maxlength="120">
+            <button class="btn btn-primary btn-sm" id="gl-completer"${creances.length ? '' : ' disabled'}>Compléter</button>`
+            : `
             <select id="gl-fin" class="input input-sm"${creances.length ? '' : ' disabled'}>
                 <option value="">Classer en…</option>
                 ${state.rules.filter(r => r.key !== 'INCONNU')
                     .map(r => `<option value="${U.escapeHtml(r.key)}">${U.escapeHtml(r.label)}</option>`).join('')}
             </select>
-            <button class="btn btn-primary btn-sm" id="gl-appliquer"${creances.length ? '' : ' disabled'}>Appliquer</button>`;
+            <button class="btn btn-primary btn-sm" id="gl-appliquer"${creances.length ? '' : ' disabled'}>Appliquer</button>`}`;
 
         $('#gl-tout', barre).addEventListener('change', e => {
             state.ui.selGL = e.target.checked ? new Set(lignes.map(l => l.id)) : new Set();
             rendreAClasser();
         });
-        $('#gl-appliquer', barre).addEventListener('click', async () => {
+        const btnComp = $('#gl-completer', barre);
+        if (btnComp) btnComp.addEventListener('click', async () => {
+            const fin = $('#gl-fin-formation', barre).value;
+            const debut = $('#gl-debut-formation', barre).value;
+            const ech = $('#gl-echeance', barre).value;
+            const note = ($('#gl-note', barre).value || '').trim();
+            if (!fin && !debut && !ech) {
+                U.toast('Renseignez au moins une date.', 'error'); return;
+            }
+            // Sans numéro de facture, rien à mémoriser : le référentiel est
+            // indexé sur la facture, et un solde de compte n'en a pas.
+            const sansCle = creances.filter(c => !c.cle).length;
+            const le = new Date().toISOString().slice(0, 10);
+            for (const c of numerotees) {
+                const prec = state.qualifRef[c.cle];
+                const base = (prec && typeof prec === 'object') ? prec
+                    : (typeof prec === 'string' ? { fin: prec, source: 'valide' } : {});
+                state.qualifRef[c.cle] = {
+                    ...base,
+                    source: 'valide',
+                    // Le dispositif déjà connu est conservé : on complète une
+                    // date, on ne reclasse pas.
+                    fin: base.fin || c.financement || undefined,
+                    ...(fin ? { finFormation: fin } : {}),
+                    ...(debut ? { debutFormation: debut } : {}),
+                    ...(ech ? { echeance: ech } : {}),
+                    ...(note ? { note } : {}),
+                    le,
+                };
+            }
+            state.ui.selGL = new Set();
+            try { await S.set('rec_qualif_ref', state.qualifRef); } catch { /* ignore */ }
+            recalculerBalanceGL();
+            rendreTout();
+            U.toast(`${U.nombre(numerotees.length)} créance${numerotees.length > 1 ? 's' : ''} complétée${numerotees.length > 1 ? 's' : ''}`
+                + (ech ? ' — échéance posée à la main, votre barème est court-circuité'
+                       : ' — votre barème s’applique maintenant')
+                + (sansCle ? `. ${U.nombre(sansCle)} sans numéro de facture n’ont pas pu être mémorisées.` : '.'));
+        });
+        const btnApp = $('#gl-appliquer', barre);
+        if (btnApp) btnApp.addEventListener('click', async () => {
             const fin = $('#gl-fin', barre).value;
             if (!fin) { U.toast('Choisissez un financement.', 'error'); return; }
 
@@ -5758,6 +5833,7 @@
             dateFactureFacturation: 'date de facture de la facturation',
             dateEcheanceComptable: 'échéance portée par le grand livre',
             'colonne Monday': 'date d’échéance de Monday',
+            saisieManuelle: 'échéance posée à la main',
         };
         // ── La justification de l'échéance, telle qu'un auditeur doit la lire ──
         //
@@ -5780,6 +5856,7 @@
                 case 'dateFinFormation': return c.dateFinFormation || null;
                 case 'dateFactureFacturation': return c.dateFactureFacturation || null;
                 case 'dateEcheanceComptable': return c.dateEcheanceGrandLivre || c.dateEcheance || null;
+                case 'saisieManuelle': return c.dateEcheance || null;
                 default: return null;
             }
         };
@@ -5824,6 +5901,10 @@
         const aCompleter = c => {
             if (!c.financement) return 'à compléter — dispositif à qualifier';
             if (!c.dateEcheance) return 'à compléter — aucune date d’échéance calculable';
+            // Ce que vous avez déjà complété n'est plus à compléter : la ligne
+            // sort de la liste dès que la date est saisie.
+            if (c.echeanceOrigine === 'Saisie à la main') return '';
+            if (c.complementLe) return '';
             if (c.sansNumero) return 'à compléter — solde sans facture : l’ancienneté court sur le dernier mouvement';
             if (c.echeanceOrigine === 'Grand livre') {
                 return 'à compléter — ' + pourquoiPasLeBareme(c);
@@ -5881,6 +5962,9 @@
                 'Origine de la date': c.echeanceOrigine || (c.dateEcheance ? '' : 'aucune'),
                 'Motif particulier': c.echeanceMotif || '',
                 'Pourquoi pas le barème': pourquoiPasLeBareme(c),
+                'Complété à la main': c.complementQuoi || '',
+                'Complété le': c.complementLe ? U.dateFR(new Date(c.complementLe)) : '',
+                'Note de complément': c.complementNote || '',
                 'Échéance calculée sur': surQuoi(c)
                     || (c.sansNumero ? 'aucune échéance : l’ancienneté court depuis le dernier mouvement' : ''),
                 'Date retenue pour l’ancienneté': (c.dateEcheance || c.dateFacture)
@@ -11408,6 +11492,11 @@
         }));
         $$('#seg-gl-aclasser .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.vueAClasser = b.dataset.vue;
+            state.ui.selGL = new Set();
+            rendreAClasser();
+        }));
+        $$('#seg-gl-quoi .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.quoiAClasser = b.dataset.quoi;
             state.ui.selGL = new Set();
             rendreAClasser();
         }));

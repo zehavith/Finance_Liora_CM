@@ -1471,3 +1471,17 @@ tr.ligne-total td {
 /* Une tuile qui porte un lot de factures s'ouvre au clic. */
 .recup-cliquable { cursor: pointer; text-align: left; width: 100%; font: inherit; color: inherit; }
 .recup-cliquable:hover { border-color: var(--border-hover); background: var(--bg-card-hover); }
+
+/* Les champs de complément dans la barre d'action de la balance âgée :
+   une date se saisit à côté de ce qu'elle corrige, pas dans une fenêtre
+   séparée. L'étiquette tient au-dessus du champ pour que la barre reste
+   lisible même avec quatre saisies à la suite. */
+.barre-champ {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--text-muted, #94a3b8);
+    white-space: nowrap;
+}
+.barre-champ .input { font-size: 12px; }

@@ -1130,6 +1130,36 @@ avance pour 54, d'un écart médian de 170 jours, et **environ 900 créances /
 règle — c'est votre règle appliquée là où votre classeur ne pouvait pas
 l'appliquer.
 
+#### Compléter une date à la main (v3.3.0)
+
+Une ligne marquée « à compléter » peut maintenant l'être depuis l'application,
+sous la balance âgée comptable. Le sélecteur **Sans dispositif / Sans date de
+formation** sépare les deux manques :
+
+- **Sans dispositif** — aucun recoupement n'a trouvé le financement. Vous le
+  choisissez, comme avant.
+- **Sans date de formation** — le dispositif est connu, mais la date que son
+  barème réclame manque, et l'échéance est retombée sur celle du grand livre.
+  C'est la famille la plus lourde : dans quatre cas sur cinq, c'est la fin de
+  formation qui manque.
+
+**Compléter une date de formation vaut mieux que poser une échéance.** Une date
+de formation est un *fait* : vous la fournissez, et c'est **votre règle** qui
+calcule l'échéance — le barème redevient applicable au lieu d'être contourné.
+Une créance CPF repliée sur le grand livre au 02/04/2025 passe, dès que la fin
+de formation est saisie au 30/06/2026, à *fin de formation + 60 j = 29/08/2026*,
+avec l'origine « Règle ».
+
+L'**échéance posée directement** reste possible — certaines lignes ne tiennent à
+aucune formation — mais elle court-circuite le barème, et l'export le dit :
+origine « Saisie à la main », sans délai ajouté.
+
+Ce que vous complétez est **mémorisé** avec le dispositif, dans le même
+référentiel, et vaut pour les extraits suivants. Trois colonnes le tracent :
+*Complété à la main* (ce qui a été fourni), *Complété le*, *Note de complément*.
+Vos dates passent devant toutes les autres sources — devant Sellsy, devant
+Monday, devant l'extrait : c'est du travail déjà fait, pas une déduction.
+
 #### Une balance âgée auditable (v3.2.0)
 
 Un auditeur doit pouvoir refaire, ligne par ligne, le chemin qui mène à la date
