@@ -11,7 +11,7 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '3.3.0';
+    const VERSION = '3.4.0';
     const VERSION_DATE = '12 octobre 2026';
 
     const R = window.LioraRules;
@@ -66,6 +66,11 @@
         // extraits déjà qualifiés. C'est l'ancien grand livre classé qui fait
         // foi : une fois ce travail fait, il ne se refait plus.
         qualifRef: {},
+        // Ce qu'une balance déjà classée a appris, au-delà des factures :
+        // le dispositif d'un compte client et celui d'un identifiant de tiers.
+        // Quatre lignes sur dix n'ont pas de numéro de facture — règlements,
+        // avoirs, soldes de compte — et c'est par là qu'elles se retrouvent.
+        glAppris: { factures: {}, tiers: {}, comptes: {} },
         // Règles de classement écrites à la main : « le libellé contient ALMA
         // → financement personnel ». Elles valent pour tous les extraits.
         reglesClassement: [],
@@ -295,6 +300,8 @@
             state.glOuvertes = (await S.get('rec_gl_ouvertes', [])) || [];
             state.glToutes = (await S.get('rec_gl_factures', [])) || [];
             state.qualifRef = (await S.get('rec_qualif_ref', {})) || {};
+            state.glAppris = (await S.get('rec_gl_appris', null))
+                || { factures: {}, tiers: {}, comptes: {} };
             state.reglesClassement = (await S.get('rec_regles_classement', [])) || [];
             state.glLignes = ((await S.get('rec_gl_lignes', [])) || [])
                 .map(l => ({ ...l, date: l.date ? R.parseDate(l.date) : null }));
@@ -3867,6 +3874,7 @@
     function optionsClassement() {
         return {
             referentiel: state.qualifRef,
+            appris: state.glAppris,
             regles: state.reglesClassement,
             // Les mandats de prélèvement, ramenés au nom du client : chez un
             // client sous mandat l'argent est appelé, donc l'échéance est la
@@ -10638,6 +10646,33 @@
                 else if (!dejaLa) state.qualifRef[cle] = v;
             }
             state.glApprises = Object.keys(state.qualifRef).length - avant;
+
+            // Ce que la balance déposée apprend au-delà des factures : le
+            // dispositif d'un compte client et celui d'un tiers, retenus quand
+            // ils font consensus à 90 %. C'est ce qui rattrape les quatre
+            // lignes sur dix qui n'ont pas de numéro de facture — règlements,
+            // avoirs, soldes de compte — et dont le classement se perdait d'un
+            // arrêté à l'autre. Rien n'est effacé : une balance plus récente
+            // complète la précédente.
+            const base = state.glAppris || { factures: {}, tiers: {}, comptes: {} };
+            const fusion = (ancien, nouveau) => {
+                const out = { ...(ancien || {}) };
+                for (const [k, v] of Object.entries(nouveau || {})) out[k] = v;
+                return out;
+            };
+            const avantT = Object.keys(base.tiers || {}).length;
+            const avantC = Object.keys(base.comptes || {}).length;
+            state.glAppris = {
+                factures: fusion(base.factures, Object.fromEntries(
+                    Object.entries(appris).map(([k, v]) => [k, v.fin]))),
+                tiers: fusion(base.tiers, lu.apprisTiers),
+                comptes: fusion(base.comptes, lu.apprisComptes),
+            };
+            state.glApprisDelta = {
+                tiers: Object.keys(state.glAppris.tiers).length - avantT,
+                comptes: Object.keys(state.glAppris.comptes).length - avantC,
+            };
+            try { await S.set('rec_gl_appris', state.glAppris); } catch { /* ignore */ }
 
             // Les créances ouvertes sont la matière de la balance âgée
             // comptable : elles sont conservées à part, le classement par

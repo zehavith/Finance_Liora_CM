@@ -1130,6 +1130,40 @@ avance pour 54, d'un écart médian de 170 jours, et **environ 900 créances /
 règle — c'est votre règle appliquée là où votre classeur ne pouvait pas
 l'appliquer.
 
+#### Une balance déjà classée en classe une nouvelle (v3.4.0)
+
+Déposez votre ancienne balance âgée, puis la nouvelle : la première classe la
+seconde. Le référentiel ne retenait que les **factures**, par leur numéro — or
+sur une balance réelle, **quatre lignes sur dix n'en ont pas** : règlements non
+lettrés, avoirs, soldes de compte. Leur classement se perdait d'un arrêté à
+l'autre. Deux clés les rattrapent, parce qu'elles ne bougent pas : le **numéro
+de compte** et l'**identifiant du tiers**.
+
+Un compte ou un tiers n'est retenu que s'il fait **consensus à 90 %** — votre
+règle : *« le compte client, si 90 % de ses factures relèvent du même
+dispositif. Sinon À classer. »* Un compte partagé entre deux dispositifs
+n'apprend donc rien, et c'est voulu : mieux vaut une ligne à classer qu'une
+ligne mal classée.
+
+Ce qui est appris entre par la porte de **l'ancien grand livre** — c'est la même
+nature de source, du classement que vous avez fait — et prend donc le même rang
+dans la cascade : le numéro de facture d'abord, puis l'identifiant du tiers,
+puis le compte. Rien n'écrase ce que l'extrait courant porte déjà ; on ne comble
+que les vides. L'apprentissage est **mémorisé** et s'enrichit à chaque balance
+déposée.
+
+Mesuré sur une balance réelle de 3 609 lignes, privée de ses colonnes de
+classement puis reclassée :
+
+| | sans apprentissage | avec |
+|---|---:|---:|
+| créances classées | 1 691 / 1 989 (85 %) | **1 982 / 1 989 (100 %)** |
+| lignes sans n° de facture classées | 31 / 56 | **49 / 56** |
+| **retrouvent votre sous-catégorie** | 1 097 / 1 828 (**60 %**) | **1 789 / 1 828 (98 %)** |
+
+Les 39 écarts restants sont **tous** des factures Filiz, que la règle
+d'alternance reclasse volontairement.
+
 #### Compléter une date à la main (v3.3.0)
 
 Une ligne marquée « à compléter » peut maintenant l'être depuis l'application,

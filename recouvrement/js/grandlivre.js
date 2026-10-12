@@ -419,6 +419,9 @@
         // « paid_out », et les rejets. C'est la matière des colonnes AT et AS
         // du classeur, mais prise à la source comptable.
         const prelevements = new Map();
+        // Ce que la balance déposée sait classer, par tiers et par compte.
+        const apprisTiers = new Map();
+        const apprisComptes = new Map();
         let ignorees = 0, numerosExtraits = 0;
         for (const r of rows) {
             const lettre = lettreDe(col(r, 'lettrage'));
@@ -475,6 +478,28 @@
             // le financement, le type de client ne l'est qu'à défaut.
             const qualif = String(col(r, 'sousCategorie') || '').trim()
                 || String(col(r, 'typeClient') || '').trim();
+
+            // Ce qu'une balance déjà classée apprend, ligne par ligne.
+            //
+            // Le référentiel ne retenait que les factures, par leur numéro. Or
+            // sur une balance réelle, quatre lignes sur dix n'en ont pas :
+            // règlements non lettrés, avoirs, soldes de compte. Leur
+            // classement se perdait, et il fallait le refaire à chaque extrait.
+            // Le compte client et l'identifiant du tiers, eux, ne bougent pas
+            // d'un arrêté à l'autre : ce sont les clés qui les rattrapent.
+            if (qualif) {
+                const idT = String(col(r, 'identifiantTiers') || '').trim();
+                if (idT) {
+                    let m = apprisTiers.get(idT);
+                    if (!m) { m = new Map(); apprisTiers.set(idT, m); }
+                    m.set(qualif, (m.get(qualif) || 0) + 1);
+                }
+                if (compte) {
+                    let m = apprisComptes.get(compte);
+                    if (!m) { m = new Map(); apprisComptes.set(compte, m); }
+                    m.set(qualif, (m.get(qualif) || 0) + 1);
+                }
+            }
 
             // Sans compte, l'écriture n'appartient à personne : rien à en tirer.
             // Sans lettre, en revanche, elle rejoint le pool non lettré de son
@@ -702,6 +727,7 @@
         }
 
         return { lignes: resultats, groupes: [...groupes.values()], ignorees, datesParNumero,
+                 apprisTiers: unanimes(apprisTiers), apprisComptes: unanimes(apprisComptes),
                  prelevements, numerosExtraits, comptable: true };
     }
 
@@ -1732,8 +1758,32 @@
             };
         };
 
+        // Ce qu'une balance déjà classée a appris, rapporté sur la nouvelle.
+        //
+        // Elle entre par la porte de « l'ancien grand livre » : c'est la même
+        // nature de source — du classement que vous avez fait — et elle prend
+        // donc le même rang dans la cascade, le numéro de facture d'abord,
+        // puis l'identifiant du tiers, puis le compte. Rien n'écrase ce que
+        // l'extrait courant porte déjà : on ne comble que les vides.
+        const appris = o.appris || null;
+        const reporter = c => {
+            if (!appris) return c;
+            const a = { ...(c.ancien || {}) };
+            let touche = false;
+            if (!a.numero && c.cle && appris.factures && appris.factures[c.cle]) {
+                a.numero = appris.factures[c.cle]; touche = true;
+            }
+            if (!a.tiers && c.identifiantTiers && appris.tiers && appris.tiers[c.identifiantTiers]) {
+                a.tiers = appris.tiers[c.identifiantTiers].qualif; touche = true;
+            }
+            if (!a.compte && c.compte && appris.comptes && appris.comptes[c.compte]) {
+                a.compte = appris.comptes[c.compte].qualif; touche = true;
+            }
+            return touche ? { ...c, ancien: a } : c;
+        };
+
         return ouvertes.map(brut => {
-            const c = avecSellsy(brut);
+            const c = reporter(avecSellsy(brut));
             // Vos lignes d'abord.
             //
             // « Tu dois prendre mes lignes comme base si je les ai déjà
@@ -2455,6 +2505,24 @@
      *
      * @returns {Object} clé de facture → clé de financement
      */
+    /**
+     * Ne retenir d'un compte ou d'un tiers que ce qui fait consensus.
+     *
+     * Votre règle, telle que vous l'avez posée : « le compte client, si 90 %
+     * de ses factures relèvent du même dispositif. Sinon À classer. » Un
+     * compte partagé entre deux dispositifs n'apprend donc rien, et c'est
+     * voulu : mieux vaut une ligne à classer qu'une ligne mal classée.
+     */
+    function unanimes(carte) {
+        const out = {};
+        for (const [cle, m] of carte) {
+            let total = 0, tete = null, teteNb = 0;
+            for (const [q, n] of m) { total += n; if (n > teteNb) { tete = q; teteNb = n; } }
+            if (total && (teteNb / total) >= 0.9) out[cle] = { qualif: tete, nb: total, part: teteNb / total };
+        }
+        return out;
+    }
+
     function referentielDepuis(lignes, rules) {
         const ref = {};
         for (const l of (lignes || [])) {
