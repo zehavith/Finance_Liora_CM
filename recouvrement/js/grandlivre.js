@@ -754,7 +754,7 @@
         }
 
         return { lignes: resultats, groupes: [...groupes.values()], ignorees, datesParNumero,
-                 apprisTiers: unanimes(apprisTiers), apprisComptes: unanimes(apprisComptes),
+                 apprisTiers: unanimes(apprisTiers, o.rules), apprisComptes: unanimes(apprisComptes, o.rules),
                  prelevements, numerosExtraits, comptable: true };
     }
 
@@ -2638,11 +2638,32 @@
      * compte partagé entre deux dispositifs n'apprend donc rien, et c'est
      * voulu : mieux vaut une ligne à classer qu'une ligne mal classée.
      */
-    function unanimes(carte) {
+    function unanimes(carte, rules) {
         const out = {};
         for (const [cle, m] of carte) {
+            // Deux orthographes du même dispositif ne sont pas deux avis.
+            // Sa feuille écrit « Transition Pro » 479 fois et « Transition pro »
+            // 138 fois : comptées à part, un compte qui porte les deux tombait
+            // sous les 90 % de consensus et perdait sa catégorie apprise, alors
+            // que ses lignes disent toutes la même chose. Le vote se fait donc
+            // sur le dispositif reconnu, et l'étiquette retenue est la forme la
+            // plus fréquente — celle que l'auditeur relira dans sa feuille.
+            const parFin = new Map();
+            for (const [q, n] of m) {
+                const k = R.detectFinancement(q, rules) || R.norm(q);
+                const e = parFin.get(k) || { nb: 0, formes: new Map() };
+                e.nb += n;
+                e.formes.set(q, (e.formes.get(q) || 0) + n);
+                parFin.set(k, e);
+            }
             let total = 0, tete = null, teteNb = 0;
-            for (const [q, n] of m) { total += n; if (n > teteNb) { tete = q; teteNb = n; } }
+            for (const [, e] of parFin) {
+                total += e.nb;
+                if (e.nb > teteNb) {
+                    teteNb = e.nb;
+                    tete = [...e.formes].reduce((a, b) => (b[1] > a[1] ? b : a))[0];
+                }
+            }
             if (total && (teteNb / total) >= 0.9) out[cle] = { qualif: tete, nb: total, part: teteNb / total };
         }
         return out;
