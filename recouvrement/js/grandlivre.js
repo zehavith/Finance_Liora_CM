@@ -1991,7 +1991,7 @@
             // créances portant un numéro DV, 111 sont déjà classées par
             // Sellsy, par l'ancienne balance ou par le compte client — dont 31
             // en B2B, qui restent B2B. Cette règle en rattrape une.
-            if (/^dv\b|^dv[-\s]?\d/i.test(String(c.numero || '').trim())) {
+            if (/^dv[-_.\s]?\d/i.test(String(c.numero || '').trim())) {
                 return poser(c, 'BTC_ENTREPRISE', 'Numéro de devis (B2C - Entreprise par défaut)',
                     c.numero || '');
             }
@@ -2392,7 +2392,7 @@
                            dateEcheance: null, echeanceBase: '', echeanceMotif: '', numero: l.numero || '' };
             }
             // Un numéro de devis vaut B2C - Entreprise par défaut, ici aussi.
-            if (!source && /^dv\b|^dv[-\s]?\d/i.test(String(l.numero || '').trim())) {
+            if (!source && /^dv[-_.\s]?\d/i.test(String(l.numero || '').trim())) {
                 source = { financement: 'BTC_ENTREPRISE', typeClient: null,
                            origineClassement: 'Numéro de devis (B2C - Entreprise par défaut)',
                            preuveClassement: l.numero,
