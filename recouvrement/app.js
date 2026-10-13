@@ -11,8 +11,8 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '3.5.0';
-    const VERSION_DATE = '12 octobre 2026';
+    const VERSION = '3.6.0';
+    const VERSION_DATE = '13 octobre 2026';
 
     const R = window.LioraRules;
     const PR = window.LioraPrelevements;
@@ -3903,11 +3903,23 @@
 
         const classees = GL.classer(ouvertes, optionsClassement());
         state.glCreances = classees;
+        // Les factures dont le lot est entièrement soldé ne sont plus des
+        // créances : la balance âgée les ignore. Leurs écritures, elles,
+        // restent dans le grand livre et doivent se justifier — elles sont donc
+        // classées à part, uniquement pour leur rendre leur dispositif et leur
+        // échéance. Aucun euro n'entre par là dans la balance.
+        const soldees = GL.classer((state.glToutes || [])
+            .filter(c => c.statut && c.statut !== 'Ouverte' && c.statut !== 'Partiellement réglée')
+            .map(c => ({
+                ...c,
+                dateFacture: c.dateFacture ? R.parseDate(c.dateFacture) : null,
+                dateEcheance: c.dateEcheance ? R.parseDate(c.dateEcheance) : null,
+            })), optionsClassement());
         // Le classement descend sur les écritures : une facture classée classe
         // son règlement et son avoir. Ce qui n'a pas de facture dans son
         // lettrage ressort à part, pour être pointé à la main.
         state.glEcritures = (state.glLignes && state.glLignes.length)
-            ? GL.classerEcritures(state.glLignes, classees)
+            ? GL.classerEcritures(state.glLignes, classees, soldees)
             : null;
         state.glBalance = GL.balanceAgee(classees, state.filtres.dateRef, state.rules,
             state.ui.glNiveau || 'financement');

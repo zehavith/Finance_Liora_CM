@@ -641,6 +641,13 @@
                 // d'échéance recalculée » : là, « Date d'échéance » EST votre
                 // AA. Sur un extrait brut, on refait votre calcul.
                 dateEcheance: saBalance ? R.parseDate(col(r, 'dateEcheance')) : null,
+                // La colonne telle que le fichier la porte, qu'on la retienne
+                // ou non. Écartée du calcul, elle restait invisible : l'export
+                // affichait « Date d'échéance » vide sur les 16 080 lignes,
+                // alors que Pennylane en remplit 3 979. L'auditeur doit lire la
+                // donnée d'origine à côté de la date retenue — c'est ainsi
+                // qu'il vérifie qu'on l'a écartée, et non perdue.
+                dateEcheanceFichier: R.parseDate(col(r, 'dateEcheance')) || null,
                 dateEcheanceRepli: dateTexte || R.parseDate(col(r, 'dateEnregistrement')) || null,
                 // Les dates de la facturation, telles que l'extrait les porte.
                 dateDebutFormation: R.parseDate(utile(col(r, 'dateDebutFormation'))),
@@ -978,6 +985,17 @@
                     dateFacture: derniereDate(g.autres.length ? g.autres
                         : g.reglements.concat(g.avoirs)),
                     dateEcheance: null,
+                    // Un solde de compte n'a pas de facture — donc aucune des
+                    // dates sur lesquelles un barème s'appuie. Sans repli, il
+                    // restait sans échéance : 259 créances et 653 écritures
+                    // vides, alors que votre balance en date 3 608 sur 3 609,
+                    // les 1 580 lignes sans numéro comprises. Votre règle est
+                    // qu'à défaut on prend l'échéance 1 — la dernière date du
+                    // libellé, sinon l'enregistrement. Elle vaut ici aussi,
+                    // portée par la même écriture que celle qui date la
+                    // créance.
+                    dateEcheanceRepli: repliDerniere(g.autres.length ? g.autres
+                        : g.reglements.concat(g.avoirs)),
                     dateDebutFormation: g.dateDebutFormation || null,
                     dateFinFormation: g.dateFinFormation || null,
                     mandatEtatFichier: g.mandatEtat || '',
@@ -1035,6 +1053,23 @@
 
     function derniereDate(lignes) {
         return lignes.reduce((max, l) => (l.date && (!max || l.date > max)) ? l.date : max, null);
+    }
+
+    /**
+     * L'échéance de dernier recours portée par la plus récente de ces
+     * écritures — celle-là même dont `derniereDate` retient la date.
+     *
+     * Les deux doivent désigner la même ligne : sans quoi la créance serait
+     * datée par une écriture et son échéance par une autre, et l'auditeur ne
+     * pourrait pas refaire le chemin.
+     */
+    function repliDerniere(lignes) {
+        let choisie = null;
+        for (const l of lignes) {
+            if (!l.date) continue;
+            if (!choisie || l.date > choisie.date) choisie = l;
+        }
+        return choisie ? (choisie.dateEcheanceRepli || choisie.date || null) : null;
     }
 
     /**
@@ -1751,15 +1786,23 @@
             // FORMATION reste préférable : elle rend votre barème applicable
             // au lieu de le contourner.
             const pose = c.complement && c.complement.echeance ? c.complement : null;
+            // Aucun barème n'a pu s'appliquer — le dispositif reste à qualifier
+            // — mais la créance porte quand même l'échéance 1. La date était
+            // retenue, son origine restait vide : 142 lignes datées sans dire
+            // d'où. Une date sans origine n'est pas auditable ; elle se nomme.
+            const repliSeul = !pose && !ech.date && c.dateEcheance;
             return {
                 ...c, financement: fin, origineClassement: origine,
                 preuveClassement: preuve == null ? '' : String(preuve),
                 typeClient: typeDeClient(fin, c, o),
                 dateEcheance: pose ? pose.echeance : (ech.date || c.dateEcheance || null),
                 echeanceBase: pose ? 'saisieManuelle' : ech.baseUtilisee,
-                echeanceOrigine: pose ? 'Saisie à la main' : ech.origine,
+                echeanceOrigine: pose ? 'Saisie à la main'
+                    : (ech.origine || (repliSeul ? 'Grand livre' : null)),
                 echeanceMotif: pose ? (pose.note || 'échéance posée à la main')
-                    : (ech.motif || null),
+                    : (ech.motif || (repliSeul
+                        ? 'aucun barème applicable — échéance 1 : dernière date du libellé, sinon l’enregistrement'
+                        : null)),
                 // Le délai réellement ajouté à la base, tel que le moteur l'a
                 // appliqué — pas celui que le barème laisserait supposer.
                 echeanceJours: pose ? 0 : (ech.jours == null ? null : ech.jours),
@@ -1910,7 +1953,20 @@
                 return poser(c, 'CORPORATE', 'Nom d’entreprise (financement à préciser)',
                     immatricule ? ('SIREN ' + c.siren) : (c.tiers || ''));
             }
-            return { ...c, financement: null, typeClient: null, origineClassement: null, preuveClassement: '' };
+            // Rien n'a nommé le dispositif : la créance part « À classer ».
+            // Elle garde pourtant l'échéance 1 que la ligne portait — et cette
+            // sortie, qui ne passe pas par `poser`, la laissait sans origine ni
+            // délai : 142 lignes datées sans qu'on sache d'où. Ce qu'on retient
+            // se dit, même quand on ne sait pas classer.
+            return { ...c, financement: null, typeClient: null,
+                origineClassement: null, preuveClassement: '',
+                echeanceBase: c.dateEcheance ? 'dateEcheanceComptable' : '',
+                echeanceOrigine: c.dateEcheance ? 'Grand livre' : '',
+                echeanceMotif: c.dateEcheance
+                    ? 'dispositif à qualifier — échéance 1 : dernière date du libellé, sinon l’enregistrement'
+                    : '',
+                echeanceJours: c.dateEcheance ? 0 : null,
+                dateEcheanceGrandLivre: c.dateEcheanceLivre || null };
         });
     }
 
@@ -1970,7 +2026,8 @@
                     dateFacturation: l.dateFacturation || null,
                     // Ce que la ligne porte en propre, pour que le grand livre
                     // exporté se relise sans le fichier d'origine.
-                    dateEcheanceFichier: l.dateEcheance || null,
+                    dateEcheanceFichier: l.dateEcheanceFichier || l.dateEcheance || null,
+                    dateEcheanceRepli: l.dateEcheanceRepli || null,
                     dateDebutFormation: l.dateDebutFormation || null,
                     dateFinFormation: l.dateFinFormation || null,
                     ancien: l.ancien || null,
@@ -2153,7 +2210,7 @@
         return [...lignes.values()].sort((a, b) => Math.abs(b.euros) - Math.abs(a.euros));
     }
 
-    function classerEcritures(lignesAPlat, creances) {
+    function classerEcritures(lignesAPlat, creances, soldees) {
         // Le financement retenu par groupe, depuis les créances déjà classées.
         const parGroupe = new Map();
         for (const c of (creances || [])) {
@@ -2203,6 +2260,18 @@
             return out;
         })();
 
+        // Les factures des lots soldés, classées à part. Elles ne servent qu'à
+        // justifier des écritures qu'aucune créance ouverte ne couvre : elles
+        // sont donc consultées en dernier, après le numéro cité et le lettrage,
+        // et ne déplacent aucune ligne déjà rattachée.
+        const parFactureSoldee = new Map(), parGroupeSoldee = new Map();
+        for (const c of (soldees || [])) {
+            if (!c.compte) continue;
+            if (c.cle && !parFactureSoldee.has(c.cle)) parFactureSoldee.set(c.cle, c);
+            const cle = c.compte + '|' + (c.lettre || POOL_NON_LETTRE);
+            if (!parGroupeSoldee.has(cle)) parGroupeSoldee.set(cle, c);
+        }
+
         const lignes = [], orphelins = [];
         const NATURES = { facture: 'factures', reglement: 'reglements', avoir: 'avoirs', autre: 'autres' };
         const stats = { factures: 0, reglements: 0, avoirs: 0, autres: 0,
@@ -2227,6 +2296,21 @@
                                   preuveClassement: l.numero };
             }
             if (!source) source = parGroupe.get(l.cleGroupe);
+            // Un lot entièrement soldé n'a plus de créance ouverte — la balance
+            // âgée l'ignore à bon droit, mais ses écritures restaient sans
+            // classement ni date : 312 lignes, une facture et son avoir à
+            // chaque fois. La facture soldée porte pourtant son dispositif et
+            // son échéance ; elles se relisent sur elle, par le même chemin que
+            // pour une créance ouverte. Rien n'entre ainsi dans la balance :
+            // ces lignes ne pèsent plus rien, elles se justifient seulement.
+            if (!source && parFactureSoldee.size) {
+                if (l.numero) {
+                    const f = parFactureSoldee.get(I.factureKey(l.numero));
+                    if (f) source = { ...f, origineClassement: 'Facture citée par la ligne',
+                                      preuveClassement: l.numero };
+                }
+                if (!source) source = parGroupeSoldee.get(l.cleGroupe);
+            }
             // Un règlement sans facture dans son lettrage, mais qui cite une
             // facture Filiz, relève de l'alternance comme elle.
             if (!source && /filiz/i.test((l.numero || '') + ' ' + (l.libelle || ''))) {
@@ -2270,14 +2354,25 @@
                 etatMandat: source ? (source.etatMandat || '') : '',
                 montantPreleve: source ? (source.montantPreleve || 0) : 0,
                 avoirsDuGroupe: avoirsParGroupe.get(l.cleGroupe) || '',
-                dateEcheance: source ? (source.dateEcheance || null) : null,
+                // Trente-trois lignes ne relèvent d'aucune facture : un crédit
+                // et le débit qui l'annule, dans un lot qui ne porte aucun
+                // numéro. Ni créance ouverte ni facture soldée ne peut donc les
+                // dater. Votre règle vaut quand même — à défaut de tout, on
+                // prend l'échéance 1 : la dernière date du libellé, sinon
+                // l'enregistrement. Elle est portée par la ligne elle-même, et
+                // le motif dit d'où elle vient : rien n'est ni inventé ni muet.
+                dateEcheance: (source && source.dateEcheance) || l.dateEcheanceRepli || null,
                 echeanceBase: source ? (source.echeanceBase || '') : '',
-                echeanceMotif: source ? (source.echeanceMotif || '') : '',
+                echeanceMotif: (source && source.echeanceMotif)
+                    || ((!source || !source.dateEcheance) && l.dateEcheanceRepli
+                        ? 'aucune facture dans le lettrage — échéance de la ligne elle-même'
+                        : ''),
                 // De quoi justifier la date sur la ligne elle-même, sans avoir
                 // à remonter à la créance : le délai réellement appliqué,
                 // l'échéance que portait le grand livre, et l'origine.
                 echeanceJours: source && source.echeanceJours != null ? source.echeanceJours : null,
-                echeanceOrigine: source ? (source.echeanceOrigine || '') : '',
+                echeanceOrigine: (source && source.echeanceOrigine)
+                    || ((!source || !source.dateEcheance) && l.dateEcheanceRepli ? 'Grand livre' : ''),
                 dateEcheanceGrandLivre: source ? (source.dateEcheanceGrandLivre || null) : null,
                 dateFactureFacturationSource: source ? (source.dateFactureFacturation || null) : null,
                 dateDebutFormationSource: source ? (source.dateDebutFormation || null) : null,
