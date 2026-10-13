@@ -5890,6 +5890,15 @@
         // C'est la ligne que l'auditeur refait de tête.
         const calculEcheance = c => {
             if (!c.dateEcheance) return '';
+            // Un solde de compte n'est l'écriture de personne : il est daté par
+            // la plus récente des écritures de son compte. La fiche d'une autre
+            // écriture du même lot affichait donc une date qui ne venait pas
+            // d'elle, sans le dire — on lisait une contradiction là où il n'y
+            // avait qu'un raccourci. La ligne qui a daté est nommée.
+            if (c.sansNumero && c.dateFacture) {
+                return `échéance 1 de l’écriture du ${U.dateFR(c.dateFacture)}`
+                    + ` = ${U.dateFR(c.dateEcheance)}`;
+            }
             const v = valeurBase(c);
             if (!v || !c.echeanceBase) return U.dateFR(c.dateEcheance);
             const nom = BASES[c.echeanceBase] || c.echeanceBase;
