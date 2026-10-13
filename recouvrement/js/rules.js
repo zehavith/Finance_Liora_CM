@@ -612,6 +612,15 @@
         // ne dit rien du dispositif. Le repli de la règle ne sert qu'aux
         // factures Monday, où aucune échéance comptable n'existe.
         const principale = (gl && rule.gl) ? rule.gl : rule;
+        //
+        // L'ordre a été remis en cause et TRANCHÉ le 13/10/2026. Mettre le repli
+        // de la règle (date de facture + N) devant l'échéance comptable aurait
+        // déplacé 661 créances de 80 jours en moyenne, 1 609 033 €, et sorti
+        // 515 501 € de l'échu — mais cela se serait écarté de sa feuille de
+        // septembre, où l'échéance d'une ligne sans date de formation est la
+        // dernière date de son libellé, sans délai ajouté (FA-771-000948 : AA et
+        // AC valent toutes deux le 30/11/2023). Zehavit a confirmé : « il faut
+        // prendre la dernière date du libellé ». L'ordre reste celui-ci.
         const bases = [
             { champ: principale.base, jours: principale.jours },
             { comptable: true },
