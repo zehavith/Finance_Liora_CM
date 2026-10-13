@@ -3919,7 +3919,8 @@
         // son règlement et son avoir. Ce qui n'a pas de facture dans son
         // lettrage ressort à part, pour être pointé à la main.
         state.glEcritures = (state.glLignes && state.glLignes.length)
-            ? GL.classerEcritures(state.glLignes, classees, soldees)
+            ? GL.classerEcritures(state.glLignes, classees, soldees,
+                { sellsy: (optionsClassement() || {}).sellsy, rules: state.rules })
             : null;
         state.glBalance = GL.balanceAgee(classees, state.filtres.dateRef, state.rules,
             state.ui.glNiveau || 'financement');

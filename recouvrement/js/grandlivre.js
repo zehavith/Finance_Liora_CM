@@ -2247,7 +2247,7 @@
         return [...lignes.values()].sort((a, b) => Math.abs(b.euros) - Math.abs(a.euros));
     }
 
-    function classerEcritures(lignesAPlat, creances, soldees) {
+    function classerEcritures(lignesAPlat, creances, soldees, sources) {
         // Le financement retenu par groupe, depuis les créances déjà classées.
         const parGroupe = new Map();
         for (const c of (creances || [])) {
@@ -2309,6 +2309,23 @@
             if (!parGroupeSoldee.has(cle)) parGroupeSoldee.set(cle, c);
         }
 
+        // Ce que la FACTURATION sait du numéro cité par la ligne.
+        //
+        // Une écriture peut citer une facture que Sellsy connaît parfaitement
+        // sans qu'aucune créance n'en soit née : il suffit que son lot se solde
+        // à zéro. Chez Benoit PAVIE, Pennylane a interverti les deux numéros —
+        // le crédit porte celui de la facture et s'intitule « Avoir », le débit
+        // celui de l'avoir et s'intitule « Facture » — le lot tombe à zéro,
+        // aucune créance n'en sort, et l'écriture finissait « dispositif à
+        // qualifier » alors que Sellsy répond « B2C ». La facturation est donc
+        // interrogée en dernier, après la créance et la facture soldée.
+        const parSellsy = new Map();
+        for (const l of ((sources && sources.sellsy) || [])) {
+            const fin = R.detectFinancement(l.typeClient, sources.rules);
+            if (!fin) continue;
+            for (const k of [l.cle, l.cleZoho]) if (k && !parSellsy.has(k)) parSellsy.set(k, fin);
+        }
+
         const lignes = [], orphelins = [];
         const NATURES = { facture: 'factures', reglement: 'reglements', avoir: 'avoirs', autre: 'autres' };
         const stats = { factures: 0, reglements: 0, avoirs: 0, autres: 0,
@@ -2347,6 +2364,14 @@
                                       preuveClassement: l.numero };
                 }
                 if (!source) source = parGroupeSoldee.get(l.cleGroupe);
+            }
+            if (!source && l.numero && parSellsy.size) {
+                const fin = parSellsy.get(I.factureKey(l.numero));
+                if (fin) source = { financement: fin, typeClient: null,
+                                    origineClassement: 'Type de client (facturation)',
+                                    preuveClassement: l.numero,
+                                    dateEcheance: null, echeanceBase: '', echeanceMotif: '',
+                                    numero: l.numero };
             }
             // Un règlement sans facture dans son lettrage, mais qui cite une
             // facture Filiz, relève de l'alternance comme elle.
