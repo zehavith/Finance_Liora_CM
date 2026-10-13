@@ -627,6 +627,16 @@
                 // une formule — la dernière date lue dans le libellé de ligne,
                 // à défaut la date d'enregistrement.
                 //
+                // La deuxième branche a été remise en cause et TRANCHÉE le
+                // 13/10/2026 : sur le nouvel extrait, 4 627 écritures sans date
+                // dans le libellé portent une date comptable fiable, qui diffère
+                // de la date d'enregistrement de 8,4 jours en moyenne sur 1 615
+                // d'entre elles ; une seule écriture sur 16 082 n'aurait alors
+                // plus que l'enregistrement. Zehavit a choisi de garder
+                // l'enregistrement — « on reste sur la date d'enregistrement ».
+                // C'est sa règle, elle s'applique telle quelle : ne pas
+                // substituer la date comptable ici sans le lui redemander.
+                //
                 // L'export Pennylane porte, lui, sa PROPRE « Date d'échéance ».
                 // Votre feuille ne la reprend pas : vos vingt-trois colonnes
                 // « Extraction Grand livre » s'arrêtent au crédit en devise, et
