@@ -5925,7 +5925,20 @@
             // sort de la liste dès que la date est saisie.
             if (c.echeanceOrigine === 'Saisie à la main') return '';
             if (c.complementLe) return '';
-            if (c.sansNumero) return 'à compléter — solde sans facture : l’ancienneté court sur le dernier mouvement';
+            // Un solde sans facture ne pourra JAMAIS porter de date de
+            // formation : aucun barème ne s'y appliquera, et le réclamer serait
+            // demander l'impossible. Pour lui, l'échéance 1 n'est pas un pis-
+            // aller, c'est la règle — à une condition, celle de votre formule :
+            // que la date ait été LUE DANS LE LIBELLÉ. Le compte « Clients -
+            // Alma » en est l'exemple : onze règlements, aucune facture, et la
+            // date de l'opération écrite dans chaque libellé.
+            // Quand le libellé n'en porte pas, il ne reste que la date
+            // d'enregistrement — le jour de la saisie, pas une exigibilité —
+            // et là, oui, la ligne reste à confirmer.
+            if (c.sansNumero) {
+                return c.echeance1Source === 'libellé' ? ''
+                    : 'à compléter — solde sans facture, daté sur l’enregistrement et non sur le libellé';
+            }
             if (c.echeanceOrigine === 'Grand livre') {
                 return 'à compléter — ' + pourquoiPasLeBareme(c);
             }

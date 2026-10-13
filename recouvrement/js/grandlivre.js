@@ -649,6 +649,14 @@
                 // qu'il vérifie qu'on l'a écartée, et non perdue.
                 dateEcheanceFichier: R.parseDate(col(r, 'dateEcheance')) || null,
                 dateEcheanceRepli: dateTexte || R.parseDate(col(r, 'dateEnregistrement')) || null,
+                // Votre formule a deux branches, et elles ne se valent pas :
+                // la date LUE DANS LE LIBELLÉ est l'opération elle-même, la
+                // date d'enregistrement n'est que le jour où l'écriture est
+                // entrée dans Pennylane. La première fait une échéance, la
+                // seconde est un pis-aller. Sans distinguer les deux, on ne
+                // peut pas dire laquelle des lignes reste à confirmer.
+                echeance1Source: dateTexte ? 'libellé'
+                    : (R.parseDate(col(r, 'dateEnregistrement')) ? 'enregistrement' : null),
                 // Les dates de la facturation, telles que l'extrait les porte.
                 dateDebutFormation: R.parseDate(utile(col(r, 'dateDebutFormation'))),
                 dateFinFormation: R.parseDate(utile(col(r, 'dateFinFormation'))),
@@ -882,6 +890,7 @@
             // portait, et ne peut donc pas vérifier qu'on l'a bien écartée.
             dateEcheanceLivre: f.dateEcheance || null,
             dateEcheanceRepli: f.dateEcheanceRepli || null,
+            echeance1Source: f.echeance1Source || null,
             // Les dates de formation ne se propagent pas d'une
             // ligne à l'autre : un lettrage réunit plusieurs
             // factures du même client, aux formations différentes.
@@ -995,7 +1004,9 @@
                     // portée par la même écriture que celle qui date la
                     // créance.
                     dateEcheanceRepli: repliDerniere(g.autres.length ? g.autres
-                        : g.reglements.concat(g.avoirs)),
+                        : g.reglements.concat(g.avoirs)).date,
+                    echeance1Source: repliDerniere(g.autres.length ? g.autres
+                        : g.reglements.concat(g.avoirs)).source,
                     dateDebutFormation: g.dateDebutFormation || null,
                     dateFinFormation: g.dateFinFormation || null,
                     mandatEtatFichier: g.mandatEtat || '',
@@ -1069,7 +1080,11 @@
             if (!l.date) continue;
             if (!choisie || l.date > choisie.date) choisie = l;
         }
-        return choisie ? (choisie.dateEcheanceRepli || choisie.date || null) : null;
+        if (!choisie) return { date: null, source: null };
+        return {
+            date: choisie.dateEcheanceRepli || choisie.date || null,
+            source: choisie.dateEcheanceRepli ? (choisie.echeance1Source || null) : 'date comptable',
+        };
     }
 
     /**
@@ -1800,9 +1815,20 @@
                 echeanceOrigine: pose ? 'Saisie à la main'
                     : (ech.origine || (repliSeul ? 'Grand livre' : null)),
                 echeanceMotif: pose ? (pose.note || 'échéance posée à la main')
-                    : (ech.motif || (repliSeul
-                        ? 'aucun barème applicable — échéance 1 : dernière date du libellé, sinon l’enregistrement'
-                        : null)),
+                    : (ech.motif
+                        || (repliSeul
+                            ? 'aucun barème applicable — échéance 1 ' + (
+                                c.echeance1Source === 'libellé' ? '(date lue dans le libellé)'
+                                : c.echeance1Source === 'enregistrement' ? '(date d’enregistrement)'
+                                : '')
+                            : null)
+                        // Quand le barème n'a pas sa base et que l'échéance du
+                        // grand livre a servi de repli, l'auditeur doit lire
+                        // LAQUELLE des deux branches de votre formule a parlé.
+                        || (ech.origine === 'Grand livre' && c.echeance1Source
+                            ? 'échéance 1 ' + (c.echeance1Source === 'libellé'
+                                ? '(date lue dans le libellé)' : '(date d’enregistrement)')
+                            : null)),
                 // Le délai réellement ajouté à la base, tel que le moteur l'a
                 // appliqué — pas celui que le barème laisserait supposer.
                 echeanceJours: pose ? 0 : (ech.jours == null ? null : ech.jours),
@@ -2028,6 +2054,7 @@
                     // exporté se relise sans le fichier d'origine.
                     dateEcheanceFichier: l.dateEcheanceFichier || l.dateEcheance || null,
                     dateEcheanceRepli: l.dateEcheanceRepli || null,
+                    echeance1Source: l.echeance1Source || null,
                     dateDebutFormation: l.dateDebutFormation || null,
                     dateFinFormation: l.dateFinFormation || null,
                     ancien: l.ancien || null,
@@ -2374,6 +2401,7 @@
                 echeanceOrigine: (source && source.echeanceOrigine)
                     || ((!source || !source.dateEcheance) && l.dateEcheanceRepli ? 'Grand livre' : ''),
                 dateEcheanceGrandLivre: source ? (source.dateEcheanceGrandLivre || null) : null,
+                echeance1Source: source ? (source.echeance1Source || '') : (l.echeance1Source || ''),
                 dateFactureFacturationSource: source ? (source.dateFactureFacturation || null) : null,
                 dateDebutFormationSource: source ? (source.dateDebutFormation || null) : null,
                 dateFinFormationSource: source ? (source.dateFinFormation || null) : null,
