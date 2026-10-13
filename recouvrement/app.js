@@ -5945,9 +5945,17 @@
             // de l'échéance 1 » et motif — pour que l'auditeur la lise. Tracée,
             // donc ; signalée, non.
             if (c.sansNumero) return '';
-            if (c.echeanceOrigine === 'Grand livre') {
-                return 'à compléter — ' + pourquoiPasLeBareme(c);
-            }
+            // L'échéance de repli n'est pas un défaut : c'est la deuxième
+            // branche de la règle, prévue pour, et elle s'applique dès que le
+            // barème n'a pas sa date de formation. La signaler revenait à
+            // qualifier de problème le fonctionnement normal du dispositif —
+            // 2 422 écritures sur 16 080, qui noyaient les 54 qui demandent
+            // vraiment quelque chose.
+            //
+            // Ce qui l'a produite reste écrit sur la ligne, dans quatre
+            // colonnes : « Origine de la date », « Branche de l'échéance 1 »,
+            // « Pourquoi pas le barème » et le motif. Tracée, pas signalée.
+            if (c.echeanceOrigine === 'Grand livre') return '';
             return '';
         };
         // Une écriture porte les dates de la créance dont elle relève : on les
