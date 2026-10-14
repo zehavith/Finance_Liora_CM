@@ -46,7 +46,7 @@
             // de septembre y met le début de formation, sans délai. Les deux
             // suivis ne mesurent pas la même chose — l'un le travail de relance,
             // l'autre le solde du compte — et gardent chacun sa règle.
-            gl: { base: 'dateFinFormation', jours: 60 },
+            gl: { base: 'dateFacture', jours: 30 },
             note: "Date de facture +30 jours, sans dépasser début de formation +30 jours"
                 + " — au grand livre : début de formation",
             categorie: 'B2C - Entreprise', perimetre: 'Corporate',
@@ -67,7 +67,7 @@
             base: 'dateFacture', jours: 30,
             fallback: 'dateDebutFormation', fallbackJours: 30,
             plafondDebutFormation: true,
-            gl: { base: 'dateFactureFacturation', jours: 30 },
+            gl: { base: 'dateFacture', jours: 30 },
             note: 'Date de facture +30 jours',
             categorie: 'Alternance', perimetre: 'Corporate',
             match: ['corporate alternance', 'corporate-alternance'],
@@ -91,8 +91,7 @@
         {
             key: 'B2B', label: 'B2B',
             base: 'dateFinFormation', jours: 30,
-            fallback: 'dateFacture', fallbackJours: 30,
-            gl: { base: 'dateFinFormation', jours: 60 },
+            gl: { base: 'dateFinFormation', jours: 30 },
             note: 'Fin de formation +30 jours — au grand livre : début de formation',
             categorie: 'B2B', perimetre: 'Corporate',
             match: ['b2b', 'btob', 'entreprise', 'corporate'],
@@ -100,7 +99,6 @@
         {
             key: 'ALTERNANCE', label: 'Alternance',
             base: 'dateFinFormation', jours: 30,
-            fallback: 'dateFacture', fallbackJours: 30,
             note: 'Fin de formation +30 jours', categorie: 'Alternance', perimetre: 'Corporate',
             match: ['alternance', 'apprentissage', 'contrat pro'],
             gl: { base: 'dateFinFormation', jours: 30 },
@@ -108,7 +106,6 @@
         {
             key: 'TRANSITION', label: 'Transition Pro',
             base: 'dateFinFormation', jours: 60,
-            fallback: 'dateFacture', fallbackJours: 60,
             note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
             match: ['transition pro', 'transitions pro', 'transition', 'ptp', 'projet de transition', 'atpro', 'associations transitions pro'],
             gl: { base: 'dateFinFormation', jours: 60 },
@@ -116,7 +113,6 @@
         {
             key: 'REGION', label: 'Region',
             base: 'dateFinFormation', jours: 60,
-            fallback: 'dateFacture', fallbackJours: 60,
             // Le financement régional reste un dispositif à part — c'est la
             // sous-catégorie qui le dit — mais son TYPE DE CLIENT est B2C, et
             // seulement B2C : votre balance n'en compte que six, et « Region »
@@ -133,7 +129,6 @@
             // trésorerie, pas celle du dispositif.
             key: 'AIF', label: 'AIF',
             base: 'dateFinFormation', jours: 60,
-            fallback: 'dateFacture', fallbackJours: 60,
             note: 'Fin de formation +60 jours', categorie: 'POEI', perimetre: 'B2C',
             match: ['aif', 'aide individuelle a la formation', 'pole emploi aif', 'france travail aif'],
             gl: { base: 'dateFinFormation', jours: 60 },
@@ -141,7 +136,6 @@
         {
             key: 'POEI', label: 'POEI',
             base: 'dateFinFormation', jours: 60,
-            fallback: 'dateFacture', fallbackJours: 60,
             note: 'Fin de formation +60 jours', categorie: 'POEI', perimetre: 'B2C',
             match: ['poei', 'poec', 'preparation operationnelle'],
             gl: { base: 'dateFinFormation', jours: 60 },
@@ -149,7 +143,6 @@
         {
             key: 'AGEFIPH', label: 'Agefiph',
             base: 'dateFinFormation', jours: 60,
-            fallback: 'dateFacture', fallbackJours: 60,
             note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
             match: ['agefiph', 'fiphfp'],
             gl: { base: 'dateFinFormation', jours: 60 },
@@ -157,7 +150,6 @@
         {
             key: 'ETAT', label: 'ETAT',
             base: 'dateFinFormation', jours: 30,
-            fallback: 'dateFacture', fallbackJours: 30,
             note: 'Fin de formation +30 jours',
             categorie: 'B2C - Entreprise', typesPossibles: ['B2C - Entreprise', 'B2B'],
             perimetre: 'Corporate',
@@ -171,7 +163,6 @@
             // sa règle propre.
             key: 'INTERCO', label: 'Interco',
             base: 'dateFinFormation', jours: 60,
-            fallback: 'dateFacture', fallbackJours: 60,
             note: 'Fin de formation +60 jours', categorie: 'Interco', perimetre: 'Corporate',
             match: ['interco', 'intercompany', 'inter co', 'intra groupe', 'interne', 'interne ue', 'intra groupe', 'inter societe'],
             gl: { base: 'dateFinFormation', jours: 60 },
@@ -179,7 +170,6 @@
         {
             key: 'DST_ALLEMAGNE', label: 'Interne - DST Allemagne',
             base: 'dateFinFormation', jours: 60,
-            fallback: 'dateFacture', fallbackJours: 60,
             note: 'Fin de formation +60 jours', categorie: 'Interco', perimetre: 'Corporate',
             match: ['dst allemagne', 'interne dst allemagne', 'dst', 'allemagne', 'germany', 'bu1 germany'],
             gl: { base: 'dateFinFormation', jours: 60 },
@@ -187,7 +177,6 @@
         {
             key: 'OPCO', label: 'OPCO',
             base: 'dateFinFormation', jours: 30,
-            fallback: 'dateFacture', fallbackJours: 30,
             note: 'Fin de formation +30 jours — pas de recouvrement OPCO, suivi du retard uniquement',
             categorie: 'B2C - Entreprise', typesPossibles: ['B2C - Entreprise', 'B2B'],
             perimetre: 'Corporate', sansRecouvrement: true,
@@ -202,7 +191,6 @@
             // posé puis repris — c'est la feuille qui fait foi.
             key: 'OPCO_ALTERNANCE', label: 'OPCO - Alternance',
             base: 'dateFinFormation', jours: 30,
-            fallback: 'dateFacture', fallbackJours: 30,
             note: 'Fin de formation +30 jours — pas de recouvrement OPCO, suivi du retard uniquement',
             categorie: 'Alternance', perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco alternance', 'opco-alternance'],
@@ -213,8 +201,8 @@
             // L'apprenant paie de sa poche : l'argent est appelé au démarrage.
             // Dix jours de battement, le temps que le virement parte — en deçà,
             // la facture n'est pas en retard et n'a rien à faire en relance.
-            base: 'dateDebutFormation', jours: 10,
-            fallback: 'dateFinFormation', fallbackJours: 10,
+            base: 'dateDebutFormation', jours: 0,
+            fallback: 'dateFinFormation', fallbackJours: 0,
             note: 'Début de formation +10 jours — au grand livre : début de formation, '
                 + 'comme votre colonne « Date d’échéance recalculée »',
             categorie: 'B2C', perimetre: 'B2C',
@@ -242,20 +230,21 @@
         },
         {
             key: 'CPF', label: 'CPF',
-            base: 'dateFinFormation', jours: 60,
-            fallback: 'dateFacture', fallbackJours: 60,
+            base: 'dateFinFormation', jours: 45,
             note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
             match: ['cpf', 'compte personnel de formation', 'edof', 'caisse des depots', 'cdc'],
-            gl: { base: 'dateFinFormation', jours: 60 },
+            gl: { base: 'dateFinFormation', jours: 45 },
         },
     ];
 
     /** Règle appliquée quand le type de financement est inconnu. */
     const DEFAULT_FALLBACK_RULE = {
         key: 'INCONNU', label: 'Non renseigné',
-        base: 'dateFacture', jours: 30,
-        fallback: 'dateFinFormation', fallbackJours: 30,
-        note: 'Type de financement non identifié — règle par défaut : date de facture +30 jours',
+        // Aucun barème ne s'applique à un dispositif qu'on ne connaît pas : la
+        // date vient de l'échéance 1, pas d'un délai inventé.
+        base: null, jours: null,
+        fallback: null, fallbackJours: null,
+        note: 'Type de financement non identifié — échéance 1 : dernière date du libellé, sinon enregistrement',
         perimetre: 'Inconnu', match: [],
     };
 
@@ -625,6 +614,18 @@
             { champ: principale.base, jours: principale.jours },
             { comptable: true },
             { champ: rule.fallback, jours: rule.fallbackJours != null ? rule.fallbackJours : rule.jours },
+            // Le dernier mot, et c'est le sien, donné le 14/10/2026 : « comme
+            // repli il faut voir dans les libellés, et si y a rien sinon date
+            // d'enregistrement ». C'est l'échéance 1, SANS délai ajouté — sa
+            // feuille de septembre le confirme, FA-771-000948 y porte la même
+            // date en AA et en AC.
+            //
+            // Elle remplace les replis « date de facture + N » que l'écriture
+            // initiale de l'application avait posés par symétrie, en août, sans
+            // qu'aucune règle d'elle ne les dise. Trois créances en vivaient
+            // encore — Safran deux fois et l'Institut technique des gaz — et
+            // elles étaient datées trente jours trop tard.
+            { echeance1: true },
         ];
 
         // Une facture réglée AVANT d'avoir été émise a été refaite.
@@ -660,6 +661,15 @@
             }
         }
         for (const b of bases) {
+            if (b.echeance1) {
+                if (!inv.dateEcheanceRepli) continue;
+                return { date: stripTime(inv.dateEcheanceRepli), origine: 'Règle', regle: rule,
+                         baseUtilisee: 'echeance1', jours: 0,
+                         motif: 'échéance 1 ' + (inv.echeance1Source === 'libellé'
+                             ? '(date lue dans le libellé)'
+                             : inv.echeance1Source === 'enregistrement'
+                                 ? '(date d’enregistrement)' : '') };
+            }
             if (b.comptable) {
                 if (!inv.dateEcheanceComptable) continue;
                 return { date: inv.dateEcheanceComptable, origine: 'Grand livre', regle: rule,
