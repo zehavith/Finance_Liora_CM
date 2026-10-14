@@ -1,0 +1,98 @@
+# La chaîne qui fabrique la balance âgée
+
+Ce dossier contient l'outil qui lit vos exports et produit les trois livrables :
+
+| | |
+|---|---|
+| `art/balance-agee.html` + `art/balance.json` | la page publiée sur claude.ai |
+| `Balance-agee-Liora.html` | la même page, en un seul fichier à envoyer |
+| `Balance-agee-classee.xlsx` | le classeur à neuf onglets |
+
+Le moteur métier, lui, est dans `../recouvrement/js/` : c'est le même code que
+l'application. Ce dossier ne fait que l'alimenter et mettre en forme.
+
+## Ce qu'il faut poser à côté
+
+Aucune donnée n'est versionnée — ce sont vos fichiers, et certains portent des
+noms et des adresses de vos clients. Avant de lancer la construction :
+
+| fichier | d'où il vient |
+|---|---|
+| `depot-ancienne/balance-ancienne.xlsx` | votre balance travaillée du mois précédent |
+| `depot-nouvelle/balance-nouvelle.xlsx` | l'export Pennylane du mois |
+| `depot-sellsy/sellsy.csv` | export Sellsy, toutes les factures |
+| `depot-sellsy/avoirs.csv` | export Sellsy, les avoirs |
+| `depot-ech/echeances.xlsx` | les échéances que vous tenez à la main |
+| `Facturation-Sellsy.xlsx` | la base Sellsy complète, pour les types de client |
+| `Facturation-Zoho.xlsx` | export Zoho — **par tranches de moins de 10 000 lignes**, au-delà il est tronqué sans prévenir |
+| `Dossiers-Filiz.xlsx` | les dossiers d'alternance |
+| `Reference-septembre.xlsx` · `Balance-septembre-complete.xlsx` | votre arrêté de septembre, qui sert de référence en cas de désaccord |
+| `complements.json` | vos décisions de classement, voir ci-dessous |
+| `mandats.json` | les mandats GoCardless, voir ci-dessous |
+
+Cette liste a été établie en lançant la chaîne depuis un dossier vide : elle
+est complète parce qu'elle a été vérifiée, pas parce qu'elle a été écrite de
+mémoire.
+
+## Construire
+
+```
+node construire.js
+```
+
+Une seule commande : elle lit tout, classe, date, écrit le classeur, puis
+appelle `gabarit.js` qui fabrique les deux pages.
+
+La construction annonce en sortie le total, l'échu et le non échu. Ce sont eux
+qu'il faut comparer à l'arrêté précédent.
+
+## Vos décisions de classement
+
+`complements.json` est un **instantané** de la base de l'artefact — la page ne
+peut pas être interrogée depuis node. Tout ce que vous complétez dans la page
+y vit, et un instantané vieilli le perd en silence. La construction affiche sa
+date et réclame un rafraîchissement au-delà de vingt-quatre heures.
+
+Pour le rafraîchir : lire la collection `complements` de l'artefact, et écrire
+un tableau JSON d'objets `{cle, dispositif, compte, tiers, facture, quand}`.
+
+## Les mandats GoCardless
+
+L'export GoCardless arrive en PDF. Trois étapes :
+
+```
+pdftotext -bbox-layout gocardless.pdf tout.xml
+python3 gocardless/lire-pdf.py tout.xml brut.tsv
+python3 gocardless/table.py brut.tsv gocardless.json
+node gocardless/mandats.js gocardless.json mandats.json
+```
+
+Le rapprochement se fait par **numéro de facture d'abord**, puis e-mail, puis
+nom et prénom — le numéro désigne la créance, les deux autres seulement le
+client.
+
+## Vérifier
+
+```
+cd essais
+for f in cas*.js; do node $f; done
+```
+
+Neuf jeux de cas, cent vingt-quatre vérifications. Ils portent sur les règles
+qui ont été remises en cause au moins une fois : l'échéance lue dans la colonne
+AA, l'apprentissage par compte, l'unanimité, les compléments, l'orthographe des
+dispositifs, le contrat des colonnes.
+
+Les autres essais demandent un navigateur (Playwright) et contrôlent le
+classeur téléchargé depuis la page :
+
+| | |
+|---|---|
+| `verifbal.js` | les deux balances âgées : colonnes et dépliement |
+| `verifpaie.js` | l'onglet « Montants non lettrés » |
+| `verifexc.js` | le filtre « comptes en excédent de trésorerie » |
+| `ecartunanime.js` | ce qu'un changement de règle déplace, créance par créance |
+| `ecartecheance.js` | ce qu'un changement de barème déplace, tranche par tranche |
+
+Les deux derniers prennent deux `balance.json` et disent ce qui a bougé entre
+eux. À lancer avant toute livraison qui change une règle.

@@ -1,0 +1,27 @@
+# Aucune donnée n'est versionnée : ce sont vos fichiers, et certains portent
+# des noms et des adresses de vos clients. Les motifs sans barre finale
+# attrapent aussi les liens symboliques — c'est par là qu'un export avait
+# failli passer.
+depot-*
+*.xlsx
+*.csv
+*.pdf
+
+# Ce que la construction fabrique
+art
+principale.json
+page-donnees.json
+gocardless.json
+brut.tsv
+tout.xml
+Balance-agee-Liora.html
+Balance-agee-classee.xlsx
+essais/balance.json
+essais/tableur.min.js
+essais/index*.html
+essais/essai-*.xlsx
+
+# Vos décisions et vos mandats : ils vivent dans la base de l'artefact et dans
+# votre export GoCardless, pas ici.
+complements.json
+mandats.json

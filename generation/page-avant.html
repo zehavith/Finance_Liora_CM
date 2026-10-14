@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+</head>
+<body>
+<title>Balance âgée Liora</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Serif:wght@600&display=swap">
+<style>
+/* Feuille de grand livre : barre de filtres collante, chiffres tabulaires
+   denses, une ligne se déplie sur sa propre justification. */
+:root{
+  --fond:#f6f7f9; --carte:#ffffff; --encre:#171c26; --encre-2:#5a6475; --encre-3:#8b94a3;
+  --trait:#dfe3ea; --trait-fort:#c3cad6; --accent:#27496d; --accent-doux:#eaf0f7;
+  --ok:#2f7a4f; --attention:#9a6a12; --alerte:#a33a30; --credit:#6b4fa0;
+  --titre:'IBM Plex Serif',Georgia,serif;
+  --texte:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --chiffre:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --fond:#11141a; --carte:#171b23; --encre:#e6e9ef; --encre-2:#a2abbb; --encre-3:#6e7889;
+  --trait:#262c38; --trait-fort:#39414f; --accent:#8fb4dc; --accent-doux:#1b2430;
+  --ok:#6fbf8e; --attention:#d9a64a; --alerte:#e0756a; --credit:#b49ae0; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --fond:#11141a; --carte:#171b23; --encre:#e6e9ef; --encre-2:#a2abbb; --encre-3:#6e7889;
+  --trait:#262c38; --trait-fort:#39414f; --accent:#8fb4dc; --accent-doux:#1b2430;
+  --ok:#6fbf8e; --attention:#d9a64a; --alerte:#e0756a; --credit:#b49ae0; color-scheme:dark;}
+
+*{box-sizing:border-box}
+body{background:var(--fond);color:var(--encre);font-family:var(--texte);margin:0;
+  font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
+.enveloppe{padding-inline:16px;padding-block:24px 48px;max-width:1500px;margin:0 auto}
+h1{font-family:var(--titre);font-size:clamp(22px,3.4vw,30px);margin:0;letter-spacing:-.01em;text-wrap:balance}
+.sous{color:var(--encre-2);margin:6px 0 0;font-size:13px}
+.telech{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:16px}
+.telech button{font:inherit;font-size:13px;font-weight:500;color:var(--carte);
+  background:var(--accent);border:1px solid var(--accent);border-radius:6px;
+  padding:8px 14px;cursor:pointer}
+.telech button:hover{filter:brightness(1.1)}
+.telech button:disabled{opacity:.5;cursor:default}
+.telech button+button{color:var(--accent);background:transparent}
+.dl-note{font-size:12px;color:var(--encre-2)}
+.ruban{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.tuile{flex:1 1 180px;min-width:0;background:var(--carte);border:1px solid var(--trait);
+  border-radius:8px;padding:12px 14px}
+.tuile .etiq{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--encre-3)}
+.tuile .val{font-family:var(--chiffre);font-variant-numeric:tabular-nums;font-size:clamp(17px,2.4vw,21px);
+  font-weight:500;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tuile .note{font-size:11.5px;color:var(--encre-2);margin-top:3px}
+h2{font-family:var(--titre);font-size:17px;margin:34px 0 10px;font-weight:600}
+.bloc{background:var(--carte);border:1px solid var(--trait);border-radius:8px;overflow:hidden}
+.defil{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--trait);white-space:nowrap}
+thead th{position:sticky;top:0;background:var(--carte);z-index:2;font-size:10.5px;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--encre-3);font-weight:600;
+  border-bottom:1px solid var(--trait-fort)}
+td.n,th.n{text-align:right;font-family:var(--chiffre);font-variant-numeric:tabular-nums}
+tbody tr:last-child td{border-bottom:none}
+tr.total td{font-weight:600;background:var(--accent-doux);border-top:1px solid var(--trait-fort)}
+.mono{font-family:var(--chiffre);font-size:12px}
+.coupe{max-width:210px;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:bottom}
+.puce{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;
+  border:1px solid var(--trait-fort);color:var(--encre-2);white-space:nowrap}
+.puce.sig{border-color:color-mix(in srgb,var(--attention) 45%,transparent);
+  color:var(--attention);background:color-mix(in srgb,var(--attention) 10%,transparent)}
+.puce.ok{border-color:color-mix(in srgb,var(--ok) 45%,transparent);color:var(--ok);
+  background:color-mix(in srgb,var(--ok) 10%,transparent)}
+.barre{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px;
+  position:sticky;top:env(safe-area-inset-top,0px);background:var(--fond);
+  padding-block:10px;z-index:5;border-bottom:1px solid var(--trait)}
+input[type=search],select{font:inherit;font-size:13px;color:var(--encre);background:var(--carte);
+  border:1px solid var(--trait-fort);border-radius:6px;padding:7px 9px;min-width:0}
+input[type=search]{flex:1 1 220px}
+.cpt{font-size:12px;color:var(--encre-2);font-family:var(--chiffre);
+  font-variant-numeric:tabular-nums;margin-left:auto;white-space:nowrap}
+#viewport{max-height:70vh;overflow:auto;position:relative}
+#cale{position:relative}
+.lig{display:grid;grid-template-columns:92px 112px 1fr 128px 104px 96px 86px;gap:0;
+  align-items:center;border-bottom:1px solid var(--trait);cursor:pointer;
+  position:absolute;left:0;right:0;font-size:12.5px}
+.lig>div{padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lig:hover{background:var(--accent-doux)}
+.lig.sel{background:var(--accent-doux);box-shadow:inset 3px 0 0 var(--accent)}
+.lig .num{font-family:var(--chiffre);font-variant-numeric:tabular-nums;text-align:right}
+.ent{display:grid;grid-template-columns:92px 112px 1fr 128px 104px 96px 86px;
+  position:sticky;top:0;background:var(--carte);z-index:2;border-bottom:1px solid var(--trait-fort)}
+.ent>div{padding:8px 10px;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--encre-3);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ent .num{text-align:right}
+#fiche{margin-top:14px}
+.fiche-tete{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;
+  padding:14px 16px;border-bottom:1px solid var(--trait)}
+.fiche-tete .ref{font-family:var(--chiffre);font-size:15px;font-weight:500}
+.calcul{margin:0;padding:12px 16px;background:var(--accent-doux);border-bottom:1px solid var(--trait);
+  font-family:var(--chiffre);font-size:13px;line-height:1.7;overflow-x:auto}
+.champs{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:0}
+.champ{padding:9px 16px;border-bottom:1px solid var(--trait);min-width:0}
+.champ dt{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--encre-3);margin:0}
+.champ dd{margin:3px 0 0;font-size:13px;word-break:break-word}
+.vide{padding:28px 16px;color:var(--encre-2);text-align:center}
+.pied{margin-top:36px;padding-top:16px;border-top:1px solid var(--trait);
+  color:var(--encre-2);font-size:12px}
+.pied p{margin:0 0 6px}
+/* Sur un écran étroit — l'artefact s'ouvre dans un panneau latéral —, ce sont
+   le compte, l'échéance et la sous-catégorie qui s'effacent. Le DÉBIT et le
+   CRÉDIT restent : masquer le crédit faisait disparaître le règlement d'un
+   couple de rapprochement, et la page n'affichait plus que des débits. */
+@media (max-width:760px){
+  .lig,.ent{grid-template-columns:96px 1fr 104px 104px}
+  .lig>div:nth-child(2),.ent>div:nth-child(2),
+  .lig>div:nth-child(6),.ent>div:nth-child(6),
+  .lig>div:nth-child(7),.ent>div:nth-child(7){display:none}
+}
+/* Un montant de la balance s'ouvre sur ses propres lignes. */
+#synthese td.ouvrable{cursor:pointer}
+#synthese td.ouvrable:hover{background:var(--accent-doux);box-shadow:inset 0 0 0 1px var(--trait-fort)}
+.zoom{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 10px;
+  padding:10px 12px;border:1px solid var(--trait-fort);border-radius:8px;
+  background:color-mix(in srgb,var(--accent) 8%,var(--carte))}
+.zoom .zoom-quoi{font-weight:600;font-size:13px}
+.zoom .etat{font-size:12.5px;color:var(--encre-2);font-family:var(--chiffre)}
+.zoom button{font:inherit;font-size:13px;padding:7px 12px;border-radius:6px;cursor:pointer;
+  background:transparent;color:var(--encre-2);border:1px solid var(--trait-fort)}
+.niveaux{display:flex;gap:6px;margin:0 0 10px}
+.niveaux button{font:inherit;font-size:13px;padding:6px 14px;border-radius:999px;
+  border:1px solid var(--trait);background:var(--carte);color:var(--encre-2);cursor:pointer}
+.niveaux button:hover{color:var(--encre)}
+.niveaux button.actif{background:var(--encre);border-color:var(--encre);color:var(--carte)}
+/* Le couple d'un rapprochement : la facture au débit, le règlement au crédit,
+   séparés du couple suivant par un trait franc. */
+.lig.couple{border-bottom:1px solid var(--trait-fort);
+  background:color-mix(in srgb,var(--credit) 7%,transparent)}
+.lig.couple:hover{background:color-mix(in srgb,var(--credit) 14%,transparent)}
+.lig.couple.sel{background:var(--accent-doux)}
+.lig .rap{font-family:var(--chiffre);font-size:11px;color:var(--encre-3)}
+/* Compléter plusieurs créances d'un coup. La barre n'apparaît qu'une fois
+   quelque chose de coché : tant qu'il n'y a rien à poser, elle ne prend pas
+   de place. */
+.lot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 10px;
+  padding:10px 12px;border:1px solid var(--trait-fort);border-radius:8px;
+  background:color-mix(in srgb,var(--accent) 8%,var(--carte))}
+.lot .lot-n{font-weight:600;font-size:13px}
+.lot label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--encre-3)}
+.lot .etat{font-size:12px;color:var(--encre-2)}
+.lot button{font:inherit;font-size:13px;font-weight:500;color:var(--carte);
+  background:var(--accent);border:1px solid var(--accent);border-radius:6px;
+  padding:7px 12px;cursor:pointer}
+.lot button:disabled{opacity:.5;cursor:default}
+.lot button.plat{background:transparent;color:var(--encre-2);border-color:var(--trait-fort)}
+.coche{vertical-align:-1px;margin:0 4px 0 0;cursor:pointer}
+/* Compléter une ligne sans quitter la page. */
+.compl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 16px;
+  border-bottom:1px solid var(--trait);
+  background:color-mix(in srgb,var(--attention) 8%,transparent)}
+.compl.fait{background:color-mix(in srgb,var(--ok) 8%,transparent)}
+.compl label{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--encre-3)}
+.compl .etat{font-size:12.5px;color:var(--encre-2)}
+.compl button{font:inherit;font-size:13px;font-weight:500;color:var(--carte);
+  background:var(--accent);border:1px solid var(--accent);border-radius:6px;
+  padding:7px 12px;cursor:pointer}
+.compl button:disabled{opacity:.5;cursor:default}
+.compl button.plat{background:transparent;color:var(--encre-2);border-color:var(--trait-fort)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="enveloppe">
+  <h1>Balance âgée · Grand livre Clients</h1>
+  <p class="sous" id="sous">Chargement…</p>
+  <p class="sous">Fichier autonome : il fonctionne hors connexion, sans compte, dans n’importe quel navigateur.</p>
+
+  <div class="telech" id="telech" hidden>
+    <button type="button" id="dl-xlsx">Télécharger toute la balance</button>
+    <button type="button" id="dl-csv">Télécharger la sélection à l’écran</button>
+    <span class="dl-note" id="dl-note"></span>
+  </div>
+
+  <div class="ruban" id="ruban"></div>
+
+  <h2>Reste dû par ancienneté</h2>
+  <div class="niveaux" id="niveaux">
+    <button type="button" data-niveau="cat" class="actif">Par type de client</button>
+    <button type="button" data-niveau="sous">Par sous-catégorie</button>
+  </div>
+  <div class="bloc defil"><table id="synthese"></table></div>
+
+  <h2>Le détail, ligne par ligne</h2>
+  <div class="barre">
+    <input type="search" id="q" placeholder="Chercher un client, une facture, un compte…" autocomplete="off">
+    <select id="fcat"><option value="">Toutes les sous-catégories</option></select>
+    <select id="ftr"><option value="">Toutes les tranches</option></select>
+    <select id="fac">
+      <option value="">Tout</option>
+      <option value="oui">Seulement « à compléter »</option>
+      <option value="non">Seulement les lignes complètes</option>
+      <option value="credit">Seulement les montants non lettrés</option>
+      <option value="rappro">Seulement les propositions de rapprochement</option>
+      <option value="excedent">Seulement les comptes en excédent de trésorerie</option>
+    </select>
+    <span class="cpt" id="cpt"></span>
+  </div>
+  <div class="zoom" id="zoom" hidden>
+    <span class="zoom-quoi" id="zoom-quoi"></span>
+    <span class="etat" id="zoom-montant"></span>
+    <button type="button" class="plat" id="zoom-non">Revenir à toute la balance</button>
+  </div>
+  <div class="lot" id="lot" hidden>
+    <span class="lot-n" id="lot-n"></span>
+    <label for="lot-disp">Dispositif</label>
+    <select id="lot-disp"><option value="">Choisir…</option></select>
+    <button type="button" id="lot-ok" disabled>Compléter la sélection</button>
+    <button type="button" class="plat" id="lot-non">Tout désélectionner</button>
+    <span class="etat" id="lot-note"></span>
+  </div>
+  <div class="bloc">
+    <div class="ent">
+      <div><input type="checkbox" id="coche-tout" title="Tout sélectionner" hidden> Facture</div>
+      <div>Compte</div><div>Client</div>
+      <div class="num">Débit</div><div class="num">Crédit</div>
+      <div>Échéance</div><div>Sous-cat.</div>
+    </div>
+    <div id="viewport"><div id="cale"></div></div>
+  </div>
+
+  <div class="bloc" id="fiche"><p class="vide">Cliquez une ligne pour voir comment son échéance a été établie.</p></div>
+
+  <div class="pied">
+    <p><strong>Comment lire la justification.</strong> Chaque ligne porte le barème de son dispositif, la base retenue et sa valeur, le délai réellement appliqué, et le calcul en toutes lettres. Le barème et le délai appliqué peuvent différer : sous mandat de prélèvement le délai est nul, une refacturation après formation ajoute 60 jours quel que soit le dispositif, et le repli sur l'échéance du grand livre n'ajoute rien.</p>
+    <p><strong>« À compléter »</strong> signale une ligne dont on n'est pas sûr, avec ce qui manque : un dispositif à qualifier, aucune date calculable, un solde sans facture, ou la date absente qui a forcé le repli.</p>
+  <p><strong>Compléter une ligne.</strong> Ouvrez-la : un dispositif se choisit sur place. La créance quitte aussitôt « À classer » pour la sous-catégorie retenue — le total ne bouge pas, seul le classement change — et le choix est gardé, avec sa date, pour la prochaine balance.</p>
+  <p><strong>Les propositions de rapprochement</strong> s'affichent par couples : la facture au débit, puis le règlement au crédit qui la solderait. Rien n'est pointé — c'est une proposition, avec la raison qui l'a produite.</p>
+  <p><strong>Deux chiffres à ne pas confondre.</strong> Le filtre <em>« montants non lettrés »</em> montre les écritures qu'aucun lettrage ne relie, des deux côtés : au débit les factures que rien ne solde, au crédit les encaissements rattachés à rien. C'est le <strong>volume de pointage qui reste à faire</strong>, et il est gros — plus de onze mille lignes.</p>
+  <p>La tuile <em>« trop-perçu clients »</em> dit autre chose : le solde <strong>net de chaque compte client</strong>, tout débit moins tout crédit, lettrages confondus ; seuls les comptes restés négatifs sont comptés. Un règlement non pointé qui fait face à une facture impayée du même client n'y figure donc pas — ce n'est pas de l'argent en trop, c'est un lettrage à faire. C'est le <strong>montant à rembourser ou à retrouver</strong>, et le filtre <em>« comptes en excédent de trésorerie »</em> en donne les écritures, client par client, du plus gros au plus petit.</p>
+    <p id="pied-src"></p>
+  </div>
+</div>
+
+<script src="tableur.min.js"></script>
+<script id="donnees" type="application/json">
