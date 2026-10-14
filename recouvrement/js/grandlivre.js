@@ -2319,7 +2319,8 @@
             for (const [k, m] of compte) {
                 let tete = null, teteNb = 0, total = 0;
                 for (const [f, n] of m) { total += n; if (n > teteNb) { teteNb = n; tete = f; } }
-                if (total >= 2 && teteNb / total >= 0.9) out.set(k, tete);
+                // Même règle ici : l'unanimité, pas la majorité.
+                if (total >= 2 && teteNb === total) out.set(k, tete);
             }
             return out;
         })();
@@ -2771,7 +2772,15 @@
                     tete = [...e.formes].reduce((a, b) => (b[1] > a[1] ? b : a))[0];
                 }
             }
-            if (total && (teteNb / total) >= 0.9) out[cle] = { qualif: tete, nb: total, part: teteNb / total };
+            // Plus de raccourci de majorité. Votre règle d'origine admettait
+            // 90 % : neuf factures d'un compte en CPF suffisaient à ranger la
+            // dixième en CPF, alors même qu'elle disait autre chose. Vous l'avez
+            // retirée — « il ne faut pas faire ce raccourci ». Un compte ou un
+            // tiers n'enseigne donc son dispositif que si TOUTES ses factures
+            // le disent. Au premier désaccord, il n'apprend rien, et la ligne
+            // part « à compléter » : une ligne à classer vaut mieux qu'une
+            // ligne mal classée.
+            if (total && teteNb === total) out[cle] = { qualif: tete, nb: total, part: 1 };
         }
         return out;
     }
