@@ -1552,6 +1552,15 @@
             if (m.email) mandats.set('@' + String(m.email).trim().toLowerCase(), v);
             const nom = R.norm(m.client || m.nom || '');
             if (nom && !mandats.has(nom)) mandats.set(nom, v);
+            // Le numéro de facture d'abord : c'est le seul des trois
+            // rapprochements qu'elle a nommés qui ne confonde pas deux
+            // homonymes, et l'export GoCardless le porte sur ses
+            // prélèvements. Un e-mail ou un nom désignent le client ; un
+            // numéro désigne la créance.
+            for (const f of (m.factures || [])) {
+                const k = f ? '#' + I.factureKey(f) : '';
+                if (k.length > 1 && !mandats.has(k)) mandats.set(k, v);
+            }
         }
         return { parCle, parSellsy, parCompte, parTiers, parNom, parNomSellsy, brutSellsy,
                  datesSellsy, datesMonday, statutsSellsy, alternanceSellsy, mandats, noter };
@@ -1717,7 +1726,11 @@
             }
             const email = (d && d.email) ? '@' + d.email : '';
             const nom = R.norm((d && d.client) || c.tiers || '');
-            const gcl = (email && idx.mandats.get(email)) || (nom && idx.mandats.get(nom)) || null;
+            // Le numéro de facture passe devant l'e-mail et le nom : il
+            // désigne la créance elle-même, là où les deux autres désignent
+            // seulement le client.
+            const gcl = (c.cle && idx.mandats.get('#' + c.cle))
+                || (email && idx.mandats.get(email)) || (nom && idx.mandats.get(nom)) || null;
             return {
                 ...c,
                 typeClientSellsy: type || c.typeClientSellsy,

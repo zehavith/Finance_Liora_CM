@@ -64,10 +64,10 @@
             // facturation — mais le type de client est « Alternance », comme
             // dans le classeur de trésorerie.
             key: 'CORPORATE_ALTERNANCE', label: 'Corporate - Alternance',
-            base: 'dateFacture', jours: 30,
+            base: 'dateFinFormation', jours: 30,
             fallback: 'dateDebutFormation', fallbackJours: 30,
             plafondDebutFormation: true,
-            gl: { base: 'dateFacture', jours: 30 },
+            gl: { base: 'dateFinFormation', jours: 30 },
             note: 'Date de facture +30 jours',
             categorie: 'Alternance', perimetre: 'Corporate',
             match: ['corporate alternance', 'corporate-alternance'],
