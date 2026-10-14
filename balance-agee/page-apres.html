@@ -409,71 +409,89 @@ function filtresEnCours(){
   return p.length?p.join('  ·  '):'aucun filtre — toute la balance';
 }
 
-function feuilleSommaire(wb,idx,nomDetail,nbPaiements){
+function feuilleSommaire(wb,idx,nomDetail){
   const ws=wb.addWorksheet('Sommaire');
-  ws.columns=[{width:36},{width:20},{width:64}];
-  const t=ws.addRow(['BALANCE ÂGÉE — GRAND LIVRE CLIENTS']);
-  t.font={bold:true,size:16,color:{argb:BLEU}}; t.height=28;
-  ws.addRow([D.source]).font={color:{argb:ENCRE3},size:10};
-  ws.addRow(['Export du grand livre : '+D.arrete+'   ·   document généré le '+D.genere])
-    .font={color:{argb:ENCRE3},size:10};
+  ws.columns=[{width:4},{width:30},{width:18},{width:62}];
+  ws.views=[{showGridLines:false}];
+
+  const titre=ws.addRow(['','BALANCE ÂGÉE DES COMPTES CLIENTS']);
+  titre.getCell(2).font={bold:true,size:18,color:{argb:BLEU}}; titre.height=30;
+  ws.addRow(['',D.source]).getCell(2).font={size:11,color:{argb:ENCRE3}};
+  const dat=ws.addRow(['','Arrêté au '+D.arrete,'','Édition du '+D.genere]);
+  dat.getCell(2).font={size:10,color:{argb:ENCRE3}};
+  dat.getCell(4).font={size:10,color:{argb:ENCRE3}};
+  ws.addRow([]);
+
   if(idx.length!==I.length){
-    const s=ws.addRow(['CE CLASSEUR NE PORTE QU’UNE SÉLECTION',
-      idx.length.toLocaleString('fr-FR')+' écritures sur '+I.length.toLocaleString('fr-FR'),
+    const s1=ws.addRow(['','Périmètre restreint',
+      idx.length.toLocaleString('fr-FR')+' / '+I.length.toLocaleString('fr-FR')+' écritures',
       filtresEnCours()]);
-    s.font={bold:true,color:{argb:'FF9A6A12'}};
-    s.getCell(3).font={color:{argb:'FF9A6A12'},size:10};
-    s.getCell(3).alignment={wrapText:true}; s.height=28;
-    ws.addRow(['Les deux onglets de synthèse portent, eux, la balance entière.'])
-      .font={color:{argb:ENCRE3},size:10,italic:true};
+    s1.getCell(2).font={bold:true,color:{argb:'FF9A6A12'}};
+    s1.getCell(3).font={color:{argb:'FF9A6A12'}};
+    s1.getCell(4).font={size:10,color:{argb:'FF9A6A12'}};
+    s1.getCell(4).alignment={wrapText:true,vertical:'top'}; s1.height=30;
+    ws.addRow(['','','','Les deux synthèses portent la balance entière.'])
+      .getCell(4).font={size:10,italic:true,color:{argb:ENCRE3}};
+    ws.addRow([]);
   }
-  ws.addRow([]);
-  poserEntete(ws,ws.addRow(['Les chiffres de tête','Montant','']),false);
+
+  const h1=ws.addRow(['','CHIFFRES CLÉS']);
+  h1.getCell(2).font={bold:true,size:11,color:{argb:BLEU}};
+  for(const c of [2,3,4]) h1.getCell(c).border={bottom:{style:'thin',color:{argb:BLEU}}};
   const T=(D.syntheseCat||D.synthese).find(s=>s.cat==='TOTAL')||{};
-  const lignes=[['Reste dû',T.total,'solde des comptes clients'],
-    ['Échu',T.echu,'exigible et non encaissé'],
-    ['Non échu',T.nonEchu,'pas encore exigible'],
-    ['Trop-perçu clients',(D.excedent||{}).montant||0,
-      ((D.excedent||{}).comptes||0).toLocaleString('fr-FR')
-      +' comptes ont reçu plus que leurs factures ne justifient'],
-    ['Créances',T.nb,'lots de lettrage ouverts'],
-    ['Écritures',D.lignes.length,'lignes du grand livre']];
-  for(const [k,v,n] of lignes){
-    const r=ws.addRow([k,v,n]);
-    r.getCell(1).font={bold:true};
-    r.getCell(2).numFmt=(k==='Créances'||k==='Écritures')?ENTIER:EUROS;
-    r.getCell(3).font={color:{argb:ENCRE3},size:10};
+  const X=D.excedent||{};
+  for(const [k,v,fmt,n] of [
+    ['Reste dû',T.total,EUROS,'Solde des comptes clients à la date d’arrêté'],
+    ['Échu',T.echu,EUROS,'Exigible et non encaissé'],
+    ['Non échu',T.nonEchu,EUROS,'Pas encore exigible'],
+    ['Trop-perçu clients',X.montant||0,EUROS,
+      'Encaissé au-delà des factures, sur '+(X.comptes||0).toLocaleString('fr-FR')+' comptes'],
+    ['Créances',T.nb,ENTIER,'Lots de lettrage ouverts'],
+    ['Écritures',D.lignes.length,ENTIER,'Lignes du grand livre'],
+  ]){
+    const r=ws.addRow(['',k,v,n]);
+    r.getCell(2).font={bold:true};
+    r.getCell(3).numFmt=fmt; r.getCell(3).alignment={horizontal:'right'};
+    r.getCell(4).font={size:10,color:{argb:ENCRE3}};
+    r.height=18;
   }
   ws.addRow([]);
-  poserEntete(ws,ws.addRow(['Onglet','','Ce qu’il contient']),false);
-  const somm=[['1 · Sommaire','','ce document : les chiffres de tête et le plan du classeur'],
-    ['2 · Règles','','les dispositifs, leur barème d’échéance et les mots qui les font reconnaître'],
-    ['3 · Balance âgée','','le reste dû par type de client et par tranche ; chaque ligne se déplie '
-      +'sur ses écritures — le « + » dans la marge de gauche'],
-    ['4 · Par sous-catégorie','','le même reste dû dispositif par dispositif, dépliable de la même façon'],
-    ['5 · Montants non lettrés','',nbPaiements.toLocaleString('fr-FR')+' écritures qu’aucun '
-      +'lettrage ne relie — les factures que rien ne solde et les encaissements rattachés '
-      +'à rien — avec la facture que le moteur propose en face quand il en trouve une'],
-    ['6 · '+nomDetail,'',idx.length.toLocaleString('fr-FR')+' écritures × '+D.cols.length
-      +' colonnes : chaque ligne avec son classement, son échéance et sa justification']];
-  for(const r of somm){
-    const l=ws.addRow(r);
-    l.getCell(1).font={bold:true,color:{argb:BLEU}};
-    l.getCell(3).alignment={wrapText:true,vertical:'top'};
-    l.height=30;
-  }
-  const f=ws.addRow([]);
-  ws.addRow(['Les deux synthèses tiennent compte des compléments saisis dans la page.'])
-    .font={italic:true,color:{argb:ENCRE3},size:10};
+
+  const h2=ws.addRow(['','COMPOSITION DU CLASSEUR']);
+  h2.getCell(2).font={bold:true,size:11,color:{argb:BLEU}};
+  for(const c of [2,3,4]) h2.getCell(c).border={bottom:{style:'thin',color:{argb:BLEU}}};
+  // Les onglets se numérotent d'après la liste elle-même : en retirer un ne
+  // laisse plus de trou dans la numérotation, comme le « 5 » manquant qu'elle
+  // a vu le 14/10.
+  [['Sommaire','Chiffres clés et composition du classeur'],
+   ['Règles','Ordre de détermination des échéances et barème de chaque dispositif'],
+   ['Balance âgée','Reste dû par type de client et par tranche d’ancienneté. '
+     +'Chaque ligne se déplie sur les comptes, puis sur leurs écritures.'],
+   ['Par sous-catégorie','Même ventilation, dispositif par dispositif'],
+   [nomDetail,idx.length.toLocaleString('fr-FR')+' écritures, '+D.cols.length
+     +' colonnes. Classement, échéance et justification de chaque ligne.'],
+  ].forEach(([nom,quoi],i)=>{
+    const r=ws.addRow(['',(i+1)+'.  '+nom,'',quoi]);
+    r.getCell(2).font={bold:true,color:{argb:BLEU}};
+    r.getCell(2).alignment={vertical:'top'};
+    r.getCell(4).font={size:10,color:{argb:ENCRE3}};
+    r.getCell(4).alignment={wrapText:true,vertical:'top'};
+    r.height=quoi.length>70?30:18;
+  });
+  ws.addRow([]);
+  const pied=ws.addRow(['','','','Les synthèses intègrent les compléments de classement '
+    +'saisis dans la balance publiée.']);
+  pied.getCell(4).font={size:9,italic:true,color:{argb:ENCRE3}};
+  pied.getCell(4).alignment={wrapText:true,vertical:'top'};
 }
 
 function feuilleRegles(wb){
   const ws=wb.addWorksheet('Règles');
   ws.columns=[{width:30},{width:20},{width:16},{width:30},{width:12},{width:30},{width:34},{width:46}];
-  const t=ws.addRow(['LES RÈGLES QUI ONT SERVI À CLASSER ET À DATER']);
+  const t=ws.addRow(['RÈGLES DE CLASSEMENT ET DE DÉTERMINATION DES ÉCHÉANCES']);
   t.font={bold:true,size:14,color:{argb:BLEU}}; t.height=24;
-  ws.addRow(['Une échéance se cherche dans cet ordre : la première règle qui s’applique '
-    +'l’emporte, et les suivantes ne sont pas consultées.'])
+  ws.addRow(['L’échéance est déterminée dans cet ordre. La première règle applicable '
+    +'l’emporte ; les suivantes ne sont pas examinées.'])
     .font={color:{argb:ENCRE3},size:10};
   ws.addRow([]);
   if((D.ordreEcheance||[]).length){
@@ -487,10 +505,10 @@ function feuilleRegles(wb){
     }
     ws.addRow([]);
   }
-  ws.addRow(['LE BARÈME DE CHAQUE DISPOSITIF — c’est la règle n° 3 ci-dessus.'])
+  ws.addRow(['BARÈME PAR DISPOSITIF — application de la règle n° 3'])
     .font={bold:true,size:12,color:{argb:BLEU}};
-  ws.addRow(['Un dispositif est reconnu par les mots ci-dessous ; son échéance se calcule '
-    +'sur la base indiquée, et sur le repli quand cette base manque.'])
+  ws.addRow(['Chaque dispositif est reconnu aux mots ci-dessous. Son échéance se calcule '
+    +'sur la base indiquée, ou sur le repli lorsque cette base est absente.'])
     .font={color:{argb:ENCRE3},size:10};
   ws.addRow([]);
   poserEntete(ws,ws.addRow(['Sous-catégorie','Type de client','Périmètre','Base de l’échéance',
@@ -527,13 +545,11 @@ function feuilleBalance(wb,niv,idx){
   const t=ws.addRow([niv==='cat'?'RESTE DÛ PAR TYPE DE CLIENT ET PAR ANCIENNETÉ'
     :'RESTE DÛ PAR DISPOSITIF ET PAR ANCIENNETÉ']);
   t.font={bold:true,size:14,color:{argb:BLEU}}; t.height=24;
-  ws.addRow(['Le « + » de la marge déplie les comptes clients ; le « + » d’un compte déplie ses '
-    +'écritures. Chaque niveau reste replié tant qu’on ne l’ouvre pas.'])
+  ws.addRow(['Le « + » de la marge ouvre les comptes clients, puis leurs écritures.'])
     .font={color:{argb:ENCRE3},size:10};
-  ws.addRow(['Sous un compte figurent ses écritures, montant au débit ou au crédit porté dans sa '
-    +'tranche. La ligne du COMPTE reste la référence de la balance : un règlement s’impute sur une '
-    +'seule facture là où le solde d’un lettrage se répartit au prorata, et les deux lectures '
-    +'peuvent donc différer d’une tranche à l’autre.'])
+  ws.addRow(['La ligne du compte fait foi. Les écritures qui s’y rattachent peuvent différer '
+    +'d’une tranche à l’autre : un règlement s’impute sur une facture, le solde d’un lettrage '
+    +'se répartit au prorata.'])
     .font={color:{argb:'FF9A6A12'},size:10};
   ws.addRow([]);
   const ent=new Array(LARGE).fill('');
@@ -636,68 +652,16 @@ function feuilleDetail(wb,idx,nom){
   ws.autoFilter={from:{row:1,column:1},to:{row:1,column:D.cols.length+1}};
 }
 
-// Tout ce qu'aucun lettrage ne relie à autre chose, des deux côtés : la
-// facture que rien ne solde et l'encaissement que rien ne rattache. Ce sont
-// les deux moitiés du même travail, et les séparer le rend illisible — on ne
-// peut pas juger un règlement sans voir les factures du même compte.
-function feuilleNonLettre(wb,idx){
-  const lignes=idx.filter(i=>{
-    const L=V(i,'Let.').trim();
-    if(L && L!==NON_LETTRE) return false;
-    return N(i,'Débit')>0.009 || N(i,'Crédit')>0.009;
-  });
-  if(!lignes.length) return 0;
-  const ws=wb.addWorksheet('Montants non lettrés');
-  ws.columns=[{width:46},{width:12},{width:14},{width:14},{width:17},{width:56},
-    {width:26},{width:14},{width:40},{width:20}];
-  const t=ws.addRow(['TOUT CE QU’AUCUN LETTRAGE NE RELIE']);
-  t.font={bold:true,size:14,color:{argb:BLEU}}; t.height=24;
-  const deb=lignes.filter(i=>N(i,'Débit')>0.009), cre=lignes.filter(i=>N(i,'Crédit')>0.009);
-  const sD=deb.reduce((s,i)=>s+N(i,'Débit'),0), sC=cre.reduce((s,i)=>s+N(i,'Crédit'),0);
-  const avec=lignes.filter(i=>V(i,'Proposition de rapprochement')).length;
-  ws.addRow([lignes.length.toLocaleString('fr-FR')+' écritures · '
-    +deb.length.toLocaleString('fr-FR')+' au débit pour '+eurC(sD)
-    +' · '+cre.length.toLocaleString('fr-FR')+' au crédit pour '+eurC(sC)
-    +' · solde '+eurC(sD-sC)])
-    .font={color:{argb:ENCRE3},size:10};
-  ws.addRow(['Au débit : des factures que rien ne solde. Au crédit : des encaissements '
-    +'rattachés à rien. '+avec.toLocaleString('fr-FR')+' portent une facture proposée — '
-    +'une proposition n’est PAS un lettrage, elle dit seulement quelle facture du même '
-    +'compte ce règlement solderait. C’est à vous de la confirmer dans Pennylane.'])
-    .font={color:{argb:'FF9A6A12'},size:10};
-  ws.addRow([]);
-  poserEntete(ws,ws.addRow(['Compte - Client','Date','Débit','Crédit','N° de pièce',
-    'Libellé de l’écriture','Facture proposée','Certitude','Pourquoi cette facture',
-    'N° de rapprochement']));
-  ws.addRows(lignes.map(i=>[
-    V(i,'N° de compte')+' - '+(V(i,'Libellé de compte')||V(i,'Tiers')),
-    V(i,'Date'), N(i,'Débit')||null, N(i,'Crédit')||null,
-    V(i,'N° de pièce')||V(i,'N° de facture')||'',
-    V(i,'Libellé de ligne')||V(i,'Libellé de pièce'),
-    V(i,'Proposition de rapprochement'), V(i,'Certitude du rapprochement'),
-    V(i,'Pourquoi ce rapprochement'), V(i,'N° de rapprochement')]));
-  ws.getColumn(3).numFmt=EUROS; ws.getColumn(4).numFmt=EUROS;
-  ws.autoFilter={from:{row:5,column:1},to:{row:5,column:10}};
-  ws.views=[{state:'frozen',ySplit:5}];
-  return lignes.length;
-}
-
 async function classeur(idx,nomDetail){
   const nom=nomDetail||'Détail ligne à ligne';
   const wb=new ExcelJS.Workbook();
   wb.creator='Balance âgée Liora'; wb.created=new Date();
   // Le sommaire annonce combien de paiements l'onglet porte : on les compte
   // avant de l'écrire, puisqu'il passe en premier dans le classeur.
-  const nbPaiements=idx.filter(i=>{
-    const L=V(i,'Let.').trim();
-    if(L && L!==NON_LETTRE) return false;
-    return N(i,'Débit')>0.009 || N(i,'Crédit')>0.009;
-  }).length;
-  feuilleSommaire(wb,idx,nom,nbPaiements);
+  feuilleSommaire(wb,idx,nom);
   feuilleRegles(wb);
   feuilleBalance(wb,'cat',idx);
   feuilleBalance(wb,'sous',idx);
-  feuilleNonLettre(wb,idx);
   feuilleDetail(wb,idx,nom);
   return new Uint8Array(await wb.xlsx.writeBuffer());
 }
