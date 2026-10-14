@@ -1801,7 +1801,16 @@
             const ech = R.computeEcheance(
                 { ...c, financement: fin, dateEcheanceSource: null,
                   mandatGocardless: c.mandatGocardless || mandatQuiDecide(c),
-                  dateEcheanceComptable: c.dateEcheance || null },
+                  // L'échéance que le grand livre porte VRAIMENT — celle que
+                  // Pennylane écrit dans sa colonne — et elle seule. On passait
+                  // ici c.dateEcheance, qui a déjà reçu en amont la dernière
+                  // date du libellé : 3 715 lignes annonçaient donc « échéance
+                  // portée par le grand livre » alors que leur date venait du
+                  // libellé, et leur propre motif les démentait sur la ligne
+                  // d'à côté. La date ne change pas ; son étiquette cesse de
+                  // mentir, et le repli se nomme par ce qu'il a lu.
+                  dateEcheanceComptable: c.dateEcheanceLivre || null,
+                  dateEcheanceRepli: c.dateEcheanceRepli || c.dateEcheance || null },
                 { rules: o.rules, prefereEcheanceMonday: false, grandLivre: true });
             // Une échéance que vous avez posée vous-même passe devant le
             // calcul. C'est le dernier recours — la ligne qu'aucune date de

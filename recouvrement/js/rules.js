@@ -38,7 +38,7 @@
         {
             key: 'BTC_ENTREPRISE',
             label: 'B2C-Entreprise',
-            base: 'dateFacture', jours: 30,
+            base: 'dateFinFormation', jours: 30,
             fallback: 'dateDebutFormation', fallbackJours: 30,
             plafondDebutFormation: true,
             // Le classeur de trésorerie compte autrement pour la balance âgée
@@ -46,7 +46,7 @@
             // de septembre y met le début de formation, sans délai. Les deux
             // suivis ne mesurent pas la même chose — l'un le travail de relance,
             // l'autre le solde du compte — et gardent chacun sa règle.
-            gl: { base: 'dateFacture', jours: 30 },
+            gl: { base: 'dateFinFormation', jours: 30 },
             note: "Date de facture +30 jours, sans dépasser début de formation +30 jours"
                 + " — au grand livre : début de formation",
             categorie: 'B2C - Entreprise', perimetre: 'Corporate',
