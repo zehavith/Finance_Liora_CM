@@ -1301,10 +1301,10 @@
         const ditDuClient = c => {
             const m = (c && o.parNomSellsy) ? o.parNomSellsy.get(R.norm(c.tiers || '')) : null;
             if (!m || !m.size) return null;
-            if (m.size === 1) return [...m.keys()][0];
-            let tete = null, teteNb = 0, total = 0;
-            for (const [fin, nb] of m) { total += nb; if (nb > teteNb) { tete = fin; teteNb = nb; } }
-            return (teteNb / total) >= 0.75 ? tete : null;
+            // L'unanimité, pas la majorité : dès que la facturation range ce
+            // client sous deux financements, elle ne tranche plus rien pour
+            // les factures qu'elle n'a pas nommées elle-même.
+            return m.size === 1 ? [...m.keys()][0] : null;
         };
         const explicite = R.detectFinancement(creance.qualif, o.rules);
 
@@ -1671,16 +1671,15 @@
 
         // Ce qu'un client a déjà été classé ailleurs vaut pour le reste de ses
         // créances : c'est la règle, l'exception étant le compte réellement
-        // partagé entre deux dispositifs. Un seul financement connu tranche ;
-        // plusieurs, le dominant l'emporte s'il pèse au moins les trois quarts,
-        // sinon rien n'est décidé.
+        // partagé entre deux dispositifs. Et il faut l'unanimité : un seul
+        // financement connu sur le compte tranche pour ses lignes muettes ;
+        // dès qu'il y en a deux, le compte est justement l'exception, et rien
+        // n'est décidé — la ligne part « à compléter » plutôt qu'au dispositif
+        // le plus fréquent, qui la contredirait une fois sur quatre.
         const dominant = (carte, cle) => {
             const m = cle ? carte.get(cle) : null;
             if (!m || !m.size) return null;
-            if (m.size === 1) return [...m.keys()][0];
-            let total = 0, tete = null, teteNb = 0;
-            for (const [fin, nb] of m) { total += nb; if (nb > teteNb) { tete = fin; teteNb = nb; } }
-            return (teteNb / total) >= 0.75 ? tete : null;
+            return m.size === 1 ? [...m.keys()][0] : null;
         };
         const unique = dominant;
 
@@ -2741,10 +2740,11 @@
     /**
      * Ne retenir d'un compte ou d'un tiers que ce qui fait consensus.
      *
-     * Votre règle, telle que vous l'avez posée : « le compte client, si 90 %
-     * de ses factures relèvent du même dispositif. Sinon À classer. » Un
-     * compte partagé entre deux dispositifs n'apprend donc rien, et c'est
-     * voulu : mieux vaut une ligne à classer qu'une ligne mal classée.
+     * Votre règle, telle que vous l'avez corrigée : « il faut qu'il y ait
+     * 100 % ». Un compte n'apprend son dispositif à ses lignes muettes que si
+     * toutes ses factures connues disent la même chose. Partagé entre deux
+     * dispositifs, il n'apprend rien, et c'est voulu : mieux vaut une ligne à
+     * compléter qu'une ligne mal classée.
      */
     function unanimes(carte, rules) {
         const out = {};
@@ -2752,7 +2752,7 @@
             // Deux orthographes du même dispositif ne sont pas deux avis.
             // Sa feuille écrit « Transition Pro » 479 fois et « Transition pro »
             // 138 fois : comptées à part, un compte qui porte les deux tombait
-            // sous les 90 % de consensus et perdait sa catégorie apprise, alors
+            // sous l'unanimité et perdait sa catégorie apprise, alors
             // que ses lignes disent toutes la même chose. Le vote se fait donc
             // sur le dispositif reconnu, et l'étiquette retenue est la forme la
             // plus fréquente — celle que l'auditeur relira dans sa feuille.

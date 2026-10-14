@@ -11,8 +11,8 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '3.8.0';
-    const VERSION_DATE = '13 octobre 2026';
+    const VERSION = '3.9.0';
+    const VERSION_DATE = '14 octobre 2026';
 
     const R = window.LioraRules;
     const PR = window.LioraPrelevements;
@@ -10714,7 +10714,8 @@
 
             // Ce que la balance déposée apprend au-delà des factures : le
             // dispositif d'un compte client et celui d'un tiers, retenus quand
-            // ils font consensus à 90 %. C'est ce qui rattrape les quatre
+            // toutes leurs lignes connues s'accordent. C'est ce qui rattrape
+            // les quatre
             // lignes sur dix qui n'ont pas de numéro de facture — règlements,
             // avoirs, soldes de compte — et dont le classement se perdait d'un
             // arrêté à l'autre. Rien n'est effacé : une balance plus récente
