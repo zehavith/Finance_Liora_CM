@@ -244,7 +244,7 @@
         // date vient de l'échéance 1, pas d'un délai inventé.
         base: null, jours: null,
         fallback: null, fallbackJours: null,
-        note: 'Type de financement non identifié — échéance 1 : dernière date du libellé, sinon enregistrement',
+        note: 'Type de financement non identifié — dernière date du libellé, sinon date d’enregistrement',
         perimetre: 'Inconnu', match: [],
     };
 
@@ -665,10 +665,9 @@
                 if (!inv.dateEcheanceRepli) continue;
                 return { date: stripTime(inv.dateEcheanceRepli), origine: 'Règle', regle: rule,
                          baseUtilisee: 'echeance1', jours: 0,
-                         motif: 'échéance 1 ' + (inv.echeance1Source === 'libellé'
-                             ? '(date lue dans le libellé)'
-                             : inv.echeance1Source === 'enregistrement'
-                                 ? '(date d’enregistrement)' : '') };
+                         motif: inv.echeance1Source === 'enregistrement'
+                             ? 'date d’enregistrement (aucune date dans le libellé)'
+                             : 'dernière date du libellé' };
             }
             if (b.comptable) {
                 if (!inv.dateEcheanceComptable) continue;

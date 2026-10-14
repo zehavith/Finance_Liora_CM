@@ -5853,7 +5853,7 @@
             dateFinFormation: 'fin de formation',
             dateFactureFacturation: 'date de facture de la facturation',
             dateEcheanceComptable: 'échéance portée par le grand livre',
-            echeance1: 'échéance 1 — dernière date du libellé, sinon enregistrement',
+            echeance1: 'dernière date du libellé, sinon date d’enregistrement',
             'colonne Monday': 'date d’échéance de Monday',
             saisieManuelle: 'échéance posée à la main',
         };
@@ -5898,7 +5898,7 @@
             // d'elle, sans le dire — on lisait une contradiction là où il n'y
             // avait qu'un raccourci. La ligne qui a daté est nommée.
             if (c.sansNumero && c.dateFacture) {
-                return `échéance 1 de l’écriture du ${U.dateFR(c.dateFacture)}`
+                return `dernière date du libellé de l’écriture du ${U.dateFR(c.dateFacture)}`
                     + ` = ${U.dateFR(c.dateEcheance)}`;
             }
             const v = valeurBase(c);

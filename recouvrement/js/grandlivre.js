@@ -1826,17 +1826,18 @@
                 echeanceMotif: pose ? (pose.note || 'échéance posée à la main')
                     : (ech.motif
                         || (repliSeul
-                            ? 'aucun barème applicable — échéance 1 ' + (
-                                c.echeance1Source === 'libellé' ? '(date lue dans le libellé)'
-                                : c.echeance1Source === 'enregistrement' ? '(date d’enregistrement)'
-                                : '')
+                            ? 'aucun barème applicable — ' + (
+                                c.echeance1Source === 'enregistrement'
+                                    ? 'date d’enregistrement (aucune date dans le libellé)'
+                                    : 'dernière date du libellé')
                             : null)
                         // Quand le barème n'a pas sa base et que l'échéance du
                         // grand livre a servi de repli, l'auditeur doit lire
                         // LAQUELLE des deux branches de votre formule a parlé.
                         || (ech.origine === 'Grand livre' && c.echeance1Source
-                            ? 'échéance 1 ' + (c.echeance1Source === 'libellé'
-                                ? '(date lue dans le libellé)' : '(date d’enregistrement)')
+                            ? (c.echeance1Source === 'libellé'
+                                ? 'dernière date du libellé'
+                                : 'date d’enregistrement (aucune date dans le libellé)')
                             : null)),
                 // Le délai réellement ajouté à la base, tel que le moteur l'a
                 // appliqué — pas celui que le barème laisserait supposer.
@@ -2025,7 +2026,7 @@
                 echeanceBase: c.dateEcheance ? 'dateEcheanceComptable' : '',
                 echeanceOrigine: c.dateEcheance ? 'Grand livre' : '',
                 echeanceMotif: c.dateEcheance
-                    ? 'dispositif à qualifier — échéance 1 : dernière date du libellé, sinon l’enregistrement'
+                    ? 'dispositif à qualifier — dernière date du libellé, sinon la date d’enregistrement'
                     : '',
                 echeanceJours: c.dateEcheance ? 0 : null,
                 dateEcheanceGrandLivre: c.dateEcheanceLivre || null };
