@@ -254,7 +254,7 @@ function appliquer(garderPlace){
     const ac=!!V(i,'À compléter') && !compl.has(cleLigne(i));
     if(a==='oui'&&!ac) return false;
     if(a==='non'&&ac) return false;
-    // « Montants non lettrés » : l'écriture ne porte aucun code de lettrage,
+    // « Lignes non lettrées » : l'écriture ne porte aucun code de lettrage,
     // au débit comme au crédit. Les deux côtés font le même travail — une
     // facture que rien ne solde et un encaissement que rien ne rattache sont
     // les deux moitiés du même lettrage à faire. Ne montrer que le crédit, ce
