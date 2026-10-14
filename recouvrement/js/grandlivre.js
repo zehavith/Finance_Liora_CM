@@ -2026,14 +2026,19 @@
                     immatricule ? ('SIREN ' + c.siren) : (c.tiers || ''));
             }
             // Rien n'a nommé le dispositif : la créance part « À classer ».
-            // Elle garde pourtant l'échéance 1 que la ligne portait — et cette
+            // Elle garde pourtant la date que la ligne portait — et cette
             // sortie, qui ne passe pas par `poser`, la laissait sans origine ni
             // délai : 142 lignes datées sans qu'on sache d'où. Ce qu'on retient
             // se dit, même quand on ne sait pas classer.
+            //
+            // Et ce qu'on retient ici, c'est le repli : la dernière date du
+            // libellé, sinon l'enregistrement. L'annoncer « échéance portée par
+            // le grand livre » démentait le motif écrit juste à côté, sur
+            // vingt-trois lignes.
             return { ...c, financement: null, typeClient: null,
                 origineClassement: null, preuveClassement: '',
-                echeanceBase: c.dateEcheance ? 'dateEcheanceComptable' : '',
-                echeanceOrigine: c.dateEcheance ? 'Grand livre' : '',
+                echeanceBase: c.dateEcheance ? 'echeance1' : '',
+                echeanceOrigine: c.dateEcheance ? 'Règle' : '',
                 echeanceMotif: c.dateEcheance
                     ? 'dispositif à qualifier — dernière date du libellé, sinon la date d’enregistrement'
                     : '',
