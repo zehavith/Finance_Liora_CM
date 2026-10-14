@@ -588,10 +588,16 @@
         // la facturation dépasse la fin de formation. La base est alors la date
         // de facture *de la facturation*, pas celle de l'écriture comptable :
         // les confondre décalait mille lignes de soixante jours.
+        //
+        // Le délai, lui, est de TRENTE jours et non soixante. Elle a redonné
+        // l'ordre de préférence le 14/10/2026 : « si date de facture est
+        // postérieure à fin de formation, on prend date de facture + 30 ». La
+        // formule du classeur dit soixante ; c'est elle qui décide, pas le
+        // classeur.
         if (gl && inv.dateFactureFacturation && inv.dateFinFormation
             && inv.dateFactureFacturation > inv.dateFinFormation) {
-            return { date: addDays(inv.dateFactureFacturation, 60), origine: 'Règle', regle: rule,
-                     baseUtilisee: 'dateFactureFacturation', jours: 60,
+            return { date: addDays(inv.dateFactureFacturation, 30), origine: 'Règle', regle: rule,
+                     baseUtilisee: 'dateFactureFacturation', jours: 30,
                      motif: 'Facture postérieure à la fin de formation' };
         }
 
