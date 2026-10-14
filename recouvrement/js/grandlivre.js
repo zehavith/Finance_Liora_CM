@@ -1898,6 +1898,23 @@
             };
             const refFin = duReferentiel(c);
             if (refFin) return poser(c, refFin, 'Référentiel qualifié', 'Validé à la main sur ' + (c.numero || ''));
+            // Une facture « FA-880 » est une alternance : la marque est dans sa
+            // numérotation, et sa numérotation ne se trompe pas. Comme pour
+            // Filiz, les autres sources ne servent plus qu'à choisir LAQUELLE —
+            // OPCO, Corporate ou Perso — sans pouvoir la faire sortir de
+            // l'alternance : une photo de septembre ou un type de client Sellsy
+            // ne pèsent pas contre le numéro que la facture porte.
+            if (/^fa-?880/i.test(String(c.numero || '').trim())) {
+                const dit = parAncien('numero')
+                    || (c.cle ? idx.parCle.get(c.cle) : null)
+                    || (c.qualif ? R.detectFinancement(c.qualif, o.rules) : null)
+                    || parAncien('tiers') || parAncien('compte');
+                const fin = (dit === 'OPCO' || dit === 'OPCO_ALTERNANCE') ? 'OPCO_ALTERNANCE'
+                    : (dit === 'ALTERNANCE' || dit === 'PERSO_ALTERNANCE'
+                       || dit === 'CORPORATE_ALTERNANCE') ? dit : 'ALTERNANCE';
+                return poser(c, fin, 'Numéro FA-880 (alternance)',
+                    (c.numero || '') + (dit ? ' · précisée par : ' + dit : ''));
+            }
             // Votre colonne de classement, sur cette facture précise : c'est du
             // travail déjà fait, pas une déduction.
             const ancienNumDAbord = parAncien('numero');
@@ -2390,6 +2407,16 @@
                            origineClassement: 'Facture Filiz : alternance',
                            preuveClassement: l.numero || 'mention « Filiz »',
                            dateEcheance: null, echeanceBase: '', echeanceMotif: '', numero: l.numero || '' };
+            }
+            // Un numéro « FA-880 » vaut alternance, ici aussi : l'écriture
+            // suit la facture qu'elle porte.
+            if (/^fa-?880/i.test(String(l.numero || '').trim())
+                && !(source && source.financement
+                     && (R.getRule(source.financement, sources && sources.rules) || {}).categorie === 'Alternance')) {
+                source = { financement: 'ALTERNANCE', typeClient: null,
+                           origineClassement: 'Numéro FA-880 (alternance)',
+                           preuveClassement: l.numero,
+                           dateEcheance: null, echeanceBase: '', echeanceMotif: '', numero: l.numero };
             }
             // Un numéro de devis vaut B2C - Entreprise par défaut, ici aussi.
             if (!source && /^dv[-_.\s]?\d/i.test(String(l.numero || '').trim())) {
