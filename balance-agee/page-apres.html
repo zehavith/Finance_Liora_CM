@@ -134,8 +134,15 @@ function avecComplements(rows, niveau){
   for(const [k,v] of compl){
     const m=metaCreance.get(k); if(!m||!m.rd||faites.has(k)) continue;
     faites.add(k);
-    const cible=niveau==='cat'?(typeDe.get(v.dispositif)||v.dispositif):v.dispositif;
-    const depart=niveau==='cat'?(typeDe.get(m.sc)||m.sc):m.sc;
+    // Un complément doit traverser le regroupement comme n'importe quelle
+    // créance : sans cela, sa décision « B2B » sur Stellantis créait une
+    // quatorzième ligne « B2B » de 29 123 € à côté d'« Entreprise », alors
+    // que c'est la même chose.
+    const vers1=niveau==='cat'?(catDuDispositif(v.dispositif)||typeDe.get(v.dispositif)||v.dispositif)
+      :(REGROUPE()[v.dispositif]||v.dispositif);
+    const de1=niveau==='cat'?(catDuDispositif(m.sc)||typeDe.get(m.sc)||m.sc)
+      :(REGROUPE()[m.sc]||m.sc);
+    const cible=vers1, depart=de1;
     if(cible===depart) continue;
     const de=par.get(depart), vers=par.get(cible)||ligneNeuve(cible);
     const j=D.tranches.indexOf(m.tr);
