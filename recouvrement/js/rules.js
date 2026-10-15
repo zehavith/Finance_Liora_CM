@@ -49,7 +49,7 @@
             gl: { base: 'dateFinFormation', jours: 30 },
             note: "Date de facture +30 jours, sans dépasser début de formation +30 jours"
                 + " — au grand livre : début de formation",
-            categorie: 'B2C - Entreprise', perimetre: 'Corporate',
+            categorie: 'Entreprise', perimetre: 'Corporate',
             // Monday écrit « B2C - Entreprise », le référentiel « BTC-Entreprise ».
             // Les deux graphies désignent la même chose : un particulier dont la
             // formation est facturée à une entreprise. Sans le libellé « b2c
@@ -85,7 +85,7 @@
             base: 'dateFacture', jours: 30,
             fallback: 'dateFinFormation', fallbackJours: 30,
             note: 'Date de facture +30 jours',
-            categorie: 'B2C - Entreprise', perimetre: 'Corporate',
+            categorie: 'Entreprise', perimetre: 'Corporate',
             match: ['avant import', 'entre process', 'factures payees adv', 'payees adv', 'adv'],
         },
         {
@@ -93,7 +93,7 @@
             base: 'dateFinFormation', jours: 30,
             gl: { base: 'dateFinFormation', jours: 30 },
             note: 'Fin de formation +30 jours — au grand livre : début de formation',
-            categorie: 'B2B', perimetre: 'Corporate',
+            categorie: 'Entreprise', perimetre: 'Corporate',
             match: ['b2b', 'btob', 'entreprise', 'corporate'],
         },
         {
@@ -151,8 +151,7 @@
             key: 'ETAT', label: 'ETAT',
             base: 'dateFinFormation', jours: 30,
             note: 'Fin de formation +30 jours',
-            categorie: 'B2C - Entreprise', typesPossibles: ['B2C - Entreprise', 'B2B'],
-            perimetre: 'Corporate',
+            categorie: 'ETAT',            perimetre: 'Corporate',
             match: ['etat', 'public etat', 'ministere', 'prefecture'],
             gl: { base: 'dateFinFormation', jours: 30 },
         },
@@ -178,8 +177,7 @@
             key: 'OPCO', label: 'OPCO',
             base: 'dateFinFormation', jours: 30,
             note: 'Fin de formation +30 jours — pas de recouvrement OPCO, suivi du retard uniquement',
-            categorie: 'B2C - Entreprise', typesPossibles: ['B2C - Entreprise', 'B2B'],
-            perimetre: 'Corporate', sansRecouvrement: true,
+            categorie: 'OPCO',            perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco', 'akto', 'atlas', 'uniformation', 'ocapiat', 'constructys', 'afdas', 'opcommerce', 'l opcommerce', 'opco ep', 'opco 2i', 'opco mobilites', 'opco sante'],
             gl: { base: 'dateFinFormation', jours: 30 },
         },
@@ -192,7 +190,7 @@
             key: 'OPCO_ALTERNANCE', label: 'OPCO - Alternance',
             base: 'dateFinFormation', jours: 30,
             note: 'Fin de formation +30 jours — pas de recouvrement OPCO, suivi du retard uniquement',
-            categorie: 'Alternance', perimetre: 'Corporate', sansRecouvrement: true,
+            categorie: 'OPCO', perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco alternance', 'opco-alternance'],
             gl: { base: 'dateFinFormation', jours: 30 },
         },

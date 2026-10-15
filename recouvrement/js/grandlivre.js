@@ -1383,14 +1383,8 @@
      * Le type de client d'une créance : celui de sa sous-catégorie, sauf quand
      * la facturation en désigne un autre parmi ceux que la règle admet.
      */
-    function typeDeClient(financement, creance, o) {
-        const regle = R.getRule(financement, o && o.rules);
-        const defaut = R.categorieDe(financement, o && o.rules);
-        if (!regle.typesPossibles) return defaut;
-        const brut = (creance && creance.typeClientSellsy) || '';
-        const n = R.norm(brut);
-        if (/\bb2b\b/.test(n) && regle.typesPossibles.indexOf('B2B') >= 0) return 'B2B';
-        return defaut;
+    function typeDeClient(financement, o) {
+        return R.categorieDe(financement, o && o.rules);
     }
 
     function indexerClassification(sources) {
@@ -1802,14 +1796,27 @@
         // « Ancien grand livre (identifiant du tiers) » ne se vérifie pas —
         // avec elle, on lit la valeur qui a été reprise.
         const poser = (c, fin, origine, preuve) => {
-            // « Alternance » tout court ne dit pas qui paie. Payée par une
-            // personne morale — un nom d'entreprise, ou simplement un SIREN au
-            // grand livre — c'est une Corporate - Alternance : votre ancien
-            // grand livre les range ainsi sans exception. L'OPCO, lui, est
-            // reconnu à son nom bien avant d'arriver ici.
-            if (fin === 'ALTERNANCE'
-                && (estEntreprise(c.tiers) || String(c.siren || '').trim())) {
-                fin = 'CORPORATE_ALTERNANCE';
+            // « Alternance » tout court n'est pas une sous-catégorie — elle l'a
+            // dit le 15/10/2026 — parce qu'elle ne dit pas qui paie. Les trois
+            // qui existent le disent, et toute alternance se range dans l'une
+            // des trois : « il faut les dispatcher entre OPCO alternance,
+            // corporate alternance, perso alternance ».
+            //
+            //   le payeur est un OPCO            → OPCO - Alternance
+            //   le tiers est une personne morale → Corporate - Alternance
+            //   sinon, c'est l'alternant qui paie → Perso-Alternance
+            //
+            // Les dix créances qui restaient sous « Alternance » se répartissent
+            // ainsi sans exception : quatre payées par OPCO ATLAS, trois
+            // facturées à CGI, TIBCO et IA Nord, trois réglées par des
+            // particuliers.
+            if (fin === 'ALTERNANCE') {
+                const paye = financementDuLibelle(c.tiers) || financementDuLibelle(c.compte);
+                fin = (paye && (paye.fin === 'OPCO' || paye.fin === 'OPCO_ALTERNANCE'))
+                    ? 'OPCO_ALTERNANCE'
+                    : (estEntreprise(c.tiers) || String(c.siren || '').trim())
+                        ? 'CORPORATE_ALTERNANCE'
+                        : 'PERSO_ALTERNANCE';
             }
             const ech = R.computeEcheance(
                 { ...c, financement: fin, dateEcheanceSource: null,
@@ -1840,7 +1847,7 @@
             return {
                 ...c, financement: fin, origineClassement: origine,
                 preuveClassement: preuve == null ? '' : String(preuve),
-                typeClient: typeDeClient(fin, c, o),
+                typeClient: typeDeClient(fin, o),
                 dateEcheance: pose ? pose.echeance : (ech.date || c.dateEcheance || null),
                 echeanceBase: pose ? 'saisieManuelle' : ech.baseUtilisee,
                 echeanceOrigine: pose ? 'Saisie à la main'
@@ -1931,11 +1938,49 @@
                     || (c.cle ? idx.parCle.get(c.cle) : null)
                     || (c.qualif ? R.detectFinancement(c.qualif, o.rules) : null)
                     || parAncien('tiers') || parAncien('compte');
+                // Laquelle des trois ? Le payeur tranche, comme pour Filiz :
+                // une alternance réglée par un OPCO est une OPCO - Alternance.
+                // « Alternance » tout court n'est pas une sous-catégorie —
+                // elle le dit le 15/10/2026 — donc à défaut la créance part
+                // « à compléter » plutôt que dans un fourre-tout.
+                const paye880 = financementDuLibelle(c.tiers) || financementDuLibelle(c.compte);
                 const fin = (dit === 'OPCO' || dit === 'OPCO_ALTERNANCE') ? 'OPCO_ALTERNANCE'
-                    : (dit === 'ALTERNANCE' || dit === 'PERSO_ALTERNANCE'
-                       || dit === 'CORPORATE_ALTERNANCE') ? dit : 'ALTERNANCE';
+                    : (dit === 'PERSO_ALTERNANCE' || dit === 'CORPORATE_ALTERNANCE') ? dit
+                    : (paye880 && (paye880.fin === 'OPCO' || paye880.fin === 'OPCO_ALTERNANCE'))
+                        ? 'OPCO_ALTERNANCE' : 'ALTERNANCE';
                 return poser(c, fin, 'Numéro FA-880 (alternance)',
-                    (c.numero || '') + (dit ? ' · précisée par : ' + dit : ''));
+                    (c.numero || '') + (dit ? ' · précisée par : ' + dit
+                        : (paye880 ? ' · payée par un OPCO : ' + (c.tiers || c.compte) : '')));
+            }
+            // Une facture Filiz est une alternance, sans exception, et cela
+            // passe AVANT tout le reste. « Filiz c'est de l'alternance, c'est
+            // sûr, c'est une loi prioritaire », le 15/10/2026 : la marque est
+            // dans le numéro même — « FCT-FILIZ-DST-2025-276 ».
+            //
+            // La règle vivait plus bas, après la facture Monday et après vos
+            // règles de libellé : l'une et l'autre pouvaient donc sortir une
+            // Filiz de l'alternance. Les sources qui restent ne servent qu'à
+            // choisir LAQUELLE — celle d'un OPCO, celle facturée à l'entreprise,
+            // ou celle que le salarié paie — sans pouvoir la faire sortir.
+            if (c.filiz) {
+                const dit = parAncien('numero') || parAncien('tiers') || parAncien('compte');
+                // Qui paie tranche quand l'ancien grand livre se tait : une
+                // alternance réglée par un OPCO est une OPCO - Alternance, une
+                // alternance facturée à l'entreprise est une Corporate.
+                // Sanofi, Safran et la SNCF paient les leurs directement ;
+                // AKTO, Atlas et OPCO 2i paient les leurs. Sur un extrait brut,
+                // sans vos colonnes, c'est la seule chose qui le dise — et sans
+                // elle 165 alternances d'OPCO passaient pour des Corporate.
+                const paye = financementDuLibelle(c.tiers) || financementDuLibelle(c.compte);
+                const parPayeur = paye && (paye.fin === 'OPCO' || paye.fin === 'OPCO_ALTERNANCE')
+                    ? 'OPCO_ALTERNANCE' : null;
+                const fin = (dit === 'OPCO' || dit === 'OPCO_ALTERNANCE') ? 'OPCO_ALTERNANCE'
+                    : (dit === 'PERSO_ALTERNANCE' || dit === 'CORPORATE_ALTERNANCE') ? dit
+                    : parPayeur || 'CORPORATE_ALTERNANCE';
+                return poser(c, fin, 'Facture Filiz : alternance',
+                    (c.numero || 'mention « Filiz »')
+                    + (dit ? ' · ancien grand livre : ' + dit
+                           : (parPayeur ? ' · payée par un OPCO : ' + (c.tiers || c.compte) : '')));
             }
             // Votre colonne de classement, sur cette facture précise : c'est du
             // travail déjà fait, pas une déduction.
@@ -1952,31 +1997,6 @@
             // tiers désigne un client, le compte une famille de clients. Moins
             // précises que le numéro de facture, elles restent après les règles.
             const ancienNum = parAncien('numero');
-            // Une facture Filiz est une alternance, sans exception : la marque
-            // est dans le numéro même — « FCT-FILIZ-DST-2025-276 ». L'ancien
-            // grand livre ne sert plus qu'à choisir laquelle : celle d'un OPCO,
-            // ou celle facturée à l'entreprise.
-            if (c.filiz) {
-                const dit = ancienNum || parAncien('tiers') || parAncien('compte');
-                // Qui paie tranche quand l'ancien grand livre se tait : une
-                // alternance réglée par un OPCO est une OPCO - Alternance, une
-                // alternance facturée à l'entreprise est une Corporate.
-                // Sanofi, Safran et la SNCF paient les leurs directement ;
-                // AKTO, Atlas et OPCO 2i paient les leurs. Sur un extrait brut,
-                // sans vos colonnes, c'est la seule chose qui le dise — et sans
-                // elle 165 alternances d'OPCO passaient pour des Corporate.
-                const paye = financementDuLibelle(c.tiers) || financementDuLibelle(c.compte);
-                const parPayeur = paye && (paye.fin === 'OPCO' || paye.fin === 'OPCO_ALTERNANCE')
-                    ? 'OPCO_ALTERNANCE' : null;
-                const fin = (dit === 'OPCO' || dit === 'OPCO_ALTERNANCE') ? 'OPCO_ALTERNANCE'
-                    : (dit === 'ALTERNANCE' || dit === 'PERSO_ALTERNANCE'
-                       || dit === 'CORPORATE_ALTERNANCE') ? dit
-                    : parPayeur || 'CORPORATE_ALTERNANCE';
-                return poser(c, fin, 'Facture Filiz : alternance',
-                    (c.numero || 'mention « Filiz »')
-                    + (dit ? ' · ancien grand livre : ' + dit
-                           : (parPayeur ? ' · payée par un OPCO : ' + (c.tiers || c.compte) : '')));
-            }
             if (ancienNum) return poser(c, ancienNum, 'Ancien grand livre (n° de facture)', c.ancien.numero);
             const ancienTiers = parAncien('tiers');
             if (ancienTiers) return poser(c, ancienTiers, 'Ancien grand livre (identifiant du tiers)', c.ancien.tiers);

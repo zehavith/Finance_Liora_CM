@@ -211,10 +211,16 @@ const catDuDispositif=disp=>{
   if(!catDeRegle) catDeRegle=new Map(((D&&D.regles)||[]).map(r=>[r.dispositif, r.type||r.dispositif]));
   return catDeRegle.get(disp);
 };
+// La sous-catégorie VRAIE de la créance, celle qui reste écrite sur chaque
+// ligne. Le tableau de tête en regroupe deux paires sous « Entreprise » et
+// « OPCO » ; le détail, lui, continue de les nommer.
+const sousVraie=i=>{ const c=compl.get(cleLigne(i));
+  return c?c.dispositif:(V(i,'Sous-catégorie de la créance')||''); };
+const REGROUPE=()=>(D&&D.regroupe)||{};
 function categorieDe(i,niv){
+  const sc=sousVraie(i);
   const c=compl.get(cleLigne(i));
-  const sc=c?c.dispositif:(V(i,'Sous-catégorie de la créance')||'');
-  if(niv!=='cat') return sc;
+  if(niv!=='cat') return REGROUPE()[sc]||sc;
   // Une créance porte sa propre catégorie : c'est elle qui fait foi. La
   // déduire de sa sous-catégorie rangeait les 31 créances « ETAT » sous une
   // seule des deux catégories qu'elles portent — la balance par catégorie
@@ -525,7 +531,7 @@ function feuilleRegles(wb){
 function feuilleBalance(wb,niv,idx){
   const nom=niv==='cat'?'Balance âgée':'Par sous-catégorie';
   const tete=niv==='cat'?'Type de client':'Sous-catégorie';
-  const autre=niv==='cat'?'Sous-catégorie':'Type de client';
+  const autre='Sous-catégorie';
   const nT=D.tranches.length;
   // Une seule colonne ajoutée à la balance : celle de l'autre lecture — la
   // sous-catégorie quand on lit par type de client, le type de client quand on
@@ -570,7 +576,7 @@ function feuilleBalance(wb,niv,idx){
       // par type de client, son type de client quand on lit par
       // sous-catégorie. Prise sur la créance, pas sur l'écriture : les deux
       // diffèrent dès que la créance n'est pas classée.
-      autre:(niv==='cat'?categorieDe(i,'sous'):categorieDe(i,'cat'))||'',
+      autre:sousVraie(i)||'',
       tr:V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté')});
   }
   for(const i of idx){

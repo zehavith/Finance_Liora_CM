@@ -488,7 +488,7 @@ const add=(nom,rows)=>X.utils.book_append_sheet(wb,X.utils.json_to_sheet(rows.le
 // Le premier onglet est la balance âgée telle que vous la lisez : par type de
 // client — B2C, B2C - Entreprise, B2B, POEI, Alternance, Interco. Les
 // sous-catégories viennent ensuite, puis le détail ligne à ligne.
-const ORDRE=['B2C','B2C - Entreprise','B2B','POEI','Alternance','Interco'];
+const ORDRE=['B2C','Entreprise','OPCO','POEI','ETAT','Alternance','Interco'];
 const rang=l=>{const i=ORDRE.indexOf(l); return i<0?ORDRE.length+1:i;};
 const catRows=[...balCat.rows].sort((a,b)=>rang(a.label)-rang(b.label)||b.total-a.total);
 // Une catégorie sans créance ouverte figure quand même, à zéro : son absence
@@ -553,9 +553,27 @@ const lignesPage=principale.map(o=>colsPage.map(c=>{
   const v=o[c]==null?'':String(o[c]);
   let i=index.get(v); if(i===undefined){ i=dico.length; dico.push(v); index.set(v,i); }
   return i;}));
-const synthPage=(b,cle)=>[...b.rows,b.total].map(r=>({
-  cat:r===b.total?'TOTAL':r.label, total:ar(r.total), echu:ar(r.echu), nonEchu:ar(r.nonEchu),
-  crediteur:ar(r.crediteur||0), nb:r.nb, buckets:buckets.map(x=>ar(r.buckets[x.key]))}));
+// Deux sous-catégories qu'elle lit ensemble dans la synthèse, sans pour autant
+// les confondre dans les données : « à la place de B2C-Entreprise et B2B il y
+// a Entreprise, mais ligne par ligne on retrouve bien les sous-catégories »,
+// le 15/10/2026. Le classement de chaque créance ne change pas — seul le
+// tableau de tête les présente sous un même nom.
+const REGROUPE={'B2C-Entreprise':'Entreprise','B2B':'Entreprise',
+  'Corporate — financement à préciser':'Entreprise','OPCO - Alternance':'OPCO'};
+const synthPage=(b)=>{
+  const out=[]; const par=new Map();
+  for(const r of [...b.rows,b.total]){
+    const nom=r===b.total?'TOTAL':(REGROUPE[r.label]||r.label);
+    let g=par.get(nom);
+    if(!g){ g={cat:nom, total:0, echu:0, nonEchu:0, crediteur:0, nb:0,
+      buckets:buckets.map(()=>0)}; par.set(nom,g); out.push(g); }
+    g.total+=r.total; g.echu+=r.echu; g.nonEchu+=r.nonEchu;
+    g.crediteur+=(r.crediteur||0); g.nb+=r.nb;
+    buckets.forEach((x,i)=>{ g.buckets[i]+=r.buckets[x.key]; });
+  }
+  return out.map(g=>({...g, total:ar(g.total), echu:ar(g.echu), nonEchu:ar(g.nonEchu),
+    crediteur:ar(g.crediteur), buckets:g.buckets.map(ar)}));
+};
 fs.writeFileSync('page-donnees.json',JSON.stringify({
   genere:fr(new Date()), arrete:fr(REF),
   source:'Grand livre Clients Pennylane · 01/07/2026 → 30/06/2027',
@@ -605,6 +623,9 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
     cat:r===balCat.total?'TOTAL':r.label, total:ar(r.total), echu:ar(r.echu), nonEchu:ar(r.nonEchu),
     crediteur:ar(r.crediteur||0), nb:r.nb, buckets:buckets.map(x=>ar(r.buckets[x.key]))})),
   synthese:synthPage(bal),
+  // Le regroupement, livré avec les données : la page doit grouper comme la
+  // synthèse, sinon un clic sur « Entreprise » ne retrouverait pas ses lignes.
+  regroupe:REGROUPE,
   // Le trop-perçu, lu par COMPTE CLIENT et non par lettrage. Un règlement non
   // pointé qui fait face à une facture impayée du même compte n'est pas de
   // l'argent en trop : c'est un lettrage à faire. Compter les deux ensemble
