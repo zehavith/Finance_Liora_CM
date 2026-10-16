@@ -561,7 +561,10 @@ function feuilleSommaire(wb,idx,nomDetail){
    ['Balance âgée','Reste dû par type de client et par tranche d’ancienneté. '
      +'Chaque ligne se déplie sur les comptes, puis sur leurs écritures.'],
    ['Par type de financement','Même ventilation, dispositif par dispositif'],
-   [nomDetail,idx.length.toLocaleString('fr-FR')+' écritures, '+D.cols.length
+   // Le nombre de colonnes ANNONCÉ doit être celui de la feuille. Le détail
+   // s'arrête à « N° de rapprochement », à sa demande du 16/10/2026 ; le
+   // sommaire, lui, continuait d'annoncer les 56 colonnes des données.
+   [nomDetail,idx.length.toLocaleString('fr-FR')+' écritures, '+nbColsDetail()
      +' colonnes. Classement, échéance et justification de chaque ligne.'],
   ].forEach(([nom,quoi],i)=>{
     const r=ws.addRow(['',(i+1)+'.  '+nom,'',quoi]);
@@ -920,6 +923,7 @@ function feuilleBalance(wb,niv,idx){
 // illisible et impossible à rapprocher de la balance.
 // La première colonne retirée du classeur. Tout ce qui la suit l'est aussi.
 const COUPE='N° de rapprochement';
+const nbColsDetail=()=>D.cols.indexOf(COUPE)<0?D.cols.length:D.cols.indexOf(COUPE);
 const NUMERIQUES=new Set([...MONNAIE,'Taux d’attribution TVA','Taux de change',
   'Jours de retard','Délai appliqué (jours)']);
 

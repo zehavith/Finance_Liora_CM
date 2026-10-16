@@ -47,8 +47,11 @@
             // suivis ne mesurent pas la même chose — l'un le travail de relance,
             // l'autre le solde du compte — et gardent chacun sa règle.
             gl: { base: 'dateFinFormation', jours: 30 },
-            note: "Date de facture +30 jours, sans dépasser début de formation +30 jours"
-                + " — au grand livre : début de formation",
+            // Le texte imprimé disait encore « date de facture » et « au grand
+            // livre : début de formation » : deux états antérieurs de la règle,
+            // abandonnés l'un après l'autre. Il dit maintenant ce que le calcul
+            // fait — un auditeur qui applique la phrase doit retrouver la date.
+            note: "Fin de formation +30 jours, sans dépasser début de formation +30 jours",
             categorie: 'Corporate', perimetre: 'Corporate',
             // Monday écrit « B2C - Entreprise », le référentiel « BTC-Entreprise ».
             // Les deux graphies désignent la même chose : un particulier dont la
@@ -68,7 +71,7 @@
             fallback: 'dateDebutFormation', fallbackJours: 30,
             plafondDebutFormation: true,
             gl: { base: 'dateFinFormation', jours: 30 },
-            note: 'Date de facture +30 jours',
+            note: 'Fin de formation +30 jours',
             categorie: 'Corporate', perimetre: 'Corporate',
             match: ['corporate alternance', 'corporate-alternance'],
         },
@@ -196,13 +199,13 @@
         },
         {
             key: 'BTC_PERSO', label: 'Financement personnel',
-            // L'apprenant paie de sa poche : l'argent est appelé au démarrage.
-            // Dix jours de battement, le temps que le virement parte — en deçà,
-            // la facture n'est pas en retard et n'a rien à faire en relance.
+            // L'apprenant paie de sa poche : l'argent est appelé au démarrage,
+            // sans délai de battement — son tableau du 14/10/2026 ne lui en
+            // donne pas, et le texte imprimé en annonçait encore dix.
             base: 'dateDebutFormation', jours: 0,
             fallback: 'dateFinFormation', fallbackJours: 0,
-            note: 'Début de formation +10 jours — au grand livre : début de formation, '
-                + 'comme votre colonne « Date d’échéance recalculée »',
+            note: 'Début de formation (aucun délai supplémentaire) — comme votre '
+                + 'colonne « Date d’échéance recalculée »',
             categorie: 'Financement personnel', perimetre: 'B2C',
             // « B2C » employé seul — le groupe « Factures payées B2C » du tableau
             // 0.1, à côté de groupes CPF, AIF, POEI, REGION — désigne le
@@ -229,7 +232,9 @@
         {
             key: 'CPF', label: 'CPF',
             base: 'dateFinFormation', jours: 45,
-            note: 'Fin de formation +60 jours', categorie: 'Étatique', perimetre: 'B2C',
+            // Quarante-cinq jours, son tableau du 14/10/2026 ; le texte imprimé
+            // était resté aux soixante d'un barème qu'elle avait écarté.
+            note: 'Fin de formation +45 jours', categorie: 'Étatique', perimetre: 'B2C',
             match: ['cpf', 'compte personnel de formation', 'edof', 'caisse des depots', 'cdc'],
             gl: { base: 'dateFinFormation', jours: 45 },
         },

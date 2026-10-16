@@ -679,7 +679,11 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
   // une balance qu'on ne peut pas relire n'est pas auditable.
   regles:RG.filter(r=>r.key!=='INCONNU').map(r=>{ const g=r.gl||r; return {
     dispositif:r.label,
-    type:r.categorie||'',
+    // Le même garde-fou que sur la feuille : ses trois types de client, et
+    // rien d'autre. « Alternance » tout court ne dit pas qui paie — l'OPCO,
+    // l'entreprise ou l'alternant — et la table des règles ne doit pas
+    // annoncer un quatrième type que la balance ne publie plus.
+    type:troisTypes(r.categorie||'')||'à compléter',
     perimetre:r.perimetre||'',
     base:(BASES[g.base]||g.base||''),
     jours:(g.jours==null?'':g.jours),
