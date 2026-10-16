@@ -215,6 +215,19 @@ const soldees=GL.classer(GL.facturesToutes(lu)
   {rules:RG, sellsy, factures:factFiliz.concat(datesSeptembre), mandats:MANDATS, referentiel:{}, regles:[], appris});
 const ecr=GL.classerEcritures(plat,cl,soldees,{sellsy,rules:RG});
 const lignesEcr=ecr.lignes||ecr;
+// La répartition au prorata, posée AVANT les compléments : une ligne qu'elle a
+// tranchée à la main ne se redistribue pas, c'est sa décision qui prime.
+{
+  const b=GL.repartirAuProrata(lignesEcr,cl,{rules:RG});
+  console.log('réparties au prorata : '+b.lignes+' écritures sur '+b.comptes+' comptes mixtes'
+    +' · '+b.lignesChangees+' changent de type de financement ('
+    +Math.round(b.euros).toLocaleString('fr-FR')+' €)'
+    +' · '+b.creances+' soldes de compte, dont '+b.creancesChangees+' changent ('
+    +Math.round(b.eurosCreances).toLocaleString('fr-FR')+' €)');
+  for(const x of (b.ecartes||[]))
+    console.log('   compte écarté du prorata : '+x.compte+' — ses factures portent '
+      +x.types.join(' · ')+', qui n’est pas un type de financement à part entière');
+}
 // Le reste des compléments ne vise pas une créance : ce sont des écritures de
 // lots déjà soldés, qui ne pèsent rien dans la balance mais qu'elle a tout de
 // même classées — et que le premier crochet laissait filer. Sa clé est alors
@@ -614,6 +627,43 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
   // avant le tableau des barèmes : une créance sous mandat ne regarde jamais
   // son dispositif. Écrit ici pour qu'on puisse relire une date sans avoir à
   // deviner laquelle des cinq règles a parlé.
+  // ───────── la répartition au prorata ─────────
+  // Sa règle, le 16/10/2026. Livrée avec les données pour que l'onglet
+  // « Règles » et la section « Paramètres » la disent toutes les deux, sans
+  // qu'aucune des deux n'ait à la réécrire.
+  prorata:{
+    titre:'Les paiements qu’aucune facture ne réclame',
+    regle:'Un règlement ou un avoir qui ne nomme aucune facture, sur un compte '
+      +'client dont les factures portent PLUSIEURS types de financement, ne prend '
+      +'plus le type de la première facture venue. Il est réparti au prorata.',
+    etapes:[
+      {rang:'1', quoi:'La clé',
+       dit:'Le nombre de factures de chaque type de financement sur le compte. '
+          +'Cinq factures B2B et quatre B2C-Entreprise donnent 5/9 et 4/9.'},
+      {rang:'2', quoi:'La cible',
+       dit:'La part de chaque type, appliquée au montant total des lignes à répartir.'},
+      {rang:'3', quoi:'L’attribution',
+       dit:'Les lignes sont prises de la plus grosse à la plus petite et attribuées '
+          +'ENTIÈRES au type dont il manque le plus, en euros, pour atteindre sa cible. '
+          +'Aucune ligne ne figure des deux côtés.'},
+      {rang:'4', quoi:'Le départage',
+       dit:'À égalité, le type qui porte le plus de factures, puis le plus gros encours. '
+          +'Jamais l’ordre alphabétique : sur une clé 4/4 il décidait du plus gros '
+          +'règlement du compte.'},
+      {rang:'5', quoi:'Ce qui est écarté',
+       dit:'Un compte dont les factures portent « Alternance » tout court, ou un '
+          +'dispositif non qualifié, n’est pas réparti du tout : le prorata ne '
+          +'choisit pas entre un type valide et un fourre-tout.'},
+    ],
+    limites:'Cette règle ne déplace pas le reste dû des créances d’un lot qui contient '
+      +'des factures : celui-là est déjà réparti sur ces factures au prorata de leur '
+      +'MONTANT, la seule répartition qui laisse chaque facture avec un reste dû '
+      +'cohérent avec son débit. Elle change le type de financement affiché sur les '
+      +'écritures non numérotées, et celui des créances « solde de compte », qui n’ont '
+      +'aucune facture à qui se raccrocher. La colonne « Ce qui l’a décidé » porte la '
+      +'clé, la part visée et la part obtenue : les deux diffèrent dès qu’une ligne est '
+      +'trop grosse pour tenir dans sa part, puisqu’elle ne se coupe pas en deux.',
+  },
   ordreEcheance:[
     {rang:'1', quand:'Le client a un mandat de prélèvement GoCardless',
      alors:'fin de formation, sans délai',

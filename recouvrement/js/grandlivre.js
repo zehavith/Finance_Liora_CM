@@ -2886,12 +2886,211 @@
         return `${(champ || {}).label || r.champ} ${(op || {}).label || r.operateur} « ${r.valeur} »`;
     }
 
+
+    /**
+     * La répartition au prorata.
+     *
+     * Sa règle, le 16/10/2026 : « les paiements que l'on ne sait pas où
+     * classer, j'aimerais que tu les classes au prorata dans chaque type de
+     * financement, sans qu'il y ait des lignes des deux côtés. Exemple :
+     * Stellantis, 5 factures B2B, 4 B2C-Entreprise ; les paiements qu'on
+     * n'arrive pas à classer, s'il y en a 9, on va classer environ 5/9 côté
+     * B2B, en terme de montant. »
+     *
+     * Une écriture qui ne nomme aucune facture, sur un compte qui en porte
+     * plusieurs types, héritait du financement de la première facture de son
+     * lot. Sur un compte à un seul type c'est juste ; sur un compte mixte,
+     * c'est arbitraire — les huit règlements de la DR Pôle Emploi Ile-de-France
+     * étaient tous rangés en AIF alors que le compte porte 210 factures POEI
+     * sur 256.
+     *
+     *  1. La clé est le NOMBRE de factures de chaque type sur le compte.
+     *  2. La cible de chaque type est sa part du montant total à répartir.
+     *  3. Les lignes sont prises de la plus grosse à la plus petite et
+     *     attribuées ENTIÈRES au type dont il manque le plus, en euros, pour
+     *     atteindre sa cible. Aucune ligne n'est coupée entre deux types :
+     *     c'est ce qu'elle demande par « sans lignes des deux côtés ».
+     *  4. À égalité, le type qui porte le plus de factures, puis l'ordre
+     *     alphabétique. La même balance donne deux fois le même résultat.
+     *
+     * Sur un compte à un seul type de financement, rien ne change.
+     *
+     * Ce que la règle NE fait PAS : elle ne touche pas au reste dû des
+     * créances d'un lot qui contient des factures. Celui-là est déjà réparti
+     * sur ces factures au prorata de leur MONTANT — la seule répartition qui
+     * laisse chaque facture avec un reste dû cohérent avec son débit. Elle ne
+     * change donc que deux choses : le type de financement affiché sur une
+     * écriture non numérotée, et celui d'une créance « solde de compte », qui
+     * n'a aucune facture à qui se raccrocher.
+     */
+    // Un type de financement dans lequel le prorata a le droit d'envoyer de
+    // l'argent. « Alternance » tout court n'en est pas un — elle l'a dit le
+    // 15/10/2026 — et un dispositif non qualifié non plus. Un compte dont les
+    // factures en portent un ne se répartit pas du tout : on ne choisit pas
+    // entre un type valide et un fourre-tout, on laisse le classement en place
+    // et on le dit.
+    const HORS_PRORATA = new Set(['ALTERNANCE', 'INCONNU', '']);
+
+    function cleDuCompte(lignes) {
+        // Les factures de chaque compte, comptées par type de financement, et
+        // l'encours qu'elles portent — il sert à départager deux types à
+        // égalité, plutôt que l'ordre alphabétique : sur un compte à clé 4/4,
+        // l'alphabet décidait du plus gros règlement du compte.
+        const parCompte = new Map();
+        for (const l of (lignes || [])) {
+            if (l.nature !== 'facture' || !l.compte || !l.financement) continue;
+            let g = parCompte.get(l.compte);
+            if (!g) { g = new Map(); parCompte.set(l.compte, g); }
+            const x = g.get(l.financement) || { nb: 0, euros: 0 };
+            x.nb++; x.euros += Math.abs(l.debit || 0);
+            g.set(l.financement, x);
+        }
+        const out = new Map(), ecartes = [];
+        for (const [compte, g] of parCompte) {
+            if (g.size < 2) continue;
+            const mauvais = [...g.keys()].filter(f => HORS_PRORATA.has(f));
+            if (mauvais.length) { ecartes.push({ compte, types: mauvais }); continue; }
+            const total = [...g.values()].reduce((a, b) => a + b.nb, 0);
+            out.set(compte, {
+                total,
+                parts: [...g].sort((a, b) => b[1].nb - a[1].nb
+                        || b[1].euros - a[1].euros || (a[0] < b[0] ? -1 : 1))
+                    .map(([fin, x]) => ({ fin, nb: x.nb, euros: x.euros, part: x.nb / total })),
+            });
+        }
+        out.ecartes = ecartes;
+        return out;
+    }
+
+    // Le type qui doit recevoir la prochaine ligne : celui dont il manque le
+    // plus, en euros, pour atteindre sa cible.
+    function quiRecoit(cle, pose, masse) {
+        let choisi = null, manque = -Infinity;
+        for (const p of cle.parts) {
+            const q = p.part * masse - (pose.get(p.fin) || 0);
+            if (q > manque + 1e-9) { manque = q; choisi = p.fin; }
+        }
+        return choisi || (cle.parts[0] && cle.parts[0].fin) || null;
+    }
+
+    // Ce qui a décidé cette ligne : la clé en toutes lettres, la part visée, et
+    // la part réellement obtenue. Les deux diffèrent dès qu'une ligne est trop
+    // grosse pour tenir dans la part de son type — et une ligne ne se coupe
+    // pas en deux, c'est sa règle. Le dire est le seul moyen qu'un écart ne
+    // passe pas pour une erreur de calcul.
+    function phraseDeLaCle(cle, compte, fin, pose, masse) {
+        const p = cle.parts.find(x => x.fin === fin);
+        const obtenue = masse > 0 ? (pose.get(fin) || 0) / masse : 0;
+        const visee = p ? p.part : 0;
+        let t = cle.parts.map(x => x.nb + ' ' + x.fin).join(' · ')
+            + ' — ' + cle.total + ' factures au compte ' + (compte || '')
+            + ' · part visée pour ' + fin + ' : ' + Math.round(visee * 100) + ' %';
+        if (Math.abs(obtenue - visee) >= 0.01) {
+            t += ' · part obtenue : ' + Math.round(obtenue * 100) + ' %'
+               + ' (les lignes ne se coupent pas en deux)';
+        }
+        return t;
+    }
+
+    /**
+     * Répartit les écritures non numérotées d'un compte mixte, et les créances
+     * « solde de compte » qui n'ont aucune facture. Modifie sur place et rend
+     * le compte rendu de ce qui a bougé.
+     */
+    function repartirAuProrata(lignes, creances, o) {
+        const cles = cleDuCompte(lignes);
+        const bilan = { comptes: 0, lignes: 0, lignesChangees: 0, euros: 0,
+                        creances: 0, creancesChangees: 0, eurosCreances: 0,
+                        ecartes: cles.ecartes || [] };
+        if (!cles.size) return bilan;
+
+        // ── les écritures ──
+        const parCompte = new Map();
+        for (const l of (lignes || [])) {
+            if (l.nature !== 'reglement' && l.nature !== 'avoir') continue;
+            if (l.numero) continue;
+            if (l.origineClassement !== 'Hérité de la facture du même lettrage') continue;
+            if (!cles.has(l.compte)) continue;
+            if (!parCompte.has(l.compte)) parCompte.set(l.compte, []);
+            parCompte.get(l.compte).push(l);
+        }
+        for (const [compte, liste] of parCompte) {
+            const cle = cles.get(compte);
+            const mt = l => Math.abs(l.debit || 0) + Math.abs(l.credit || 0);
+            const masse = liste.reduce((s, l) => s + mt(l), 0);
+            if (!(masse > 0)) continue;
+            bilan.comptes++;
+            const pose = new Map(cle.parts.map(p => [p.fin, 0]));
+            // Le tri par montant décroissant, puis par clé de ligne : deux
+            // lignes du même montant doivent se ranger dans le même ordre
+            // d'un mois sur l'autre, sinon le classement danserait tout seul.
+            const tri = liste.slice().sort((a, b) => mt(b) - mt(a)
+                || (String(a.cleGroupe || '') + a.date < String(b.cleGroupe || '') + b.date ? -1 : 1));
+            // Deux passes : on attribue d'abord TOUTES les lignes, puis on
+            // écrit la preuve. La part obtenue ne se connaît qu'à la fin —
+            // l'écrire au fil de l'eau faisait dire « part obtenue : 19 % » à
+            // une ligne dont le type finissait à 82 %.
+            const choix = new Map();
+            for (const l of tri) {
+                const fin = quiRecoit(cle, pose, masse);
+                if (!fin) continue;
+                pose.set(fin, (pose.get(fin) || 0) + mt(l));
+                choix.set(l, fin);
+            }
+            for (const [l, fin] of choix) {
+                bilan.lignes++;
+                if (l.financement !== fin) { bilan.lignesChangees++; bilan.euros += mt(l); }
+                l.financement = fin;
+                l.typeClient = typeDeClient(fin, o) || l.typeClient || null;
+                l.origineClassement = 'Réparti au prorata des factures du compte';
+                l.preuveClassement = phraseDeLaCle(cle, compte, fin, pose, masse);
+            }
+        }
+
+        // ── les créances « solde de compte » : aucune facture dans le lot ──
+        const parCompteC = new Map();
+        for (const c of (creances || [])) {
+            if (c.numero || c.cle) continue;
+            if (!cles.has(c.compte)) continue;
+            if (!parCompteC.has(c.compte)) parCompteC.set(c.compte, []);
+            parCompteC.get(c.compte).push(c);
+        }
+        for (const [compte, liste] of parCompteC) {
+            const cle = cles.get(compte);
+            const masse = liste.reduce((s, c) => s + Math.abs(c.resteDu || 0), 0);
+            if (!(masse > 0)) continue;
+            const pose = new Map(cle.parts.map(p => [p.fin, 0]));
+            const tri = liste.slice().sort((a, b) => Math.abs(b.resteDu || 0) - Math.abs(a.resteDu || 0)
+                || (String(a.lettre || '') < String(b.lettre || '') ? -1 : 1));
+            const choix = new Map();
+            for (const c of tri) {
+                const fin = quiRecoit(cle, pose, masse);
+                if (!fin) continue;
+                pose.set(fin, (pose.get(fin) || 0) + Math.abs(c.resteDu || 0));
+                choix.set(c, fin);
+            }
+            for (const [c, fin] of choix) {
+                bilan.creances++;
+                if (c.financement !== fin) {
+                    bilan.creancesChangees++;
+                    bilan.eurosCreances += Math.abs(c.resteDu || 0);
+                }
+                c.financement = fin;
+                c.typeClient = typeDeClient(fin, o) || c.typeClient || null;
+                c.origineClassement = 'Réparti au prorata des factures du compte';
+                c.preuveClassement = phraseDeLaCle(cle, compte, fin, pose, masse);
+            }
+        }
+        return bilan;
+    }
+
     global.LioraGrandLivre = {
         referentielDepuis, financementDuReferentiel, CHAMPS_REGLE, OPERATEURS, porteeDesMotifs,
         estEntreprise,
         regleCorrespond, financementParRegles, porteeDesRegles, etiquetteRegle,
         A_CLASSER, POOL_NON_LETTRE, MOTIFS_NUMERO, numeroDepuisTexte,
         creancesOuvertes, facturesToutes, referencesVersement, classer, classerEcritures, propositionsRapprochement,
+        repartirAuProrata, cleDuCompte,
         pointageParMois, pointageParFinancement, ecrituresAPlat, balanceAgee, comparer,
         dateDepuisTexte,
         MOTIFS_COMPTE, financementDuLibelle, typeDeClient, SEUIL_POEI,

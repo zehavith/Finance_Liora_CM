@@ -558,8 +558,33 @@ function feuilleRegles(wb){
     l.alignment={vertical:'top',wrapText:true};
     if(z++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
   }
+  prorataRegles(ws);
   provisionRegles(ws);
   lexique(ws);
+}
+
+// La répartition au prorata, écrite là où se lisent les autres règles.
+function prorataRegles(ws){
+  const P=D.prorata; if(!P) return;
+  ws.addRow([]);
+  ws.addRow([String(P.titre||'').toUpperCase()])
+    .font={bold:true,size:12,color:{argb:BLEU}};
+  ws.addRow([P.regle]).font={color:{argb:ENCRE3},size:10};
+  ws.addRow([]);
+  poserEntete(ws,ws.addRow(['','','Ce que dit la règle']));
+  let y=0;
+  for(const x of (P.etapes||[])){
+    const l=ws.addRow([x.rang,x.quoi,x.dit]);
+    l.getCell(1).font={bold:true}; l.getCell(2).font={bold:true};
+    l.alignment={vertical:'top',wrapText:true};
+    if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
+  }
+  if(P.limites){
+    const l=ws.addRow(['','Ce que la règle ne fait pas',P.limites]);
+    l.getCell(2).font={bold:true,color:{argb:'FFA06B14'}};
+    l.getCell(3).font={color:{argb:'FFA06B14'}};
+    l.alignment={vertical:'top',wrapText:true};
+  }
 }
 
 // Le barème de provision du groupe, tel qu'il est appliqué, suivi du
@@ -627,6 +652,12 @@ const LEXIQUE=[
    +'règle. Les autres sources ne servent qu’à choisir laquelle : OPCO, Corporate ou Perso.'],
   ['Numéro FA-880 (alternance)',
    'Même principe pour les numéros FA-880 : ils désignent de l’alternance.'],
+  ['Réparti au prorata des factures du compte',
+   'L’écriture ne nomme aucune facture, et son compte en porte plusieurs types. Elle n’hérite '
+   +'donc pas du premier venu : les lignes du compte sont réparties entre les types au prorata '
+   +'du NOMBRE de factures de chacun, chacune entière. « Ce qui l’a décidé » donne la clé, la '
+   +'part visée et la part obtenue — les deux diffèrent quand une ligne est trop grosse pour '
+   +'tenir dans sa part, puisqu’elle ne se coupe pas en deux.'],
   ['Complété à la main dans la balance publiée',
    'Vous avez tranché cette créance vous-même dans la page. Votre décision prime sur toute règle, '
    +'et la date de votre choix est écrite dans « Ce qui l’a décidé ».'],
