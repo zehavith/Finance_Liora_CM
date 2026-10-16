@@ -112,7 +112,7 @@ function ruban(){
   ];
   // Zéro écriture à compléter : la tuile n'a plus rien à dire et quitte le
   // tableau de bord. Ce qui a été complété se lit dans le filtre et dans la
-  // colonne « Classé par ».
+  // colonne « Origine du classement ».
   if(aC) tuiles.push(['À compléter',aC.toLocaleString('fr-FR')+' écritures',
     compl.size?(compl.size.toLocaleString('fr-FR')+' complétée'+(compl.size>1?'s':'')+' par vous'):"dont on n'est pas sûr"]);
   // La provision, telle que le barème du groupe la calcule sur cette balance.
@@ -230,8 +230,12 @@ const esc=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/"/g,'&quot;').r
 // créances qui le composent. Le compte rendu redonne le montant et le nombre
 // de créances — s'il ne retombe pas sur la case cliquée, c'est que le filtre
 // est faux, et cela doit se voir.
-function ouvrir(cat,tr){
-  zoom={niveau:niveau, cat:cat||'', tr:tr||''};
+// Le niveau est passé explicitement depuis la vue « à provisionner », qui lit
+// par type de financement quel que soit l'onglet actif. `prov` restreint aux
+// créances qui portent réellement une provision : cliquer un montant à
+// provisionner doit rendre les lignes qui le composent, et elles seules.
+function ouvrir(cat,tr,niv,prov){
+  zoom={niveau:niv||niveau, cat:cat||'', tr:tr||'', prov:!!prov};
   E('fac').value=''; E('fcat').value=''; E('ftr').value='';
   appliquer();
   E('viewport').scrollIntoView({behavior:'smooth',block:'center'});
@@ -296,6 +300,8 @@ function appliquer(garderPlace){
       if(zoom.tr==='(échu)'){ if(trc==='Non échu'||!trc) return false; }
       else if(zoom.tr==='(non échu)'){ if(trc!=='Non échu') return false; }
       else if(zoom.tr && trc!==zoom.tr) return false;
+      if(zoom.prov && !(provisionDe(N(i,'Reste dû de la créance'),sousVraie(i),trc)>0))
+        return false;
     }
     if(c && V(i,'Type de financement')!==c) return false;
     if(t && V(i,'Tranche d’ancienneté')!==t) return false;
@@ -366,12 +372,17 @@ function appliquer(garderPlace){
   // cliquée, sans quoi le rapprochement entre la synthèse et le détail est faux.
   E('zoom').hidden=!zoom;
   if(zoom){
-    const vues=new Set(); let euros=0;
+    const vues=new Set(); let euros=0, prov=0;
     for(const i of filtre){ const k=V(i,'Clé de la créance');
-      if(!k||vues.has(k)) continue; vues.add(k); euros+=N(i,'Reste dû de la créance'); }
-    E('zoom-quoi').textContent=(zoom.cat||'Toute la balance')
+      if(!k||vues.has(k)) continue; vues.add(k);
+      const rd=N(i,'Reste dû de la créance'); euros+=rd;
+      if(zoom.prov) prov+=provisionDe(rd,sousVraie(i),
+        V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté')); }
+    E('zoom-quoi').textContent=(zoom.prov?'À provisionner · ':'')
+      +(zoom.cat||'Toute la balance')
       +(zoom.tr?' · '+(zoom.tr==='(échu)'?'échu':zoom.tr==='(non échu)'?'non échu':zoom.tr):'');
-    E('zoom-montant').textContent=eur(euros)+' · '+vues.size.toLocaleString('fr-FR')
+    E('zoom-montant').textContent=(zoom.prov?eur(prov)+' provisionnés sur ':'')
+      +eur(euros)+' · '+vues.size.toLocaleString('fr-FR')
       +(vues.size>1?' créances':' créance');
   }
   E('cale').style.height=(filtre.length*30)+'px';
@@ -397,7 +408,7 @@ function dessiner(){
         +(c?' <span class="puce ok">complété</span>':'')+'</div>'
       +'<div class="num">'+(N(i,'Débit')?eur(N(i,'Débit')):'')+'</div>'
       +'<div class="num">'+(N(i,'Crédit')?eur(N(i,'Crédit')):'')+'</div>'
-      +'<div class="mono">'+V(i,"Date d'échéance recalculée")+'</div>'
+      +'<div class="mono">'+V(i,'Date d’échéance recalculée')+'</div>'
       +'<div>'+(c?c.dispositif:V(i,'Type de financement'))+'</div></div>';
   }
   E('cale').innerHTML=h;
@@ -450,7 +461,8 @@ function poserTotal(l){
 // complet dont il manquerait des lignes.
 function filtresEnCours(){
   const p=[];
-  if(zoom) p.push('montant ouvert : '+(zoom.cat||'toute la balance')
+  if(zoom) p.push((zoom.prov?'montant à provisionner ouvert : ':'montant ouvert : ')
+    +(zoom.cat||'toute la balance')
     +(zoom.tr?' · '+(zoom.tr==='(échu)'?'échu':zoom.tr==='(non échu)'?'non échu':zoom.tr):''));
   const q=E('q').value.trim(); if(q) p.push('recherche « '+q+' »');
   if(E('fcat').value) p.push('type de financement : '+E('fcat').value);
@@ -651,13 +663,14 @@ function provisionRegles(ws){
 // de la facture du même lettrage » ne se devine pas. Posé à partir de la
 // colonne F, à sa demande du 15/10/2026.
 const LEXIQUE=[
-  ['« Classé par » — par quel chemin la ligne a reçu sa catégorie', null],
+  ['« Origine du classement » — par quel chemin la ligne a reçu son type de financement', null],
   ['Facture citée par la ligne',
    'L’écriture nomme elle-même un numéro de facture, dans son libellé ou sa pièce. '
-   +'Elle prend la catégorie de cette facture. La colonne « Ce qui l’a décidé » donne le numéro suivi.'],
+   +'Elle prend le type de financement de cette facture. La colonne « Justificatif du classement » '
+   +'donne le numéro suivi.'],
   ['Hérité de la facture du même lettrage',
    'L’écriture ne porte aucun numéro — un virement, un avoir, un report. Le lettrage la rattache '
-   +'à une facture du même compte : elle en prend la catégorie. C’est le cas de plus de la moitié '
+   +'à une facture du même compte : elle en prend le type de financement. C’est le cas de plus de la moitié '
    +'des lignes, qui n’auraient sinon aucun classement.'],
   ['Facture Filiz : alternance',
    'Le numéro commence par FCT-FILIZ. C’est de l’alternance, sans exception et avant toute autre '
@@ -667,14 +680,14 @@ const LEXIQUE=[
   ['Réparti au prorata des factures du compte',
    'L’écriture ne nomme aucune facture, et son compte en porte plusieurs types. Elle n’hérite '
    +'donc pas du premier venu : les lignes du compte sont réparties entre les types au prorata '
-   +'du NOMBRE de factures de chacun, chacune entière. « Ce qui l’a décidé » donne la clé, la '
+   +'du NOMBRE de factures de chacun, chacune entière. « Justificatif du classement » donne la clé, la '
    +'part visée et la part obtenue — les deux diffèrent quand une ligne est trop grosse pour '
    +'tenir dans sa part, puisqu’elle ne se coupe pas en deux.'],
   ['Complété à la main dans la balance publiée',
    'Vous avez tranché cette créance vous-même dans la page. Votre décision prime sur toute règle, '
-   +'et la date de votre choix est écrite dans « Ce qui l’a décidé ».'],
+   +'et la date de votre choix est écrite dans « Justificatif du classement ».'],
   [null, null],
-  ['« Motif particulier » — pourquoi la date sort du barème', null],
+  ['« Exception appliquée » — pourquoi la date sort du barème', null],
   ['Mandat de prélèvement en place',
    'Le client est prélevé par GoCardless. L’échéance est la fin de formation, sans délai : on '
    +'n’accorde pas de délai de paiement à qui est prélevé automatiquement. Cette règle passe avant toutes les autres.'],
@@ -692,17 +705,17 @@ const LEXIQUE=[
   ['dispositif à qualifier — dernière date du libellé, sinon la date d’enregistrement',
    'La créance n’est pas classée, mais elle garde une date pour ne pas disparaître de la balance âgée.'],
   [null, null],
-  ['« Base retenue » — la date sur laquelle le calcul s’appuie', null],
+  ['« Base de calcul retenue » — la date sur laquelle le calcul s’appuie', null],
   ['fin de formation · début de formation',
    'Les dates portées par la facturation. C’est sur elles que le barème de chaque dispositif compte.'],
   ['date de facture · date de facture de la facturation',
    'La première est celle de l’écriture comptable, la seconde celle que porte Sellsy ou Zoho. '
    +'C’est la seconde qui sert à l’exception « facture postérieure à la fin de formation ».'],
   ['dernière date du libellé, sinon date d’enregistrement',
-   'Le repli, quand la base du barème est absente. La colonne « Branche du repli » dit laquelle '
+   'Le repli, quand la base du barème est absente. La colonne « Repli appliqué » dit laquelle '
    +'des deux a parlé : « libellé » ou « enregistrement ».'],
   [null, null],
-  ['« Origine de la date »', null],
+  ['« Origine de l’échéance »', null],
   ['Règle',
    'La date vient du barème ou d’une de ses exceptions — donc d’un calcul qu’on peut refaire.'],
   ['Grand livre',
@@ -867,26 +880,34 @@ function feuilleBalance(wb,niv,idx){
 // Ce qui doit arriver dans Excel comme un NOMBRE, et rien d'autre. Un numéro
 // de compte n'est pas un nombre : « 4110600400000 » devenait « 4,1106E+12 »,
 // illisible et impossible à rapprocher de la balance.
+// La première colonne retirée du classeur. Tout ce qui la suit l'est aussi.
+const COUPE='N° de rapprochement';
 const NUMERIQUES=new Set([...MONNAIE,'Taux d’attribution TVA','Taux de change',
-  'Nb jours échus recalculée','Délai appliqué (jours)']);
+  'Jours de retard','Délai appliqué (jours)']);
 
 function feuilleDetail(wb,idx,nom){
   const ws=wb.addWorksheet(nom);
   // La première colonne reprend mot pour mot l'étiquette de la balance :
   // « 411C103129000 - Lorik Carrier ». Un filtre sur cette colonne donne les
   // écritures du compte qu'on vient de lire, sans rien reconstruire à la main.
+  // Les colonnes de travail de la page ne vont pas dans le classeur. Sa
+  // demande du 16/10/2026 : « retire les colonnes de l'export à partir de la
+  // colonne AW ». Ce sont les propositions de rapprochement et les attributs
+  // de la créance, dont la page a besoin pour calculer mais qui n'ont rien à
+  // faire dans un document qu'on relit.
+  const COLS=D.cols.slice(0,D.cols.indexOf(COUPE)<0?D.cols.length:D.cols.indexOf(COUPE));
   ws.columns=[{header:'Compte - Client',width:46},
-    ...D.cols.map(c=>({header:c,width:Math.min(42,Math.max(13,c.length+3))}))];
+    ...COLS.map(c=>({header:c,width:Math.min(42,Math.max(13,c.length+3))}))];
   poserEntete(ws,ws.getRow(1));
   // 16 080 lignes : on écrit les valeurs d'un bloc et on ne pose la mise en
   // forme que sur les colonnes, pas sur chaque cellule — sans quoi le
   // navigateur passerait une minute à fabriquer 884 000 objets de style.
   ws.addRows(idx.map(i=>[
     V(i,'N° de compte')+' - '+(V(i,'Libellé de compte')||V(i,'Tiers')),
-    ...D.cols.map(c=>{ const v=V(i,c);
+    ...COLS.map(c=>{ const v=V(i,c);
       return (NUMERIQUES.has(c)&&NOMBRE.test(v))?Number(v):v; })]));
-  D.cols.forEach((c,j)=>{ if(MONNAIE.has(c)) ws.getColumn(j+2).numFmt=EUROS; });
-  ws.autoFilter={from:{row:1,column:1},to:{row:1,column:D.cols.length+1}};
+  COLS.forEach((c,j)=>{ if(MONNAIE.has(c)) ws.getColumn(j+2).numFmt=EUROS; });
+  ws.autoFilter={from:{row:1,column:1},to:{row:1,column:COLS.length+1}};
 }
 
 async function classeur(idx,nomDetail){
@@ -1175,7 +1196,7 @@ function indexRappro(){
 
 function fiche(i){
   const g=n=>V(i,n), k=cleLigne(i), c=compl.get(k), ac=g('À compléter')&&!c;
-  const cal=g('Calcul'), m=metaCreance.get(g('Clé de la créance'));
+  const cal=g('Détail du calcul'), m=metaCreance.get(g('Clé de la créance'));
   let h='<div class="fiche-tete"><span class="ref">'+(g('N° de facture')||'écriture sans numéro')+'</span>'
     +'<span>'+g('Tiers')+'</span>'
     +'<span class="puce'+(ac?' sig':' ok')+'">'
@@ -1203,8 +1224,8 @@ function fiche(i){
     h+='</div>';
   }
   if(cal) h+='<p class="calcul">'+cal
-    +(g('Motif particulier')?'<br><span style="color:var(--encre-2)">motif : '+g('Motif particulier')+'</span>':'')
-    +(g('Pourquoi pas le barème')?'<br><span style="color:var(--encre-2)">'+g('Pourquoi pas le barème')+'</span>':'')
+    +(g('Exception appliquée')?'<br><span style="color:var(--encre-2)">motif : '+g('Exception appliquée')+'</span>':'')
+    +(g('Motif de l’écart au barème')?'<br><span style="color:var(--encre-2)">'+g('Motif de l’écart au barème')+'</span>':'')
     +'</p>';
   h+='<div class="champs">';
   for(const nom of D.cols){
@@ -1414,7 +1435,10 @@ function vueProvision(){
   const trTot=new Map();
   for(const x of liste) for(const [t,v] of x.tr) trTot.set(t,(trTot.get(t)||0)+v);
 
-  const cell=v=>'<td class="n">'+(v?eurC(v):'·')+'</td>';
+  const cell=(v,sc,tr)=>v
+    ? '<td class="n ouvrable" data-sc="'+esc(sc)+'" data-tr="'+esc(tr||'')+'"'
+      +' title="Voir les lignes">'+eurC(v)+'</td>'
+    : '<td class="n">·</td>';
   const pct=v=>!total?'·':(v/total*100).toLocaleString('fr-FR',
     {minimumFractionDigits:1,maximumFractionDigits:1})+' %';
   let h='<table id="prov-table"><thead><tr>'
@@ -1425,17 +1449,22 @@ function vueProvision(){
   for(const g of liste){
     h+='<tr><td>'+esc(g.sc)+'</td><td>'+esc(g.cat)+'</td>'
       +'<td class="n">'+eurC(g.rd)+'</td>'
-      +'<td class="n prov">'+(g.prov?eurC(g.prov):'·')+'</td>'
+      +(g.prov?('<td class="n prov ouvrable" data-sc="'+esc(g.sc)+'" data-tr=""'
+          +' title="Voir les lignes">'+eurC(g.prov)+'</td>'):'<td class="n prov">·</td>')
       +'<td class="n">'+(g.prov?pct(g.prov):'·')+'</td>'
-      +D.tranches.map(t=>cell(g.tr.get(t)||0)).join('')
+      +D.tranches.map(t=>cell(g.tr.get(t)||0,g.sc,t)).join('')
       +'<td class="n">·</td><td class="n">'+g.nb.toLocaleString('fr-FR')+'</td></tr>';
   }
   h+='<tr class="total"><td>TOTAL</td><td></td><td class="n">'+eurC(rdTot)+'</td>'
-    +'<td class="n prov">'+eurC(total)+'</td><td class="n">100,0 %</td>'
-    +D.tranches.map(t=>cell(trTot.get(t)||0)).join('')
+    +'<td class="n prov ouvrable" data-sc="" data-tr="" title="Voir les lignes">'
+      +eurC(total)+'</td><td class="n">100,0 %</td>'
+    +D.tranches.map(t=>cell(trTot.get(t)||0,'',t)).join('')
     +'<td class="n">·</td><td class="n">'+nbTot.toLocaleString('fr-FR')+'</td></tr>'
     +'</tbody></table>';
   cible.innerHTML=h;
+  // Un clic sur un montant à provisionner rend les lignes qui le composent.
+  for(const td of cible.querySelectorAll('td.ouvrable'))
+    td.addEventListener('click',()=>ouvrir(td.dataset.sc,td.dataset.tr,'sous',true));
 }
 
 </script>

@@ -199,8 +199,8 @@ const aCompleter=c=>{
   // reste écrite sur la ligne ; elle n'est pas signalée comme une lacune.
   if(c.sansNumero) return '';
   // L'échéance de repli est la deuxième branche de la règle, pas un défaut :
-  // ce qui l'a produite reste dans « Origine de la date », « Branche de
-  // l'échéance 1 » et « Pourquoi pas le barème », mais elle n'est plus signalée.
+  // ce qui l'a produite reste dans « Origine de l’échéance », « Branche de
+  // l'échéance 1 » et « Motif de l’écart au barème », mais elle n'est plus signalée.
   if(c.echeanceOrigine==='Grand livre') return '';
   return ''; };
 const retard=c=>{ const b=c.dateEcheance||c.dateFacture; return b?R.diffDays(REF,b):null; };
@@ -415,27 +415,27 @@ for(let i=0;i<plat.length;i++){
     // qu'elle a complétée à la main portait « Hérité de la facture du même
     // lettrage » : la balance appliquait bien son choix, mais la ligne ne le
     // disait plus — 15 décisions sur 34 devenaient invisibles à l'audit.
-    'Classé par':(src.origineClassement||'').startsWith('Complété à la main')
+    'Origine du classement':(src.origineClassement||'').startsWith('Complété à la main')
       ? src.origineClassement : (e.origineClassement||src.origineClassement||''),
-    'Ce qui l’a décidé':(src.origineClassement||'').startsWith('Complété à la main')
+    'Justificatif du classement':(src.origineClassement||'').startsWith('Complété à la main')
       ? (src.preuveClassement||'') : (e.preuveClassement||src.preuveClassement||''),
     'Facture rattachée':src.numero||'',
     // ── l'échéance, justifiée ──
     '— ÉCHÉANCE —':'',
     'Date d’échéance du grand livre':fr(src.dateEcheanceGrandLivre),
-    'Date d\'échéance recalculée':fr(src.dateEcheance),
-    'Nb jours échus recalculée':retard(src)==null?'':retard(src),
+    'Date d’échéance recalculée':fr(src.dateEcheance),
+    'Jours de retard':retard(src)==null?'':retard(src),
     'Tranche d’ancienneté':tranche(src),
-    'Barème du dispositif':bareme(src),
-    'Base retenue':src.echeanceBase?(BASES[src.echeanceBase]||src.echeanceBase):'',
-    'Valeur de la base':fr(valeurBase(src)),
+    'Barème appliqué':bareme(src),
+    'Base de calcul retenue':src.echeanceBase?(BASES[src.echeanceBase]||src.echeanceBase):'',
+    'Date de la base retenue':fr(valeurBase(src)),
     'Délai appliqué (jours)':src.echeanceJours==null?'':src.echeanceJours,
-    'Calcul':calcul(src),
-    'Origine de la date':src.echeanceOrigine||(src.dateEcheance?'':'aucune'),
-    'Branche du repli':src.echeance1Source||e.echeance1Source||'',
-    'Motif particulier':src.echeanceMotif||'',
-    'Pourquoi pas le barème':pourquoiPas(src),
-    'Date de debut de formation':fr(src.dateDebutFormation),
+    'Détail du calcul':calcul(src),
+    'Origine de l’échéance':src.echeanceOrigine||(src.dateEcheance?'':'aucune'),
+    'Repli appliqué':src.echeance1Source||e.echeance1Source||'',
+    'Exception appliquée':src.echeanceMotif||'',
+    'Motif de l’écart au barème':pourquoiPas(src),
+    'Date de début de formation':fr(src.dateDebutFormation),
     'Date de fin de formation':fr(src.dateFinFormation),
     'Date de facture (facturation)':fr(src.dateFactureFacturation),
     // Une créance que la balance compte dans « À classer » doit pouvoir être
@@ -450,8 +450,8 @@ for(let i=0;i<plat.length;i++){
           ? 'à compléter — dispositif de la créance à qualifier' : ''),
     'N° de rapprochement':(rappro.get(l)||[]).join(' · '),
     'Proposition de rapprochement':(parLigne.get(l)||{}).quoi||'',
-    'Certitude du rapprochement':(parLigne.get(l)||{}).force||'',
-    'Pourquoi ce rapprochement':(parLigne.get(l)||{}).raison||'',
+    'Fiabilité du rapprochement':(parLigne.get(l)||{}).force||'',
+    'Justificatif du rapprochement':(parLigne.get(l)||{}).raison||'',
     'Reste dû de la créance':propre?ar(propre.resteDu):'',
     // La sous-catégorie et la tranche DE LA CRÉANCE, et non celles que la
     // ligne affiche. Les deux diffèrent : quand la créance n'est pas classée,
@@ -487,17 +487,17 @@ const ligneCreance=c=>({
   'Identifiant du tiers':c.identifiantTiers||'', 'Lettrage':c.lettre||'', 'SIREN':c.siren||'',
   'Nature':c.sansNumero?'Solde sans facture':'Facture',
   'Type de client':c.typeClient||R.categorieDe(c.financement,RG)||'', 'Type de financement':lab(c.financement),
-  'Classé par':c.origineClassement||'', 'Ce qui l’a décidé':c.preuveClassement||'',
+  'Origine du classement':c.origineClassement||'', 'Justificatif du classement':c.preuveClassement||'',
   'Montant facture':ar(c.montant), 'Restant dû':ar(c.resteDu),
   'Date de facture':fr(c.dateFacture), 'Début de formation':fr(c.dateDebutFormation),
   'Fin de formation':fr(c.dateFinFormation), 'Date de facture (facturation)':fr(c.dateFactureFacturation),
   'Échéance du grand livre':fr(c.dateEcheanceGrandLivre),
-  'Barème du dispositif':bareme(c), 'Base retenue':c.echeanceBase?(BASES[c.echeanceBase]||c.echeanceBase):'',
-  'Valeur de la base':fr(valeurBase(c)), 'Délai appliqué (jours)':c.echeanceJours==null?'':c.echeanceJours,
-  'Échéance recalculée':fr(c.dateEcheance), 'Calcul':calcul(c),
-  'Origine de la date':c.echeanceOrigine||'', 'Branche du repli':c.echeance1Source||'',
-  'Motif particulier':c.echeanceMotif||'',
-  'Pourquoi pas le barème':pourquoiPas(c),
+  'Barème appliqué':bareme(c), 'Base de calcul retenue':c.echeanceBase?(BASES[c.echeanceBase]||c.echeanceBase):'',
+  'Date de la base retenue':fr(valeurBase(c)), 'Délai appliqué (jours)':c.echeanceJours==null?'':c.echeanceJours,
+  'Échéance recalculée':fr(c.dateEcheance), 'Détail du calcul':calcul(c),
+  'Origine de l’échéance':c.echeanceOrigine||'', 'Repli appliqué':c.echeance1Source||'',
+  'Exception appliquée':c.echeanceMotif||'',
+  'Motif de l’écart au barème':pourquoiPas(c),
   'Jours de retard':retard(c)==null?'':retard(c), 'Tranche':tranche(c),
   'Libellé de l’écriture':c.libelle||'', 'Journal':c.journal||'',
 });
@@ -665,7 +665,7 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
       +'MONTANT, la seule répartition qui laisse chaque facture avec un reste dû '
       +'cohérent avec son débit. Elle change le type de financement affiché sur les '
       +'écritures non numérotées, et celui des créances « solde de compte », qui n’ont '
-      +'aucune facture à qui se raccrocher. La colonne « Ce qui l’a décidé » porte la '
+      +'aucune facture à qui se raccrocher. La colonne « Justificatif du classement » porte la '
       +'clé, la part visée et la part obtenue : les deux diffèrent dès qu’une ligne est '
       +'trop grosse pour tenir dans sa part, puisqu’elle ne se coupe pas en deux.',
   },

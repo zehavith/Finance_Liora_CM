@@ -43,15 +43,25 @@
 body{background:var(--fond);color:var(--encre);font-family:var(--texte);margin:0;
   font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
 .enveloppe{padding-inline:16px;padding-block:24px 48px;max-width:1500px;margin:0 auto}
-h1{font-family:var(--titre);font-size:clamp(22px,3.4vw,30px);margin:0;letter-spacing:-.01em;text-wrap:balance}
+/* Le trait corail sous le titre : la marque Liora se voit en un coup d'œil,
+   sans qu'un aplat sombre vienne gêner la lecture ou l'impression. */
+h1{font-family:var(--titre);font-size:clamp(22px,3.4vw,30px);margin:0;letter-spacing:-.01em;
+  text-wrap:balance;padding-bottom:10px;position:relative}
+h1::after{content:'';position:absolute;left:0;bottom:0;width:72px;height:3px;
+  border-radius:2px;background:var(--corail)}
+/* Les titres de section portent le même trait, en plus discret. */
+h2{font-family:var(--titre);font-size:17px;font-weight:600;margin:34px 0 10px;
+  padding-left:11px;border-left:3px solid var(--corail);line-height:1.3}
 .sous{color:var(--encre-2);margin:6px 0 0;font-size:13px}
 .telech{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:16px}
+/* Le fond du bouton est l'encre, donc son texte doit être la carte : un #fff
+   en dur devenait blanc sur blanc en thème sombre, où l'encre est claire. */
 .telech button{font:inherit;font-size:13px;font-weight:500;color:var(--carte);
-  background:var(--accent);border:1px solid var(--accent);border-radius:6px;
+  background:var(--encre);border:1px solid var(--encre);border-radius:6px;
   padding:8px 14px;cursor:pointer}
 .telech button:hover{filter:brightness(1.1)}
 .telech button:disabled{opacity:.5;cursor:default}
-.telech button+button{color:var(--accent);background:transparent}
+.telech button+button{color:var(--encre);background:transparent;border-color:var(--trait-fort)}
 .dl-note{font-size:12px;color:var(--encre-2)}
 .ruban{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
 .tuile{flex:1 1 180px;min-width:0;background:var(--carte);border:1px solid var(--trait);
@@ -60,7 +70,7 @@ h1{font-family:var(--titre);font-size:clamp(22px,3.4vw,30px);margin:0;letter-spa
 .tuile .val{font-family:var(--chiffre);font-variant-numeric:tabular-nums;font-size:clamp(17px,2.4vw,21px);
   font-weight:500;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tuile .note{font-size:11.5px;color:var(--encre-2);margin-top:3px}
-h2{font-family:var(--titre);font-size:17px;margin:34px 0 10px;font-weight:600}
+
 .bloc{background:var(--carte);border:1px solid var(--trait);border-radius:8px;overflow:hidden}
 .defil{overflow-x:auto}
 table{border-collapse:collapse;width:100%;font-size:12.5px}

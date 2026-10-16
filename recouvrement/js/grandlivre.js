@@ -124,7 +124,7 @@
         debitDevise:  ['debit en devise d origine', 'debit en devise'],
         creditDevise: ['credit en devise d origine', 'credit en devise'],
         tauxTva:      ['taux d attribution tva', 'taux de tva'],
-        nbJoursEchus: ['nb jours echus'],
+        nbJoursEchus: ['jours de retard', 'nb jours echus'],
         avoirApparente: ['n de l avoir apparente', 'numero de l avoir apparente'],
         commentaire:  ['commentaire'],
         statutSellsy: ['statut sellsy'],
