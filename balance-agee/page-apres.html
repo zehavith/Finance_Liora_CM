@@ -182,9 +182,13 @@ function synthese(){
     .filter(s=>!(s.cat==='À classer' && !s.nb && Math.abs(s.total)<0.005));
   let h='<thead><tr><th>'+(niveau==='cat'?'Type de client':'Type de financement')
     +'</th><th class="n">Reste dû</th><th class="n">Échu</th>'
+    +'<th class="n">À provisionner</th>'
     +tr.map(x=>'<th class="n">'+x+'</th>').join('')
     +'<th class="n">Non échu</th><th class="n">Créances</th>'
     +'<th class="n">Part</th></tr></thead><tbody>';
+  // Le montant à provisionner de chaque ligne, à sa demande du 16/10/2026.
+  const prov=provisionParCategorie(niveau);
+  const provTotal=[...prov.values()].reduce((a,b)=>a+b,0);
   // La part du NOMBRE de créances, pas du montant : sa règle, le 16/10/2026,
   // « 3 324 créances en B2C : 3 324 / 5 525 ». Le dénominateur est le total
   // affiché, compléments compris, pour que la colonne somme bien à 100 %.
@@ -200,6 +204,9 @@ function synthese(){
     h+='<tr'+(s.cat==='TOTAL'?' class="total"':'')+'><td>'+s.cat+'</td>'
       +cell(s.total,cat,'',eurC(s.total))
       +cell(s.echu,cat,'(échu)',eurC(s.echu))
+      +'<td class="n prov" title="Barème de provision du groupe — voir Paramètres, en bas de page">'
+        +(()=>{ const v=s.cat==='TOTAL'?provTotal:(prov.get(s.cat)||0);
+                return v?eurC(v):'·'; })()+'</td>'
       +s.buckets.map((b,j)=>cell(b,cat,tr[j],b?eurC(b):'·')).join('')
       +cell(s.nonEchu,cat,'(non échu)',eurC(s.nonEchu))
       +cell(s.nb,cat,'',s.nb.toLocaleString('fr-FR'))
@@ -966,6 +973,22 @@ function provisionDe(rd, sc, tr){
   if(j<0) return 0;
   const fam=familleDe(sc); if(!fam) return 0;
   return rd*(((PROV.taux||{})[fam]||[])[j]||0);
+}
+
+// La provision par ligne de synthèse, au niveau de lecture courant. Elle suit
+// les compléments comme le reste : la famille vient de sousVraie() et la ligne
+// de categorieDe(), qui tiennent compte des décisions prises dans la page.
+function provisionParCategorie(niv){
+  const m=new Map(), vues=new Set();
+  for(const i of I){
+    const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
+    const p=provisionDe(N(i,'Reste dû de la créance'), sousVraie(i),
+      V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté'));
+    if(!p) continue;
+    const c=categorieDe(i,niv);
+    m.set(c,(m.get(c)||0)+p);
+  }
+  return m;
 }
 
 // La provision, créance par créance : le reste dû multiplié par le taux de sa

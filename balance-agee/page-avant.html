@@ -160,6 +160,12 @@ input[type=search]{flex:1 1 220px}
   .lig>div:nth-child(7),.ent>div:nth-child(7){display:none}
 }
 /* Un montant de la balance s'ouvre sur ses propres lignes. */
+/* La provision se lit à côté du reste dû et de l'échu : c'est un chiffre de
+   tête, pas une colonne de queue. Elle se distingue des tranches, qui sont
+   la ventilation du même argent. */
+#synthese td.prov,#synthese th:nth-child(4){color:var(--alerte)}
+#synthese td.prov{border-right:1px solid var(--trait-fort)}
+#synthese th:nth-child(4){border-right:1px solid var(--trait-fort)}
 #synthese td.ouvrable{cursor:pointer}
 #synthese td.ouvrable:hover{background:var(--accent-doux);box-shadow:inset 0 0 0 1px var(--trait-fort)}
 .zoom{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 10px;
@@ -312,10 +318,6 @@ input[type=search]{flex:1 1 220px}
   </section>
 
   <div class="pied">
-    <p><strong>Comment lire la justification.</strong> Chaque ligne porte le barème de son dispositif, la base retenue et sa valeur, le délai réellement appliqué, et le calcul en toutes lettres. Le barème et le délai appliqué peuvent différer : sous mandat de prélèvement le délai est nul, une refacturation après formation ajoute 60 jours quel que soit le dispositif, et le repli sur l'échéance du grand livre n'ajoute rien.</p>
-    <p><strong>« À compléter »</strong> signale une ligne dont on n'est pas sûr, avec ce qui manque : un dispositif à qualifier, aucune date calculable, un solde sans facture, ou la date absente qui a forcé le repli.</p>
-  <p><strong>Compléter une ligne.</strong> Ouvrez-la : un dispositif se choisit sur place. La créance quitte aussitôt « À classer » pour le type de financement retenu — le total ne bouge pas, seul le classement change — et le choix est gardé, avec sa date, pour la prochaine balance.</p>
-  <p><strong>Les propositions de rapprochement</strong> s'affichent par couples : la facture au débit, puis le règlement au crédit qui la solderait. Rien n'est pointé — c'est une proposition, avec la raison qui l'a produite.</p>
     <p id="pied-src"></p>
   </div>
 </div>

@@ -2472,16 +2472,20 @@
             // Un règlement sans facture dans son lettrage, mais qui cite une
             // facture Filiz, relève de l'alternance comme elle.
             if (!source && /filiz/i.test((l.numero || '') + ' ' + (l.libelle || ''))) {
-                source = { financement: 'CORPORATE_ALTERNANCE', typeClient: 'Alternance',
+                source = { financement: 'CORPORATE_ALTERNANCE', typeClient: null,
                            origineClassement: 'Facture Filiz : alternance',
                            preuveClassement: l.numero || 'mention « Filiz »',
                            dateEcheance: null, echeanceBase: '', echeanceMotif: '', numero: l.numero || '' };
             }
             // Un numéro « FA-880 » vaut alternance, ici aussi : l'écriture
             // suit la facture qu'elle porte.
+            // Le test porte sur le DISPOSITIF, pas sur sa catégorie : les
+            // catégories sont à elle et elle les a refondues le 16/10/2026 —
+            // l'alternance se répartit désormais entre Corporate, Étatique et
+            // Financement personnel. Un test sur la catégorie aurait écrasé
+            // sans bruit le classement d'une facture déjà en alternance.
             if (/^fa-?880/i.test(String(l.numero || '').trim())
-                && !(source && source.financement
-                     && (R.getRule(source.financement, sources && sources.rules) || {}).categorie === 'Alternance')) {
+                && !(source && ALTERNANCES.has(source.financement))) {
                 source = { financement: 'ALTERNANCE', typeClient: null,
                            origineClassement: 'Numéro FA-880 (alternance)',
                            preuveClassement: l.numero,
@@ -2930,6 +2934,12 @@
     // entre un type valide et un fourre-tout, on laisse le classement en place
     // et on le dit.
     const HORS_PRORATA = new Set(['ALTERNANCE', 'INCONNU', '']);
+
+    // Les dispositifs d'alternance, quelle que soit la catégorie qui les
+    // porte. Ils changent de catégorie quand elle refond son classement ;
+    // leurs clés, non.
+    const ALTERNANCES = new Set(['ALTERNANCE', 'CORPORATE_ALTERNANCE',
+                                 'OPCO_ALTERNANCE', 'PERSO_ALTERNANCE']);
 
     function cleDuCompte(lignes) {
         // Les factures de chaque compte, comptées par type de financement, et

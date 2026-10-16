@@ -526,7 +526,12 @@ const add=(nom,rows)=>{
 // Le premier onglet est la balance âgée telle que vous la lisez : par type de
 // client — B2C, B2C - Entreprise, B2B, POEI, Alternance, Interco. Les
 // sous-catégories viennent ensuite, puis le détail ligne à ligne.
-const ORDRE=['B2C','Entreprise','OPCO','POEI','ETAT','Alternance','Interco'];
+// Ses trois types de client, dictés le 16/10/2026 : « étatique : Transition
+// Pro, AIF, POEI, CPF, Region, OPCO alternance, OPCO, ETAT, Agefiph ;
+// Corporate : B2B, B2C entreprise, Corporate alternance, Interco ;
+// Financement personnel : B2C perso, Perso alternance ». Les quinze types de
+// financement y sont tous, et une seule fois.
+const ORDRE=['Étatique','Corporate','Financement personnel'];
 const rang=l=>{const i=ORDRE.indexOf(l); return i<0?ORDRE.length+1:i;};
 const catRows=[...balCat.rows].sort((a,b)=>rang(a.label)-rang(b.label)||b.total-a.total);
 // Une catégorie sans créance ouverte figure quand même, à zéro : son absence
@@ -692,25 +697,30 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
   // place : chacune est la somme de tranches entières, rien n'est à recouper
   // ni à proratiser. En deçà de 121 jours, aucune provision.
   //
-  // Le rattachement des quinze types de financement aux trois familles du
-  // barème N'EST PAS CONFIRMÉ. Celui qui est écrit ici est une proposition —
-  // les financeurs publics sont rangés en ÉTATIQUE — et il se modifie dans la
-  // page, section « Paramètres ». Tant que « confirme » est faux, la page le
-  // dit en toutes lettres à côté du montant.
+  // Le rattachement des quinze types de financement aux trois familles n'est
+  // plus une supposition : ce sont ses trois types de client, qu'elle a dictés
+  // le 16/10/2026. Il se modifie malgré tout dans la page, section
+  // « Paramètres ».
   provision:{
-    confirme:false,
+    confirme:true,
     fenetres:[
       {label:'121 - 180 j', tranches:['4 à 6 mois']},
       {label:'181 - 360 j', tranches:['6 à 12 mois']},
       {label:'361 - 720 j', tranches:['12 à 18 mois','18 à 24 mois']},
       {label:'> 720 j',     tranches:['24 à 36 mois','36 à 48 mois','> 48 mois']},
     ],
-    taux:{'B2C':[0.20,0.40,0.90,1],'ÉTATIQUE':[0,0,0.50,1],'B2B':[0.40,0.40,0.90,1]},
+    // Son tableau du groupe nomme les trois familles B2C, ETATIQUE et B2B. Ce
+    // sont exactement ses trois types de client : « Financement personnel »
+    // pour B2C, « Corporate » pour B2B. On les appelle donc comme elle les
+    // appelle dans la balance, pour n'avoir qu'un vocabulaire.
+    taux:{'Étatique':[0,0,0.50,1],'Corporate':[0.40,0.40,0.90,1],
+          'Financement personnel':[0.20,0.40,0.90,1]},
     familles:{
-      'B2C':['B2C-Perso','Perso-Alternance'],
-      'ÉTATIQUE':['POEI','AIF','ETAT','CPF','Transition Pro','Region','Agefiph'],
-      'B2B':['B2B','B2C-Entreprise','Corporate - Alternance','OPCO',
-             'OPCO - Alternance','Interco','Corporate — financement à préciser'],
+      'Étatique':['Transition Pro','AIF','POEI','CPF','Region',
+                  'OPCO - Alternance','OPCO','ETAT','Agefiph'],
+      'Corporate':['B2B','B2C-Entreprise','Corporate - Alternance','Interco',
+                   'Corporate — financement à préciser','Interne - DST Allemagne'],
+      'Financement personnel':['B2C-Perso','Perso-Alternance'],
     },
   },
   // Le type de client d'abord — c'est la lecture que vous faites —, la

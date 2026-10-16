@@ -49,7 +49,7 @@
             gl: { base: 'dateFinFormation', jours: 30 },
             note: "Date de facture +30 jours, sans dépasser début de formation +30 jours"
                 + " — au grand livre : début de formation",
-            categorie: 'Entreprise', perimetre: 'Corporate',
+            categorie: 'Corporate', perimetre: 'Corporate',
             // Monday écrit « B2C - Entreprise », le référentiel « BTC-Entreprise ».
             // Les deux graphies désignent la même chose : un particulier dont la
             // formation est facturée à une entreprise. Sans le libellé « b2c
@@ -69,7 +69,7 @@
             plafondDebutFormation: true,
             gl: { base: 'dateFinFormation', jours: 30 },
             note: 'Date de facture +30 jours',
-            categorie: 'Alternance', perimetre: 'Corporate',
+            categorie: 'Corporate', perimetre: 'Corporate',
             match: ['corporate alternance', 'corporate-alternance'],
         },
         {
@@ -85,7 +85,7 @@
             base: 'dateFacture', jours: 30,
             fallback: 'dateFinFormation', fallbackJours: 30,
             note: 'Date de facture +30 jours',
-            categorie: 'Entreprise', perimetre: 'Corporate',
+            categorie: 'Corporate', perimetre: 'Corporate',
             match: ['avant import', 'entre process', 'factures payees adv', 'payees adv', 'adv'],
         },
         {
@@ -93,7 +93,7 @@
             base: 'dateFinFormation', jours: 30,
             gl: { base: 'dateFinFormation', jours: 30 },
             note: 'Fin de formation +30 jours — au grand livre : début de formation',
-            categorie: 'Entreprise', perimetre: 'Corporate',
+            categorie: 'Corporate', perimetre: 'Corporate',
             match: ['b2b', 'btob', 'entreprise', 'corporate'],
         },
         {
@@ -106,7 +106,7 @@
         {
             key: 'TRANSITION', label: 'Transition Pro',
             base: 'dateFinFormation', jours: 60,
-            note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
+            note: 'Fin de formation +60 jours', categorie: 'Étatique', perimetre: 'B2C',
             match: ['transition pro', 'transitions pro', 'transition', 'ptp', 'projet de transition', 'atpro', 'associations transitions pro'],
             gl: { base: 'dateFinFormation', jours: 60 },
         },
@@ -119,7 +119,7 @@
             // n'en est pas un. Il avait eu sa propre ligne pour que ses
             // créances anciennes se voient ; elles se voient aussi bien dans
             // la vue par sous-catégorie, qui est faite pour ça.
-            note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
+            note: 'Fin de formation +60 jours', categorie: 'Étatique', perimetre: 'B2C',
             match: ['region', 'conseil regional', 'regional'],
             gl: { base: 'dateFinFormation', jours: 60 },
         },
@@ -129,21 +129,21 @@
             // trésorerie, pas celle du dispositif.
             key: 'AIF', label: 'AIF',
             base: 'dateFinFormation', jours: 60,
-            note: 'Fin de formation +60 jours', categorie: 'POEI', perimetre: 'B2C',
+            note: 'Fin de formation +60 jours', categorie: 'Étatique', perimetre: 'B2C',
             match: ['aif', 'aide individuelle a la formation', 'pole emploi aif', 'france travail aif'],
             gl: { base: 'dateFinFormation', jours: 60 },
         },
         {
             key: 'POEI', label: 'POEI',
             base: 'dateFinFormation', jours: 60,
-            note: 'Fin de formation +60 jours', categorie: 'POEI', perimetre: 'B2C',
+            note: 'Fin de formation +60 jours', categorie: 'Étatique', perimetre: 'B2C',
             match: ['poei', 'poec', 'preparation operationnelle'],
             gl: { base: 'dateFinFormation', jours: 60 },
         },
         {
             key: 'AGEFIPH', label: 'Agefiph',
             base: 'dateFinFormation', jours: 60,
-            note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
+            note: 'Fin de formation +60 jours', categorie: 'Étatique', perimetre: 'B2C',
             match: ['agefiph', 'fiphfp'],
             gl: { base: 'dateFinFormation', jours: 60 },
         },
@@ -151,7 +151,7 @@
             key: 'ETAT', label: 'ETAT',
             base: 'dateFinFormation', jours: 30,
             note: 'Fin de formation +30 jours',
-            categorie: 'ETAT',            perimetre: 'Corporate',
+            categorie: 'Étatique',            perimetre: 'Corporate',
             match: ['etat', 'public etat', 'ministere', 'prefecture'],
             gl: { base: 'dateFinFormation', jours: 30 },
         },
@@ -162,14 +162,14 @@
             // sa règle propre.
             key: 'INTERCO', label: 'Interco',
             base: 'dateFinFormation', jours: 60,
-            note: 'Fin de formation +60 jours', categorie: 'Interco', perimetre: 'Corporate',
+            note: 'Fin de formation +60 jours', categorie: 'Corporate', perimetre: 'Corporate',
             match: ['interco', 'intercompany', 'inter co', 'intra groupe', 'interne', 'interne ue', 'intra groupe', 'inter societe'],
             gl: { base: 'dateFinFormation', jours: 60 },
         },
         {
             key: 'DST_ALLEMAGNE', label: 'Interne - DST Allemagne',
             base: 'dateFinFormation', jours: 60,
-            note: 'Fin de formation +60 jours', categorie: 'Interco', perimetre: 'Corporate',
+            note: 'Fin de formation +60 jours', categorie: 'Corporate', perimetre: 'Corporate',
             match: ['dst allemagne', 'interne dst allemagne', 'dst', 'allemagne', 'germany', 'bu1 germany'],
             gl: { base: 'dateFinFormation', jours: 60 },
         },
@@ -177,7 +177,7 @@
             key: 'OPCO', label: 'OPCO',
             base: 'dateFinFormation', jours: 30,
             note: 'Fin de formation +30 jours — pas de recouvrement OPCO, suivi du retard uniquement',
-            categorie: 'OPCO',            perimetre: 'Corporate', sansRecouvrement: true,
+            categorie: 'Étatique',            perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco', 'akto', 'atlas', 'uniformation', 'ocapiat', 'constructys', 'afdas', 'opcommerce', 'l opcommerce', 'opco ep', 'opco 2i', 'opco mobilites', 'opco sante'],
             gl: { base: 'dateFinFormation', jours: 30 },
         },
@@ -190,7 +190,7 @@
             key: 'OPCO_ALTERNANCE', label: 'OPCO - Alternance',
             base: 'dateFinFormation', jours: 30,
             note: 'Fin de formation +30 jours — pas de recouvrement OPCO, suivi du retard uniquement',
-            categorie: 'OPCO', perimetre: 'Corporate', sansRecouvrement: true,
+            categorie: 'Étatique', perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco alternance', 'opco-alternance'],
             gl: { base: 'dateFinFormation', jours: 30 },
         },
@@ -203,7 +203,7 @@
             fallback: 'dateFinFormation', fallbackJours: 0,
             note: 'Début de formation +10 jours — au grand livre : début de formation, '
                 + 'comme votre colonne « Date d’échéance recalculée »',
-            categorie: 'B2C', perimetre: 'B2C',
+            categorie: 'Financement personnel', perimetre: 'B2C',
             // « B2C » employé seul — le groupe « Factures payées B2C » du tableau
             // 0.1, à côté de groupes CPF, AIF, POEI, REGION — désigne le
             // financement personnel : les financements publics ont chacun le
@@ -222,14 +222,14 @@
             base: 'dateDebutFormation', jours: 0,
             fallback: 'dateFinFormation', fallbackJours: 0,
             note: 'Début de formation (aucun délai supplémentaire)',
-            categorie: 'Alternance', perimetre: 'B2C',
+            categorie: 'Financement personnel', perimetre: 'B2C',
             match: ['perso alternance', 'perso-alternance'],
             gl: { base: 'dateDebutFormation', jours: 0 },
         },
         {
             key: 'CPF', label: 'CPF',
             base: 'dateFinFormation', jours: 45,
-            note: 'Fin de formation +60 jours', categorie: 'B2C', perimetre: 'B2C',
+            note: 'Fin de formation +60 jours', categorie: 'Étatique', perimetre: 'B2C',
             match: ['cpf', 'compte personnel de formation', 'edof', 'caisse des depots', 'cdc'],
             gl: { base: 'dateFinFormation', jours: 45 },
         },
