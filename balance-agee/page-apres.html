@@ -106,13 +106,9 @@ function ruban(){
     ['Reste dû',eur(t.total),'solde des comptes clients'],
     ['Échu',eur(t.echu),Math.round(t.echu/t.total*100)+' % du reste dû'],
     ['Non échu',eur(t.nonEchu),'pas encore exigible'],
-    // Le trop-perçu, lu par client et non par lettrage : l'argent qu'aucune
-    // facture du compte ne justifie, donc celui qu'il faut rembourser ou
-    // retrouver. Le filtre « comptes en excédent de trésorerie » en donne
-    // les écritures, compte par compte.
-    ['Trop-perçu clients',eur((D.excedent||{}).montant||0),
-      ((D.excedent||{}).comptes||0).toLocaleString('fr-FR')
-      +' comptes ont reçu plus que leurs factures'],
+    // Le trop-perçu n'est plus une tuile : elle l'a retirée du tableau de bord
+    // le 16/10/2026. Il reste accessible par le filtre « comptes en excédent
+    // de trésorerie », qui en donne les écritures compte par compte.
   ];
   // Zéro écriture à compléter : la tuile n'a plus rien à dire et quitte le
   // tableau de bord. Ce qui a été complété se lit dans le filtre et dans la
@@ -174,6 +170,15 @@ let niveau='cat';
 function synthese(){
   const tr=D.tranches;
   if(!D.syntheseCat){ niveau='sous'; if(E('niveaux')) E('niveaux').hidden=true; }
+  // La troisième lecture ne range pas le reste dû : elle montre comment les
+  // types de financement se répartissent dans chaque type de client, pour le
+  // montant à provisionner. Le tableau lui cède la place.
+  const ceTitre=E('titre-synth'), bT=E('bloc-synth'), bP=E('bloc-prov');
+  if(bT) bT.hidden = niveau==='prov';
+  if(bP) bP.hidden = niveau!=='prov';
+  if(ceTitre) ceTitre.textContent = niveau==='prov'
+    ? 'Montant à provisionner' : 'Reste dû par ancienneté';
+  if(niveau==='prov'){ vueProvision(); return; }
   // Une ligne « À classer » vide ne dit rien : quand il n'y a plus rien à
   // classer, elle sort du tableau — et elle revient d'elle-même si un
   // complément est retiré. Les six types de client, eux, restent affichés à
@@ -1371,6 +1376,90 @@ function brancherParametres(){
     E('ech-etat').textContent=ok?'Enregistré le '+leJour():'Enregistrement refusé — rien n’a été gardé.';
     if(ok){ ECH=regles; modifEch=false; tableEcheance(); }
   });
+}
+
+// ═══════════ la vue « à provisionner » ═══════════
+//
+// Elle répond à sa demande du 16/10/2026 : voir, visuellement, comment les
+// types de financement se répartissent dans chaque type de client.
+//
+// Une seule échelle pour les trois groupes : une barre deux fois plus longue
+// vaut deux fois plus d'euros, d'un groupe à l'autre comme à l'intérieur d'un
+// groupe. Deux échelles auraient fait paraître égaux des montants qui ne le
+// sont pas — c'est la faute la plus courante de ce genre de graphique.
+const TEINTES={'Étatique':'var(--prov-etatique)','Corporate':'var(--prov-corporate)',
+               'Financement personnel':'var(--prov-perso)'};
+const teinteDe=c=>TEINTES[c]||'var(--encre-3)';
+
+function vueProvision(){
+  paramsPrets();
+  const cible=E('bloc-prov'); if(!cible) return;
+  // Le reste dû et la provision de chaque type de financement, et le type de
+  // client qui le porte. Les compléments sont pris en compte : sousVraie() et
+  // categorieDe() les lisent tous les deux.
+  const parSc=new Map(), vues=new Set();
+  for(const i of I){
+    const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
+    const sc=sousVraie(i); if(!sc) continue;
+    const rd=N(i,'Reste dû de la créance');
+    const p=provisionDe(rd, sc, V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté'));
+    let g=parSc.get(sc);
+    if(!g){ g={sc, cat:categorieDe(i,'cat'), rd:0, prov:0, nb:0}; parSc.set(sc,g); }
+    g.rd+=rd; g.prov+=p; g.nb++;
+  }
+  const groupes=new Map();
+  for(const g of parSc.values()){
+    let x=groupes.get(g.cat);
+    if(!x){ x={cat:g.cat, prov:0, rd:0, lignes:[]}; groupes.set(g.cat,x); }
+    x.prov+=g.prov; x.rd+=g.rd; x.lignes.push(g);
+  }
+  const ordre=(D.ordreTypeClient||[...groupes.keys()]);
+  const liste=[...groupes.values()].sort((a,b)=>{
+    const i=ordre.indexOf(a.cat), j=ordre.indexOf(b.cat);
+    return (i<0?99:i)-(j<0?99:j) || b.prov-a.prov; });
+  const total=liste.reduce((s,x)=>s+x.prov,0);
+  // L'échelle commune : le plus gros montant à provisionner, tous groupes
+  // confondus.
+  const max=Math.max(1,...[...parSc.values()].map(g=>g.prov));
+
+  let h='<div class="prov-tete"><span class="gros">'+eur(total)+'</span>'
+    +'<span class="quoi">à provisionner sur '+eur((D.synthese.find(s=>s.cat==="TOTAL")||{}).total||0)
+    +' de reste dû</span></div>';
+
+  // La part de chaque type de client dans ce montant : trois segments, séparés
+  // par 2 px de fond — un trait autour des segments ajouterait de l'encre qui
+  // n'est pas de la donnée.
+  h+='<div class="prov-part">'+liste.filter(x=>x.prov>0).map((x,j,t)=>
+    '<span title="'+esc(x.cat)+' — '+eur(x.prov)+', soit '
+      +Math.round(x.prov/total*100)+' % du montant à provisionner" style="background:'
+      +teinteDe(x.cat)+';flex:0 0 calc('+(x.prov/total*100)+'% - '+(j<t.length-1?2:0)+'px)'
+      +(j<t.length-1?';margin-right:2px':'')+'"></span>').join('')+'</div>';
+  h+='<div class="prov-leg">'+liste.map(x=>'<b><i style="background:'+teinteDe(x.cat)+'"></i>'
+    +esc(x.cat)+' <em>'+eur(x.prov)+'</em> · '+Math.round(x.prov/total*100)+' %</b>').join('')+'</div>';
+
+  for(const x of liste){
+    h+='<div class="prov-grp"><h3><i style="background:'+teinteDe(x.cat)+'"></i>'
+      +esc(x.cat)+'<em>'+eur(x.prov)+'</em></h3>'
+      +'<p class="sous-note">'+x.lignes.length+' type'+(x.lignes.length>1?'s':'')
+      +' de financement · '+eur(x.rd)+' de reste dû</p>';
+    for(const g of x.lignes.sort((a,b)=>b.prov-a.prov)){
+      const pc=Math.max(0,g.prov)/max*100;
+      h+='<div class="prov-lig'+(g.prov>0?'':' rien')+'">'
+        +'<span class="nom" title="'+esc(g.sc)+'">'+esc(g.sc)+'</span>'
+        +'<span class="piste"><span class="barre" title="'+esc(g.sc)+' — '
+          +eur(g.prov)+' à provisionner sur '+eur(g.rd)+' de reste dû, '
+          +g.nb+' créance'+(g.nb>1?'s':'')+'" style="width:'+pc.toFixed(2)+'%;background:'
+          +teinteDe(x.cat)+'"></span></span>'
+        +'<span class="val">'+(g.prov>0?eur(g.prov):'—')+'</span></div>';
+    }
+    h+='</div>';
+  }
+  h+='<div class="prov-axe"><span>0 €</span><span>'+eur(max)+'</span></div>';
+  h+='<div class="prov-pied">Même échelle pour les trois groupes : une barre deux fois '
+    +'plus longue vaut deux fois plus d’euros. Le barème qui produit ces montants se lit, '
+    +'et se modifie, dans <strong>Paramètres</strong>, en bas de page. '
+    +'Les mêmes chiffres se retrouvent colonne par colonne dans les deux autres lectures.</div>';
+  cible.innerHTML=h;
 }
 
 </script>

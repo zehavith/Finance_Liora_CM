@@ -690,6 +690,9 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
      note:'Le dernier recours. La ligne reste datée, et dit qu’elle l’est ainsi.'},
   ],
   tranches:buckets.map(b=>b.label),
+  // L'ordre de ses trois types de client, pour que la vue « à provisionner »
+  // les présente comme le tableau.
+  ordreTypeClient:ORDRE,
   // ───────── le barème de provision ─────────
   //
   // Son tableau « Règles de provision Groupe », reçu le 16/10/2026. Les quatre
