@@ -195,7 +195,7 @@
             gl: { base: 'dateFinFormation', jours: 30 },
         },
         {
-            key: 'BTC_PERSO', label: 'B2C-Perso',
+            key: 'BTC_PERSO', label: 'Financement personnel',
             // L'apprenant paie de sa poche : l'argent est appelé au démarrage.
             // Dix jours de battement, le temps que le virement parte — en deçà,
             // la facture n'est pas en retard et n'a rien à faire en relance.

@@ -321,6 +321,13 @@ function appliquer(garderPlace){
     // Toutes les écritures des comptes qui ont reçu plus qu'ils ne doivent :
     // c'est là que se trouve, ligne par ligne, l'excédent de trésorerie.
     if(a==='excedent'&&!enExcedent(V(i,'N° de compte'))) return false;
+    // Les deux exceptions au barème, demandées le 16/10/2026 : le mandat de
+    // prélèvement, qui annule le délai, et la refacturation après formation,
+    // qui le fait courir depuis l'émission. Toutes deux sont écrites noir sur
+    // blanc dans « Exception appliquée » : le filtre n'invente rien, il lit.
+    if(a==='mandat'&&V(i,'Exception appliquée')!=='Mandat de prélèvement en place') return false;
+    if(a==='posterieure'
+       &&V(i,'Exception appliquée')!=='Facture postérieure à la fin de formation') return false;
     if(q){ const s=(V(i,'N° de facture')+' '+V(i,'Tiers')+' '+V(i,'N° de compte')+' '
         +V(i,'Libellé de compte')+' '+V(i,'Libellé de ligne')).toLowerCase();
       if(!s.includes(q)) return false; }
@@ -429,6 +436,9 @@ function dessiner(){
 // synthèses sont celles de l'écran — vos compléments compris, et sans la ligne
 // « À classer » quand elle est vide : un classeur qui contredirait la page
 // qu'on vient de lire ne servirait à rien.
+// Le logo, en base64 : le gabarit y met l'image, dans le fichier autonome
+// comme dans l'artefact, pour que le classeur sorte signé des deux côtés.
+const LOGO_XLSX='{{LOGO_B64}}';
 // Les couleurs Liora, reprises du modèle de présentation.
 const BLEU='FF373771', DOUX='FFE9E9F7', PALE='FFF5F4F0', ENCRE3='FF8A8AA6', TRAIT='FFE2E1EC';
 const CORAIL='FFD4472A';
@@ -476,8 +486,21 @@ function feuilleSommaire(wb,idx,nomDetail){
   ws.columns=[{width:4},{width:30},{width:18},{width:62}];
   ws.views=[{showGridLines:false}];
 
+  // Le logo, posé en flottant au-dessus du sommaire. Une image ancrée à une
+  // cellule suivrait le tri et le filtre ; celle-ci est hors flux, comme un
+  // en-tête de papier à lettres.
+  ws.addRow([]).height=34;
+  try{
+    const id=wb.addImage({base64:LOGO_XLSX, extension:'png'});
+    ws.addImage(id,{tl:{col:1,row:0},ext:{width:124,height:49}});
+  }catch(e){}
+
   const titre=ws.addRow(['','BALANCE ÂGÉE DES COMPTES CLIENTS']);
   titre.getCell(2).font={bold:true,size:18,color:{argb:BLEU}}; titre.height=30;
+  // Le trait corail de la marque, sous le titre, comme sur la page.
+  const rule=ws.addRow(['','','','']);
+  rule.height=4;
+  for(const c of [2,3,4]) rule.getCell(c).border={bottom:{style:'medium',color:{argb:'FFFF6745'}}};
   ws.addRow(['',D.source]).getCell(2).font={size:11,color:{argb:ENCRE3}};
   const dat=ws.addRow(['','Arrêté au '+D.arrete,'','Édition du '+D.genere]);
   dat.getCell(2).font={size:10,color:{argb:ENCRE3}};
@@ -725,23 +748,16 @@ const LEXIQUE=[
 // Posé en colonne A, en bas de la feuille : à sa demande du 16/10/2026, et
 // parce qu'un bloc décalé en colonne F se lit mal — on ne le voit qu'en
 // faisant défiler vers la droite.
+// Le glossaire, sans préambule ni intertitres : elle les a retirés le
+// 16/10/2026. Une liste de termes et de définitions, sous un en-tête de
+// tableau comme les autres — rien à lire avant d'y chercher un mot.
 function lexique(ws){
   ws.addRow([]); ws.addRow([]);
-  const t=ws.addRow(['CE QUE VEULENT DIRE LES EXPRESSIONS DES COLONNES D’AUDIT']);
-  t.getCell(1).font={bold:true,size:13,color:{argb:BLEU}}; t.height=24;
-  const s=ws.addRow(['Ces colonnes se lisent sur chaque ligne du détail. '
-    +'Elles disent comment la ligne a été classée, et comment sa date a été obtenue.']);
-  s.getCell(1).font={size:10,color:{argb:ENCRE3}};
-  ws.mergeCells(s.number,1,s.number,5);
-  ws.addRow([]);
+  poserEntete(ws,ws.addRow(['Expression','Ce qu’elle signifie']));
   for(const [expr,quoi] of LEXIQUE){
-    if(expr===null){ ws.addRow([]); continue; }
+    if(expr===null||quoi===null) continue;
     const l=ws.addRow([expr,quoi||'']);
-    if(quoi===null){
-      l.getCell(1).font={bold:true,size:11,color:{argb:BLEU}};
-      for(let c=1;c<=5;c++) l.getCell(c).border={bottom:{style:'thin',color:{argb:BLEU}}};
-      l.height=20;
-    } else {
+    {
       l.getCell(1).font={bold:true};
       l.getCell(1).alignment={wrapText:true,vertical:'top'};
       l.getCell(2).font={size:10,color:{argb:ENCRE3}};
@@ -865,6 +881,14 @@ function feuilleBalance(wb,niv,idx){
         const e=info.get(V(i,'Clé de la créance'));
         const m=ar2(N(i,'Débit')-N(i,'Crédit'));
         const r=new Array(LARGE).fill(null);
+        // Une case vide se lit comme une donnée manquante ; un zéro dit « rien
+        // dans cette tranche ». Sa règle, le 16/10/2026 : « quand il n'y a
+        // rien il faut mettre dans le montant 0 € ». Les colonnes de comptage
+        // — créances et part — restent vides : elles n'ont pas de sens sur une
+        // écriture, et un zéro y serait une réponse à une question qu'on ne
+        // pose pas.
+        for(let c=P.total;c<=P.nonEchu;c++) r[c]=0;
+        r[P.ecart]=0;
         r[P.lib]='          '+(V(i,'N° de facture')||'·')+'   '+V(i,'Date');
         r[P.total]=m;
         if(e.tr==='Non échu') r[P.nonEchu]=m;
@@ -1442,12 +1466,12 @@ function vueProvision(){
   const pct=v=>!total?'·':(v/total*100).toLocaleString('fr-FR',
     {minimumFractionDigits:1,maximumFractionDigits:1})+' %';
   let h='<table id="prov-table"><thead><tr>'
-    +'<th>Type de financement</th><th>Type de client</th>'
+    +'<th>Type de financement</th>'
     +'<th class="n">Reste dû</th><th class="n">À provisionner</th><th class="n">Part</th>'
     +D.tranches.map(x=>'<th class="n">'+esc(x)+'</th>').join('')
     +'<th class="n">Non échu</th><th class="n">Créances</th></tr></thead><tbody>';
   for(const g of liste){
-    h+='<tr><td>'+esc(g.sc)+'</td><td>'+esc(g.cat)+'</td>'
+    h+='<tr><td>'+esc(g.sc)+'</td>'
       +'<td class="n">'+eurC(g.rd)+'</td>'
       +(g.prov?('<td class="n prov ouvrable" data-sc="'+esc(g.sc)+'" data-tr=""'
           +' title="Voir les lignes">'+eurC(g.prov)+'</td>'):'<td class="n prov">·</td>')
@@ -1455,7 +1479,7 @@ function vueProvision(){
       +D.tranches.map(t=>cell(g.tr.get(t)||0,g.sc,t)).join('')
       +'<td class="n">·</td><td class="n">'+g.nb.toLocaleString('fr-FR')+'</td></tr>';
   }
-  h+='<tr class="total"><td>TOTAL</td><td></td><td class="n">'+eurC(rdTot)+'</td>'
+  h+='<tr class="total"><td>TOTAL</td><td class="n">'+eurC(rdTot)+'</td>'
     +'<td class="n prov ouvrable" data-sc="" data-tr="" title="Voir les lignes">'
       +eurC(total)+'</td><td class="n">100,0 %</td>'
     +D.tranches.map(t=>cell(trTot.get(t)||0,'',t)).join('')

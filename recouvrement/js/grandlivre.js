@@ -993,57 +993,87 @@
                     ouvertes.push(ligneFacture(g, f, reste * (f.debit / total)));
                 }
             } else {
-                ouvertes.push({
-                    numero: '', cle: null,
+                // UNE CRÉANCE PAR FACTURE CITÉE.
+                //
+                // Sa règle, le 16/10/2026 : « une créance par facture ». Un lot
+                // sans ligne de facture n'est pas pour autant une dette unique :
+                // ses virements nomment souvent la facture qu'ils règlent —
+                // « … PAYOUT … FACT-2506-10079 ». Chaque numéro cité fait donc
+                // sa propre créance, avec les seules écritures qui le citent,
+                // et prend les dates de SA facture chez la facturation : le
+                // barème du dispositif s'y applique comme sur une vraie
+                // facture. Ce que rien ne nomme reste à part, en un solde de
+                // compte, daté par les règles comme auparavant.
+                //
+                // Le total est conservé : les écritures du lot sont réparties,
+                // aucune n'est comptée deux fois ni oubliée.
+                const parNumero = new Map(), orphelines = [];
+                for (const l of g.reglements.concat(g.avoirs, g.autres)) {
+                    const k = l.numero ? I.factureKey(l.numero) : '';
+                    if (!k) { orphelines.push(l); continue; }
+                    let x = parNumero.get(k);
+                    if (!x) { x = { numero: l.numero, lignes: [] }; parNumero.set(k, x); }
+                    x.lignes.push(l);
+                }
+                const socle = {
                     qualif: g.qualif || '',
                     identifiantTiers: g.identifiantTiers || '',
                     siren: g.siren || '',
                     compte: g.compte, tiers: g.tiers, lettre: g.lettre,
-                    montant: null, resteDu: reste,
-                    // Ce sont les débits qui créent la dette : leur date fait
-                    // l'ancienneté. À défaut seulement, le dernier mouvement.
-                    dateFacture: derniereDate(g.autres.length ? g.autres
-                        : g.reglements.concat(g.avoirs)),
-                    // Le lot n'a pas de facture, mais ses virements en citent
-                    // souvent une dans leur libellé — « … PAYOUT … FACT-2506-10079 ».
-                    // Sa règle, le 16/10/2026 : « s'il y a un numéro de facture,
-                    // même au niveau du virement, il faut le récupérer et
-                    // calculer la date d'échéance comme si c'était la facture ».
-                    //
-                    // On retient le numéro cité par l'écriture la plus récente
-                    // qui en porte un. La facturation donnera ses dates de
-                    // formation, et le barème du dispositif s'appliquera comme
-                    // sur une vraie facture — au lieu de tomber sur le repli.
-                    // Sur 662 lignes citant un numéro, 255 sont ainsi datables.
-                    cleCitee: (() => {
-                        const avecNum = g.reglements.concat(g.avoirs, g.autres)
-                            .filter(l => l.numero && l.date)
-                            .sort((x, y) => y.date - x.date);
-                        return avecNum.length ? I.factureKey(avecNum[0].numero) : null;
-                    })(),
+                    montant: null,
                     dateEcheance: null,
-                    // Un solde de compte n'a pas de facture — donc aucune des
-                    // dates sur lesquelles un barème s'appuie. Sans repli, il
-                    // restait sans échéance : 259 créances et 653 écritures
-                    // vides, alors que votre balance en date 3 608 sur 3 609,
-                    // les 1 580 lignes sans numéro comprises. Votre règle est
-                    // qu'à défaut on prend l'échéance 1 — la dernière date du
-                    // libellé, sinon l'enregistrement. Elle vaut ici aussi,
-                    // portée par la même écriture que celle qui date la
-                    // créance.
-                    dateEcheanceRepli: repliDerniere(g.autres.length ? g.autres
-                        : g.reglements.concat(g.avoirs)).date,
-                    echeance1Source: repliDerniere(g.autres.length ? g.autres
-                        : g.reglements.concat(g.avoirs)).source,
                     dateDebutFormation: g.dateDebutFormation || null,
                     dateFinFormation: g.dateFinFormation || null,
                     mandatEtatFichier: g.mandatEtat || '',
                     ancien: g.ancien || null,
-                    libelle: libelleRepresentatif(g),
                     journal: '',
-                    filiz: /filiz/i.test(libelleRepresentatif(g) || ''),
                     sansNumero: true,
-                });
+                };
+                // Chaque facture nommée par les écritures du lot.
+                for (const [k, x] of parNumero) {
+                    const net = x.lignes.reduce((s, l) => s + (l.debit || 0) - (l.credit || 0), 0);
+                    if (Math.abs(net) < TOLERANCE) continue;
+                    const repli = repliDerniere(x.lignes);
+                    ouvertes.push({
+                        ...socle,
+                        numero: x.numero, cle: k,
+                        // Elle porte un numéro : ce n'est pas un solde de
+                        // compte, et son calcul ne doit pas se présenter
+                        // comme tel.
+                        sansNumero: false,
+                        resteDu: net,
+                        dateFacture: derniereDate(x.lignes),
+                        dateEcheanceRepli: repli.date,
+                        echeance1Source: repli.source,
+                        libelle: (x.lignes[0] && x.lignes[0].libelle) || libelleRepresentatif(g),
+                        filiz: /filiz/i.test(x.numero + ' ' + ((x.lignes[0] && x.lignes[0].libelle) || '')),
+                        citee: true,
+                    });
+                }
+                // Ce qu'aucune facture ne nomme : le solde du compte.
+                if (orphelines.length) {
+                    const net = orphelines.reduce((s, l) => s + (l.debit || 0) - (l.credit || 0), 0);
+                    if (Math.abs(net) >= TOLERANCE) {
+                        // Ce sont les débits qui créent la dette : leur date
+                        // fait l'ancienneté. À défaut seulement, le dernier
+                        // mouvement. L'échéance suit les règles — à défaut de
+                        // base, le repli : dernière date du libellé, sinon
+                        // l'enregistrement.
+                        const debits = orphelines.filter(l => (l.debit || 0) > 0);
+                        const assiette = debits.length ? debits : orphelines;
+                        const repli = repliDerniere(assiette);
+                        ouvertes.push({
+                            ...socle,
+                            numero: '', cle: null,
+                            resteDu: net,
+                            dateFacture: derniereDate(assiette),
+                            dateEcheanceRepli: repli.date,
+                            echeance1Source: repli.source,
+                            libelle: libelleRepresentatif(g),
+                            filiz: /filiz/i.test(libelleRepresentatif(g) || ''),
+                        });
+                    }
+                }
             }
         }
         return poserPrelevements(ouvertes, lu.prelevements);
@@ -1709,7 +1739,7 @@
         const avecSellsy = c => {
             // Un solde de compte n'a pas de clé à lui, mais il peut citer une
             // facture : elle sert alors de clé pour aller chercher les dates.
-            const cle = c.cle || c.cleCitee || null;
+            const cle = c.cle || null;
             const d = cle ? idx.datesSellsy.get(cle) : null;
             const type = cle ? idx.brutSellsy.get(cle) : null;
             // Ce que Monday sait de la formation. Sur l'alternance, c'est la

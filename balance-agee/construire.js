@@ -90,6 +90,12 @@ const cl=GL.classer(GL.creancesOuvertes(lu),
 // sur la règle : c'est sa décision, elle ne se redemande pas tous les mois.
 // Le fichier est écrit depuis la base de l'artefact — une ligne par créance,
 // avec sa clé, le dispositif retenu et la date du choix.
+// Les intitulés qu'un dispositif a portés avant d'être renommé. Ses décisions
+// sont enregistrées sous le nom en vigueur le jour où elle les a prises : sans
+// cette table, renommer un type de financement les perdrait toutes en silence.
+// « B2C-Perso » est devenu « Financement personnel » le 16/10/2026, et huit de
+// ses décisions le portent encore.
+const ANCIENS=[['B2C-Perso','BTC_PERSO']];
 let complements=[];
 try{ complements=JSON.parse(fs.readFileSync('complements.json','utf8')); }catch(e){}
 // Ce fichier est un INSTANTANÉ de la base de l'artefact, pas la base elle-même :
@@ -109,7 +115,7 @@ try{ complements=JSON.parse(fs.readFileSync('complements.json','utf8')); }catch(
     +'(collection « complements ») avant de livrer : ce qu’elle a complété depuis serait perdu.');
 }
 if(complements.length){
-  const parLabel=new Map(RG.filter(r=>r&&r.key&&r.label).map(r=>[r.label,r.key]));
+  const parLabel=new Map(RG.filter(r=>r&&r.key&&r.label).map(r=>[r.label,r.key]).concat(ANCIENS));
   const parCleCreance=new Map();
   for(const c of cl) parCleCreance.set((c.compte||'')+'|'+(c.lettre||GL.POOL_NON_LETTRE)+'|'+(c.numero||''),c);
   // Trois rattrapages, du plus précis au plus large. Sa décision est rangée
@@ -117,24 +123,34 @@ if(complements.length){
   // mois suivant, la clé change et le complément se perdrait. On la retrouve
   // alors par le compte et la facture, puis — pour un solde sans facture — par
   // le seul compte.
+  // Le dernier rattrapage rend une LISTE. Depuis qu'un lot sans facture fait
+  // une créance par facture citée, sa décision prise sur « le solde du compte »
+  // ne vise plus une créance mais plusieurs — et quand toutes les écritures du
+  // lot citent un numéro, il n'en reste même aucune qui porte l'ancienne clé.
+  // Trois de ses décisions se perdaient ainsi en silence.
   const parCompteFacture=new Map(), parComptesSansFacture=new Map();
   for(const c of cl){
+    if(c.numero && !c.citee){ const k=(c.compte||'')+'|'+I.factureKey(c.numero);
+      if(!parCompteFacture.has(k)) parCompteFacture.set(k,c); continue; }
     if(c.numero){ const k=(c.compte||'')+'|'+I.factureKey(c.numero);
       if(!parCompteFacture.has(k)) parCompteFacture.set(k,c); }
-    else if(!parComptesSansFacture.has(c.compte)) parComptesSansFacture.set(c.compte,c);
+    if(!parComptesSansFacture.has(c.compte)) parComptesSansFacture.set(c.compte,[]);
+    parComptesSansFacture.get(c.compte).push(c);
   }
   const retrouver=v=>{
-    const exact=parCleCreance.get(v.cle); if(exact) return exact;
+    const exact=parCleCreance.get(v.cle); if(exact) return [exact];
     const m=String(v.cle||'').split('|'), cpt=m[0], num=m[2]||'';
-    if(num) return parCompteFacture.get(cpt+'|'+I.factureKey(num))||null;
-    return parComptesSansFacture.get(cpt)||null;
+    if(num){ const c=parCompteFacture.get(cpt+'|'+I.factureKey(num)); return c?[c]:[]; }
+    return parComptesSansFacture.get(cpt)||[];
   };
-  let poses=0, rattrapes=0;
+  let poses=0, rattrapes=0, eclates=0;
   for(const v of complements){
     const exact=parCleCreance.get(v.cle);
-    const c=retrouver(v), k=parLabel.get(v.dispositif);
-    if(!c||!k) continue;                     // une écriture, pas une créance : voir plus bas
+    const liste=retrouver(v), k=parLabel.get(v.dispositif);
+    if(!liste.length||!k) continue;          // une écriture, pas une créance : voir plus bas
     if(!exact) rattrapes++;
+    if(liste.length>1) eclates+=liste.length-1;
+    for(const c of liste){
     c.financement=k;
     // La catégorie suit le dispositif, sinon la créance se contredit : Safran
     // est passé en B2B le 14/10 et sa colonne « Type de client » annonçait
@@ -144,10 +160,12 @@ if(complements.length){
     c.typeClient=R.categorieDe(k,RG)||'';
     c.origineClassement='Complété à la main dans la balance publiée';
     c.preuveClassement=v.dispositif+(v.quand?' · le '+v.quand:'');
+    }
     v.pose=true; poses++;
   }
   console.log('compléments repris sur les créances : '+poses+' / '+complements.length
-    +(rattrapes?' · dont '+rattrapes+' retrouvés malgré un lettrage changé':''));
+    +(rattrapes?' · dont '+rattrapes+' retrouvés malgré un lettrage changé':'')
+    +(eclates?' · '+eclates+' créances de plus touchées par une décision prise sur un solde de compte':''));
 }
 
 // ───────── la justification, mot pour mot comme dans l'appli ─────────
@@ -233,7 +251,7 @@ const lignesEcr=ecr.lignes||ecr;
 // même classées — et que le premier crochet laissait filer. Sa clé est alors
 // celle que la page forme à défaut de créance : compte, numéro, date.
 if(complements.length){
-  const parLabel2=new Map(RG.filter(r=>r&&r.key&&r.label).map(r=>[r.label,r.key]));
+  const parLabel2=new Map(RG.filter(r=>r&&r.key&&r.label).map(r=>[r.label,r.key]).concat(ANCIENS));
   const parCleEcriture=new Map();
   plat.forEach((l,i)=>{
     const B=l.brut||{};
@@ -277,6 +295,14 @@ const grp=x=>(x.compte||'')+'|'+(x.lettre||GL.POOL_NON_LETTRE);
 // Sans rang, elles partageraient aussi leur clé et le détail n'en montrerait
 // qu'une. Le rang ne s'écrit que lorsqu'il y a doublon : la clé d'une créance
 // ordinaire ne bouge pas, et les compléments déjà posés restent valables.
+// LE solde de compte d'un lot : la créance qui ne porte aucun numéro. Depuis
+// qu'un lot sans facture fait UNE CRÉANCE PAR FACTURE CITÉE, un lot peut en
+// compter plusieurs ; une écriture qui ne cite rien ne doit pas tomber sur la
+// première venue. Sans cela les treize lignes du compte Alma affichaient
+// toutes le reste dû et l'échéance de la facture FACT-2506-10079.
+const parGroupeSolde=new Map();
+for(const c of cl) if(c.sansNumero && !c.cle){ const g=grp(c);
+  if(!parGroupeSolde.has(g)) parGroupeSolde.set(g,c); }
 const parGroupeCle=new Map(), cleDe=new Map();
 { const vus=new Map();
   for(const c of cl){
@@ -300,6 +326,8 @@ const creanceDuCompte=l=>{
   if(l.numero){
     const liste=parGroupeCle.get(grp(l)+'|'+I.factureKey(l.numero));
     if(liste&&liste.length) return liste[Math.min(rangLigne.get(l)||1,liste.length)-1];
+  } else {
+    const s=parGroupeSolde.get(grp(l)); if(s) return s;
   }
   return parGroupe.get(l.cleGroupe)
     || (l.numero&&parCompteCle.get((l.compte||'')+'|'+I.factureKey(l.numero)))
@@ -362,7 +390,8 @@ console.log('rapprochements numérotés : '+nRappro+' · avec leur ligne au déb
 const principale=[];
 for(let i=0;i<plat.length;i++){
   const l=plat[i], e=lignesEcr[i]||{}, B=l.brut||{};
-  const src0=(l.numero&&parCle.get(I.factureKey(l.numero)))||parGroupe.get(l.cleGroupe)||{};
+  const src0=(l.numero&&parCle.get(I.factureKey(l.numero)))
+    ||(!l.numero&&parGroupeSolde.get(grp(l)))||parGroupe.get(l.cleGroupe)||{};
   // Quand aucune facture ne date la ligne, la ligne se date elle-même :
   // l'échéance 1, portée par l'écriture, avec son motif.
   // Quand aucune créance ne porte la ligne — un lot soldé à zéro, par exemple —
@@ -637,7 +666,7 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
   // « Règles » et la section « Paramètres » la disent toutes les deux, sans
   // qu'aucune des deux n'ait à la réécrire.
   prorata:{
-    titre:'Les paiements qu’aucune facture ne réclame',
+    titre:'Répartition au prorata des paiements non rattachés',
     regle:'Un règlement ou un avoir qui ne nomme aucune facture, sur un compte '
       +'client dont les factures portent PLUSIEURS types de financement, ne prend '
       +'plus le type de la première facture venue. Il est réparti au prorata.',
@@ -723,7 +752,7 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
                   'OPCO - Alternance','OPCO','ETAT','Agefiph'],
       'Corporate':['B2B','B2C-Entreprise','Corporate - Alternance','Interco',
                    'Corporate — financement à préciser','Interne - DST Allemagne'],
-      'Financement personnel':['B2C-Perso','Perso-Alternance'],
+      'Financement personnel':['Financement personnel','Perso-Alternance'],
     },
   },
   // Le type de client d'abord — c'est la lecture que vous faites —, la

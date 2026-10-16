@@ -43,8 +43,10 @@
 body{background:var(--fond);color:var(--encre);font-family:var(--texte);margin:0;
   font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
 .enveloppe{padding-inline:16px;padding-block:24px 48px;max-width:1500px;margin:0 auto}
-/* Le trait corail sous le titre : la marque Liora se voit en un coup d'œil,
-   sans qu'un aplat sombre vienne gêner la lecture ou l'impression. */
+/* L'en-tête : le logo, puis le titre et son trait corail. La marque se voit
+   en un coup d'œil sans qu'un aplat sombre gêne la lecture ou l'impression. */
+.entete{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.logo{height:34px;width:auto;flex:0 0 auto;display:block}
 h1{font-family:var(--titre);font-size:clamp(22px,3.4vw,30px);margin:0;letter-spacing:-.01em;
   text-wrap:balance;padding-bottom:10px;position:relative}
 h1::after{content:'';position:absolute;left:0;bottom:0;width:72px;height:3px;
@@ -200,7 +202,7 @@ input[type=search]{flex:1 1 220px}
    Le même tableau que les deux autres lectures : rien à habiller de plus que
    la colonne des provisions, qui porte la même couleur qu'ailleurs. */
 #prov-table td.prov{color:var(--alerte);border-right:1px solid var(--trait-fort)}
-#prov-table th:nth-child(4){color:var(--alerte);border-right:1px solid var(--trait-fort)}
+#prov-table th:nth-child(3){color:var(--alerte);border-right:1px solid var(--trait-fort)}
 .niveaux{display:flex;gap:6px;margin:0 0 10px}
 .niveaux button{font:inherit;font-size:13px;padding:6px 14px;border-radius:999px;
   border:1px solid var(--trait);background:var(--carte);color:var(--encre-2);cursor:pointer}
@@ -244,7 +246,10 @@ input[type=search]{flex:1 1 220px}
 </style>
 
 <div class="enveloppe">
-  <h1>Balance âgée · Grand livre Clients</h1>
+  <div class="entete">
+    <img class="logo" src="{{LOGO}}" alt="Liora" width="160" height="63">
+    <h1>Balance âgée · Grand livre Clients</h1>
+  </div>
   <p class="sous" id="sous">Chargement…</p>
   <p class="sous">Fichier autonome : il fonctionne hors connexion, sans compte, dans n’importe quel navigateur.</p>
 
@@ -277,6 +282,8 @@ input[type=search]{flex:1 1 220px}
       <option value="credit">Seulement les lignes non lettrées</option>
       <option value="rappro">Seulement les propositions de rapprochement</option>
       <option value="excedent">Seulement les comptes en excédent de trésorerie</option>
+    <option value="mandat">Seulement les lignes croisées avec les mandats GoCardless</option>
+    <option value="posterieure">Seulement les lignes dont la facture suit la fin de formation</option>
     </select>
     <span class="cpt" id="cpt"></span>
   </div>

@@ -20,8 +20,13 @@ const fs=require('fs');
 // art/ — restent relatives au dossier de travail, puisqu'elles changent à
 // chaque arrêté.
 const ICI=f=>require('path').join(__dirname,f);
-const avant=fs.readFileSync(ICI('page-avant.html'),'utf8');
-const apres=fs.readFileSync(ICI('page-apres.html'),'utf8');
+// Le logo, repris de son modèle de présentation et embarqué en clair dans la
+// page : le fichier autonome doit s'ouvrir hors connexion, sans rien aller
+// chercher. 11 ko de PNG, 15 ko une fois encodés.
+const LOGO='data:image/png;base64,'+fs.readFileSync(ICI('logo-liora.png')).toString('base64');
+const avant=fs.readFileSync(ICI('page-avant.html'),'utf8').split('{{LOGO}}').join(LOGO);
+const B64=fs.readFileSync(ICI('logo-liora.png')).toString('base64');
+const apres=fs.readFileSync(ICI('page-apres.html'),'utf8').split('{{LOGO_B64}}').join(B64);
 const donnees=fs.readFileSync('page-donnees.json','utf8');
 
 const {verifierContrat}=require('./contrat.js');
