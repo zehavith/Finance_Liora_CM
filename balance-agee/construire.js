@@ -128,20 +128,28 @@ if(complements.length){
   // ne vise plus une créance mais plusieurs — et quand toutes les écritures du
   // lot citent un numéro, il n'en reste même aucune qui porte l'ancienne clé.
   // Trois de ses décisions se perdaient ainsi en silence.
-  const parCompteFacture=new Map(), parComptesSansFacture=new Map();
+  const parCompteFacture=new Map(), parComptesSansFacture=new Map(), parLotSansFacture=new Map();
   for(const c of cl){
     if(c.numero && !c.citee){ const k=(c.compte||'')+'|'+I.factureKey(c.numero);
       if(!parCompteFacture.has(k)) parCompteFacture.set(k,c); continue; }
     if(c.numero){ const k=(c.compte||'')+'|'+I.factureKey(c.numero);
       if(!parCompteFacture.has(k)) parCompteFacture.set(k,c); }
+    const lot=(c.compte||'')+'|'+(c.lettre||GL.POOL_NON_LETTRE);
+    if(!parLotSansFacture.has(lot)) parLotSansFacture.set(lot,[]);
+    parLotSansFacture.get(lot).push(c);
     if(!parComptesSansFacture.has(c.compte)) parComptesSansFacture.set(c.compte,[]);
     parComptesSansFacture.get(c.compte).push(c);
   }
+  // Une décision SANS NUMÉRO vise le solde d'un lot, pas une créance : depuis
+  // qu'une écriture sans numéro fait la sienne, le lot en compte plusieurs et
+  // sa décision doit toutes les atteindre. La chercher à la clé exacte n'en
+  // aurait touché qu'une.
   const retrouver=v=>{
-    const exact=parCleCreance.get(v.cle); if(exact) return [exact];
     const m=String(v.cle||'').split('|'), cpt=m[0], num=m[2]||'';
-    if(num){ const c=parCompteFacture.get(cpt+'|'+I.factureKey(num)); return c?[c]:[]; }
-    return parComptesSansFacture.get(cpt)||[];
+    if(num){ const exact=parCleCreance.get(v.cle); if(exact) return [exact];
+      const c=parCompteFacture.get(cpt+'|'+I.factureKey(num)); return c?[c]:[]; }
+    return parLotSansFacture.get(cpt+'|'+(m[1]||GL.POOL_NON_LETTRE))
+      || parComptesSansFacture.get(cpt) || [];
   };
   let poses=0, rattrapes=0, eclates=0;
   for(const v of complements){
@@ -183,23 +191,22 @@ const bareme=c=>{ if(!c.financement) return '';
   const r=R.getRule(c.financement,RG), g=r&&r.gl?r.gl:r;
   return (!g||!g.base)?'':(BASES[g.base]||g.base)+(g.jours?' + '+g.jours+' j':' (sans délai)'); };
 const calcul=c=>{ if(!c.dateEcheance) return '';
-  // Un solde de compte est daté par la plus récente des écritures de son
-  // compte : on dit laquelle, sinon la fiche d'une autre écriture du même lot
-  // affiche une date qui semble sortie de nulle part.
-  // Un solde de compte est daté par la plus récente écriture de son lot — pas
-  // par celle qu'on est en train de lire. Il faut donc dire LAQUELLE, et par
-  // quelle branche : la phrase annonçait « dernière date du libellé » même
-  // quand le libellé n'en portait aucune et que l'enregistrement avait servi,
-  // ce que le motif démentait sur la ligne d'à côté.
-  // … et seulement si l'échéance vient VRAIMENT du repli. Depuis qu'un lot
-  // sans facture hérite des dates de celle qu'il cite, le barème s'applique
-  // souvent : la phrase annonçait alors une date d'enregistrement là où le
-  // début de formation avait servi, et démentait la colonne d'à côté.
+  // Une écriture sans facture se date SUR ELLE-MÊME. Sa règle, le 16/10/2026 :
+  // « il ne faut pas regarder un lot, chaque ligne est indépendante ». La
+  // phrase disait « de la plus récente écriture du lot » — elle renvoyait à une
+  // autre ligne que celle qu'on lit, et faisait paraître la date sortie de
+  // nulle part.
+  //
+  // La branche est nommée : la phrase annonçait « dernière date du libellé »
+  // même quand le libellé n'en portait aucune et que l'enregistrement avait
+  // servi, ce que le motif démentait sur la ligne d'à côté. Et seulement si
+  // l'échéance vient VRAIMENT du repli : une écriture qui cite une facture
+  // suit le barème de celle-ci, pas le repli.
   if(c.sansNumero&&c.dateFacture&&(!c.echeanceBase||c.echeanceBase==='echeance1')){
     const branche=c.echeance1Source==='libellé'
-      ? 'dernière date du libellé' : 'date d’enregistrement';
-    return branche+' de la plus récente écriture du lot, celle du '+fr(c.dateFacture)
-      +' = '+fr(c.dateEcheance);
+      ? 'dernière date du libellé de l’écriture'
+      : 'date d’enregistrement de l’écriture';
+    return branche+', le '+fr(c.dateFacture)+' = '+fr(c.dateEcheance);
   }
   const v=valeurBase(c); if(!v||!c.echeanceBase) return fr(c.dateEcheance);
   const j=c.echeanceJours||0;
@@ -300,9 +307,14 @@ const grp=x=>(x.compte||'')+'|'+(x.lettre||GL.POOL_NON_LETTRE);
 // compter plusieurs ; une écriture qui ne cite rien ne doit pas tomber sur la
 // première venue. Sans cela les treize lignes du compte Alma affichaient
 // toutes le reste dû et l'échéance de la facture FACT-2506-10079.
-const parGroupeSolde=new Map();
+const parGroupeSolde=new Map(), parBrut=new Map();
 for(const c of cl) if(c.sansNumero && !c.cle){ const g=grp(c);
-  if(!parGroupeSolde.has(g)) parGroupeSolde.set(g,c); }
+  if(!parGroupeSolde.has(g)) parGroupeSolde.set(g,c);
+  // Depuis qu'une écriture sans numéro fait SA créance, c'est la ligne
+  // elle-même qui désigne la sienne. L'écriture à plat est un autre objet que
+  // la ligne du grand livre, mais toutes deux portent la même ligne brute :
+  // c'est elle qui fait le lien.
+  if(c.brutLigne && !parBrut.has(c.brutLigne)) parBrut.set(c.brutLigne,c); }
 const parGroupeCle=new Map(), cleDe=new Map();
 { const vus=new Map();
   for(const c of cl){
@@ -327,6 +339,7 @@ const creanceDuCompte=l=>{
     const liste=parGroupeCle.get(grp(l)+'|'+I.factureKey(l.numero));
     if(liste&&liste.length) return liste[Math.min(rangLigne.get(l)||1,liste.length)-1];
   } else {
+    const propre=l.brut&&parBrut.get(l.brut); if(propre) return propre;
     const s=parGroupeSolde.get(grp(l)); if(s) return s;
   }
   return parGroupe.get(l.cleGroupe)
@@ -391,6 +404,7 @@ const principale=[];
 for(let i=0;i<plat.length;i++){
   const l=plat[i], e=lignesEcr[i]||{}, B=l.brut||{};
   const src0=(l.numero&&parCle.get(I.factureKey(l.numero)))
+    ||(!l.numero&&l.brut&&parBrut.get(l.brut))
     ||(!l.numero&&parGroupeSolde.get(grp(l)))||parGroupe.get(l.cleGroupe)||{};
   // Quand aucune facture ne date la ligne, la ligne se date elle-même :
   // l'échéance 1, portée par l'écriture, avec son motif.

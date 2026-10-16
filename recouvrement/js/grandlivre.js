@@ -1050,29 +1050,34 @@
                         citee: true,
                     });
                 }
-                // Ce qu'aucune facture ne nomme : le solde du compte.
-                if (orphelines.length) {
-                    const net = orphelines.reduce((s, l) => s + (l.debit || 0) - (l.credit || 0), 0);
-                    if (Math.abs(net) >= TOLERANCE) {
-                        // Ce sont les débits qui créent la dette : leur date
-                        // fait l'ancienneté. À défaut seulement, le dernier
-                        // mouvement. L'échéance suit les règles — à défaut de
-                        // base, le repli : dernière date du libellé, sinon
-                        // l'enregistrement.
-                        const debits = orphelines.filter(l => (l.debit || 0) > 0);
-                        const assiette = debits.length ? debits : orphelines;
-                        const repli = repliDerniere(assiette);
-                        ouvertes.push({
-                            ...socle,
-                            numero: '', cle: null,
-                            resteDu: net,
-                            dateFacture: derniereDate(assiette),
-                            dateEcheanceRepli: repli.date,
-                            echeance1Source: repli.source,
-                            libelle: libelleRepresentatif(g),
-                            filiz: /filiz/i.test(libelleRepresentatif(g) || ''),
-                        });
-                    }
+                // Ce qu'aucune facture ne nomme : UNE CRÉANCE PAR ÉCRITURE.
+                //
+                // Sa règle, le 16/10/2026 : « il ne faut pas regarder un lot,
+                // chaque ligne est indépendante ». Une écriture qui ne cite
+                // aucune facture se datait sur la plus récente de son lot : les
+                // 86 écritures du compte Pôle emploi, étalées de 2021 à 2023,
+                // partageaient toutes l'échéance du 27/10/2023 et paraissaient
+                // deux ans plus jeunes que les premières ne le sont. Chacune
+                // porte désormais sa propre date, et son échéance sort des
+                // règles appliquées à elle seule.
+                for (const l of orphelines) {
+                    const net = (l.debit || 0) - (l.credit || 0);
+                    if (Math.abs(net) < TOLERANCE) continue;
+                    const repli = repliDerniere([l]);
+                    ouvertes.push({
+                        ...socle,
+                        numero: '', cle: null,
+                        resteDu: net,
+                        dateFacture: l.date || null,
+                        dateEcheanceRepli: repli.date,
+                        echeance1Source: repli.source,
+                        libelle: l.libelle || libelleRepresentatif(g),
+                        filiz: /filiz/i.test((l.libelle || '') + ' ' + (libelleRepresentatif(g) || '')),
+                        // Le lien vers SA ligne : c'est par lui que le détail
+                        // retrouve la créance de chaque écriture, maintenant
+                        // qu'un lot en compte plusieurs.
+                        brutLigne: l.brut || null,
+                    });
                 }
             }
         }
