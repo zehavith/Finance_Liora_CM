@@ -300,7 +300,8 @@ function appliquer(garderPlace){
       if(zoom.tr==='(échu)'){ if(trc==='Non échu'||!trc) return false; }
       else if(zoom.tr==='(non échu)'){ if(trc!=='Non échu') return false; }
       else if(zoom.tr && trc!==zoom.tr) return false;
-      if(zoom.prov && !(provisionDe(N(i,'Reste dû de la créance'),sousVraie(i),trc)>0))
+      if(zoom.prov && !(provisionDe(N(i,'Reste dû de la créance'),sousVraie(i),trc,
+                                    V(i,'Clé de la créance'))>0))
         return false;
     }
     if(c && V(i,'Type de financement')!==c) return false;
@@ -369,12 +370,19 @@ function appliquer(garderPlace){
   }
   let d=0,cr=0; const vus=new Set();
   for(const i of filtre){ if(vus.has(i)) continue; vus.add(i); d+=N(i,'Débit'); cr+=N(i,'Crédit'); }
+  // Le débit ET le crédit, pas leur différence. Sa question du 16/10/2026 :
+  // « 2 711 écritures · 258 833 €, cela veut dire que ce montant est au
+  // crédit ? » — un solde net ne dit pas de quoi il est fait, et un net
+  // négatif se lisait comme un crédit pur.
+  const deuxSens=d.toLocaleString('fr-FR',{maximumFractionDigits:0})+' € au débit · '
+    +cr.toLocaleString('fr-FR',{maximumFractionDigits:0})+' € au crédit · solde '+eur(d-cr);
   E('cpt').textContent=(a==='rappro'
-    ? nbProp.toLocaleString('fr-FR')+' propositions · '+vus.size.toLocaleString('fr-FR')+' lignes · '+eur(d-cr)
+    ? nbProp.toLocaleString('fr-FR')+' propositions · '+vus.size.toLocaleString('fr-FR')
+      +' lignes · '+deuxSens
     : a==='excedent'
     ? nbCpt.toLocaleString('fr-FR')+' comptes · excédent '+eurC(mtCpt)+' · '
-      +filtre.length.toLocaleString('fr-FR')+' écritures'
-    : filtre.length.toLocaleString('fr-FR')+' écritures · '+eur(d-cr));
+      +filtre.length.toLocaleString('fr-FR')+' écritures · '+deuxSens
+    : filtre.length.toLocaleString('fr-FR')+' écritures · '+deuxSens);
   // Ce que pèsent les créances ouvertes : la somme doit retomber sur la case
   // cliquée, sans quoi le rapprochement entre la synthèse et le détail est faux.
   E('zoom').hidden=!zoom;
@@ -384,7 +392,7 @@ function appliquer(garderPlace){
       if(!k||vues.has(k)) continue; vues.add(k);
       const rd=N(i,'Reste dû de la créance'); euros+=rd;
       if(zoom.prov) prov+=provisionDe(rd,sousVraie(i),
-        V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté')); }
+        V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté'), k); }
     E('zoom-quoi').textContent=(zoom.prov?'À provisionner · ':'')
       +(zoom.cat||'Toute la balance')
       +(zoom.tr?' · '+(zoom.tr==='(échu)'?'échu':zoom.tr==='(non échu)'?'non échu':zoom.tr):'');
@@ -829,7 +837,7 @@ function feuilleBalance(wb,niv,idx){
       // La provision de CETTE créance : son reste dû au débit multiplié par le
       // taux de sa famille dans la fenêtre où tombe son ancienneté.
       prov:provisionDe(rd, sousVraie(i),
-        V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté')),
+        V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté'), k),
       // L'autre lecture de la MÊME créance. Prise sur la créance, pas sur
       // l'écriture : les deux diffèrent dès que la créance n'est pas classée.
       autre:(niv==='cat'?sousVraie(i):categorieDe(i,'cat'))||'',
@@ -984,6 +992,10 @@ const cleLigne=i=>V(i,'Clé de la créance')
   || (V(i,'N° de compte')+'|'+(V(i,'N° de facture')||V(i,'N° de pièce')||'·')+'|'+V(i,'Date'));
 const idDoc=k=>k.replace(/[^A-Za-z0-9_.~:@+-]+/g,'_').slice(0,180);
 const leJour=()=>new Date().toLocaleDateString('fr-FR');
+// Un dispositif renommé : sa décision porte l'ancien intitulé, la balance le
+// nouveau. On ramène l'un à l'autre à la lecture, une fois pour toutes, plutôt
+// que de laisser deux lignes vivre côte à côte pour un seul dispositif.
+const dispoActuel=d=>((D&&D.anciensDispositifs)||{})[d]||d;
 // Administratrice ou lectrice. Faux tant que la page n'a pas pu le demander :
 // on n'ouvre jamais une commande d'écriture par défaut.
 let admin=false;
@@ -1013,16 +1025,50 @@ const familleDe=sc=>{
   return null;
 };
 
-// La provision d'UNE créance, à partir de son reste dû, de son type de
-// financement et de sa tranche. Zéro quand le compte est créditeur : un
-// client qui a trop payé n'est pas une perte à couvrir.
-function provisionDe(rd, sc, tr){
+// ───────── l'assiette de la provision ─────────
+//
+// On ne provisionne pas une dette qu'un paiement du même lot a déjà éteinte.
+// Depuis qu'une écriture sans facture fait SA créance, un règlement non
+// rattaché est devenu une créance au crédit à côté des dettes du même lot, et
+// la provision portait sur le BRUT de ces dettes : 16 983 311 € au lieu des
+// 14 635 123 € réellement dus, soit 5 670 753 € provisionnés au lieu de
+// 4 654 820 €. Un million de trop.
+//
+// Les crédits non rattachés d'un lot s'imputent donc sur ses dettes, de la
+// plus ancienne à la plus récente — l'imputation de droit commun, et ce que le
+// moteur faisait de lui-même avant la découpe, puisque le lot ne faisait
+// qu'une créance. L'ANCIENNETÉ, elle, reste celle de chaque ligne.
+let ASSIETTE=null;
+function assiettes(){
+  if(ASSIETTE) return ASSIETTE;
+  ASSIETTE=new Map();
+  const lots=new Map(), vues=new Set();
+  for(const i of I){
+    const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
+    const j=V(i,'Jours de retard');
+    const lot=V(i,'N° de compte')+'|'+V(i,'Let.');
+    if(!lots.has(lot)) lots.set(lot,[]);
+    lots.get(lot).push({k, rd:N(i,'Reste dû de la créance'), j:j===''?-1:Number(j)});
+  }
+  for(const [,g] of lots){
+    let credit=-g.filter(c=>c.rd<0).reduce((s,c)=>s+c.rd,0);
+    for(const c of g.filter(c=>c.rd>0).sort((a,b)=>b.j-a.j)){
+      const pris=Math.min(credit,c.rd); credit-=pris;
+      ASSIETTE.set(c.k, c.rd-pris);
+    }
+  }
+  return ASSIETTE;
+}
+// Le barème s'applique à ce qui reste vraiment dû sur la créance.
+function provisionDe(rd, sc, tr, cle){
   paramsPrets();
-  if(!(rd>0)) return 0;
+  const a=assiettes();
+  const base=(cle!=null&&a.has(cle))?a.get(cle):rd;
+  if(!(base>0)) return 0;
   const j=(PROV.fenetres||[]).findIndex(f=>(f.tranches||[]).indexOf(tr)>=0);
   if(j<0) return 0;
   const fam=familleDe(sc); if(!fam) return 0;
-  return rd*(((PROV.taux||{})[fam]||[])[j]||0);
+  return base*(((PROV.taux||{})[fam]||[])[j]||0);
 }
 
 // La provision par ligne de synthèse, au niveau de lecture courant. Elle suit
@@ -1033,7 +1079,7 @@ function provisionParCategorie(niv){
   for(const i of I){
     const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
     const p=provisionDe(N(i,'Reste dû de la créance'), sousVraie(i),
-      V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté'));
+      V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté'), k);
     if(!p) continue;
     const c=categorieDe(i,niv);
     m.set(c,(m.get(c)||0)+p);
@@ -1105,14 +1151,15 @@ async function ouvrirBase(){
     if(DB){
       const q=await DB.collection('complements').get();
       q.docs.forEach(doc=>{ const v=doc.data()||{};
-        if(v&&v.cle&&v.dispositif) compl.set(v.cle,v); });
+        if(v&&v.cle&&v.dispositif) compl.set(v.cle,{...v,dispositif:dispoActuel(v.dispositif)}); });
       const pq=await DB.collection('parametres').get();
       pq.docs.forEach(doc=>{ const v=doc.data()||{};
         if(doc.id==='provision'&&v.taux){ paramsPrets(); PROV={...PROV,...v}; }
         if(doc.id==='echeance'&&Array.isArray(v.regles)) ECH=v.regles; });
     } else {
       const brut=localStorage.getItem('rec_complements');
-      if(brut) for(const v of JSON.parse(brut)) if(v&&v.cle) compl.set(v.cle,v);
+      if(brut) for(const v of JSON.parse(brut)) if(v&&v.cle)
+        compl.set(v.cle,{...v,dispositif:dispoActuel(v.dispositif)});
       const pv=localStorage.getItem('rec_provision');
       if(pv){ paramsPrets(); PROV={...PROV,...JSON.parse(pv)}; }
       const ec=localStorage.getItem('rec_echeance');
@@ -1125,6 +1172,7 @@ async function ouvrirBase(){
 }
 
 function rafraichir(){
+  ASSIETTE=null;                    // un complément peut changer la famille
   const y=E('viewport').scrollTop;
   ruban(); synthese(); appliquer(true);
   E('viewport').scrollTop=y;
@@ -1446,7 +1494,7 @@ function vueProvision(){
     const sc=sousVraie(i); if(!sc) continue;
     const rd=N(i,'Reste dû de la créance');
     const t=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
-    const p=provisionDe(rd, sc, t);
+    const p=provisionDe(rd, sc, t, k);
     let g=parSc.get(sc);
     if(!g){ g={sc, cat:categorieDe(i,'cat'), rd:0, prov:0, nb:0, tr:new Map()}; parSc.set(sc,g); }
     g.rd+=rd; g.prov+=p; g.nb++;

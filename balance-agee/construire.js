@@ -736,6 +736,12 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
   // L'ordre de ses trois types de client, pour que la vue « à provisionner »
   // les présente comme le tableau.
   ordreTypeClient:ORDRE,
+  // Les intitulés qu'un dispositif a portés avant d'être renommé. La page en
+  // a besoin : ses décisions sont enregistrées sous le nom en vigueur le jour
+  // où elle les a prises, et huit d'entre elles disaient encore « B2C-Perso ».
+  // Sans cette table, la balance affichait deux lignes pour un seul dispositif.
+  anciensDispositifs:Object.fromEntries(ANCIENS.map(([vieux,cle])=>
+    [vieux,(RG.find(r=>r&&r.key===cle)||{}).label||vieux])),
   // ───────── le barème de provision ─────────
   //
   // Son tableau « Règles de provision Groupe », reçu le 16/10/2026. Les quatre

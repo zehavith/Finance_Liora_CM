@@ -324,6 +324,22 @@ input[type=search]{flex:1 1 220px}
 
     <div class="param-bloc">
       <div class="param-tete">
+        <h3>Règles d’échéance</h3>
+        <button type="button" class="plat" id="ech-modif" hidden>Modifier</button>
+        <span class="etat" id="ech-etat"></span>
+      </div>
+      <p class="param-note">L’ordre de priorité passe avant le tableau : une créance sous
+        mandat de prélèvement ne regarde jamais son barème.</p>
+      <div class="param-table" id="ech-ordre"></div>
+      <h4>Le barème, dispositif par dispositif</h4>
+      <div class="param-table" id="ech-bareme"></div>
+      <div class="param-actions" id="ech-actions" hidden>
+        <button type="button" id="ech-ok">Enregistrer</button>
+        <button type="button" class="plat" id="ech-non">Annuler</button>
+      </div>
+    </div>
+    <div class="param-bloc">
+      <div class="param-tete">
         <h3>Règles de provision</h3>
         <button type="button" class="plat" id="prov-modif" hidden>Modifier</button>
         <span class="etat" id="prov-etat"></span>
@@ -340,22 +356,6 @@ input[type=search]{flex:1 1 220px}
       </div>
     </div>
 
-    <div class="param-bloc">
-      <div class="param-tete">
-        <h3>Règles d’échéance</h3>
-        <button type="button" class="plat" id="ech-modif" hidden>Modifier</button>
-        <span class="etat" id="ech-etat"></span>
-      </div>
-      <p class="param-note">L’ordre de priorité passe avant le tableau : une créance sous
-        mandat de prélèvement ne regarde jamais son barème.</p>
-      <div class="param-table" id="ech-ordre"></div>
-      <h4>Le barème, dispositif par dispositif</h4>
-      <div class="param-table" id="ech-bareme"></div>
-      <div class="param-actions" id="ech-actions" hidden>
-        <button type="button" id="ech-ok">Enregistrer</button>
-        <button type="button" class="plat" id="ech-non">Annuler</button>
-      </div>
-    </div>
     </details>
   </section>
 
