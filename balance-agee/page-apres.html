@@ -1404,14 +1404,17 @@ function vueProvision(){
     const rd=N(i,'Reste dû de la créance');
     const p=provisionDe(rd, sc, V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté'));
     let g=parSc.get(sc);
-    if(!g){ g={sc, cat:categorieDe(i,'cat'), rd:0, prov:0, nb:0}; parSc.set(sc,g); }
+    if(!g){ g={sc, cat:categorieDe(i,'cat'), rd:0, prov:0, nb:0, tr:new Map()}; parSc.set(sc,g); }
     g.rd+=rd; g.prov+=p; g.nb++;
+    if(p){ const t=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
+           g.tr.set(t,(g.tr.get(t)||0)+p); }
   }
   const groupes=new Map();
   for(const g of parSc.values()){
     let x=groupes.get(g.cat);
-    if(!x){ x={cat:g.cat, prov:0, rd:0, lignes:[]}; groupes.set(g.cat,x); }
-    x.prov+=g.prov; x.rd+=g.rd; x.lignes.push(g);
+    if(!x){ x={cat:g.cat, prov:0, rd:0, nb:0, tr:new Map(), lignes:[]}; groupes.set(g.cat,x); }
+    x.prov+=g.prov; x.rd+=g.rd; x.nb+=g.nb; x.lignes.push(g);
+    for(const [t,v] of g.tr) x.tr.set(t,(x.tr.get(t)||0)+v);
   }
   const ordre=(D.ordreTypeClient||[...groupes.keys()]);
   const liste=[...groupes.values()].sort((a,b)=>{
@@ -1457,8 +1460,48 @@ function vueProvision(){
   h+='<div class="prov-axe"><span>0 €</span><span>'+eur(max)+'</span></div>';
   h+='<div class="prov-pied">Même échelle pour les trois groupes : une barre deux fois '
     +'plus longue vaut deux fois plus d’euros. Le barème qui produit ces montants se lit, '
-    +'et se modifie, dans <strong>Paramètres</strong>, en bas de page. '
-    +'Les mêmes chiffres se retrouvent colonne par colonne dans les deux autres lectures.</div>';
+    +'et se modifie, dans <strong>Paramètres</strong>, en bas de page.</div>';
+
+  // Le même montant, lu comme les deux autres onglets : une ligne par type de
+  // financement, les mêmes colonnes d'ancienneté. Les trois premières et le
+  // non échu restent vides par construction — rien ne se provisionne avant
+  // 121 jours — et c'est une information, pas un trou.
+  h+='<h3 class="prov-titre">La répartition, tranche par tranche</h3>'
+    +'<div class="defil"><table class="prov-table"><thead><tr>'
+    +'<th>Type de financement</th><th class="n">Reste dû</th>'
+    +'<th class="n">À provisionner</th><th class="n">Part</th>'
+    +D.tranches.map(x=>'<th class="n">'+esc(x)+'</th>').join('')
+    +'<th class="n">Non échu</th><th class="n">Créances</th></tr></thead><tbody>';
+  const cell=v=>'<td class="n">'+(v?eurC(v):'·')+'</td>';
+  const pct=v=>!total?'·':(v/total*100).toLocaleString('fr-FR',
+    {minimumFractionDigits:1,maximumFractionDigits:1})+' %';
+  for(const x of liste){
+    h+='<tr class="grp"><td><i style="background:'+teinteDe(x.cat)+'"></i>'+esc(x.cat)+'</td>'
+      +'<td class="n">'+eurC(x.rd)+'</td><td class="n prov">'+eurC(x.prov)+'</td>'
+      +'<td class="n">'+pct(x.prov)+'</td>'
+      +D.tranches.map(t=>cell(x.tr.get(t)||0)).join('')
+      +'<td class="n">·</td><td class="n">'+x.nb.toLocaleString('fr-FR')+'</td></tr>';
+    for(const g of x.lignes){
+      h+='<tr><td class="ss">'+esc(g.sc)+'</td>'
+        +'<td class="n">'+eurC(g.rd)+'</td><td class="n prov">'+(g.prov?eurC(g.prov):'·')+'</td>'
+        +'<td class="n">'+(g.prov?pct(g.prov):'·')+'</td>'
+        +D.tranches.map(t=>cell(g.tr.get(t)||0)).join('')
+        +'<td class="n">·</td><td class="n">'+g.nb.toLocaleString('fr-FR')+'</td></tr>';
+    }
+  }
+  const trTot=new Map(); let nbTot=0, rdTot=0;
+  for(const x of liste){ nbTot+=x.nb; rdTot+=x.rd;
+    for(const [t,v] of x.tr) trTot.set(t,(trTot.get(t)||0)+v); }
+  h+='<tr class="total"><td>TOTAL</td><td class="n">'+eurC(rdTot)+'</td>'
+    +'<td class="n prov">'+eurC(total)+'</td><td class="n">100,0 %</td>'
+    +D.tranches.map(t=>cell(trTot.get(t)||0)).join('')
+    +'<td class="n">·</td><td class="n">'+nbTot.toLocaleString('fr-FR')+'</td></tr>';
+  h+='</tbody></table></div>'
+    +'<p class="prov-note">Rien ne se provisionne avant 121 jours de retard, ni sur du non '
+    +'échu : les quatre premières colonnes et la dernière sont vides par construction. '
+    +'Les quatre fenêtres du barème sont exactement des tranches de cette balance — '
+    +'121-180 jours est « 4 à 6 mois », 181-360 « 6 à 12 mois », 361-720 les deux '
+    +'suivantes, au-delà de 720 les trois dernières.</p>';
   cible.innerHTML=h;
 }
 

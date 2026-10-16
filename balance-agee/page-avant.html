@@ -115,7 +115,18 @@ input[type=search]{flex:1 1 220px}
 /* Les paramètres : les deux jeux de règles qui font la balance, lisibles par
    tout le monde et modifiables sur place par l'administratrice seulement. */
 .param{margin-top:40px;padding-top:20px;border-top:2px solid var(--accent)}
-.param h2{font-family:var(--titre);font-size:19px;margin:0;color:var(--accent)}
+.param h2{font-family:var(--titre);font-size:19px;margin:0;color:var(--accent);display:inline}
+/* Repliable, à sa demande du 16/10/2026. <details> plutôt qu'un bouton :
+   le clavier, la recherche du navigateur et les lecteurs d'écran le
+   connaissent déjà, et la section reste lisible sans JavaScript. */
+.param summary{cursor:pointer;list-style:none;display:flex;align-items:baseline;
+  gap:12px;flex-wrap:wrap;padding:2px 0}
+.param summary::-webkit-details-marker{display:none}
+.param summary::before{content:'▸';color:var(--accent);font-size:13px;
+  transition:transform .15s ease;display:inline-block}
+.param details[open]>summary::before,.param[open] summary::before{content:'▾'}
+.param .param-ouvrir{color:var(--encre-3);font-size:12.5px}
+.param summary:hover .param-ouvrir{color:var(--encre-2)}
 .param-sous{color:var(--encre-2);font-size:12.5px;margin:4px 0 0}
 .param-bloc{background:var(--carte);border:1px solid var(--trait);border-radius:10px;
   padding:16px 18px;margin-top:14px}
@@ -217,6 +228,14 @@ input[type=search]{flex:1 1 220px}
   font-size:11px;color:var(--encre-3)}
 .prov-pied{margin-top:22px;padding-top:12px;border-top:1px solid var(--trait);
   color:var(--encre-2);font-size:12.5px}
+.prov-titre{font-family:var(--titre);font-size:15px;margin:26px 0 10px}
+.prov-table tr.grp td{font-weight:600;background:color-mix(in srgb,var(--accent) 5%,transparent)}
+.prov-table tr.grp td i{width:9px;height:9px;border-radius:2px;display:inline-block;
+  margin-right:7px;vertical-align:baseline}
+.prov-table td.ss{padding-left:26px;color:var(--encre-2)}
+.prov-table td.prov{color:var(--alerte);border-right:1px solid var(--trait-fort)}
+.prov-table th:nth-child(3){border-right:1px solid var(--trait-fort)}
+.prov-note{color:var(--encre-3);font-size:12px;margin:10px 0 0;max-width:86ch}
 .niveaux{display:flex;gap:6px;margin:0 0 10px}
 .niveaux button{font:inherit;font-size:13px;padding:6px 14px;border-radius:999px;
   border:1px solid var(--trait);background:var(--carte);color:var(--encre-2);cursor:pointer}
@@ -322,7 +341,8 @@ input[type=search]{flex:1 1 220px}
   <div class="bloc" id="fiche"><p class="vide">Cliquez une ligne pour voir comment son échéance a été établie.</p></div>
 
   <section class="param" id="param">
-    <h2>Paramètres</h2>
+    <details id="param-pli">
+      <summary><h2>Paramètres</h2><span class="param-ouvrir">Règles d’échéance et barème de provision</span></summary>
     <p class="param-sous" id="param-qui"></p>
 
     <div class="param-bloc">
@@ -359,6 +379,7 @@ input[type=search]{flex:1 1 220px}
         <button type="button" class="plat" id="ech-non">Annuler</button>
       </div>
     </div>
+    </details>
   </section>
 
   <div class="pied">
