@@ -593,31 +593,32 @@ const LEXIQUE=[
    'La date vient de la ligne comptable elle-même, faute de mieux.'],
 ];
 
+// Posé en colonne A, en bas de la feuille : à sa demande du 16/10/2026, et
+// parce qu'un bloc décalé en colonne F se lit mal — on ne le voit qu'en
+// faisant défiler vers la droite.
 function lexique(ws){
   ws.addRow([]); ws.addRow([]);
-  const t=ws.addRow(['','','','','','CE QUE VEULENT DIRE LES EXPRESSIONS DES COLONNES D’AUDIT']);
-  t.getCell(6).font={bold:true,size:13,color:{argb:BLEU}}; t.height=24;
-  const s=ws.addRow(['','','','','','Ces colonnes se lisent sur chaque ligne du détail. '
+  const t=ws.addRow(['CE QUE VEULENT DIRE LES EXPRESSIONS DES COLONNES D’AUDIT']);
+  t.getCell(1).font={bold:true,size:13,color:{argb:BLEU}}; t.height=24;
+  const s=ws.addRow(['Ces colonnes se lisent sur chaque ligne du détail. '
     +'Elles disent comment la ligne a été classée, et comment sa date a été obtenue.']);
-  s.getCell(6).font={size:10,color:{argb:ENCRE3}};
-  s.getCell(6).alignment={wrapText:true}; 
+  s.getCell(1).font={size:10,color:{argb:ENCRE3}};
+  ws.mergeCells(s.number,1,s.number,5);
   ws.addRow([]);
   for(const [expr,quoi] of LEXIQUE){
     if(expr===null){ ws.addRow([]); continue; }
-    const l=ws.addRow(['','','','','',expr,quoi||'']);
+    const l=ws.addRow([expr,quoi||'']);
     if(quoi===null){
-      l.getCell(6).font={bold:true,size:11,color:{argb:BLEU}};
-      l.getCell(6).border={bottom:{style:'thin',color:{argb:BLEU}}};
-      l.getCell(7).border={bottom:{style:'thin',color:{argb:BLEU}}};
-      l.getCell(8).border={bottom:{style:'thin',color:{argb:BLEU}}};
+      l.getCell(1).font={bold:true,size:11,color:{argb:BLEU}};
+      for(let c=1;c<=5;c++) l.getCell(c).border={bottom:{style:'thin',color:{argb:BLEU}}};
       l.height=20;
     } else {
-      l.getCell(6).font={bold:true};
-      l.getCell(6).alignment={wrapText:true,vertical:'top'};
-      l.getCell(7).font={size:10,color:{argb:ENCRE3}};
-      l.getCell(7).alignment={wrapText:true,vertical:'top'};
-      ws.mergeCells(l.number,7,l.number,8);
-      l.height=Math.max(28,Math.ceil(quoi.length/62)*14+14);
+      l.getCell(1).font={bold:true};
+      l.getCell(1).alignment={wrapText:true,vertical:'top'};
+      l.getCell(2).font={size:10,color:{argb:ENCRE3}};
+      l.getCell(2).alignment={wrapText:true,vertical:'top'};
+      ws.mergeCells(l.number,2,l.number,5);
+      l.height=Math.max(28,Math.ceil(quoi.length/88)*14+14);
     }
   }
 }
