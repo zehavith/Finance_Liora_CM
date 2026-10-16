@@ -187,55 +187,10 @@ input[type=search]{flex:1 1 220px}
 .zoom button{font:inherit;font-size:13px;padding:7px 12px;border-radius:6px;cursor:pointer;
   background:transparent;color:var(--encre-2);border:1px solid var(--trait-fort)}
 /* ── La vue « à provisionner » ──
-   Un même axe pour les trois groupes : une barre deux fois plus longue vaut
-   deux fois plus d'euros, d'un groupe à l'autre comme à l'intérieur d'un
-   groupe. Les trois teintes sont celles des trois types de client, validées
-   pour le daltonisme et pour les deux thèmes. */
-:root{ --prov-etatique:#6a4bf0; --prov-corporate:#f2512f; --prov-perso:#009baa; }
-.prov-tete{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;margin-bottom:4px}
-.prov-tete .gros{font-family:var(--texte);font-size:clamp(26px,4vw,34px);font-weight:600;
-  letter-spacing:-.02em;line-height:1.1}
-.prov-tete .quoi{color:var(--encre-2);font-size:13px}
-.prov-part{display:flex;width:100%;height:14px;border-radius:4px;overflow:hidden;
-  margin:14px 0 6px;background:transparent}
-.prov-part span{height:100%;border-radius:0}
-.prov-part span:first-child{border-radius:4px 0 0 4px}
-.prov-part span:last-child{border-radius:0 4px 4px 0}
-.prov-leg{display:flex;flex-wrap:wrap;gap:4px 18px;margin-bottom:22px}
-.prov-leg b{display:inline-flex;align-items:center;gap:7px;font-weight:400;font-size:12.5px;
-  color:var(--encre-2)}
-.prov-leg i{width:11px;height:11px;border-radius:3px;display:inline-block}
-.prov-leg em{font-style:normal;font-family:var(--chiffre);font-variant-numeric:tabular-nums;
-  color:var(--encre)}
-.prov-grp{margin-top:20px}
-.prov-grp h3{font-family:var(--titre);font-size:14.5px;margin:0 0 2px;
-  display:flex;align-items:center;gap:8px}
-.prov-grp h3 i{width:11px;height:11px;border-radius:3px;display:inline-block}
-.prov-grp h3 em{font-style:normal;margin-left:auto;font-family:var(--chiffre);
-  font-variant-numeric:tabular-nums;font-size:13px}
-.prov-grp .sous-note{color:var(--encre-3);font-size:12px;margin:0 0 10px}
-.prov-lig{display:grid;grid-template-columns:minmax(120px,170px) 1fr minmax(96px,auto);
-  align-items:center;gap:10px;padding:3px 0}
-.prov-lig .nom{font-size:12.5px;color:var(--encre-2);overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
-.prov-lig .piste{height:14px;position:relative}
-.prov-lig .barre{height:14px;border-radius:0 4px 4px 0;display:block}
-.prov-lig .val{font-family:var(--chiffre);font-variant-numeric:tabular-nums;
-  font-size:12.5px;text-align:right;color:var(--encre)}
-.prov-lig.rien .val{color:var(--encre-3)}
-.prov-axe{border-top:1px solid var(--trait);margin-top:8px;padding-top:4px;
-  display:flex;justify-content:space-between;font-family:var(--chiffre);
-  font-size:11px;color:var(--encre-3)}
-.prov-pied{margin-top:22px;padding-top:12px;border-top:1px solid var(--trait);
-  color:var(--encre-2);font-size:12.5px}
-.prov-titre{font-family:var(--titre);font-size:15px;margin:26px 0 10px}
-.prov-table tr.grp td{font-weight:600;background:color-mix(in srgb,var(--accent) 5%,transparent)}
-.prov-table tr.grp td i{width:9px;height:9px;border-radius:2px;display:inline-block;
-  margin-right:7px;vertical-align:baseline}
-.prov-table td.ss{padding-left:26px;color:var(--encre-2)}
-.prov-table td.prov{color:var(--alerte);border-right:1px solid var(--trait-fort)}
-.prov-table th:nth-child(3){border-right:1px solid var(--trait-fort)}
-.prov-note{color:var(--encre-3);font-size:12px;margin:10px 0 0;max-width:86ch}
+   Le même tableau que les deux autres lectures : rien à habiller de plus que
+   la colonne des provisions, qui porte la même couleur qu'ailleurs. */
+#prov-table td.prov{color:var(--alerte);border-right:1px solid var(--trait-fort)}
+#prov-table th:nth-child(4){color:var(--alerte);border-right:1px solid var(--trait-fort)}
 .niveaux{display:flex;gap:6px;margin:0 0 10px}
 .niveaux button{font:inherit;font-size:13px;padding:6px 14px;border-radius:999px;
   border:1px solid var(--trait);background:var(--carte);color:var(--encre-2);cursor:pointer}
@@ -298,7 +253,7 @@ input[type=search]{flex:1 1 220px}
     <button type="button" data-niveau="prov">À provisionner</button>
   </div>
   <div class="bloc defil" id="bloc-synth"><table id="synthese"></table></div>
-  <div class="bloc" id="bloc-prov" hidden></div>
+  <div class="bloc defil" id="bloc-prov" hidden></div>
 
   <h2>Le détail, ligne par ligne</h2>
   <div class="barre">

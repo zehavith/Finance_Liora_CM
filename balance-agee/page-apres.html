@@ -1387,121 +1387,54 @@ function brancherParametres(){
 // vaut deux fois plus d'euros, d'un groupe à l'autre comme à l'intérieur d'un
 // groupe. Deux échelles auraient fait paraître égaux des montants qui ne le
 // sont pas — c'est la faute la plus courante de ce genre de graphique.
-const TEINTES={'Étatique':'var(--prov-etatique)','Corporate':'var(--prov-corporate)',
-               'Financement personnel':'var(--prov-perso)'};
-const teinteDe=c=>TEINTES[c]||'var(--encre-3)';
 
 function vueProvision(){
   paramsPrets();
   const cible=E('bloc-prov'); if(!cible) return;
-  // Le reste dû et la provision de chaque type de financement, et le type de
-  // client qui le porte. Les compléments sont pris en compte : sousVraie() et
-  // categorieDe() les lisent tous les deux.
+  // Le même tableau que les deux autres lectures : une ligne par type de
+  // financement, les mêmes colonnes d'ancienneté. Seuls les montants changent
+  // — ce sont les provisions, et non le reste dû. Sa règle, le 16/10/2026 :
+  // « je ne veux pas que tu changes la mise en forme dans à provisionner ».
   const parSc=new Map(), vues=new Set();
   for(const i of I){
     const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
     const sc=sousVraie(i); if(!sc) continue;
     const rd=N(i,'Reste dû de la créance');
-    const p=provisionDe(rd, sc, V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté'));
+    const t=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
+    const p=provisionDe(rd, sc, t);
     let g=parSc.get(sc);
     if(!g){ g={sc, cat:categorieDe(i,'cat'), rd:0, prov:0, nb:0, tr:new Map()}; parSc.set(sc,g); }
     g.rd+=rd; g.prov+=p; g.nb++;
-    if(p){ const t=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
-           g.tr.set(t,(g.tr.get(t)||0)+p); }
+    if(p) g.tr.set(t,(g.tr.get(t)||0)+p);
   }
-  const groupes=new Map();
-  for(const g of parSc.values()){
-    let x=groupes.get(g.cat);
-    if(!x){ x={cat:g.cat, prov:0, rd:0, nb:0, tr:new Map(), lignes:[]}; groupes.set(g.cat,x); }
-    x.prov+=g.prov; x.rd+=g.rd; x.nb+=g.nb; x.lignes.push(g);
-    for(const [t,v] of g.tr) x.tr.set(t,(x.tr.get(t)||0)+v);
-  }
-  const ordre=(D.ordreTypeClient||[...groupes.keys()]);
-  const liste=[...groupes.values()].sort((a,b)=>{
-    const i=ordre.indexOf(a.cat), j=ordre.indexOf(b.cat);
-    return (i<0?99:i)-(j<0?99:j) || b.prov-a.prov; });
+  const liste=[...parSc.values()].sort((a,b)=>b.prov-a.prov||(a.sc<b.sc?-1:1));
   const total=liste.reduce((s,x)=>s+x.prov,0);
-  // L'échelle commune : le plus gros montant à provisionner, tous groupes
-  // confondus.
-  const max=Math.max(1,...[...parSc.values()].map(g=>g.prov));
+  const rdTot=liste.reduce((s,x)=>s+x.rd,0);
+  const nbTot=liste.reduce((s,x)=>s+x.nb,0);
+  const trTot=new Map();
+  for(const x of liste) for(const [t,v] of x.tr) trTot.set(t,(trTot.get(t)||0)+v);
 
-  let h='<div class="prov-tete"><span class="gros">'+eur(total)+'</span>'
-    +'<span class="quoi">à provisionner sur '+eur((D.synthese.find(s=>s.cat==="TOTAL")||{}).total||0)
-    +' de reste dû</span></div>';
-
-  // La part de chaque type de client dans ce montant : trois segments, séparés
-  // par 2 px de fond — un trait autour des segments ajouterait de l'encre qui
-  // n'est pas de la donnée.
-  h+='<div class="prov-part">'+liste.filter(x=>x.prov>0).map((x,j,t)=>
-    '<span title="'+esc(x.cat)+' — '+eur(x.prov)+', soit '
-      +Math.round(x.prov/total*100)+' % du montant à provisionner" style="background:'
-      +teinteDe(x.cat)+';flex:0 0 calc('+(x.prov/total*100)+'% - '+(j<t.length-1?2:0)+'px)'
-      +(j<t.length-1?';margin-right:2px':'')+'"></span>').join('')+'</div>';
-  h+='<div class="prov-leg">'+liste.map(x=>'<b><i style="background:'+teinteDe(x.cat)+'"></i>'
-    +esc(x.cat)+' <em>'+eur(x.prov)+'</em> · '+Math.round(x.prov/total*100)+' %</b>').join('')+'</div>';
-
-  for(const x of liste){
-    h+='<div class="prov-grp"><h3><i style="background:'+teinteDe(x.cat)+'"></i>'
-      +esc(x.cat)+'<em>'+eur(x.prov)+'</em></h3>'
-      +'<p class="sous-note">'+x.lignes.length+' type'+(x.lignes.length>1?'s':'')
-      +' de financement · '+eur(x.rd)+' de reste dû</p>';
-    for(const g of x.lignes.sort((a,b)=>b.prov-a.prov)){
-      const pc=Math.max(0,g.prov)/max*100;
-      h+='<div class="prov-lig'+(g.prov>0?'':' rien')+'">'
-        +'<span class="nom" title="'+esc(g.sc)+'">'+esc(g.sc)+'</span>'
-        +'<span class="piste"><span class="barre" title="'+esc(g.sc)+' — '
-          +eur(g.prov)+' à provisionner sur '+eur(g.rd)+' de reste dû, '
-          +g.nb+' créance'+(g.nb>1?'s':'')+'" style="width:'+pc.toFixed(2)+'%;background:'
-          +teinteDe(x.cat)+'"></span></span>'
-        +'<span class="val">'+(g.prov>0?eur(g.prov):'—')+'</span></div>';
-    }
-    h+='</div>';
-  }
-  h+='<div class="prov-axe"><span>0 €</span><span>'+eur(max)+'</span></div>';
-  h+='<div class="prov-pied">Même échelle pour les trois groupes : une barre deux fois '
-    +'plus longue vaut deux fois plus d’euros. Le barème qui produit ces montants se lit, '
-    +'et se modifie, dans <strong>Paramètres</strong>, en bas de page.</div>';
-
-  // Le même montant, lu comme les deux autres onglets : une ligne par type de
-  // financement, les mêmes colonnes d'ancienneté. Les trois premières et le
-  // non échu restent vides par construction — rien ne se provisionne avant
-  // 121 jours — et c'est une information, pas un trou.
-  h+='<h3 class="prov-titre">La répartition, tranche par tranche</h3>'
-    +'<div class="defil"><table class="prov-table"><thead><tr>'
-    +'<th>Type de financement</th><th class="n">Reste dû</th>'
-    +'<th class="n">À provisionner</th><th class="n">Part</th>'
-    +D.tranches.map(x=>'<th class="n">'+esc(x)+'</th>').join('')
-    +'<th class="n">Non échu</th><th class="n">Créances</th></tr></thead><tbody>';
   const cell=v=>'<td class="n">'+(v?eurC(v):'·')+'</td>';
   const pct=v=>!total?'·':(v/total*100).toLocaleString('fr-FR',
     {minimumFractionDigits:1,maximumFractionDigits:1})+' %';
-  for(const x of liste){
-    h+='<tr class="grp"><td><i style="background:'+teinteDe(x.cat)+'"></i>'+esc(x.cat)+'</td>'
-      +'<td class="n">'+eurC(x.rd)+'</td><td class="n prov">'+eurC(x.prov)+'</td>'
-      +'<td class="n">'+pct(x.prov)+'</td>'
-      +D.tranches.map(t=>cell(x.tr.get(t)||0)).join('')
-      +'<td class="n">·</td><td class="n">'+x.nb.toLocaleString('fr-FR')+'</td></tr>';
-    for(const g of x.lignes){
-      h+='<tr><td class="ss">'+esc(g.sc)+'</td>'
-        +'<td class="n">'+eurC(g.rd)+'</td><td class="n prov">'+(g.prov?eurC(g.prov):'·')+'</td>'
-        +'<td class="n">'+(g.prov?pct(g.prov):'·')+'</td>'
-        +D.tranches.map(t=>cell(g.tr.get(t)||0)).join('')
-        +'<td class="n">·</td><td class="n">'+g.nb.toLocaleString('fr-FR')+'</td></tr>';
-    }
+  let h='<table id="prov-table"><thead><tr>'
+    +'<th>Type de financement</th><th>Type de client</th>'
+    +'<th class="n">Reste dû</th><th class="n">À provisionner</th><th class="n">Part</th>'
+    +D.tranches.map(x=>'<th class="n">'+esc(x)+'</th>').join('')
+    +'<th class="n">Non échu</th><th class="n">Créances</th></tr></thead><tbody>';
+  for(const g of liste){
+    h+='<tr><td>'+esc(g.sc)+'</td><td>'+esc(g.cat)+'</td>'
+      +'<td class="n">'+eurC(g.rd)+'</td>'
+      +'<td class="n prov">'+(g.prov?eurC(g.prov):'·')+'</td>'
+      +'<td class="n">'+(g.prov?pct(g.prov):'·')+'</td>'
+      +D.tranches.map(t=>cell(g.tr.get(t)||0)).join('')
+      +'<td class="n">·</td><td class="n">'+g.nb.toLocaleString('fr-FR')+'</td></tr>';
   }
-  const trTot=new Map(); let nbTot=0, rdTot=0;
-  for(const x of liste){ nbTot+=x.nb; rdTot+=x.rd;
-    for(const [t,v] of x.tr) trTot.set(t,(trTot.get(t)||0)+v); }
-  h+='<tr class="total"><td>TOTAL</td><td class="n">'+eurC(rdTot)+'</td>'
+  h+='<tr class="total"><td>TOTAL</td><td></td><td class="n">'+eurC(rdTot)+'</td>'
     +'<td class="n prov">'+eurC(total)+'</td><td class="n">100,0 %</td>'
     +D.tranches.map(t=>cell(trTot.get(t)||0)).join('')
-    +'<td class="n">·</td><td class="n">'+nbTot.toLocaleString('fr-FR')+'</td></tr>';
-  h+='</tbody></table></div>'
-    +'<p class="prov-note">Rien ne se provisionne avant 121 jours de retard, ni sur du non '
-    +'échu : les quatre premières colonnes et la dernière sont vides par construction. '
-    +'Les quatre fenêtres du barème sont exactement des tranches de cette balance — '
-    +'121-180 jours est « 4 à 6 mois », 181-360 « 6 à 12 mois », 361-720 les deux '
-    +'suivantes, au-delà de 720 les trois dernières.</p>';
+    +'<td class="n">·</td><td class="n">'+nbTot.toLocaleString('fr-FR')+'</td></tr>'
+    +'</tbody></table>';
   cible.innerHTML=h;
 }
 
