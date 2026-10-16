@@ -652,9 +652,10 @@ function provisionRegles(ws){
   ws.addRow([]);
   ws.addRow(['RÈGLES DE PROVISION GROUPE'])
     .font={bold:true,size:12,color:{argb:BLEU}};
-  ws.addRow(['Le reste dû de chaque créance au débit, multiplié par le taux de sa famille '
-    +'dans la fenêtre où tombe son ancienneté. En deçà de 121 jours, aucune provision. '
-    +'Un compte créditeur ne se provisionne pas.'])
+  ws.addRow(['Le taux de la famille, dans la fenêtre où tombe l’ancienneté de la créance, '
+    +'appliqué à son assiette : son reste dû, diminué des crédits du même lettrage qui ne sont '
+    +'rattachés à aucune facture, imputés de la créance la plus ancienne à la plus récente. '
+    +'En deçà de 121 jours, aucune provision. Un compte créditeur ne se provisionne pas.'])
     .font={color:{argb:ENCRE3},size:10};
   if(!PROV.confirme) ws.addRow(['Le rattachement des types de financement aux trois familles '
     +'n’est pas encore confirmé : celui qui est appliqué ci-dessous est une proposition.'])
@@ -1087,27 +1088,31 @@ function provisionParCategorie(niv){
   return m;
 }
 
-// La provision, créance par créance : le reste dû multiplié par le taux de sa
-// famille dans la fenêtre où tombe son ancienneté. En deçà de 121 jours, et
-// pour une créance non échue ou sans date, rien. Un reste dû négatif — un
-// compte créditeur — ne se provisionne pas : il n'y a pas de perte à couvrir.
+// Le total à provisionner, créance par créance : la même assiette et le même
+// barème que provisionDe(), ventilés par famille et par dispositif. Un seul
+// calcul dans la page — le bandeau, les tableaux, l'onglet et la feuille des
+// règles doivent annoncer le même chiffre. En deçà de 121 jours, et pour une
+// créance non échue ou sans date, rien. Un reste dû négatif — un compte
+// créditeur — ne se provisionne pas : il n'y a pas de perte à couvrir.
 function provisions(){
   paramsPrets();
   const fen=PROV.fenetres||[], taux=PROV.taux||{};
+  const a=assiettes();
   const parFam=new Map(), parSc=new Map();
   let total=0, horsFamille=new Map();
   const vues=new Set();
   for(const i of I){
     const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
     const rd=N(i,'Reste dû de la créance'); if(!(rd>0)) continue;
+    const base=a.has(k)?a.get(k):rd; if(!(base>0)) continue;
     const sc=sousVraie(i);
     const tr=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
     const j=fen.findIndex(f=>(f.tranches||[]).indexOf(tr)>=0);
     if(j<0) continue;
     const fam=familleDe(sc);
-    if(!fam){ horsFamille.set(sc,(horsFamille.get(sc)||0)+rd); continue; }
+    if(!fam){ horsFamille.set(sc,(horsFamille.get(sc)||0)+base); continue; }
     const t=(taux[fam]||[])[j]||0;
-    const p=rd*t;
+    const p=base*t;
     total+=p;
     parFam.set(fam,(parFam.get(fam)||0)+p);
     parSc.set(sc,(parSc.get(sc)||0)+p);

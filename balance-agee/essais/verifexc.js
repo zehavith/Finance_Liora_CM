@@ -1,7 +1,7 @@
 // Le filtre « comptes en excédent » : il doit montrer les écritures des
 // comptes réellement créditeurs, groupées par compte, et annoncer le bon total.
 const { chromium } = require(process.env.PLAYWRIGHT || '/opt/node-tools/node_modules/playwright');
-const D=__dirname;
+const D=require('path').resolve(__dirname,'..');
 (async () => {
   const b=await chromium.launch(); const p=await (await b.newContext()).newPage();
   const errs=[]; p.on('pageerror',e=>errs.push('PAGE: '+e.message.slice(0,200)));

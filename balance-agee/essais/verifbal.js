@@ -3,7 +3,7 @@ const DEPOT=require('path').resolve(__dirname,'..','..');
 // et la colonne de l'autre lecture remplie sur chaque ligne de compte.
 const { chromium } = require(process.env.PLAYWRIGHT || '/opt/node-tools/node_modules/playwright');
 const XLSX=require(DEPOT+'/vendor/xlsx.full.min.js');
-const fs=require('fs'), D=__dirname;
+const fs=require('fs'), D=require('path').resolve(__dirname,'..'), SORTIE=__dirname;
 (async () => {
   const b=await chromium.launch(); const ctx=await b.newContext({acceptDownloads:true});
   const p=await ctx.newPage({viewport:{width:1500,height:980}});
@@ -13,7 +13,7 @@ const fs=require('fs'), D=__dirname;
   await p.waitForTimeout(5000);
   const [dl]=await Promise.all([ p.waitForEvent('download',{timeout:240000}),
     p.evaluate(()=>document.getElementById('dl-xlsx').click()) ]);
-  const f=D+'/essai-colonnes.xlsx'; await dl.saveAs(f);
+  const f=SORTIE+'/essai-colonnes.xlsx'; await dl.saveAs(f);
   console.log((fs.statSync(f).size/1048576).toFixed(2)+' Mo · onglets attendus ci-dessous');
   const wb=XLSX.read(fs.readFileSync(f),{type:'buffer'});
   console.log('onglets : '+wb.SheetNames.join(' │ '));

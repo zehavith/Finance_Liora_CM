@@ -7,7 +7,7 @@ const DEPOT=require('path').resolve(__dirname,'..','..');
 // pendant que le filtre est posé — et l'onglet retiré ne doit pas revenir.
 const { chromium } = require(process.env.PLAYWRIGHT || '/opt/node-tools/node_modules/playwright');
 const XLSX=require(DEPOT+'/vendor/xlsx.full.min.js');
-const fs=require('fs'), D=__dirname;
+const fs=require('fs'), D=require('path').resolve(__dirname,'..'), SORTIE=__dirname;
 const ONGLETS=['Sommaire','Règles','Balance âgée','Par type de financement','Détail ligne à ligne'];
 (async () => {
   const b=await chromium.launch(); const ctx=await b.newContext({acceptDownloads:true});
@@ -21,7 +21,7 @@ const ONGLETS=['Sommaire','Règles','Balance âgée','Par type de financement','
   const nPage=Number((note.match(/[\d   ]+/)||['0'])[0].replace(/[^\d]/g,''));
   const [dl]=await Promise.all([ p.waitForEvent('download',{timeout:240000}),
     p.evaluate(()=>document.getElementById('dl-xlsx').click()) ]);
-  const f=D+'/essai-paiements.xlsx'; await dl.saveAs(f);
+  const f=SORTIE+'/essai-paiements.xlsx'; await dl.saveAs(f);
   const wb=XLSX.read(fs.readFileSync(f),{type:'buffer'});
   console.log('onglets  : '+wb.SheetNames.join(' │ '));
   const trop=wb.SheetNames.filter(n=>!ONGLETS.includes(n));

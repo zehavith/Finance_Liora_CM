@@ -344,9 +344,11 @@ input[type=search]{flex:1 1 220px}
         <button type="button" class="plat" id="prov-modif" hidden>Modifier</button>
         <span class="etat" id="prov-etat"></span>
       </div>
-      <p class="param-note">Appliquées au reste dû de chaque créance selon son ancienneté.
-        En deçà de 121 jours, aucune provision. Les quatre fenêtres sont exactement
-        des tranches de la balance : rien n’est proratisé.</p>
+      <p class="param-note">Appliquées à l’assiette de chaque créance selon son ancienneté :
+        son reste dû, diminué des crédits du même lettrage qui ne sont rattachés à aucune
+        facture, imputés de la créance la plus ancienne à la plus récente. En deçà de
+        121 jours, aucune provision. Les quatre fenêtres sont exactement des tranches de
+        la balance : rien n’est proratisé.</p>
       <div class="param-table" id="prov-taux"></div>
       <h4>Quel type de financement dans quelle famille</h4>
       <div class="param-table" id="prov-familles"></div>
