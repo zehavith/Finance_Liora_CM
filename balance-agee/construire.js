@@ -168,8 +168,21 @@ const calcul=c=>{ if(!c.dateEcheance) return '';
   // Un solde de compte est daté par la plus récente des écritures de son
   // compte : on dit laquelle, sinon la fiche d'une autre écriture du même lot
   // affiche une date qui semble sortie de nulle part.
-  if(c.sansNumero&&c.dateFacture) return 'dernière date du libellé de l’écriture du '+fr(c.dateFacture)
-    +' = '+fr(c.dateEcheance);
+  // Un solde de compte est daté par la plus récente écriture de son lot — pas
+  // par celle qu'on est en train de lire. Il faut donc dire LAQUELLE, et par
+  // quelle branche : la phrase annonçait « dernière date du libellé » même
+  // quand le libellé n'en portait aucune et que l'enregistrement avait servi,
+  // ce que le motif démentait sur la ligne d'à côté.
+  // … et seulement si l'échéance vient VRAIMENT du repli. Depuis qu'un lot
+  // sans facture hérite des dates de celle qu'il cite, le barème s'applique
+  // souvent : la phrase annonçait alors une date d'enregistrement là où le
+  // début de formation avait servi, et démentait la colonne d'à côté.
+  if(c.sansNumero&&c.dateFacture&&(!c.echeanceBase||c.echeanceBase==='echeance1')){
+    const branche=c.echeance1Source==='libellé'
+      ? 'dernière date du libellé' : 'date d’enregistrement';
+    return branche+' de la plus récente écriture du lot, celle du '+fr(c.dateFacture)
+      +' = '+fr(c.dateEcheance);
+  }
   const v=valeurBase(c); if(!v||!c.echeanceBase) return fr(c.dateEcheance);
   const j=c.echeanceJours||0;
   return (BASES[c.echeanceBase]||c.echeanceBase)+' '+fr(v)+(j?' + '+j+' j':'')+' = '+fr(c.dateEcheance); };

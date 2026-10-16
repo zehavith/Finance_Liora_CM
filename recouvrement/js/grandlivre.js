@@ -1003,6 +1003,23 @@
                     // l'ancienneté. À défaut seulement, le dernier mouvement.
                     dateFacture: derniereDate(g.autres.length ? g.autres
                         : g.reglements.concat(g.avoirs)),
+                    // Le lot n'a pas de facture, mais ses virements en citent
+                    // souvent une dans leur libellé — « … PAYOUT … FACT-2506-10079 ».
+                    // Sa règle, le 16/10/2026 : « s'il y a un numéro de facture,
+                    // même au niveau du virement, il faut le récupérer et
+                    // calculer la date d'échéance comme si c'était la facture ».
+                    //
+                    // On retient le numéro cité par l'écriture la plus récente
+                    // qui en porte un. La facturation donnera ses dates de
+                    // formation, et le barème du dispositif s'appliquera comme
+                    // sur une vraie facture — au lieu de tomber sur le repli.
+                    // Sur 662 lignes citant un numéro, 255 sont ainsi datables.
+                    cleCitee: (() => {
+                        const avecNum = g.reglements.concat(g.avoirs, g.autres)
+                            .filter(l => l.numero && l.date)
+                            .sort((x, y) => y.date - x.date);
+                        return avecNum.length ? I.factureKey(avecNum[0].numero) : null;
+                    })(),
                     dateEcheance: null,
                     // Un solde de compte n'a pas de facture — donc aucune des
                     // dates sur lesquelles un barème s'appuie. Sans repli, il
@@ -1689,13 +1706,16 @@
         // Le type de client de la facturation voyage avec la créance : c'est
         // lui qui arbitre entre B2C-Entreprise et B2B sur un OPCO ou l'État.
         const avecSellsy = c => {
-            const d = c.cle ? idx.datesSellsy.get(c.cle) : null;
-            const type = c.cle ? idx.brutSellsy.get(c.cle) : null;
+            // Un solde de compte n'a pas de clé à lui, mais il peut citer une
+            // facture : elle sert alors de clé pour aller chercher les dates.
+            const cle = c.cle || c.cleCitee || null;
+            const d = cle ? idx.datesSellsy.get(cle) : null;
+            const type = cle ? idx.brutSellsy.get(cle) : null;
             // Ce que Monday sait de la formation. Sur l'alternance, c'est la
             // seule source : les factures « FCT-FILIZ-… » ne passent pas par
             // Sellsy. Elle ne remplit que les vides, après l'extrait et après
             // la facturation.
-            const m = c.cle ? idx.datesMonday.get(c.cle) : null;
+            const m = cle ? idx.datesMonday.get(cle) : null;
             // Ce que vous avez complété à la main sur cette créance.
             const comp = complement(c);
             // Même sans rien trouver à la facturation, l'échéance doit suivre
