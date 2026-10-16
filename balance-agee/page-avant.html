@@ -10,24 +10,36 @@
 <style>
 /* Feuille de grand livre : barre de filtres collante, chiffres tabulaires
    denses, une ligne se déplie sur sa propre justification. */
+/* Les couleurs Liora, reprises du modèle de présentation : indigo #1A1A33,
+   indigo moyen #373771, corail #FF6745, papier chaud #E8E7E1, violet #7657FF.
+   Le corail pur ne passe pas en texte sur blanc — il reste aux aplats, et
+   c'est un corail foncé qui porte les alertes écrites. */
 :root{
-  --fond:#f6f7f9; --carte:#ffffff; --encre:#171c26; --encre-2:#5a6475; --encre-3:#8b94a3;
-  --trait:#dfe3ea; --trait-fort:#c3cad6; --accent:#27496d; --accent-doux:#eaf0f7;
-  --ok:#2f7a4f; --attention:#9a6a12; --alerte:#a33a30; --credit:#6b4fa0;
+  --fond:#f5f4f0; --carte:#ffffff; --encre:#1a1a33; --encre-2:#55557a; --encre-3:#8a8aa6;
+  --trait:#e2e1ec; --trait-fort:#c3c2d6; --accent:#373771; --accent-doux:#e9e9f7;
+  --ok:#158158; --attention:#a06b14; --alerte:#d4472a; --credit:#7657ff;
+  --corail:#ff6745;
   --titre:'IBM Plex Serif',Georgia,serif;
   --texte:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
   --chiffre:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --fond:#11141a; --carte:#171b23; --encre:#e6e9ef; --encre-2:#a2abbb; --encre-3:#6e7889;
-  --trait:#262c38; --trait-fort:#39414f; --accent:#8fb4dc; --accent-doux:#1b2430;
-  --ok:#6fbf8e; --attention:#d9a64a; --alerte:#e0756a; --credit:#b49ae0; color-scheme:dark;}}
+  --fond:#12121f; --carte:#1a1a33; --encre:#ededf5; --encre-2:#a8a8c2; --encre-3:#7a7a96;
+  --trait:#2b2b48; --trait-fort:#3f3f63; --accent:#a9a9e8; --accent-doux:#22223c;
+  --ok:#5fc79b; --attention:#e0b45c; --alerte:#ff8c72; --credit:#b5a3ff;
+  --corail:#ff6745; color-scheme:dark;}}
 :root[data-theme="dark"]{
-  --fond:#11141a; --carte:#171b23; --encre:#e6e9ef; --encre-2:#a2abbb; --encre-3:#6e7889;
-  --trait:#262c38; --trait-fort:#39414f; --accent:#8fb4dc; --accent-doux:#1b2430;
-  --ok:#6fbf8e; --attention:#d9a64a; --alerte:#e0756a; --credit:#b49ae0; color-scheme:dark;}
+  --fond:#12121f; --carte:#1a1a33; --encre:#ededf5; --encre-2:#a8a8c2; --encre-3:#7a7a96;
+  --trait:#2b2b48; --trait-fort:#3f3f63; --accent:#a9a9e8; --accent-doux:#22223c;
+  --ok:#5fc79b; --attention:#e0b45c; --alerte:#ff8c72; --credit:#b5a3ff;
+  --corail:#ff6745; color-scheme:dark;}
 
 *{box-sizing:border-box}
+/* Un display: flex posé sur un bloc l'emporte sur le display: none que le
+   navigateur attache à [hidden] : la barre de zoom et la barre de lot
+   restaient à l'écran, vides, alors que le code les avait bien masquées.
+   On le dit une fois pour toutes, plutôt qu'au cas par cas. */
+[hidden]{display:none !important}
 body{background:var(--fond);color:var(--encre);font-family:var(--texte);margin:0;
   font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
 .enveloppe{padding-inline:16px;padding-block:24px 48px;max-width:1500px;margin:0 auto}
@@ -100,6 +112,40 @@ input[type=search]{flex:1 1 220px}
 .champ dt{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--encre-3);margin:0}
 .champ dd{margin:3px 0 0;font-size:13px;word-break:break-word}
 .vide{padding:28px 16px;color:var(--encre-2);text-align:center}
+/* Les paramètres : les deux jeux de règles qui font la balance, lisibles par
+   tout le monde et modifiables sur place par l'administratrice seulement. */
+.param{margin-top:40px;padding-top:20px;border-top:2px solid var(--accent)}
+.param h2{font-family:var(--titre);font-size:19px;margin:0;color:var(--accent)}
+.param-sous{color:var(--encre-2);font-size:12.5px;margin:4px 0 0}
+.param-bloc{background:var(--carte);border:1px solid var(--trait);border-radius:10px;
+  padding:16px 18px;margin-top:14px}
+.param-tete{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.param-tete h3{font-family:var(--titre);font-size:15.5px;margin:0;flex:1 1 auto}
+.param-bloc h4{font-size:12px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--encre-3);margin:18px 0 6px;font-weight:600}
+.param-note{color:var(--encre-2);font-size:12.5px;margin:6px 0 12px;max-width:68ch}
+.param-table{overflow-x:auto}
+.param-table table{border-collapse:collapse;font-size:12.5px;width:100%}
+.param-table th,.param-table td{padding:5px 10px;text-align:left;vertical-align:top;
+  border-bottom:1px solid var(--trait)}
+.param-table thead th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--encre-3);font-weight:600;border-bottom:1px solid var(--trait-fort)}
+.param-table td.n,.param-table th.n{text-align:right;font-family:var(--chiffre);
+  font-variant-numeric:tabular-nums}
+.param-table tbody tr:last-child td{border-bottom:0}
+.param-table .fam{font-weight:600;color:var(--accent)}
+.param-table input{font:inherit;font-family:var(--chiffre);width:5.5em;text-align:right;
+  padding:2px 5px;border:1px solid var(--trait-fort);border-radius:4px;
+  background:var(--fond);color:var(--encre)}
+.param-table input.large{width:100%;text-align:left;font-family:var(--texte)}
+.param-actions{margin-top:14px;display:flex;gap:8px;align-items:center}
+.param-actions button{font:inherit;font-size:13px;font-weight:500;color:var(--carte);
+  background:var(--accent);border:1px solid var(--accent);border-radius:6px;
+  padding:7px 14px;cursor:pointer}
+.param-actions button.plat{color:var(--accent);background:transparent}
+.param-bloc .plat{font:inherit;font-size:12.5px;color:var(--accent);background:transparent;
+  border:1px solid var(--trait-fort);border-radius:6px;padding:4px 11px;cursor:pointer}
+.param-avertir{color:var(--attention);font-size:12.5px;margin:10px 0 0}
 .pied{margin-top:36px;padding-top:16px;border-top:1px solid var(--trait);
   color:var(--encre-2);font-size:12px}
 .pied p{margin:0 0 6px}
@@ -225,13 +271,51 @@ input[type=search]{flex:1 1 220px}
 
   <div class="bloc" id="fiche"><p class="vide">Cliquez une ligne pour voir comment son échéance a été établie.</p></div>
 
+  <section class="param" id="param">
+    <h2>Paramètres</h2>
+    <p class="param-sous" id="param-qui"></p>
+
+    <div class="param-bloc">
+      <div class="param-tete">
+        <h3>Règles de provision</h3>
+        <button type="button" class="plat" id="prov-modif" hidden>Modifier</button>
+        <span class="etat" id="prov-etat"></span>
+      </div>
+      <p class="param-note">Appliquées au reste dû de chaque créance selon son ancienneté.
+        En deçà de 121 jours, aucune provision. Les quatre fenêtres sont exactement
+        des tranches de la balance : rien n’est proratisé.</p>
+      <div class="param-table" id="prov-taux"></div>
+      <h4>Quel type de financement dans quelle famille</h4>
+      <div class="param-table" id="prov-familles"></div>
+      <div class="param-actions" id="prov-actions" hidden>
+        <button type="button" id="prov-ok">Enregistrer</button>
+        <button type="button" class="plat" id="prov-non">Annuler</button>
+      </div>
+    </div>
+
+    <div class="param-bloc">
+      <div class="param-tete">
+        <h3>Règles d’échéance</h3>
+        <button type="button" class="plat" id="ech-modif" hidden>Modifier</button>
+        <span class="etat" id="ech-etat"></span>
+      </div>
+      <p class="param-note">L’ordre de priorité passe avant le tableau : une créance sous
+        mandat de prélèvement ne regarde jamais son barème.</p>
+      <div class="param-table" id="ech-ordre"></div>
+      <h4>Le barème, dispositif par dispositif</h4>
+      <div class="param-table" id="ech-bareme"></div>
+      <div class="param-actions" id="ech-actions" hidden>
+        <button type="button" id="ech-ok">Enregistrer</button>
+        <button type="button" class="plat" id="ech-non">Annuler</button>
+      </div>
+    </div>
+  </section>
+
   <div class="pied">
     <p><strong>Comment lire la justification.</strong> Chaque ligne porte le barème de son dispositif, la base retenue et sa valeur, le délai réellement appliqué, et le calcul en toutes lettres. Le barème et le délai appliqué peuvent différer : sous mandat de prélèvement le délai est nul, une refacturation après formation ajoute 60 jours quel que soit le dispositif, et le repli sur l'échéance du grand livre n'ajoute rien.</p>
     <p><strong>« À compléter »</strong> signale une ligne dont on n'est pas sûr, avec ce qui manque : un dispositif à qualifier, aucune date calculable, un solde sans facture, ou la date absente qui a forcé le repli.</p>
-  <p><strong>Compléter une ligne.</strong> Ouvrez-la : un dispositif se choisit sur place. La créance quitte aussitôt « À classer » pour la sous-catégorie retenue — le total ne bouge pas, seul le classement change — et le choix est gardé, avec sa date, pour la prochaine balance.</p>
+  <p><strong>Compléter une ligne.</strong> Ouvrez-la : un dispositif se choisit sur place. La créance quitte aussitôt « À classer » pour le type de financement retenu — le total ne bouge pas, seul le classement change — et le choix est gardé, avec sa date, pour la prochaine balance.</p>
   <p><strong>Les propositions de rapprochement</strong> s'affichent par couples : la facture au débit, puis le règlement au crédit qui la solderait. Rien n'est pointé — c'est une proposition, avec la raison qui l'a produite.</p>
-  <p><strong>Deux chiffres à ne pas confondre.</strong> Le filtre <em>« lignes non lettrées »</em> montre les écritures qu'aucun lettrage ne relie, des deux côtés : au débit les factures que rien ne solde, au crédit les encaissements rattachés à rien. C'est le <strong>volume de pointage qui reste à faire</strong>, et il est gros — plus de onze mille lignes.</p>
-  <p>La tuile <em>« trop-perçu clients »</em> dit autre chose : le solde <strong>net de chaque compte client</strong>, tout débit moins tout crédit, lettrages confondus ; seuls les comptes restés négatifs sont comptés. Un règlement non pointé qui fait face à une facture impayée du même client n'y figure donc pas — ce n'est pas de l'argent en trop, c'est un lettrage à faire. C'est le <strong>montant à rembourser ou à retrouver</strong>, et le filtre <em>« comptes en excédent de trésorerie »</em> en donne les écritures, client par client, du plus gros au plus petit.</p>
     <p id="pied-src"></p>
   </div>
 </div>

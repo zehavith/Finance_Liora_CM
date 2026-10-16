@@ -491,12 +491,16 @@ const ligneCreance=c=>({
 const bal=GL.balanceAgee(cl,REF,RG);
 const balCat=GL.balanceAgee(cl,REF,RG,'categorie');
 const buckets=R.AGING_BUCKETS.filter(b=>b.key!=='nonEchu');
-const ligneSynth=(r,col)=>{ const o={}; o[col]=r.label;
+// La part du NOMBRE de créances que porte la ligne. Sa règle, le 16/10/2026 :
+// « 3 324 créances en B2C : 3 324 / 5 525 ». Écrite en fraction de 1 et
+// formatée en pourcentage par Excel, pour qu'elle reste calculable.
+const ligneSynth=(r,col,total)=>{ const o={}; o[col]=r.label;
   o['Restant dû']=ar(r.total); o['Échu']=ar(r.echu);
   for(const b of buckets) o[b.label]=ar(r.buckets[b.key]);
   o['Non échu']=ar(r.nonEchu); o['dont créditeur']=ar(r.crediteur||0);
-  o['Sans date']=ar(r.sansDate||0); o['Créances']=r.nb; return o; };
-const synth=rows=>rows.map(r=>ligneSynth(r,'Type de financement'));
+  o['Sans date']=ar(r.sansDate||0); o['Créances']=r.nb;
+  o['Part des créances']=(total&&total.nb)?Math.round(r.nb/total.nb*10000)/10000:'';
+  return o; };
 const wb=X.utils.book_new();
 // Excel refuse un nom d'onglet au-delà de 31 caractères. Le tronquer en
 // silence donnait « Balance âgée par type de financ » : on le refuse plutôt,
@@ -521,10 +525,10 @@ for(const l of ORDRE) if(!catRows.some(r=>r.label===l)) catRows.splice(rang(l),0
 // types de client restent, eux, affichés à zéro — leur absence se lirait comme
 // un oubli alors qu'elle est un fait.
 const aQuelqueChose=r=>!(r.label==='À classer' && !r.nb && Math.abs(r.total)<0.005);
-add('Balance âgée',[...catRows.filter(aQuelqueChose).map(r=>ligneSynth(r,'Type de client')),
-  ligneSynth(balCat.total,'Type de client')]);
-add('Balance âgée par financement',[...bal.rows.filter(aQuelqueChose).map(r=>ligneSynth(r,'Type de financement')),
-  ligneSynth(bal.total,'Type de financement')]);
+add('Balance âgée',[...catRows.filter(aQuelqueChose).map(r=>ligneSynth(r,'Type de client',balCat.total)),
+  ligneSynth(balCat.total,'Type de client',balCat.total)]);
+add('Balance âgée par financement',[...bal.rows.filter(aQuelqueChose).map(r=>ligneSynth(r,'Type de financement',bal.total)),
+  ligneSynth(bal.total,'Type de financement',bal.total)]);
 add('Balance âgée ligne à ligne',principale);
 add('Créances',cl.map(ligneCreance));
 add('À classer',cl.filter(c=>!c.financement).map(ligneCreance));
@@ -574,17 +578,10 @@ const lignesPage=principale.map(o=>colsPage.map(c=>{
   const v=o[c]==null?'':String(o[c]);
   let i=index.get(v); if(i===undefined){ i=dico.length; dico.push(v); index.set(v,i); }
   return i;}));
-// Deux sous-catégories qu'elle lit ensemble dans la synthèse, sans pour autant
-// les confondre dans les données : « à la place de B2C-Entreprise et B2B il y
-// a Entreprise, mais ligne par ligne on retrouve bien les sous-catégories »,
-// le 15/10/2026. Le classement de chaque créance ne change pas — seul le
-// tableau de tête les présente sous un même nom.
-const REGROUPE={'B2C-Entreprise':'Entreprise','B2B':'Entreprise',
-  'Corporate — financement à préciser':'Entreprise','OPCO - Alternance':'OPCO'};
 const synthPage=(b)=>{
   const out=[]; const par=new Map();
   for(const r of [...b.rows,b.total]){
-    const nom=r===b.total?'TOTAL':(REGROUPE[r.label]||r.label);
+    const nom=r===b.total?'TOTAL':r.label;
     let g=par.get(nom);
     if(!g){ g={cat:nom, total:0, echu:0, nonEchu:0, crediteur:0, nb:0,
       buckets:buckets.map(()=>0)}; par.set(nom,g); out.push(g); }
@@ -638,15 +635,40 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
      note:'Le dernier recours. La ligne reste datée, et dit qu’elle l’est ainsi.'},
   ],
   tranches:buckets.map(b=>b.label),
+  // ───────── le barème de provision ─────────
+  //
+  // Son tableau « Règles de provision Groupe », reçu le 16/10/2026. Les quatre
+  // fenêtres coïncident exactement avec les tranches d'ancienneté déjà en
+  // place : chacune est la somme de tranches entières, rien n'est à recouper
+  // ni à proratiser. En deçà de 121 jours, aucune provision.
+  //
+  // Le rattachement des quinze types de financement aux trois familles du
+  // barème N'EST PAS CONFIRMÉ. Celui qui est écrit ici est une proposition —
+  // les financeurs publics sont rangés en ÉTATIQUE — et il se modifie dans la
+  // page, section « Paramètres ». Tant que « confirme » est faux, la page le
+  // dit en toutes lettres à côté du montant.
+  provision:{
+    confirme:false,
+    fenetres:[
+      {label:'121 - 180 j', tranches:['4 à 6 mois']},
+      {label:'181 - 360 j', tranches:['6 à 12 mois']},
+      {label:'361 - 720 j', tranches:['12 à 18 mois','18 à 24 mois']},
+      {label:'> 720 j',     tranches:['24 à 36 mois','36 à 48 mois','> 48 mois']},
+    ],
+    taux:{'B2C':[0.20,0.40,0.90,1],'ÉTATIQUE':[0,0,0.50,1],'B2B':[0.40,0.40,0.90,1]},
+    familles:{
+      'B2C':['B2C-Perso','Perso-Alternance'],
+      'ÉTATIQUE':['POEI','AIF','ETAT','CPF','Transition Pro','Region','Agefiph'],
+      'B2B':['B2B','B2C-Entreprise','Corporate - Alternance','OPCO',
+             'OPCO - Alternance','Interco','Corporate — financement à préciser'],
+    },
+  },
   // Le type de client d'abord — c'est la lecture que vous faites —, la
   // sous-catégorie ensuite, pour le détail du dispositif.
   syntheseCat:[...catRows,balCat.total].map(r=>({
     cat:r===balCat.total?'TOTAL':r.label, total:ar(r.total), echu:ar(r.echu), nonEchu:ar(r.nonEchu),
     crediteur:ar(r.crediteur||0), nb:r.nb, buckets:buckets.map(x=>ar(r.buckets[x.key]))})),
   synthese:synthPage(bal),
-  // Le regroupement, livré avec les données : la page doit grouper comme la
-  // synthèse, sinon un clic sur « Entreprise » ne retrouverait pas ses lignes.
-  regroupe:REGROUPE,
   // Le trop-perçu, lu par COMPTE CLIENT et non par lettrage. Un règlement non
   // pointé qui fait face à une facture impayée du même compte n'est pas de
   // l'argent en trop : c'est un lettrage à faire. Compter les deux ensemble

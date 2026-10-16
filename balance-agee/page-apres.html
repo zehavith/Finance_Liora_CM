@@ -92,6 +92,8 @@ function demarrer(){
   E('viewport').addEventListener('scroll',dessiner);
   appliquer();
   E("telech").hidden=false;
+  brancherParametres();
+  parametres();
   ouvrirBase();
 }
 
@@ -117,6 +119,15 @@ function ruban(){
   // colonne « Classé par ».
   if(aC) tuiles.push(['À compléter',aC.toLocaleString('fr-FR')+' écritures',
     compl.size?(compl.size.toLocaleString('fr-FR')+' complétée'+(compl.size>1?'s':'')+' par vous'):"dont on n'est pas sûr"]);
+  // La provision, telle que le barème du groupe la calcule sur cette balance.
+  // Tant que le rattachement des financements aux trois familles n'est pas
+  // confirmé, la tuile le dit : un montant à provisionner qui repose sur une
+  // supposition doit se présenter comme tel.
+  const pv=provisions();
+  if(pv.total) tuiles.push(['À provisionner',eur(pv.total),
+    PROV.confirme
+      ? Math.round(pv.total/t.total*100)+' % du reste dû'
+      : 'barème appliqué, rattachement à confirmer']);
   E('ruban').innerHTML=tuiles.map(([e,v,n])=>
     '<div class="tuile"><div class="etiq">'+e+'</div><div class="val">'+v+'</div><div class="note">'+n+'</div></div>').join('');
 }
@@ -134,15 +145,15 @@ function avecComplements(rows, niveau){
   for(const [k,v] of compl){
     const m=metaCreance.get(k); if(!m||!m.rd||faites.has(k)) continue;
     faites.add(k);
-    // Un complément doit traverser le regroupement comme n'importe quelle
-    // créance : sans cela, sa décision « B2B » sur Stellantis créait une
-    // quatorzième ligne « B2B » de 29 123 € à côté d'« Entreprise », alors
-    // que c'est la même chose.
-    const vers1=niveau==='cat'?(catDuDispositif(v.dispositif)||typeDe.get(v.dispositif)||v.dispositif)
-      :(REGROUPE()[v.dispositif]||v.dispositif);
-    const de1=niveau==='cat'?(catDuDispositif(m.sc)||typeDe.get(m.sc)||m.sc)
-      :(REGROUPE()[m.sc]||m.sc);
-    const cible=vers1, depart=de1;
+    // Un complément se déplace au niveau où l'on lit : d'un type de client à
+    // l'autre quand on lit par type de client, d'un type de financement à
+    // l'autre quand on lit par financement.
+    const cible=niveau==='cat'
+      ? (catDuDispositif(v.dispositif)||typeDe.get(v.dispositif)||v.dispositif)
+      : v.dispositif;
+    const depart=niveau==='cat'
+      ? (catDuDispositif(m.sc)||typeDe.get(m.sc)||m.sc)
+      : m.sc;
     if(cible===depart) continue;
     const de=par.get(depart), vers=par.get(cible)||ligneNeuve(cible);
     const j=D.tranches.indexOf(m.tr);
@@ -155,9 +166,10 @@ function avecComplements(rows, niveau){
   return out;
 }
 
-// Deux lectures du même reste dû : par type de client — B2C, B2C - Entreprise,
-// B2B, POEI, Alternance, Interco — ou par dispositif. Le total est le même des
-// deux côtés ; seul le regroupement change.
+// Deux lectures du même reste dû : par type de client — B2C, Entreprise, OPCO,
+// POEI, ETAT, Alternance, Interco — ou par type de financement, qui les
+// détaille. Le total est le même des deux côtés ; seul le niveau de lecture
+// change.
 let niveau='cat';
 function synthese(){
   const tr=D.tranches;
@@ -171,7 +183,14 @@ function synthese(){
   let h='<thead><tr><th>'+(niveau==='cat'?'Type de client':'Type de financement')
     +'</th><th class="n">Reste dû</th><th class="n">Échu</th>'
     +tr.map(x=>'<th class="n">'+x+'</th>').join('')
-    +'<th class="n">Non échu</th><th class="n">Créances</th></tr></thead><tbody>';
+    +'<th class="n">Non échu</th><th class="n">Créances</th>'
+    +'<th class="n">Part</th></tr></thead><tbody>';
+  // La part du NOMBRE de créances, pas du montant : sa règle, le 16/10/2026,
+  // « 3 324 créances en B2C : 3 324 / 5 525 ». Le dénominateur est le total
+  // affiché, compléments compris, pour que la colonne somme bien à 100 %.
+  const totalNb=rows.reduce((n,s)=>s.cat==='TOTAL'?n:n+s.nb,0);
+  const part=n=>!totalNb?'·':(n/totalNb*100).toLocaleString('fr-FR',
+    {minimumFractionDigits:1,maximumFractionDigits:1})+' %';
   // Chaque montant porte ce qu'il faut pour retrouver ses lignes : la
   // catégorie et la tranche. Un clic ouvre le détail dessus.
   const cell=(v,cat,tr,txt)=>'<td class="n ouvrable" data-cat="'+esc(cat)+'" data-tr="'+esc(tr)
@@ -183,7 +202,10 @@ function synthese(){
       +cell(s.echu,cat,'(échu)',eurC(s.echu))
       +s.buckets.map((b,j)=>cell(b,cat,tr[j],b?eurC(b):'·')).join('')
       +cell(s.nonEchu,cat,'(non échu)',eurC(s.nonEchu))
-      +cell(s.nb,cat,'',s.nb.toLocaleString('fr-FR'))+'</tr>';
+      +cell(s.nb,cat,'',s.nb.toLocaleString('fr-FR'))
+      +'<td class="n" title="'+s.nb.toLocaleString('fr-FR')+' créances sur '
+        +totalNb.toLocaleString('fr-FR')+'">'
+        +(s.cat==='TOTAL'?part(totalNb):part(s.nb))+'</td></tr>';
   }
   E('synthese').innerHTML=h+'</tbody>';
   for(const td of E('synthese').querySelectorAll('td.ouvrable'))
@@ -218,16 +240,17 @@ const catDuDispositif=disp=>{
   if(!catDeRegle) catDeRegle=new Map(((D&&D.regles)||[]).map(r=>[r.dispositif, r.type||r.dispositif]));
   return catDeRegle.get(disp);
 };
-// La sous-catégorie VRAIE de la créance, celle qui reste écrite sur chaque
-// ligne. Le tableau de tête en regroupe deux paires sous « Entreprise » et
-// « OPCO » ; le détail, lui, continue de les nommer.
+// Le type de financement de la créance, celui qui reste écrit sur chaque
+// ligne. Chacun garde son nom : B2B et B2C-Entreprise ne sont pas réunis, OPCO
+// et OPCO - Alternance non plus. Sa règle, le 16/10/2026 : « de fusionner
+// B2C-Entreprise et B2B, j'aimerais que tu reviennes en arrière, pareil pour
+// OPCO ».
 const sousVraie=i=>{ const c=compl.get(cleLigne(i));
   return c?c.dispositif:(V(i,'Type de financement de la créance')||''); };
-const REGROUPE=()=>(D&&D.regroupe)||{};
 function categorieDe(i,niv){
   const sc=sousVraie(i);
   const c=compl.get(cleLigne(i));
-  if(niv!=='cat') return REGROUPE()[sc]||sc;
+  if(niv!=='cat') return sc;
   // Une créance porte sa propre catégorie : c'est elle qui fait foi. La
   // déduire de sa sous-catégorie rangeait les 31 créances « ETAT » sous une
   // seule des deux catégories qu'elles portent — la balance par catégorie
@@ -383,7 +406,9 @@ function dessiner(){
 // synthèses sont celles de l'écran — vos compléments compris, et sans la ligne
 // « À classer » quand elle est vide : un classeur qui contredirait la page
 // qu'on vient de lire ne servirait à rien.
-const BLEU='FF27496D', DOUX='FFEAF0F7', PALE='FFF6F7F9', ENCRE3='FF8B94A3', TRAIT='FFDFE3EA';
+// Les couleurs Liora, reprises du modèle de présentation.
+const BLEU='FF373771', DOUX='FFE9E9F7', PALE='FFF5F4F0', ENCRE3='FF8A8AA6', TRAIT='FFE2E1EC';
+const CORAIL='FFD4472A';
 const EUROS='#,##0 "€";[Red]-#,##0 "€"';
 const ENTIER='#,##0';
 const MONNAIE=new Set(['Débit','Crédit','Solde','Reste dû de la créance','Montant facture',
@@ -439,9 +464,9 @@ function feuilleSommaire(wb,idx,nomDetail){
     const s1=ws.addRow(['','Périmètre restreint',
       idx.length.toLocaleString('fr-FR')+' / '+I.length.toLocaleString('fr-FR')+' écritures',
       filtresEnCours()]);
-    s1.getCell(2).font={bold:true,color:{argb:'FF9A6A12'}};
-    s1.getCell(3).font={color:{argb:'FF9A6A12'}};
-    s1.getCell(4).font={size:10,color:{argb:'FF9A6A12'}};
+    s1.getCell(2).font={bold:true,color:{argb:'FFA06B14'}};
+    s1.getCell(3).font={color:{argb:'FFA06B14'}};
+    s1.getCell(4).font={size:10,color:{argb:'FFA06B14'}};
     s1.getCell(4).alignment={wrapText:true,vertical:'top'}; s1.height=30;
     ws.addRow(['','','','Les deux synthèses portent la balance entière.'])
       .getCell(4).font={size:10,italic:true,color:{argb:ENCRE3}};
@@ -533,7 +558,55 @@ function feuilleRegles(wb){
     l.alignment={vertical:'top',wrapText:true};
     if(z++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
   }
+  provisionRegles(ws);
   lexique(ws);
+}
+
+// Le barème de provision du groupe, tel qu'il est appliqué, suivi du
+// rattachement de chaque type de financement à sa famille. Les deux se lisent
+// ensemble : un taux sans son périmètre ne dit pas quel montant il couvre.
+function provisionRegles(ws){
+  paramsPrets();
+  const fen=PROV.fenetres||[], taux=PROV.taux||{};
+  if(!fen.length) return;
+  ws.addRow([]);
+  ws.addRow(['RÈGLES DE PROVISION GROUPE'])
+    .font={bold:true,size:12,color:{argb:BLEU}};
+  ws.addRow(['Le reste dû de chaque créance au débit, multiplié par le taux de sa famille '
+    +'dans la fenêtre où tombe son ancienneté. En deçà de 121 jours, aucune provision. '
+    +'Un compte créditeur ne se provisionne pas.'])
+    .font={color:{argb:ENCRE3},size:10};
+  if(!PROV.confirme) ws.addRow(['Le rattachement des types de financement aux trois familles '
+    +'n’est pas encore confirmé : celui qui est appliqué ci-dessous est une proposition.'])
+    .font={color:{argb:'FFA06B14'},size:10};
+  ws.addRow([]);
+  const pv=provisions();
+  poserEntete(ws,ws.addRow(['Famille',...fen.map(f=>f.label),'À provisionner']));
+  let y=0;
+  for(const f of Object.keys(taux)){
+    const l=ws.addRow([f,...(taux[f]||[]),pv.parFam.get(f)||0]);
+    l.getCell(1).font={bold:true};
+    for(let c=2;c<=1+fen.length;c++) l.getCell(c).numFmt='0,0 %';
+    l.getCell(2+fen.length).numFmt=EUROS;
+    if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
+  }
+  const tot=ws.addRow(['TOTAL',...fen.map(()=>null),pv.total]);
+  tot.getCell(1).font={bold:true}; tot.getCell(2+fen.length).font={bold:true};
+  tot.getCell(2+fen.length).numFmt=EUROS;
+  ws.addRow([]);
+  poserEntete(ws,ws.addRow(['Type de financement','Famille de provision','',
+    'Reste dû','À provisionner']));
+  const rd=new Map(), vues=new Set();
+  for(const i of I){ const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
+    const sc=sousVraie(i); if(sc) rd.set(sc,(rd.get(sc)||0)+N(i,'Reste dû de la créance')); }
+  y=0;
+  for(const sc of [...rd.keys()].sort()){
+    const l=ws.addRow([sc, familleDe(sc)||'(à rattacher)', '', rd.get(sc)||0, pv.parSc.get(sc)||0]);
+    l.getCell(1).font={bold:true};
+    l.getCell(4).numFmt=EUROS; l.getCell(5).numFmt=EUROS;
+    if(!familleDe(sc)) l.getCell(2).font={color:{argb:CORAIL},bold:true};
+    if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
+  }
 }
 
 // Le vocabulaire des colonnes d'audit, en clair. Ces expressions disent par
@@ -626,26 +699,27 @@ function lexique(ws){
 function feuilleBalance(wb,niv,idx){
   const nom=niv==='cat'?'Balance âgée':'Par type de financement';
   const tete=niv==='cat'?'Type de client':'Type de financement';
-  // La colonne de droite nomme le ou les dispositifs du compte, sans le
-  // regroupement : en face d'« Entreprise » elle distingue B2C-Entreprise de
-  // B2B. Sur la feuille qui lit déjà par financement, elle porte donc un titre
-  // qui la sépare de la colonne de tête, qui, elle, regroupe.
-  const autre=niv==='cat'?'Type de financement':'Type de financement détaillé';
+  // La colonne de droite donne l'AUTRE lecture du même compte : son ou ses
+  // types de financement quand on lit par type de client, son ou ses types de
+  // client quand on lit par type de financement. Répéter la colonne de tête
+  // n'apprendrait rien.
+  const autre=niv==='cat'?'Type de financement':'Type de client';
   const nT=D.tranches.length;
-  // Une seule colonne ajoutée à la balance : le dispositif détaillé du compte.
-  // Tout le reste — le compte, la facture, la date —
-  // tient dans la première colonne, par l'indentation. Une écriture ventile son
-  // montant dans les MÊMES colonnes d'ancienneté que la balance : c'est ce qui
-  // permet de lire, tranche par tranche, ce qui compose un montant.
-  const P={lib:0, total:1, echu:2, tranche:3, nonEchu:3+nT, nb:4+nT, ecart:5+nT, autre:6+nT};
-  const LARGE=7+nT;
+  // Une seule colonne ajoutée à la balance. Tout le reste — le compte, la
+  // facture, la date — tient dans la première colonne, par l'indentation. Une
+  // écriture ventile son montant dans les MÊMES colonnes d'ancienneté que la
+  // balance : c'est ce qui permet de lire, tranche par tranche, ce qui compose
+  // un montant.
+  const P={lib:0, total:1, echu:2, tranche:3, nonEchu:3+nT, nb:4+nT, part:5+nT,
+           prov:6+nT, ecart:7+nT, autre:8+nT};
+  const LARGE=9+nT;
   const ws=wb.addWorksheet(nom);
   // Le niveau visible à l'ouverture : 1. Les comptes sont donc repliés, et
   // déplier une catégorie ne déplie PAS les écritures qu'elle contient.
   ws.properties.outlineLevelRow=1;
   ws.properties.outlineProperties={summaryBelow:false,summaryRight:false};
   ws.columns=[{width:48},{width:15},{width:15},...D.tranches.map(()=>({width:14})),
-    {width:15},{width:10},{width:10},{width:30}];
+    {width:15},{width:10},{width:9},{width:16},{width:10},{width:30}];
   const t=ws.addRow([niv==='cat'?'RESTE DÛ PAR TYPE DE CLIENT ET PAR ANCIENNETÉ'
     :'RESTE DÛ PAR DISPOSITIF ET PAR ANCIENNETÉ']);
   t.font={bold:true,size:14,color:{argb:BLEU}}; t.height=24;
@@ -654,15 +728,25 @@ function feuilleBalance(wb,niv,idx){
   ws.addRow(['La ligne du compte fait foi. Les écritures qui s’y rattachent peuvent différer '
     +'d’une tranche à l’autre : un règlement s’impute sur une facture, le solde d’un lettrage '
     +'se répartit au prorata.'])
-    .font={color:{argb:'FF9A6A12'},size:10};
+    .font={color:{argb:'FFA06B14'},size:10};
   ws.addRow([]);
   const ent=new Array(LARGE).fill('');
   ent[P.lib]=tete; ent[P.total]='Restant dû'; ent[P.echu]='Échu';
   D.tranches.forEach((x,j)=>{ ent[P.tranche+j]=x; });
-  ent[P.nonEchu]='Non échu'; ent[P.nb]='Créances'; ent[P.ecart]='Écart'; ent[P.autre]=autre;
+  ent[P.nonEchu]='Non échu'; ent[P.nb]='Créances'; ent[P.part]='Part';
+  ent[P.prov]='À provisionner'; ent[P.ecart]='Écart'; ent[P.autre]=autre;
   poserEntete(ws,ws.addRow(ent));
   for(let c=P.total+1;c<=P.nonEchu+1;c++) ws.getColumn(c).numFmt=EUROS;
   ws.getColumn(P.nb+1).numFmt=ENTIER; ws.getColumn(P.ecart+1).numFmt=EUROS;
+  // La part du NOMBRE de créances que porte la ligne, en fraction de 1 pour
+  // qu'Excel la calcule et la somme. Sa règle, le 16/10/2026.
+  ws.getColumn(P.part+1).numFmt='0,0 %';
+  ws.getColumn(P.prov+1).numFmt=EUROS;
+  const lignesSynth=synthRows(niv);
+  // La provision par ligne de synthèse : la somme de celles de ses créances.
+  const provCat=new Map();
+  const totalNb=lignesSynth.reduce((n,x)=>x.cat==='TOTAL'?n:n+x.nb,0)||0;
+  const part=n=>totalNb?n/totalNb:null;
 
   const rang=new Map(D.tranches.map((x,j)=>[x,j]));
   const info=new Map(), par=new Map();
@@ -670,22 +754,27 @@ function feuilleBalance(wb,niv,idx){
     const k=V(i,'Clé de la créance'); if(!k||info.has(k)) continue;
     const rd=N(i,'Reste dû de la créance'); if(Math.abs(rd)<0.005) continue;
     info.set(k,{cat:categorieDe(i,niv), cpt:V(i,'N° de compte'), rd:rd,
-      // Le dispositif de la MÊME créance, sans regroupement. Pris sur la
-      // créance, pas sur l'écriture : les deux diffèrent dès que la créance
-      // n'est pas classée.
-      autre:sousVraie(i)||'',
+      // La provision de CETTE créance : son reste dû au débit multiplié par le
+      // taux de sa famille dans la fenêtre où tombe son ancienneté.
+      prov:provisionDe(rd, sousVraie(i),
+        V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté')),
+      // L'autre lecture de la MÊME créance. Prise sur la créance, pas sur
+      // l'écriture : les deux diffèrent dès que la créance n'est pas classée.
+      autre:(niv==='cat'?sousVraie(i):categorieDe(i,'cat'))||'',
       tr:V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté')});
   }
+  for(const [,e] of info) provCat.set(e.cat,(provCat.get(e.cat)||0)+e.prov);
+  provCat.set('TOTAL',[...provCat.values()].reduce((a,b)=>a+b,0));
   for(const i of idx){
     const k=V(i,'Clé de la créance'); const e=k&&info.get(k); if(!e) continue;
     if(!par.has(e.cat)) par.set(e.cat,new Map());
     const m=par.get(e.cat);
     let g=m.get(e.cpt);
     if(!g){ g={cpt:e.cpt, client:V(i,'Libellé de compte')||V(i,'Tiers'), total:0, echu:0,
-      nonEchu:0, nb:0, buckets:D.tranches.map(()=>0), lignes:[], vues:new Set(),
+      nonEchu:0, nb:0, prov:0, buckets:D.tranches.map(()=>0), lignes:[], vues:new Set(),
       autres:new Set()}; m.set(e.cpt,g); }
     g.lignes.push(i);
-    if(!g.vues.has(k)){ g.vues.add(k); g.nb++; g.total+=e.rd;
+    if(!g.vues.has(k)){ g.vues.add(k); g.nb++; g.total+=e.rd; g.prov+=e.prov;
       // Un compte peut porter deux dispositifs : on les nomme tous les deux
       // plutôt que d'en élire un.
       if(e.autre) g.autres.add(e.autre);
@@ -696,15 +785,17 @@ function feuilleBalance(wb,niv,idx){
   const tri=i=>V(i,'Clé de la créance')+'|'+V(i,'Date');
 
   let z=0;
-  for(const s of synthRows(niv)){
+  for(const s of lignesSynth){
     const l=ws.addRow([s.cat,s.total,s.echu,...s.buckets,s.nonEchu,s.nb,
+      part(s.cat==='TOTAL'?totalNb:s.nb), ar2(provCat.get(s.cat)||0),
       ar2(s.total-(s.echu+s.nonEchu)),'']);
     l.getCell(1).font={bold:true};
     if(s.cat==='TOTAL'){ poserTotal(l); continue; }
     if(z++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
     for(const g of [...(par.get(s.cat)||new Map()).values()].sort((a,b)=>a.cpt<b.cpt?-1:1)){
       const lr=ws.addRow(['    '+g.cpt+' - '+g.client, ar2(g.total), ar2(g.echu),
-        ...g.buckets.map(ar2), ar2(g.nonEchu), g.nb, ar2(g.total-(g.echu+g.nonEchu)),
+        ...g.buckets.map(ar2), ar2(g.nonEchu), g.nb, part(g.nb), ar2(g.prov),
+        ar2(g.total-(g.echu+g.nonEchu)),
         [...g.autres].sort().join(' · ')]);
       lr.outlineLevel=1; lr.hidden=true; lr.getCell(1).font={bold:true};
       // Une ligne par ÉCRITURE du compte : son montant au débit ou au crédit,
@@ -805,6 +896,74 @@ const cleLigne=i=>V(i,'Clé de la créance')
   || (V(i,'N° de compte')+'|'+(V(i,'N° de facture')||V(i,'N° de pièce')||'·')+'|'+V(i,'Date'));
 const idDoc=k=>k.replace(/[^A-Za-z0-9_.~:@+-]+/g,'_').slice(0,180);
 const leJour=()=>new Date().toLocaleDateString('fr-FR');
+// Administratrice ou lectrice. Faux tant que la page n'a pas pu le demander :
+// on n'ouvre jamais une commande d'écriture par défaut.
+let admin=false;
+
+// ═══════════ les paramètres : provision et échéance ═══════════
+//
+// Les deux jeux de règles vivent dans la base de l'artefact, pas dans le
+// fichier : une règle changée doit tenir d'un mois sur l'autre, alors que la
+// page, elle, est reconstruite à chaque balance. Ce que les données livrent
+// n'est donc qu'un point de départ.
+// Construits à la première demande, et NON au chargement du script : D n'est
+// rempli qu'une fois les données lues. Les lire trop tôt donnait un barème
+// vide et un rattachement vide — exactement la panne qui avait déjà tué le
+// bouton de téléchargement en silence.
+let PROV=null, ECH=null;
+function paramsPrets(){
+  if(!PROV) PROV=JSON.parse(JSON.stringify((D&&D.provision)
+    ||{confirme:false,fenetres:[],taux:{},familles:{}}));
+  if(!ECH) ECH=((D&&D.regles)||[]).map(r=>({...r}));
+}
+
+// À quelle famille de provision appartient un type de financement.
+const familleDe=sc=>{
+  paramsPrets();
+  for(const [f,liste] of Object.entries(PROV.familles||{}))
+    if(liste.indexOf(sc)>=0) return f;
+  return null;
+};
+
+// La provision d'UNE créance, à partir de son reste dû, de son type de
+// financement et de sa tranche. Zéro quand le compte est créditeur : un
+// client qui a trop payé n'est pas une perte à couvrir.
+function provisionDe(rd, sc, tr){
+  paramsPrets();
+  if(!(rd>0)) return 0;
+  const j=(PROV.fenetres||[]).findIndex(f=>(f.tranches||[]).indexOf(tr)>=0);
+  if(j<0) return 0;
+  const fam=familleDe(sc); if(!fam) return 0;
+  return rd*(((PROV.taux||{})[fam]||[])[j]||0);
+}
+
+// La provision, créance par créance : le reste dû multiplié par le taux de sa
+// famille dans la fenêtre où tombe son ancienneté. En deçà de 121 jours, et
+// pour une créance non échue ou sans date, rien. Un reste dû négatif — un
+// compte créditeur — ne se provisionne pas : il n'y a pas de perte à couvrir.
+function provisions(){
+  paramsPrets();
+  const fen=PROV.fenetres||[], taux=PROV.taux||{};
+  const parFam=new Map(), parSc=new Map();
+  let total=0, horsFamille=new Map();
+  const vues=new Set();
+  for(const i of I){
+    const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
+    const rd=N(i,'Reste dû de la créance'); if(!(rd>0)) continue;
+    const sc=sousVraie(i);
+    const tr=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
+    const j=fen.findIndex(f=>(f.tranches||[]).indexOf(tr)>=0);
+    if(j<0) continue;
+    const fam=familleDe(sc);
+    if(!fam){ horsFamille.set(sc,(horsFamille.get(sc)||0)+rd); continue; }
+    const t=(taux[fam]||[])[j]||0;
+    const p=rd*t;
+    total+=p;
+    parFam.set(fam,(parFam.get(fam)||0)+p);
+    parSc.set(sc,(parSc.get(sc)||0)+p);
+  }
+  return {total, parFam, parSc, horsFamille};
+}
 // Les dispositifs proposés sont ceux que la balance porte déjà : une liste
 // écrite en dur vieillirait sans prévenir.
 let DISPOS=[];
@@ -821,7 +980,21 @@ async function ouvrirBase(){
     if(window.claude&&claude.use){
       DB=await claude.use('db');
       const u=await claude.use('user');
-      if(u&&u.can){ const p=await u.can('data.write'); if(p===false) peutEcrire=false; }
+      // Deux rôles, et un seul critère : qui peut modifier l'artefact est
+      // administrateur. Sa règle, le 16/10/2026 : « tout le monde ne peut pas
+      // compléter la balance âgée ». Un lecteur consulte, filtre et exporte ;
+      // il ne voit ni les cases à cocher, ni les boutons de modification.
+      // La base refuse l'écriture de son côté : l'affichage n'est qu'une
+      // politesse, la règle est côté serveur.
+      if(u){
+        try{ admin = !!(u.canEdit ? await u.canEdit() : (u.isOwner && await u.isOwner())); }
+        catch(e){ admin=false; }
+      } else { admin=false; }
+      peutEcrire=admin;
+    } else {
+      // Le fichier autonome n'est pas publié : il n'a ni base ni identité.
+      // C'est SA copie, posée sur son disque — elle y est chez elle.
+      admin=true; peutEcrire=true;
     }
   }catch(e){ DB=null; }
   try{
@@ -829,11 +1002,21 @@ async function ouvrirBase(){
       const q=await DB.collection('complements').get();
       q.docs.forEach(doc=>{ const v=doc.data()||{};
         if(v&&v.cle&&v.dispositif) compl.set(v.cle,v); });
+      const pq=await DB.collection('parametres').get();
+      pq.docs.forEach(doc=>{ const v=doc.data()||{};
+        if(doc.id==='provision'&&v.taux){ paramsPrets(); PROV={...PROV,...v}; }
+        if(doc.id==='echeance'&&Array.isArray(v.regles)) ECH=v.regles; });
     } else {
       const brut=localStorage.getItem('rec_complements');
       if(brut) for(const v of JSON.parse(brut)) if(v&&v.cle) compl.set(v.cle,v);
+      const pv=localStorage.getItem('rec_provision');
+      if(pv){ paramsPrets(); PROV={...PROV,...JSON.parse(pv)}; }
+      const ec=localStorage.getItem('rec_echeance');
+      if(ec) ECH=JSON.parse(ec);
     }
   }catch(e){}
+  parametres();
+  ruban();
   if(compl.size) rafraichir();
 }
 
@@ -986,6 +1169,156 @@ function fiche(i){
   const an=E('c-annul'); if(an) an.addEventListener('click',()=>effacer(k));
   E('fiche').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
+// ═══════════ la section « Paramètres » ═══════════
+//
+// Elle montre les deux jeux de règles à tout le monde, et ne les ouvre à la
+// modification que pour l'administratrice. Un lecteur voit exactement les
+// mêmes chiffres : ce qui fait la balance ne se cache pas.
+let modifProv=false, modifEch=false;
+const pc=v=>(v*100).toLocaleString('fr-FR',{maximumFractionDigits:1})+' %';
+
+function parametres(){
+  paramsPrets();
+  const qui=E('param-qui'); if(!qui) return;
+  qui.textContent=admin
+    ? 'Vous êtes administratrice : vous pouvez compléter la balance et modifier ces règles.'
+    : 'Lecture seule : vous pouvez consulter, filtrer et exporter. Les règles et les '
+      +'compléments sont tenus par le responsable recouvrement.';
+  for(const id of ['prov-modif','ech-modif']){ const b=E(id); if(b) b.hidden=!admin; }
+  tableProvision(); tableEcheance();
+}
+
+// ───── le barème de provision ─────
+function tableProvision(){
+  paramsPrets();
+  const fen=PROV.fenetres||[], taux=PROV.taux||{}, fams=Object.keys(taux);
+  let h='<table><thead><tr><th>Famille</th>'
+    +fen.map(f=>'<th class="n">'+esc(f.label)+'</th>').join('')
+    +'<th class="n">À provisionner</th></tr></thead><tbody>';
+  const pv=provisions();
+  for(const f of fams){
+    h+='<tr><td class="fam">'+esc(f)+'</td>'
+      +(taux[f]||[]).map((t,j)=>'<td class="n">'+(modifProv
+        ? '<input data-fam="'+esc(f)+'" data-j="'+j+'" value="'+(t*100)+'">'
+        : pc(t))+'</td>').join('')
+      +'<td class="n">'+eur(pv.parFam.get(f)||0)+'</td></tr>';
+  }
+  h+='<tr><td class="fam">TOTAL</td>'+fen.map(()=>'<td></td>').join('')
+    +'<td class="n">'+eur(pv.total)+'</td></tr></tbody></table>';
+  E('prov-taux').innerHTML=h;
+
+  // Le rattachement : un type de financement par ligne, sa famille en face.
+  // Il se lit dans ce sens-là parce que c'est la question qu'on se pose —
+  // « ce dispositif, je le provisionne comment ? » — et parce qu'ainsi aucun
+  // dispositif ne peut être oublié en silence.
+  const tous=[...new Set(I.map(i=>sousVraie(i)).filter(Boolean))].sort();
+  let g='<table><thead><tr><th>Type de financement</th><th>Famille</th>'
+    +'<th class="n">Reste dû</th><th class="n">À provisionner</th></tr></thead><tbody>';
+  const rd=new Map(), vues=new Set();
+  for(const i of I){ const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
+    const sc=sousVraie(i); rd.set(sc,(rd.get(sc)||0)+N(i,'Reste dû de la créance')); }
+  for(const sc of tous){
+    const f=familleDe(sc);
+    g+='<tr><td>'+esc(sc)+'</td><td>'+(modifProv
+      ? '<select data-sc="'+esc(sc)+'">'
+        +['(aucune)'].concat(Object.keys(taux)).map(x=>'<option'
+          +((x==='(aucune)'?null:x)===f?' selected':'')+'>'+esc(x)+'</option>').join('')
+        +'</select>'
+      : (f?'<span class="fam">'+esc(f)+'</span>'
+          :'<span style="color:var(--alerte)">à rattacher</span>'))
+      +'</td><td class="n">'+eur(rd.get(sc)||0)+'</td>'
+      +'<td class="n">'+eur(pv.parSc.get(sc)||0)+'</td></tr>';
+  }
+  g+='</tbody></table>';
+  if(pv.horsFamille.size) g+='<p class="param-avertir">'
+    +pv.horsFamille.size+' type'+(pv.horsFamille.size>1?'s':'')+' de financement '
+    +(pv.horsFamille.size>1?'ne sont rattachés':"n'est rattaché")+' à aucune famille : '
+    +[...pv.horsFamille.keys()].map(esc).join(' · ')
+    +'. Leur reste dû n’est pas provisionné.</p>';
+  if(!PROV.confirme) g+='<p class="param-avertir">Ce rattachement est une proposition : '
+    +'il n’a pas encore été confirmé. Modifiez-le ici, et il le sera.</p>';
+  E('prov-familles').innerHTML=g;
+  const act=E('prov-actions'); if(act) act.hidden=!modifProv;
+  const b=E('prov-modif'); if(b) b.textContent=modifProv?'Fermer':'Modifier';
+}
+
+// ───── les règles d'échéance ─────
+function tableEcheance(){
+  paramsPrets();
+  let o='<table><thead><tr><th>Rang</th><th>Quand</th><th>Alors</th></tr></thead><tbody>'
+    +((D.ordreEcheance||[]).map(r=>'<tr><td class="fam">'+esc(r.rang)+'</td><td>'
+      +esc(r.quand)+'</td><td>'+esc(r.alors)
+      +(r.note?'<br><span style="color:var(--encre-2)">'+esc(r.note)+'</span>':'')
+      +'</td></tr>').join(''))+'</tbody></table>';
+  E('ech-ordre').innerHTML=o;
+
+  let h='<table><thead><tr><th>Dispositif</th><th>Type de client</th>'
+    +'<th>Base de l’échéance</th><th class="n">Délai (jours)</th><th>Repli</th>'
+    +'</tr></thead><tbody>';
+  ECH.forEach((r,k)=>{
+    h+='<tr><td class="fam">'+esc(r.dispositif)+'</td><td>'+esc(r.type)+'</td>'
+      +'<td>'+(modifEch?'<input class="large" data-ech="'+k+'" data-champ="base" value="'
+        +esc(r.base)+'">':esc(r.base))+'</td>'
+      +'<td class="n">'+(modifEch?'<input data-ech="'+k+'" data-champ="jours" value="'
+        +esc(r.jours)+'">':esc(r.jours))+'</td>'
+      +'<td>'+esc(r.repli||'—')+'</td></tr>';
+  });
+  E('ech-bareme').innerHTML=h+'</tbody></table>'
+    +'<p class="param-avertir">Une base ou un délai modifié ici est enregistré et servira '
+    +'à la prochaine balance. Les dates déjà calculées ne bougent pas dans cette page : '
+    +'elles portent chacune leur justification, et les recalculer sans la refaire '
+    +'rendrait la balance inauditable.</p>';
+  const act=E('ech-actions'); if(act) act.hidden=!modifEch;
+  const b=E('ech-modif'); if(b) b.textContent=modifEch?'Fermer':'Modifier';
+}
+
+// ───── enregistrer ─────
+async function poserParam(id,valeur){
+  try{
+    if(DB) await DB.collection('parametres').doc(id).set(valeur);
+    else localStorage.setItem('rec_'+id,JSON.stringify(valeur));
+    return true;
+  }catch(e){ return false; }
+}
+
+function brancherParametres(){
+  const pm=E('prov-modif'); if(pm) pm.addEventListener('click',()=>{
+    modifProv=!modifProv; E('prov-etat').textContent=''; tableProvision(); });
+  const pn=E('prov-non'); if(pn) pn.addEventListener('click',()=>{
+    modifProv=false; tableProvision(); });
+  const po=E('prov-ok'); if(po) po.addEventListener('click',async()=>{
+    const taux={};
+    for(const f of Object.keys(PROV.taux||{})) taux[f]=(PROV.taux[f]||[]).slice();
+    for(const inp of E('prov-taux').querySelectorAll('input[data-fam]')){
+      const v=Number(String(inp.value).replace(',','.').replace('%','').trim());
+      if(isFinite(v)) taux[inp.dataset.fam][Number(inp.dataset.j)]=v/100;
+    }
+    const familles={}; for(const f of Object.keys(taux)) familles[f]=[];
+    for(const sel of E('prov-familles').querySelectorAll('select[data-sc]')){
+      const f=sel.value; if(f&&f!=='(aucune)'&&familles[f]) familles[f].push(sel.dataset.sc);
+    }
+    const v={...PROV, taux, familles, confirme:true, quand:leJour()};
+    const ok=await poserParam('provision',v);
+    E('prov-etat').textContent=ok?'Enregistré le '+leJour():'Enregistrement refusé — rien n’a été gardé.';
+    if(ok){ PROV=v; modifProv=false; ruban(); tableProvision(); }
+  });
+
+  const em=E('ech-modif'); if(em) em.addEventListener('click',()=>{
+    modifEch=!modifEch; E('ech-etat').textContent=''; tableEcheance(); });
+  const en=E('ech-non'); if(en) en.addEventListener('click',()=>{
+    modifEch=false; tableEcheance(); });
+  const eo=E('ech-ok'); if(eo) eo.addEventListener('click',async()=>{
+    const regles=ECH.map(r=>({...r}));
+    for(const inp of E('ech-bareme').querySelectorAll('input[data-ech]')){
+      const k=Number(inp.dataset.ech); if(!regles[k]) continue;
+      regles[k][inp.dataset.champ]=inp.value.trim();
+    }
+    const ok=await poserParam('echeance',{regles, quand:leJour()});
+    E('ech-etat').textContent=ok?'Enregistré le '+leJour():'Enregistrement refusé — rien n’a été gardé.';
+    if(ok){ ECH=regles; modifEch=false; tableEcheance(); }
+  });
+}
+
 </script>
 
 </body>
