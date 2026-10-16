@@ -14,6 +14,12 @@ const fr=d=>{ if(!d) return ''; const x=new Date(d);
   return String(x.getUTCDate()).padStart(2,'0')+'/'+String(x.getUTCMonth()+1).padStart(2,'0')+'/'+x.getUTCFullYear(); };
 const ar=n=>n==null?'':Math.round(n*100)/100;
 const lab=f=>f?R.getRule(f,RG).label:'À classer';
+// Ses trois types de client, dictés le 16/10/2026. Tout ce qui n'en est pas un
+// est rendu vide plutôt que publié : un quatrième type naîtrait sinon d'un
+// dispositif que le référentiel n'a pas encore rattaché, et la colonne
+// « À compléter » est faite pour ça.
+const TROIS=new Set(['Étatique','Corporate','Financement personnel']);
+const troisTypes=t=>TROIS.has(t)?t:'';
 
 // ───────── sources ─────────
 // La référence de classement : sa feuille « Copie de Grand livre -Clients  »
@@ -451,8 +457,13 @@ for(let i=0;i<plat.length;i++){
     '— CLASSEMENT —':'',
     'Nature de l’écriture':l.nature||'',
     // Un type de financement entraîne son type de client : si ni l'écriture
-    // ni la créance ne le portent, le barème le donne.
-    'Type de client':e.typeClient||src.typeClient||R.categorieDe(e.financement||src.financement,RG)||'',
+    // ni la créance ne le portent, le barème le donne. Et le résultat doit
+    // être l'un de ses trois types, pas un quatrième : « Alternance » seul ne
+    // dit pas si l'alternance est financée par l'OPCO, par l'entreprise ou par
+    // l'alternant, et le laisser passer ouvrait une catégorie de fait, à
+    // quatre écritures. Sa règle pour ce cas est d'écrire « à compléter ».
+    'Type de client':troisTypes(e.typeClient||src.typeClient
+      ||R.categorieDe(e.financement||src.financement,RG)||''),
     'Type de financement':lab(e.financement||src.financement||null),
     // Sa décision prime sur l'origine de l'écriture. Sans cela, une créance
     // qu'elle a complétée à la main portait « Hérité de la facture du même
@@ -490,7 +501,12 @@ for(let i=0;i<plat.length;i++){
     // dise. Invisible au filtre, donc incomplétable.
     'À compléter':aCompleter(src)
       || ((src0&&src0.compte&&!src0.financement&&Math.abs(src0.resteDu||0)>0.005)
-          ? 'à compléter — dispositif de la créance à qualifier' : ''),
+          ? 'à compléter — dispositif de la créance à qualifier' : '')
+      || (troisTypes(e.typeClient||src.typeClient
+            ||R.categorieDe(e.financement||src.financement,RG)||'')===''
+          && (e.financement||src.financement)
+          ? 'à compléter — « '+lab(e.financement||src.financement)
+            +' » ne désigne pas encore un de vos trois types de client' : ''),
     'N° de rapprochement':(rappro.get(l)||[]).join(' · '),
     'Proposition de rapprochement':(parLigne.get(l)||{}).quoi||'',
     'Fiabilité du rapprochement':(parLigne.get(l)||{}).force||'',

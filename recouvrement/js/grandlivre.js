@@ -23,6 +23,25 @@
     'use strict';
 
     const R = global.LioraRules;
+
+    /**
+     * Le nom d'un dispositif tel que la balance l'écrit partout ailleurs.
+     *
+     * Les classements repris de l'ancien grand livre voyagent sous leur CLÉ de
+     * référentiel — BTC_PERSO, OPCO_ALTERNANCE — parce que c'est ce que la
+     * reprise produit. Imprimée telle quelle dans la colonne « Justificatif du
+     * classement », cette clé ne se lit pas : 2 643 lignes affichaient
+     * « BTC_PERSO » là où leur colonne « Type de financement » dit
+     * « Financement personnel », et l'ancien grand livre, lui, écrit
+     * « BTC-Perso ». Une valeur qui n'est pas une clé du référentiel est
+     * rendue intacte : c'est alors la valeur lue, et elle fait foi.
+     */
+    function nomDuFinancement(v, rules) {
+        const k = String(v == null ? '' : v);
+        if (!k) return '';
+        const r = (rules || []).find(x => x && x.key === k);
+        return (r && r.label) || k;
+    }
     const I = global.LioraIngest;
 
     // ──────────────────────────────────────────────
@@ -187,7 +206,11 @@
      * facture » — c'est la seule date disponible, et sans elle la créance
      * n'est pas vieillissable.
      *
-     * La dernière date du texte est retenue, comme dans le classeur.
+     * La dernière date du texte est retenue, comme dans le classeur — la
+     * dernière date RECEVABLE, précisément. Un libellé porte parfois, après sa
+     * date utile, une suite de chiffres qui ressemble à une date sans en être
+     * une ; ne garder que la dernière chaîne captée faisait alors tomber la
+     * lecture à vide et perdait la date valide qui la précédait.
      */
     const DATE_DANS_TEXTE = /(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})/g;
     function dateDepuisTexte(txt) {
@@ -195,8 +218,11 @@
         if (!t) return null;
         DATE_DANS_TEXTE.lastIndex = 0;
         let m, derniere = null;
-        while ((m = DATE_DANS_TEXTE.exec(t)) !== null) derniere = m[1];
-        return derniere ? R.parseDate(derniere) : null;
+        while ((m = DATE_DANS_TEXTE.exec(t)) !== null) {
+            const d = R.parseDate(m[1]);
+            if (d) derniere = d;
+        }
+        return derniere;
     }
 
     // Le journal où sont passées les factures de vente. Une écriture au débit
@@ -311,6 +337,16 @@
      * du client, au sens comptable.
      */
     const POOL_NON_LETTRE = '(non lettré)';
+
+    // Une écriture sans lettre est rangée dans un lot fictif, propre à son
+    // compte, dont la clé est POOL_NON_LETTRE. Dire alors « hérité de la
+    // facture du même lettrage » affirme un rapprochement comptable qui n'a
+    // pas eu lieu : 5 504 lignes sur 6 444 le disaient en face d'une colonne
+    // « Let. » qui annonce « (non lettré) » et les dément. Deux libellés donc,
+    // selon que le lot est un vrai lettrage ou le pool d'un compte.
+    const HERITE_LETTRAGE = 'Hérité de la facture du même lettrage';
+    const HERITE_POOL = 'Hérité d’une facture non lettrée du même compte';
+    const HERITES = [HERITE_LETTRAGE, HERITE_POOL];
 
     /**
      * Valeur en texte, sans notation scientifique.
@@ -2035,14 +2071,15 @@
                     : parPayeur || 'CORPORATE_ALTERNANCE';
                 return poser(c, fin, 'Facture Filiz : alternance',
                     (c.numero || 'mention « Filiz »')
-                    + (dit ? ' · ancien grand livre : ' + dit
+                    + (dit ? ' · ancien grand livre : ' + nomDuFinancement(dit, o.rules)
                            : (parPayeur ? ' · payée par un OPCO : ' + (c.tiers || c.compte) : '')));
             }
             // Votre colonne de classement, sur cette facture précise : c'est du
             // travail déjà fait, pas une déduction.
             const ancienNumDAbord = parAncien('numero');
             if (ancienNumDAbord && !c.filiz) {
-                return poser(c, ancienNumDAbord, 'Ancien grand livre (n° de facture)', c.ancien.numero);
+                return poser(c, ancienNumDAbord, 'Ancien grand livre (n° de facture)',
+                    nomDuFinancement(c.ancien.numero, o.rules));
             }
             const direct = c.cle ? idx.parCle.get(c.cle) : null;
             if (direct) return poser(c, direct, 'Facture', 'Facture Monday ' + (c.numero || ''));
@@ -2053,11 +2090,14 @@
             // tiers désigne un client, le compte une famille de clients. Moins
             // précises que le numéro de facture, elles restent après les règles.
             const ancienNum = parAncien('numero');
-            if (ancienNum) return poser(c, ancienNum, 'Ancien grand livre (n° de facture)', c.ancien.numero);
+            if (ancienNum) return poser(c, ancienNum, 'Ancien grand livre (n° de facture)',
+                nomDuFinancement(c.ancien.numero, o.rules));
             const ancienTiers = parAncien('tiers');
-            if (ancienTiers) return poser(c, ancienTiers, 'Ancien grand livre (identifiant du tiers)', c.ancien.tiers);
+            if (ancienTiers) return poser(c, ancienTiers, 'Ancien grand livre (identifiant du tiers)',
+                nomDuFinancement(c.ancien.tiers, o.rules));
             const ancienCompte = parAncien('compte');
-            if (ancienCompte) return poser(c, ancienCompte, 'Ancien grand livre (compte client)', c.ancien.compte);
+            if (ancienCompte) return poser(c, ancienCompte, 'Ancien grand livre (compte client)',
+                nomDuFinancement(c.ancien.compte, o.rules));
             const libelle = duLibelle(c);
             if (libelle) return poser(c, libelle, 'Libellé du compte', motifDuLibelle(c));
             // Un règlement passé par GoCardless ou Stripe est un paiement de
@@ -2562,7 +2602,8 @@
                            || source.origineClassement === 'Financement unanime du compte client'
                            || source.origineClassement === 'Facture Filiz : alternance')
                             ? source.origineClassement
-                            : 'Hérité de la facture du même lettrage')
+                            : (l.lettre && l.lettre !== POOL_NON_LETTRE
+                               ? HERITE_LETTRAGE : HERITE_POOL))
                     : null,
                 // La preuve et l'échéance de la créance du même lettrage : le
                 // grand livre exporté doit pouvoir se relire seul.
@@ -3023,13 +3064,22 @@
     // grosse pour tenir dans la part de son type — et une ligne ne se coupe
     // pas en deux, c'est sa règle. Le dire est le seul moyen qu'un écart ne
     // passe pas pour une erreur de calcul.
-    function phraseDeLaCle(cle, compte, fin, pose, masse) {
+    function phraseDeLaCle(cle, compte, fin, pose, masse, o) {
         const p = cle.parts.find(x => x.fin === fin);
         const obtenue = masse > 0 ? (pose.get(fin) || 0) / masse : 0;
         const visee = p ? p.part : 0;
-        let t = cle.parts.map(x => x.nb + ' ' + x.fin).join(' · ')
+        // Le dispositif se nomme ici comme la colonne « Type de financement »
+        // le nomme sur la même ligne. Une clé que le référentiel ne connaît pas
+        // reste écrite telle quelle : getRule rendrait sa règle de repli, qui
+        // renommerait la preuve en silence.
+        const liste = (o && o.rules) || null;
+        const nom = k => {
+            const r = liste ? liste.find(x => x && x.key === k) : null;
+            return (r && r.label) || k;
+        };
+        let t = cle.parts.map(x => x.nb + ' ' + nom(x.fin)).join(' · ')
             + ' — ' + cle.total + ' factures au compte ' + (compte || '')
-            + ' · part visée pour ' + fin + ' : ' + Math.round(visee * 100) + ' %';
+            + ' · part visée pour ' + nom(fin) + ' : ' + Math.round(visee * 100) + ' %';
         if (Math.abs(obtenue - visee) >= 0.01) {
             t += ' · part obtenue : ' + Math.round(obtenue * 100) + ' %'
                + ' (les lignes ne se coupent pas en deux)';
@@ -3054,7 +3104,7 @@
         for (const l of (lignes || [])) {
             if (l.nature !== 'reglement' && l.nature !== 'avoir') continue;
             if (l.numero) continue;
-            if (l.origineClassement !== 'Hérité de la facture du même lettrage') continue;
+            if (HERITES.indexOf(l.origineClassement) < 0) continue;
             if (!cles.has(l.compte)) continue;
             if (!parCompte.has(l.compte)) parCompte.set(l.compte, []);
             parCompte.get(l.compte).push(l);
@@ -3088,7 +3138,7 @@
                 l.financement = fin;
                 l.typeClient = typeDeClient(fin, o) || l.typeClient || null;
                 l.origineClassement = 'Réparti au prorata des factures du compte';
-                l.preuveClassement = phraseDeLaCle(cle, compte, fin, pose, masse);
+                l.preuveClassement = phraseDeLaCle(cle, compte, fin, pose, masse, o);
             }
         }
 
@@ -3123,7 +3173,7 @@
                 c.financement = fin;
                 c.typeClient = typeDeClient(fin, o) || c.typeClient || null;
                 c.origineClassement = 'Réparti au prorata des factures du compte';
-                c.preuveClassement = phraseDeLaCle(cle, compte, fin, pose, masse);
+                c.preuveClassement = phraseDeLaCle(cle, compte, fin, pose, masse, o);
             }
         }
         return bilan;

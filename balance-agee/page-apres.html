@@ -701,9 +701,14 @@ const LEXIQUE=[
    +'Elle prend le type de financement de cette facture. La colonne « Justificatif du classement » '
    +'donne le numéro suivi.'],
   ['Hérité de la facture du même lettrage',
-   'L’écriture ne porte aucun numéro — un virement, un avoir, un report. Le lettrage la rattache '
-   +'à une facture du même compte : elle en prend le type de financement. C’est le cas de plus de la moitié '
-   +'des lignes, qui n’auraient sinon aucun classement.'],
+   'L’écriture ne porte aucun numéro — un virement, un avoir, un report — mais elle est lettrée : '
+   +'le lettrage la rattache à une facture précise, et elle en prend le type de financement. '
+   +'La colonne « Let. » donne la lettre qui les relie.'],
+  ['Hérité d’une facture non lettrée du même compte',
+   'Même chose, sans le lettrage. L’écriture n’est rattachée à aucune facture par la comptabilité : '
+   +'elle prend le type de financement d’une facture non lettrée du même compte client. Le rattachement '
+   +'est donc une déduction, pas un pointage — la colonne « Let. » affiche « (non lettré) ». '
+   +'C’est le cas de la plus grande partie des lignes héritées.'],
   ['Facture Filiz : alternance',
    'Le numéro commence par FCT-FILIZ. C’est de l’alternance, sans exception et avant toute autre '
    +'règle. Les autres sources ne servent qu’à choisir laquelle : OPCO, Corporate ou Perso.'],
@@ -1450,8 +1455,16 @@ function brancherParametres(){
       const v=Number(String(inp.value).replace(',','.').replace('%','').trim());
       if(isFinite(v)) taux[inp.dataset.fam][Number(inp.dataset.j)]=v/100;
     }
+    // Le rattachement affiché ne porte que les dispositifs présents dans la
+    // balance du mois. Les autres n'ont pas de ligne à l'écran — ils n'ont pas
+    // pour autant quitté le barème, et un enregistrement les effaçait en
+    // silence. On les reconduit d'abord, puis on pose ce qui est affiché.
     const familles={}; for(const f of Object.keys(taux)) familles[f]=[];
-    for(const sel of E('prov-familles').querySelectorAll('select[data-sc]')){
+    const choix=[...E('prov-familles').querySelectorAll('select[data-sc]')];
+    const affiches=new Set(choix.map(s=>s.dataset.sc));
+    for(const [f,liste] of Object.entries(PROV.familles||{}))
+      for(const sc of liste) if(!affiches.has(sc)&&familles[f]) familles[f].push(sc);
+    for(const sel of choix){
       const f=sel.value; if(f&&f!=='(aucune)'&&familles[f]) familles[f].push(sel.dataset.sc);
     }
     const v={...PROV, taux, familles, confirme:true, quand:leJour()};
@@ -1498,6 +1511,11 @@ function vueProvision(){
     const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
     const sc=sousVraie(i); if(!sc) continue;
     const rd=N(i,'Reste dû de la créance');
+    // Une créance intégralement réglée à l'intérieur de son lot garde sa clé
+    // dans le détail mais ne doit plus rien : elle ne se compte pas ici, pas
+    // plus qu'au zoom ni dans l'export. Sans ce filtre la colonne « Créances »
+    // annonçait 6 141 quand le reste de la page en publie 6 031.
+    if(Math.abs(rd)<0.005) continue;
     const t=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
     const p=provisionDe(rd, sc, t, k);
     let g=parSc.get(sc);
