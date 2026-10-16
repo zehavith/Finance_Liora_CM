@@ -83,7 +83,8 @@
         // Un extrait déjà qualifié porte sa propre réponse : la sous-catégorie
         // est le financement, plus fine que le type de client — « B2C » couvre
         // aussi bien BTC-Perso que CPF, Transition Pro, AIF ou Agefiph.
-        sousCategorie: ['sous categorie de type de client', 'sous categorie type de client',
+        sousCategorie: ['type de financement', 'sous categorie de type de client',
+                        'sous categorie type de client',
                         'sous categorie', 'sous type de facture', 'sous type'],
         typeClient:   ['type de client', 'type client', 'typologie client'],
 
@@ -2509,7 +2510,13 @@
             const ligne = {
                 ...l,
                 financement: source ? source.financement : null,
-                typeClient: source ? source.typeClient : null,
+                // Un type de financement entraîne toujours son type de client :
+                // c'est le barème qui les relie, pas l'écriture. Les sources
+                // héritées d'une facture ne portaient pas le type, et quatorze
+                // lignes affichaient « B2C-Perso » en face d'une colonne vide.
+                typeClient: source
+                    ? (source.typeClient || typeDeClient(source.financement, sources) || null)
+                    : null,
                 origineClassement: source
                     ? (l.nature === 'facture' ? source.origineClassement
                         : (source.origineClassement === 'Facture citée par la ligne'

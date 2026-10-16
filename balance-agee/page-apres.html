@@ -54,7 +54,7 @@ function demarrer(){
   // déplacer un montant d'une ligne de synthèse à l'autre, à l'euro près,
   // sans recalculer une balance que personne n'aurait auditée.
   for(const i of I){
-    const sc=V(i,'Sous catégorie de type de client');
+    const sc=V(i,'Type de financement');
     if(sc && !typeDe.has(sc)) typeDe.set(sc, V(i,'Type de client')||sc);
     const k=V(i,'Clé de la créance'); if(!k || metaCreance.has(k)) continue;
     // La sous-catégorie ET la tranche de la CRÉANCE : celles que la ligne
@@ -64,7 +64,7 @@ function demarrer(){
     // pas. Le total serait resté juste, les deux lignes touchées, fausses.
     metaCreance.set(k,{rd:N(i,'Reste dû de la créance'),
       tr:V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté'),
-      sc:V(i,'Sous-catégorie de la créance')||sc});
+      sc:V(i,'Type de financement de la créance')||sc});
   }
   ruban();
   E('sous').textContent=D.source+' · arrêté au '+D.arrete+' · '
@@ -73,7 +73,7 @@ function demarrer(){
 
   synthese();
   brancherNiveaux();
-  const cats=[...new Set(I.map(i=>V(i,'Sous catégorie de type de client')).filter(Boolean))].sort();
+  const cats=[...new Set(I.map(i=>V(i,'Type de financement')).filter(Boolean))].sort();
   E('fcat').innerHTML+=cats.map(c=>'<option>'+c+'</option>').join('');
   const trs=[...new Set(I.map(i=>V(i,'Tranche d’ancienneté')).filter(Boolean))];
   E('ftr').innerHTML+=trs.map(c=>'<option>'+c+'</option>').join('');
@@ -168,7 +168,7 @@ function synthese(){
   // zéro : leur absence se lirait comme un oubli, pas comme un fait.
   const rows=avecComplements((niveau==='cat'?D.syntheseCat:D.synthese)||D.synthese, niveau)
     .filter(s=>!(s.cat==='À classer' && !s.nb && Math.abs(s.total)<0.005));
-  let h='<thead><tr><th>'+(niveau==='cat'?'Type de client':'Sous-catégorie')
+  let h='<thead><tr><th>'+(niveau==='cat'?'Type de client':'Type de financement')
     +'</th><th class="n">Reste dû</th><th class="n">Échu</th>'
     +tr.map(x=>'<th class="n">'+x+'</th>').join('')
     +'<th class="n">Non échu</th><th class="n">Créances</th></tr></thead><tbody>';
@@ -222,7 +222,7 @@ const catDuDispositif=disp=>{
 // ligne. Le tableau de tête en regroupe deux paires sous « Entreprise » et
 // « OPCO » ; le détail, lui, continue de les nommer.
 const sousVraie=i=>{ const c=compl.get(cleLigne(i));
-  return c?c.dispositif:(V(i,'Sous-catégorie de la créance')||''); };
+  return c?c.dispositif:(V(i,'Type de financement de la créance')||''); };
 const REGROUPE=()=>(D&&D.regroupe)||{};
 function categorieDe(i,niv){
   const sc=sousVraie(i);
@@ -232,7 +232,7 @@ function categorieDe(i,niv){
   // déduire de sa sous-catégorie rangeait les 31 créances « ETAT » sous une
   // seule des deux catégories qu'elles portent — la balance par catégorie
   // s'écartait alors de celle par sous-catégorie, sur les mêmes créances.
-  if(!c){ const propre=V(i,'Catégorie de la créance'); if(propre) return propre; }
+  if(!c){ const propre=V(i,'Type de client de la créance'); if(propre) return propre; }
   return catDuDispositif(sc)||typeDe.get(sc)||sc;
 }
 
@@ -262,7 +262,7 @@ function appliquer(garderPlace){
       else if(zoom.tr==='(non échu)'){ if(trc!=='Non échu') return false; }
       else if(zoom.tr && trc!==zoom.tr) return false;
     }
-    if(c && V(i,'Sous catégorie de type de client')!==c) return false;
+    if(c && V(i,'Type de financement')!==c) return false;
     if(t && V(i,'Tranche d’ancienneté')!==t) return false;
     const ac=!!V(i,'À compléter') && !compl.has(cleLigne(i));
     if(a==='oui'&&!ac) return false;
@@ -363,7 +363,7 @@ function dessiner(){
       +'<div class="num">'+(N(i,'Débit')?eur(N(i,'Débit')):'')+'</div>'
       +'<div class="num">'+(N(i,'Crédit')?eur(N(i,'Crédit')):'')+'</div>'
       +'<div class="mono">'+V(i,"Date d'échéance recalculée")+'</div>'
-      +'<div>'+(c?c.dispositif:V(i,'Sous catégorie de type de client'))+'</div></div>';
+      +'<div>'+(c?c.dispositif:V(i,'Type de financement'))+'</div></div>';
   }
   E('cale').innerHTML=h;
   E('cale').querySelectorAll('.lig').forEach(el=>
@@ -416,7 +416,7 @@ function filtresEnCours(){
   if(zoom) p.push('montant ouvert : '+(zoom.cat||'toute la balance')
     +(zoom.tr?' · '+(zoom.tr==='(échu)'?'échu':zoom.tr==='(non échu)'?'non échu':zoom.tr):''));
   const q=E('q').value.trim(); if(q) p.push('recherche « '+q+' »');
-  if(E('fcat').value) p.push('sous-catégorie : '+E('fcat').value);
+  if(E('fcat').value) p.push('type de financement : '+E('fcat').value);
   if(E('ftr').value) p.push('tranche : '+E('ftr').value);
   const a=E('fac'); if(a.value) p.push(a.options[a.selectedIndex].textContent.trim());
   return p.length?p.join('  ·  '):'aucun filtre — toute la balance';
@@ -480,7 +480,7 @@ function feuilleSommaire(wb,idx,nomDetail){
    ['Règles','Ordre de détermination des échéances et barème de chaque dispositif'],
    ['Balance âgée','Reste dû par type de client et par tranche d’ancienneté. '
      +'Chaque ligne se déplie sur les comptes, puis sur leurs écritures.'],
-   ['Par sous-catégorie','Même ventilation, dispositif par dispositif'],
+   ['Par type de financement','Même ventilation, dispositif par dispositif'],
    [nomDetail,idx.length.toLocaleString('fr-FR')+' écritures, '+D.cols.length
      +' colonnes. Classement, échéance et justification de chaque ligne.'],
   ].forEach(([nom,quoi],i)=>{
@@ -524,7 +524,7 @@ function feuilleRegles(wb){
     +'sur la base indiquée, ou sur le repli lorsque cette base est absente.'])
     .font={color:{argb:ENCRE3},size:10};
   ws.addRow([]);
-  poserEntete(ws,ws.addRow(['Sous-catégorie','Type de client','Périmètre','Base de l’échéance',
+  poserEntete(ws,ws.addRow(['Type de financement','Type de client','Périmètre','Base de l’échéance',
     'Délai (jours)','Repli si la base manque','Règle','Mots reconnus']));
   let z=0;
   for(const r of (D.regles||[])){
@@ -624,13 +624,16 @@ function lexique(ws){
 }
 
 function feuilleBalance(wb,niv,idx){
-  const nom=niv==='cat'?'Balance âgée':'Par sous-catégorie';
-  const tete=niv==='cat'?'Type de client':'Sous-catégorie';
-  const autre='Sous-catégorie';
+  const nom=niv==='cat'?'Balance âgée':'Par type de financement';
+  const tete=niv==='cat'?'Type de client':'Type de financement';
+  // La colonne de droite nomme le ou les dispositifs du compte, sans le
+  // regroupement : en face d'« Entreprise » elle distingue B2C-Entreprise de
+  // B2B. Sur la feuille qui lit déjà par financement, elle porte donc un titre
+  // qui la sépare de la colonne de tête, qui, elle, regroupe.
+  const autre=niv==='cat'?'Type de financement':'Type de financement détaillé';
   const nT=D.tranches.length;
-  // Une seule colonne ajoutée à la balance : celle de l'autre lecture — la
-  // sous-catégorie quand on lit par type de client, le type de client quand on
-  // lit par sous-catégorie. Tout le reste — le compte, la facture, la date —
+  // Une seule colonne ajoutée à la balance : le dispositif détaillé du compte.
+  // Tout le reste — le compte, la facture, la date —
   // tient dans la première colonne, par l'indentation. Une écriture ventile son
   // montant dans les MÊMES colonnes d'ancienneté que la balance : c'est ce qui
   // permet de lire, tranche par tranche, ce qui compose un montant.
@@ -667,10 +670,9 @@ function feuilleBalance(wb,niv,idx){
     const k=V(i,'Clé de la créance'); if(!k||info.has(k)) continue;
     const rd=N(i,'Reste dû de la créance'); if(Math.abs(rd)<0.005) continue;
     info.set(k,{cat:categorieDe(i,niv), cpt:V(i,'N° de compte'), rd:rd,
-      // L'autre lecture de la MÊME créance : sa sous-catégorie quand on lit
-      // par type de client, son type de client quand on lit par
-      // sous-catégorie. Prise sur la créance, pas sur l'écriture : les deux
-      // diffèrent dès que la créance n'est pas classée.
+      // Le dispositif de la MÊME créance, sans regroupement. Pris sur la
+      // créance, pas sur l'écriture : les deux diffèrent dès que la créance
+      // n'est pas classée.
       autre:sousVraie(i)||'',
       tr:V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté')});
   }
@@ -811,7 +813,7 @@ let DISPOS=[];
 // navigateur quand c'est le fichier autonome. La page fonctionne sans l'un ni
 // l'autre — un complément est une surcouche, jamais une condition d'affichage.
 async function ouvrirBase(){
-  DISPOS=[...new Set(I.map(i=>V(i,'Sous catégorie de type de client'))
+  DISPOS=[...new Set(I.map(i=>V(i,'Type de financement'))
     .filter(c=>c&&c!=='À classer'))].sort();
   E('lot-disp').innerHTML='<option value="">Choisir…</option>'
     +DISPOS.map(d=>'<option>'+d+'</option>').join('');

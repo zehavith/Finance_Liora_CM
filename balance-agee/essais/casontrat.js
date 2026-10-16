@@ -1,5 +1,5 @@
 // Le garde-fou doit crier. Un contrôle qui ne sait pas échouer ne protège rien.
-const {colonnesCitees,verifierContrat}=require('./contrat.js');
+const {colonnesCitees,verifierContrat}=require(require('path').join(__dirname,'..','contrat.js'));
 const COLS=['Débit','Crédit','Calcul','Let.',"Date d'échéance recalculée"];
 const CODE=`const V=(li,nom)=>D.dico[D.lignes[li][col[nom]]]||'';
 const N=(li,nom)=>0;

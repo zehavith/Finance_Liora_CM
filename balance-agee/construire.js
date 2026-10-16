@@ -394,8 +394,10 @@ for(let i=0;i<plat.length;i++){
     // ── le classement ──
     '— CLASSEMENT —':'',
     'Nature de l’écriture':l.nature||'',
-    'Type de client':e.typeClient||src.typeClient||'',
-    'Sous catégorie de type de client':lab(e.financement||src.financement||null),
+    // Un type de financement entraîne son type de client : si ni l'écriture
+    // ni la créance ne le portent, le barème le donne.
+    'Type de client':e.typeClient||src.typeClient||R.categorieDe(e.financement||src.financement,RG)||'',
+    'Type de financement':lab(e.financement||src.financement||null),
     // Sa décision prime sur l'origine de l'écriture. Sans cela, une créance
     // qu'elle a complétée à la main portait « Hérité de la facture du même
     // lettrage » : la balance appliquait bien son choix, mais la ligne ne le
@@ -444,14 +446,14 @@ for(let i=0;i<plat.length;i++){
     // s'affichait sur une créance que la balance compte dans « À classer ».
     // Un complément doit déplacer le montant depuis la ligne de synthèse où il
     // est réellement compté, pas depuis celle que l'écriture donne à voir.
-    'Sous-catégorie de la créance':propre?lab(propre.financement):'',
+    'Type de financement de la créance':propre?lab(propre.financement):'',
     // Et sa CATÉGORIE, pour la même raison. La page la devinait en rattachant
     // chaque sous-catégorie à la catégorie de la première ligne rencontrée :
     // les 31 créances « ETAT » tombaient toutes sous une seule des deux
     // catégories qu'elles portent réellement (29 B2C-Entreprise, 2 B2B), et
     // la balance par catégorie s'écartait de celle par sous-catégorie.
     // Chaque créance porte maintenant la sienne, lisible sur la ligne.
-    'Catégorie de la créance':propre?(propre.typeClient||R.categorieDe(propre.financement,RG)||''):'',
+    'Type de client de la créance':propre?(propre.typeClient||R.categorieDe(propre.financement,RG)||''):'',
     'Tranche de la créance':propre?tranche(propre):'',
     // L'identité de la créance, telle que le moteur la forme : compte, lettre
     // de lettrage, numéro. Sans elle, la page ne peut pas réagréger — plusieurs
@@ -471,7 +473,7 @@ const ligneCreance=c=>({
   'Facture':c.numero||'', 'Client':c.tiers||'', 'N° de compte':c.compte||'',
   'Identifiant du tiers':c.identifiantTiers||'', 'Lettrage':c.lettre||'', 'SIREN':c.siren||'',
   'Nature':c.sansNumero?'Solde sans facture':'Facture',
-  'Type de client':c.typeClient||'', 'Sous-catégorie':lab(c.financement),
+  'Type de client':c.typeClient||R.categorieDe(c.financement,RG)||'', 'Type de financement':lab(c.financement),
   'Classé par':c.origineClassement||'', 'Ce qui l’a décidé':c.preuveClassement||'',
   'Montant facture':ar(c.montant), 'Restant dû':ar(c.resteDu),
   'Date de facture':fr(c.dateFacture), 'Début de formation':fr(c.dateDebutFormation),
@@ -494,9 +496,15 @@ const ligneSynth=(r,col)=>{ const o={}; o[col]=r.label;
   for(const b of buckets) o[b.label]=ar(r.buckets[b.key]);
   o['Non échu']=ar(r.nonEchu); o['dont créditeur']=ar(r.crediteur||0);
   o['Sans date']=ar(r.sansDate||0); o['Créances']=r.nb; return o; };
-const synth=rows=>rows.map(r=>ligneSynth(r,'Sous-catégorie'));
+const synth=rows=>rows.map(r=>ligneSynth(r,'Type de financement'));
 const wb=X.utils.book_new();
-const add=(nom,rows)=>X.utils.book_append_sheet(wb,X.utils.json_to_sheet(rows.length?rows:[{'':'(aucune ligne)'}]),nom.slice(0,31));
+// Excel refuse un nom d'onglet au-delà de 31 caractères. Le tronquer en
+// silence donnait « Balance âgée par type de financ » : on le refuse plutôt,
+// pour que l'onglet soit nommé et non coupé.
+const add=(nom,rows)=>{
+  if(nom.length>31) throw new Error('onglet trop long pour Excel ('+nom.length+' caractères) : '+nom);
+  return X.utils.book_append_sheet(wb,X.utils.json_to_sheet(rows.length?rows:[{'':'(aucune ligne)'}]),nom);
+};
 
 // Le premier onglet est la balance âgée telle que vous la lisez : par type de
 // client — B2C, B2C - Entreprise, B2B, POEI, Alternance, Interco. Les
@@ -515,8 +523,8 @@ for(const l of ORDRE) if(!catRows.some(r=>r.label===l)) catRows.splice(rang(l),0
 const aQuelqueChose=r=>!(r.label==='À classer' && !r.nb && Math.abs(r.total)<0.005);
 add('Balance âgée',[...catRows.filter(aQuelqueChose).map(r=>ligneSynth(r,'Type de client')),
   ligneSynth(balCat.total,'Type de client')]);
-add('Balance âgée par sous-catégorie',[...bal.rows.filter(aQuelqueChose).map(r=>ligneSynth(r,'Sous-catégorie')),
-  ligneSynth(bal.total,'Sous-catégorie')]);
+add('Balance âgée par financement',[...bal.rows.filter(aQuelqueChose).map(r=>ligneSynth(r,'Type de financement')),
+  ligneSynth(bal.total,'Type de financement')]);
 add('Balance âgée ligne à ligne',principale);
 add('Créances',cl.map(ligneCreance));
 add('À classer',cl.filter(c=>!c.financement).map(ligneCreance));
@@ -529,21 +537,21 @@ add('À compléter',principale.filter(o=>o['À compléter']));
 const parCompte=new Map();
 for(const c of cl){ const k=c.compte||'(sans compte)';
   let g=parCompte.get(k); if(!g){g={'N° de compte':k,'Client':c.tiers||'','Créances':0,'Restant dû':0,
-    'Sous-catégories':new Set(),'À compléter':0}; parCompte.set(k,g);} 
-  g['Créances']++; g['Restant dû']+=c.resteDu||0; g['Sous-catégories'].add(lab(c.financement));
+    'Types de financement':new Set(),'À compléter':0}; parCompte.set(k,g);} 
+  g['Créances']++; g['Restant dû']+=c.resteDu||0; g['Types de financement'].add(lab(c.financement));
   if(aCompleter(c)) g['À compléter']++; }
 add('Par compte client',[...parCompte.values()].sort((a,b)=>b['Restant dû']-a['Restant dû'])
-  .map(g=>({...g,'Restant dû':ar(g['Restant dû']),'Sous-catégories':[...g['Sous-catégories']].join(' · ')})));
+  .map(g=>({...g,'Restant dû':ar(g['Restant dû']),'Types de financement':[...g['Types de financement']].join(' · ')})));
 // ce que l'ancienne balance a appris
 const apprisRows=[];
 for(const [k,v] of Object.entries(appris.comptes)) apprisRows.push({'Clé':'compte','Valeur':k,
-  'Sous-catégorie apprise':v.qualif,'Lignes qui la portent':v.nb,'Consensus':Math.round(v.part*100)+' %'});
+  'Type de financement appris':v.qualif,'Lignes qui la portent':v.nb,'Consensus':Math.round(v.part*100)+' %'});
 for(const [k,v] of Object.entries(appris.tiers)) apprisRows.push({'Clé':'identifiant du tiers','Valeur':k,
-  'Sous-catégorie apprise':v.qualif,'Lignes qui la portent':v.nb,'Consensus':Math.round(v.part*100)+' %'});
+  'Type de financement appris':v.qualif,'Lignes qui la portent':v.nb,'Consensus':Math.round(v.part*100)+' %'});
 add('Appris de l’ancienne balance',apprisRows);
 // les règles d'échéance appliquées
 add('Règles d’échéance',RG.filter(r=>r.key!=='INCONNU').map(r=>{const g=r.gl||r; return {
-  'Sous-catégorie':r.label,
+  'Type de financement':r.label,
   'Suivi recouvrement':(BASES[r.base]||r.base||'')+(r.jours?' + '+r.jours+' j':' (sans délai)'),
   'Balance âgée comptable':(BASES[g.base]||g.base||'')+(g.jours?' + '+g.jours+' j':' (sans délai)'),
   'Repli si la base manque':(BASES[r.fallback]||r.fallback||'')

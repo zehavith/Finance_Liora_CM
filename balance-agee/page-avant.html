@@ -104,7 +104,7 @@ input[type=search]{flex:1 1 220px}
   color:var(--encre-2);font-size:12px}
 .pied p{margin:0 0 6px}
 /* Sur un écran étroit — l'artefact s'ouvre dans un panneau latéral —, ce sont
-   le compte, l'échéance et la sous-catégorie qui s'effacent. Le DÉBIT et le
+   le compte, l'échéance et le type de financement qui s'effacent. Le DÉBIT et le
    CRÉDIT restent : masquer le crédit faisait disparaître le règlement d'un
    couple de rapprochement, et la page n'affichait plus que des débits. */
 @media (max-width:760px){
@@ -181,14 +181,14 @@ input[type=search]{flex:1 1 220px}
   <h2>Reste dû par ancienneté</h2>
   <div class="niveaux" id="niveaux">
     <button type="button" data-niveau="cat" class="actif">Par type de client</button>
-    <button type="button" data-niveau="sous">Par sous-catégorie</button>
+    <button type="button" data-niveau="sous">Par type de financement</button>
   </div>
   <div class="bloc defil"><table id="synthese"></table></div>
 
   <h2>Le détail, ligne par ligne</h2>
   <div class="barre">
     <input type="search" id="q" placeholder="Chercher un client, une facture, un compte…" autocomplete="off">
-    <select id="fcat"><option value="">Toutes les sous-catégories</option></select>
+    <select id="fcat"><option value="">Tous les types de financement</option></select>
     <select id="ftr"><option value="">Toutes les tranches</option></select>
     <select id="fac">
       <option value="">Tout</option>
@@ -218,7 +218,7 @@ input[type=search]{flex:1 1 220px}
       <div><input type="checkbox" id="coche-tout" title="Tout sélectionner" hidden> Facture</div>
       <div>Compte</div><div>Client</div>
       <div class="num">Débit</div><div class="num">Crédit</div>
-      <div>Échéance</div><div>Sous-cat.</div>
+      <div>Échéance</div><div>Financement</div>
     </div>
     <div id="viewport"><div id="cale"></div></div>
   </div>
