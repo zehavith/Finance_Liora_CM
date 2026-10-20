@@ -1013,6 +1013,47 @@
         return out;
     }
 
+    /**
+     * Ce que chaque facture d'un lot doit vraiment, et ce qui ne se rattache
+     * à aucune d'elles.
+     *
+     * Sa règle du 20/10/2026 : « d'abord suivre les noms ». Une facture doit
+     * son débit, moins les règlements et avoirs qui NOMMENT son numéro. Ce qui
+     * ne nomme aucune facture du lot n'est pas étalé : il ressort à part.
+     *
+     * Le total est conservé par construction — chaque ligne du lot est comptée
+     * une fois et une seule, du côté où elle tombe.
+     */
+    function partsDuLot(g, soldee) {
+        const parts = new Map(), anonymes = [];
+        if (soldee) { for (const f of g.factures) parts.set(f, 0); return { parts, anonymes }; }
+        const parFacture = new Map(), sansCle = [];
+        for (const f of g.factures) {
+            const k = I.factureKey(f.numero);
+            if (!k) { sansCle.push(f); continue; }
+            if (!parFacture.has(k)) parFacture.set(k, { lignes: [], credit: 0 });
+            parFacture.get(k).lignes.push(f);
+        }
+        for (const l of g.reglements.concat(g.avoirs, g.autres)) {
+            const k = l.numero ? I.factureKey(l.numero) : '';
+            if (k && parFacture.has(k)) parFacture.get(k).credit += (l.credit || 0) - (l.debit || 0);
+            else anonymes.push(l);
+        }
+        for (const [, x] of parFacture) {
+            const debit = x.lignes.reduce((s, f) => s + f.debit, 0);
+            const net = debit - x.credit;
+            // Plusieurs lignes au débit pour un même numéro : c'est la même
+            // facture passée en plusieurs fois, son reste dû se partage entre
+            // elles au prorata de leur débit.
+            for (const f of x.lignes) parts.set(f, debit ? net * (f.debit / debit) : net);
+        }
+        // Une facture dont le numéro n'est pas exploitable ne peut rien
+        // recevoir de nommé : elle porte son débit, et ce qui la visait est
+        // resté anonyme, donc visible à côté.
+        for (const f of sansCle) parts.set(f, f.debit);
+        return { parts, anonymes };
+    }
+
     function creancesOuvertes(lu) {
         const ouvertes = [];
         for (const g of lu.groupes) {
@@ -1021,12 +1062,40 @@
             if (Math.abs(reste) < TOLERANCE) continue;
 
             if (g.factures.length) {
-                // Le solde se répartit sur les factures du groupe au prorata de
-                // leur montant : à facture unique c'est exact, à plusieurs
-                // c'est la seule répartition qui conserve le total.
-                const total = g.factures.reduce((s, f) => s + f.debit, 0) || 1;
-                for (const f of g.factures) {
-                    ouvertes.push(ligneFacture(g, f, reste * (f.debit / total)));
+                // CHAQUE FACTURE PORTE CE QU'ELLE DOIT VRAIMENT.
+                //
+                // Sa règle du 20/10/2026 : « d'abord suivre les noms ». Le
+                // solde du lot était étalé sur ses factures au prorata de leur
+                // montant : cela conservait le total mais inventait le détail.
+                // Chez Bernadin MEL, deux factures de 5 990 € portaient
+                // 1 418,72 € chacune alors que treize règlements nommaient la
+                // seconde et aucun la première.
+                //
+                // On suit donc le numéro que chaque ligne porte, et ce qui ne
+                // nomme aucune facture DU LOT fait sa propre écriture, visible,
+                // au lieu d'être étalé sur des factures désignées au hasard.
+                const { parts, anonymes } = partsDuLot(g, false);
+                for (const f of g.factures) ouvertes.push(ligneFacture(g, f, parts.get(f) || 0));
+                // Ce que rien ne nomme : une écriture, une créance, sa date.
+                for (const l of anonymes) {
+                    const net = (l.debit || 0) - (l.credit || 0);
+                    if (Math.abs(net) < TOLERANCE) continue;
+                    const repli = repliDerniere([l]);
+                    ouvertes.push({
+                        qualif: g.qualif || '', identifiantTiers: g.identifiantTiers || '',
+                        siren: g.siren || '', compte: g.compte, tiers: g.tiers,
+                        lettre: g.lettre, montant: null, dateEcheance: null,
+                        dateDebutFormation: g.dateDebutFormation || null,
+                        dateFinFormation: g.dateFinFormation || null,
+                        mandatEtatFichier: g.mandatEtat || '',
+                        ancien: g.ancien || null, journal: '',
+                        sansNumero: true, numero: '', cle: null, resteDu: net,
+                        dateFacture: l.date || null,
+                        dateEcheanceRepli: repli.date, echeance1Source: repli.source,
+                        libelle: l.libelle || libelleRepresentatif(g),
+                        filiz: /filiz/i.test((l.libelle || '') + ' ' + (libelleRepresentatif(g) || '')),
+                        brutLigne: l.brut || null,
+                    });
                 }
             } else {
                 // UNE CRÉANCE PAR FACTURE CITÉE.
@@ -1133,13 +1202,21 @@
         const out = [];
         for (const g of (lu.groupes || [])) {
             if (!g.factures.length) continue;
-            const reste = g.soldee ? 0 : (g.debit - g.credit);
-            const total = g.factures.reduce((s, f) => s + f.debit, 0) || 1;
+            // Le même partage que creancesOuvertes : on suit les noms. Sans
+            // cela l'export annoncerait un reste dû que la balance contredit.
+            // Un lot qui s'équilibre ne doit rien, même si le lettrage n'est
+            // pas formellement « soldé » : la balance l'ignore, l'export doit
+            // dire la même chose. Chez 4110CMIM00100, trois factures de
+            // 17 865 € sont annulées par trois avoirs qui portent leur propre
+            // numéro ; sans cette égalité, l'export publiait les trois
+            // factures entières et les avoirs nulle part.
+            const resteLot = g.soldee ? 0 : (g.debit - g.credit);
+            const { parts } = partsDuLot(g, g.soldee || Math.abs(resteLot) < TOLERANCE);
             for (const f of g.factures) {
-                const l = ligneFacture(g, f, reste * (f.debit / total));
+                const l = ligneFacture(g, f, parts.get(f) || 0);
                 l.statut = g.soldee
                     ? (g.parAvoir ? 'Soldée par un avoir' : 'Soldée par règlement')
-                    : (Math.abs(reste) < TOLERANCE ? 'Lettrage équilibré'
+                    : (Math.abs(resteLot) < TOLERANCE ? 'Lettrage équilibré'
                         : (g.creditReglements > TOLERANCE ? 'Partiellement réglée' : 'Ouverte'));
                 l.dateReglement = g.dateReglement || null;
                 l.dateAvoir = g.dateAvoir || null;

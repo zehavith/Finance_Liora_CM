@@ -402,13 +402,21 @@ const rangLigne=new Map();
     const k=grp(l)+'|'+I.factureKey(l.numero);
     const n=(vus.get(k)||0)+1; vus.set(k,n); rangLigne.set(l,n); } }
 const creanceDuCompte=l=>{
+  // 1. La ligne nomme une facture, et cette facture a une créance dans son
+  //    lot : c'est la sienne. Une facture au débit se retrouve ainsi
+  //    elle-même ; un règlement se range sous la facture qu'il paie.
   if(l.numero){
     const liste=parGroupeCle.get(grp(l)+'|'+I.factureKey(l.numero));
     if(liste&&liste.length) return liste[Math.min(rangLigne.get(l)||1,liste.length)-1];
-  } else {
-    const propre=l.brut&&parBrut.get(l.brut); if(propre) return propre;
-    const s=parGroupeSolde.get(grp(l)); if(s) return s;
   }
+  // 2. Sinon, la ligne porte SA propre créance — celle qui a été faite pour
+  //    elle. C'est le cas d'un règlement qui nomme une facture absente du
+  //    grand livre : il ne doit pas emprunter l'identité d'une voisine.
+  //    NAFOUANTA MOILIME, qui nommait FA-550-2627, se retrouvait sur
+  //    FA-550-2735, la facture d'un autre client du même pool.
+  const propre=l.brut&&parBrut.get(l.brut); if(propre) return propre;
+  if(!l.numero){ const s=parGroupeSolde.get(grp(l)); if(s) return s; }
+  // 3. En dernier recours seulement.
   return parGroupe.get(l.cleGroupe)
     || (l.numero&&parCompteCle.get((l.compte||'')+'|'+I.factureKey(l.numero)))
     || null;
@@ -586,7 +594,10 @@ for(let i=0;i<plat.length;i++){
     // catégories qu'elles portent réellement (29 B2C-Entreprise, 2 B2B), et
     // la balance par catégorie s'écartait de celle par sous-catégorie.
     // Chaque créance porte maintenant la sienne, lisible sur la ligne.
-    'Type de client de la créance':propre?(propre.typeClient||R.categorieDe(propre.financement,RG)||''):'',
+    // Le même garde-fou que sur la ligne : ses trois types, et rien d'autre.
+    // Une créance « À classer » n'a pas de dispositif, donc pas de type — et
+    // « Inconnu » n'est pas un type de client, c'est une absence.
+    'Type de client de la créance':troisTypes(propre?(propre.typeClient||R.categorieDe(propre.financement,RG)||''):''),
     'Tranche de la créance':propre?tranche(propre):'',
     // L'identité de la créance, telle que le moteur la forme : compte, lettre
     // de lettrage, numéro. Sans elle, la page ne peut pas réagréger — plusieurs
