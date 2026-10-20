@@ -479,12 +479,22 @@ const rangLigne=new Map();
     if((l.debit||0)<=0.01 || !l.numero) continue;
     const k=grp(l)+'|'+I.factureKey(l.numero);
     const n=(vus.get(k)||0)+1; vus.set(k,n); rangLigne.set(l,n); } }
-// Les factures que porte chaque lot, lues dans le grand livre lui-même : une
-// écriture de nature « facture » qui cite un numéro. C'est avec celles-là
-// qu'un règlement lettré est rapproché par la comptabilité.
+// Les factures que CITE chaque lot — toutes lignes confondues, et pas seulement
+// celles que le moteur classe en « facture ».
+//
+// Ne compter que les lignes de nature « facture » laissait passer les numéros
+// portés par un règlement dont la facture, elle, est ailleurs : le lot
+// 4110NGAN00300 « a » n'a qu'une ligne de facture, FACT-2602-13761, mais ses
+// écritures citent aussi FACT-2601-13285 et FACT-2606-15250. Un encaissement
+// sans numéro y avait donc trois candidates, pas une — « il ne peut pas y
+// avoir 514 lignes lettrées à 1 facture », 20/10/2026. Elle avait raison :
+// 136 des 514 étaient dans ce cas.
+//
+// Un avoir du lot n'est pas une facture concurrente : il annule, il ne se paie
+// pas. Il ne compte donc pas dans les candidates.
 const facturesDuLot=new Map();
 for(const x of plat){
-  if(x.nature!=='facture' || !x.numero) continue;
+  if(!x.numero || GL.EST_AVOIR.test(x.numero)) continue;
   const k=grp(x); let e=facturesDuLot.get(k);
   if(!e){ e=new Set(); facturesDuLot.set(k,e); }
   e.add(x.numero);
