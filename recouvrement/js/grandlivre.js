@@ -1085,11 +1085,19 @@
                         qualif: g.qualif || '', identifiantTiers: g.identifiantTiers || '',
                         siren: g.siren || '', compte: g.compte, tiers: g.tiers,
                         lettre: g.lettre, montant: null, dateEcheance: null,
-                        dateDebutFormation: g.dateDebutFormation || null,
-                        dateFinFormation: g.dateFinFormation || null,
+                        ...datesFormation([l]),
                         mandatEtatFichier: g.mandatEtat || '',
                         ancien: g.ancien || null, journal: '',
                         sansNumero: true, numero: '', cle: null, resteDu: net,
+                        // Le document que CETTE écriture nomme — un avoir, une
+                        // facture absente du lot. Il ne lui donne pas d'identité
+                        // (deux créances du même lot porteraient la même clé, et
+                        // le reste dû serait compté deux fois) ; il lui donne
+                        // seulement de quoi aller chercher SES dates chez la
+                        // facturation. Sans lui, l'écriture retombait sur la
+                        // facture du lot — celle d'une autre formation.
+                        cleDocument: l.numero ? I.factureKey(l.numero) : null,
+                        numeroDocument: l.numero || '',
                         dateFacture: l.date || null,
                         dateEcheanceRepli: repli.date, echeance1Source: repli.source,
                         libelle: l.libelle || libelleRepresentatif(g),
@@ -1127,8 +1135,6 @@
                     compte: g.compte, tiers: g.tiers, lettre: g.lettre,
                     montant: null,
                     dateEcheance: null,
-                    dateDebutFormation: g.dateDebutFormation || null,
-                    dateFinFormation: g.dateFinFormation || null,
                     mandatEtatFichier: g.mandatEtat || '',
                     ancien: g.ancien || null,
                     journal: '',
@@ -1141,6 +1147,7 @@
                     const repli = repliDerniere(x.lignes);
                     ouvertes.push({
                         ...socle,
+                        ...datesFormation(x.lignes),
                         numero: x.numero, cle: k,
                         // Elle porte un numéro : ce n'est pas un solde de
                         // compte, et son calcul ne doit pas se présenter
@@ -1171,6 +1178,7 @@
                     const repli = repliDerniere([l]);
                     ouvertes.push({
                         ...socle,
+                        ...datesFormation([l]),
                         numero: '', cle: null,
                         resteDu: net,
                         dateFacture: l.date || null,
@@ -1250,6 +1258,30 @@
      * datée par une écriture et son échéance par une autre, et l'auditeur ne
      * pourrait pas refaire le chemin.
      */
+    /**
+     * Les dates de formation que portent CES écritures-là.
+     *
+     * « Pour les type de financement tu peux voir sur d'autre ligne du mm
+     * compte etc.. mais pour les date d'echeance il faut etre précis et ne
+     * récup que les infos de la ligne » — 20/10/2026. Le classement peut se
+     * déduire du voisinage ; la date, jamais.
+     *
+     * ligneFacture() applique déjà cette règle aux factures. Les créances sans
+     * facture — un avoir, un règlement qui cite un numéro, un solde de compte —
+     * prenaient encore les dates DU LOT : la première écriture du lettrage qui
+     * en portait les donnait à toutes les autres. Sur 404 écritures d'avoir,
+     * 192 étaient ainsi datées sur la formation d'une facture voisine.
+     */
+    function datesFormation(lignes) {
+        const liste = lignes || [];
+        const debut = liste.find(l => l && l.dateDebutFormation);
+        const fin = liste.find(l => l && l.dateFinFormation);
+        return {
+            dateDebutFormation: debut ? debut.dateDebutFormation : null,
+            dateFinFormation: fin ? fin.dateFinFormation : null,
+        };
+    }
+
     function repliDerniere(lignes) {
         let choisie = null;
         for (const l of lignes) {
@@ -1930,7 +1962,12 @@
         const avecSellsy = c => {
             // Un solde de compte n'a pas de clé à lui, mais il peut citer une
             // facture : elle sert alors de clé pour aller chercher les dates.
-            const cle = c.cle || null;
+            // « Pour les date d'echeance il faut etre précis et ne récup que
+            // les infos de la ligne » — 20/10/2026. Une créance sans identité
+            // de facture peut tout de même NOMMER un document : c'est le cas
+            // d'un avoir, et c'est son document à elle. Elle va donc y chercher
+            // ses dates, et nulle part ailleurs.
+            const cle = c.cle || c.cleDocument || null;
             const d = cle ? idx.datesSellsy.get(cle) : null;
             const type = cle ? idx.brutSellsy.get(cle) : null;
             // Ce que Monday sait de la formation. Sur l'alternance, c'est la

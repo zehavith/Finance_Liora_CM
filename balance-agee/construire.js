@@ -86,10 +86,71 @@ for(const [cle,d] of (luAnc.datesParNumero||new Map())){
 }
 console.log('dates de formation reprises de septembre : '+datesSeptembre.length+' factures');
 
+// ───────── les dates d'un avoir ─────────
+// Un avoir n'a pas de formation à lui : il annule une facture, et c'est CETTE
+// facture qui porte les dates. Laquelle ? Celle que SON PROPRE enregistrement
+// nomme — la colonne « Facture parente » de l'export d'avoirs — et aucune
+// autre. « Pour les date d'echeance il faut etre précis et ne récup que les
+// infos de la ligne », 20/10/2026.
+//
+// Sans ce chemin, un avoir prenait les dates de la première facture venue de
+// son lettrage, ou, quand le lot n'en contenait aucune, tombait sur l'échéance
+// de repli : AVR-2509-01956 se datait au 05/09/2025, sa date d'enregistrement,
+// alors que la facture qu'il annule — FACT-2505-09504 — commence le 03/06/2025.
+const parNumeroFacturation=new Map();
+for(const l of sellsy) if(l.cle && !parNumeroFacturation.has(l.cle)) parNumeroFacturation.set(l.cle,l);
+const datesAvoirs=[];
+for(const l of sellsy){
+  const p=l.champs && l.champs['Facture parente']; if(!p || !l.cle) continue;
+  const mere=parNumeroFacturation.get(I.factureKey(p)); if(!mere) continue;
+  if(!mere.dateDebutService && !mere.dateFinService) continue;
+  datesAvoirs.push({cle:l.cle, numero:l.numero, parente:mere.numero,
+    dateDebutFormation:mere.dateDebutService||null,
+    dateFinFormation:mere.dateFinService||null,
+    dateFacture:null});
+}
+// Les avoirs Zoho — « CN-… » — ne passent pas par Sellsy : leur facture
+// annulée se lit dans l'onglet « BdD Zoho -Avoir Zoho » de son classeur, que
+// la balance ne lisait pas. 82 écritures du grand livre en portent le numéro,
+// 81 tombaient sur le repli. Même règle que pour les AVR- : l'avoir prend les
+// dates de la facture qu'il annule, et d'aucune autre.
+for(const r of feuille(ANC,'BdD Zoho -Avoir Zoho',0).rows){
+  const n=String(r['Facture d’avoir#']||'').trim(), p=String(r['N° de facture']||'').trim();
+  if(!n||!p) continue;
+  const cle=I.factureKey(n); if(!cle) continue;
+  const mere=parNumeroFacturation.get(I.factureKey(p)); if(!mere) continue;
+  if(!mere.dateDebutService && !mere.dateFinService) continue;
+  datesAvoirs.push({cle, numero:n, parente:mere.numero,
+    dateDebutFormation:mere.dateDebutService||null,
+    dateFinFormation:mere.dateFinService||null,
+    dateFacture:null});
+}
+console.log('avoirs datés par la facture qu’ils annulent : '+datesAvoirs.length);
+
+// Certaines factures n'ont pas de « Début de service » ni de « Fin de service »
+// chez Sellsy, mais écrivent les dates en toutes lettres dans leur objet :
+// « Apprenant : Fabrice Charraud — Dates de formation : 07/01/2025 au
+// 24/11/2025 ». C'est le document lui-même qui le dit : la facture a bien ses
+// dates, et le barème peut s'appliquer au lieu du repli. FACT-2501-07881,
+// 5 192 €, se datait sur la dernière date de son libellé.
+const DATES_OBJET=/dates?\s+de\s+formation\s*:?\s*(?:du\s*)?(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})\s*(?:au|jusqu’au|jusqu'au|à|-|–)\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/i;
+const datesObjet=[];
+for(const l of sellsy){
+  if(!l.cle || l.dateDebutService || l.dateFinService) continue;
+  const m=DATES_OBJET.exec((l.champs&&l.champs['Objet'])||''); if(!m) continue;
+  const d=R.parseDate(m[1]), f=R.parseDate(m[2]); if(!d&&!f) continue;
+  datesObjet.push({cle:l.cle, numero:l.numero, dateDebutFormation:d||null,
+    dateFinFormation:f||null, dateFacture:null, objet:true});
+}
+console.log('factures datées par leur objet : '+datesObjet.length);
+const DATES=factFiliz.concat(datesSeptembre).concat(datesAvoirs).concat(datesObjet);
+// De quoi écrire, sur la ligne, QUELLE facture lui a prêté ses dates.
+const parenteDeLAvoir=new Map(datesAvoirs.map(a=>[a.cle,a.parente]));
+
 const nouv=feuille(NOUV,'Grand livre - Clients',0);
 const lu=GL.lire(nouv.rows,{});
 const cl=GL.classer(GL.creancesOuvertes(lu),
-  {rules:RG, sellsy, factures:factFiliz.concat(datesSeptembre), mandats:MANDATS, referentiel:{}, regles:[], appris});
+  {rules:RG, sellsy, factures:DATES, mandats:MANDATS, referentiel:{}, regles:[], appris});
 
 // ───────── ce qu'elle a complété dans la balance publiée ─────────
 // Un dispositif qu'elle a tranché à la main dans la page revient ici et prime
@@ -300,7 +361,7 @@ const plat=GL.ecrituresAPlat(lu);
 // écritures sont dans le grand livre et doivent se justifier.
 const soldees=GL.classer(GL.facturesToutes(lu)
   .filter(c=>c.statut&&c.statut!=='Ouverte'&&c.statut!=='Partiellement réglée'),
-  {rules:RG, sellsy, factures:factFiliz.concat(datesSeptembre), mandats:MANDATS, referentiel:{}, regles:[], appris});
+  {rules:RG, sellsy, factures:DATES, mandats:MANDATS, referentiel:{}, regles:[], appris});
 const ecr=GL.classerEcritures(plat,cl,soldees,{sellsy,rules:RG});
 const lignesEcr=ecr.lignes||ecr;
 // La répartition au prorata, posée AVANT les compléments : une ligne qu'elle a
@@ -543,8 +604,15 @@ console.log('rapprochements numérotés : '+nRappro+' · avec leur ligne au déb
 const principale=[];
 for(let i=0;i<plat.length;i++){
   const l=plat[i], e=lignesEcr[i]||{}, B=l.brut||{};
+  // L'ordre compte, et c'est l'ordre de sa règle du 20/10/2026 : « pour les
+  // date d'echeance il faut etre précis et ne récup que les infos de la
+  // ligne ». La créance de SON numéro d'abord ; à défaut SA PROPRE créance,
+  // celle qui a été faite pour cette écriture-là ; et seulement ensuite celle
+  // du lot. Ce dernier repli était atteint dès que le numéro cité n'avait pas
+  // de créance ouverte — le cas de tout avoir : 192 écritures d'avoir
+  // affichaient la formation d'une facture voisine de leur lettrage.
   const src0=(l.numero&&parCle.get(I.factureKey(l.numero)))
-    ||(!l.numero&&l.brut&&parBrut.get(l.brut))
+    ||(l.brut&&parBrut.get(l.brut))
     ||(!l.numero&&parGroupeSolde.get(grp(l)))||parGroupe.get(l.cleGroupe)||{};
   // Quand aucune facture ne date la ligne, la ligne se date elle-même :
   // l'échéance 1, portée par l'écriture, avec son motif.
