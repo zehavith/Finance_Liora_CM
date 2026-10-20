@@ -46,15 +46,46 @@ appelle `gabarit.js` qui fabrique les deux pages.
 La construction annonce en sortie le total, l'échu et le non échu. Ce sont eux
 qu'il faut comparer à l'arrêté précédent.
 
+## Rafraîchir la balance, mois après mois
+
+Quatre fichiers changent d'un mois sur l'autre. Ce sont les seuls qu'il faut
+redéposer :
+
+| à remplacer | ce que c'est |
+|---|---|
+| `depot-nouvelle/balance-nouvelle.xlsx` | l'export Pennylane du grand livre clients |
+| `depot-sellsy/sellsy.csv` | l'export Sellsy des factures |
+| `depot-sellsy/avoirs.csv` | l'export Sellsy des avoirs |
+| `Dossiers-Filiz.xlsx` | les dossiers d'alternance |
+
+Les autres ne bougent qu'à l'occasion : `depot-ech/echeances.xlsx` quand les
+échéances tenues à la main changent, `Facturation-Sellsy.xlsx` et
+`Facturation-Zoho.xlsx` quand le référentiel des types de client s'étoffe,
+`mandats.json` quand l'export GoCardless est refait. L'arrêté de septembre —
+`depot-ancienne/`, `Reference-septembre.xlsx`, `Balance-septembre-complete.xlsx`
+— ne bouge pas : c'est la référence en cas de désaccord.
+
+Puis `node construire.js`, et la page republiée.
+
+Il n'y a pas de connexion directe à Pennylane ni à Sellsy : ce sont les
+exports qui font foi, et c'est voulu — la balance doit pouvoir être refaite
+à l'identique à partir des fichiers d'un arrêté donné.
+
 ## Vos décisions de classement
 
-`complements.json` est un **instantané** de la base de l'artefact — la page ne
-peut pas être interrogée depuis node. Tout ce que vous complétez dans la page
-y vit, et un instantané vieilli le perd en silence. La construction affiche sa
-date et réclame un rafraîchissement au-delà de vingt-quatre heures.
+Tout ce que vous complétez dans la page vit dans la base de l'artefact,
+collection `complements`. Elle se lit directement, sans export de votre part.
 
-Pour le rafraîchir : lire la collection `complements` de l'artefact, et écrire
-un tableau JSON d'objets `{cle, dispositif, compte, tiers, facture, quand}`.
+`complements.json` n'en est qu'un **instantané** de secours, pour que la
+chaîne tourne même sans accès à l'artefact. La construction affiche sa date et
+réclame un rafraîchissement au-delà de vingt-quatre heures : il s'écrit en
+lisant la collection `complements` et en posant un tableau JSON d'objets
+`{cle, dispositif, compte, tiers, facture, quand}`.
+
+Un rafraîchissement déplace les lettrages, donc les clés de créance. La chaîne
+le sait : elle retrouve une décision dont le lettrage a changé, et annonce
+combien elle en a repris, combien étaient perdues. Ce chiffre est à lire à
+chaque construction.
 
 ## Les mandats GoCardless
 
