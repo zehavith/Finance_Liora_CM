@@ -537,8 +537,6 @@ function feuilleSommaire(wb,idx,nomDetail){
     ['Reste dû',T.total,EUROS,'Solde des comptes clients à la date d’arrêté'],
     ['Échu',T.echu,EUROS,'Exigible et non encaissé'],
     ['Non échu',T.nonEchu,EUROS,'Pas encore exigible'],
-    ['Trop-perçu clients',X.montant||0,EUROS,
-      'Encaissé au-delà des factures, sur '+(X.comptes||0).toLocaleString('fr-FR')+' comptes'],
     ['Créances',T.nb,ENTIER,'Lots de lettrage ouverts'],
     ['Écritures',D.lignes.length,ENTIER,'Lignes du grand livre'],
   ]){
@@ -560,7 +558,7 @@ function feuilleSommaire(wb,idx,nomDetail){
    ['Règles','Ordre de détermination des échéances et barème de chaque dispositif'],
    ['Balance âgée','Reste dû par type de client et par tranche d’ancienneté. '
      +'Chaque ligne se déplie sur les comptes, puis sur leurs écritures.'],
-   ['Par type de financement','Même ventilation, dispositif par dispositif'],
+   ['Balance âgée par financement','Même ventilation, dispositif par dispositif'],
    // Le nombre de colonnes ANNONCÉ doit être celui de la feuille. Le détail
    // s'arrête à « N° de rapprochement », à sa demande du 16/10/2026 ; le
    // sommaire, lui, continuait d'annoncer les 56 colonnes des données.
@@ -583,40 +581,48 @@ function feuilleSommaire(wb,idx,nomDetail){
 
 function feuilleRegles(wb){
   const ws=wb.addWorksheet('Règles');
-  ws.columns=[{width:30},{width:20},{width:16},{width:30},{width:12},{width:30},{width:34},{width:46}];
-  const t=ws.addRow(['RÈGLES DE CLASSEMENT ET DE DÉTERMINATION DES ÉCHÉANCES']);
-  t.font={bold:true,size:14,color:{argb:BLEU}}; t.height=24;
-  ws.addRow(['L’échéance est déterminée dans cet ordre. La première règle applicable '
-    +'l’emporte ; les suivantes ne sont pas examinées.'])
-    .font={color:{argb:ENCRE3},size:10};
+  ws.columns=[{width:26},{width:18},{width:16},{width:30},{width:12},{width:26},{width:44},{width:20}];
+  const t=bande(ws,'RÈGLES DE CLASSEMENT ET DE DÉTERMINATION DES ÉCHÉANCES',
+    {bold:true,size:14,color:{argb:BLEU}}); t.height=24;
+  bande(ws,'L’échéance est déterminée dans cet ordre. La première règle applicable '
+    +'l’emporte ; les suivantes ne sont pas examinées.',{color:{argb:ENCRE3},size:10});
   ws.addRow([]);
   if((D.ordreEcheance||[]).length){
     // Sa demande du 17/10/2026 : en face de chaque règle, le nombre d'écritures
     // qu'elle a réellement datées. Une règle sans volume ne se juge pas.
     const parRang=lignesParRegle();
-    poserEntete(ws,ws.addRow(['Ordre','Nature','Quand','Alors l’échéance est',
-      'Écritures datées ainsi','Pourquoi']));
+    // Les colonnes de cette feuille servent deux tableaux. « Quand » et
+    // « Alors » tiennent sur deux colonnes fusionnées pour que leur texte
+    // respire sans forcer le barème, plus bas, à des colonnes démesurées.
+    const fusionne=r=>{ ws.mergeCells(r.number,3,r.number,4);
+                        ws.mergeCells(r.number,5,r.number,6); };
+    const e=ws.addRow(['Ordre','Nature','Quand','','Alors l’échéance est','',
+      'Pourquoi','Écritures datées ainsi']);
+    fusionne(e); poserEntete(ws,e);
     let y=0;
     for(const o of D.ordreEcheance){
       const nb=parRang.get(String(o.rang))||0;
-      const l=ws.addRow([o.rang,o.nature||'',o.quand,o.alors,nb,o.note]);
+      const l=ws.addRow([o.rang,o.nature||'',o.quand,'',o.alors,'',o.note,nb]);
+      fusionne(l);
       l.getCell(1).font={bold:true}; l.getCell(2).font={bold:true,color:{argb:BLEU}};
-      l.getCell(4).font={bold:true};
-      l.getCell(5).font={bold:true}; l.getCell(5).numFmt='# ##0';
-      l.getCell(5).alignment={horizontal:'right',vertical:'top'};
+      l.getCell(5).font={bold:true};
+      l.getCell(8).font={bold:true}; l.getCell(8).numFmt='# ##0';
       l.alignment={vertical:'top',wrapText:true};
+      l.getCell(8).alignment={horizontal:'right',vertical:'top'};
+      l.height=52;
       if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
     }
-    const t=ws.addRow(['','','','TOTAL',[...parRang.values()].reduce((a,b)=>a+b,0),'']);
-    t.getCell(4).font={bold:true}; t.getCell(5).font={bold:true}; t.getCell(5).numFmt='# ##0';
-    t.getCell(5).alignment={horizontal:'right'};
+    const t=ws.addRow(['','','','','','TOTAL','',
+      [...parRang.values()].reduce((a,b)=>a+b,0)]);
+    t.getCell(6).font={bold:true}; t.getCell(8).font={bold:true}; t.getCell(8).numFmt='# ##0';
+    t.getCell(8).alignment={horizontal:'right'};
     ws.addRow([]);
   }
-  ws.addRow(['BARÈME PAR DISPOSITIF — application de la règle n° 3'])
-    .font={bold:true,size:12,color:{argb:BLEU}};
-  ws.addRow(['Chaque dispositif est reconnu aux mots ci-dessous. Son échéance se calcule '
-    +'sur la base indiquée, ou sur le repli lorsque cette base est absente.'])
-    .font={color:{argb:ENCRE3},size:10};
+  bande(ws,'BARÈME PAR DISPOSITIF — application de la règle n° 3',
+    {bold:true,size:12,color:{argb:BLEU}});
+  bande(ws,'Chaque dispositif est reconnu aux mots ci-dessous. Son échéance se calcule '
+    +'sur la base indiquée, ou sur le repli lorsque cette base est absente.',
+    {color:{argb:ENCRE3},size:10});
   ws.addRow([]);
   poserEntete(ws,ws.addRow(['Type de financement','Type de client','Périmètre','Base de l’échéance',
     'Délai (jours)','Repli si la base manque','Règle','Mots reconnus']));
@@ -629,30 +635,49 @@ function feuilleRegles(wb){
   }
   prorataRegles(ws);
   provisionRegles(ws);
-  lexique(ws);
 }
 
 // La répartition au prorata, écrite là où se lisent les autres règles.
+// Un texte qui court sur toute la largeur de la feuille plutôt que de
+// s'entasser dans la première colonne : sans cela une phrase de trois lignes
+// devenait une cellule de douze, et la feuille n'était plus lisible.
+function bande(ws,texte,police,deCol){
+  const d=deCol||1;
+  const r=ws.addRow(Array(d-1).fill('').concat([texte]));
+  ws.mergeCells(r.number,d,r.number,8);
+  r.getCell(d).alignment={vertical:'top',wrapText:true};
+  if(police) r.getCell(d).font=police;
+  r.height=Math.max(16,Math.ceil(String(texte||'').length/150)*15+4);
+  return r;
+}
+
 function prorataRegles(ws){
   const P=D.prorata; if(!P) return;
   ws.addRow([]);
-  ws.addRow([String(P.titre||'').toUpperCase()])
-    .font={bold:true,size:12,color:{argb:BLEU}};
-  ws.addRow([P.regle]).font={color:{argb:ENCRE3},size:10};
+  bande(ws,String(P.titre||'').toUpperCase(),{bold:true,size:12,color:{argb:BLEU}});
+  bande(ws,P.regle,{color:{argb:ENCRE3},size:10});
   ws.addRow([]);
-  poserEntete(ws,ws.addRow(['','','Ce que dit la règle']));
+  // Le texte de la règle tient sur les colonnes 3 à 8 : c'est lui qui est
+  // long, les deux premières ne portent qu'un rang et un titre.
+  const fus=r=>ws.mergeCells(r.number,3,r.number,8);
+  const e=ws.addRow(['Ordre','Ce que c’est','Ce que dit la règle']);
+  fus(e); poserEntete(ws,e);
   let y=0;
   for(const x of (P.etapes||[])){
     const l=ws.addRow([x.rang,x.quoi,x.dit]);
+    fus(l);
     l.getCell(1).font={bold:true}; l.getCell(2).font={bold:true};
     l.alignment={vertical:'top',wrapText:true};
+    l.height=Math.max(16,Math.ceil(String(x.dit||'').length/130)*15+4);
     if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
   }
   if(P.limites){
     const l=ws.addRow(['','Ce que la règle ne fait pas',P.limites]);
+    fus(l);
     l.getCell(2).font={bold:true,color:{argb:'FFA06B14'}};
     l.getCell(3).font={color:{argb:'FFA06B14'}};
     l.alignment={vertical:'top',wrapText:true};
+    l.height=Math.max(16,Math.ceil(String(P.limites||'').length/130)*15+4);
   }
 }
 
@@ -664,8 +689,6 @@ function provisionRegles(ws){
   const fen=PROV.fenetres||[], taux=PROV.taux||{};
   if(!fen.length) return;
   ws.addRow([]);
-  ws.addRow(['RÈGLES DE PROVISION GROUPE'])
-    .font={bold:true,size:12,color:{argb:BLEU}};
   // Le même texte que la section « Paramètres » de la page, pour qu'un lecteur
   // du classeur seul comprenne le chiffre sans avoir la page sous les yeux.
   for(const [titre,corps] of [
@@ -692,14 +715,12 @@ function provisionRegles(ws){
      +'taux. Le rattachement complet est donné plus bas. Un type de financement rattaché à '
      +'aucune famille n’est pas provisionné, et la feuille le signale.'],
   ]){
-    if(titre) ws.addRow([titre]).font={bold:true,size:10,color:{argb:ENCRE3}};
-    const l=ws.addRow([corps]);
-    l.font={color:{argb:ENCRE3},size:10};
-    l.alignment={vertical:'top',wrapText:true};
+    if(titre) bande(ws,titre,{bold:true,size:10,color:{argb:ENCRE3}});
+    bande(ws,corps,{color:{argb:ENCRE3},size:10});
   }
-  if(!PROV.confirme) ws.addRow(['Le rattachement des types de financement aux trois familles '
-    +'n’est pas encore confirmé : celui qui est appliqué ci-dessous est une proposition.'])
-    .font={color:{argb:'FFA06B14'},size:10};
+  if(!PROV.confirme) bande(ws,'Le rattachement des types de financement aux trois familles '
+    +'n’est pas encore confirmé : celui qui est appliqué ci-dessous est une proposition.',
+    {color:{argb:'FFA06B14'},size:10});
   ws.addRow([]);
   const pv=provisions();
   poserEntete(ws,ws.addRow(['Famille',...fen.map(f=>f.label),'À provisionner']));
@@ -823,7 +844,9 @@ function lexique(ws){
 }
 
 function feuilleBalance(wb,niv,idx){
-  const nom=niv==='cat'?'Balance âgée':'Par type de financement';
+  // « Balance âgée par type de financement » dépasse les 31 caractères
+  // qu'Excel accorde à un nom d'onglet : c'est la forme courte qui tient.
+  const nom=niv==='cat'?'Balance âgée':'Balance âgée par financement';
   const tete=niv==='cat'?'Type de client':'Type de financement';
   // La colonne de droite donne l'AUTRE lecture du même compte : son ou ses
   // types de financement quand on lit par type de client, son ou ses types de

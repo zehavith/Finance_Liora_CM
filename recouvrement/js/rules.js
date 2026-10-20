@@ -76,22 +76,6 @@
             match: ['corporate alternance', 'corporate-alternance'],
         },
         {
-            // Repli corporate. Le tableau des factures payées range ses lignes
-            // dans des groupes qui nomment tantôt un financement (Opco, CPF,
-            // AIF…), tantôt une étape du circuit corporate — « Factures Payées
-            // ADV », « Factures payées avant import + Entre process ADV et
-            // recouvrement ». Ces dernières ne disent pas le financement, mais
-            // elles disent le périmètre : les laisser en « Non renseigné »
-            // faisait perdre cette information, la seule disponible pour une
-            // facture réglée avant la mise en place du circuit.
-            key: 'CORPORATE', label: 'Corporate — financement à préciser',
-            base: 'dateFacture', jours: 30,
-            fallback: 'dateFinFormation', fallbackJours: 30,
-            note: 'Date de facture +30 jours',
-            categorie: 'Corporate', perimetre: 'Corporate',
-            match: ['avant import', 'entre process', 'factures payees adv', 'payees adv', 'adv'],
-        },
-        {
             key: 'B2B', label: 'B2B',
             base: 'dateFinFormation', jours: 30,
             gl: { base: 'dateFinFormation', jours: 30 },

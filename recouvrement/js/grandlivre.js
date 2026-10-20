@@ -1430,7 +1430,10 @@
         if (nom === 'corporate') {
             if (creance.filiz || estAlternance(creance, o)) return 'CORPORATE_ALTERNANCE';
             if (explicite) return explicite;
-            return dit(creance) || ditDuClient(creance) || 'CORPORATE';
+            // Plus de repli « Corporate — financement à préciser » : elle n'en
+            // veut pas — « je ne veux pas de catégorie tampon ». Sans dispositif
+            // nommé, la créance part « À classer » et se complète à la main.
+            return dit(creance) || ditDuClient(creance) || null;
         }
 
         if (nom === 'opco') {
@@ -2150,10 +2153,9 @@
                 return poser(c, 'BTC_ENTREPRISE', 'Numéro de devis (B2C - Entreprise par défaut)',
                     c.numero || '');
             }
-            if (estEntreprise(c.tiers) || immatricule) {
-                return poser(c, 'CORPORATE', 'Nom d’entreprise (financement à préciser)',
-                    immatricule ? ('SIREN ' + c.siren) : (c.tiers || ''));
-            }
+            // Un nom d'entreprise ne dit pas qui finance la formation : il
+            // ouvrait une catégorie tampon qu'elle refuse. La créance part
+            // « À classer » plutôt que dans un fourre-tout.
             // Rien n'a nommé le dispositif : la créance part « À classer ».
             // Elle garde pourtant la date que la ligne portait — et cette
             // sortie, qui ne passe pas par `poser`, la laissait sans origine ni

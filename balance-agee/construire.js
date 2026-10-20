@@ -198,6 +198,17 @@ const valeurBase=c=>({dateFacture:c.dateFacture, dateDebutFormation:c.dateDebutF
 // quand le barème a trouvé sa base : la colonne l'annonçait sur 16 066 lignes
 // alors que le repli n'a daté que 3 607 d'entre elles. Une colonne d'audit qui
 // affirme un chemin qui n'a pas été pris n'est pas auditable.
+// Les deux valeurs de cette colonne étaient « Règle » et « Grand livre » : des
+// mots de code, qui demandaient un lexique pour se lire. Elles se lisent
+// maintenant toutes seules, puisque le lexique a disparu à sa demande.
+const ORIGINES={'Règle':'Calculée par vos règles d’échéance',
+  'Grand livre':'Échéance reprise du grand livre'};
+const origineLisible=c=>{
+  const o=(c&&c.echeanceOrigine)||'';
+  if(!o) return (c&&c.dateEcheance)?'':'aucune date calculable';
+  return ORIGINES[o]||o;
+};
+
 const repliServi=c=>(c && c.echeanceBase==='echeance1' && c.echeance1Source) ? c.echeance1Source : '';
 
 // « Exception appliquée » mélangeait deux natures : les deux exceptions qui
@@ -521,7 +532,6 @@ for(let i=0;i<plat.length;i++){
     'Facture rattachée':src.numero||'',
     // ── l'échéance, justifiée ──
     '— ÉCHÉANCE —':'',
-    'Date d’échéance du grand livre':fr(src.dateEcheanceGrandLivre),
     'Date d’échéance recalculée':fr(src.dateEcheance),
     'Jours de retard':retard(src)==null?'':retard(src),
     'Tranche d’ancienneté':tranche(src),
@@ -530,7 +540,7 @@ for(let i=0;i<plat.length;i++){
     'Date de la base retenue':fr(valeurBase(src)),
     'Délai appliqué (jours)':src.echeanceJours==null?'':src.echeanceJours,
     'Détail du calcul':calcul(src),
-    'Origine de l’échéance':src.echeanceOrigine||(src.dateEcheance?'':'aucune'),
+    'Origine de l’échéance':origineLisible(src),
     'Repli appliqué':repliServi(src)||repliServi(e)||'',
     'Exception appliquée':motifExplicite(src),
     'Motif de l’écart au barème':pourquoiPas(src),
@@ -599,7 +609,7 @@ const ligneCreance=c=>({
   'Barème appliqué':bareme(c), 'Base de calcul retenue':c.echeanceBase?(BASES[c.echeanceBase]||c.echeanceBase):'',
   'Date de la base retenue':fr(valeurBase(c)), 'Délai appliqué (jours)':c.echeanceJours==null?'':c.echeanceJours,
   'Échéance recalculée':fr(c.dateEcheance), 'Détail du calcul':calcul(c),
-  'Origine de l’échéance':c.echeanceOrigine||'', 'Repli appliqué':repliServi(c),
+  'Origine de l’échéance':origineLisible(c), 'Repli appliqué':repliServi(c),
   'Exception appliquée':motifExplicite(c),
   'Motif de l’écart au barème':pourquoiPas(c),
   'Jours de retard':retard(c)==null?'':retard(c), 'Tranche':tranche(c),
