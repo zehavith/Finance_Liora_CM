@@ -346,15 +346,27 @@ for(const c of cl) if(c.sansNumero && !c.cle){ const g=grp(c);
   // c'est elle qui fait le lien.
   if(c.brutLigne && !parBrut.has(c.brutLigne)) parBrut.set(c.brutLigne,c); }
 const parGroupeCle=new Map(), cleDe=new Map();
-{ const vus=new Map();
+{ const vus=new Map(), graphie=new Map();
   for(const c of cl){
-    const base=grp(c)+'|'+(c.numero||'');
+    // « FA_550_3161 correspond à FA-550-3161 » — sa règle du 20/10/2026. Le
+    // moteur rapproche déjà les deux graphies, puisque sa clé interne ne garde
+    // que les lettres et les chiffres ; la clé PUBLIÉE, elle, reprenait le
+    // numéro tel qu'écrit, si bien qu'une même facture écrite des deux façons
+    // faisait deux créances distinctes — quatre sur le compte Stripe. On
+    // retient la première graphie rencontrée pour un numéro donné : la clé
+    // reste un numéro réel du grand livre, et une facture n'en a qu'une.
+    let num=c.numero||'';
+    if(c.cle){ const g=grp(c)+'|'+c.cle;
+      if(graphie.has(g)) num=graphie.get(g); else graphie.set(g,num); }
+    const base=grp(c)+'|'+num;
     const n=(vus.get(base)||0)+1; vus.set(base,n);
     cleDe.set(c, n===1?base:base+'#'+n);
     if(c.cle){ const k=grp(c)+'|'+c.cle;
       if(!parGroupeCle.has(k)) parGroupeCle.set(k,[]);
       parGroupeCle.get(k).push(c); } }
-  for(const c of soldees) if(!cleDe.has(c)) cleDe.set(c, grp(c)+'|'+(c.numero||''));
+  for(const c of soldees) if(!cleDe.has(c)){
+    const g=c.cle?grp(c)+'|'+c.cle:null;
+    cleDe.set(c, grp(c)+'|'+((g&&graphie.get(g))||c.numero||'')); }
 }
 // Le rang de chaque écriture au débit parmi celles qui portent le même numéro
 // dans le même lettrage : la première facture va à la première créance.
