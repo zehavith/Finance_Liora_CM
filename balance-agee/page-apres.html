@@ -123,9 +123,15 @@ function ruban(){
   if(pv.total) tuiles.push(['À provisionner',eur(pv.total),
     PROV.confirme
       ? Math.round(pv.total/t.total*100)+' % du reste dû'
-      : 'barème appliqué, rattachement à confirmer']);
-  E('ruban').innerHTML=tuiles.map(([e,v,n])=>
-    '<div class="tuile"><div class="etiq">'+e+'</div><div class="val">'+v+'</div><div class="note">'+n+'</div></div>').join('');
+      : 'barème appliqué, rattachement à confirmer',
+    // Sa demande du 20/10/2026 : le périmètre d'imputation se lit sous le
+    // pourcentage, en petit. Sans lui, deux chiffres également défendables
+    // se ressemblent — 4 654 820 € au lettrage, 4 436 014 € au compte.
+    'encaissements imputés par compte client']);
+  E('ruban').innerHTML=tuiles.map(([e,v,n,bas])=>
+    '<div class="tuile"><div class="etiq">'+e+'</div><div class="val">'+v+'</div>'
+    +'<div class="note">'+n+'</div>'
+    +(bas?'<div class="sous-note">'+bas+'</div>':'')+'</div>').join('');
 }
 
 // Un complément ne recalcule pas la balance : il déplace exactement le reste
@@ -1032,11 +1038,18 @@ let ASSIETTE=null;
 function assiettes(){
   if(ASSIETTE) return ASSIETTE;
   ASSIETTE=new Map();
+  // L'imputation se lit PAR COMPTE CLIENT, sa décision du 20/10/2026. C'est le
+  // même périmètre que la tuile « trop-perçu », et c'est ce qui rend la page
+  // cohérente avec elle-même : un client déclaré globalement créditeur d'un
+  // côté ne peut pas voir sa dette provisionnée à 100 % de l'autre. Au
+  // lettrage, 27 lots dont le client ne devait rien portaient encore
+  // 204 879 € de provision. Le résidu non imputé devient alors exactement le
+  // trop-perçu des comptes nets créditeurs, et rien d'autre.
   const lots=new Map(), vues=new Set();
   for(const i of I){
     const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
     const j=V(i,'Jours de retard');
-    const lot=V(i,'N° de compte')+'|'+V(i,'Let.');
+    const lot=V(i,'N° de compte');
     if(!lots.has(lot)) lots.set(lot,[]);
     lots.get(lot).push({k, rd:N(i,'Reste dû de la créance'), j:j===''?-1:Number(j)});
   }

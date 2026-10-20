@@ -165,13 +165,13 @@ if(complements.length){
     if(!exact) rattrapes++;
     if(liste.length>1) eclates+=liste.length-1;
     for(const c of liste){
-    c.financement=k;
-    // La catégorie suit le dispositif, sinon la créance se contredit : Safran
-    // est passé en B2B le 14/10 et sa colonne « Type de client » annonçait
-    // encore « B2C - Entreprise » — la balance par catégorie l'aurait compté
-    // du mauvais côté. classer() l'avait calculée avant ce crochet ; on la
-    // recalcule donc ici, depuis le dispositif qu'elle vient de poser.
-    c.typeClient=R.categorieDe(k,RG)||'';
+    // Sa décision du 20/10/2026 : « il faut recalculer ». Un reclassement à la
+    // main change le dispositif, donc le barème, donc la date — trois lignes
+    // Randstad et France Travail passées en POEI gardaient « fin de formation
+    // + 30 j » quand le barème POEI dit + 60. redater() emprunte exactement le
+    // chemin de poser() : mêmes exceptions, mêmes replis, même dispatch de
+    // l'alternance. La catégorie suit le dispositif par la même occasion.
+    Object.assign(c, GL.redater(c, k, {rules:RG}));
     c.origineClassement='Complété à la main dans la balance publiée';
     c.preuveClassement=v.dispositif+(v.quand?' · le '+v.quand:'');
     }
@@ -290,7 +290,7 @@ const lignesEcr=ecr.lignes||ecr;
 // tranchée à la main ne se redistribue pas, c'est sa décision qui prime.
 {
   const b=GL.repartirAuProrata(lignesEcr,cl,{rules:RG});
-  console.log('réparties au prorata : '+b.lignes+' écritures sur '+b.comptes+' comptes mixtes'
+  console.log('réparties au prorata : '+b.lignes+' écritures sur '+b.comptes+' clients mixtes'
     +' · '+b.lignesChangees+' changent de type de financement ('
     +Math.round(b.euros).toLocaleString('fr-FR')+' €)'
     +' · '+b.creances+' soldes de compte, dont '+b.creancesChangees+' changent ('

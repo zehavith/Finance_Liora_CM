@@ -1661,6 +1661,76 @@
      * entre plusieurs dispositifs ne tranche rien — ses inconnues restent à
      * classer.
      */
+    /**
+     * « Alternance » tout court n'est pas un dispositif : sa règle du
+     * 15/10/2026 veut qu'on le dispatche entre OPCO, Corporate et Perso selon
+     * qui paie. Posé ici, au niveau du module, parce que trois chemins en ont
+     * besoin : le classement des créances, celui des écritures héritées, et le
+     * recalcul qui suit un reclassement à la main.
+     */
+    function dispatcherAlternance(c, fin) {
+        if (fin !== 'ALTERNANCE') return fin;
+        const paye = financementDuLibelle(c.tiers) || financementDuLibelle(c.compte);
+        if (paye && (paye.fin === 'OPCO' || paye.fin === 'OPCO_ALTERNANCE')) return 'OPCO_ALTERNANCE';
+        return (estEntreprise(c.tiers) || String(c.siren || '').trim())
+            ? 'CORPORATE_ALTERNANCE' : 'PERSO_ALTERNANCE';
+    }
+
+    // Un mandat ne décide de l'échéance que s'il vient de votre colonne, pas
+    // d'une devinette sur le libellé.
+    const mandatDecide = c => !!c.mandatEtatFichier
+        && c.origineMandat !== 'Grand livre (libellé de l’écriture)';
+
+    /**
+     * Les cinq champs qui datent une créance, pour un dispositif donné.
+     *
+     * Extrait de poser() pour qu'un reclassement à la main emprunte EXACTEMENT
+     * le même chemin : sa décision du 20/10/2026, « il faut recalculer ». Sans
+     * cela, une créance passée en POEI gardait la date calculée sous son
+     * ancien dispositif — trois lignes Randstad et France Travail portaient
+     * « fin de formation + 30 j » là où le barème POEI dit + 60.
+     */
+    function datation(c, fin, o) {
+        const ech = R.computeEcheance(
+            { ...c, financement: fin, dateEcheanceSource: null,
+              mandatGocardless: c.mandatGocardless || mandatDecide(c),
+              dateEcheanceComptable: c.dateEcheanceLivre || null,
+              dateEcheanceRepli: c.dateEcheanceRepli || c.dateEcheance || null },
+            { rules: o.rules, prefereEcheanceMonday: false, grandLivre: true });
+        const pose = c.complement && c.complement.echeance ? c.complement : null;
+        const repliSeul = !pose && !ech.date && c.dateEcheance;
+        return {
+            dateEcheance: pose ? pose.echeance : (ech.date || c.dateEcheance || null),
+            echeanceBase: pose ? 'saisieManuelle' : ech.baseUtilisee,
+            echeanceOrigine: pose ? 'Saisie à la main'
+                : (ech.origine || (repliSeul ? 'Grand livre' : null)),
+            echeanceMotif: pose ? (pose.note || 'échéance posée à la main')
+                : (ech.motif
+                    || (repliSeul
+                        ? 'aucun barème applicable — ' + (
+                            c.echeance1Source === 'enregistrement'
+                                ? 'date d’enregistrement (aucune date dans le libellé)'
+                                : 'dernière date du libellé')
+                        : null)
+                    || (ech.origine === 'Grand livre' && c.echeance1Source
+                        ? (c.echeance1Source === 'libellé'
+                            ? 'dernière date du libellé'
+                            : 'date d’enregistrement (aucune date dans le libellé)')
+                        : null)),
+            echeanceJours: pose ? 0 : (ech.jours == null ? null : ech.jours),
+        };
+    }
+
+    /**
+     * Une créance reclassée à la main reprend la date que SON nouveau barème
+     * lui donne. Rien d'autre ne bouge : ni son reste dû, ni son lettrage.
+     */
+    function redater(c, fin, o) {
+        const f = dispatcherAlternance(c, fin);
+        return { ...c, financement: f, typeClient: typeDeClient(f, o), ...datation(c, f, o),
+                 dateEcheanceGrandLivre: c.dateEcheanceLivre || null };
+    }
+
     function classer(ouvertes, sources) {
         const o = sources || {};
         const idx = indexerClassification(o);
@@ -1891,81 +1961,14 @@
         // « Ancien grand livre (identifiant du tiers) » ne se vérifie pas —
         // avec elle, on lit la valeur qui a été reprise.
         const poser = (c, fin, origine, preuve) => {
-            // « Alternance » tout court n'est pas une sous-catégorie — elle l'a
-            // dit le 15/10/2026 — parce qu'elle ne dit pas qui paie. Les trois
-            // qui existent le disent, et toute alternance se range dans l'une
-            // des trois : « il faut les dispatcher entre OPCO alternance,
-            // corporate alternance, perso alternance ».
-            //
-            //   le payeur est un OPCO            → OPCO - Alternance
-            //   le tiers est une personne morale → Corporate - Alternance
-            //   sinon, c'est l'alternant qui paie → Perso-Alternance
-            //
-            // Les dix créances qui restaient sous « Alternance » se répartissent
-            // ainsi sans exception : quatre payées par OPCO ATLAS, trois
-            // facturées à CGI, TIBCO et IA Nord, trois réglées par des
-            // particuliers.
-            if (fin === 'ALTERNANCE') {
-                const paye = financementDuLibelle(c.tiers) || financementDuLibelle(c.compte);
-                fin = (paye && (paye.fin === 'OPCO' || paye.fin === 'OPCO_ALTERNANCE'))
-                    ? 'OPCO_ALTERNANCE'
-                    : (estEntreprise(c.tiers) || String(c.siren || '').trim())
-                        ? 'CORPORATE_ALTERNANCE'
-                        : 'PERSO_ALTERNANCE';
-            }
-            const ech = R.computeEcheance(
-                { ...c, financement: fin, dateEcheanceSource: null,
-                  mandatGocardless: c.mandatGocardless || mandatQuiDecide(c),
-                  // L'échéance que le grand livre porte VRAIMENT — celle que
-                  // Pennylane écrit dans sa colonne — et elle seule. On passait
-                  // ici c.dateEcheance, qui a déjà reçu en amont la dernière
-                  // date du libellé : 3 715 lignes annonçaient donc « échéance
-                  // portée par le grand livre » alors que leur date venait du
-                  // libellé, et leur propre motif les démentait sur la ligne
-                  // d'à côté. La date ne change pas ; son étiquette cesse de
-                  // mentir, et le repli se nomme par ce qu'il a lu.
-                  dateEcheanceComptable: c.dateEcheanceLivre || null,
-                  dateEcheanceRepli: c.dateEcheanceRepli || c.dateEcheance || null },
-                { rules: o.rules, prefereEcheanceMonday: false, grandLivre: true });
-            // Une échéance que vous avez posée vous-même passe devant le
-            // calcul. C'est le dernier recours — la ligne qu'aucune date de
-            // formation ne peut dater — et elle se voit : son origine le dit,
-            // avec le jour de la saisie et votre note. Compléter une date de
-            // FORMATION reste préférable : elle rend votre barème applicable
-            // au lieu de le contourner.
-            const pose = c.complement && c.complement.echeance ? c.complement : null;
-            // Aucun barème n'a pu s'appliquer — le dispositif reste à qualifier
-            // — mais la créance porte quand même l'échéance 1. La date était
-            // retenue, son origine restait vide : 142 lignes datées sans dire
-            // d'où. Une date sans origine n'est pas auditable ; elle se nomme.
-            const repliSeul = !pose && !ech.date && c.dateEcheance;
+            // Le dispatch de l'alternance et la datation sont posés au niveau
+            // du module : le reclassement à la main emprunte le même chemin.
+            fin = dispatcherAlternance(c, fin);
             return {
                 ...c, financement: fin, origineClassement: origine,
                 preuveClassement: preuve == null ? '' : String(preuve),
                 typeClient: typeDeClient(fin, o),
-                dateEcheance: pose ? pose.echeance : (ech.date || c.dateEcheance || null),
-                echeanceBase: pose ? 'saisieManuelle' : ech.baseUtilisee,
-                echeanceOrigine: pose ? 'Saisie à la main'
-                    : (ech.origine || (repliSeul ? 'Grand livre' : null)),
-                echeanceMotif: pose ? (pose.note || 'échéance posée à la main')
-                    : (ech.motif
-                        || (repliSeul
-                            ? 'aucun barème applicable — ' + (
-                                c.echeance1Source === 'enregistrement'
-                                    ? 'date d’enregistrement (aucune date dans le libellé)'
-                                    : 'dernière date du libellé')
-                            : null)
-                        // Quand le barème n'a pas sa base et que l'échéance du
-                        // grand livre a servi de repli, l'auditeur doit lire
-                        // LAQUELLE des deux branches de votre formule a parlé.
-                        || (ech.origine === 'Grand livre' && c.echeance1Source
-                            ? (c.echeance1Source === 'libellé'
-                                ? 'dernière date du libellé'
-                                : 'date d’enregistrement (aucune date dans le libellé)')
-                            : null)),
-                // Le délai réellement ajouté à la base, tel que le moteur l'a
-                // appliqué — pas celui que le barème laisserait supposer.
-                echeanceJours: pose ? 0 : (ech.jours == null ? null : ech.jours),
+                ...datation(c, fin, o),
                 // L'échéance que portait le grand livre, avant tout recalcul.
                 dateEcheanceGrandLivre: c.dateEcheanceLivre || null,
                 // La trace de ce que vous avez complété : le jour, la note, et
@@ -3034,21 +3037,69 @@
     const ALTERNANCES = new Set(['ALTERNANCE', 'CORPORATE_ALTERNANCE',
                                  'OPCO_ALTERNANCE', 'PERSO_ALTERNANCE']);
 
+    /**
+     * Le CLIENT d'une écriture, par-delà ses comptes.
+     *
+     * Sa décision du 20/10/2026 : le prorata se lit par client, pas par compte.
+     * Stellantis en est la raison — quatre comptes, chacun pur à l'intérieur
+     * (deux en B2C-Entreprise, un en B2B, un sans facture), donc un prorata par
+     * compte ne voyait jamais qu'il est mixte, et 143 109 € de règlements sans
+     * numéro prenaient le type de la première facture venue.
+     *
+     * Le SIREN prime et ne se discute pas : deux SIREN différents ne sont
+     * JAMAIS le même client, quoi que disent les noms — « ENGIE » et
+     * « ENGIE SA » en portent deux, « KOBA » aussi, à un chiffre près. Un
+     * compte sans SIREN rejoint un SIREN seulement si son nom, débarrassé de
+     * sa forme juridique et d'un numéro d'ordre final, n'en désigne qu'un.
+     * Sinon il reste seul : mieux vaut un client de trop qu'une fusion fausse.
+     */
+    function nomSouple(nom) {
+        return String(nom || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            .toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+            .replace(/\b(SASU|SARL|EURL|SNC|SCA|SAS|SA|SE)\b/g, ' ')
+            .replace(/\s+\d{1,3}$/, '').replace(/\s+/g, '');
+    }
+    function clientDeLigne(lignes) {
+        const sirensDuNom = new Map();
+        for (const l of (lignes || [])) {
+            const n = nomSouple(l.tiers); if (!n) continue;
+            const s = String(l.siren || '').replace(/\D/g, ''); if (s.length < 9) continue;
+            if (!sirensDuNom.has(n)) sirensDuNom.set(n, new Set());
+            sirensDuNom.get(n).add(s);
+        }
+        return l => {
+            const s = String(l.siren || '').replace(/\D/g, '');
+            if (s.length >= 9) return 'SIREN:' + s;
+            const n = nomSouple(l.tiers);
+            if (n) {
+                const ss = sirensDuNom.get(n);
+                if (ss && ss.size === 1) return 'SIREN:' + [...ss][0];
+                return 'NOM:' + n;
+            }
+            return 'CPT:' + (l.compte || '');
+        };
+    }
+
     function cleDuCompte(lignes) {
-        // Les factures de chaque compte, comptées par type de financement, et
+        // Les factures de chaque CLIENT, comptées par type de financement, et
         // l'encours qu'elles portent — il sert à départager deux types à
-        // égalité, plutôt que l'ordre alphabétique : sur un compte à clé 4/4,
-        // l'alphabet décidait du plus gros règlement du compte.
-        const parCompte = new Map();
+        // égalité, plutôt que l'ordre alphabétique : sur une clé 4/4,
+        // l'alphabet décidait du plus gros règlement du client.
+        const client = clientDeLigne(lignes);
+        const parCompte = new Map(), nomDuClient = new Map();
         for (const l of (lignes || [])) {
             if (l.nature !== 'facture' || !l.compte || !l.financement) continue;
-            let g = parCompte.get(l.compte);
-            if (!g) { g = new Map(); parCompte.set(l.compte, g); }
+            const cli = client(l);
+            if (!nomDuClient.has(cli)) nomDuClient.set(cli, l.tiers || l.compte || '');
+            let g = parCompte.get(cli);
+            if (!g) { g = new Map(); parCompte.set(cli, g); }
             const x = g.get(l.financement) || { nb: 0, euros: 0 };
             x.nb++; x.euros += Math.abs(l.debit || 0);
             g.set(l.financement, x);
         }
         const out = new Map(), ecartes = [];
+        out.client = client;
+        out.nom = nomDuClient;
         for (const [compte, g] of parCompte) {
             if (g.size < 2) continue;
             const mauvais = [...g.keys()].filter(f => HORS_PRORATA.has(f));
@@ -3115,7 +3166,7 @@
             return (r && r.label) || k;
         };
         let t = cle.parts.map(x => x.nb + ' ' + nom(x.fin)).join(' · ')
-            + ' — ' + cle.total + ' factures au compte ' + (compte || '')
+            + ' — ' + cle.total + ' factures du client ' + (compte || '')
             + ' · part visée pour ' + nom(fin) + ' : ' + Math.round(visee * 100) + ' %';
         if (Math.abs(obtenue - visee) >= 0.01) {
             t += ' · part obtenue : ' + Math.round(obtenue * 100) + ' %'
@@ -3146,9 +3197,10 @@
             // sur deux comptes OPCO parce qu'ils héritaient d'une facture Filiz
             // et portaient « Facture Filiz : alternance » au lieu de « Hérité… ».
             if (l.numero) continue;
-            if (!cles.has(l.compte)) continue;
-            if (!parCompte.has(l.compte)) parCompte.set(l.compte, []);
-            parCompte.get(l.compte).push(l);
+            const cli = cles.client(l);
+            if (!cles.has(cli)) continue;
+            if (!parCompte.has(cli)) parCompte.set(cli, []);
+            parCompte.get(cli).push(l);
         }
         for (const [compte, liste] of parCompte) {
             const cle = cles.get(compte);
@@ -3175,11 +3227,16 @@
             }
             for (const [l, fin] of choix) {
                 bilan.lignes++;
-                if (l.financement !== fin) { bilan.lignesChangees++; bilan.euros += mt(l); }
+                if (l.financement !== fin) { bilan.lignesChangees++; bilan.euros += mt(l);
+                    // Un reclassement change le barème, donc la date : la même
+                    // règle que pour un reclassement à la main. Sans cela une
+                    // écriture France Travail passée en AIF gardait « fin de
+                    // formation + 30 j » quand le barème AIF dit + 60.
+                    Object.assign(l, datation(l, fin, o)); }
                 l.financement = fin;
                 l.typeClient = typeDeClient(fin, o) || l.typeClient || null;
-                l.origineClassement = 'Réparti au prorata des factures du compte';
-                l.preuveClassement = phraseDeLaCle(cle, compte, fin, pose, masse, o);
+                l.origineClassement = 'Réparti au prorata des factures du client';
+                l.preuveClassement = phraseDeLaCle(cle, cles.nom.get(compte) || compte, fin, pose, masse, o);
             }
         }
 
@@ -3187,9 +3244,10 @@
         const parCompteC = new Map();
         for (const c of (creances || [])) {
             if (c.numero || c.cle) continue;
-            if (!cles.has(c.compte)) continue;
-            if (!parCompteC.has(c.compte)) parCompteC.set(c.compte, []);
-            parCompteC.get(c.compte).push(c);
+            const cli = cles.client(c);
+            if (!cles.has(cli)) continue;
+            if (!parCompteC.has(cli)) parCompteC.set(cli, []);
+            parCompteC.get(cli).push(c);
         }
         for (const [compte, liste] of parCompteC) {
             const cle = cles.get(compte);
@@ -3211,10 +3269,11 @@
                     bilan.creancesChangees++;
                     bilan.eurosCreances += Math.abs(c.resteDu || 0);
                 }
+                Object.assign(c, datation(c, fin, o));
                 c.financement = fin;
                 c.typeClient = typeDeClient(fin, o) || c.typeClient || null;
-                c.origineClassement = 'Réparti au prorata des factures du compte';
-                c.preuveClassement = phraseDeLaCle(cle, compte, fin, pose, masse, o);
+                c.origineClassement = 'Réparti au prorata des factures du client';
+                c.preuveClassement = phraseDeLaCle(cle, cles.nom.get(compte) || compte, fin, pose, masse, o);
             }
         }
         return bilan;
@@ -3226,7 +3285,7 @@
         regleCorrespond, financementParRegles, porteeDesRegles, etiquetteRegle,
         A_CLASSER, POOL_NON_LETTRE, MOTIFS_NUMERO, numeroDepuisTexte,
         creancesOuvertes, facturesToutes, referencesVersement, classer, classerEcritures, propositionsRapprochement,
-        repartirAuProrata, cleDuCompte,
+        repartirAuProrata, cleDuCompte, redater,
         pointageParMois, pointageParFinancement, ecrituresAPlat, balanceAgee, comparer,
         dateDepuisTexte,
         MOTIFS_COMPTE, financementDuLibelle, typeDeClient, SEUIL_POEI,
