@@ -2588,15 +2588,30 @@
             }
             stats[NATURES[l.nature] || 'autres']++;
             const encaissement = l.nature === 'reglement' || l.nature === 'avoir';
+            // « Alternance » tout court n'est pas un dispositif — sa règle du
+            // 15/10/2026 : « il faut les dispatcher entre OPCO alternance,
+            // corporate alternance, perso alternance ». Les créances passent
+            // par poser(), qui le fait ; les écritures qui HÉRITENT d'une
+            // facture, non — quatre règlements FA-880 du compte Stripe
+            // portaient donc « Alternance » en face d'un type de client vide,
+            // puisque ce mot ne correspond à aucun de ses trois types.
+            const finHerite = (() => {
+                const f = source ? source.financement : null;
+                if (f !== 'ALTERNANCE') return f;
+                const paye = financementDuLibelle(l.tiers) || financementDuLibelle(l.compte);
+                if (paye && (paye.fin === 'OPCO' || paye.fin === 'OPCO_ALTERNANCE')) return 'OPCO_ALTERNANCE';
+                return (estEntreprise(l.tiers) || String(l.siren || '').trim())
+                    ? 'CORPORATE_ALTERNANCE' : 'PERSO_ALTERNANCE';
+            })();
             const ligne = {
                 ...l,
-                financement: source ? source.financement : null,
+                financement: finHerite,
                 // Un type de financement entraîne toujours son type de client :
                 // c'est le barème qui les relie, pas l'écriture. Les sources
                 // héritées d'une facture ne portaient pas le type, et quatorze
                 // lignes affichaient « B2C-Perso » en face d'une colonne vide.
                 typeClient: source
-                    ? (source.typeClient || typeDeClient(source.financement, sources) || null)
+                    ? (typeDeClient(finHerite, sources) || source.typeClient || null)
                     : null,
                 origineClassement: source
                     ? (l.nature === 'facture' ? source.origineClassement

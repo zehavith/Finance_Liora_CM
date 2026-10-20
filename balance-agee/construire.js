@@ -218,13 +218,23 @@ const NATURE_MOTIF=[
   [/mandat de pr/i,              'Exception · mandat de prélèvement GoCardless'],
   [/post[ée]rieure? [àa] la fin/i,'Exception · facture émise après la fin de formation'],
   [/aucune facture dans le lettrage/i,'Repli · aucune facture dans le lot, la ligne se date elle-même'],
-  [/dispositif [àa] qualifier/i,  'Repli · dispositif non qualifié au moment du calcul'],
+  [/dispositif [àa] qualifier/i,  'Repli · dispositif non qualifié au moment du calcul'],   // précisé ci-dessous
   [/derni[èe]re date du libell/i, 'Repli · dernière date lue dans le libellé'],
   [/date d[’\']enregistrement/i,  'Repli · date d’enregistrement, aucune date dans le libellé'],
 ];
 const motifExplicite=c=>{
   const m=(c&&c.echeanceMotif)||''; if(!m) return '';
-  for(const [re,lib] of NATURE_MOTIF) if(re.test(m)) return lib;
+  for(const [re,lib] of NATURE_MOTIF) if(re.test(m)){
+    // Un repli doit toujours nommer la date qu'il a prise. Pour le dispositif
+    // non qualifié, le motif ne disait que la raison ; la source se lisait
+    // dans une colonne « Repli appliqué » qui ne servait qu'à ça, et qui
+    // disparaît. Elle rejoint donc la phrase.
+    if(/dispositif non qualifié/.test(lib) && c.echeanceBase==='echeance1'){
+      return lib+' — '+(c.echeance1Source==='enregistrement'
+        ? 'date d’enregistrement' : 'dernière date lue dans le libellé');
+    }
+    return lib;
+  }
   return m;
 };
 
@@ -252,11 +262,6 @@ const calcul=c=>{ if(!c.dateEcheance) return '';
   const v=valeurBase(c); if(!v||!c.echeanceBase) return fr(c.dateEcheance);
   const j=c.echeanceJours||0;
   return (BASES[c.echeanceBase]||c.echeanceBase)+' '+fr(v)+(j?' + '+j+' j':'')+' = '+fr(c.dateEcheance); };
-const pourquoiPas=c=>{ if(c.echeanceOrigine!=='Grand livre') return '';
-  if(!c.financement) return 'aucun dispositif reconnu';
-  const r=R.getRule(c.financement,RG), g=r&&r.gl?r.gl:r;
-  return ((g&&g.base)?(BASES[g.base]||g.base):'la base du barème')
-    +' absente — l’échéance du grand livre a servi de repli'; };
 const aCompleter=c=>{
   if(!c.financement) return 'à compléter — dispositif à qualifier';
   if(!c.dateEcheance) return 'à compléter — aucune date d’échéance calculable';
@@ -539,11 +544,12 @@ for(let i=0;i<plat.length;i++){
     'Base de calcul retenue':src.echeanceBase?(BASES[src.echeanceBase]||src.echeanceBase):'',
     'Date de la base retenue':fr(valeurBase(src)),
     'Délai appliqué (jours)':src.echeanceJours==null?'':src.echeanceJours,
+    // L'exception ou le repli se lit contre le délai qu'il a remplacé, pas
+    // trois colonnes plus loin. « Motif de l'écart au barème » a disparu : il
+    // ne disait rien que celle-ci ne dise déjà, et restait vide 16 047 fois.
+    'Exception appliquée':motifExplicite(src),
     'Détail du calcul':calcul(src),
     'Origine de l’échéance':origineLisible(src),
-    'Repli appliqué':repliServi(src)||repliServi(e)||'',
-    'Exception appliquée':motifExplicite(src),
-    'Motif de l’écart au barème':pourquoiPas(src),
     'Date de début de formation':fr(src.dateDebutFormation),
     'Date de fin de formation':fr(src.dateFinFormation),
     'Date de facture (facturation)':fr(src.dateFactureFacturation),
@@ -608,10 +614,9 @@ const ligneCreance=c=>({
   'Échéance du grand livre':fr(c.dateEcheanceGrandLivre),
   'Barème appliqué':bareme(c), 'Base de calcul retenue':c.echeanceBase?(BASES[c.echeanceBase]||c.echeanceBase):'',
   'Date de la base retenue':fr(valeurBase(c)), 'Délai appliqué (jours)':c.echeanceJours==null?'':c.echeanceJours,
-  'Échéance recalculée':fr(c.dateEcheance), 'Détail du calcul':calcul(c),
-  'Origine de l’échéance':origineLisible(c), 'Repli appliqué':repliServi(c),
   'Exception appliquée':motifExplicite(c),
-  'Motif de l’écart au barème':pourquoiPas(c),
+  'Échéance recalculée':fr(c.dateEcheance), 'Détail du calcul':calcul(c),
+  'Origine de l’échéance':origineLisible(c),
   'Jours de retard':retard(c)==null?'':retard(c), 'Tranche':tranche(c),
   'Libellé de l’écriture':c.libelle||'', 'Journal':c.journal||'',
 });
