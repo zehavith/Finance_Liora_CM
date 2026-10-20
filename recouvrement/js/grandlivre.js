@@ -245,11 +245,16 @@
     // et l'année. Sans cette forme, les 410 écritures Filiz de l'extrait de
     // septembre n'étaient pas reconnues comme des factures — elles passaient en
     // « autre écriture », donc hors de la balance et hors du classement.
-    const EST_FACTURE = /^(fact|fcat|fct|fa|dv)[-_ ]?\d|^fct(?:[-_][a-z]{2,8}){1,3}[-_]\d/i;
+    // La forme Filiz s'écrit « FCT-FILIZ-DST-2025-276 », mais aussi
+    // « FACT-FILIZ-DST-2025-969 » : le libellé d'un virement de La Poste la
+    // porte ainsi, et le numéro n'était pas repris.
+    const EST_FACTURE = /^(fact|fcat|fct|fa|dv)[-_ ]?\d|^(?:fct|fact)(?:[-_][a-z]{2,8}){1,3}[-_]\d/i;
     // « CN » — credit note — est la forme des avoirs chez Zoho : la balance de
     // septembre en compte 89. Sans elle, ils passaient pour des règlements et
     // faisaient entrer de l'argent qui n'est jamais rentré.
-    const EST_AVOIR = /^(avr|av|avo|cn)[-_ ]?\d/i;
+    // Et l'avoir Filiz s'écrit « AV-FILIZ-DST-2026-713 » : trente écritures du
+    // grand livre le portent, qui n'étaient ni facture ni avoir.
+    const EST_AVOIR = /^(avr|av|avo|cn)[-_ ]?\d|^(?:avr?|avo)(?:[-_][a-z]{2,8}){1,3}[-_]\d/i;
 
     /**
      * Formes de numéro réellement émises chez Liora.
@@ -260,7 +265,9 @@
      */
     const MOTIFS_NUMERO = [
         /\bFACT[-_ ]?\d{4}[-_ ]?\d{4,6}\b/ig,               // FACT-2407-04923
-        /\bFCT(?:[-_][A-Z]{2,8}){1,3}[-_]\d{4}[-_]\d{1,6}\b/ig, // FCT-FILIZ-DST-2025-276
+        // Le préfixe varie — FCT, FACT, AV, AVR, FA — mais la forme est la
+        // même : un dispositif, puis l'année, puis le rang.
+        /\b(?:FACT|FCT|AVR|AV|FA)(?:[-_][A-Z]{2,8}){1,3}[-_]\d{4}[-_]\d{1,6}\b/ig, // FCT-FILIZ-DST-2025-276
         /\bAVR[-_ ]?\d{4}[-_ ]?\d{4,6}\b/ig,                // AVR-2512-02297
         /\bFCAT[-_ ]?\d{4}[-_ ]?\d{4,6}\b/ig,
         /\bFA[-_ ]?\d{3,4}[-_ ]?\d{3,6}\b/ig,               // FA-880-0097
@@ -482,8 +489,13 @@
             // Prendre la colonne rajeunirait la créance d'un exercice entier et
             // la sortirait des tranches anciennes. Sur ces lignes, le libellé
             // fait foi ; partout ailleurs il ne sert que de secours.
-            const dateTexte = dateDepuisTexte(col(r, 'libelleLigne'))
-                || dateDepuisTexte(col(r, 'libelle'));
+            //
+            // Et la date se lit dans le LIBELLÉ DE LIGNE, jamais dans le
+            // libellé de pièce : « des dates ds libéllé de piece ne doivent pas
+            // être prisent, que ds libéllé de ligne », 20/10/2026. Le libellé
+            // de pièce est celui de l'écriture entière — « Facture X du … » —
+            // et il datait des lignes qui ne sont pas cette facture-là.
+            const dateTexte = dateDepuisTexte(col(r, 'libelleLigne'));
             const aNouveau = /^an/i.test(String(col(r, 'journal') || '').trim())
                 || /report a nouveau|a nouveaux?/.test(R.norm(col(r, 'libelle')));
             const date = (aNouveau && dateTexte) ? dateTexte

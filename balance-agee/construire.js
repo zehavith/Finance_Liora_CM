@@ -506,11 +506,16 @@ for(const x of plat){
 // des lignes qui nomment pourtant leur facture : « ça me dit aucune facture
 // alors qu'il y en a », 20/10/2026. Une facture soldée reste la facture à
 // laquelle le règlement se rattache.
+// Et la colonne DIT laquelle des deux preuves elle a suivie : « comment tu as
+// rattaché ces factures alors qu'elles ne st pas marqué ds la ligne ? »,
+// 20/10/2026. Un numéro seul, c'est la ligne qui le nomme ; suivi du lettrage,
+// c'est le rapprochement de la comptabilité. 514 lignes sont dans ce second
+// cas, toutes dans un lot lettré ne contenant qu'une facture.
 const rattachee=l=>{
   if(l.numero) return l.numero;
   if(l.lettre && l.lettre!==GL.POOL_NON_LETTRE){
     const e=facturesDuLot.get(grp(l));
-    if(e && e.size===1) return [...e][0];
+    if(e && e.size===1) return [...e][0]+' · lettrage « '+l.lettre+' »';
   }
   return '';
 };
