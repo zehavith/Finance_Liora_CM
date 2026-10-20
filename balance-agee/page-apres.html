@@ -1414,10 +1414,12 @@ function lignesParRegle(){
     const m=String(V(i,'Exception appliquée')||'');
     if(/mandat de pr/i.test(m)){ pose('1'); continue; }
     if(/apr[èe]s la fin de formation/i.test(m)){ pose('2'); continue; }
-    // Le repli se lit dans le motif, qui nomme la date retenue : la colonne
-    // « Repli appliqué » ne disait rien de plus et a été retirée.
+    // Le repli se lit dans le motif, qui nomme la date retenue. L'ordre
+    // compte : « date d’enregistrement, aucune date dans le libellé » contient
+    // le mot « libellé », et un test sur ce mot seul rangeait ces 319 lignes
+    // au rang 4 — le rang 5 affichait zéro alors qu'il en portait 319.
+    if(/date d[’']enregistrement/i.test(m)){ pose('5'); continue; }
     if(/libell/i.test(m)){ pose('4'); continue; }
-    if(/enregistrement/i.test(m)){ pose('5'); continue; }
     pose('3');
   }
   return PAR_RANG;

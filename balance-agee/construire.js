@@ -450,12 +450,24 @@ const lignesAuDebit=new Map();     // compte|lettre|numéro → lignes au débit
 for(const l of plat){ if((l.debit||0)<=0.01) continue;
   const k=(l.compte||'')+'|'+(l.lettre||GL.POOL_NON_LETTRE)+'|'+numNorm(l.numero);
   const a=lignesAuDebit.get(k)||[]; a.push(l); lignesAuDebit.set(k,a); }
+// Depuis que chaque écriture sans facture fait SA créance, la créance sait de
+// quelle ligne elle vient : c'est le lien le plus court et le plus sûr, bien
+// meilleur qu'une recherche par compte + lettrage + numéro vide, qui ratissait
+// tout le pool non lettré et renonçait au-delà de trois lignes.
+const ligneDuBrut=new Map();
+for(const l of plat) if(l.brut) ligneDuBrut.set(l.brut,l);
 const rappro=new Map();            // ligne → numéros de rapprochement
 const poser=(l,n)=>{ const a=rappro.get(l)||[]; a.push(n); rappro.set(l,a); };
 let nRappro=0, sansLigne=0, apparies=0, trop=0;
 nonPointes.forEach((l,i)=>{ const p=props[i]; if(!p||!parLigne.has(l)) return;
   const n=++nRappro; poser(l,n); let trouve=0;
   for(const c of (p.proposition||[])){
+    // La créance vient d'une écriture précise : on va droit à elle.
+    if(c.brutLigne){
+      const m=ligneDuBrut.get(c.brutLigne);
+      if(m&&(m.debit||0)>0.01){ poser(m,n); trouve++; continue; }
+      if(m){ sansLigne++; continue; }   // la créance est un crédit : pas un couple
+    }
     const k=(c.compte||'')+'|'+(c.lettre||GL.POOL_NON_LETTRE)+'|'+numNorm(c.numero);
     let lignes=lignesAuDebit.get(k);
     // Une créance SANS NUMÉRO n'est pas une facture : c'est le solde du compte,
