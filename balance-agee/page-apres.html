@@ -591,14 +591,23 @@ function feuilleRegles(wb){
     .font={color:{argb:ENCRE3},size:10};
   ws.addRow([]);
   if((D.ordreEcheance||[]).length){
-    poserEntete(ws,ws.addRow(['Ordre','Quand','Alors l’échéance est','Pourquoi']));
+    // Sa demande du 17/10/2026 : en face de chaque règle, le nombre d'écritures
+    // qu'elle a réellement datées. Une règle sans volume ne se juge pas.
+    const parRang=lignesParRegle();
+    poserEntete(ws,ws.addRow(['Ordre','Quand','Alors l’échéance est','Écritures datées ainsi','Pourquoi']));
     let y=0;
     for(const o of D.ordreEcheance){
-      const l=ws.addRow([o.rang,o.quand,o.alors,o.note]);
+      const nb=parRang.get(String(o.rang))||0;
+      const l=ws.addRow([o.rang,o.quand,o.alors,nb,o.note]);
       l.getCell(1).font={bold:true}; l.getCell(3).font={bold:true};
+      l.getCell(4).font={bold:true}; l.getCell(4).numFmt='# ##0';
+      l.getCell(4).alignment={horizontal:'right',vertical:'top'};
       l.alignment={vertical:'top',wrapText:true};
       if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
     }
+    const t=ws.addRow(['','','TOTAL',[...parRang.values()].reduce((a,b)=>a+b,0),'']);
+    t.getCell(3).font={bold:true}; t.getCell(4).font={bold:true}; t.getCell(4).numFmt='# ##0';
+    t.getCell(4).alignment={horizontal:'right'};
     ws.addRow([]);
   }
   ws.addRow(['BARÈME PAR DISPOSITIF — application de la règle n° 3'])
@@ -655,11 +664,37 @@ function provisionRegles(ws){
   ws.addRow([]);
   ws.addRow(['RÈGLES DE PROVISION GROUPE'])
     .font={bold:true,size:12,color:{argb:BLEU}};
-  ws.addRow(['Le taux de la famille, dans la fenêtre où tombe l’ancienneté de la créance, '
-    +'appliqué à son assiette : son reste dû, diminué des crédits du même lettrage qui ne sont '
-    +'rattachés à aucune facture, imputés de la créance la plus ancienne à la plus récente. '
-    +'En deçà de 121 jours, aucune provision. Un compte créditeur ne se provisionne pas.'])
-    .font={color:{argb:ENCRE3},size:10};
+  // Le même texte que la section « Paramètres » de la page, pour qu'un lecteur
+  // du classeur seul comprenne le chiffre sans avoir la page sous les yeux.
+  for(const [titre,corps] of [
+    ['',
+     'Le montant à provisionner est la somme, sur toutes les créances, de leur assiette '
+     +'multipliée par le taux de leur famille dans la fenêtre où tombe leur ancienneté.'],
+    ['Sur quoi porte le taux — l’assiette',
+     'L’assiette d’une créance est son reste dû, diminué des encaissements et avoirs du même '
+     +'lettrage qui ne sont rattachés à aucune facture. Ces crédits s’imputent sur les dettes '
+     +'du lot de la plus ancienne à la plus récente — l’imputation de droit commun. Sans cette '
+     +'déduction, une facture déjà réglée par un virement non pointé serait provisionnée à '
+     +'100 % alors que le client ne doit plus rien. Une créance dont l’assiette est nulle ou '
+     +'négative ne se provisionne pas : il n’y a pas de perte à couvrir. L’ancienneté, elle, '
+     +'reste celle de chaque créance.'],
+    ['À partir de quand — les quatre fenêtres',
+     'Les fenêtres se comptent en jours de retard depuis l’échéance et coïncident exactement '
+     +'avec les tranches de la balance âgée, un mois valant trente jours : 121-180 j = '
+     +'« 4 à 6 mois » ; 181-360 j = « 6 à 12 mois » ; 361-720 j = « 12 à 18 » et « 18 à 24 mois » '
+     +'réunies ; au-delà de 720 j = « 24 à 36 », « 36 à 48 » et « > 48 mois ». Aucune tranche '
+     +'n’est coupée, rien n’est proratisé. En deçà de 121 jours de retard, et sur tout ce qui '
+     +'n’est pas échu, la provision est nulle.'],
+    ['Quel taux — les trois familles',
+     'Chaque type de financement appartient à une famille, et c’est la famille qui porte le '
+     +'taux. Le rattachement complet est donné plus bas. Un type de financement rattaché à '
+     +'aucune famille n’est pas provisionné, et la feuille le signale.'],
+  ]){
+    if(titre) ws.addRow([titre]).font={bold:true,size:10,color:{argb:ENCRE3}};
+    const l=ws.addRow([corps]);
+    l.font={color:{argb:ENCRE3},size:10};
+    l.alignment={vertical:'top',wrapText:true};
+  }
   if(!PROV.confirme) ws.addRow(['Le rattachement des types de financement aux trois familles '
     +'n’est pas encore confirmé : celui qui est appliqué ci-dessous est une proposition.'])
     .font={color:{argb:'FFA06B14'},size:10};
@@ -1408,14 +1443,42 @@ function tableProvision(){
   const b=E('prov-modif'); if(b) b.textContent=modifProv?'Fermer':'Modifier';
 }
 
+// Combien d'écritures chaque règle d'échéance a réellement datées. Les cinq
+// règles sont ordonnées : une écriture est comptée dans la PREMIÈRE qui l'a
+// prise, jamais dans deux. Le total fait les écritures datées, ce qui est la
+// seule façon de voir qu'aucune ne passe au travers.
+let PAR_RANG=null;
+function lignesParRegle(){
+  if(PAR_RANG) return PAR_RANG;
+  PAR_RANG=new Map([['1',0],['2',0],['3',0],['4',0],['5',0]]);
+  const pose=r=>PAR_RANG.set(r,(PAR_RANG.get(r)||0)+1);
+  for(const i of I){
+    if(!V(i,'Date d’échéance recalculée')) continue;
+    const m=String(V(i,'Exception appliquée')||'');
+    if(/mandat de pr/i.test(m)){ pose('1'); continue; }
+    if(/apr[èe]s la fin de formation/i.test(m)){ pose('2'); continue; }
+    const repli=String(V(i,'Repli appliqué')||'');
+    if(repli==='libellé'){ pose('4'); continue; }
+    if(repli==='enregistrement'){ pose('5'); continue; }
+    pose('3');
+  }
+  return PAR_RANG;
+}
+
 // ───── les règles d'échéance ─────
 function tableEcheance(){
   paramsPrets();
-  let o='<table><thead><tr><th>Rang</th><th>Quand</th><th>Alors</th></tr></thead><tbody>'
+  const parRang=lignesParRegle();
+  const nb=r=>(parRang.get(String(r))||0).toLocaleString('fr-FR');
+  let o='<table><thead><tr><th>Rang</th><th>Quand</th><th>Alors</th>'
+    +'<th class="n">Écritures</th></tr></thead><tbody>'
     +((D.ordreEcheance||[]).map(r=>'<tr><td class="fam">'+esc(r.rang)+'</td><td>'
       +esc(r.quand)+'</td><td>'+esc(r.alors)
       +(r.note?'<br><span style="color:var(--encre-2)">'+esc(r.note)+'</span>':'')
-      +'</td></tr>').join(''))+'</tbody></table>';
+      +'</td><td class="n">'+nb(r.rang)+'</td></tr>').join(''))
+    +'<tr class="total"><td></td><td></td><td>TOTAL</td><td class="n">'
+    +[...parRang.values()].reduce((a,b)=>a+b,0).toLocaleString('fr-FR')
+    +'</td></tr></tbody></table>';
   E('ech-ordre').innerHTML=o;
 
   let h='<table><thead><tr><th>Dispositif</th><th>Type de client</th>'

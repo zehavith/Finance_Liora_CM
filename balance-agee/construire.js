@@ -193,6 +193,30 @@ const valeurBase=c=>({dateFacture:c.dateFacture, dateDebutFormation:c.dateDebutF
   dateEcheanceComptable:c.dateEcheanceGrandLivre||c.dateEcheance,
   echeance1:c.dateEcheanceRepli||c.dateEcheance,
   saisieManuelle:c.dateEcheance}[c.echeanceBase]||null);
+// « Repli appliqué » doit dire le repli QUI A SERVI, pas celui qui aurait
+// servi. La source du repli est posée sur chaque facture dès la lecture, même
+// quand le barème a trouvé sa base : la colonne l'annonçait sur 16 066 lignes
+// alors que le repli n'a daté que 3 607 d'entre elles. Une colonne d'audit qui
+// affirme un chemin qui n'a pas été pris n'est pas auditable.
+const repliServi=c=>(c && c.echeanceBase==='echeance1' && c.echeance1Source) ? c.echeance1Source : '';
+
+// « Exception appliquée » mélangeait deux natures : les deux exceptions qui
+// passent AVANT le barème, et les replis qui viennent APRÈS faute de base.
+// Chaque motif dit maintenant laquelle des deux il est.
+const NATURE_MOTIF=[
+  [/mandat de pr/i,              'Exception · mandat de prélèvement GoCardless'],
+  [/post[ée]rieure? [àa] la fin/i,'Exception · facture émise après la fin de formation'],
+  [/aucune facture dans le lettrage/i,'Repli · aucune facture dans le lot, la ligne se date elle-même'],
+  [/dispositif [àa] qualifier/i,  'Repli · dispositif non qualifié au moment du calcul'],
+  [/derni[èe]re date du libell/i, 'Repli · dernière date lue dans le libellé'],
+  [/date d[’\']enregistrement/i,  'Repli · date d’enregistrement, aucune date dans le libellé'],
+];
+const motifExplicite=c=>{
+  const m=(c&&c.echeanceMotif)||''; if(!m) return '';
+  for(const [re,lib] of NATURE_MOTIF) if(re.test(m)) return lib;
+  return m;
+};
+
 const bareme=c=>{ if(!c.financement) return '';
   const r=R.getRule(c.financement,RG), g=r&&r.gl?r.gl:r;
   return (!g||!g.base)?'':(BASES[g.base]||g.base)+(g.jours?' + '+g.jours+' j':' (sans délai)'); };
@@ -486,8 +510,8 @@ for(let i=0;i<plat.length;i++){
     'Délai appliqué (jours)':src.echeanceJours==null?'':src.echeanceJours,
     'Détail du calcul':calcul(src),
     'Origine de l’échéance':src.echeanceOrigine||(src.dateEcheance?'':'aucune'),
-    'Repli appliqué':src.echeance1Source||e.echeance1Source||'',
-    'Exception appliquée':src.echeanceMotif||'',
+    'Repli appliqué':repliServi(src)||repliServi(e)||'',
+    'Exception appliquée':motifExplicite(src),
     'Motif de l’écart au barème':pourquoiPas(src),
     'Date de début de formation':fr(src.dateDebutFormation),
     'Date de fin de formation':fr(src.dateFinFormation),
@@ -554,8 +578,8 @@ const ligneCreance=c=>({
   'Barème appliqué':bareme(c), 'Base de calcul retenue':c.echeanceBase?(BASES[c.echeanceBase]||c.echeanceBase):'',
   'Date de la base retenue':fr(valeurBase(c)), 'Délai appliqué (jours)':c.echeanceJours==null?'':c.echeanceJours,
   'Échéance recalculée':fr(c.dateEcheance), 'Détail du calcul':calcul(c),
-  'Origine de l’échéance':c.echeanceOrigine||'', 'Repli appliqué':c.echeance1Source||'',
-  'Exception appliquée':c.echeanceMotif||'',
+  'Origine de l’échéance':c.echeanceOrigine||'', 'Repli appliqué':repliServi(c),
+  'Exception appliquée':motifExplicite(c),
   'Motif de l’écart au barème':pourquoiPas(c),
   'Jours de retard':retard(c)==null?'':retard(c), 'Tranche':tranche(c),
   'Libellé de l’écriture':c.libelle||'', 'Journal':c.journal||'',

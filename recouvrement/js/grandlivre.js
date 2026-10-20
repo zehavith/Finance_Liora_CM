@@ -3037,11 +3037,31 @@
             const mauvais = [...g.keys()].filter(f => HORS_PRORATA.has(f));
             if (mauvais.length) { ecartes.push({ compte, types: mauvais }); continue; }
             const total = [...g.values()].reduce((a, b) => a + b.nb, 0);
+            const ordre = [...g].sort((a, b) => b[1].nb - a[1].nb
+                || b[1].euros - a[1].euros || (a[0] < b[0] ? -1 : 1));
+            // Sa règle du 20/10/2026 : « moins que 5 % on ne partage pas ».
+            // Un dispositif qui ne pèse pas 5 % des factures du compte n'est pas
+            // servi du tout. Sur le compte Stripe — 476 Financement personnel,
+            // 1 B2C-Entreprise, 1 Perso-Alternance — deux parts de 0,2 % se
+            // faisaient servir par des lignes entières, parce qu'une ligne ne se
+            // coupe pas en deux : 43 règlements partaient dans un dispositif que
+            // deux factures sur 478 justifiaient. Les parts retenues sont
+            // renormalisées entre elles, sans quoi la masse ne serait pas servie.
+            const SEUIL = 0.05;
+            let gardes = ordre.filter(([, x]) => x.nb / total >= SEUIL);
+            if (!gardes.length) gardes = ordre.slice(0, 1);
+            const ecartesSeuil = ordre.filter(([f]) => !gardes.some(([k]) => k === f))
+                .map(([fin, x]) => ({ fin, nb: x.nb, part: x.nb / total }));
+            const base = gardes.reduce((a, [, x]) => a + x.nb, 0) || 1;
+            // Quand un seul dispositif passe le seuil, il n'y a plus d'arbitrage
+            // mais il y a toujours un classement à faire : TOUTES les lignes lui
+            // reviennent. Écarter le compte les laisserait sur le dispositif
+            // minoritaire dont elles ont hérité — l'inverse de ce que le seuil
+            // cherche à obtenir.
             out.set(compte, {
                 total,
-                parts: [...g].sort((a, b) => b[1].nb - a[1].nb
-                        || b[1].euros - a[1].euros || (a[0] < b[0] ? -1 : 1))
-                    .map(([fin, x]) => ({ fin, nb: x.nb, euros: x.euros, part: x.nb / total })),
+                sousSeuil: ecartesSeuil,
+                parts: gardes.map(([fin, x]) => ({ fin, nb: x.nb, euros: x.euros, part: x.nb / base })),
             });
         }
         out.ecartes = ecartes;
@@ -3103,8 +3123,12 @@
         const parCompte = new Map();
         for (const l of (lignes || [])) {
             if (l.nature !== 'reglement' && l.nature !== 'avoir') continue;
+            // Sans numéro de facture : la ligne n'a aucune preuve propre, son
+            // classement est forcément emprunté. L'étiquette d'origine ne doit
+            // donc pas décider — elle écartait trois règlements de 129 655 €
+            // sur deux comptes OPCO parce qu'ils héritaient d'une facture Filiz
+            // et portaient « Facture Filiz : alternance » au lieu de « Hérité… ».
             if (l.numero) continue;
-            if (HERITES.indexOf(l.origineClassement) < 0) continue;
             if (!cles.has(l.compte)) continue;
             if (!parCompte.has(l.compte)) parCompte.set(l.compte, []);
             parCompte.get(l.compte).push(l);
