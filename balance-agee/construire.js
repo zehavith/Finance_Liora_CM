@@ -364,6 +364,15 @@ const parGroupeCle=new Map(), cleDe=new Map();
     if(c.cle){ const k=grp(c)+'|'+c.cle;
       if(!parGroupeCle.has(k)) parGroupeCle.set(k,[]);
       parGroupeCle.get(k).push(c); } }
+  // Les factures des lots SOLDÉS, qu'aucune créance ouverte ne représente.
+  // Sans elles, une ligne de lot soldé ne trouvait pas la sienne et tombait
+  // sur la première créance du lot : les trois factures Goodhabitz du
+  // 14/05/2026 n'en faisaient qu'une. Sa règle est « une créance par
+  // facture », soldée ou non. Elles ne viennent qu'en complément : une
+  // facture déjà portée par une créance ouverte garde la sienne.
+  for(const c of soldees){ if(!c.cle) continue;
+    const k=grp(c)+'|'+c.cle;
+    if(!parGroupeCle.has(k)) parGroupeCle.set(k,[c]); }
   for(const c of soldees) if(!cleDe.has(c)){
     const g=c.cle?grp(c)+'|'+c.cle:null;
     cleDe.set(c, grp(c)+'|'+((g&&graphie.get(g))||c.numero||'')); }
@@ -768,23 +777,31 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
       +'clé, la part visée et la part obtenue : les deux diffèrent dès qu’une ligne est '
       +'trop grosse pour tenir dans sa part, puisqu’elle ne se coupe pas en deux.',
   },
+  // La nature de chaque règle, à sa demande du 20/10/2026 : une exception
+  // passe AVANT le barème et l'écarte ; un repli vient APRÈS, faute de base.
+  // C'est le même vocabulaire que la colonne « Exception appliquée ».
   ordreEcheance:[
-    {rang:'1', quand:'Le client a un mandat de prélèvement GoCardless',
+    {rang:'1', nature:'Règle exception',
+     quand:'Le client a un mandat de prélèvement GoCardless',
      alors:'fin de formation, sans délai',
      note:'Rapproché par numéro de facture, puis e-mail, puis nom et prénom. '
          +'Un client prélevé ne se voit accorder aucun délai de paiement.'},
-    {rang:'2', quand:'La date de facture est postérieure à la fin de formation',
+    {rang:'2', nature:'Règle exception',
+     quand:'La date de facture est postérieure à la fin de formation',
      alors:'date de facture + 30 jours',
      note:'C’est une régularisation : le délai court depuis l’émission, pas depuis '
          +'une formation déjà terminée.'},
-    {rang:'3', quand:'Sinon — le barème du dispositif',
+    {rang:'3', nature:'Règle barème',
+     quand:'Sinon — le barème du dispositif',
      alors:'voir le tableau ci-dessous',
      note:'Chaque dispositif a sa base et son délai. C’est le cas ordinaire.'},
-    {rang:'4', quand:'Sinon — la base du barème manque',
+    {rang:'4', nature:'Règle repli',
+     quand:'Sinon — la base du barème manque',
      alors:'dernière date lue dans le libellé',
      note:'Aucune date de formation ni de facture : on prend la date que le libellé '
          +'de l’écriture porte, sans délai ajouté.'},
-    {rang:'5', quand:'Sinon — aucune date dans le libellé',
+    {rang:'5', nature:'Règle repli',
+     quand:'Sinon — aucune date dans le libellé',
      alors:'date d’enregistrement',
      note:'Le dernier recours. La ligne reste datée, et dit qu’elle l’est ainsi.'},
   ],

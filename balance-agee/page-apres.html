@@ -594,20 +594,22 @@ function feuilleRegles(wb){
     // Sa demande du 17/10/2026 : en face de chaque règle, le nombre d'écritures
     // qu'elle a réellement datées. Une règle sans volume ne se juge pas.
     const parRang=lignesParRegle();
-    poserEntete(ws,ws.addRow(['Ordre','Quand','Alors l’échéance est','Écritures datées ainsi','Pourquoi']));
+    poserEntete(ws,ws.addRow(['Ordre','Nature','Quand','Alors l’échéance est',
+      'Écritures datées ainsi','Pourquoi']));
     let y=0;
     for(const o of D.ordreEcheance){
       const nb=parRang.get(String(o.rang))||0;
-      const l=ws.addRow([o.rang,o.quand,o.alors,nb,o.note]);
-      l.getCell(1).font={bold:true}; l.getCell(3).font={bold:true};
-      l.getCell(4).font={bold:true}; l.getCell(4).numFmt='# ##0';
-      l.getCell(4).alignment={horizontal:'right',vertical:'top'};
+      const l=ws.addRow([o.rang,o.nature||'',o.quand,o.alors,nb,o.note]);
+      l.getCell(1).font={bold:true}; l.getCell(2).font={bold:true,color:{argb:BLEU}};
+      l.getCell(4).font={bold:true};
+      l.getCell(5).font={bold:true}; l.getCell(5).numFmt='# ##0';
+      l.getCell(5).alignment={horizontal:'right',vertical:'top'};
       l.alignment={vertical:'top',wrapText:true};
       if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
     }
-    const t=ws.addRow(['','','TOTAL',[...parRang.values()].reduce((a,b)=>a+b,0),'']);
-    t.getCell(3).font={bold:true}; t.getCell(4).font={bold:true}; t.getCell(4).numFmt='# ##0';
-    t.getCell(4).alignment={horizontal:'right'};
+    const t=ws.addRow(['','','','TOTAL',[...parRang.values()].reduce((a,b)=>a+b,0),'']);
+    t.getCell(4).font={bold:true}; t.getCell(5).font={bold:true}; t.getCell(5).numFmt='# ##0';
+    t.getCell(5).alignment={horizontal:'right'};
     ws.addRow([]);
   }
   ws.addRow(['BARÈME PAR DISPOSITIF — application de la règle n° 3'])
@@ -1470,13 +1472,14 @@ function tableEcheance(){
   paramsPrets();
   const parRang=lignesParRegle();
   const nb=r=>(parRang.get(String(r))||0).toLocaleString('fr-FR');
-  let o='<table><thead><tr><th>Rang</th><th>Quand</th><th>Alors</th>'
+  let o='<table><thead><tr><th>Rang</th><th>Nature</th><th>Quand</th><th>Alors</th>'
     +'<th class="n">Écritures</th></tr></thead><tbody>'
-    +((D.ordreEcheance||[]).map(r=>'<tr><td class="fam">'+esc(r.rang)+'</td><td>'
+    +((D.ordreEcheance||[]).map(r=>'<tr><td class="fam">'+esc(r.rang)+'</td>'
+      +'<td class="fam">'+esc(r.nature||'')+'</td><td>'
       +esc(r.quand)+'</td><td>'+esc(r.alors)
       +(r.note?'<br><span style="color:var(--encre-2)">'+esc(r.note)+'</span>':'')
       +'</td><td class="n">'+nb(r.rang)+'</td></tr>').join(''))
-    +'<tr class="total"><td></td><td></td><td>TOTAL</td><td class="n">'
+    +'<tr class="total"><td></td><td></td><td></td><td>TOTAL</td><td class="n">'
     +[...parRang.values()].reduce((a,b)=>a+b,0).toLocaleString('fr-FR')
     +'</td></tr></tbody></table>';
   E('ech-ordre').innerHTML=o;

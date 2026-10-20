@@ -344,6 +344,19 @@ input[type=search]{flex:1 1 220px}
         <button type="button" class="plat" id="prov-modif" hidden>Modifier</button>
         <span class="etat" id="prov-etat"></span>
       </div>
+      <div class="param-table" id="prov-taux"></div>
+      <h4>Quel type de financement dans quelle famille</h4>
+      <div class="param-table" id="prov-familles"></div>
+      <div class="param-actions" id="prov-actions" hidden>
+        <button type="button" id="prov-ok">Enregistrer</button>
+        <button type="button" class="plat" id="prov-non">Annuler</button>
+      </div>
+    </div>
+
+    <div class="param-bloc">
+      <div class="param-tete">
+        <h3>Comment la provision se calcule</h3>
+      </div>
       <p class="param-note">Barème de provision Groupe, appliqué créance par créance.
         Le montant à provisionner est la somme, sur toutes les créances, de leur assiette
         multipliée par le taux de leur famille dans la fenêtre où tombe leur ancienneté.</p>
@@ -374,13 +387,6 @@ input[type=search]{flex:1 1 220px}
         la famille qui porte le taux. Le rattachement complet se lit sous le tableau.
         Un type de financement rattaché à aucune famille n’est pas provisionné, et la page
         le signale plutôt que de l’ignorer.</p>
-      <div class="param-table" id="prov-taux"></div>
-      <h4>Quel type de financement dans quelle famille</h4>
-      <div class="param-table" id="prov-familles"></div>
-      <div class="param-actions" id="prov-actions" hidden>
-        <button type="button" id="prov-ok">Enregistrer</button>
-        <button type="button" class="plat" id="prov-non">Annuler</button>
-      </div>
     </div>
 
     </details>
