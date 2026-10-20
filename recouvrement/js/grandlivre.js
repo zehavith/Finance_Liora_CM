@@ -3191,12 +3191,25 @@
         const parCompte = new Map();
         for (const l of (lignes || [])) {
             if (l.nature !== 'reglement' && l.nature !== 'avoir') continue;
-            // Sans numéro de facture : la ligne n'a aucune preuve propre, son
-            // classement est forcément emprunté. L'étiquette d'origine ne doit
-            // donc pas décider — elle écartait trois règlements de 129 655 €
-            // sur deux comptes OPCO parce qu'ils héritaient d'une facture Filiz
-            // et portaient « Facture Filiz : alternance » au lieu de « Hérité… ».
+            // « On ne répartit au prorata que les lignes que l'on ne sait pas
+            // classer » — sa règle du 20/10/2026. Deux conditions, et rien
+            // d'autre ne décide :
+            //
+            //   — la ligne ne nomme aucune facture. Si elle en nomme une, elle
+            //     prend son dispositif, point ;
+            //   — elle n'est pas lettrée. Un lettrage la rattache à une facture
+            //     précise : son classement est connu, pas emprunté. Huit
+            //     écritures lettrées, 180 935 € dont 120 879 € chez OPCO ATLAS,
+            //     étaient réparties alors que leur lettrage disait déjà d'où
+            //     elles venaient.
+            //
+            // Ne restent que les écritures du pool non lettré, dont le
+            // classement n'est qu'un emprunt à une facture du même compte
+            // choisie sans preuve. L'étiquette d'origine ne décide pas : une
+            // ligne héritée d'une facture Filiz n'est pas mieux classée pour
+            // autant si rien ne la lie à cette facture.
             if (l.numero) continue;
+            if (l.lettre && l.lettre !== POOL_NON_LETTRE) continue;
             const cli = cles.client(l);
             if (!cles.has(cli)) continue;
             if (!parCompte.has(cli)) parCompte.set(cli, []);
@@ -3244,6 +3257,8 @@
         const parCompteC = new Map();
         for (const c of (creances || [])) {
             if (c.numero || c.cle) continue;
+            // Même règle pour les soldes de compte : lettré, donc classé.
+            if (c.lettre && c.lettre !== POOL_NON_LETTRE) continue;
             const cli = cles.client(c);
             if (!cles.has(cli)) continue;
             if (!parCompteC.has(cli)) parCompteC.set(cli, []);
