@@ -248,11 +248,13 @@ const BASES={dateFacture:'date de facture', dateDebutFormation:'début de format
   dateFinFormation:'fin de formation', dateFactureFacturation:'date de facture de la facturation',
   dateEcheanceComptable:'échéance portée par le grand livre',
   echeance1:'dernière date du libellé, sinon date d’enregistrement',
+  dateReglement:'date de l’encaissement',
   saisieManuelle:'échéance posée à la main'};
 const valeurBase=c=>({dateFacture:c.dateFacture, dateDebutFormation:c.dateDebutFormation,
   dateFinFormation:c.dateFinFormation, dateFactureFacturation:c.dateFactureFacturation,
   dateEcheanceComptable:c.dateEcheanceGrandLivre||c.dateEcheance,
   echeance1:c.dateEcheanceRepli||c.dateEcheance,
+  dateReglement:c.dateEcheance,
   saisieManuelle:c.dateEcheance}[c.echeanceBase]||null);
 // « Repli appliqué » doit dire le repli QUI A SERVI, pas celui qui aurait
 // servi. La source du repli est posée sur chaque facture dès la lecture, même
@@ -287,6 +289,8 @@ const NATURE_MOTIF=[
   [/dispositif [àa] qualifier/i,  'Repli · dispositif non qualifié au moment du calcul'],   // précisé ci-dessous
   [/derni[èe]re date du libell/i, 'Repli · dernière date lue dans le libellé'],
   [/date d[’\']enregistrement/i,  'Repli · date d’enregistrement, aucune date dans le libellé'],
+  [/encaissement dat[ée] de sa propre date/i,
+   'Encaissement · daté de sa propre date, pas de celle de la facture'],
 ];
 const motifExplicite=c=>{
   const m=(c&&c.echeanceMotif)||''; if(!m) return '';
@@ -362,7 +366,7 @@ const plat=GL.ecrituresAPlat(lu);
 const soldees=GL.classer(GL.facturesToutes(lu)
   .filter(c=>c.statut&&c.statut!=='Ouverte'&&c.statut!=='Partiellement réglée'),
   {rules:RG, sellsy, factures:DATES, mandats:MANDATS, referentiel:{}, regles:[], appris});
-const ecr=GL.classerEcritures(plat,cl,soldees,{sellsy,rules:RG});
+const ecr=GL.classerEcritures(plat,cl,soldees,{sellsy,rules:RG,factures:DATES});
 const lignesEcr=ecr.lignes||ecr;
 // La répartition au prorata, posée AVANT les compléments : une ligne qu'elle a
 // tranchée à la main ne se redistribue pas, c'est sa décision qui prime.
@@ -650,8 +654,29 @@ for(let i=0;i<plat.length;i++){
     // calcul » n'y montrait qu'une date toute seule.
     echeanceBase: src0.dateEcheance?src0.echeanceBase:(e.echeanceBase||''),
     echeanceJours: src0.dateEcheance?src0.echeanceJours:(e.echeanceJours),
+    // Et les dates qui ONT SERVI de base, sinon la colonne annonce « début de
+    // formation » sans dire de quand : quatre avoirs repêchés par la
+    // facturation portaient une base muette.
+    dateDebutFormation: src0.dateDebutFormation||(src0.dateEcheance?null:(e.dateDebutFormationSource||null)),
+    dateFinFormation: src0.dateFinFormation||(src0.dateEcheance?null:(e.dateFinFormationSource||null)),
+    dateFactureFacturation: src0.dateFactureFacturation
+      ||(src0.dateEcheance?null:(e.dateFactureFacturationSource||null)),
     echeanceOrigine: src0.dateEcheance?src0.echeanceOrigine:(e.echeanceOrigine||''),
     echeanceMotif: src0.dateEcheance?src0.echeanceMotif:(e.echeanceMotif||'')};
+  // UN ENCAISSEMENT PORTE SA PROPRE DATE, et pas celle de la facture qu'il
+  // solde : « oui il faut régler un paiement de sa propre date », 20/10/2026.
+  // Le détail affichait l'échéance de la créance — un virement SEPA de la
+  // Caisse des Dépôts paraissait en retard de 432 jours alors que l'argent
+  // était rentré. L'avoir n'est pas concerné : il prend les dates de la
+  // facture qu'il annule.
+  //
+  // La ventilation de la balance, elle, se fait sur les créances : ce que
+  // cette règle change, c'est ce que la LIGNE dit d'elle-même.
+  if(l.nature==='reglement' && l.date){
+    src.dateEcheance=l.date; src.echeanceBase='dateReglement'; src.echeanceJours=0;
+    src.echeanceOrigine='Règle';
+    src.echeanceMotif='encaissement daté de sa propre date d’écriture';
+  }
   const o={
     // ── vos colonnes, dans votre ordre ──
     'N° de compte':l.compte||'',

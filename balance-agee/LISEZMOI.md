@@ -22,11 +22,8 @@ noms et des adresses de vos clients. Avant de lancer la construction :
 | `depot-nouvelle/balance-nouvelle.xlsx` | l'export Pennylane du mois |
 | `depot-sellsy/sellsy.csv` | export Sellsy, toutes les factures |
 | `depot-sellsy/avoirs.csv` | export Sellsy, les avoirs |
-| `depot-ech/echeances.xlsx` | les échéances que vous tenez à la main |
-| `Facturation-Sellsy.xlsx` | la base Sellsy complète, pour les types de client |
-| `Facturation-Zoho.xlsx` | export Zoho — **par tranches de moins de 10 000 lignes**, au-delà il est tronqué sans prévenir |
-| `Dossiers-Filiz.xlsx` | les dossiers d'alternance |
-| `Reference-septembre.xlsx` · `Balance-septembre-complete.xlsx` | votre arrêté de septembre, qui sert de référence en cas de désaccord |
+| `depot-ech/echeances.xlsx` | les dossiers d'alternance Filiz, onglet « Échéances » |
+| `Reference-septembre.xlsx` | votre arrêté de septembre : il sert de référence en cas de désaccord, et porte les onglets « BdD Zoho - Toutes les factures », « BdD Zoho -Avoir Zoho » et « BdD Filiz - Facture Alternance » |
 | `complements.json` | vos décisions de classement, voir ci-dessous |
 | `mandats.json` | les mandats GoCardless, voir ci-dessous |
 
@@ -53,17 +50,25 @@ redéposer :
 
 | à remplacer | ce que c'est |
 |---|---|
-| `depot-nouvelle/balance-nouvelle.xlsx` | l'export Pennylane du grand livre clients |
-| `depot-sellsy/sellsy.csv` | l'export Sellsy des factures |
-| `depot-sellsy/avoirs.csv` | l'export Sellsy des avoirs |
-| `Dossiers-Filiz.xlsx` | les dossiers d'alternance |
+| `balance-agee/depot-nouvelle/balance-nouvelle.xlsx` | l'export Pennylane du grand livre clients, onglet « Grand livre - Clients » |
+| `balance-agee/depot-sellsy/sellsy.csv` | l'export Sellsy des factures (séparateur `;`) |
+| `balance-agee/depot-sellsy/avoirs.csv` | l'export Sellsy des avoirs (séparateur `;`) |
+| `balance-agee/depot-ech/echeances.xlsx` | les dossiers d'alternance Filiz, onglet « Échéances » |
 
-Les autres ne bougent qu'à l'occasion : `depot-ech/echeances.xlsx` quand les
-échéances tenues à la main changent, `Facturation-Sellsy.xlsx` et
-`Facturation-Zoho.xlsx` quand le référentiel des types de client s'étoffe,
-`mandats.json` quand l'export GoCardless est refait. L'arrêté de septembre —
-`depot-ancienne/`, `Reference-septembre.xlsx`, `Balance-septembre-complete.xlsx`
-— ne bouge pas : c'est la référence en cas de désaccord.
+Le nom du fichier compte : la chaîne ouvre ces quatre chemins-là, pas d'autres.
+Déposer l'export Filiz sous un autre nom — `Dossiers-Filiz.xlsx`, par exemple —
+revient à construire la balance sans lui, sans que rien ne le signale.
+
+Ne bougent qu'à l'occasion : `mandats.json` quand l'export GoCardless est refait.
+L'arrêté de septembre — `depot-ancienne/balance-ancienne.xlsx` et
+`Reference-septembre.xlsx` — ne bouge pas : c'est la référence en cas de
+désaccord, et c'est de lui que viennent les onglets Zoho et Filiz anciens.
+
+Les fichiers que la chaîne ouvre vraiment, et eux seuls, se relisent dans
+`construire.js` : `depot-ancienne/balance-ancienne.xlsx`,
+`depot-nouvelle/balance-nouvelle.xlsx`, `depot-sellsy/sellsy.csv`,
+`depot-sellsy/avoirs.csv`, `depot-ech/echeances.xlsx`,
+`Reference-septembre.xlsx`, `complements.json`, `mandats.json`.
 
 Puis `node construire.js`, et la page republiée.
 

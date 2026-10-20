@@ -2627,6 +2627,29 @@
             if (!fin) continue;
             for (const k of [l.cle, l.cleZoho]) if (k && !parSellsy.has(k)) parSellsy.set(k, fin);
         }
+        // Et ce que la facturation sait des DATES du document, par son numéro.
+        //
+        // Le repêchage ci-dessous donnait le dispositif et refusait la date :
+        // quinze écritures d'un lot parfaitement équilibré — un crédit numéroté
+        // face à un débit « Report à nouveau » sans numéro — affichaient leur
+        // échéance 1 alors que la facturation date leur facture. Le dispositif
+        // sans la date, c'est un barème qu'on ne peut pas appliquer.
+        const datesEcr = new Map();
+        const poserDate = (k, debut, fin, facture) => {
+            if (!k || (!debut && !fin && !facture)) return;
+            const e = datesEcr.get(k) || {};
+            if (debut && !e.debut) e.debut = debut;
+            if (fin && !e.fin) e.fin = fin;
+            if (facture && !e.facture) e.facture = facture;
+            datesEcr.set(k, e);
+        };
+        for (const l of ((sources && sources.sellsy) || []))
+            for (const k of [l.cle, l.cleZoho])
+                poserDate(k, l.dateDebutService, l.dateFinService, l.dateFacture);
+        // Les mêmes sources que pour une créance : le financeur, l'ancienne
+        // balance, et les avoirs datés par la facture qu'ils annulent.
+        for (const f of ((sources && sources.factures) || []))
+            poserDate(f.cle, f.dateDebutFormation, f.dateFinFormation, f.dateFacture);
 
         const lignes = [], orphelins = [];
         const NATURES = { facture: 'factures', reglement: 'reglements', avoir: 'avoirs', autre: 'autres' };
@@ -2669,11 +2692,25 @@
             }
             if (!source && l.numero && parSellsy.size) {
                 const fin = parSellsy.get(I.factureKey(l.numero));
-                if (fin) source = { financement: fin, typeClient: null,
-                                    origineClassement: 'Type de client (facturation)',
-                                    preuveClassement: l.numero,
-                                    dateEcheance: null, echeanceBase: '', echeanceMotif: '',
-                                    numero: l.numero };
+                if (fin) {
+                    // Les dates de SON document, et le barème de SON dispositif.
+                    const d = datesEcr.get(I.factureKey(l.numero)) || {};
+                    const base = { ...l, financement: fin,
+                                   dateDebutFormation: d.debut || null,
+                                   dateFinFormation: d.fin || null,
+                                   dateFactureFacturation: d.facture || null };
+                    const ech = (d.debut || d.fin || d.facture)
+                        ? datation(base, fin, { rules: sources.rules }) : null;
+                    source = { financement: fin, typeClient: null,
+                               origineClassement: 'Type de client (facturation)',
+                               preuveClassement: l.numero,
+                               dateDebutFormation: d.debut || null,
+                               dateFinFormation: d.fin || null,
+                               dateFactureFacturation: d.facture || null,
+                               dateEcheance: null, echeanceBase: '', echeanceMotif: '',
+                               ...(ech || {}),
+                               numero: l.numero };
+                }
             }
             // Un règlement sans facture dans son lettrage, mais qui cite une
             // facture Filiz, relève de l'alternance comme elle.
@@ -2736,6 +2773,20 @@
             // ouverte ni facture soldée ne peut les dater. Elles se datent
             // alors elles-mêmes, par l'échéance 1.
             const seDateSeule = (!source || !source.dateEcheance) && !!l.dateEcheanceRepli;
+            // UN ENCAISSEMENT PORTE SA PROPRE DATE.
+            //
+            // « Un paiement n'a pas la mm date que la facture » (20/10/2026),
+            // et « oui il faut régler un paiement de sa propre date ». Un
+            // règlement affichait l'échéance de la facture qu'il solde : un
+            // virement SEPA de la Caisse des Dépôts paraissait en retard de
+            // 432 jours alors que l'argent était rentré. Sa date à lui, c'est
+            // sa date d'écriture — celle que le grand livre porte, déjà
+            // corrigée pour les reports à nouveau, où elle se lit dans le
+            // libellé de ligne.
+            //
+            // L'avoir n'est pas concerné : il annule une facture, et il prend
+            // les dates de celle qu'il annule — sa règle du même jour.
+            const dateDeSoi = l.nature === 'reglement' && l.date ? l.date : null;
             const ligne = {
                 ...l,
                 financement: finHerite,
@@ -2772,7 +2823,8 @@
                 // prend l'échéance 1 : la dernière date du libellé, sinon
                 // l'enregistrement. Elle est portée par la ligne elle-même, et
                 // le motif dit d'où elle vient : rien n'est ni inventé ni muet.
-                dateEcheance: (source && source.dateEcheance) || l.dateEcheanceRepli || null,
+                dateEcheance: dateDeSoi
+                    || (source && source.dateEcheance) || l.dateEcheanceRepli || null,
                 // Quand la ligne se date elle-même, ce qui l'a datée se dit :
                 // la base retenue est l'échéance 1 — dernière date du libellé,
                 // sinon date d'enregistrement — et le délai appliqué est nul.
@@ -2780,23 +2832,28 @@
                 // « Base de calcul retenue » et « Date de la base retenue »
                 // étaient muettes, et dont « Détail du calcul » ne montrait
                 // qu'une date sans sa justification.
-                echeanceBase: (source && source.echeanceBase)
-                    || (seDateSeule ? 'echeance1' : ''),
-                echeanceMotif: (source && source.echeanceMotif)
-                    || (seDateSeule
-                        ? 'aucune facture au débit dans le lettrage — échéance de la ligne elle-même'
-                        : ''),
+                echeanceBase: dateDeSoi ? 'dateReglement'
+                    : ((source && source.echeanceBase)
+                       || (seDateSeule ? 'echeance1' : '')),
+                echeanceMotif: dateDeSoi
+                    ? 'encaissement daté de sa propre date d’écriture'
+                    : ((source && source.echeanceMotif)
+                       || (seDateSeule
+                           ? 'aucune facture au débit dans le lettrage — échéance de la ligne elle-même'
+                           : '')),
                 // De quoi justifier la date sur la ligne elle-même, sans avoir
                 // à remonter à la créance : le délai réellement appliqué,
                 // l'échéance que portait le grand livre, et l'origine.
-                echeanceJours: source && source.echeanceJours != null
-                    ? source.echeanceJours : (seDateSeule ? 0 : null),
+                echeanceJours: dateDeSoi ? 0
+                    : (source && source.echeanceJours != null
+                       ? source.echeanceJours : (seDateSeule ? 0 : null)),
                 // Le repli EST la règle d'échéance 1, pas une date que le grand
                 // livre portait : ces lignes n'en portent aucune. L'annoncer
                 // « échéance reprise du grand livre » démentait le motif écrit
                 // juste à côté — même correction qu'au classement « à qualifier ».
-                echeanceOrigine: (source && source.echeanceOrigine)
-                    || (seDateSeule ? 'Règle' : ''),
+                echeanceOrigine: dateDeSoi ? 'Règle'
+                    : ((source && source.echeanceOrigine)
+                       || (seDateSeule ? 'Règle' : '')),
                 dateEcheanceGrandLivre: source ? (source.dateEcheanceGrandLivre || null) : null,
                 echeance1Source: source ? (source.echeance1Source || '') : (l.echeance1Source || ''),
                 dateFactureFacturationSource: source ? (source.dateFactureFacturation || null) : null,
