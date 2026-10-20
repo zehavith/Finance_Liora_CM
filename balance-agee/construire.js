@@ -217,7 +217,12 @@ const repliServi=c=>(c && c.echeanceBase==='echeance1' && c.echeance1Source) ? c
 const NATURE_MOTIF=[
   [/mandat de pr/i,              'Exception · mandat de prélèvement GoCardless'],
   [/post[ée]rieure? [àa] la fin/i,'Exception · facture émise après la fin de formation'],
-  [/aucune facture dans le lettrage/i,'Repli · aucune facture dans le lot, la ligne se date elle-même'],
+  // « Aucune facture » se lisait contre un numéro bien visible deux colonnes
+  // plus loin — celui que le RÈGLEMENT ou l'AVOIR porte. Vérification faite
+  // sur les seize lots concernés : aucun ne contient d'écriture de nature
+  // « facture ». Le motif le dit maintenant tel quel.
+  [/aucune facture au d[ée]bit dans le lettrage/i,
+   'Repli · aucune facture au débit dans ce lot, la ligne se date elle-même'],
   [/dispositif [àa] qualifier/i,  'Repli · dispositif non qualifié au moment du calcul'],   // précisé ci-dessous
   [/derni[èe]re date du libell/i, 'Repli · dernière date lue dans le libellé'],
   [/date d[’\']enregistrement/i,  'Repli · date d’enregistrement, aucune date dans le libellé'],
@@ -253,18 +258,30 @@ const calcul=c=>{ if(!c.dateEcheance) return '';
   // servi, ce que le motif démentait sur la ligne d'à côté. Et seulement si
   // l'échéance vient VRAIMENT du repli : une écriture qui cite une facture
   // suit le barème de celle-ci, pas le repli.
+  //
+  // Et la date annoncée est CELLE QUI A SERVI, pas la date de l'écriture : la
+  // phrase écrivait « date d'enregistrement de l'écriture, le 07/07/2025 =
+  // 09/07/2025 » — deux jours sortis de nulle part, sur 195 lignes, parce
+  // qu'elle imprimait la date de la pièce quand le repli avait pris celle de
+  // l'enregistrement. C'est maintenant la même date que « Date de la base
+  // retenue », par construction.
   if(c.sansNumero&&c.dateFacture&&(!c.echeanceBase||c.echeanceBase==='echeance1')){
     const branche=c.echeance1Source==='libellé'
       ? 'dernière date du libellé de l’écriture'
       : 'date d’enregistrement de l’écriture';
-    return branche+', le '+fr(c.dateFacture)+' = '+fr(c.dateEcheance);
+    return branche+', le '+fr(valeurBase(c)||c.dateFacture)+' = '+fr(c.dateEcheance);
   }
   const v=valeurBase(c); if(!v||!c.echeanceBase) return fr(c.dateEcheance);
   const j=c.echeanceJours||0;
   return (BASES[c.echeanceBase]||c.echeanceBase)+' '+fr(v)+(j?' + '+j+' j':'')+' = '+fr(c.dateEcheance); };
+// La colonne porte le nom de ce qu'elle réclame — « À compléter » ne disait
+// pas QUOI compléter. Sa demande du 20/10/2026 : « au lieu de À compléter il
+// faut mettre type de financement à compléter ». Le libellé de la valeur n'a
+// donc plus à répéter « à compléter » : l'en-tête le dit.
+const A_COMPLETER='Type de financement à compléter';
 const aCompleter=c=>{
-  if(!c.financement) return 'à compléter — dispositif à qualifier';
-  if(!c.dateEcheance) return 'à compléter — aucune date d’échéance calculable';
+  if(!c.financement) return 'type de financement à qualifier';
+  if(!c.dateEcheance) return 'aucune date d’échéance calculable';
   // Un solde sans facture n'aura jamais de date de formation : l'échéance 1 EST
   // sa règle, par l'une ou l'autre de ses deux branches. La branche retenue
   // reste écrite sur la ligne ; elle n'est pas signalée comme une lacune.
@@ -401,6 +418,42 @@ const rangLigne=new Map();
     if((l.debit||0)<=0.01 || !l.numero) continue;
     const k=grp(l)+'|'+I.factureKey(l.numero);
     const n=(vus.get(k)||0)+1; vus.set(k,n); rangLigne.set(l,n); } }
+// Les factures que porte chaque lot, lues dans le grand livre lui-même : une
+// écriture de nature « facture » qui cite un numéro. C'est avec celles-là
+// qu'un règlement lettré est rapproché par la comptabilité.
+const facturesDuLot=new Map();
+for(const x of plat){
+  if(x.nature!=='facture' || !x.numero) continue;
+  const k=grp(x); let e=facturesDuLot.get(k);
+  if(!e){ e=new Set(); facturesDuLot.set(k,e); }
+  e.add(x.numero);
+}
+// Ce qui autorise à écrire qu'une ligne est rattachée à une facture.
+//
+// Deux preuves, pas une de plus :
+//  1. la ligne NOMME la facture — rien ne prouve mieux, et le rattachement
+//     vaut même si cette facture est soldée ou absente du grand livre ;
+//  2. à défaut, la ligne est LETTRÉE, et son lot ne contient qu'une facture —
+//     le rapprochement a été fait par la comptabilité, il ne reste qu'une
+//     candidate.
+//
+// Hors de là, la colonne reste vide : c'est un lettrage à faire, et elle doit
+// le laisser voir. Huit virements SEPA du compte Alma, sans numéro et sans
+// lien entre eux, affichaient tous FACT-2506-10079.
+//
+// Exiger en plus qu'une CRÉANCE OUVERTE porte le numéro vidait la colonne sur
+// des lignes qui nomment pourtant leur facture : « ça me dit aucune facture
+// alors qu'il y en a », 20/10/2026. Une facture soldée reste la facture à
+// laquelle le règlement se rattache.
+const rattachee=l=>{
+  if(l.numero) return l.numero;
+  if(l.lettre && l.lettre!==GL.POOL_NON_LETTRE){
+    const e=facturesDuLot.get(grp(l));
+    if(e && e.size===1) return [...e][0];
+  }
+  return '';
+};
+
 const creanceDuCompte=l=>{
   // 1. La ligne nomme une facture, et cette facture a une créance dans son
   //    lot : c'est la sienne. Une facture au débit se retrouve ainsi
@@ -506,6 +559,14 @@ for(let i=0;i<plat.length;i++){
     numero: src0.numero||e.numeroFacture||l.numero||'',
     sansNumero: src0.financement?src0.sansNumero:!l.numero,
     dateEcheance: src0.dateEcheance||e.dateEcheance||null,
+    // Ce qui justifie la date vient de LA MÊME source que la date : base,
+    // délai, origine et motif ensemble. Seuls l'origine et le motif suivaient
+    // l'écriture ; la base et le délai restaient ceux de la créance — vides
+    // quand aucune créance ne porte la ligne. Trente-trois lignes affichaient
+    // donc une échéance sans sa base ni sa date de base, et « Détail du
+    // calcul » n'y montrait qu'une date toute seule.
+    echeanceBase: src0.dateEcheance?src0.echeanceBase:(e.echeanceBase||''),
+    echeanceJours: src0.dateEcheance?src0.echeanceJours:(e.echeanceJours),
     echeanceOrigine: src0.dateEcheance?src0.echeanceOrigine:(e.echeanceOrigine||''),
     echeanceMotif: src0.dateEcheance?src0.echeanceMotif:(e.echeanceMotif||'')};
   const o={
@@ -524,7 +585,11 @@ for(let i=0;i<plat.length;i++){
     'Taux de change':B.tauxChange==null?'':B.tauxChange,
     'Débit':ar(l.debit),
     'Crédit':ar(l.credit),
-    'Solde':B.balance==null?'':B.balance,
+    // L'export Pennylane ne porte pas de colonne « balance » : la colonne
+    // sortait vide sur les 16 080 lignes. Sa règle du 20/10/2026 : « solde est
+    // vide, il faut faire débit - crédit ». Le solde de l'écriture est donc
+    // calculé, pas recopié.
+    'Solde':ar((l.debit||0)-(l.credit||0)),
     'Catégories analytiques':B.categories||'',
     'Identifiant du tiers':l.identifiantTiers||'',
     'Tiers':l.tiers||'',
@@ -554,7 +619,17 @@ for(let i=0;i<plat.length;i++){
       ? src.origineClassement : (e.origineClassement||src.origineClassement||''),
     'Justificatif du classement':(src.origineClassement||'').startsWith('Complété à la main')
       ? (src.preuveClassement||'') : (e.preuveClassement||src.preuveClassement||''),
-    'Facture rattachée':src.numero||'',
+    // La facture à laquelle la ligne est RATTACHÉE, et seulement si quelque
+    // chose le prouve. « Ce n'est pas parce que c'est le même client que c'est
+    // la même facture », 20/10/2026.
+    //
+    // Deux preuves, pas une de plus : la ligne NOMME cette facture, ou elle est
+    // LETTRÉE avec elle — un lettrage est un rapprochement fait par la compta.
+    // Hors de là, la colonne reste vide : c'est un lettrage à faire, et elle
+    // doit le laisser voir. Huit virements SEPA du compte Alma, sans numéro et
+    // sans lien entre eux, affichaient tous FACT-2506-10079 ; 98 avoirs du
+    // pool non lettré étaient collés à une facture qu'ils ne nomment pas.
+    'Facture rattachée':rattachee(l),
     // ── l'échéance, justifiée ──
     '— ÉCHÉANCE —':'',
     'Date d’échéance recalculée':fr(src.dateEcheance),
@@ -580,13 +655,13 @@ for(let i=0;i<plat.length;i++){
     // facture jamais passée au débit, la ligne héritait du classement de cette
     // facture, et la créance, elle, restait « À classer » sans que rien ne le
     // dise. Invisible au filtre, donc incomplétable.
-    'À compléter':aCompleter(src)
+    [A_COMPLETER]:aCompleter(src)
       || ((src0&&src0.compte&&!src0.financement&&Math.abs(src0.resteDu||0)>0.005)
-          ? 'à compléter — dispositif de la créance à qualifier' : '')
+          ? 'type de financement de la créance à qualifier' : '')
       || (troisTypes(e.typeClient||src.typeClient
             ||R.categorieDe(e.financement||src.financement,RG)||'')===''
           && (e.financement||src.financement)
-          ? 'à compléter — « '+lab(e.financement||src.financement)
+          ? '« '+lab(e.financement||src.financement)
             +' » ne désigne pas encore un de vos trois types de client' : ''),
     'N° de rapprochement':(rappro.get(l)||[]).join(' · '),
     'Proposition de rapprochement':(parLigne.get(l)||{}).quoi||'',
@@ -625,7 +700,7 @@ fs.writeFileSync('principale.json',JSON.stringify({n:principale.length}));
 
 // ───────── les autres onglets ─────────
 const ligneCreance=c=>({
-  'À compléter':aCompleter(c),
+  [A_COMPLETER]:aCompleter(c),
   'Facture':c.numero||'', 'Client':c.tiers||'', 'N° de compte':c.compte||'',
   'Identifiant du tiers':c.identifiantTiers||'', 'Lettrage':c.lettre||'', 'SIREN':c.siren||'',
   'Nature':c.sansNumero?'Solde sans facture':'Facture',
@@ -692,18 +767,18 @@ add('Balance âgée par financement',[...bal.rows.filter(aQuelqueChose).map(r=>l
 add('Balance âgée ligne à ligne',principale);
 add('Créances',cl.map(ligneCreance));
 add('À classer',cl.filter(c=>!c.financement).map(ligneCreance));
-// « À classer » liste les CRÉANCES sans dispositif ; « À compléter », les
-// ÉCRITURES que la page signale. Les deux filtres étaient devenus le même et
+// « À classer » liste les CRÉANCES sans dispositif ; « Type de financement à
+// compléter », les ÉCRITURES que la page signale. Les deux filtres étaient devenus le même et
 // les deux onglets sortaient identiques au bit près : l'un répondait à la
 // question de l'autre.
-add('À compléter',principale.filter(o=>o['À compléter']));
+add(A_COMPLETER,principale.filter(o=>o[A_COMPLETER]));
 // par compte
 const parCompte=new Map();
 for(const c of cl){ const k=c.compte||'(sans compte)';
   let g=parCompte.get(k); if(!g){g={'N° de compte':k,'Client':c.tiers||'','Créances':0,'Restant dû':0,
-    'Types de financement':new Set(),'À compléter':0}; parCompte.set(k,g);} 
+    'Types de financement':new Set(),'Types de financement à compléter':0}; parCompte.set(k,g);} 
   g['Créances']++; g['Restant dû']+=c.resteDu||0; g['Types de financement'].add(lab(c.financement));
-  if(aCompleter(c)) g['À compléter']++; }
+  if(aCompleter(c)) g['Types de financement à compléter']++; }
 add('Par compte client',[...parCompte.values()].sort((a,b)=>b['Restant dû']-a['Restant dû'])
   .map(g=>({...g,'Restant dû':ar(g['Restant dû']),'Types de financement':[...g['Types de financement']].join(' · ')})));
 // ce que l'ancienne balance a appris

@@ -17,7 +17,7 @@ const fs=require('fs'), D=require('path').resolve(__dirname,'..'), SORTIE=__dirn
   console.log((fs.statSync(f).size/1048576).toFixed(2)+' Mo · onglets attendus ci-dessous');
   const wb=XLSX.read(fs.readFileSync(f),{type:'buffer'});
   console.log('onglets : '+wb.SheetNames.join(' │ '));
-  for(const nom of ['Balance âgée','Par type de financement']){
+  for(const nom of ['Balance âgée','Balance âgée par financement']){
     const ws=wb.Sheets[nom]; if(!ws){console.log('ABSENT : '+nom);continue;}
     const a=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:true});
     const iE=a.findIndex(l=>l&&String(l[1]||'')==='Restant dû');

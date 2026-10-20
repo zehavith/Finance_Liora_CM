@@ -8,7 +8,7 @@ const DEPOT=require('path').resolve(__dirname,'..','..');
 const { chromium } = require(process.env.PLAYWRIGHT || '/opt/node-tools/node_modules/playwright');
 const XLSX=require(DEPOT+'/vendor/xlsx.full.min.js');
 const fs=require('fs'), D=require('path').resolve(__dirname,'..'), SORTIE=__dirname;
-const ONGLETS=['Sommaire','Règles','Balance âgée','Par type de financement','Détail ligne à ligne'];
+const ONGLETS=['Sommaire','Règles','Balance âgée','Balance âgée par financement','Détail ligne à ligne'];
 (async () => {
   const b=await chromium.launch(); const ctx=await b.newContext({acceptDownloads:true});
   const p=await ctx.newPage({viewport:{width:1500,height:980}});

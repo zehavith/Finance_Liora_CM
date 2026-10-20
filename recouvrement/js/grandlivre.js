@@ -2683,6 +2683,10 @@
                 return (estEntreprise(l.tiers) || String(l.siren || '').trim())
                     ? 'CORPORATE_ALTERNANCE' : 'PERSO_ALTERNANCE';
             })();
+            // Trente-trois lignes ne relèvent d'aucune facture : ni créance
+            // ouverte ni facture soldée ne peut les dater. Elles se datent
+            // alors elles-mêmes, par l'échéance 1.
+            const seDateSeule = (!source || !source.dateEcheance) && !!l.dateEcheanceRepli;
             const ligne = {
                 ...l,
                 financement: finHerite,
@@ -2720,17 +2724,30 @@
                 // l'enregistrement. Elle est portée par la ligne elle-même, et
                 // le motif dit d'où elle vient : rien n'est ni inventé ni muet.
                 dateEcheance: (source && source.dateEcheance) || l.dateEcheanceRepli || null,
-                echeanceBase: source ? (source.echeanceBase || '') : '',
+                // Quand la ligne se date elle-même, ce qui l'a datée se dit :
+                // la base retenue est l'échéance 1 — dernière date du libellé,
+                // sinon date d'enregistrement — et le délai appliqué est nul.
+                // Les laisser vides faisait trente-trois lignes datées dont
+                // « Base de calcul retenue » et « Date de la base retenue »
+                // étaient muettes, et dont « Détail du calcul » ne montrait
+                // qu'une date sans sa justification.
+                echeanceBase: (source && source.echeanceBase)
+                    || (seDateSeule ? 'echeance1' : ''),
                 echeanceMotif: (source && source.echeanceMotif)
-                    || ((!source || !source.dateEcheance) && l.dateEcheanceRepli
-                        ? 'aucune facture dans le lettrage — échéance de la ligne elle-même'
+                    || (seDateSeule
+                        ? 'aucune facture au débit dans le lettrage — échéance de la ligne elle-même'
                         : ''),
                 // De quoi justifier la date sur la ligne elle-même, sans avoir
                 // à remonter à la créance : le délai réellement appliqué,
                 // l'échéance que portait le grand livre, et l'origine.
-                echeanceJours: source && source.echeanceJours != null ? source.echeanceJours : null,
+                echeanceJours: source && source.echeanceJours != null
+                    ? source.echeanceJours : (seDateSeule ? 0 : null),
+                // Le repli EST la règle d'échéance 1, pas une date que le grand
+                // livre portait : ces lignes n'en portent aucune. L'annoncer
+                // « échéance reprise du grand livre » démentait le motif écrit
+                // juste à côté — même correction qu'au classement « à qualifier ».
                 echeanceOrigine: (source && source.echeanceOrigine)
-                    || ((!source || !source.dateEcheance) && l.dateEcheanceRepli ? 'Grand livre' : ''),
+                    || (seDateSeule ? 'Règle' : ''),
                 dateEcheanceGrandLivre: source ? (source.dateEcheanceGrandLivre || null) : null,
                 echeance1Source: source ? (source.echeance1Source || '') : (l.echeance1Source || ''),
                 dateFactureFacturationSource: source ? (source.dateFactureFacturation || null) : null,
