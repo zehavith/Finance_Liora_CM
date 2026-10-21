@@ -343,7 +343,10 @@ const calcul=c=>{ if(!c.dateEcheance) return '';
 // pas QUOI compléter. Sa demande du 20/10/2026 : « au lieu de À compléter il
 // faut mettre type de financement à compléter ». Le libellé de la valeur n'a
 // donc plus à répéter « à compléter » : l'en-tête le dit.
-const A_COMPLETER='Type de financement à compléter';
+const A_COMPLETER='Type de financement : à compléter';
+// Excel refuse les deux-points dans un nom d'onglet, et le coupe à trente et un
+// caractères : l'onglet garde donc le libellé sans ponctuation.
+const ONGLET_A_COMPLETER='Type de financement à compléter';
 const aCompleter=c=>{
   if(!c.financement) return 'type de financement à qualifier';
   if(!c.dateEcheance) return 'aucune date d’échéance calculable';
@@ -896,14 +899,14 @@ add('À classer',cl.filter(c=>!c.financement).map(ligneCreance));
 // compléter », les ÉCRITURES que la page signale. Les deux filtres étaient devenus le même et
 // les deux onglets sortaient identiques au bit près : l'un répondait à la
 // question de l'autre.
-add(A_COMPLETER,principale.filter(o=>o[A_COMPLETER]));
+add(ONGLET_A_COMPLETER,principale.filter(o=>o[A_COMPLETER]));
 // par compte
 const parCompte=new Map();
 for(const c of cl){ const k=c.compte||'(sans compte)';
   let g=parCompte.get(k); if(!g){g={'N° de compte':k,'Client':c.tiers||'','Créances':0,'Restant dû':0,
-    'Types de financement':new Set(),'Types de financement à compléter':0}; parCompte.set(k,g);} 
+    'Types de financement':new Set(),'Types de financement : à compléter':0}; parCompte.set(k,g);} 
   g['Créances']++; g['Restant dû']+=c.resteDu||0; g['Types de financement'].add(lab(c.financement));
-  if(aCompleter(c)) g['Types de financement à compléter']++; }
+  if(aCompleter(c)) g['Types de financement : à compléter']++; }
 add('Par compte client',[...parCompte.values()].sort((a,b)=>b['Restant dû']-a['Restant dû'])
   .map(g=>({...g,'Restant dû':ar(g['Restant dû']),'Types de financement':[...g['Types de financement']].join(' · ')})));
 // ce que l'ancienne balance a appris
