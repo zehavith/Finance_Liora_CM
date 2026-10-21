@@ -317,13 +317,13 @@ const valeurBase=c=>({dateFacture:c.dateFacture, dateDebutFormation:c.dateDebutF
 // Les deux valeurs de cette colonne étaient « Règle » et « Grand livre » : des
 // mots de code, qui demandaient un lexique pour se lire. Elles se lisent
 // maintenant toutes seules, puisque le lexique a disparu à sa demande.
-const ORIGINES={'Règle':'Calculée par vos règles d’échéance',
-  'Grand livre':'Échéance reprise du grand livre'};
-const origineLisible=c=>{
-  const o=(c&&c.echeanceOrigine)||'';
-  if(!o) return (c&&c.dateEcheance)?'':'aucune date calculable';
-  return ORIGINES[o]||o;
-};
+// « Origine de l’échéance » a été retirée le 21/10/2026 : depuis que chaque
+// ligne se date par son propre document, elle affichait « Calculée par vos
+// règles d’échéance » sur les 16 080 lignes — une colonne à valeur unique, qui
+// contredisait « Exception appliquée » juste à côté en prétendant que le
+// barème avait servi là où un repli ou la date de l’encaissement avait tranché.
+// Ce qui a daté la ligne se lit dans « Exception appliquée », « Base de calcul
+// retenue » et « Détail du calcul ».
 
 const repliServi=c=>(c && c.echeanceBase==='echeance1' && c.echeance1Source) ? c.echeance1Source : '';
 
@@ -814,7 +814,6 @@ for(let i=0;i<plat.length;i++){
     // ne disait rien que celle-ci ne dise déjà, et restait vide 16 047 fois.
     'Exception appliquée':motifExplicite(src),
     'Détail du calcul':calcul(src),
-    'Origine de l’échéance':origineLisible(src),
     'Date de début de formation':fr(src.dateDebutFormation),
     'Date de fin de formation':fr(src.dateFinFormation),
     'Date de facture (facturation)':fr(src.dateFactureFacturation),
@@ -891,7 +890,6 @@ const ligneCreance=c=>({
   'Date de la base retenue':fr(valeurBase(c)), 'Délai appliqué (jours)':c.echeanceJours==null?'':c.echeanceJours,
   'Exception appliquée':motifExplicite(c),
   'Échéance recalculée':fr(c.dateEcheance), 'Détail du calcul':calcul(c),
-  'Origine de l’échéance':origineLisible(c),
   'Jours de retard':retard(c)==null?'':retard(c), 'Tranche':tranche(c),
   'Libellé de l’écriture':c.libelle||'', 'Journal':c.journal||'',
 });
@@ -958,9 +956,14 @@ add(ONGLET_A_COMPLETER,principale.filter(o=>o[A_COMPLETER]));
 // par compte
 const parCompte=new Map();
 for(const c of cl){ const k=c.compte||'(sans compte)';
-  let g=parCompte.get(k); if(!g){g={'N° de compte':k,'Client':c.tiers||'','Créances':0,'Restant dû':0,
+  let g=parCompte.get(k); if(!g){g={'N° de compte':k,'Client':c.tiers||'','Créances':0,
+    'Avoirs et lignes sans facture':0,'Restant dû':0,
     'Types de financement':new Set(),'Types de financement : à compléter':0}; parCompte.set(k,g);} 
-  g['Créances']++; g['Restant dû']+=c.resteDu||0; g['Types de financement'].add(lab(c.financement));
+  // Le même mot compte la même chose partout : « Créances » ne retient que les
+  // factures. Cet onglet comptait tout — 12 802 contre 5 060 ailleurs, sous le
+  // même intitulé. Le reste est compté à côté, sous son nom.
+  if(natureCreance(c)==='Facture') g['Créances']++; else g['Avoirs et lignes sans facture']++;
+  g['Restant dû']+=c.resteDu||0; g['Types de financement'].add(lab(c.financement));
   if(aCompleter(c)) g['Types de financement : à compléter']++; }
 add('Par compte client',[...parCompte.values()].sort((a,b)=>b['Restant dû']-a['Restant dû'])
   .map(g=>({...g,'Restant dû':ar(g['Restant dû']),'Types de financement':[...g['Types de financement']].join(' · ')})));

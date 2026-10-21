@@ -338,9 +338,14 @@ function appliquer(garderPlace){
     // prélèvement, qui annule le délai, et la refacturation après formation,
     // qui le fait courir depuis l'émission. Toutes deux sont écrites noir sur
     // blanc dans « Exception appliquée » : le filtre n'invente rien, il lit.
-    if(a==='mandat'&&V(i,'Exception appliquée')!=='Mandat de prélèvement en place') return false;
-    if(a==='posterieure'
-       &&V(i,'Exception appliquée')!=='Facture postérieure à la fin de formation') return false;
+    // Le filtre lit le MOTIF, pas une étiquette figée : les deux libellés ont
+    // été réécrits le 20/10/2026 (« Exception · mandat de prélèvement
+    // GoCardless », « Exception · facture émise après la fin de formation ») et
+    // les deux filtres ne gardaient plus rien — 1 335 écritures devenues
+    // inatteignables sans qu'un écran vide ne se distingue d'un écran sans
+    // résultat. On compare désormais sur ce qui ne bouge pas.
+    if(a==='mandat'&&!/mandat de pr/i.test(V(i,'Exception appliquée'))) return false;
+    if(a==='posterieure'&&!/post[ée]rieure|apr[èe]s la fin/i.test(V(i,'Exception appliquée'))) return false;
     if(q){ const s=(V(i,'N° de facture')+' '+V(i,'Tiers')+' '+V(i,'N° de compte')+' '
         +V(i,'Libellé de compte')+' '+V(i,'Libellé de ligne')).toLowerCase();
       if(!s.includes(q)) return false; }
