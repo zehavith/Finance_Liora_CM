@@ -2126,6 +2126,14 @@
             if (m.email) mandats.set('@' + String(m.email).trim().toLowerCase(), v);
             const nom = R.norm(m.client || m.nom || '');
             if (nom && !mandats.has(nom)) mandats.set(nom, v);
+            // GoCardless écrit « DIAW Mouhamed », le grand livre « Mouhamed
+            // Diaw » : le même client, l'ordre du nom et du prénom en moins.
+            // Une clé aux mots TRIÉS les réunit. Elle ne confond personne :
+            // sur les 1 545 tiers du grand livre, aucune n'en désigne deux —
+            // vérifié, et à condition de garder tous les mots, car jeter les
+            // plus courts fondrait « ALLIANZ I.A.R.D » dans « ALLIANZ ».
+            const trie = nom.split(/\s+/).filter(Boolean).sort().join(' ');
+            if (trie && trie !== nom && !mandats.has('~' + trie)) mandats.set('~' + trie, v);
             // Le numéro de facture d'abord : c'est le seul des trois
             // rapprochements qu'elle a nommés qui ne confonde pas deux
             // homonymes, et l'export GoCardless le porte sur ses
@@ -2360,29 +2368,66 @@
             // la colonne AA jusqu'au bout : la date lue dans le libellé, puis
             // la date d'enregistrement. Sortir ici privait d'échéance mille
             // sept cents créances sur un extrait sans colonne d'échéance.
+            // LE MANDAT SE CHERCHE AVANT TOUT LE RESTE.
+            //
+            // Il se cherchait APRÈS ce raccourci : une créance que Sellsy ne
+            // connaît pas — un vieux numéro Zoho, un solde de compte — sortait
+            // d'ici sans qu'on ait seulement regardé si son client est
+            // prélevé. Or le mandat appartient au CLIENT, pas à la facture :
+            // il se lit sur son nom, et le nom, le grand livre le porte.
+            // Mesuré : 480 créances que l'export GoCardless connaît n'étaient
+            // pas reconnues, dont une facture dont la date change vraiment.
+            const email = (d && d.email) ? '@' + d.email : '';
+            // LES DEUX NOMS, celui de la facturation ET celui du grand livre.
+            // Le code ne tentait que le premier : Sellsy écrit « Mme Kessie
+            // Raissa Kuyo » là où GoCardless et le grand livre écrivent
+            // « Kessie Raissa Kuyo », et la civilité suffisait à perdre le
+            // mandat. Les deux désignent le même client, et c'est au client
+            // qu'appartient le mandat.
+            //
+            // Pour chacun, la graphie telle quelle puis ses mots TRIÉS : deux
+            // clients s'appelaient à l'envers d'un fichier à l'autre
+            // (« DIAW Mouhamed » / « Mouhamed Diaw »). Le tri ne confond
+            // personne — sur les 1 545 tiers du grand livre, aucune clé triée
+            // n'en désigne deux.
+            const noms = [];
+            for (const n of [(d && d.client) || '', c.tiers || '']) {
+                const v = R.norm(n);
+                if (!v || noms.includes(v)) continue;
+                noms.push(v);
+                const t = v.split(/\s+/).filter(Boolean).sort().join(' ');
+                if (t !== v) noms.push('~' + t);
+            }
+            // Le numéro de facture passe devant l'e-mail et les noms : il
+            // désigne la créance elle-même, là où les autres ne désignent que
+            // le client.
+            let gcl = (c.cle && idx.mandats.get('#' + c.cle))
+                || (email && idx.mandats.get(email)) || null;
+            if (!gcl) for (const n of noms) { gcl = idx.mandats.get(n); if (gcl) break; }
+            const sousMandat = !!(gcl && gcl.etat) || mandatQuiDecide(c);
+
             if (!d && !type) {
                 // Monday peut malgré tout porter les dates de formation : les
                 // abandonner ici, c'était renoncer à dater toute l'alternance.
                 const comp0 = comp;
-                const base = (m || comp0) ? {
+                const base = {
                     ...c,
-                    dateDebutFormation: (comp0 && comp0.debut) || c.dateDebutFormation
-                        || (m ? m.debut : null) || null,
-                    dateFinFormation: (comp0 && comp0.fin) || c.dateFinFormation
-                        || (m ? m.fin : null) || null,
-                    dateFactureFacturation: c.dateFactureFacturation || (m ? m.facture : null) || null,
-                    complement: comp0 || null,
-                } : c;
+                    ...((m || comp0) ? {
+                        dateDebutFormation: (comp0 && comp0.debut) || c.dateDebutFormation
+                            || (m ? m.debut : null) || null,
+                        dateFinFormation: (comp0 && comp0.fin) || c.dateFinFormation
+                            || (m ? m.fin : null) || null,
+                        dateFactureFacturation: c.dateFactureFacturation || (m ? m.facture : null) || null,
+                        complement: comp0 || null,
+                    } : {}),
+                    mandatGocardless: sousMandat,
+                    mandatGcl: gcl ? gcl.etat : (c.mandatGcl || ''),
+                    preleveGcl: gcl ? gcl.preleve : (c.preleveGcl || 0),
+                    nbPrelevementsGcl: gcl ? gcl.nb : (c.nbPrelevementsGcl || 0),
+                };
                 return base.dateEcheance ? base
                     : { ...base, dateEcheance: base.dateEcheanceRepli || null };
             }
-            const email = (d && d.email) ? '@' + d.email : '';
-            const nom = R.norm((d && d.client) || c.tiers || '');
-            // Le numéro de facture passe devant l'e-mail et le nom : il
-            // désigne la créance elle-même, là où les deux autres désignent
-            // seulement le client.
-            const gcl = (c.cle && idx.mandats.get('#' + c.cle))
-                || (email && idx.mandats.get(email)) || (nom && idx.mandats.get(nom)) || null;
             return {
                 ...c,
                 typeClientSellsy: type || c.typeClientSellsy,
@@ -2439,7 +2484,7 @@
                 // la concordance d'échéance tombe de 96 % à 92 %. Ils sont donc
                 // montrés et exportés, sans changer l'échéance : c'est à vous
                 // de trancher, pas à l'application de décider en silence.
-                mandatGocardless: !!(gcl && gcl.etat) || mandatQuiDecide(c),
+                mandatGocardless: sousMandat,
                 etatMandat: gcl ? gcl.etat : '',
                 montantPreleve: (gcl && gcl.preleve) || c.preleveLivre || 0,
                 nbPrelevements: (gcl && gcl.nb) || c.nbPrelevementsLivre || 0,
