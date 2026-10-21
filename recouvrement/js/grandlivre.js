@@ -1168,6 +1168,14 @@
             const reste = new Map();
             for (const [k, e] of fac) reste.set(k, e.debit);
 
+            // OÙ LA RÈGLE A CHERCHÉ, dit en face de la colonne « Let. ». Un
+            // lettrage est un rapprochement que la comptabilité a fait ; le
+            // pool non lettré d'un compte n'en est pas un, et écrire « de ce
+            // lettrage » devant un « (non lettré) » dément la ligne d'à côté.
+            const ou = (g.lettre && g.lettre !== POOL_NON_LETTRE)
+                ? 'sous la même lettre de lettrage'
+                : 'parmi les écritures non lettrées de ce compte';
+
             // Les factures que la ligne nomme — son numéro retenu compris, car
             // il peut venir d'une colonne et non du libellé — réduites à celles
             // du lot. Un numéro d'avoir ne désigne pas une facture à payer.
@@ -1240,7 +1248,7 @@
                 // Une seule facture nommée, ou une écriture au débit : rien à
                 // arbitrer, l'imputation est entière — comme auparavant.
                 if (combien(l) < 2 || m <= TOLERANCE) {
-                    poser(l, [{ cle: cand[0], montant: m, motif: 'seule facture du lot que la ligne nomme' }],
+                    poser(l, [{ cle: cand[0], montant: m, motif: 'seule facture que la ligne nomme ' + ou }],
                           0, fac, false);
                     reste.set(cand[0], reste.get(cand[0]) - m);
                     continue;
@@ -1290,7 +1298,7 @@
                                  // un choix qui n'a pas eu lieu.
                                  motif: x.cand.length > 1
                                      ? 'de la plus ancienne à la plus récente, à concurrence de son reste dû'
-                                     : 'seule facture de son lettrage parmi celles qu’elle nomme' });
+                                     : 'seule facture ' + ou + ' parmi celles qu’elle nomme' });
                 }
                 // 5. LE RESTE N'EST JAMAIS FORCÉ.
                 poser(x.l, parts, libre, fac, true);
@@ -3177,8 +3185,17 @@
                 echeanceMotif: dateDeSoi
                     ? 'encaissement daté de sa propre date d’écriture'
                     : ((source && source.echeanceMotif)
+                       // La phrase doit tenir en face de la colonne « Let. ».
+                       // Les dix-sept lignes concernées sont TOUTES dans le pool
+                       // non lettré d'un compte : leur dire « dans le lettrage »
+                       // les démentait d'une colonne à l'autre, exactement comme
+                       // « hérité du même lettrage » le faisait avant elles.
                        || (seDateSeule
-                           ? 'aucune facture au débit dans le lettrage — échéance de la ligne elle-même'
+                           ? (l.lettre && l.lettre !== POOL_NON_LETTRE
+                               ? 'aucune facture au débit sous la même lettre de lettrage'
+                                 + ' — échéance de la ligne elle-même'
+                               : 'aucune facture au débit parmi les écritures non lettrées'
+                                 + ' de ce compte — échéance de la ligne elle-même')
                            : '')),
                 // De quoi justifier la date sur la ligne elle-même, sans avoir
                 // à remonter à la créance : le délai réellement appliqué,

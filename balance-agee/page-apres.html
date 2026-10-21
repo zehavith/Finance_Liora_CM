@@ -133,7 +133,11 @@ function ruban(){
     // Sa demande du 20/10/2026 : le périmètre d'imputation se lit sous le
     // pourcentage, en petit. Sans lui, deux chiffres également défendables
     // se ressemblent — 4 654 820 € au lettrage, 4 436 014 € au compte.
-    'encaissements imputés par compte client']);
+    //
+    // Et il DIT DE QUELLE IMPUTATION il parle, 21/10/2026 : il y en a deux
+    // désormais, celle du règlement sur les factures qu'il nomme, et celle-ci,
+    // qui ne sert qu'à l'assiette de la provision.
+    'imputation pour provision : par compte client']);
   E('ruban').innerHTML=tuiles.map(([e,v,n,bas])=>
     '<div class="tuile"><div class="etiq">'+e+'</div><div class="val">'+v+'</div>'
     +'<div class="note">'+n+'</div>'
@@ -554,7 +558,11 @@ function feuilleSommaire(wb,idx,nomDetail){
     ['Reste dû',T.total,EUROS,'Solde des comptes clients à la date d’arrêté'],
     ['Échu',T.echu,EUROS,'Exigible et non encaissé'],
     ['Non échu',T.nonEchu,EUROS,'Pas encore exigible'],
-    ['Créances',T.nb,ENTIER,'Lots de lettrage ouverts'],
+    // « Lots de lettrage ouverts » disait deux choses fausses d'un coup : le
+    // mot — « le mot lot n'est pas compréhensif », 21/10/2026 — et le compte
+    // lui-même, qui dénombre des FACTURES depuis sa règle du 21/10 : « une
+    // créance c'est là où il y a une facture, qu'elle ait des paiements ou pas ».
+    ['Créances',T.nb,ENTIER,'Factures restant dues'],
     ['Écritures',D.lignes.length,ENTIER,'Lignes du grand livre'],
   ]){
     const r=ws.addRow(['',k,v,n]);

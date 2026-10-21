@@ -358,10 +358,20 @@ const NATURE_MOTIF=[
   [/post[ée]rieure? [àa] la fin/i,'Exception · facture émise après la fin de formation'],
   // « Aucune facture » se lisait contre un numéro bien visible deux colonnes
   // plus loin — celui que le RÈGLEMENT ou l'AVOIR porte. Vérification faite
-  // sur les seize lots concernés : aucun ne contient d'écriture de nature
+  // sur les seize groupes concernés : aucun ne contient d'écriture de nature
   // « facture ». Le motif le dit maintenant tel quel.
-  [/aucune facture au d[ée]bit dans le lettrage/i,
-   'Repli · aucune facture au débit dans ce lot, la ligne se date elle-même'],
+  //
+  // Et il dit OÙ il a cherché, en deux versions : « le mot lot n'est pas
+  // compréhensif », 21/10/2026. Les dix-sept lignes concernées sont toutes
+  // dans le pool non lettré de leur compte ; leur écrire « dans ce lettrage »
+  // les démentirait en face de la colonne « Let. », qui annonce
+  // « (non lettré) ».
+  [/aucune facture au d[ée]bit sous la m[êe]me lettre/i,
+   'Repli · aucune facture au débit sous la même lettre de lettrage,'
+   +' la ligne se date elle-même'],
+  [/aucune facture au d[ée]bit parmi les [ée]critures non lettr[ée]es/i,
+   'Repli · aucune facture au débit parmi les écritures non lettrées du compte,'
+   +' la ligne se date elle-même'],
   [/dispositif [àa] qualifier/i,  'Repli · dispositif non qualifié au moment du calcul'],   // précisé ci-dessous
   [/derni[èe]re date du libell/i, 'Repli · dernière date lue dans le libellé'],
   [/date d[’\']enregistrement/i,  'Repli · date d’enregistrement, aucune date dans le libellé'],
@@ -671,12 +681,17 @@ const imputationLisible=l=>{
   const motifs=[...new Set(parts.map(p=>p.motif))];
   const morceaux=parts.map(p=>p.numero+' '+eurFr(p.montant));
   let t=morceaux.join(' + ');
+  // « Son lettrage » n'est vrai que si la ligne est lettrée : dans le pool non
+  // lettré d'un compte, il n'y a pas de lettrage, et le dire contredirait la
+  // colonne « Let. » d'à côté.
+  const ou=(l.lettre&&l.lettre!==GL.POOL_NON_LETTRE)
+    ?'sous la même lettre de lettrage':'parmi les écritures non lettrées du compte';
   if(reste) t=(t?t+' · ':'')+'non imputé '+eurFr(reste)
-    +(parts.length?' (les factures de son lettrage qu’elle nomme ne doivent plus rien)'
-      :' (aucune facture de son lettrage qu’elle nomme ne doit encore quelque chose)');
+    +(parts.length?' (les factures qu’elle nomme '+ou+' ne doivent plus rien)'
+      :' (aucune facture qu’elle nomme '+ou+' ne doit encore quelque chose)');
   if(motifs.length) t+=' — '+motifs.join(' ; ');
   if(l.numeroAvant && l.numeroAvant!==l.numero)
-    t+=' — la ligne portait '+l.numeroAvant+', qui n’est pas une facture de son lettrage';
+    t+=' — la ligne portait '+l.numeroAvant+', qui n’est pas une facture '+ou;
   return t;
 };
 
@@ -1268,8 +1283,8 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
           +'dispositif non qualifié, n’est pas réparti du tout : le prorata ne '
           +'choisit pas entre un type valide et un fourre-tout.'},
     ],
-    limites:'Cette règle ne déplace pas le reste dû des créances d’un lot qui contient '
-      +'des factures : celui-là est déjà réparti sur ces factures au prorata de leur '
+    limites:'Cette règle ne déplace pas le reste dû des créances d’un lettrage qui '
+      +'contient des factures : celui-là est déjà réparti sur ces factures au prorata de leur '
       +'MONTANT, la seule répartition qui laisse chaque facture avec un reste dû '
       +'cohérent avec son débit. Elle change le type de financement affiché sur les '
       +'écritures non numérotées, et celui des créances « solde de compte », qui n’ont '
