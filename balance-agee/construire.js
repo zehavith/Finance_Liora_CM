@@ -1004,7 +1004,11 @@ const synthPage=(b)=>{
     if(!g){ g={cat:nom, total:0, echu:0, nonEchu:0, crediteur:0, nb:0,
       buckets:buckets.map(()=>0)}; par.set(nom,g); out.push(g); }
     g.total+=r.total; g.echu+=r.echu; g.nonEchu+=r.nonEchu;
-    g.crediteur+=(r.crediteur||0); g.nb+=r.nb;
+    // Le compteur ne retient que les factures, ici comme dans le classeur :
+    // « une créance c'est là il y a une facture ». Cette lecture-ci était
+    // restée sur le compte brut et la page annonçait 12 802 créances quand le
+    // classeur en comptait 5 060.
+    g.crediteur+=(r.crediteur||0); g.nb+=r.nbFactures;
     buckets.forEach((x,i)=>{ g.buckets[i]+=r.buckets[x.key]; });
   }
   return out.map(g=>({...g, total:ar(g.total), echu:ar(g.echu), nonEchu:ar(g.nonEchu),
