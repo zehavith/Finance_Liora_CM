@@ -380,6 +380,8 @@ const lignesEcr=ecr.lignes||ecr;
     +Math.round(b.euros).toLocaleString('fr-FR')+' €)'
     +' · '+b.creances+' soldes de compte, dont '+b.creancesChangees+' changent ('
     +Math.round(b.eurosCreances).toLocaleString('fr-FR')+' €)');
+  console.log('règle France Travail (le montant tranche entre AIF et POEI) : '
+    +b.montant+' lignes et soldes, dont '+b.montantChangees+' changent de dispositif');
   for(const x of (b.ecartes||[]))
     console.log('   compte écarté du prorata : '+x.compte+' — ses factures portent '
       +x.types.join(' · ')+', qui n’est pas un type de financement à part entière');

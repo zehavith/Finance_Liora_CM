@@ -3408,6 +3408,7 @@
         const fins = (cle.parts || []).map(p => p.fin).filter(Boolean);
         return fins.length > 0 && fins.every(f => AIF_POEI.has(f));
     };
+    const ORIGINE_MONTANT = 'Montant du règlement (règle France Travail)';
     const parLeMontant = montant => Math.abs(montant || 0) > SEUIL_POEI ? 'POEI' : 'AIF';
     const preuveDuMontant = montant => Math.abs(montant || 0) > SEUIL_POEI
         ? 'Règle de la facturation France Travail : au-dessus de 7 000 €, une POEI'
@@ -3417,8 +3418,47 @@
         const cles = cleDuCompte(lignes);
         const bilan = { comptes: 0, lignes: 0, lignesChangees: 0, euros: 0,
                         creances: 0, creancesChangees: 0, eurosCreances: 0,
+                        montant: 0, montantChangees: 0,
                         ecartes: cles.ecartes || [] };
-        if (!cles.size) return bilan;
+
+        // La règle France Travail vaut aussi HORS prorata. Sur un compte à
+        // dispositif unique — 411C000194049, cent une écritures toutes AIF —
+        // le prorata n'a rien à départager, et l'encaissement tenait son
+        // dispositif d'une facture voisine non lettrée. « Oui étends la règle
+        // aux 12 autres », 21/10/2026 : ce qui vaut par le montant ne doit pas
+        // valoir par coïncidence.
+        //
+        // Même porte d'entrée que le prorata : l'écriture ne nomme aucune
+        // facture et n'est pas lettrée. Nommée ou lettrée, son classement est
+        // prouvé et rien ne le remplace.
+        const parMontantSeul = (objet, montant, poser) => {
+            if (objet.numero) return false;
+            if (objet.lettre && objet.lettre !== POOL_NON_LETTRE) return false;
+            if (!AIF_POEI.has(objet.financement)) return false;
+            if (objet.origineClassement === ORIGINE_MONTANT) return false;
+            const fin = parLeMontant(montant);
+            bilan.montant++;
+            if (objet.financement !== fin) { bilan.montantChangees++; poser(fin); }
+            objet.financement = fin;
+            objet.typeClient = typeDeClient(fin, o) || objet.typeClient || null;
+            objet.origineClassement = ORIGINE_MONTANT;
+            objet.preuveClassement = preuveDuMontant(montant);
+            return true;
+        };
+        const passeDuMontant = () => {
+            for (const l of (lignes || [])) {
+                if (l.nature !== 'reglement' && l.nature !== 'avoir') continue;
+                parMontantSeul(l, Math.abs(l.debit || 0) + Math.abs(l.credit || 0),
+                               fin => Object.assign(l, datation(l, fin, o)));
+            }
+            for (const c of (creances || [])) {
+                if (c.cle) continue;
+                parMontantSeul(c, Math.abs(c.resteDu || 0),
+                               fin => Object.assign(c, datation(c, fin, o)));
+            }
+        };
+
+        if (!cles.size) { passeDuMontant(); return bilan; }
 
         // ── les écritures ──
         const parCompte = new Map();
@@ -3475,6 +3515,7 @@
             }
             for (const [l, fin] of choix) {
                 bilan.lignes++;
+                if (parMontant) { bilan.montant++; if (l.financement !== fin) bilan.montantChangees++; }
                 if (l.financement !== fin) { bilan.lignesChangees++; bilan.euros += mt(l);
                     // Un reclassement change le barème, donc la date : la même
                     // règle que pour un reclassement à la main. Sans cela une
@@ -3483,8 +3524,7 @@
                     Object.assign(l, datation(l, fin, o)); }
                 l.financement = fin;
                 l.typeClient = typeDeClient(fin, o) || l.typeClient || null;
-                l.origineClassement = parMontant
-                    ? 'Montant du règlement (règle France Travail)'
+                l.origineClassement = parMontant ? ORIGINE_MONTANT
                     : 'Réparti au prorata des factures du client';
                 l.preuveClassement = parMontant ? preuveDuMontant(mt(l))
                     : phraseDeLaCle(cle, cles.nom.get(compte) || compte, fin, pose, masse, o);
@@ -3520,6 +3560,7 @@
             }
             for (const [c, fin] of choix) {
                 bilan.creances++;
+                if (parMontant) { bilan.montant++; if (c.financement !== fin) bilan.montantChangees++; }
                 if (c.financement !== fin) {
                     bilan.creancesChangees++;
                     bilan.eurosCreances += Math.abs(c.resteDu || 0);
@@ -3527,13 +3568,15 @@
                 Object.assign(c, datation(c, fin, o));
                 c.financement = fin;
                 c.typeClient = typeDeClient(fin, o) || c.typeClient || null;
-                c.origineClassement = parMontant
-                    ? 'Montant du règlement (règle France Travail)'
+                c.origineClassement = parMontant ? ORIGINE_MONTANT
                     : 'Réparti au prorata des factures du client';
                 c.preuveClassement = parMontant ? preuveDuMontant(c.resteDu)
                     : phraseDeLaCle(cle, cles.nom.get(compte) || compte, fin, pose, masse, o);
             }
         }
+        // En dernier, pour que ce qui est annoncé soit ce qui est appliqué : le
+        // prorata ne réécrit pas par-dessus.
+        passeDuMontant();
         return bilan;
     }
 
