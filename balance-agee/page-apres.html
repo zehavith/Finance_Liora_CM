@@ -696,35 +696,10 @@ function provisionRegles(ws){
   const fen=PROV.fenetres||[], taux=PROV.taux||{};
   if(!fen.length) return;
   ws.addRow([]);
-  // Le même texte que la section « Paramètres » de la page, pour qu'un lecteur
-  // du classeur seul comprenne le chiffre sans avoir la page sous les yeux.
-  for(const [titre,corps] of [
-    ['',
-     'Le montant à provisionner est la somme, sur toutes les créances, de leur assiette '
-     +'multipliée par le taux de leur famille dans la fenêtre où tombe leur ancienneté.'],
-    ['Sur quoi porte le taux — l’assiette',
-     'L’assiette d’une créance est son reste dû, diminué des encaissements et avoirs du même '
-     +'lettrage qui ne sont rattachés à aucune facture. Ces crédits s’imputent sur les dettes '
-     +'du lot de la plus ancienne à la plus récente — l’imputation de droit commun. Sans cette '
-     +'déduction, une facture déjà réglée par un virement non pointé serait provisionnée à '
-     +'100 % alors que le client ne doit plus rien. Une créance dont l’assiette est nulle ou '
-     +'négative ne se provisionne pas : il n’y a pas de perte à couvrir. L’ancienneté, elle, '
-     +'reste celle de chaque créance.'],
-    ['À partir de quand — les quatre fenêtres',
-     'Les fenêtres se comptent en jours de retard depuis l’échéance et coïncident exactement '
-     +'avec les tranches de la balance âgée, un mois valant trente jours : 121-180 j = '
-     +'« 4 à 6 mois » ; 181-360 j = « 6 à 12 mois » ; 361-720 j = « 12 à 18 » et « 18 à 24 mois » '
-     +'réunies ; au-delà de 720 j = « 24 à 36 », « 36 à 48 » et « > 48 mois ». Aucune tranche '
-     +'n’est coupée, rien n’est proratisé. En deçà de 121 jours de retard, et sur tout ce qui '
-     +'n’est pas échu, la provision est nulle.'],
-    ['Quel taux — les trois familles',
-     'Chaque type de financement appartient à une famille, et c’est la famille qui porte le '
-     +'taux. Le rattachement complet est donné plus bas. Un type de financement rattaché à '
-     +'aucune famille n’est pas provisionné, et la feuille le signale.'],
-  ]){
-    if(titre) bande(ws,titre,{bold:true,size:10,color:{argb:ENCRE3}});
-    bande(ws,corps,{color:{argb:ENCRE3},size:10});
-  }
+  // L'exposé de la règle de provision a quitté le classeur le 21/10/2026 :
+  // « retire ça de l'export ». Il reste là où elle le lit, sous les
+  // paramètres de la page. Le classeur garde les taux et le rattachement —
+  // des chiffres, pas un cours.
   if(!PROV.confirme) bande(ws,'Le rattachement des types de financement aux trois familles '
     +'n’est pas encore confirmé : celui qui est appliqué ci-dessous est une proposition.',
     {color:{argb:'FFA06B14'},size:10});
@@ -1049,14 +1024,21 @@ function assiettes(){
   const lots=new Map(), vues=new Set();
   for(const i of I){
     const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
-    const j=V(i,'Jours de retard');
+    // L'ancienneté de la CRÉANCE : un encaissement porte sa propre date
+    // depuis le 20/10/2026, et l'ordre d'imputation ne doit pas en dépendre.
+    const jc=V(i,'Jours de retard de la créance');
+    const j=jc!==''?jc:V(i,'Jours de retard');
     const lot=V(i,'N° de compte');
     if(!lots.has(lot)) lots.set(lot,[]);
     lots.get(lot).push({k, rd:N(i,'Reste dû de la créance'), j:j===''?-1:Number(j)});
   }
   for(const [,g] of lots){
     let credit=-g.filter(c=>c.rd<0).reduce((s,c)=>s+c.rd,0);
-    for(const c of g.filter(c=>c.rd>0).sort((a,b)=>b.j-a.j)){
+    // L'ordre d'imputation doit être TOTAL, sinon le chiffre dépend de
+    // l'ordre de lecture : deux créances du même âge se départagent par leur
+    // clé. Sans ce départage, la page et le contrôle annonçaient 4 048 692,24 €
+    // et 4 047 124,73 € — 1 567,51 € d'écart sur rien d'autre que l'ordre.
+    for(const c of g.filter(c=>c.rd>0).sort((a,b)=>b.j-a.j||(a.k<b.k?-1:a.k>b.k?1:0))){
       const pris=Math.min(credit,c.rd); credit-=pris;
       ASSIETTE.set(c.k, c.rd-pris);
     }

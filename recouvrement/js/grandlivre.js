@@ -2987,11 +2987,15 @@
                           : parCategorie ? cle : R.getRule(c.financement, rules).label,
                       total: 0, echu: 0, nonEchu: 0, nb: 0, crediteur: 0, nbCrediteur: 0,
                       sansDate: 0, nbSansDate: 0,
-                      // « Nb » compte les créances, et une créance n'est pas
-                      // toujours une facture : un solde sans facture — acompte,
-                      // écart de règlement — en est une aussi. Les deux sont
-                      // donc comptés à part.
-                      nbFactures: 0, nbSansFacture: 0,
+                      // « Une créance c'est là il y a une facture, qu'elle ait
+                      // des paiements ou pas » — « pas d'avoir par contre »,
+                      // 21/10/2026. Trois compteurs, donc : les factures, qui
+                      // seules font les créances ; les avoirs ; et ce qui ne
+                      // porte aucun numéro — acompte, écart de règlement,
+                      // encaissement que rien ne rattache. Les trois lignes
+                      // existent dans la balance et pèsent leur montant ; une
+                      // seule des trois se compte en créances.
+                      nbFactures: 0, nbAvoirs: 0, nbSansFacture: 0,
                       buckets: {}, creances: [] };
                 for (const b of R.AGING_BUCKETS) l.buckets[b.key] = 0;
                 lignes.set(cle, l);
@@ -3018,7 +3022,9 @@
             const bucket = R.bucketFor(retard) || R.AGING_BUCKETS[0];
 
             l.nb++;
-            if (c.sansNumero) l.nbSansFacture++; else l.nbFactures++;
+            if (c.sansNumero) l.nbSansFacture++;
+            else if (EST_AVOIR.test(String(c.numero || ''))) l.nbAvoirs++;
+            else l.nbFactures++;
             l.total += c.resteDu;
 
             // Une créance sans la moindre date — ni échéance, ni date de
@@ -3048,13 +3054,14 @@
 
         const total = { label: 'TOTAL', cle: '__TOTAL__', total: 0, echu: 0, nonEchu: 0, nb: 0,
                         crediteur: 0, nbCrediteur: 0, sansDate: 0, nbSansDate: 0,
-                        nbFactures: 0, nbSansFacture: 0, buckets: {} };
+                        nbFactures: 0, nbAvoirs: 0, nbSansFacture: 0, buckets: {} };
         for (const b of R.AGING_BUCKETS) total.buckets[b.key] = 0;
         for (const r of rows) {
             total.total += r.total; total.echu += r.echu; total.nonEchu += r.nonEchu; total.nb += r.nb;
             total.crediteur += r.crediteur; total.nbCrediteur += r.nbCrediteur;
             total.sansDate += r.sansDate; total.nbSansDate += r.nbSansDate;
-            total.nbFactures += r.nbFactures; total.nbSansFacture += r.nbSansFacture;
+            total.nbFactures += r.nbFactures; total.nbAvoirs += r.nbAvoirs;
+            total.nbSansFacture += r.nbSansFacture;
             for (const b of R.AGING_BUCKETS) total.buckets[b.key] += r.buckets[b.key];
         }
 

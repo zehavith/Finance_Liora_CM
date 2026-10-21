@@ -793,6 +793,12 @@ for(let i=0;i<plat.length;i++){
     // Une créance « À classer » n'a pas de dispositif, donc pas de type — et
     // « Inconnu » n'est pas un type de client, c'est une absence.
     'Type de client de la créance':troisTypes(propre?(propre.typeClient||R.categorieDe(propre.financement,RG)||''):''),
+    // L'ancienneté DE LA CRÉANCE, et non celle de la ligne : c'est elle qui
+    // ordonne l'imputation des crédits non rattachés dans le calcul de la
+    // provision. La ligne pouvait être un encaissement — daté de sa propre
+    // date depuis le 20/10/2026 — et l'ordre d'imputation s'en trouvait
+    // changé : 1 567,51 € d'écart entre la page et le contrôle.
+    'Jours de retard de la créance':propre?(retard(propre)==null?'':retard(propre)):'',
     'Tranche de la créance':propre?tranche(propre):'',
     // L'identité de la créance, telle que le moteur la forme : compte, lettre
     // de lettrage, numéro. Sans elle, la page ne peut pas réagréger — plusieurs
@@ -836,8 +842,14 @@ const ligneSynth=(r,col,total)=>{ const o={}; o[col]=r.label;
   o['Restant dû']=ar(r.total); o['Échu']=ar(r.echu);
   for(const b of buckets) o[b.label]=ar(r.buckets[b.key]);
   o['Non échu']=ar(r.nonEchu); o['dont créditeur']=ar(r.crediteur||0);
-  o['Sans date']=ar(r.sansDate||0); o['Créances']=r.nb;
-  o['Part des créances']=(total&&total.nb)?Math.round(r.nb/total.nb*10000)/10000:'';
+  o['Sans date']=ar(r.sansDate||0);
+  // « Une créance c'est là il y a une facture, qu'elle ait des paiements ou
+  // pas » — « pas d'avoir par contre », 21/10/2026. Le compteur ne retient
+  // donc que les factures : les avoirs et les lignes sans numéro pèsent leur
+  // montant dans le restant dû, mais ne sont pas des créances.
+  o['Créances']=r.nbFactures;
+  o['Part des créances']=(total&&total.nbFactures)
+    ?Math.round(r.nbFactures/total.nbFactures*10000)/10000:'';
   return o; };
 const wb=X.utils.book_new();
 // Excel refuse un nom d'onglet au-delà de 31 caractères. Le tronquer en
@@ -861,7 +873,7 @@ const rang=l=>{const i=ORDRE.indexOf(l); return i<0?ORDRE.length+1:i;};
 const catRows=[...balCat.rows].sort((a,b)=>rang(a.label)-rang(b.label)||b.total-a.total);
 // Une catégorie sans créance ouverte figure quand même, à zéro : son absence
 // se lit alors comme un fait, pas comme un oubli.
-const vide=l=>({label:l,total:0,echu:0,nonEchu:0,nb:0,crediteur:0,sansDate:0,
+const vide=l=>({label:l,total:0,echu:0,nonEchu:0,nb:0,nbFactures:0,nbAvoirs:0,nbSansFacture:0,crediteur:0,sansDate:0,
   buckets:Object.fromEntries(R.AGING_BUCKETS.map(b=>[b.key,0]))});
 for(const l of ORDRE) if(!catRows.some(r=>r.label===l)) catRows.splice(rang(l),0,vide(l));
 // Une ligne « À classer » à zéro ne dit rien : elle sort du tableau. Les six
@@ -1073,7 +1085,7 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
   // sous-catégorie ensuite, pour le détail du dispositif.
   syntheseCat:[...catRows,balCat.total].map(r=>({
     cat:r===balCat.total?'TOTAL':r.label, total:ar(r.total), echu:ar(r.echu), nonEchu:ar(r.nonEchu),
-    crediteur:ar(r.crediteur||0), nb:r.nb, buckets:buckets.map(x=>ar(r.buckets[x.key]))})),
+    crediteur:ar(r.crediteur||0), nb:r.nbFactures, buckets:buckets.map(x=>ar(r.buckets[x.key]))})),
   synthese:synthPage(bal),
   // Le trop-perçu, lu par COMPTE CLIENT et non par lettrage. Un règlement non
   // pointé qui fait face à une facture impayée du même compte n'est pas de
