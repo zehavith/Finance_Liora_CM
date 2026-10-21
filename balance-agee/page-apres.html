@@ -341,15 +341,15 @@ function appliquer(garderPlace){
     // Les deux exceptions au barème, demandées le 16/10/2026 : le mandat de
     // prélèvement, qui annule le délai, et la refacturation après formation,
     // qui le fait courir depuis l'émission. Toutes deux sont écrites noir sur
-    // blanc dans « Exception appliquée » : le filtre n'invente rien, il lit.
+    // blanc dans « Règle de datation appliquée » : le filtre n'invente rien, il lit.
     // Le filtre lit le MOTIF, pas une étiquette figée : les deux libellés ont
     // été réécrits le 20/10/2026 (« Exception · mandat de prélèvement
     // GoCardless », « Exception · facture émise après la fin de formation ») et
     // les deux filtres ne gardaient plus rien — 1 335 écritures devenues
     // inatteignables sans qu'un écran vide ne se distingue d'un écran sans
     // résultat. On compare désormais sur ce qui ne bouge pas.
-    if(a==='mandat'&&!/mandat de pr/i.test(V(i,'Exception appliquée'))) return false;
-    if(a==='posterieure'&&!/post[ée]rieure|apr[èe]s la fin/i.test(V(i,'Exception appliquée'))) return false;
+    if(a==='mandat'&&!/mandat de pr/i.test(V(i,'Règle de datation appliquée'))) return false;
+    if(a==='posterieure'&&!/post[ée]rieure|apr[èe]s la fin/i.test(V(i,'Règle de datation appliquée'))) return false;
     if(q){ const s=(V(i,'N° de facture')+' '+V(i,'Tiers')+' '+V(i,'N° de compte')+' '
         +V(i,'Libellé de compte')+' '+V(i,'Libellé de ligne')).toLowerCase();
       if(!s.includes(q)) return false; }
@@ -1304,7 +1304,7 @@ function fiche(i){
     h+='</div>';
   }
   if(cal) h+='<p class="calcul">'+cal
-    +(g('Exception appliquée')?'<br><span style="color:var(--encre-2)">motif : '+g('Exception appliquée')+'</span>':'')
+    +(g('Règle de datation appliquée')?'<br><span style="color:var(--encre-2)">motif : '+g('Règle de datation appliquée')+'</span>':'')
     +'</p>';
   h+='<div class="champs">';
   for(const nom of D.cols){
@@ -1412,7 +1412,7 @@ function lignesParRegle(){
   const pose=r=>PAR_RANG.set(r,(PAR_RANG.get(r)||0)+1);
   for(const i of I){
     if(!V(i,'Date d’échéance recalculée')) continue;
-    const m=String(V(i,'Exception appliquée')||'');
+    const m=String(V(i,'Règle de datation appliquée')||'');
     if(/mandat de pr/i.test(m)){ pose('1'); continue; }
     if(/apr[èe]s la fin de formation/i.test(m)){ pose('2'); continue; }
     // Le repli se lit dans le motif, qui nomme la date retenue. L'ordre

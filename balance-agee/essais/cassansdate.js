@@ -105,8 +105,13 @@ ok('  … chacune sur sa propre échéance 1', j(e.find(l=>l.credit>0).dateEchea
 // date » (20/10/2026) ; le débit, lui, ne trouve aucune facture au débit du
 // lettrage et retombe sur son échéance 1.
 ok('  … et le motif dit pourquoi',
-   /encaissement dat[ée] de sa propre date/i.test(e.find(l=>l.credit>0).echeanceMotif||'')
+   /^encaissement dat[ée] /i.test(e.find(l=>l.credit>0).echeanceMotif||'')
    && /aucune facture/i.test(e.find(l=>l.debit>0).echeanceMotif||''));
+// Et il NOMME la date qui a servi : « si tu as pris la date d'enregistrement,
+// cite celle-ci », 21/10/2026. Ici la ligne porte une colonne « Date », c'est
+// donc sa date d'écriture.
+ok('  … et il nomme la date retenue',
+   /dat[ée] à sa date d’écriture/.test(e.find(l=>l.credit>0).echeanceMotif||''));
 
 console.log('\n=== une date retenue n’est jamais muette ===');
 // Tout ce qui est daté dit d'où la date vient : c'est la condition de l'audit.

@@ -343,14 +343,14 @@ const valeurBase=c=>({dateFacture:c.dateFacture, dateDebutFormation:c.dateDebutF
 // « Origine de l’échéance » a été retirée le 21/10/2026 : depuis que chaque
 // ligne se date par son propre document, elle affichait « Calculée par vos
 // règles d’échéance » sur les 16 080 lignes — une colonne à valeur unique, qui
-// contredisait « Exception appliquée » juste à côté en prétendant que le
+// contredisait « Règle de datation appliquée » juste à côté en prétendant que le
 // barème avait servi là où un repli ou la date de l’encaissement avait tranché.
-// Ce qui a daté la ligne se lit dans « Exception appliquée », « Base de calcul
+// Ce qui a daté la ligne se lit dans « Règle de datation appliquée », « Base de calcul
 // retenue » et « Détail du calcul ».
 
 const repliServi=c=>(c && c.echeanceBase==='echeance1' && c.echeance1Source) ? c.echeance1Source : '';
 
-// « Exception appliquée » mélangeait deux natures : les deux exceptions qui
+// « Règle de datation appliquée » mélangeait deux natures : les deux exceptions qui
 // passent AVANT le barème, et les replis qui viennent APRÈS faute de base.
 // Chaque motif dit maintenant laquelle des deux il est.
 const NATURE_MOTIF=[
@@ -375,9 +375,30 @@ const NATURE_MOTIF=[
   [/dispositif [àa] qualifier/i,  'Repli · dispositif non qualifié au moment du calcul'],   // précisé ci-dessous
   [/derni[èe]re date du libell/i, 'Repli · dernière date lue dans le libellé'],
   [/date d[’\']enregistrement/i,  'Repli · date d’enregistrement, aucune date dans le libellé'],
-  [/encaissement dat[ée] de sa propre date/i,
-   'Encaissement · daté de sa propre date, pas de celle de la facture'],
-  // La colonne « Exception appliquée » sert à FILTRER : elle nomme la règle,
+  // « Ça ne veut rien dire, formule ça de manière pro », 21/10/2026 — et la
+  // phrase doit dire LAQUELLE des trois dates a servi. Le motif la nomme déjà ;
+  // l'étiquette le reprend tel quel au lieu d'une formule unique et vague.
+  [/^encaissement dat[ée] /i, c=>'Encaissement · '
+    +String(c.echeanceMotif||'').replace(/^encaissement /i,'')],
+  // DEUX EN-TÊTES QUI MENTAIENT, 21/10/2026.
+  //
+  // « Prk tu as pris une date dite exceptionnelle alors qu'on a des dates de
+  // début et fin de formation ? » — devant un encaissement de Pôle Emploi qui
+  // affichait « EXCEPTION APPLIQUÉE » et « BARÈME APPLIQUÉ : fin de formation
+  // + 60 j », et une date qui ne suivait ni l'un ni l'autre.
+  //
+  // Les deux en-têtes promettaient ce qu'ils ne tenaient pas :
+  //  — « Exception appliquée » : 7 949 encaissements et 2 931 replis la
+  //    remplissent, soit les deux tiers du grand livre. Dater un encaissement
+  //    du jour où l'argent est rentré n'est pas une exception, c'est la règle.
+  //    Elle se nomme donc « Règle de datation appliquée ».
+  //  — « Barème appliqué » : sur un encaissement, le barème affiché est celui
+  //    de la facture réglée, et il n'est PAS appliqué — la ligne porte sa
+  //    propre date. L'en-tête dit maintenant ce qu'il montre vraiment : le
+  //    « Barème du dispositif ». Ce qui a daté la ligne se lit à côté, dans
+  //    « Base de calcul retenue » et « Détail du calcul ».
+  //
+  // La colonne sert à FILTRER : elle nomme la règle,
   // pas le cas. Le numéro de la facture parente reste dans « Détail du
   // calcul », qui, lui, raconte la ligne.
   [/avoir dat[ée] par la facture qu/i,
@@ -385,7 +406,10 @@ const NATURE_MOTIF=[
 ];
 const motifExplicite=c=>{
   const m=(c&&c.echeanceMotif)||''; if(!m) return '';
-  for(const [re,lib] of NATURE_MOTIF) if(re.test(m)){
+  for(const [re,lib0] of NATURE_MOTIF) if(re.test(m)){
+    // Une étiquette peut être une fonction quand elle reprend ce que le motif
+    // a nommé — la date retenue, par exemple.
+    const lib=typeof lib0==='function'?lib0(c):lib0;
     // Un repli doit toujours nommer la date qu'il a prise. Pour le dispositif
     // non qualifié, le motif ne disait que la raison ; la source se lisait
     // dans une colonne « Repli appliqué » qui ne servait qu'à ça, et qui
@@ -863,7 +887,13 @@ for(let i=0;i<plat.length;i++){
   if(l.nature==='reglement' && l.date){
     src.dateEcheance=l.date; src.echeanceBase='dateReglement'; src.echeanceJours=0;
     src.echeanceOrigine='Règle';
-    src.echeanceMotif='encaissement daté de sa propre date d’écriture';
+    // La phrase NOMME la date qui a servi : « si tu as pris la date
+    // d'enregistrement, cite celle-ci », 21/10/2026. Sur 7 949 encaissements,
+    // 6 470 sont des reports à nouveau datés par la dernière date de leur
+    // libellé, et 1 479 seulement par leur colonne « Date » — annoncer « sa
+    // propre date d'écriture » était faux pour quatre sur cinq.
+    src.echeanceMotif='encaissement daté '+GL.nomDeLaDate(l.dateSource)
+      +', non à l’échéance de la facture';
   }
 
   // ── UN AVOIR VIEILLIT AVEC LA FACTURE QU'IL ANNULE ──
@@ -1017,14 +1047,14 @@ for(let i=0;i<plat.length;i++){
     'Date d’échéance recalculée':fr(src.dateEcheance),
     'Jours de retard':retard(src)==null?'':retard(src),
     'Tranche d’ancienneté':tranche(src),
-    'Barème appliqué':bareme(src),
+    'Barème du dispositif':bareme(src),
     'Base de calcul retenue':src.echeanceBase?(BASES[src.echeanceBase]||src.echeanceBase):'',
     'Date de la base retenue':fr(valeurBase(src)),
     'Délai appliqué (jours)':src.echeanceJours==null?'':src.echeanceJours,
     // L'exception ou le repli se lit contre le délai qu'il a remplacé, pas
     // trois colonnes plus loin. « Motif de l'écart au barème » a disparu : il
     // ne disait rien que celle-ci ne dise déjà, et restait vide 16 047 fois.
-    'Exception appliquée':motifExplicite(src),
+    'Règle de datation appliquée':motifExplicite(src),
     'Détail du calcul':calcul(src),
     'Date de début de formation':fr(src.dateDebutFormation),
     'Date de fin de formation':fr(src.dateFinFormation),
@@ -1098,9 +1128,9 @@ const ligneCreance=c=>({
   'Date de facture':fr(c.dateFacture), 'Début de formation':fr(c.dateDebutFormation),
   'Fin de formation':fr(c.dateFinFormation), 'Date de facture (facturation)':fr(c.dateFactureFacturation),
   'Échéance du grand livre':fr(c.dateEcheanceGrandLivre),
-  'Barème appliqué':bareme(c), 'Base de calcul retenue':c.echeanceBase?(BASES[c.echeanceBase]||c.echeanceBase):'',
+  'Barème du dispositif':bareme(c), 'Base de calcul retenue':c.echeanceBase?(BASES[c.echeanceBase]||c.echeanceBase):'',
   'Date de la base retenue':fr(valeurBase(c)), 'Délai appliqué (jours)':c.echeanceJours==null?'':c.echeanceJours,
-  'Exception appliquée':motifExplicite(c),
+  'Règle de datation appliquée':motifExplicite(c),
   'Échéance recalculée':fr(c.dateEcheance), 'Détail du calcul':calcul(c),
   'Jours de retard':retard(c)==null?'':retard(c), 'Tranche':tranche(c),
   'Libellé de l’écriture':c.libelle||'', 'Journal':c.journal||'',
@@ -1412,7 +1442,7 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
   },
   // La nature de chaque règle, à sa demande du 20/10/2026 : une exception
   // passe AVANT le barème et l'écarte ; un repli vient APRÈS, faute de base.
-  // C'est le même vocabulaire que la colonne « Exception appliquée ».
+  // C'est le même vocabulaire que la colonne « Règle de datation appliquée ».
   ordreEcheance:[
     {rang:'1', nature:'Règle exception',
      quand:'Le client a un mandat de prélèvement GoCardless',

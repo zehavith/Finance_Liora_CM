@@ -32,7 +32,7 @@ let bConf=0, bExc=new Map(), bEcart=[];
 for(const r of L){
   const disp=V(r,'Type de financement'), reg=BAR.get(disp);
   const base=V(r,'Base de calcul retenue'), j=N(r,'Délai appliqué (jours)');
-  const org=V(r,'Origine de l’échéance'), exc=V(r,'Exception appliquée'), rep=V(r,'Repli appliqué');
+  const org=V(r,'Origine de l’échéance'), exc=V(r,'Règle de datation appliquée'), rep=V(r,'Repli appliqué');
   if(!reg){ bEcart.push({disp,pourquoi:'dispositif hors barème'}); continue; }
   const attBase=String(reg.base||''), attJ=Number(reg.jours===''?0:reg.jours);
   if(base===attBase && j===attJ){ bConf++; continue; }

@@ -353,6 +353,20 @@
      */
     const POOL_NON_LETTRE = '(non lettré)';
 
+    /**
+     * Le nom de la date qui a servi, pour les phrases publiées.
+     *
+     * « Si tu as pris la date d'enregistrement, cite celle-ci », 21/10/2026.
+     * Une écriture tient sa date de sa colonne « Date », à défaut de la
+     * dernière date lue dans son libellé, à défaut de sa date
+     * d'enregistrement : la phrase dit laquelle des trois.
+     */
+    function nomDeLaDate(source) {
+        if (source === 'enregistrement') return 'à sa date d’enregistrement';
+        if (source === 'libellé') return 'à la dernière date de son libellé';
+        return 'à sa date d’écriture';
+    }
+
     // Une écriture sans lettre est rangée dans un lot fictif, propre à son
     // compte, dont la clé est POOL_NON_LETTRE. Dire alors « hérité de la
     // facture du même lettrage » affirme un rapprochement comptable qui n'a
@@ -509,6 +523,15 @@
             const date = (aNouveau && dateTexte) ? dateTexte
                 : (R.parseDate(col(r, 'date')) || dateTexte
                    || R.parseDate(col(r, 'dateEnregistrement')));
+            // D'OÙ VIENT CETTE DATE. « Si tu as pris la date d'enregistrement,
+            // cite celle-ci », 21/10/2026 : une phrase qui dit « daté de sa
+            // propre date » ne dit rien, puisque la date d'une écriture peut
+            // venir de trois endroits. Celui qui a servi est noté ici, et les
+            // motifs le nomment.
+            const dateSource = !date ? ''
+                : ((aNouveau && dateTexte) ? 'libellé'
+                   : (R.parseDate(col(r, 'date')) ? 'écriture'
+                      : (dateTexte ? 'libellé' : 'enregistrement')));
 
             // Le numéro porté par sa colonne d'abord ; à défaut, celui que cite
             // le libellé — c'est ainsi que se rattache un règlement bancaire.
@@ -708,7 +731,7 @@
 
             const ligne = {
                 brut,
-                numero, numeroExtrait, qualif, date, debit, credit, journal,
+                numero, numeroExtrait, qualif, date, dateSource, debit, credit, journal,
                 citees,
                 libelle: String(col(r, 'libelle') || '').trim(),
                 // Votre colonne AA n'est pas une donnée du grand livre : c'est
@@ -2766,6 +2789,7 @@
             for (const [quoi, liste] of nature) {
                 for (const l of liste) out.push({
                     nature: quoi, cleGroupe: g.cle, numero: l.numero, date: l.date,
+                    dateSource: l.dateSource || '',
                     libelle: l.libelle, journal: l.journal, debit: l.debit, credit: l.credit,
                     compte: g.compte, tiers: g.tiers, lettre: g.lettre,
                     identifiantTiers: g.identifiantTiers || '',
@@ -3267,7 +3291,8 @@
                     : ((source && source.echeanceBase)
                        || (seDateSeule ? 'echeance1' : '')),
                 echeanceMotif: dateDeSoi
-                    ? 'encaissement daté de sa propre date d’écriture'
+                    ? 'encaissement daté ' + nomDeLaDate(l.dateSource)
+                      + ', non à l’échéance de la facture'
                     : ((source && source.echeanceMotif)
                        // La phrase doit tenir en face de la colonne « Let. ».
                        // Les dix-sept lignes concernées sont TOUTES dans le pool
@@ -4030,7 +4055,7 @@
         pointageParMois, pointageParFinancement, ecrituresAPlat, balanceAgee, comparer,
         dateDepuisTexte,
         MOTIFS_COMPTE, financementDuLibelle, typeDeClient, SEUIL_POEI,
-        COLONNES, TOLERANCE, EST_FACTURE, EST_AVOIR,
+        COLONNES, TOLERANCE, EST_FACTURE, EST_AVOIR, nomDeLaDate,
         detecterColonnes, estComptable, lettreDe, lire, lireComptable, lireSimple,
     };
 })(window);
