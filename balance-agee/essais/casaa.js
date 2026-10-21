@@ -29,7 +29,14 @@ const c=GL.classer(GL.creancesOuvertes(lu),{rules:RG,sellsy:[],mandats:[],refere
 ok('l’échéance de Pennylane (31/12/2026) n’est pas reprise', j(c.dateEcheance)!=='2026-12-31');
 ok('c’est la DERNIÈRE date du libellé qui sert (14/03/2025)', j(c.dateEcheance)==='2025-03-14');
 ok('  … le dispositif est bien reconnu', c.financement==='CPF');
-ok('  … et l’origine de la date le dit', c.echeanceOrigine==='Grand livre');
+// L'origine dit QUI décide de la date, et c'est sa règle du 14/10/2026 :
+// « on ne met pas de date arbitraire mais par défaut on prend la date
+// d'échéance 1 ». La date est lue au grand livre, la décision est la règle —
+// seule la colonne « Date d'échéance » du fichier, reprise telle quelle,
+// s'annonce « Grand livre ». Le motif, lui, nomme la source exacte.
+ok('  … et l’origine de la date le dit', c.echeanceOrigine==='Règle');
+ok('  … la base retenue est l’échéance 1', c.echeanceBase==='echeance1');
+ok('  … et le motif nomme le libellé', c.echeanceMotif==='dernière date du libellé');
 ok('  … sans ajouter le délai du barème', c.echeanceJours===0);
 
 console.log('\n=== sans date dans le libellé : la date d’enregistrement ===');

@@ -74,7 +74,19 @@
         numeroExtrait: ['numero de facture zoho extrait du libelle de ligne',
                         'numero de facture zoho extrait', 'numero extrait du libelle',
                         'numero de facture extrait'],
-        libelle:      ['libelle de piece', 'libelle piece', 'libelle de ligne', 'libelle', 'intitule'],
+        // Le libellé de ligne porte souvent le numéro de facture que la colonne
+        // dédiée laisse vide : sur un extrait réel, il en révèle 5 862 de plus
+        // que les 3 756 déjà nommées, soit deux fois et demie plus. Il se
+        // réclame AVANT le libellé de pièce, et celui-ci ne le réclame plus :
+        // un fichier qui ne porte qu'une colonne « Libellé de ligne » la
+        // voyait partir au libellé de pièce, d'où les dates ne se lisent pas.
+        // La colonne existait, la date était dedans, et la ligne ressortait
+        // datée de son enregistrement.
+        libelleLigne: ['libelle de ligne', 'libelle ligne', 'detail', 'libelle ecriture'],
+        // Le libellé de PIÈCE est celui de l'écriture entière. On n'y lit
+        // jamais de date — « que ds libéllé de ligne », 20/10/2026 — mais il
+        // nomme la nature de l'écriture, report à nouveau compris.
+        libelle:      ['libelle de piece', 'libelle piece', 'libelle', 'intitule'],
         debit:        ['debit', 'montant debit', 'debit eur'],
         credit:       ['credit', 'montant credit', 'credit eur'],
         solde:        ['solde', 'solde progressif'],
@@ -88,10 +100,6 @@
         // facturation ni le libellé ne donnent de date.
         dateEnregistrement: ['date d enregistrement', 'date enregistrement',
                              'date de saisie', 'date de creation'],
-        // Le libellé de ligne porte souvent le numéro de facture que la colonne
-        // dédiée laisse vide : sur un extrait réel, il en révèle 5 862 de plus
-        // que les 3 756 déjà nommées, soit deux fois et demie plus.
-        libelleLigne: ['libelle de ligne', 'libelle ligne', 'detail', 'libelle ecriture'],
         // L'identifiant du tiers est plus stable que le numéro de compte pour
         // reconnaître un client d'un extrait à l'autre.
         identifiantTiers: ['identifiant du tiers', 'id tiers', 'identifiant tiers', 'code tiers'],
@@ -760,7 +768,17 @@
             if (debit > 0 && facture) g.factures.push(ligne);
             else if (credit > 0 && EST_AVOIR.test(numero)) g.avoirs.push(ligne);
             else if (credit > 0) g.reglements.push(ligne);
-            else if (debit > 0) g.autres.push(ligne);
+            // Débit nul ET crédit nul : une écriture à zéro. Les quatre
+            // branches ci-dessus demandaient toutes un montant, et ces lignes
+            // tombaient entre elles — ni facture, ni avoir, ni règlement, ni
+            // autre, donc dans aucun des quatre paniers que le classeur
+            // publie. Deux reports à nouveau du 01/07/2025 disparaissaient
+            // ainsi en silence : « 2 écritures du grand livre n'arrivent pas
+            // dans le classeur », 21/10/2026. Elles ne déplacent pas un euro
+            // — c'est bien pour cela qu'elles sont à zéro — mais le grand
+            // livre en compte 16 082 et le classeur doit en publier 16 082 :
+            // une balance âgée auditable ne perd pas de ligne, même vide.
+            else g.autres.push(ligne);
         }
 
         const derniere = lignes => lignes.reduce(

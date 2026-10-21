@@ -109,11 +109,17 @@ const datesAvoirs=[];
 for(const l of sellsy){
   const p=l.champs && l.champs['Facture parente']; if(!p || !l.cle) continue;
   const mere=parNumeroFacturation.get(I.factureKey(p)); if(!mere) continue;
-  if(!mere.dateDebutService && !mere.dateFinService) continue;
+  // La facture annulée n'a pas toujours de dates de formation : sur neuf
+  // avoirs (45 346,00 €) elle n'en porte aucune, et l'avoir retombait sur sa
+  // propre date d'enregistrement — celle du jour où la comptable l'a saisi.
+  // « Les avoirs ont tt leurs info ds l'export sellsy des avoir », 21/10/2026 :
+  // cet export donne au moins la DATE de la facture parente, et c'est avec
+  // elle que l'avoir doit vieillir.
+  if(!mere.dateDebutService && !mere.dateFinService && !mere.dateFacture) continue;
   datesAvoirs.push({cle:l.cle, numero:l.numero, parente:mere.numero,
     dateDebutFormation:mere.dateDebutService||null,
     dateFinFormation:mere.dateFinService||null,
-    dateFacture:null});
+    dateFacture:mere.dateFacture||null});
 }
 // Les avoirs Zoho — « CN-… » — ne passent pas par Sellsy : leur facture
 // annulée se lit dans l'onglet « BdD Zoho -Avoir Zoho » de son classeur, que
@@ -125,11 +131,11 @@ for(const r of feuille(ANC,'BdD Zoho -Avoir Zoho',0).rows){
   if(!n||!p) continue;
   const cle=I.factureKey(n); if(!cle) continue;
   const mere=parNumeroFacturation.get(I.factureKey(p)); if(!mere) continue;
-  if(!mere.dateDebutService && !mere.dateFinService) continue;
+  if(!mere.dateDebutService && !mere.dateFinService && !mere.dateFacture) continue;
   datesAvoirs.push({cle, numero:n, parente:mere.numero,
     dateDebutFormation:mere.dateDebutService||null,
     dateFinFormation:mere.dateFinService||null,
-    dateFacture:null});
+    dateFacture:mere.dateFacture||null});
 }
 console.log('avoirs datés par la facture qu’ils annulent : '+datesAvoirs.length);
 
@@ -152,6 +158,9 @@ console.log('factures datées par leur objet : '+datesObjet.length);
 const DATES=factFiliz.concat(datesSeptembre).concat(datesAvoirs).concat(datesObjet);
 // De quoi écrire, sur la ligne, QUELLE facture lui a prêté ses dates.
 const parenteDeLAvoir=new Map(datesAvoirs.map(a=>[a.cle,a.parente]));
+// Et ce que cette facture parente porte : la ligne de l'avoir doit pouvoir
+// dire QUELLE date elle lui a prise, et d'où.
+const datesDeLaParente=new Map(datesAvoirs.map(a=>[a.cle,a]));
 
 // ───────── les numéros abîmés ─────────
 //
@@ -264,12 +273,26 @@ if(complements.length){
   // qu'une écriture sans numéro fait la sienne, le lot en compte plusieurs et
   // sa décision doit toutes les atteindre. La chercher à la clé exacte n'en
   // aurait touché qu'une.
+  // Quand deux créances d'un même lot partagent « compte | lettrage | numéro »,
+  // la clé publiée porte un RANG : « 4111001670000|(non lettré)|#2 » désigne le
+  // DEUXIÈME solde du lot. Le rattrapage le lisait comme un numéro de facture
+  // appelé « #2 », ne le trouvait nulle part, et sa décision du 21/10/2026 sur
+  // ce solde-là se perdait en silence. Le rang se lit donc à part, et il
+  // désigne UNE créance : sans lui, la décision vise le solde entier du lot et
+  // les atteint toutes — c'est la différence entre « ce compte est B2B » et
+  // « cette écriture-là est B2B ».
+  const soldesDuLot=new Map();
+  const lotDe=x=>(x.compte||'')+'|'+(x.lettre||GL.POOL_NON_LETTRE);
+  for(const c of cl) if(!c.numero){ const g=lotDe(c);
+    if(!soldesDuLot.has(g)) soldesDuLot.set(g,[]); soldesDuLot.get(g).push(c); }
   const retrouver=v=>{
-    const m=String(v.cle||'').split('|'), cpt=m[0], num=m[2]||'';
+    const brut=String(v.cle||''), rg=/#(\d+)$/.exec(brut);
+    const m=(rg?brut.slice(0,rg.index):brut).split('|'), cpt=m[0], num=m[2]||'';
+    const lot=cpt+'|'+(m[1]||GL.POOL_NON_LETTRE);
     if(num){ const exact=parCleCreance.get(v.cle); if(exact) return [exact];
       const c=parCompteFacture.get(cpt+'|'+I.factureKey(num)); return c?[c]:[]; }
-    return parLotSansFacture.get(cpt+'|'+(m[1]||GL.POOL_NON_LETTRE))
-      || parComptesSansFacture.get(cpt) || [];
+    if(rg){ const r=(soldesDuLot.get(lot)||[])[(+rg[1])-1]; return r?[r]:[]; }
+    return parLotSansFacture.get(lot) || parComptesSansFacture.get(cpt) || [];
   };
   let poses=0, rattrapes=0, eclates=0;
   for(const v of complements){
@@ -344,6 +367,11 @@ const NATURE_MOTIF=[
   [/date d[’\']enregistrement/i,  'Repli · date d’enregistrement, aucune date dans le libellé'],
   [/encaissement dat[ée] de sa propre date/i,
    'Encaissement · daté de sa propre date, pas de celle de la facture'],
+  // La colonne « Exception appliquée » sert à FILTRER : elle nomme la règle,
+  // pas le cas. Le numéro de la facture parente reste dans « Détail du
+  // calcul », qui, lui, raconte la ligne.
+  [/avoir dat[ée] par la facture qu/i,
+   'Avoir · daté par la facture qu’il annule, faute de dates de formation'],
 ];
 const motifExplicite=c=>{
   const m=(c&&c.echeanceMotif)||''; if(!m) return '';
@@ -389,6 +417,14 @@ const calcul=c=>{ if(!c.dateEcheance) return '';
       : 'date d’enregistrement de l’écriture';
     return branche+', le '+fr(valeurBase(c)||c.dateFacture)+' = '+fr(c.dateEcheance);
   }
+  // L'avoir daté par la facture qu'il annule : la phrase NOMME cette facture.
+  // « Date de facture de la facturation 19/08/2026 » laisserait croire que
+  // l'avoir a lui-même été facturé ce jour-là ; c'est la facture annulée qui
+  // l'a été, et c'est avec elle que l'avoir vieillit.
+  const annulee=/avoir dat[ée] par la facture qu’il annule, ([^\s—]+)/i.exec(c.echeanceMotif||'');
+  if(annulee && c.dateFactureFacturation)
+    return 'date de la facture annulée '+annulee[1]+', le '+fr(c.dateFactureFacturation)
+      +' = '+fr(c.dateEcheance);
   const v=valeurBase(c); if(!v||!c.echeanceBase) return fr(c.dateEcheance);
   const j=c.echeanceJours||0;
   return (BASES[c.echeanceBase]||c.echeanceBase)+' '+fr(v)+(j?' + '+j+' j':'')+' = '+fr(c.dateEcheance); };
@@ -692,9 +728,24 @@ for(let i=0;i<plat.length;i++){
   // du lot. Ce dernier repli était atteint dès que le numéro cité n'avait pas
   // de créance ouverte — le cas de tout avoir : 192 écritures d'avoir
   // affichaient la formation d'une facture voisine de leur lettrage.
-  const src0=(l.numero&&parCle.get(I.factureKey(l.numero)))
-    ||(l.brut&&parBrut.get(l.brut))
-    ||(!l.numero&&parGroupeSolde.get(grp(l)))||parGroupe.get(l.cleGroupe)||{};
+  const srcNumero=l.numero&&parCle.get(I.factureKey(l.numero));
+  const srcSienne=l.brut&&parBrut.get(l.brut);
+  const srcSolde=!l.numero&&parGroupeSolde.get(grp(l));
+  const srcLot=parGroupe.get(l.cleGroupe);
+  const src0=srcNumero||srcSienne||srcSolde||srcLot||{};
+  // CE QUI NE NOMME RIEN N'EMPRUNTE PAS LES DATES D'UNE VOISINE.
+  //
+  // Quand aucun des trois premiers chemins n'aboutit, il ne reste que la
+  // facture du lot : une facture que la ligne ne cite pas, dont elle n'est
+  // pas le règlement nommé, et qui se trouve seulement dans le même lettrage.
+  // Vingt-sept écritures (212 908,78 €) portaient ainsi les dates de
+  // formation d'une facture voisine. « Pour les date d'echeance il faut etre
+  // précis et ne récup que les infos de la ligne », 20/10/2026.
+  //
+  // Le dispositif, lui, continue de se lire ailleurs — « pour les type de
+  // financement tu peux voir sur d'autre ligne du mm compte », même jour.
+  // Ce sont les DATES qui ne s'empruntent pas.
+  const datesEmpruntees=!l.numero && !srcNumero && !srcSienne && !srcSolde && !!srcLot;
   // Quand aucune facture ne date la ligne, la ligne se date elle-même :
   // l'échéance 1, portée par l'écriture, avec son motif.
   // Quand aucune créance ne porte la ligne — un lot soldé à zéro, par exemple —
@@ -738,6 +789,83 @@ for(let i=0;i<plat.length;i++){
     src.dateEcheance=l.date; src.echeanceBase='dateReglement'; src.echeanceJours=0;
     src.echeanceOrigine='Règle';
     src.echeanceMotif='encaissement daté de sa propre date d’écriture';
+  }
+
+  // ── UN AVOIR VIEILLIT AVEC LA FACTURE QU'IL ANNULE ──
+  //
+  // Quand cette facture porte ses dates de formation, le barème s'applique et
+  // l'avoir tombe sur la même échéance qu'elle : c'est déjà le cas de 4 424
+  // avoirs. Quand elle n'en porte aucune — neuf avoirs, 45 346,00 € — l'avoir
+  // retombait sur SA date d'enregistrement, le jour de la saisie comptable, et
+  // paraissait tout neuf à côté d'une facture de l'an passé. L'export Sellsy
+  // des avoirs nomme la facture parente, et l'export des factures la date :
+  // c'est cette date-là qui vaut, et la ligne le dit.
+  {
+    const kAv=l.numero?I.factureKey(l.numero):'';
+    const pa=kAv?datesDeLaParente.get(kAv):null;
+    if(l.nature==='avoir' && pa && !pa.dateDebutFormation && !pa.dateFinFormation && pa.dateFacture){
+      src.dateEcheance=pa.dateFacture;
+      src.echeanceBase='dateFactureFacturation';
+      src.dateFactureFacturation=pa.dateFacture;
+      src.echeanceJours=0;
+      src.echeanceOrigine='Règle';
+      src.echeanceMotif='avoir daté par la facture qu’il annule, '+pa.parente
+        +' — elle ne porte pas de dates de formation';
+    }
+  }
+
+  // ── LES DATES D'UNE VOISINE NE SE PORTENT PAS ──
+  //
+  // (voir « ce qui ne nomme rien n'emprunte pas » plus haut)
+  if(datesEmpruntees){
+    src.dateDebutFormation=l.dateDebutFormation||null;
+    src.dateFinFormation=l.dateFinFormation||null;
+    src.dateFactureFacturation=null;
+    // Et l'échéance redevient celle de la ligne : son échéance 1, c'est-à-dire
+    // la dernière date de SON libellé, sinon sa date d'enregistrement. C'est
+    // la réponse qu'elle a donnée elle-même — « date d'enregistrement du
+    // coup ? », 21/10/2026 — là où le libellé ne dit rien.
+    src.dateEcheanceRepli=l.dateEcheanceRepli||null;
+    src.echeance1Source=l.echeance1Source||'';
+    // L'écriture à plat a été classée, elle aussi, par la facture du lot :
+    // reprendre SA base laissait la ligne annoncer « date de facture de la
+    // facturation » avec une case vide à côté — une base sans date, pire que
+    // la date d'une voisine. Le repli est donc entier : l'échéance 1 de la
+    // ligne, et rien d'autre.
+    if(l.nature!=='reglement'){
+      src.dateEcheance=l.dateEcheanceRepli||null;
+      src.echeanceBase=l.dateEcheanceRepli?'echeance1':'';
+      src.echeanceJours=0;
+      src.echeanceOrigine=l.dateEcheanceRepli?'Règle':'';
+      src.echeanceMotif=l.dateEcheanceRepli
+        ?(l.echeance1Source==='enregistrement'
+          ? 'date d’enregistrement (aucune date dans le libellé)'
+          : 'dernière date du libellé')
+        :'';
+    }
+  }
+
+  // ── CE QUE LA LIGNE ANNONCE, LA LIGNE DOIT LE PORTER ──
+  //
+  // « Dernière date du libellé, sinon date d'enregistrement » est une phrase
+  // qui se vérifie SUR LA LIGNE : l'auditeur relit le libellé, il doit y
+  // retrouver la date. Dix-huit lignes (37 602,33 €) annonçaient cette base
+  // en affichant la date d'une AUTRE écriture — une seconde écriture au même
+  // numéro de facture, ou la facture du lettrage. « À corriger pour rester ds
+  // les regles », 21/10/2026. Quand la base se lit sur la ligne, c'est la
+  // ligne qui la fournit.
+  if(src.echeanceBase==='echeance1' && l.dateEcheanceRepli
+     && +(src.dateEcheanceRepli||src.dateEcheance)!== +l.dateEcheanceRepli){
+    // La base affichée se lit dans « dateEcheanceRepli » : la poser seule
+    // laissait la colonne annoncer encore la date de la voisine.
+    src.dateEcheanceRepli=l.dateEcheanceRepli;
+    src.dateEcheance=l.dateEcheanceRepli;
+    src.echeance1Source=l.echeance1Source||'';
+    src.echeanceJours=0;
+    src.echeanceOrigine='Règle';
+    src.echeanceMotif=l.echeance1Source==='enregistrement'
+      ? 'date d’enregistrement (aucune date dans le libellé)'
+      : 'dernière date du libellé';
   }
   const o={
     // ── vos colonnes, dans votre ordre ──

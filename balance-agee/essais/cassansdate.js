@@ -23,18 +23,25 @@ const soldeur=[
    'Libellé de ligne':'VIR SEPA RECU','Débit':'0','Crédit':'100',
    'Date':'03/03/2025','Date d’enregistrement':'04/03/2025'},
 ];
+// UNE ÉCRITURE, UNE CRÉANCE : sa règle du 16/10/2026, « il ne faut pas
+// regarder un lot, chaque ligne est indépendante ». Le débit et l'encaissement
+// ne partagent plus une date : chacun porte la sienne. Au compteur de la
+// balance âgée, aucun des deux n'est une créance — « une créance c'est là où
+// il y a une facture », 21/10/2026 — mais chacun doit se dater et se justifier.
 const cs=GL.classer(GL.creancesOuvertes(GL.lire(soldeur,{})),OPT);
-ok('elle produit bien une créance', cs.length===1);
-const c=cs[0];
+ok('elle produit une écriture datée par ligne', cs.length===2);
+const c=cs.find(x=>x.resteDu>0);
 ok('  … c’est bien un solde sans facture', c.sansNumero===true);
 ok('  … elle porte une échéance', !!c.dateEcheance);
 ok('  … la dernière date du libellé du débit : 10/02/2025', j(c.dateEcheance)==='2025-02-10');
-ok('  … et l’origine le dit', c.echeanceOrigine==='Grand livre');
+// « Règle » et non « Grand livre » : la date est lue au libellé, mais c'est sa
+// règle de l'échéance 1 qui décide de la retenir.
+ok('  … et l’origine le dit', c.echeanceOrigine==='Règle');
 ok('  … avec un motif lisible', /échéance 1|repli|libellé/i.test(c.echeanceMotif||''));
 
 console.log('\n=== sans date dans le libellé, c’est l’enregistrement ===');
 const soldeur2=soldeur.map((r,i)=>i?r:{...r,'Libellé de ligne':'acompte formation'});
-const c2=GL.classer(GL.creancesOuvertes(GL.lire(soldeur2,{})),OPT)[0];
+const c2=GL.classer(GL.creancesOuvertes(GL.lire(soldeur2,{})),OPT).find(x=>x.resteDu>0);
 ok('15/02/2025, la date d’enregistrement du débit', j(c2.dateEcheance)==='2025-02-15');
 
 console.log('\n=== l’écriture d’un lot entièrement soldé reste datée ===');
@@ -56,14 +63,21 @@ const ouvertes=GL.classer(GL.creancesOuvertes(lu),OPT);
 ok('la balance âgée n’en retient rien', ouvertes.length===0);
 const soldees=GL.classer(GL.facturesToutes(lu)
   .filter(x=>x.statut&&x.statut!=='Ouverte'&&x.statut!=='Partiellement réglée'),OPT);
-ok('la facture soldée est bien classée à part', soldees.length===1 && !!soldees[0].financement);
+// Le dispositif reste VIDE : rien dans le lot ne le dit, et « je ne veux pas
+// de catégorie tampon » (14/10/2026). Il s'affichera « Type de financement :
+// à compléter », ce qui est une réponse ; en inventer une n'en serait pas.
+ok('la facture soldée est bien classée à part', soldees.length===1);
+ok('  … sans dispositif inventé', !soldees[0].financement);
 const sans=GL.classerEcritures(GL.ecrituresAPlat(lu),ouvertes).lignes;
 ok('sans elle, rien ne les classe', sans.every(l=>!l.financement));
 ok('  … et leur date n’est que le repli de la ligne',
    sans.every(l=>/aucune facture/i.test(l.echeanceMotif||'')));
 const avec=GL.classerEcritures(GL.ecrituresAPlat(lu),ouvertes,soldees).lignes;
 ok('avec elle, les deux lignes sont datées', avec.length===2 && avec.every(l=>!!l.dateEcheance));
-ok('  … et classées', avec.every(l=>!!l.financement));
+// Classées veut dire RATTACHÉES à la facture soldée, pas dotées d'un
+// dispositif : le lot n'en nomme aucun, et aucun ne s'invente.
+ok('  … et rattachées à la facture soldée',
+   avec.every(l=>/citée par la ligne|Hérité/.test(l.origineClassement||'')));
 ok('  … sur l’échéance de la facture, pas sur le repli',
    avec.every(l=>!/aucune facture/i.test(l.echeanceMotif||'')));
 ok('  … l’avoir hérite de la facture de son lettrage',
@@ -86,8 +100,13 @@ const e=GL.classerEcritures(GL.ecrituresAPlat(lu2),GL.classer(GL.creancesOuverte
 ok('elle produit bien deux écritures', e.length===2);
 ok('les deux sont datées', e.every(l=>!!l.dateEcheance));
 ok('  … chacune sur sa propre échéance 1', j(e.find(l=>l.credit>0).dateEcheance)==='2026-04-09');
+// Chaque motif dit SA raison, et les deux lignes n'ont pas la même : le
+// crédit est un encaissement, « il faut régler un paiement de sa propre
+// date » (20/10/2026) ; le débit, lui, ne trouve aucune facture au débit du
+// lettrage et retombe sur son échéance 1.
 ok('  … et le motif dit pourquoi',
-   e.every(l=>/aucune facture/i.test(l.echeanceMotif||'')));
+   /encaissement dat[ée] de sa propre date/i.test(e.find(l=>l.credit>0).echeanceMotif||'')
+   && /aucune facture/i.test(e.find(l=>l.debit>0).echeanceMotif||''));
 
 console.log('\n=== une date retenue n’est jamais muette ===');
 // Tout ce qui est daté dit d'où la date vient : c'est la condition de l'audit.

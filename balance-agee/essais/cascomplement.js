@@ -27,8 +27,9 @@ const b=GL.classer(base(),{rules:RG, sellsy:[], mandats:[], referentiel:ref1})[0
 ok('la fin de formation est reprise', j(b.dateFinFormation)==='2026-06-30');
 ok('l’origine redevient « Règle »', b.echeanceOrigine==='Règle');
 ok('la base est la fin de formation', b.echeanceBase==='dateFinFormation');
-ok('le délai est celui du barème CPF (+60)', b.echeanceJours===60);
-ok('30/06/2026 + 60 j = 29/08/2026', j(b.dateEcheance)==='2026-08-29');
+// Quarante-cinq jours : son tableau du 14/10/2026.
+ok('le délai est celui du barème CPF (+45)', b.echeanceJours===45);
+ok('30/06/2026 + 45 j = 14/08/2026', j(b.dateEcheance)==='2026-08-14');
 ok('la trace dit ce qui a été complété', b.complementQuoi==='fin de formation');
 ok('  … et quand', b.complementLe==='2026-10-12');
 ok('  … et votre note', b.complementNote==='relevé sur le dossier');
@@ -49,7 +50,7 @@ const avecSellsy=[{cle:'FACT260113000', numero:'FACT-2601-13000',
   dateFinService:D(2025,12,31), client:'CAISSE DES DEPOTS'}];
 const d=GL.classer(base(),{rules:RG, sellsy:avecSellsy, mandats:[], referentiel:ref1})[0];
 ok('Sellsy dit 31/12/2025, vous dites 30/06/2026 → c’est vous', j(d.dateFinFormation)==='2026-06-30');
-ok('  … et l’échéance suit votre date', j(d.dateEcheance)==='2026-08-29');
+ok('  … et l’échéance suit votre date', j(d.dateEcheance)==='2026-08-14');
 
 console.log('\n=== compléter une date ne reclasse pas ===');
 const ref3={FACT260113000:{fin:'CPF', source:'valide', finFormation:'2026-06-30', le:'2026-10-12'}};
