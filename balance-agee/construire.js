@@ -453,6 +453,25 @@ const tranche=c=>{ const t=R.bucketFor(retard(c)); return t?t.label:''; };
 
 // ───────── la feuille principale : une ligne par écriture ─────────
 const plat=GL.ecrituresAPlat(lu);
+// Ce que l'imputation a tranché, en clair dans le journal de construction :
+// c'est la seule règle qui déplace de l'argent d'une facture à une autre, et
+// elle doit se compter avant de se croire.
+{
+  const arb=plat.filter(l=>l.imputationArbitree);
+  const reparties=arb.filter(l=>(l.imputations||[]).length>1);
+  const exactes=arb.filter(l=>(l.imputations||[]).some(p=>/montant exact/.test(p.motif)));
+  const enLair=plat.filter(l=>l.resteImpute>0.005);
+  const change=plat.filter(l=>l.numeroAvant);
+  const som=a=>a.reduce((s,l)=>s+Math.abs((l.credit||0)-(l.debit||0)),0);
+  console.log('imputation des règlements : '+arb.length+' écritures nommaient plusieurs factures ('
+    +Math.round(som(arb)).toLocaleString('fr-FR')+' €)'
+    +' · tranchées par le montant exact : '+exactes.length
+    +' · réparties sur plusieurs factures : '+reparties.length);
+  console.log('   part restée non imputée : '+enLair.length+' écritures · '
+    +Math.round(enLair.reduce((s,l)=>s+l.resteImpute,0)).toLocaleString('fr-FR')+' €'
+    +' — les factures qu’elles nomment ne sont pas dans leur lettrage, ou ne doivent plus rien');
+  console.log('   écritures dont l’imputation change de facture : '+change.length);
+}
 // Les factures des lots entièrement soldés : hors balance, mais leurs
 // écritures sont dans le grand livre et doivent se justifier.
 const soldees=GL.classer(GL.facturesToutes(lu)
@@ -632,7 +651,45 @@ const rattachee=l=>{
   return '';
 };
 
+// Un montant en toutes lettres dans une phrase, pas dans une cellule de
+// calcul : la colonne « Imputation du règlement » se lit, elle ne s'additionne
+// pas. Le classeur garde ses nombres dans les colonnes de montants.
+const eurFr=n=>(Math.round(n*100)/100).toLocaleString('fr-FR',
+  {minimumFractionDigits:2,maximumFractionDigits:2})+' €';
+
+// La phrase que lit l'auditeur : quelles factures cette écriture paie, pour
+// combien, pourquoi celles-là, et ce qui reste en l'air. Vide quand la ligne
+// ne nommait qu'une facture : il n'y avait rien à choisir.
+const imputationLisible=l=>{
+  if(!l.imputations) return '';
+  // Rien à arbitrer, rien à dire — sauf si l'imputation a quand même changé le
+  // numéro que portait la ligne : ça, l'auditeur doit le lire.
+  if(!l.imputationArbitree && !l.numeroAvant) return '';
+  const parts=l.imputations.filter(p=>Math.abs(p.montant)>0.005);
+  const reste=l.resteImpute>0.005?l.resteImpute:0;
+  if(!parts.length && !reste) return '';
+  const motifs=[...new Set(parts.map(p=>p.motif))];
+  const morceaux=parts.map(p=>p.numero+' '+eurFr(p.montant));
+  let t=morceaux.join(' + ');
+  if(reste) t=(t?t+' · ':'')+'non imputé '+eurFr(reste)
+    +(parts.length?' (les factures de son lettrage qu’elle nomme ne doivent plus rien)'
+      :' (aucune facture de son lettrage qu’elle nomme ne doit encore quelque chose)');
+  if(motifs.length) t+=' — '+motifs.join(' ; ');
+  if(l.numeroAvant && l.numeroAvant!==l.numero)
+    t+=' — la ligne portait '+l.numeroAvant+', qui n’est pas une facture de son lettrage';
+  return t;
+};
+
 const creanceDuCompte=l=>{
+  // 0. UNE ÉCRITURE QUI N'A PAS TOUT IMPUTÉ EST D'ABORD UNE ÉCRITURE À
+  //    RAPPROCHER. Depuis que l'imputation plafonne à ce que la facture doit
+  //    encore, un virement peut payer une facture ET laisser une part en
+  //    l'air — la facture nommée qui manque au lot. Cette part fait sa propre
+  //    créance ; sans ce passage, aucune ligne ne la portait et elle sortait
+  //    de la balance publiée : 13 011,34 € de crédits qui disparaissaient du
+  //    contrôle G. La ligne dit alors ce qu'elle laisse ouvert, et la colonne
+  //    « Imputation du règlement » dit ce qu'elle a payé.
+  if(l.resteImpute>0.005){ const r=l.brut&&parBrut.get(l.brut); if(r) return r; }
   // 1. La ligne nomme une facture, et cette facture a une créance dans son
   //    lot : c'est la sienne. Une facture au débit se retrouve ainsi
   //    elle-même ; un règlement se range sous la facture qu'il paie.
@@ -732,7 +789,10 @@ for(let i=0;i<plat.length;i++){
   const srcSienne=l.brut&&parBrut.get(l.brut);
   const srcSolde=!l.numero&&parGroupeSolde.get(grp(l));
   const srcLot=parGroupe.get(l.cleGroupe);
-  const src0=srcNumero||srcSienne||srcSolde||srcLot||{};
+  // Même ordre que `creanceDuCompte` : une écriture qui laisse une part non
+  // imputée est d'abord cette part-là. Les deux doivent désigner LA MÊME
+  // créance, sinon la ligne annoncerait une clé et le reste dû d'une autre.
+  const src0=(l.resteImpute>0.005&&srcSienne)||srcNumero||srcSienne||srcSolde||srcLot||{};
   // CE QUI NE NOMME RIEN N'EMPRUNTE PAS LES DATES D'UNE VOISINE.
   //
   // Quand aucun des trois premiers chemins n'aboutit, il ne reste que la
@@ -928,6 +988,15 @@ for(let i=0;i<plat.length;i++){
     // sans lien entre eux, affichaient tous FACT-2506-10079 ; 98 avoirs du
     // pool non lettré étaient collés à une facture qu'ils ne nomment pas.
     'Facture rattachée':rattachee(l),
+    // CE QUE LE RÈGLEMENT A PAYÉ, FACTURE PAR FACTURE.
+    //
+    // « Un paiement peut être pour plusieurs factures », 21/10/2026. Dès qu'il
+    // y a eu quelque chose à arbitrer — plusieurs factures nommées — la ligne
+    // doit dire ce qu'elle a payé à chacune, et ce qu'elle n'a imputé sur
+    // aucune. Sa règle : « à chaque fois qu'il y a un nb de facture, je dois
+    // pv savoir de quelle facture il s'agit ». La colonne reste vide sur les
+    // 15 942 lignes qui n'ont rien à arbitrer.
+    'Imputation du règlement':imputationLisible(l),
     // ── l'échéance, justifiée ──
     '— ÉCHÉANCE —':'',
     'Date d’échéance recalculée':fr(src.dateEcheance),

@@ -15,9 +15,15 @@ console.log('F · le total');
 console.log('    débit '+eur(deb)+' − crédit '+eur(cre)+' = '+eur(deb-cre));
 
 // ── G. une créance = une clé, un reste dû, un dispositif, une tranche ──
-const cr=new Map(); let incoh=0;
+// UNE LIGNE SANS CLÉ SORTAIT DU CONTRÔLE SANS UN MOT.
+// C'était le trou par lequel une créance orpheline passait : le 21/10/2026,
+// 13 011,34 € de reliquats d'imputation que plus aucune ligne ne portait ne
+// produisaient ni compteur ni message — seul l'écart final les trahissait, et
+// encore fallait-il le lire. On les compte, et on dit ce qu'elles pèsent.
+const cr=new Map(); let incoh=0, sansCle=0, mtSansCle=0;
 for(const r of L){
-  const k=V(r,'Clé de la créance'); if(!k) continue;
+  const k=V(r,'Clé de la créance');
+  if(!k){ sansCle++; mtSansCle+=cts(N(r,'Débit'))-cts(N(r,'Crédit')); continue; }
   const o={rd:cts(N(r,'Reste dû de la créance')), sc:V(r,'Type de financement de la créance'),
            tc:V(r,'Type de client de la créance'), tr:V(r,'Tranche de la créance')};
   const v=cr.get(k);
@@ -30,6 +36,8 @@ let som=0, pos=0, neg=0, nul=0;
 for(const [,v] of cr){ som+=v.rd; if(v.rd>0) pos++; else if(v.rd<0) neg++; else nul++; }
 console.log('    Σ des restes dus : '+eur(som)+'  ·  écart au total : '+eur(som-(deb-cre)));
 console.log('    au débit '+pos+' · au crédit '+neg+' · soldées '+nul+'  ·  ouvertes '+(pos+neg));
+console.log('    lignes sans clé de créance : '+sansCle+' ('+eur(mtSansCle)+')'
+  +(Math.abs(mtSansCle)>0.005?'  ⚠ elles pèsent, et aucune créance ne les porte':''));
 
 // ── H. la provision : assiette × taux, refaite à la main ──
 const P=d.provision, FAM=P.familles, TAUX=P.taux, FEN=P.fenetres;
@@ -78,3 +86,14 @@ console.log('\nI · échu + non échu');
 console.log('    échu '+eur(echu)+' + non échu '+eur(nonEchu)+' = '+eur(echu+nonEchu));
 let s9=0; for(const [,v] of parTr) s9+=v;
 console.log('    Σ des 9 tranches échues = '+eur(s9)+'  ·  écart à l’échu : '+eur(s9-echu));
+// ET LA COMPARAISON QUI MANQUAIT. « échu + non échu » était imprimé en face du
+// total de F sans jamais lui être comparé : le 21/10/2026 les deux lignes ont
+// affiché 14 648 134,36 € et 14 635 123,02 € l'une sous l'autre, 13 011,34 €
+// d'écart sous les yeux, et aucune des deux ne l'a relevé.
+// Le seuil d'alarme est à l'euro : 0,08 € de résidu d'arrondi traînent depuis
+// toujours — `ar()` arrondit chaque reste dû publié à deux décimales sur 16 082
+// lignes — et sonner l'alarme dessus la rendrait muette. Une vraie rupture se
+// compte en milliers. (Tout se compte ici en CENTIMES : le seuil est 100.)
+const ecartI=(echu+nonEchu)-(deb-cre);
+console.log('    écart au total du grand livre : '+eur(ecartI)
+  +(Math.abs(ecartI)>100?'  ⚠ LA BALANCE NE BOUCLE PLUS':'  (résidu d’arrondi)'));

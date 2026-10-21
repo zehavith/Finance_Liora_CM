@@ -688,9 +688,28 @@
                     p.rejets += debit || credit; p.nbRejets++;
                 }
             }
+            // TOUTES les factures que la ligne NOMME, et pas seulement celle
+            // qu'on a retenue pour l'identifier. « Un paiement peut être pour
+            // plusieurs factures », 21/10/2026 : un virement de Transitions Pro
+            // nomme les neuf dossiers qu'il solde, un payout ALMA en nomme
+            // treize. Retenir un seul numéro, c'était imputer tout le virement
+            // sur une seule des factures et laisser les autres impayées.
+            //
+            // Même source que le numéro, dans le même ordre : le libellé de
+            // ligne d'abord, et le libellé de pièce seulement s'il ne dit rien.
+            // Et les mêmes réparations de graphie, sans quoi un « FCAT-… » cité
+            // ne retrouverait pas sa facture.
+            const citeesLigne = candidatsNumero(col(r, 'libelleLigne'));
+            const citees = (citeesLigne.length ? citeesLigne : candidatsNumero(col(r, 'libelle')))
+                .map(n => {
+                    if (!o.reparations || !o.reparations.size) return n;
+                    return o.reparations.get(I.factureKey(n)) || n;
+                });
+
             const ligne = {
                 brut,
                 numero, numeroExtrait, qualif, date, debit, credit, journal,
+                citees,
                 libelle: String(col(r, 'libelle') || '').trim(),
                 // Votre colonne AA n'est pas une donnée du grand livre : c'est
                 // une formule — la dernière date lue dans le libellé de ligne,
@@ -780,6 +799,47 @@
             // une balance âgée auditable ne perd pas de ligne, même vide.
             else g.autres.push(ligne);
         }
+
+        // ──────────────────────────────────────────────
+        //  L'IMPUTATION DES RÈGLEMENTS
+        // ──────────────────────────────────────────────
+        //
+        // « Un paiement peut être pour plusieurs factures », 21/10/2026. Jusque
+        // là, une écriture portait AU PLUS UN numéro et s'imputait entièrement
+        // dessus. Un virement de Transitions Pro qui solde neuf dossiers
+        // nommait ses neuf factures, et les neuf lignes du grand livre —
+        // chacune du montant exact d'une des factures — allaient toutes sur la
+        // PREMIÈRE citée : une facture payée neuf fois, huit factures impayées.
+        //
+        // La règle, dans cet ordre :
+        //
+        //  1. ON NE RETIENT QUE LES FACTURES DU LOT. Le lettrage est le
+        //     rapprochement qu'a fait la comptabilité ; une facture d'un autre
+        //     lot n'est pas payée par cette écriture-ci. Une facture nommée
+        //     mais absente du lot ne reçoit rien — et c'est elle qui explique
+        //     ce qui restera non imputé.
+        //  2. LES AVOIRS D'ABORD. « Tu prends bien en compte les avoirs quand
+        //     tu impute pour être sûr que tu n'impute pas sur une facture
+        //     annulée ? », 21/10/2026 : un avoir qui porte le numéro d'une
+        //     facture réduit son reste dû avant toute imputation, et une
+        //     facture entièrement annulée ne reçoit plus rien.
+        //  3. LE MONTANT EXACT D'ABORD. Si le montant de l'écriture est
+        //     exactement ce qu'une — et une seule — des factures nommées doit
+        //     encore, c'est celle-là, en entier. Les écritures à montant exact
+        //     passent AVANT les autres : sinon un virement arrivé plus tôt
+        //     mangerait le reste dû d'une facture qu'un autre solde au centime.
+        //  4. SINON, DE LA PLUS ANCIENNE À LA PLUS RÉCENTE, à concurrence de ce
+        //     que chacune doit encore.
+        //  5. LE RESTE N'EST JAMAIS FORCÉ. Ce qui dépasse ne s'impute sur rien :
+        //     il reste une écriture à part, visible, à rapprocher.
+        //
+        // Une écriture qui ne nomme qu'UNE facture n'a rien à arbitrer : elle
+        // garde son imputation entière, négative comprise. Un sur-paiement sur
+        // une facture unique est un fait du compte, pas un choix d'imputation.
+        //
+        // Le total est conservé par construction : chaque euro d'une écriture
+        // va soit sur une facture du lot, soit dans son reste non imputé.
+        imputer(groupes);
 
         const derniere = lignes => lignes.reduce(
             (max, l) => (l.date && (!max || l.date > max)) ? l.date : max, null);
@@ -1066,6 +1126,209 @@
      * Le total est conservé par construction — chaque ligne du lot est comptée
      * une fois et une seule, du côté où elle tombe.
      */
+    /**
+     * L'imputation des règlements sur les factures qu'ils nomment.
+     *
+     * Pose sur chaque écriture au crédit qui nomme PLUSIEURS factures :
+     *   `imputations`  — [{ cle, numero, montant, motif }], ce qu'elle paie ;
+     *   `resteImpute`  — ce qui n'a pu être imputé sur aucune facture nommée ;
+     *   `numeroAvant`  — le numéro qu'elle portait, si l'imputation en change.
+     *
+     * Le numéro retenu devient celui de la facture qui reçoit la plus grosse
+     * part : tout l'aval — « Facture rattachée », la créance d'une ligne, le
+     * rapprochement — continue de lire UN numéro, et lit le bon.
+     *
+     * La règle elle-même est écrite en toutes lettres à l'appel, dans
+     * `lireComptable`.
+     */
+    function imputer(groupes) {
+        for (const g of groupes.values()) {
+            // UN LOT SANS LIGNE DE FACTURE NE S'IMPUTE PAS, et c'est voulu :
+            // il n'y a rien au débit à solder. `creancesOuvertes` y fait déjà
+            // « une créance par facture citée » (sa règle du 16/10/2026), et
+            // chaque écriture n'entre que dans la créance du numéro qu'elle
+            // porte. C'est cette ligne-ci, et elle seule, qui garantit qu'une
+            // écriture n'y soit jamais comptée dans deux créances à la fois.
+            if (!g.factures.length) continue;
+
+            // Les factures du lot, une entrée par numéro : la même facture
+            // passée en deux fois n'est qu'une dette.
+            const fac = new Map();
+            for (const f of g.factures) {
+                const k = I.factureKey(f.numero);
+                if (!k) continue;
+                if (!fac.has(k)) fac.set(k, { numero: f.numero, debit: 0, date: null });
+                const e = fac.get(k);
+                e.debit += f.debit;
+                if (f.date && (!e.date || f.date < e.date)) e.date = f.date;
+            }
+            if (!fac.size) continue;
+
+            // Ce que chaque facture doit encore, au fil de l'imputation.
+            const reste = new Map();
+            for (const [k, e] of fac) reste.set(k, e.debit);
+
+            // Les factures que la ligne nomme — son numéro retenu compris, car
+            // il peut venir d'une colonne et non du libellé — réduites à celles
+            // du lot. Un numéro d'avoir ne désigne pas une facture à payer.
+            const nommees = l => {
+                const vus = new Set(), out = [];
+                const ajoute = n => {
+                    if (!n || EST_AVOIR.test(n)) return;
+                    const k = I.factureKey(n);
+                    if (!k || vus.has(k) || !fac.has(k)) return;
+                    vus.add(k); out.push(k);
+                };
+                ajoute(l.numero);
+                for (const n of (l.citees || [])) ajoute(n);
+                return out;
+            };
+            // Combien de factures la ligne nomme EN TOUT, du lot ou non : c'est
+            // ce qui dit s'il y a quelque chose à arbitrer. Une ligne qui n'en
+            // nomme qu'une n'arbitre rien, même si son montant la dépasse.
+            const combien = l => {
+                const vus = new Set();
+                for (const n of [l.numero].concat(l.citees || []))
+                    if (n && !EST_AVOIR.test(n)) { const k = I.factureKey(n); if (k) vus.add(k); }
+                return vus.size;
+            };
+
+            // 2. LES AVOIRS D'ABORD : on n'impute pas sur une facture annulée.
+            //
+            // Un avoir porte SON numéro — « AVR-2512-02297 » — jamais celui de
+            // la facture qu'il annule : chercher sa facture par son numéro à
+            // lui ne trouve jamais rien, et cette étape ne faisait rien du
+            // tout. C'est le libellé qui nomme la facture annulée : « AVOIR
+            // AVR-2512-02297 ANNULATION FACT-2504-09118 ». Sur l'extrait du
+            // jour un seul avoir est dans ce cas (5 365,00 €) ; la garantie
+            // qu'elle a demandée le 21/10/2026 doit tenir quand même.
+            for (const l of g.avoirs) {
+                const cand = nommees(l);
+                if (!cand.length) continue;
+                const m = (l.credit || 0) - (l.debit || 0);
+                if (m <= TOLERANCE) continue;
+                // Même ordre qu'un règlement, et le même plafond : un avoir
+                // plus gros que la facture qu'il annule laisse un reste, il ne
+                // la pousse pas en négatif.
+                const ordre = cand.slice().sort((x, y) => {
+                    const dx = fac.get(x).date ? +fac.get(x).date : 0;
+                    const dy = fac.get(y).date ? +fac.get(y).date : 0;
+                    return dx - dy || (fac.get(x).numero < fac.get(y).numero ? -1 : 1);
+                });
+                let libre = m;
+                const parts = [];
+                for (const k of ordre) {
+                    if (libre <= TOLERANCE) break;
+                    const du = reste.get(k);
+                    if (du <= TOLERANCE) continue;
+                    const q = Math.min(libre, du);
+                    reste.set(k, du - q);
+                    libre -= q;
+                    parts.push({ cle: k, montant: q, motif: 'avoir imputé sur la facture qu’il annule' });
+                }
+                // Le numéro d'un avoir est son identité : il ne se remplace
+                // pas par celui de la facture, sans quoi la ligne cesserait
+                // d'être un avoir pour tout l'aval.
+                poser(l, parts, libre, fac, parts.length > 0, true);
+            }
+
+            const differes = [];
+            for (const l of g.reglements.concat(g.autres)) {
+                const m = (l.credit || 0) - (l.debit || 0);
+                const cand = nommees(l);
+                if (!cand.length) continue;
+                // Une seule facture nommée, ou une écriture au débit : rien à
+                // arbitrer, l'imputation est entière — comme auparavant.
+                if (combien(l) < 2 || m <= TOLERANCE) {
+                    poser(l, [{ cle: cand[0], montant: m, motif: 'seule facture du lot que la ligne nomme' }],
+                          0, fac, false);
+                    reste.set(cand[0], reste.get(cand[0]) - m);
+                    continue;
+                }
+                differes.push({ l, m, cand });
+            }
+            if (!differes.length) continue;
+
+            // 3. LE MONTANT EXACT D'ABORD — toutes écritures confondues.
+            const exacte = x => {
+                const e = x.cand.filter(k => Math.abs(reste.get(k) - x.m) < 0.005);
+                return e.length === 1 ? e[0] : null;
+            };
+            differes.sort((a, b) => {
+                const ea = exacte(a) ? 0 : 1, eb = exacte(b) ? 0 : 1;
+                if (ea !== eb) return ea - eb;
+                return (a.l.date ? +a.l.date : 0) - (b.l.date ? +b.l.date : 0);
+            });
+
+            for (const x of differes) {
+                const e = exacte(x);
+                if (e) {
+                    reste.set(e, reste.get(e) - x.m);
+                    poser(x.l, [{ cle: e, montant: x.m, motif: 'montant exact de son reste dû' }], 0, fac, true);
+                    continue;
+                }
+                // 4. DE LA PLUS ANCIENNE À LA PLUS RÉCENTE, à concurrence du
+                //    reste dû. À date égale, le numéro tranche : l'ordre doit
+                //    être le même d'une construction à l'autre.
+                const ordre = x.cand.slice().sort((a, b) => {
+                    const da = fac.get(a).date ? +fac.get(a).date : 0;
+                    const db = fac.get(b).date ? +fac.get(b).date : 0;
+                    return da - db || (fac.get(a).numero < fac.get(b).numero ? -1 : 1);
+                });
+                let libre = x.m;
+                const parts = [];
+                for (const k of ordre) {
+                    if (libre <= TOLERANCE) break;
+                    const du = reste.get(k);
+                    if (du <= TOLERANCE) continue;
+                    const p = Math.min(libre, du);
+                    reste.set(k, du - p);
+                    libre -= p;
+                    parts.push({ cle: k, montant: p,
+                                 // Dire « de la plus ancienne à la plus récente »
+                                 // quand il n'y avait qu'une candidate annoncerait
+                                 // un choix qui n'a pas eu lieu.
+                                 motif: x.cand.length > 1
+                                     ? 'de la plus ancienne à la plus récente, à concurrence de son reste dû'
+                                     : 'seule facture de son lettrage parmi celles qu’elle nomme' });
+                }
+                // 5. LE RESTE N'EST JAMAIS FORCÉ.
+                poser(x.l, parts, libre, fac, true);
+            }
+        }
+    }
+
+    /**
+     * Pose l'imputation sur la ligne, et lui donne le numéro de sa plus grosse part.
+     *
+     * `arbitre` dit s'il y avait un choix à faire. Une écriture qui ne nommait
+     * qu'une facture n'arbitre rien : elle est imputée comme toujours, et la
+     * colonne publiée reste muette — sinon 2 868 lignes afficheraient « seule
+     * facture du lot que la ligne nomme », ce qui n'apprend rien à personne.
+     */
+    function poser(l, parts, reste, fac, arbitre, garderNumero) {
+        l.imputations = parts.map(p => ({ ...p, numero: fac.get(p.cle).numero }));
+        // LE MÊME SEUIL QUE CELUI QUI RAMASSE. `partsDuLot` ne reverse le reste
+        // en écriture visible qu'au-delà de TOLERANCE ; le poser dès 0,005 €
+        // laissait un centime dans l'intervalle, posé sur la ligne et ramassé
+        // par personne — Σ parts + Σ anonymes cessait d'égaler le solde du lot.
+        l.resteImpute = reste > TOLERANCE ? reste : 0;
+        l.imputationArbitree = !!arbitre;
+        if (!parts.length || garderNumero) return;
+        const gros = parts.slice().sort((a, b) => Math.abs(b.montant) - Math.abs(a.montant))[0];
+        const num = fac.get(gros.cle).numero;
+        // « FA_550_3161 correspond à FA-550-3161 », 20/10/2026 : la graphie ne
+        // fait pas deux factures. Comparer les chaînes annonçait un changement
+        // d'imputation sur 150 lignes Stripe qui n'en changeaient pas.
+        if (num && I.factureKey(num) !== I.factureKey(l.numero || '')) {
+            // La trace de ce qu'elle portait : sa règle du 20/10/2026 veut
+            // qu'un numéro affiché se relise. Le libellé d'origine ne bouge
+            // pas, et la colonne dira pourquoi le numéro retenu a changé.
+            l.numeroAvant = l.numero || '';
+            l.numero = num;
+        }
+    }
+
     function partsDuLot(g, soldee) {
         const parts = new Map(), anonymes = [];
         if (soldee) { for (const f of g.factures) parts.set(f, 0); return { parts, anonymes }; }
@@ -1077,9 +1340,25 @@
             parFacture.get(k).lignes.push(f);
         }
         for (const l of g.reglements.concat(g.avoirs, g.autres)) {
+            // L'IMPUTATION POSÉE À LA LECTURE FAIT FOI. Une écriture qui paie
+            // plusieurs factures se répartit entre elles ; ce qu'elle n'a pu
+            // imputer sur aucune reste visible, en une écriture à part et pour
+            // ce montant-là seulement — pas pour la ligne entière.
+            // `imputations` vide n'est PAS une absence de décision : c'est
+            // la décision qu'aucune facture nommée ne pouvait rien recevoir —
+            // toutes déjà soldées. Le montant entier reste alors en l'air, et
+            // le tester sur sa longueur l'aurait reversé sur son numéro.
+            if (l.imputations) {
+                for (const p of l.imputations)
+                    if (parFacture.has(p.cle)) parFacture.get(p.cle).credit += p.montant;
+                // Le reste non imputé est un crédit qui n'a trouvé personne :
+                // il pèse sur le compte avec le signe d'un crédit.
+                if (l.resteImpute > TOLERANCE) anonymes.push({ ligne: l, net: -l.resteImpute });
+                continue;
+            }
             const k = l.numero ? I.factureKey(l.numero) : '';
             if (k && parFacture.has(k)) parFacture.get(k).credit += (l.credit || 0) - (l.debit || 0);
-            else anonymes.push(l);
+            else anonymes.push({ ligne: l, net: (l.debit || 0) - (l.credit || 0) });
         }
         for (const [, x] of parFacture) {
             const debit = x.lignes.reduce((s, f) => s + f.debit, 0);
@@ -1119,8 +1398,9 @@
                 const { parts, anonymes } = partsDuLot(g, false);
                 for (const f of g.factures) ouvertes.push(ligneFacture(g, f, parts.get(f) || 0));
                 // Ce que rien ne nomme : une écriture, une créance, sa date.
-                for (const l of anonymes) {
-                    const net = (l.debit || 0) - (l.credit || 0);
+                // Et ce qu'un règlement n'a pas pu imputer : la même chose,
+                // pour la seule part restée en l'air.
+                for (const { ligne: l, net } of anonymes) {
                     if (Math.abs(net) < TOLERANCE) continue;
                     const repli = repliDerniere([l]);
                     ouvertes.push({
@@ -1138,8 +1418,18 @@
                         // seulement de quoi aller chercher SES dates chez la
                         // facturation. Sans lui, l'écriture retombait sur la
                         // facture du lot — celle d'une autre formation.
-                        cleDocument: l.numero ? I.factureKey(l.numero) : null,
-                        numeroDocument: l.numero || '',
+                        // LE RELIQUAT NE SE DATE PAS SUR LA FACTURE QU'IL
+                        // VIENT DE SOLDER. `cleDocument` sert à aller chercher
+                        // les dates du document que CETTE écriture nomme ; or
+                        // le reliquat est précisément la part qui n'est PAS
+                        // allée sur cette facture-là — elle ne doit plus rien.
+                        // Il appartient à une facture nommée hors du lot, dont
+                        // on ne sait pas laquelle : il se date donc sur sa
+                        // propre ligne, échéance 1, comme toute écriture qui ne
+                        // peut rien emprunter à personne.
+                        cleDocument: (l.resteImpute > TOLERANCE || !l.numero)
+                            ? null : I.factureKey(l.numero),
+                        numeroDocument: l.resteImpute > TOLERANCE ? '' : (l.numero || ''),
                         dateFacture: l.date || null,
                         dateEcheanceRepli: repli.date, echeance1Source: repli.source,
                         libelle: l.libelle || libelleRepresentatif(g),
@@ -2400,6 +2690,14 @@
                     dateFinFormation: l.dateFinFormation || null,
                     ancien: l.ancien || null,
                     qualif: l.qualif || '',
+                    // L'imputation, telle que la lecture l'a posée : de quoi
+                    // écrire sur la ligne QUELLES factures elle paie, pour
+                    // combien, et ce qu'elle laisse en l'air.
+                    citees: l.citees || [],
+                    imputations: l.imputations || null,
+                    imputationArbitree: !!l.imputationArbitree,
+                    resteImpute: l.resteImpute || 0,
+                    numeroAvant: l.numeroAvant || '',
                 });
             }
         }
@@ -2463,7 +2761,18 @@
         return (paiements || []).map(o => {
             const m = o.credit || 0;
             const surLeCompte = parCompte.get(o.compte) || [];
-            const cite = numeroDepuisTexte(o.libelle || '') || (o.numero || '');
+            // LE NUMÉRO DE LA LIGNE D'ABORD, LE LIBELLÉ ENSUITE.
+            //
+            // L'ordre était l'inverse, et il a cessé d'être anodin : depuis que
+            // l'imputation arbitre entre les factures qu'une écriture nomme —
+            // avoirs écartés, seules les factures de son lettrage retenues,
+            // plafond au reste dû — `o.numero` est le fruit d'une décision,
+            // alors que relire le libellé reprend bêtement le premier numéro
+            // rencontré. Proposer un rapprochement sur une facture que
+            // l'imputation vient d'écarter, c'est se contredire d'une colonne
+            // à l'autre. Le libellé ne sert plus que là où aucun numéro n'a
+            // été retenu.
+            const cite = (o.numero || '') || numeroDepuisTexte(o.libelle || '');
             const parNumero = cite ? parCle.get(I.factureKey(cite)) : null;
             const exact = surLeCompte.find(c => Math.abs(c.resteDu - m) < TOL);
             const ailleurs = (parNom.get(R.norm(o.tiers || '')) || [])

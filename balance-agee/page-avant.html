@@ -363,12 +363,20 @@ input[type=search]{flex:1 1 220px}
         multipliée par le taux de leur famille dans la fenêtre où tombe leur ancienneté.</p>
 
       <h4>Sur quoi porte le taux — l’assiette</h4>
+      <p class="param-note">L’imputation se fait en deux temps, et le premier se lit dans
+        la colonne « Imputation du règlement ». <strong>Un encaissement qui NOMME des
+        factures</strong> est imputé sur elles : à montant exact d’abord, sinon de la plus
+        ancienne à la plus récente, à concurrence de ce que chacune doit encore, avoirs
+        déduits. Ce qui reste — parce qu’il nomme une facture d’un autre lettrage, ou
+        qu’aucune de celles qu’il nomme ne doit plus rien — n’est jamais forcé : il reste
+        une écriture à part, visible.</p>
       <p class="param-note">L’assiette d’une créance est son <strong>reste dû</strong>,
         diminué des encaissements et avoirs du même lettrage qui ne sont rattachés à aucune
-        facture. Ces crédits s’imputent sur les dettes du lot <strong>de la plus ancienne à
-        la plus récente</strong> — l’imputation de droit commun. Sans cette déduction, une
-        facture déjà réglée par un virement non pointé serait provisionnée à 100 % alors
-        que le client ne doit plus rien.</p>
+        facture — ceux que le premier temps n’a pas su nommer. Ces crédits s’imputent sur
+        les dettes du lot <strong>de la plus ancienne à la plus récente</strong> —
+        l’imputation de droit commun. Sans cette déduction, une facture déjà réglée par un
+        virement non pointé serait provisionnée à 100 % alors que le client ne doit plus
+        rien.</p>
       <p class="param-note">Une créance dont l’assiette est nulle ou négative — un compte
         créditeur — ne se provisionne pas : il n’y a pas de perte à couvrir. L’ancienneté,
         elle, reste celle de chaque créance : l’imputation change le montant exposé, jamais
