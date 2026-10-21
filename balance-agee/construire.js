@@ -425,6 +425,10 @@ for(const c of cl.concat(soldees)){ if(c.cle&&!parCle.has(c.cle)) parCle.set(c.c
 // et le détail ouvert depuis la balance affichait B2B à 1 403 255 € là où la
 // balance en compte 1 400 561.
 const grp=x=>(x.compte||'')+'|'+(x.lettre||GL.POOL_NON_LETTRE);
+// « Une créance c'est là il y a une facture, qu'elle ait des paiements ou pas »
+// — « pas d'avoir par contre », 21/10/2026. Trois natures, et une seule compte.
+const natureCreance=c=>!c?'':c.sansNumero?'Sans facture'
+  :(GL.EST_AVOIR.test(String(c.numero||''))?'Avoir':'Facture');
 // Deux factures du même numéro dans le même lettrage : le grand livre en porte
 // 54 paires. Elles font deux créances, qui se partagent le solde au prorata.
 // Sans rang, elles partageraient aussi leur clé et le détail n'en montrerait
@@ -798,6 +802,7 @@ for(let i=0;i<plat.length;i++){
     // provision. La ligne pouvait être un encaissement — daté de sa propre
     // date depuis le 20/10/2026 — et l'ordre d'imputation s'en trouvait
     // changé : 1 567,51 € d'écart entre la page et le contrôle.
+    'Nature de la créance':natureCreance(propre),
     'Jours de retard de la créance':propre?(retard(propre)==null?'':retard(propre)):'',
     'Tranche de la créance':propre?tranche(propre):'',
     // L'identité de la créance, telle que le moteur la forme : compte, lettre
@@ -817,7 +822,7 @@ const ligneCreance=c=>({
   [A_COMPLETER]:aCompleter(c),
   'Facture':c.numero||'', 'Client':c.tiers||'', 'N° de compte':c.compte||'',
   'Identifiant du tiers':c.identifiantTiers||'', 'Lettrage':c.lettre||'', 'SIREN':c.siren||'',
-  'Nature':c.sansNumero?'Solde sans facture':'Facture',
+  'Nature':natureCreance(c),
   'Type de client':c.typeClient||R.categorieDe(c.financement,RG)||'', 'Type de financement':lab(c.financement),
   'Origine du classement':c.origineClassement||'', 'Justificatif du classement':c.preuveClassement||'',
   'Montant facture':ar(c.montant), 'Restant dû':ar(c.resteDu),

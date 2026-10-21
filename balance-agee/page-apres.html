@@ -64,7 +64,12 @@ function demarrer(){
     // pas. Le total serait resté juste, les deux lignes touchées, fausses.
     metaCreance.set(k,{rd:N(i,'Reste dû de la créance'),
       tr:V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté'),
-      sc:V(i,'Type de financement de la créance')||sc});
+      sc:V(i,'Type de financement de la créance')||sc,
+      // Le compteur ne suit que les factures : un complément posé sur un
+      // avoir ou sur une ligne sans facture déplace son montant, pas une
+      // créance. Sans cette distinction, une ligne de synthèse affichait
+      // « −4 créances ».
+      fac:V(i,'Nature de la créance')==='Facture'});
   }
   ruban();
   E('sous').textContent=D.source+' · arrêté au '+D.arrete+' · '
@@ -160,7 +165,7 @@ function avecComplements(rows, niveau){
     if(cible===depart) continue;
     const de=par.get(depart), vers=par.get(cible)||ligneNeuve(cible);
     const j=D.tranches.indexOf(m.tr);
-    const bouger=(r,s)=>{ r.total+=s*m.rd; r.nb+=s;
+    const bouger=(r,s)=>{ r.total+=s*m.rd; if(m.fac) r.nb+=s;
       if(m.tr==='Non échu') r.nonEchu+=s*m.rd; else r.echu+=s*m.rd;
       if(j>=0) r.buckets[j]+=s*m.rd; };
     if(de) bouger(de,-1);
