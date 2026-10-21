@@ -366,10 +366,10 @@ const NATURE_MOTIF=[
   // dans le pool non lettré de leur compte ; leur écrire « dans ce lettrage »
   // les démentirait en face de la colonne « Let. », qui annonce
   // « (non lettré) ».
-  [/au d[ée]bit parmi les [ée]critures que la comptabilit[ée] a point[ée]es/i,
-   'Repli · aucune facture au débit parmi les écritures pointées avec elle,'
+  [/au d[ée]bit en face de cette [ée]criture/i,
+   'Repli · aucune facture au débit en face de cette écriture,'
    +' la ligne se date elle-même'],
-  [/au d[ée]bit parmi les [ée]critures que la comptabilit[ée] n’a pas encore point[ée]es/i,
+  [/au d[ée]bit parmi les [ée]critures non point[ée]es/i,
    'Repli · aucune facture au débit parmi les écritures non pointées de ce compte,'
    +' la ligne se date elle-même'],
   [/dispositif [àa] qualifier/i,  'Repli · dispositif non qualifié au moment du calcul'],   // précisé ci-dessous
@@ -681,16 +681,17 @@ const imputationLisible=l=>{
   const motifs=[...new Set(parts.map(p=>p.motif))];
   const morceaux=parts.map(p=>p.numero+' '+eurFr(p.montant));
   let t=morceaux.join(' + ');
-  // La même tournure que les motifs du moteur, et le même mot : « pointé ».
+  // La même tournure que les motifs du moteur : pointer, c'est mettre deux
+  // écritures en face l'une de l'autre.
   const ou=(l.lettre&&l.lettre!==GL.POOL_NON_LETTRE)
-    ?'que la comptabilité a pointées avec elle'
-    :'que la comptabilité n’a pas encore pointées, sur ce compte';
+    ?'en face de cette écriture'
+    :'parmi les écritures non pointées de ce compte';
   if(reste) t=(t?t+' · ':'')+'non imputé '+eurFr(reste)
     +(parts.length?' (les factures qu’elle nomme ne doivent plus rien)'
       :' (aucune facture qu’elle nomme ne doit encore quelque chose)');
   if(motifs.length) t+=' — '+motifs.join(' ; ');
   if(l.numeroAvant && l.numeroAvant!==l.numero)
-    t+=' — la ligne portait '+l.numeroAvant+', qui n’est pas parmi les écritures '+ou;
+    t+=' — la ligne portait '+l.numeroAvant+', qui n’est pas '+ou;
   return t;
 };
 

@@ -1168,17 +1168,19 @@
             const reste = new Map();
             for (const [k, e] of fac) reste.set(k, e.debit);
 
-            // OÙ LA RÈGLE A CHERCHÉ, dit en face de la colonne « Let. », et
-            // dit avec SES mots : « sous la même lettre de lettrage c'est pas
-            // compréhensible », 21/10/2026. Le mot qu'elle emploie est
-            // « pointé » — « 4 915 sur 5 368 règlements non pointés ». Une
-            // seule tournure, deux versions, qui se lisent toutes deux en
-            // français : « parmi les écritures que la comptabilité a pointées
-            // avec elle », ou « … qu'elle n'a pas encore pointées, sur ce
-            // compte ».
+            // OÙ LA RÈGLE A CHERCHÉ, dit en face de la colonne « Let. ».
+            //
+            // Deux mots essayés, deux refusés : « sous la même lettre de
+            // lettrage c'est pas compréhensible », puis « parmi les écritures
+            // que la comptabilité a pointées avec elle ne veut rien dire »
+            // (21/10/2026). Pointer, c'est mettre deux écritures EN FACE l'une
+            // de l'autre : c'est ce que dit la phrase, sans nommer le
+            // mécanisme. Là où rien n'est pointé, il n'y a pas de vis-à-vis,
+            // et la phrase le dit autrement — l'affirmer serait annoncer un
+            // rapprochement qui n'a pas eu lieu.
             const ou = (g.lettre && g.lettre !== POOL_NON_LETTRE)
-                ? 'que la comptabilité a pointées avec elle'
-                : 'que la comptabilité n’a pas encore pointées, sur ce compte';
+                ? 'en face de cette écriture'
+                : 'parmi les écritures non pointées de ce compte';
 
             // Les factures que la ligne nomme — son numéro retenu compris, car
             // il peut venir d'une colonne et non du libellé — réduites à celles
@@ -1252,8 +1254,7 @@
                 // Une seule facture nommée, ou une écriture au débit : rien à
                 // arbitrer, l'imputation est entière — comme auparavant.
                 if (combien(l) < 2 || m <= TOLERANCE) {
-                    poser(l, [{ cle: cand[0], montant: m,
-                                motif: 'seule facture que la ligne nomme parmi les écritures ' + ou }],
+                    poser(l, [{ cle: cand[0], montant: m, motif: 'seule facture nommée ' + ou }],
                           0, fac, false);
                     reste.set(cand[0], reste.get(cand[0]) - m);
                     continue;
@@ -1303,7 +1304,7 @@
                                  // un choix qui n'a pas eu lieu.
                                  motif: x.cand.length > 1
                                      ? 'de la plus ancienne à la plus récente, à concurrence de son reste dû'
-                                     : 'seule facture que la ligne nomme parmi les écritures ' + ou });
+                                     : 'seule facture nommée ' + ou });
                 }
                 // 5. LE RESTE N'EST JAMAIS FORCÉ.
                 poser(x.l, parts, libre, fac, true);
@@ -3229,10 +3230,10 @@
                        // les démentait d'une colonne à l'autre, exactement comme
                        // « hérité du même lettrage » le faisait avant elles.
                        || (seDateSeule
-                           ? 'aucune facture au débit parmi les écritures '
+                           ? 'aucune facture au débit '
                              + (l.lettre && l.lettre !== POOL_NON_LETTRE
-                                 ? 'que la comptabilité a pointées avec elle'
-                                 : 'que la comptabilité n’a pas encore pointées, sur ce compte')
+                                 ? 'en face de cette écriture'
+                                 : 'parmi les écritures non pointées de ce compte')
                              + ' — échéance de la ligne elle-même'
                            : '')),
                 // De quoi justifier la date sur la ligne elle-même, sans avoir
