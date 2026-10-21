@@ -158,13 +158,14 @@ const parenteDeLAvoir=new Map(datesAvoirs.map(a=>[a.cle,a.parente]));
 // « Tu peux réparer ce genre de num ? », 20/10/2026, à propos de
 // « FCAT-2507-10687 » et « FACT 2010 06145 ». Sa règle du 20/10 pose le
 // principe : « FA_550_3161 correspond à FA-550-3161 » — la graphie ne
-// distingue pas deux factures. On l'étend à deux cas, et à deux seulement,
-// parce qu'eux seuls laissent les CHIFFRES intacts :
+// distingue pas deux factures. On l'étend à UN SEUL cas : l'orthographe du
+// préfixe, à chiffres rigoureusement identiques — FCAT pour FACT, FACT-FILIZ
+// pour FCT-FILIZ.
 //
-//   · les zéros de tête d'un bloc de chiffres — FA-TRAN-0000016 et
-//     FA-TRAN-0016 sont la même facture, la valeur ne bouge pas ;
-//   · l'orthographe du préfixe, à chiffres identiques — FCAT pour FACT,
-//     FACT-FILIZ pour FCT-FILIZ.
+// Les zéros de tête avaient été ajoutés, puis retirés le 21/10/2026 :
+// « FA-TRAN-0000016 ça il ne faut pas le modifier, c'est un num de fact qui
+// existe ». FA-TRAN-0000016 et FA-TRAN-0016 sont DEUX factures. Un zéro n'est
+// pas de la ponctuation : il fait partie du numéro.
 //
 // Et une réparation n'est retenue que si elle désigne UNE SEULE facture
 // connue. Deux candidates, on ne répare pas : « ce n'est pas parce que c'est
@@ -180,11 +181,6 @@ const CONNUS=new Map();
   for(const l of sellsy) pose(l.numero);
   for(const r of feuille(ANC,'BdD Zoho -Avoir Zoho',0).rows) pose(r['Facture d’avoir#']);
   for(const r of fi.rows) for(const n of numerosDeLaCellule(r['NUMERO FACTURE'])) pose(n); }
-const sansZeros=k=>String(k||'').replace(/([A-Z])0+(\d)/g,'$1$2');
-const PAR_SANS_ZEROS=new Map();
-for(const k of CONNUS.keys()){ const z=sansZeros(k);
-  if(!PAR_SANS_ZEROS.has(z)) PAR_SANS_ZEROS.set(z,[]); PAR_SANS_ZEROS.get(z).push(k); }
-
 const nouv=feuille(NOUV,'Grand livre - Clients',0);
 const REPARATIONS=new Map();
 { const vus=new Map();
@@ -196,7 +192,7 @@ const REPARATIONS=new Map();
   let ambigus=0;
   for(const [k,n] of vus){
     if(CONNUS.has(k)) continue;
-    const cands=new Set(PAR_SANS_ZEROS.get(sansZeros(k))||[]);
+    const cands=new Set();
     for(const v of [k.replace(/^FCAT(?=\d)/,'FACT'), k.replace(/^FACT(?=[A-Z]{2,8}\d)/,'FCT')])
       if(v!==k && CONNUS.has(v)) cands.add(v);
     cands.delete(k);
