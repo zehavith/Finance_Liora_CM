@@ -366,11 +366,11 @@ const NATURE_MOTIF=[
   // dans le pool non lettré de leur compte ; leur écrire « dans ce lettrage »
   // les démentirait en face de la colonne « Let. », qui annonce
   // « (non lettré) ».
-  [/aucune facture au d[ée]bit sous la m[êe]me lettre/i,
-   'Repli · aucune facture au débit sous la même lettre de lettrage,'
+  [/au d[ée]bit parmi les [ée]critures que la comptabilit[ée] a point[ée]es/i,
+   'Repli · aucune facture au débit parmi les écritures pointées avec elle,'
    +' la ligne se date elle-même'],
-  [/aucune facture au d[ée]bit parmi les [ée]critures non lettr[ée]es/i,
-   'Repli · aucune facture au débit parmi les écritures non lettrées du compte,'
+  [/au d[ée]bit parmi les [ée]critures que la comptabilit[ée] n’a pas encore point[ée]es/i,
+   'Repli · aucune facture au débit parmi les écritures non pointées de ce compte,'
    +' la ligne se date elle-même'],
   [/dispositif [àa] qualifier/i,  'Repli · dispositif non qualifié au moment du calcul'],   // précisé ci-dessous
   [/derni[èe]re date du libell/i, 'Repli · dernière date lue dans le libellé'],
@@ -681,17 +681,16 @@ const imputationLisible=l=>{
   const motifs=[...new Set(parts.map(p=>p.motif))];
   const morceaux=parts.map(p=>p.numero+' '+eurFr(p.montant));
   let t=morceaux.join(' + ');
-  // « Son lettrage » n'est vrai que si la ligne est lettrée : dans le pool non
-  // lettré d'un compte, il n'y a pas de lettrage, et le dire contredirait la
-  // colonne « Let. » d'à côté.
+  // La même tournure que les motifs du moteur, et le même mot : « pointé ».
   const ou=(l.lettre&&l.lettre!==GL.POOL_NON_LETTRE)
-    ?'sous la même lettre de lettrage':'parmi les écritures non lettrées du compte';
+    ?'que la comptabilité a pointées avec elle'
+    :'que la comptabilité n’a pas encore pointées, sur ce compte';
   if(reste) t=(t?t+' · ':'')+'non imputé '+eurFr(reste)
-    +(parts.length?' (les factures qu’elle nomme '+ou+' ne doivent plus rien)'
-      :' (aucune facture qu’elle nomme '+ou+' ne doit encore quelque chose)');
+    +(parts.length?' (les factures qu’elle nomme ne doivent plus rien)'
+      :' (aucune facture qu’elle nomme ne doit encore quelque chose)');
   if(motifs.length) t+=' — '+motifs.join(' ; ');
   if(l.numeroAvant && l.numeroAvant!==l.numero)
-    t+=' — la ligne portait '+l.numeroAvant+', qui n’est pas une facture '+ou;
+    t+=' — la ligne portait '+l.numeroAvant+', qui n’est pas parmi les écritures '+ou;
   return t;
 };
 
@@ -1128,6 +1127,45 @@ const wb=X.utils.book_new();
 // Excel refuse un nom d'onglet au-delà de 31 caractères. Le tronquer en
 // silence donnait « Balance âgée par type de financ » : on le refuse plutôt,
 // pour que l'onglet soit nommé et non coupé.
+// ───────── le barème de provision ─────────
+//
+// Son tableau « Règles de provision Groupe », reçu le 16/10/2026. Les quatre
+// fenêtres coïncident exactement avec les tranches d'ancienneté déjà en
+// place : chacune est la somme de tranches entières, rien n'est à recouper
+// ni à proratiser. En deçà de 121 jours, aucune provision.
+//
+// Le rattachement des quinze types de financement aux trois familles n'est
+// plus une supposition : ce sont ses trois types de client, qu'elle a dictés
+// le 16/10/2026. Il se modifie malgré tout dans la page, section
+// « Paramètres ».
+//
+// Il est posé ICI, avant le classeur, parce que le classeur le publie
+// désormais : « l'imputation pour provision — mets-moi les règles dans
+// l'export », 21/10/2026. Une seule définition, lue par l'onglet et par la
+// page : les deux ne peuvent pas diverger.
+const PROVISION={
+  confirme:true,
+  fenetres:[
+    {label:'121 - 180 j', tranches:['4 à 6 mois']},
+    {label:'181 - 360 j', tranches:['6 à 12 mois']},
+    {label:'361 - 720 j', tranches:['12 à 18 mois','18 à 24 mois']},
+    {label:'> 720 j',     tranches:['24 à 36 mois','36 à 48 mois','> 48 mois']},
+  ],
+  // Son tableau du groupe nomme les trois familles B2C, ETATIQUE et B2B. Ce
+  // sont exactement ses trois types de client : « Financement personnel »
+  // pour B2C, « Corporate » pour B2B. On les appelle donc comme elle les
+  // appelle dans la balance, pour n'avoir qu'un vocabulaire.
+  taux:{'Étatique':[0,0,0.50,1],'Corporate':[0.40,0.40,0.90,1],
+        'Financement personnel':[0.20,0.40,0.90,1]},
+  familles:{
+    'Étatique':['Transition Pro','AIF','POEI','CPF','Region',
+                'OPCO - Alternance','OPCO','ETAT','Agefiph'],
+    'Corporate':['B2B','B2C-Entreprise','Corporate - Alternance','Interco',
+                 'Corporate — financement à préciser','Interne - DST Allemagne'],
+    'Financement personnel':['Financement personnel','Perso-Alternance'],
+  },
+};
+
 const add=(nom,rows)=>{
   if(nom.length>31) throw new Error('onglet trop long pour Excel ('+nom.length+' caractères) : '+nom);
   return X.utils.book_append_sheet(wb,X.utils.json_to_sheet(rows.length?rows:[{'':'(aucune ligne)'}]),nom);
@@ -1194,6 +1232,85 @@ add('Règles d’échéance',RG.filter(r=>r.key!=='INCONNU').map(r=>{const g=r.g
   'Repli si la base manque':(BASES[r.fallback]||r.fallback||'')
     +(r.fallbackJours!=null?' + '+r.fallbackJours+' j':''),
 };}));
+// ───────── l'imputation des règlements, écriture par écriture ─────────
+//
+// « Imputation de paiement, donne-moi l'impact », 21/10/2026. L'impact ne se
+// résume pas : il se lit. Une ligne par écriture que la règle a arbitrée —
+// ce qu'elle a payé, à qui, pourquoi celle-là, ce qu'elle laisse ouvert, et
+// la facture qu'elle désignait avant. La colonne « Imputation du règlement »
+// dit la même chose au fil du détail ; cet onglet les réunit pour qu'elles
+// se comptent.
+{
+  const rows=[];
+  for(const l of plat){
+    if(!l.imputationArbitree && !l.numeroAvant && !(l.resteImpute>0.005)) continue;
+    const parts=(l.imputations||[]).filter(x=>Math.abs(x.montant)>0.005);
+    const mt=(l.credit||0)-(l.debit||0);
+    const base={
+      'N° de compte':l.compte||'', 'Libellé de compte':libelleCompte.get(l.compte)||l.tiers||'',
+      'Let.':l.lettre||'', 'Date':fr(l.date), 'Nature':l.nature||'',
+      'Montant de l’écriture':ar(mt),
+      'Factures nommées':(l.citees||[]).join(' · '),
+      'Numéro porté avant':l.numeroAvant||'',
+    };
+    if(!parts.length) rows.push({...base,'Imputé sur':'','Montant imputé':0,
+      'Pourquoi celle-là':'', 'Non imputé':ar(l.resteImpute||0)});
+    else parts.forEach((x,i)=>rows.push({...base,
+      'Imputé sur':x.numero,'Montant imputé':ar(x.montant),'Pourquoi celle-là':x.motif,
+      // Le reste ne se répète pas sur chaque part : il appartient à l'écriture.
+      'Non imputé':i===parts.length-1?ar(l.resteImpute||0):''}));
+  }
+  add('Imputation des règlements',rows);
+  console.log('onglet « Imputation des règlements » : '+rows.length+' lignes');
+}
+
+// ───────── le barème de provision, tel qu'il est appliqué ─────────
+//
+// « L'imputation pour provision — mets-moi les règles dans l'export »,
+// 21/10/2026. Elles n'étaient que sur la page : qui ouvrait le classeur
+// voyait un montant à provisionner sans la règle qui le produit.
+{
+  const rows=[];
+  const pct=x=>Math.round(x*100)+' %';
+  const FEN=PROVISION.fenetres.map(f=>f.label);
+  for(const [fam,taux] of Object.entries(PROVISION.taux)){
+    const o={'Section':'Taux appliqué','Famille / Règle':fam};
+    FEN.forEach((f,i)=>{ o[f]=pct(taux[i]); });
+    o['Ce que ça dit']='Taux de provision de la famille « '+fam+' », par ancienneté de la créance.';
+    rows.push(o);
+  }
+  for(const [fam,liste] of Object.entries(PROVISION.familles))
+    rows.push({'Section':'Qui est dans la famille','Famille / Règle':fam,
+      'Ce que ça dit':liste.join(' · ')});
+  for(const f of PROVISION.fenetres)
+    rows.push({'Section':'Fenêtre d’ancienneté','Famille / Règle':f.label,
+      'Ce que ça dit':'Tranches de la balance âgée : '+f.tranches.join(' · ')});
+  rows.push({'Section':'Avant 121 jours','Famille / Règle':'Aucune provision',
+    'Ce que ça dit':'Une créance de moins de 121 jours de retard, ou non échue, '
+      +'n’est pas provisionnée.'});
+  rows.push({'Section':'Assiette — premier temps','Famille / Règle':'Imputation du règlement',
+    'Ce que ça dit':'Un encaissement qui NOMME des factures est imputé sur elles : à montant '
+      +'exact d’abord, sinon de la plus ancienne à la plus récente, à concurrence de ce que '
+      +'chacune doit encore, avoirs déduits. Ce qui reste n’est jamais forcé : il reste une '
+      +'écriture à part, visible. Cette imputation-là change de vrais restes dus ; elle se lit '
+      +'ligne à ligne dans la colonne « Imputation du règlement » et dans l’onglet du même nom.'});
+  rows.push({'Section':'Assiette — second temps','Famille / Règle':'Imputation pour provision',
+    'Ce que ça dit':'Elle ne sert qu’ici : elle ne change aucun reste dû publié, aucune '
+      +'échéance, aucune tranche — seulement le montant exposé au risque. L’assiette d’une '
+      +'créance est son reste dû, diminué des encaissements et avoirs du MÊME COMPTE que rien '
+      +'ne rattache à une facture — ceux que le premier temps n’a pas su nommer. Ces crédits '
+      +'se posent sur les dettes de la plus ancienne à la plus récente, l’ordre de droit '
+      +'commun. Sans cette déduction, une facture déjà réglée par un virement non pointé '
+      +'serait provisionnée à 100 % alors que le client ne doit plus rien.'});
+  rows.push({'Section':'Assiette','Famille / Règle':'Assiette nulle ou négative',
+    'Ce que ça dit':'Une créance dont l’assiette est nulle ou négative — un compte créditeur — '
+      +'ne se provisionne pas : il n’y a pas de perte à couvrir.'});
+  rows.push({'Section':'Ancienneté','Famille / Règle':'Elle ne bouge pas',
+    'Ce que ça dit':'L’imputation pour provision change le montant exposé, jamais la date qui '
+      +'le classe : chaque créance reste dans la tranche de SON échéance.'});
+  add('Règles de provision',rows);
+}
+
 fs.writeFileSync('Balance-agee-classee.xlsx',Buffer.from(X.write(wb,{type:'array',bookType:'xlsx',compression:true})));
 console.log('écrit : Balance-agee-classee.xlsx');
 console.log('onglets : '+wb.SheetNames.join(' · '));
@@ -1330,39 +1447,7 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
   // Sans cette table, la balance affichait deux lignes pour un seul dispositif.
   anciensDispositifs:Object.fromEntries(ANCIENS.map(([vieux,cle])=>
     [vieux,(RG.find(r=>r&&r.key===cle)||{}).label||vieux])),
-  // ───────── le barème de provision ─────────
-  //
-  // Son tableau « Règles de provision Groupe », reçu le 16/10/2026. Les quatre
-  // fenêtres coïncident exactement avec les tranches d'ancienneté déjà en
-  // place : chacune est la somme de tranches entières, rien n'est à recouper
-  // ni à proratiser. En deçà de 121 jours, aucune provision.
-  //
-  // Le rattachement des quinze types de financement aux trois familles n'est
-  // plus une supposition : ce sont ses trois types de client, qu'elle a dictés
-  // le 16/10/2026. Il se modifie malgré tout dans la page, section
-  // « Paramètres ».
-  provision:{
-    confirme:true,
-    fenetres:[
-      {label:'121 - 180 j', tranches:['4 à 6 mois']},
-      {label:'181 - 360 j', tranches:['6 à 12 mois']},
-      {label:'361 - 720 j', tranches:['12 à 18 mois','18 à 24 mois']},
-      {label:'> 720 j',     tranches:['24 à 36 mois','36 à 48 mois','> 48 mois']},
-    ],
-    // Son tableau du groupe nomme les trois familles B2C, ETATIQUE et B2B. Ce
-    // sont exactement ses trois types de client : « Financement personnel »
-    // pour B2C, « Corporate » pour B2B. On les appelle donc comme elle les
-    // appelle dans la balance, pour n'avoir qu'un vocabulaire.
-    taux:{'Étatique':[0,0,0.50,1],'Corporate':[0.40,0.40,0.90,1],
-          'Financement personnel':[0.20,0.40,0.90,1]},
-    familles:{
-      'Étatique':['Transition Pro','AIF','POEI','CPF','Region',
-                  'OPCO - Alternance','OPCO','ETAT','Agefiph'],
-      'Corporate':['B2B','B2C-Entreprise','Corporate - Alternance','Interco',
-                   'Corporate — financement à préciser','Interne - DST Allemagne'],
-      'Financement personnel':['Financement personnel','Perso-Alternance'],
-    },
-  },
+  provision:PROVISION,
   // Le type de client d'abord — c'est la lecture que vous faites —, la
   // sous-catégorie ensuite, pour le détail du dispositif.
   syntheseCat:[...catRows,balCat.total].map(r=>({

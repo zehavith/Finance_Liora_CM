@@ -1168,13 +1168,17 @@
             const reste = new Map();
             for (const [k, e] of fac) reste.set(k, e.debit);
 
-            // OÙ LA RÈGLE A CHERCHÉ, dit en face de la colonne « Let. ». Un
-            // lettrage est un rapprochement que la comptabilité a fait ; le
-            // pool non lettré d'un compte n'en est pas un, et écrire « de ce
-            // lettrage » devant un « (non lettré) » dément la ligne d'à côté.
+            // OÙ LA RÈGLE A CHERCHÉ, dit en face de la colonne « Let. », et
+            // dit avec SES mots : « sous la même lettre de lettrage c'est pas
+            // compréhensible », 21/10/2026. Le mot qu'elle emploie est
+            // « pointé » — « 4 915 sur 5 368 règlements non pointés ». Une
+            // seule tournure, deux versions, qui se lisent toutes deux en
+            // français : « parmi les écritures que la comptabilité a pointées
+            // avec elle », ou « … qu'elle n'a pas encore pointées, sur ce
+            // compte ».
             const ou = (g.lettre && g.lettre !== POOL_NON_LETTRE)
-                ? 'sous la même lettre de lettrage'
-                : 'parmi les écritures non lettrées de ce compte';
+                ? 'que la comptabilité a pointées avec elle'
+                : 'que la comptabilité n’a pas encore pointées, sur ce compte';
 
             // Les factures que la ligne nomme — son numéro retenu compris, car
             // il peut venir d'une colonne et non du libellé — réduites à celles
@@ -1248,7 +1252,8 @@
                 // Une seule facture nommée, ou une écriture au débit : rien à
                 // arbitrer, l'imputation est entière — comme auparavant.
                 if (combien(l) < 2 || m <= TOLERANCE) {
-                    poser(l, [{ cle: cand[0], montant: m, motif: 'seule facture que la ligne nomme ' + ou }],
+                    poser(l, [{ cle: cand[0], montant: m,
+                                motif: 'seule facture que la ligne nomme parmi les écritures ' + ou }],
                           0, fac, false);
                     reste.set(cand[0], reste.get(cand[0]) - m);
                     continue;
@@ -1298,7 +1303,7 @@
                                  // un choix qui n'a pas eu lieu.
                                  motif: x.cand.length > 1
                                      ? 'de la plus ancienne à la plus récente, à concurrence de son reste dû'
-                                     : 'seule facture ' + ou + ' parmi celles qu’elle nomme' });
+                                     : 'seule facture que la ligne nomme parmi les écritures ' + ou });
                 }
                 // 5. LE RESTE N'EST JAMAIS FORCÉ.
                 poser(x.l, parts, libre, fac, true);
@@ -1339,12 +1344,23 @@
 
     function partsDuLot(g, soldee) {
         const parts = new Map(), anonymes = [];
-        if (soldee) { for (const f of g.factures) parts.set(f, 0); return { parts, anonymes }; }
+        // CE QUE CHAQUE FACTURE A VRAIMENT REÇU, séparé par nature. Jusqu'ici
+        // l'export rendait à chaque facture d'un pointage le crédit du
+        // pointage ENTIER : chez 4110ALLI00200, quatre factures annonçaient
+        // chacune « réglé 6 480,20 € », le total des quatre. 1 910 factures
+        // (8 335 648,75 €) se disaient « Partiellement réglée » alors que
+        // l'imputation ne leur avait rien donné. Maintenant que l'imputation
+        // sait qui reçoit quoi, chaque facture le dit pour elle-même.
+        const recu = new Map();
+        if (soldee) {
+            for (const f of g.factures) { parts.set(f, 0); recu.set(f, { regle: 0, avoir: 0 }); }
+            return { parts, anonymes, recu };
+        }
         const parFacture = new Map(), sansCle = [];
         for (const f of g.factures) {
             const k = I.factureKey(f.numero);
             if (!k) { sansCle.push(f); continue; }
-            if (!parFacture.has(k)) parFacture.set(k, { lignes: [], credit: 0 });
+            if (!parFacture.has(k)) parFacture.set(k, { lignes: [], credit: 0, regle: 0, avoir: 0 });
             parFacture.get(k).lignes.push(f);
         }
         for (const l of g.reglements.concat(g.avoirs, g.autres)) {
@@ -1357,15 +1373,24 @@
             // toutes déjà soldées. Le montant entier reste alors en l'air, et
             // le tester sur sa longueur l'aurait reversé sur son numéro.
             if (l.imputations) {
-                for (const p of l.imputations)
-                    if (parFacture.has(p.cle)) parFacture.get(p.cle).credit += p.montant;
+                for (const p of l.imputations) {
+                    if (!parFacture.has(p.cle)) continue;
+                    const x = parFacture.get(p.cle);
+                    x.credit += p.montant;
+                    if (l.nature === 'avoir' || EST_AVOIR.test(l.numero || '')) x.avoir += p.montant;
+                    else x.regle += p.montant;
+                }
                 // Le reste non imputé est un crédit qui n'a trouvé personne :
                 // il pèse sur le compte avec le signe d'un crédit.
                 if (l.resteImpute > TOLERANCE) anonymes.push({ ligne: l, net: -l.resteImpute });
                 continue;
             }
             const k = l.numero ? I.factureKey(l.numero) : '';
-            if (k && parFacture.has(k)) parFacture.get(k).credit += (l.credit || 0) - (l.debit || 0);
+            if (k && parFacture.has(k)) {
+                const x = parFacture.get(k), net = (l.credit || 0) - (l.debit || 0);
+                x.credit += net;
+                if (EST_AVOIR.test(l.numero || '')) x.avoir += net; else x.regle += net;
+            }
             else anonymes.push({ ligne: l, net: (l.debit || 0) - (l.credit || 0) });
         }
         for (const [, x] of parFacture) {
@@ -1374,13 +1399,17 @@
             // Plusieurs lignes au débit pour un même numéro : c'est la même
             // facture passée en plusieurs fois, son reste dû se partage entre
             // elles au prorata de leur débit.
-            for (const f of x.lignes) parts.set(f, debit ? net * (f.debit / debit) : net);
+            for (const f of x.lignes) {
+                const q = debit ? (f.debit / debit) : 1;
+                parts.set(f, debit ? net * q : net);
+                recu.set(f, { regle: x.regle * q, avoir: x.avoir * q });
+            }
         }
         // Une facture dont le numéro n'est pas exploitable ne peut rien
         // recevoir de nommé : elle porte son débit, et ce qui la visait est
         // resté anonyme, donc visible à côté.
-        for (const f of sansCle) parts.set(f, f.debit);
-        return { parts, anonymes };
+        for (const f of sansCle) { parts.set(f, f.debit); recu.set(f, { regle: 0, avoir: 0 }); }
+        return { parts, anonymes, recu };
     }
 
     function creancesOuvertes(lu) {
@@ -1559,17 +1588,26 @@
             // numéro ; sans cette égalité, l'export publiait les trois
             // factures entières et les avoirs nulle part.
             const resteLot = g.soldee ? 0 : (g.debit - g.credit);
-            const { parts } = partsDuLot(g, g.soldee || Math.abs(resteLot) < TOLERANCE);
+            const { parts, recu } = partsDuLot(g, g.soldee || Math.abs(resteLot) < TOLERANCE);
             for (const f of g.factures) {
                 const l = ligneFacture(g, f, parts.get(f) || 0);
+                // CE QU'ELLE A REÇU, ELLE, et non ce que son pointage a reçu.
+                // « Réglé » et « Avoir » rendaient à chaque facture le crédit
+                // du pointage entier : les sommer sur un pointage multipliait
+                // son crédit par le nombre de ses factures. Et le statut
+                // annonçait « Partiellement réglée » à 1 910 factures
+                // (8 335 648,75 €) auxquelles rien n'avait été imputé, parce
+                // qu'un règlement avait touché une AUTRE facture du même
+                // pointage. Les trois se lisent désormais sur la facture.
+                const r = recu.get(f) || { regle: 0, avoir: 0 };
                 l.statut = g.soldee
                     ? (g.parAvoir ? 'Soldée par un avoir' : 'Soldée par règlement')
                     : (Math.abs(resteLot) < TOLERANCE ? 'Lettrage équilibré'
-                        : (g.creditReglements > TOLERANCE ? 'Partiellement réglée' : 'Ouverte'));
+                        : (r.regle > TOLERANCE ? 'Partiellement réglée' : 'Ouverte'));
                 l.dateReglement = g.dateReglement || null;
                 l.dateAvoir = g.dateAvoir || null;
-                l.regle = g.creditReglements || 0;
-                l.avoir = g.creditAvoirs || 0;
+                l.regle = r.regle || 0;
+                l.avoir = r.avoir || 0;
                 out.push(l);
             }
         }
@@ -3191,11 +3229,11 @@
                        // les démentait d'une colonne à l'autre, exactement comme
                        // « hérité du même lettrage » le faisait avant elles.
                        || (seDateSeule
-                           ? (l.lettre && l.lettre !== POOL_NON_LETTRE
-                               ? 'aucune facture au débit sous la même lettre de lettrage'
-                                 + ' — échéance de la ligne elle-même'
-                               : 'aucune facture au débit parmi les écritures non lettrées'
-                                 + ' de ce compte — échéance de la ligne elle-même')
+                           ? 'aucune facture au débit parmi les écritures '
+                             + (l.lettre && l.lettre !== POOL_NON_LETTRE
+                                 ? 'que la comptabilité a pointées avec elle'
+                                 : 'que la comptabilité n’a pas encore pointées, sur ce compte')
+                             + ' — échéance de la ligne elle-même'
                            : '')),
                 // De quoi justifier la date sur la ligne elle-même, sans avoir
                 // à remonter à la créance : le délai réellement appliqué,
