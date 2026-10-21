@@ -60,16 +60,22 @@ const fi={rows: feuille('depot-ech/echeances.xlsx','Échéances',0).rows
 // elles la première ne portait pas de date de facturation. On consolide donc :
 // le contrat commence au plus tôt, finit au plus tard, et la facturation est la
 // première date réellement renseignée.
+// Dix cellules « NUMERO FACTURE » du financeur en portent DEUX, séparés par
+// une virgule : une ligne d'échéance qui vaut pour deux factures. Lues d'un
+// bloc, elles ne désignaient aucune des deux, et neuf factures perdaient leurs
+// dates. On ne devine rien — on lit ce que le fichier écrit déjà.
+const numerosDeLaCellule=v=>String(v||'').split(/[,;]/).map(x=>x.trim()).filter(Boolean);
 const parFacture=new Map();
-for(const r of fi.rows){ const num=String(r['NUMERO FACTURE']||'').trim(); if(!num) continue;
-  const cle=I.factureKey(num); if(!cle) continue;
+for(const r of fi.rows){
   const d=dser(r['DATE DEBUT CONTRAT']), f=dser(r['DATE FIN CONTRAT']), fa=dser(r['DATE FACTURATION']);
   if(!d&&!f&&!fa) continue;
-  const e=parFacture.get(cle)||{cle,numero:num,dateDebutFormation:null,dateFinFormation:null,dateFacture:null};
-  if(d&&(!e.dateDebutFormation||d<e.dateDebutFormation)) e.dateDebutFormation=d;
-  if(f&&(!e.dateFinFormation||f>e.dateFinFormation)) e.dateFinFormation=f;
-  if(fa&&!e.dateFacture) e.dateFacture=fa;
-  parFacture.set(cle,e); }
+  for(const num of numerosDeLaCellule(r['NUMERO FACTURE'])){
+    const cle=I.factureKey(num); if(!cle) continue;
+    const e=parFacture.get(cle)||{cle,numero:num,dateDebutFormation:null,dateFinFormation:null,dateFacture:null};
+    if(d&&(!e.dateDebutFormation||d<e.dateDebutFormation)) e.dateDebutFormation=d;
+    if(f&&(!e.dateFinFormation||f>e.dateFinFormation)) e.dateFinFormation=f;
+    if(fa&&!e.dateFacture) e.dateFacture=fa;
+    parFacture.set(cle,e); } }
 const factFiliz=[...parFacture.values()];
 console.log('dossiers du financeur : '+fi.rows.length+' lignes → '+factFiliz.length+' factures consolidées');
 
@@ -147,8 +153,59 @@ const DATES=factFiliz.concat(datesSeptembre).concat(datesAvoirs).concat(datesObj
 // De quoi écrire, sur la ligne, QUELLE facture lui a prêté ses dates.
 const parenteDeLAvoir=new Map(datesAvoirs.map(a=>[a.cle,a.parente]));
 
+// ───────── les numéros abîmés ─────────
+//
+// « Tu peux réparer ce genre de num ? », 20/10/2026, à propos de
+// « FCAT-2507-10687 » et « FACT 2010 06145 ». Sa règle du 20/10 pose le
+// principe : « FA_550_3161 correspond à FA-550-3161 » — la graphie ne
+// distingue pas deux factures. On l'étend à deux cas, et à deux seulement,
+// parce qu'eux seuls laissent les CHIFFRES intacts :
+//
+//   · les zéros de tête d'un bloc de chiffres — FA-TRAN-0000016 et
+//     FA-TRAN-0016 sont la même facture, la valeur ne bouge pas ;
+//   · l'orthographe du préfixe, à chiffres identiques — FCAT pour FACT,
+//     FACT-FILIZ pour FCT-FILIZ.
+//
+// Et une réparation n'est retenue que si elle désigne UNE SEULE facture
+// connue. Deux candidates, on ne répare pas : « ce n'est pas parce que c'est
+// le même client que c'est la même facture ».
+//
+// Ce qui est refusé, et qui paraissait tentant : la même suite de chiffres
+// sous un autre préfixe (FA-AIF-0000078 et FA-REG-0000078 sont deux factures,
+// 18 couples fautifs), un chiffre substitué (FA-550-1647 et FA-550-2647
+// existent toutes les deux), et « le voisin est sur le même compte » — 665
+// des numéros inconnus vivent sur un compte collectif de plus de 600 numéros.
+const CONNUS=new Map();
+{ const pose=n=>{const k=I.factureKey(n); if(k&&!CONNUS.has(k)) CONNUS.set(k,String(n).trim());};
+  for(const l of sellsy) pose(l.numero);
+  for(const r of feuille(ANC,'BdD Zoho -Avoir Zoho',0).rows) pose(r['Facture d’avoir#']);
+  for(const r of fi.rows) for(const n of numerosDeLaCellule(r['NUMERO FACTURE'])) pose(n); }
+const sansZeros=k=>String(k||'').replace(/([A-Z])0+(\d)/g,'$1$2');
+const PAR_SANS_ZEROS=new Map();
+for(const k of CONNUS.keys()){ const z=sansZeros(k);
+  if(!PAR_SANS_ZEROS.has(z)) PAR_SANS_ZEROS.set(z,[]); PAR_SANS_ZEROS.get(z).push(k); }
+
 const nouv=feuille(NOUV,'Grand livre - Clients',0);
-const lu=GL.lire(nouv.rows,{});
+const REPARATIONS=new Map();
+{ const vus=new Map();
+  for(const r of nouv.rows){
+    const n=String(r['N° de facture']||'').trim()
+      || GL.numeroDepuisTexte(String(r['Libellé de ligne']||''))
+      || GL.numeroDepuisTexte(String(r['Libellé de pièce']||''));
+    if(!n) continue; const k=I.factureKey(n); if(k&&!vus.has(k)) vus.set(k,n); }
+  let ambigus=0;
+  for(const [k,n] of vus){
+    if(CONNUS.has(k)) continue;
+    const cands=new Set(PAR_SANS_ZEROS.get(sansZeros(k))||[]);
+    for(const v of [k.replace(/^FCAT(?=\d)/,'FACT'), k.replace(/^FACT(?=[A-Z]{2,8}\d)/,'FCT')])
+      if(v!==k && CONNUS.has(v)) cands.add(v);
+    cands.delete(k);
+    if(cands.size===1) REPARATIONS.set(k,CONNUS.get([...cands][0]));
+    else if(cands.size>1) ambigus++; }
+  console.log('numéros abîmés réparés : '+REPARATIONS.size+' · ambigus laissés tels quels : '+ambigus);
+  for(const [k,v] of REPARATIONS) console.log('   '+vus.get(k)+' → '+v); }
+
+const lu=GL.lire(nouv.rows,{reparations:REPARATIONS});
 const cl=GL.classer(GL.creancesOuvertes(lu),
   {rules:RG, sellsy, factures:DATES, mandats:MANDATS, referentiel:{}, regles:[], appris});
 

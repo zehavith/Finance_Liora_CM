@@ -509,6 +509,7 @@
             const propre = v => texteBrut(v).replace(/^[#\s.:;,-]+/, '');
             let numero = propre(col(r, 'numero'));
             let numeroExtrait = false;
+            let numeroAbime = '';
             // La colonne où le classeur a déjà fait le travail : elle porte les
             // numéros Zoho que la colonne dédiée laisse vides. Le numéro y est
             // extrait du libellé de ligne — c'est le nom même de la colonne —
@@ -529,6 +530,17 @@
                 numero = numeroDepuisTexte(col(r, 'libelleLigne'), connus, prefere)
                     || numeroDepuisTexte(col(r, 'libelle'), connus, prefere);
                 if (numero) { numeroExtrait = true; numerosExtraits++; }
+            }
+
+            // Un numéro abîmé désigne la facture qu'il voulait nommer. La table
+            // est construite par l'assemblage, qui seul connaît la facturation,
+            // et elle ne contient que des réparations sans ambiguïté : zéros de
+            // tête d'un bloc de chiffres, ou orthographe du préfixe à chiffres
+            // identiques. Le libellé d'origine reste sur la ligne : la graphie
+            // abîmée se relit, la facture est retrouvée.
+            if (numero && o.reparations && o.reparations.size) {
+                const vrai = o.reparations.get(I.factureKey(numero));
+                if (vrai && vrai !== numero) { numeroAbime = numero; numero = vrai; }
             }
 
             // Qualification déjà portée par le fichier : la sous-catégorie est
