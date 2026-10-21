@@ -3387,6 +3387,32 @@
      * « solde de compte » qui n'ont aucune facture. Modifie sur place et rend
      * le compte rendu de ce qui a bougé.
      */
+    /**
+     * France Travail : le montant tranche, pas le prorata.
+     *
+     * « Pour les paiements AIF et POEI, au lieu de faire un prorata on va
+     * garder la règle de la facturation : chaque paiement au-dessus de 7 000 €
+     * est de la POEI », 21/10/2026. C'est la règle que la facturation applique
+     * déjà aux créances France Travail (SEUIL_POEI, plus haut) : la POEI passe
+     * par l'employeur, l'AIF est une aide accordée à la personne, et les
+     * montants s'en ressentent.
+     *
+     * Elle remplace le prorata partout où le choix se fait entre ces deux
+     * dispositifs, et nulle part ailleurs. AIF et POEI partagent le même
+     * barème — fin de formation + 60 j — et la même famille de provision :
+     * ce classement ne déplace donc ni une date ni un euro de provision, il
+     * dit seulement de quel dispositif relève l'encaissement.
+     */
+    const AIF_POEI = new Set(['AIF', 'POEI']);
+    const seulementAifPoei = cle => {
+        const fins = (cle.parts || []).map(p => p.fin).filter(Boolean);
+        return fins.length > 0 && fins.every(f => AIF_POEI.has(f));
+    };
+    const parLeMontant = montant => Math.abs(montant || 0) > SEUIL_POEI ? 'POEI' : 'AIF';
+    const preuveDuMontant = montant => Math.abs(montant || 0) > SEUIL_POEI
+        ? 'Règle de la facturation France Travail : au-dessus de 7 000 €, une POEI'
+        : 'Règle de la facturation France Travail : 7 000 € ou moins, une AIF';
+
     function repartirAuProrata(lignes, creances, o) {
         const cles = cleDuCompte(lignes);
         const bilan = { comptes: 0, lignes: 0, lignesChangees: 0, euros: 0,
@@ -3438,8 +3464,10 @@
             // écrit la preuve. La part obtenue ne se connaît qu'à la fin —
             // l'écrire au fil de l'eau faisait dire « part obtenue : 19 % » à
             // une ligne dont le type finissait à 82 %.
+            const parMontant = seulementAifPoei(cle);
             const choix = new Map();
             for (const l of tri) {
+                if (parMontant) { choix.set(l, parLeMontant(mt(l))); continue; }
                 const fin = quiRecoit(cle, pose, masse);
                 if (!fin) continue;
                 pose.set(fin, (pose.get(fin) || 0) + mt(l));
@@ -3455,8 +3483,11 @@
                     Object.assign(l, datation(l, fin, o)); }
                 l.financement = fin;
                 l.typeClient = typeDeClient(fin, o) || l.typeClient || null;
-                l.origineClassement = 'Réparti au prorata des factures du client';
-                l.preuveClassement = phraseDeLaCle(cle, cles.nom.get(compte) || compte, fin, pose, masse, o);
+                l.origineClassement = parMontant
+                    ? 'Montant du règlement (règle France Travail)'
+                    : 'Réparti au prorata des factures du client';
+                l.preuveClassement = parMontant ? preuveDuMontant(mt(l))
+                    : phraseDeLaCle(cle, cles.nom.get(compte) || compte, fin, pose, masse, o);
             }
         }
 
@@ -3478,8 +3509,10 @@
             const pose = new Map(cle.parts.map(p => [p.fin, 0]));
             const tri = liste.slice().sort((a, b) => Math.abs(b.resteDu || 0) - Math.abs(a.resteDu || 0)
                 || (String(a.lettre || '') < String(b.lettre || '') ? -1 : 1));
+            const parMontant = seulementAifPoei(cle);
             const choix = new Map();
             for (const c of tri) {
+                if (parMontant) { choix.set(c, parLeMontant(c.resteDu)); continue; }
                 const fin = quiRecoit(cle, pose, masse);
                 if (!fin) continue;
                 pose.set(fin, (pose.get(fin) || 0) + Math.abs(c.resteDu || 0));
@@ -3494,8 +3527,11 @@
                 Object.assign(c, datation(c, fin, o));
                 c.financement = fin;
                 c.typeClient = typeDeClient(fin, o) || c.typeClient || null;
-                c.origineClassement = 'Réparti au prorata des factures du client';
-                c.preuveClassement = phraseDeLaCle(cle, cles.nom.get(compte) || compte, fin, pose, masse, o);
+                c.origineClassement = parMontant
+                    ? 'Montant du règlement (règle France Travail)'
+                    : 'Réparti au prorata des factures du client';
+                c.preuveClassement = parMontant ? preuveDuMontant(c.resteDu)
+                    : phraseDeLaCle(cle, cles.nom.get(compte) || compte, fin, pose, masse, o);
             }
         }
         return bilan;
