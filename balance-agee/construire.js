@@ -844,7 +844,9 @@ for(let i=0;i<plat.length;i++){
   // Le dispositif, lui, continue de se lire ailleurs — « pour les type de
   // financement tu peux voir sur d'autre ligne du mm compte », même jour.
   // Ce sont les DATES qui ne s'empruntent pas.
-  const datesEmpruntees=!l.numero && !srcNumero && !srcSienne && !srcSolde && !!srcLot;
+  // Et la ligne qui NOMME une facture introuvable n'emprunte pas davantage :
+  // « facture de la ligne, pas d'une autre ligne », 21/10/2026.
+  const datesEmpruntees=!srcNumero && !srcSienne && !srcSolde && !!srcLot;
   // Quand aucune facture ne date la ligne, la ligne se date elle-même :
   // l'échéance 1, portée par l'écriture, avec son motif.
   // Quand aucune créance ne porte la ligne — un lot soldé à zéro, par exemple —
@@ -884,7 +886,23 @@ for(let i=0;i<plat.length;i++){
   //
   // La ventilation de la balance, elle, se fait sur les créances : ce que
   // cette règle change, c'est ce que la LIGNE dit d'elle-même.
-  if(l.nature==='reglement' && l.date){
+  // … SAUF QUAND ELLE NOMME SA FACTURE.
+  //
+  // « Si il y a un num de facture sur la ligne, dans le libellé, je veux que
+  // tu date en fonction de celle-ci, mais facture de la ligne, pas d'une
+  // autre ligne » (21/10/2026). Un encaissement qui nomme la facture qu'il
+  // règle prend donc l'échéance de CETTE facture — c'est elle qui porte le
+  // barème, les dates de formation et le dispositif. Celui qui ne nomme rien
+  // n'a que lui-même pour se dater, et garde sa propre date.
+  //
+  // « Facture de la ligne » : jamais celle d'une voisine. Le document nommé
+  // n'a pas besoin d'avoir sa facture au grand livre pour dater la ligne —
+  // l'encaissement de 5 690 € de Pôle Emploi nomme FA-AIF-0000211, qui n'a
+  // aucune écriture au débit, mais dont sa balance de septembre porte les
+  // dates de formation. L'écriture a SA créance, bâtie sur ce document-là :
+  // c'est elle qui la date. Et si même cette créance manque, `datesEmpruntees`
+  // interdit déjà d'aller chercher la facture du lettrage.
+  if(l.nature==='reglement' && l.date && !l.numero){
     src.dateEcheance=l.date; src.echeanceBase='dateReglement'; src.echeanceJours=0;
     src.echeanceOrigine='Règle';
     // La phrase NOMME la date qui a servi : « si tu as pris la date
@@ -892,8 +910,7 @@ for(let i=0;i<plat.length;i++){
     // 6 470 sont des reports à nouveau datés par la dernière date de leur
     // libellé, et 1 479 seulement par leur colonne « Date » — annoncer « sa
     // propre date d'écriture » était faux pour quatre sur cinq.
-    src.echeanceMotif='encaissement daté '+GL.nomDeLaDate(l.dateSource)
-      +', non à l’échéance de la facture';
+    src.echeanceMotif='encaissement daté '+GL.nomDeLaDate(l.dateSource);
   }
 
   // ── UN AVOIR VIEILLIT AVEC LA FACTURE QU'IL ANNULE ──
@@ -971,6 +988,35 @@ for(let i=0;i<plat.length;i++){
     src.echeanceMotif=l.echeance1Source==='enregistrement'
       ? 'date d’enregistrement (aucune date dans le libellé)'
       : 'dernière date du libellé';
+  }
+
+  // UNE BASE ANNONCÉE PORTE SA DATE.
+  //
+  // Une créance — ou une règle posée plus haut — peut annoncer « fin de formation » sans porter la date de fin
+  // de formation : son échéance lui est venue du classement de l'écriture, qui
+  // la connaissait, et le report ne gardait cette date que si la créance
+  // n'avait pas d'échéance à elle. Dix lignes annonçaient ainsi une base avec
+  // la case date vide — invisibles tant qu'un repli les recouvrait, à nu dès
+  // que l'encaissement a cessé de se dater lui-même. L'écriture a la date :
+  // on la reprend, et seulement pour la base qui la réclame.
+  if(src.echeanceBase && !valeurBase(src)){
+    const dOu={dateDebutFormation:'dateDebutFormationSource',
+               dateFinFormation:'dateFinFormationSource',
+               dateFacture:'dateFactureFacturationSource',
+               dateFactureFacturation:'dateFactureFacturationSource'}[src.echeanceBase];
+    // La date que l'écriture a gardée, si elle l'a gardée.
+    let v=dOu?e[dOu]:null;
+    // Sinon, elle se reconstruit : une échéance est une base plus un délai,
+    // donc la base est l'échéance moins le délai. C'est l'égalité que le
+    // contrôle A vérifie ligne à ligne — la date retrouvée est donc, par
+    // construction, exactement celle qui a servi.
+    if(!v && src.dateEcheance) v=new Date(+new Date(src.dateEcheance)-(src.echeanceJours||0)*86400000);
+    if(v){
+      if(src.echeanceBase==='dateDebutFormation') src.dateDebutFormation=v;
+      else if(src.echeanceBase==='dateFinFormation') src.dateFinFormation=v;
+      else if(src.echeanceBase==='dateFacture') src.dateFacture=v;
+      else if(src.echeanceBase==='dateFactureFacturation') src.dateFactureFacturation=v;
+    }
   }
   const o={
     // ── vos colonnes, dans votre ordre ──

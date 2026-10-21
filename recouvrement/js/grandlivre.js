@@ -3292,7 +3292,6 @@
                        || (seDateSeule ? 'echeance1' : '')),
                 echeanceMotif: dateDeSoi
                     ? 'encaissement daté ' + nomDeLaDate(l.dateSource)
-                      + ', non à l’échéance de la facture'
                     : ((source && source.echeanceMotif)
                        // La phrase doit tenir en face de la colonne « Let. ».
                        // Les dix-sept lignes concernées sont TOUTES dans le pool
