@@ -791,10 +791,22 @@ for(const l of plat){ if((l.debit||0)<=0.01) continue;
 const ligneDuBrut=new Map();
 for(const l of plat) if(l.brut) ligneDuBrut.set(l.brut,l);
 const rappro=new Map();            // ligne → numéros de rapprochement
+// LE COUPLE SE LIT DES DEUX CÔTÉS.
+//
+// « J'ai le numéro de rapprochement, mais pas la cause », 22/10/2026. La
+// proposition, sa fiabilité et sa raison n'étaient posées que sur le
+// RÈGLEMENT : 1 224 lignes au débit — 601 factures et 623 autres écritures —
+// affichaient un numéro de couple et rien pour l'expliquer, obligeant à aller
+// chercher l'autre ligne. Chaque numéro garde donc de quoi se raconter sur
+// les deux lignes qu'il relie.
+const couple=new Map();            // n° de rapprochement → ce qu'il propose
 const poser=(l,n)=>{ const a=rappro.get(l)||[]; a.push(n); rappro.set(l,a); };
 let nRappro=0, sansLigne=0, apparies=0, trop=0;
 nonPointes.forEach((l,i)=>{ const p=props[i]; if(!p||!parLigne.has(l)) return;
   const n=++nRappro; poser(l,n); let trouve=0;
+  const q=parLigne.get(l);
+  couple.set(n,{ reglement:'règlement du '+fr(l.date)+' · '+eurFr((l.credit||0)-(l.debit||0)),
+                 force:q.force||'', raison:q.raison||'' });
   for(const c of (p.proposition||[])){
     // La créance vient d'une écriture précise : on va droit à elle.
     if(c.brutLigne){
@@ -820,6 +832,33 @@ nonPointes.forEach((l,i)=>{ const p=props[i]; if(!p||!parLigne.has(l)) return;
 });
 console.log('rapprochements numérotés : '+nRappro+' · avec leur ligne au débit : '+apparies
   +' · sans ligne retrouvée : '+sansLigne+' · soldes de compte trop larges pour un couple : '+trop);
+
+// Ce que la ligne au DÉBIT doit savoir de son couple. Plusieurs numéros sur
+// une même facture — deux règlements qui la visent — se lisent l'un sous
+// l'autre, chacun précédé de son numéro pour qu'on sache lequel dit quoi.
+// Une facture peut être visée par BEAUCOUP de règlements — un compte de
+// Transitions Pro en aligne des dizaines. Tout écrire faisait une cellule de
+// plus de 32 767 caractères, qu'Excel refuse. On en montre cinq, et on dit
+// combien il en reste : la liste complète se retrouve par le numéro, qui est
+// là pour ça.
+const MONTRE=5;
+const autreCote=(l,quoi)=>{
+  const ns=rappro.get(l)||[]; if(!ns.length) return '';
+  const vus=new Set(), bouts=[];
+  for(const n of ns){ const c=couple.get(n); if(!c) continue;
+    const t=c[quoi]||''; if(!t) continue;
+    // Deux numéros qui disent la même chose ne la disent qu'une fois.
+    const b=ns.length>1?('n° '+n+' : '+t):t;
+    if(!vus.has(b)){ vus.add(b); bouts.push(b); }
+  }
+  if(!bouts.length) return '';
+  const reste=bouts.length-MONTRE;
+  const t=bouts.slice(0,MONTRE).join('   |   ')
+    +(reste>0?'   |   … et '+reste+' autre'+(reste>1?'s':'')+' rapprochement'
+      +(reste>1?'s':'')+' proposé'+(reste>1?'s':'')+' sur cette ligne':'');
+  // Garde-fou dur : Excel refuse une cellule au-delà de 32 767 caractères.
+  return t.length>32000?t.slice(0,31990)+' […]':t;
+};
 
 const principale=[];
 for(let i=0;i<plat.length;i++){
@@ -1128,9 +1167,13 @@ for(let i=0;i<plat.length;i++){
           ? '« '+lab(e.financement||src.financement)
             +' » ne désigne pas encore un de vos trois types de client' : ''),
     'N° de rapprochement':(rappro.get(l)||[]).join(' · '),
-    'Proposition de rapprochement':(parLigne.get(l)||{}).quoi||'',
-    'Fiabilité du rapprochement':(parLigne.get(l)||{}).force||'',
-    'Justificatif du rapprochement':(parLigne.get(l)||{}).raison||'',
+    // Les trois colonnes se remplissent des DEUX côtés du couple : sur le
+    // règlement, ce qu'il solderait ; sur la facture, le règlement qui la
+    // solderait. Même numéro, même fiabilité, même raison — lue de l'autre
+    // bout.
+    'Proposition de rapprochement':(parLigne.get(l)||{}).quoi||autreCote(l,'reglement'),
+    'Fiabilité du rapprochement':(parLigne.get(l)||{}).force||autreCote(l,'force'),
+    'Justificatif du rapprochement':(parLigne.get(l)||{}).raison||autreCote(l,'raison'),
     'Reste dû de la créance':propre?ar(propre.resteDu):'',
     // La sous-catégorie et la tranche DE LA CRÉANCE, et non celles que la
     // ligne affiche. Les deux diffèrent : quand la créance n'est pas classée,
@@ -1395,8 +1438,8 @@ add('Règles d’échéance',RG.filter(r=>r.key!=='INCONNU').map(r=>{const g=r.g
   add('Règles de provision',rows);
 }
 
-fs.writeFileSync('Balance-agee-classee.xlsx',Buffer.from(X.write(wb,{type:'array',bookType:'xlsx',compression:true})));
-console.log('écrit : Balance-agee-classee.xlsx');
+fs.writeFileSync('Balance-agee-clients.xlsx',Buffer.from(X.write(wb,{type:'array',bookType:'xlsx',compression:true})));
+console.log('écrit : Balance-agee-clients.xlsx');
 console.log('onglets : '+wb.SheetNames.join(' · '));
 console.log('\nTOTAL : '+ar(bal.total.total).toLocaleString('fr-FR')+' € · échu '
   +ar(bal.total.echu).toLocaleString('fr-FR')+' € · non échu '+ar(bal.total.nonEchu).toLocaleString('fr-FR')+' €');

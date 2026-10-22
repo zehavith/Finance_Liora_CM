@@ -2904,12 +2904,21 @@
                 // degré de certitude.
                 const reste = parNumero.resteDu;
                 proposition = [parNumero];
-                if (Math.abs(reste - m) < TOL) { raison = 'Le libellé cite ce numéro, et le montant correspond'; force = 'certaine'; }
-                else if (m < reste - TOL) { raison = 'Le libellé cite ce numéro : règlement partiel'; force = 'forte'; }
-                else { raison = 'Le libellé cite ce numéro, mais le montant dépasse le reste dû'; force = 'à vérifier'; }
+                // LE NUMÉRO SE NOMME. « Ce justificatif n'est pas suffisant
+                // pour croiser avec une facture précise, il faudrait que tu
+                // précises que le numéro de facture est dans le libellé »,
+                // 22/10/2026 : « ce numéro » obligeait à relire le libellé pour
+                // savoir lequel. La preuve, c'est le numéro écrit.
+                const nom = parNumero.numero || cite;
+                if (Math.abs(reste - m) < TOL) { raison = 'Le libellé de la ligne cite ' + nom + ', et le montant correspond à son reste dû'; force = 'certaine'; }
+                else if (m < reste - TOL) { raison = 'Le libellé de la ligne cite ' + nom + ' : règlement partiel'; force = 'forte'; }
+                else { raison = 'Le libellé de la ligne cite ' + nom + ', mais le montant dépasse son reste dû'; force = 'à vérifier'; }
             }
-            else if (exact) { proposition = [exact]; raison = 'Même montant, même compte'; force = 'forte'; }
-            else if (exactAilleurs) { proposition = [exactAilleurs]; raison = 'Même montant, même client sous un autre compte'; force = 'forte'; }
+            // Les trois propositions suivantes ne reposent sur AUCUN numéro :
+            // le dire est la moitié du justificatif, puisque c'est ce qui les
+            // sépare d'une preuve.
+            else if (exact) { proposition = [exact]; raison = 'Aucun numéro de facture dans le libellé — rapprochée sur le montant : même montant, même compte'; force = 'forte'; }
+            else if (exactAilleurs) { proposition = [exactAilleurs]; raison = 'Aucun numéro de facture dans le libellé — rapprochée sur le montant : même montant, même client sous un autre compte'; force = 'forte'; }
             else if (combi) {
                 proposition = combi;
                 // « Il faut qu'il y ait une raison pour cette proposition »,
@@ -2918,14 +2927,15 @@
                 // dit, et elle s'écrit.
                 const euros = n => (Math.round(n * 100) / 100)
                     .toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                raison = 'Ces ' + combi.length + ' factures du compte sont les seules dont la somme '
+                raison = 'Aucun numéro de facture dans le libellé — ces ' + combi.length
+                    + ' factures du compte sont les seules dont la somme '
                     + 'fasse le montant du règlement : '
                     + combi.map(c => euros(c.resteDu)).join(' + ') + ' = ' + euros(m) + ' €';
                 force = 'probable';
             }
             else if (partiel) {
                 proposition = [partiel];
-                raison = 'Le compte porte une facture plus grosse : acompte possible';
+                raison = 'Aucun numéro de facture dans le libellé — le compte porte une facture plus grosse : acompte possible';
                 force = 'à vérifier';
             }
             else if (surLeCompte.length) { raison = 'Créances ouvertes sur le compte, aucune ne correspond'; }

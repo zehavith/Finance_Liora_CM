@@ -6,7 +6,7 @@ Ce dossier contient l'outil qui lit vos exports et produit les trois livrables :
 |---|---|
 | `art/balance-agee.html` + `art/balance.json` | la page publiée sur claude.ai |
 | `Balance-agee-Liora.html` | la même page, en un seul fichier à envoyer |
-| `Balance-agee-classee.xlsx` | le classeur à neuf onglets |
+| `Balance-agee-clients.xlsx` | le classeur à neuf onglets |
 
 Le moteur métier, lui, est dans `../recouvrement/js/` : c'est le même code que
 l'application. Ce dossier ne fait que l'alimenter et mettre en forme.

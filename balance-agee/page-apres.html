@@ -82,7 +82,7 @@ function demarrer(){
   E('fcat').innerHTML+=cats.map(c=>'<option>'+c+'</option>').join('');
   const trs=[...new Set(I.map(i=>V(i,'Tranche d’ancienneté')).filter(Boolean))];
   E('ftr').innerHTML+=trs.map(c=>'<option>'+c+'</option>').join('');
-  ['q','fcat','ftr','fac'].forEach(id=>E(id).addEventListener('input',()=>appliquer()));
+  ['q','fcat','ftr','fac','ffiab'].forEach(id=>E(id).addEventListener('input',()=>appliquer()));
   for(const id of ['q','fcat','ftr','fac'])
     E(id).addEventListener('input',()=>{ if(zoom){ zoom=null; E('zoom').hidden=true; } });
   E('zoom-non').addEventListener('click',fermerZoom);
@@ -254,6 +254,7 @@ const esc=t=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/"/g,'&quot;').r
 function ouvrir(cat,tr,niv,prov){
   zoom={niveau:niv||niveau, cat:cat||'', tr:tr||'', prov:!!prov};
   E('fac').value=''; E('fcat').value=''; E('ftr').value='';
+  E('ffiab').value=''; E('ffiab').hidden=true;
   appliquer();
   E('viewport').scrollIntoView({behavior:'smooth',block:'center'});
 }
@@ -368,6 +369,17 @@ function brancherTri(){
 
 function appliquer(garderPlace){
   const q=E('q').value.trim().toLowerCase(), c=E('fcat').value, t=E('ftr').value, a=E('fac').value;
+  // LE DEGRÉ DE FIABILITÉ, quand on ne regarde que les propositions.
+  //
+  // « Lorsque je mets seulement les propositions de rapprochement, j'aimerais
+  // avoir un nouveau filtre qui apparaît avec le degré de fiabilité »,
+  // 22/10/2026. Il n'a de sens que là : ailleurs la colonne est vide sur neuf
+  // lignes sur dix, et un filtre qui ne garde rien n'est pas un filtre. Il
+  // apparaît donc avec la vue, et se vide quand on la quitte.
+  const vf=E('ffiab');
+  if(a!=='rappro'){ if(!vf.hidden){ vf.hidden=true; vf.value=''; } }
+  else if(vf.hidden) vf.hidden=false;
+  const fi=a==='rappro'?vf.value:'';
   // Changer de vue vide la sélection : une case cochée hors de l'écran, qu'on
   // compléterait sans la voir, serait pire que de devoir recocher.
   if(!garderPlace&&selection.size){ selection.clear(); }
@@ -403,6 +415,10 @@ function appliquer(garderPlace){
       if(N(i,'Débit')<0.009 && N(i,'Crédit')<0.009) return false; }
     // Le moteur comptable a proposé une facture pour ce règlement non lettré.
     if(a==='rappro'&&!V(i,'Proposition de rapprochement')) return false;
+    // La fiabilité est portée par le RÈGLEMENT ; la facture d'en face la
+    // reprend préfixée de son numéro de couple. On cherche donc le mot.
+    if(fi&&!new RegExp('(^|\\W)'+fi.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(\\W|$)','i')
+        .test(V(i,'Fiabilité du rapprochement'))) return false;
     // Toutes les écritures des comptes qui ont reçu plus qu'ils ne doivent :
     // c'est là que se trouve, ligne par ligne, l'excédent de trésorerie.
     if(a==='excedent'&&!enExcedent(V(i,'N° de compte'))) return false;
@@ -1039,9 +1055,9 @@ const envoyer=async(bouton,nom,idx,quoi,nomDetail)=>{
   b.disabled=false;
 };
 E('dl-xlsx').addEventListener('click',()=>
-  envoyer('dl-xlsx','Balance-agee.xlsx',I,'toutes les colonnes','Détail ligne à ligne'));
+  envoyer('dl-xlsx','Balance-agee-clients.xlsx',I,'toutes les colonnes','Détail ligne à ligne'));
 E('dl-csv').addEventListener('click',()=>
-  envoyer('dl-csv','Balance-agee-selection.xlsx',filtre,'la sélection à l’écran','Sélection'));
+  envoyer('dl-csv','Balance-agee-clients-selection.xlsx',filtre,'la sélection à l’écran','Sélection'));
 
 // ───────── compléter une ligne, et s'en souvenir ─────────
 // La clé d'un complément est celle de la créance dès qu'il y en a une : un
@@ -1483,9 +1499,10 @@ function fiche(i){
   h+='<div class="champs">';
   for(const nom of D.cols){
     const v=g(nom); if(!v) continue;
-    // Les propositions de rapprochement se lisent une par ligne.
+    // Tout ce qui parle de rapprochement se lit une proposition par ligne :
+    // la facture, sa fiabilité et sa raison, des deux côtés du couple.
     h+='<div class="champ"><dt>'+nom+'</dt><dd>'
-      +(nom==='Proposition de rapprochement'?enLignes(v):v)+'</dd></div>';
+      +(/rapprochement$/.test(nom)?enLignes(v):v)+'</dd></div>';
   }
   E('fiche').innerHTML=h+'</div>';
   const sl=E('c-disp'), bt=E('c-ok');

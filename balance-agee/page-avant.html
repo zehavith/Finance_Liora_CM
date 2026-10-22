@@ -309,6 +309,13 @@ input[type=search]{flex:1 1 220px}
     <option value="mandat">Seulement les lignes dont le mandat GoCardless fixe l’échéance</option>
     <option value="posterieure">Seulement les lignes dont la facture suit la fin de formation</option>
     </select>
+    <select id="ffiab" hidden>
+      <option value="">Toutes les fiabilités</option>
+      <option value="certaine">Certaine — le libellé nomme la facture et le montant colle</option>
+      <option value="forte">Forte</option>
+      <option value="probable">Probable</option>
+      <option value="à vérifier">À vérifier</option>
+    </select>
     <span class="cpt" id="cpt"></span>
   </div>
   <div class="zoom" id="zoom" hidden>
