@@ -761,9 +761,16 @@ const nonPointes=plat.filter(l=>(l.credit||0)>0.01 && (l.lettre===GL.POOL_NON_LE
 const props=GL.propositionsRapprochement(nonPointes,cl);
 const parLigne=new Map();
 nonPointes.forEach((l,i)=>{ const p=props[i]; if(!p) return;
-  const nums=(p.proposition||[]).map(c=>c.numero||'(solde de compte)').filter(Boolean);
+  // CHAQUE PROPOSITION SE LIT SÉPARÉMENT, ET AVEC SON MONTANT.
+  //
+  // « Fais un espace entre chaque proposition », 22/10/2026. Elles étaient
+  // collées par un « + » qui les faisait lire comme une formule ; elles se
+  // séparent maintenant, et chacune dit ce qu'elle doit encore — sans quoi
+  // une somme de trois factures ne se vérifie pas à l'œil.
+  const nums=(p.proposition||[]).map(c=>(c.numero||'(solde de compte)')
+    +' · reste dû '+eurFr(c.resteDu||0)).filter(Boolean);
   if(!nums.length) return;
-  parLigne.set(l, {quoi:nums.join(' + '), force:p.force||'', raison:p.raison||'',
+  parLigne.set(l, {quoi:nums.join('   |   '), force:p.force||'', raison:p.raison||'',
     euros:(p.proposition||[]).reduce((a,c)=>a+(c.resteDu||0),0)}); });
 console.log('propositions de rapprochement : '+parLigne.size+' sur '+nonPointes.length+' règlements non pointés');
 

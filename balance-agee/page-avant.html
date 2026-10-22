@@ -119,6 +119,11 @@ input[type=search]{flex:1 1 220px}
 .ent>div{padding:8px 10px;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
   color:var(--encre-3);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ent .num{text-align:right}
+.ent>div[data-tri]{cursor:pointer;user-select:none}
+.ent>div[data-tri]:hover{color:var(--encre)}
+.ent>div[data-tri] i{font-style:normal;opacity:.45;margin-left:4px;font-size:9px;letter-spacing:0}
+.ent>div[data-tri].trie{color:var(--accent)}
+.ent>div[data-tri].trie i{opacity:1}
 #fiche{margin-top:14px}
 .fiche-tete{display:flex;flex-wrap:wrap;gap:10px;align-items:baseline;
   padding:14px 16px;border-bottom:1px solid var(--trait)}
@@ -321,10 +326,10 @@ input[type=search]{flex:1 1 220px}
   </div>
   <div class="bloc">
     <div class="ent">
-      <div><input type="checkbox" id="coche-tout" title="Tout sélectionner" hidden> Facture</div>
-      <div>Compte</div><div>Client</div>
-      <div class="num">Débit</div><div class="num">Crédit</div>
-      <div>Échéance</div><div>Financement</div>
+      <div data-tri="facture"><input type="checkbox" id="coche-tout" title="Tout sélectionner" hidden> Facture<i></i></div>
+      <div data-tri="compte">Compte<i></i></div><div data-tri="client">Client<i></i></div>
+      <div class="num" data-tri="debit">Débit<i></i></div><div class="num" data-tri="credit">Crédit<i></i></div>
+      <div data-tri="echeance">Échéance<i></i></div><div data-tri="financement">Financement<i></i></div>
     </div>
     <div id="viewport"><div id="cale"></div></div>
   </div>

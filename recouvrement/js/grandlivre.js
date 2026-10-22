@@ -2910,7 +2910,19 @@
             }
             else if (exact) { proposition = [exact]; raison = 'Même montant, même compte'; force = 'forte'; }
             else if (exactAilleurs) { proposition = [exactAilleurs]; raison = 'Même montant, même client sous un autre compte'; force = 'forte'; }
-            else if (combi) { proposition = combi; raison = 'Somme de ' + combi.length + ' factures du compte'; force = 'probable'; }
+            else if (combi) {
+                proposition = combi;
+                // « Il faut qu'il y ait une raison pour cette proposition »,
+                // 22/10/2026. « Somme de 3 factures du compte » dit ce qu'on a
+                // fait, pas pourquoi ces trois-là : c'est l'addition qui le
+                // dit, et elle s'écrit.
+                const euros = n => (Math.round(n * 100) / 100)
+                    .toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                raison = 'Ces ' + combi.length + ' factures du compte sont les seules dont la somme '
+                    + 'fasse le montant du règlement : '
+                    + combi.map(c => euros(c.resteDu)).join(' + ') + ' = ' + euros(m) + ' €';
+                force = 'probable';
+            }
             else if (partiel) {
                 proposition = [partiel];
                 raison = 'Le compte porte une facture plus grosse : acompte possible';

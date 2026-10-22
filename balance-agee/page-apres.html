@@ -95,6 +95,7 @@ function demarrer(){
     else for(const i of dispo) selection.delete(i);
     dessiner(); barre(); });
   E('viewport').addEventListener('scroll',dessiner);
+  brancherTri();
   appliquer();
   E("telech").hidden=false;
   brancherParametres();
@@ -298,6 +299,73 @@ function brancherNiveaux(){
       b.classList.add('actif'); niveau=b.dataset.niveau; synthese(); });
 }
 
+// ───────── trier la liste ─────────
+//
+// « Il faut une possibilité de trier les dates d'échéance, etc. », 22/10/2026.
+// Chaque en-tête trie sa colonne : un clic croissant, deux décroissant, trois
+// et l'ordre du grand livre revient — c'est lui qui fait foi, et on doit
+// pouvoir y retourner.
+//
+// Le tri s'applique AVANT les deux vues qui regroupent (rapprochement et
+// excédent) : elles rangent par couple ou par compte, et trier après les
+// démonterait. Elles héritent donc de l'ordre choisi sans le contredire.
+let TRI={col:'',sens:1};
+const COLS_TRI={
+  facture:{col:'N° de facture', type:'txt'},
+  compte:{col:'N° de compte', type:'txt'},
+  client:{col:'Tiers', type:'txt'},
+  debit:{col:'Débit', type:'num'},
+  credit:{col:'Crédit', type:'num'},
+  echeance:{col:'Date d’échéance recalculée', type:'date'},
+  financement:{col:'Type de financement', type:'fin'},
+};
+// Une date jj/mm/aaaa se compare en nombre ; une date absente passe en
+// dernier, dans les deux sens — une case vide n'est pas une date ancienne.
+const JJ=/^(\d{2})\/(\d{2})\/(\d{4})$/;
+function valTri(i,k){
+  const d=COLS_TRI[k]; if(!d) return '';
+  if(d.type==='num') return N(i,d.col);
+  if(d.type==='date'){ const m=JJ.exec(String(V(i,d.col)||'').trim());
+    return m?(+m[3]*10000+ +m[2]*100+ +m[1]):null; }
+  // Le financement affiché est celui que la ligne MONTRE : un complément posé
+  // à la main prime, comme dans la liste.
+  if(d.type==='fin'){ const c=compl.get(cleLigne(i)); return (c?c.dispositif:V(i,d.col))||''; }
+  return String(V(i,d.col)||'');
+}
+function trier(liste){
+  const k=TRI.col; if(!k||!COLS_TRI[k]) return liste;
+  const num=COLS_TRI[k].type==='num'||COLS_TRI[k].type==='date';
+  return liste.slice().sort((a,b)=>{
+    const x=valTri(a,k), y=valTri(b,k);
+    const vx=(x===null||x===''), vy=(y===null||y==='');
+    if(vx&&vy) return a-b;
+    if(vx) return 1;              // les vides toujours à la fin
+    if(vy) return -1;
+    const c=num?(x-y):String(x).localeCompare(String(y),'fr');
+    return c?c*TRI.sens:(a-b);    // à égalité, l'ordre du grand livre
+  });
+}
+function marquerTri(){
+  document.querySelectorAll('.ent>div[data-tri]').forEach(d=>{
+    const a=d.dataset.tri===TRI.col;
+    d.classList.toggle('trie',a);
+    const i=d.querySelector('i'); if(i) i.textContent=a?(TRI.sens>0?'▲':'▼'):'';
+  });
+}
+function brancherTri(){
+  document.querySelectorAll('.ent>div[data-tri]').forEach(d=>{
+    d.addEventListener('click',e=>{
+      if(e.target&&e.target.id==='coche-tout') return;   // la case n'est pas un tri
+      const k=d.dataset.tri;
+      if(TRI.col!==k) TRI={col:k,sens:1};
+      else if(TRI.sens>0) TRI={col:k,sens:-1};
+      else TRI={col:'',sens:1};                          // retour à l'ordre du grand livre
+      marquerTri(); appliquer();
+    });
+  });
+  marquerTri();
+}
+
 function appliquer(garderPlace){
   const q=E('q').value.trim().toLowerCase(), c=E('fcat').value, t=E('ftr').value, a=E('fac').value;
   // Changer de vue vide la sélection : une case cochée hors de l'écran, qu'on
@@ -355,6 +423,8 @@ function appliquer(garderPlace){
       if(!s.includes(q)) return false; }
     return true;
   });
+  // Le tri choisi s'applique ici, avant tout regroupement.
+  filtre=trier(filtre);
   // Une proposition ne se juge pas sur le seul règlement : on affiche le
   // couple — la facture au débit, puis le règlement au crédit qui la
   // solderait. Les deux lignes portent le même numéro de rapprochement.
@@ -1378,6 +1448,9 @@ function indexRappro(){
 function fiche(i){
   const g=n=>V(i,n), k=cleLigne(i), c=compl.get(k), ac=g('Type de financement : à compléter')&&!c;
   const cal=g('Détail du calcul'), m=metaCreance.get(g('Clé de la créance'));
+  // Les propositions se lisent une par ligne : collées, une somme de trois
+  // factures ne se vérifie pas à l'œil.
+  const enLignes=t=>esc(t).split('   |   ').join('<br>');
   let h='<div class="fiche-tete"><span class="ref">'+(g('N° de facture')||'écriture sans numéro')+'</span>'
     +'<span>'+g('Tiers')+'</span>'
     +'<span class="puce'+(ac?' sig':' ok')+'">'
@@ -1410,7 +1483,9 @@ function fiche(i){
   h+='<div class="champs">';
   for(const nom of D.cols){
     const v=g(nom); if(!v) continue;
-    h+='<div class="champ"><dt>'+nom+'</dt><dd>'+v+'</dd></div>';
+    // Les propositions de rapprochement se lisent une par ligne.
+    h+='<div class="champ"><dt>'+nom+'</dt><dd>'
+      +(nom==='Proposition de rapprochement'?enLignes(v):v)+'</dd></div>';
   }
   E('fiche').innerHTML=h+'</div>';
   const sl=E('c-disp'), bt=E('c-ok');
