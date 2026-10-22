@@ -1129,6 +1129,105 @@ let DISPOS=[];
 // Le magasin : la base de l'artefact quand la page est publiée, le stockage du
 // navigateur quand c'est le fichier autonome. La page fonctionne sans l'un ni
 // l'autre — un complément est une surcouche, jamais une condition d'affichage.
+// ───────── déposer les fichiers du mois ─────────
+//
+// « J'aimerais avoir l'option sur l'artefact de déposer directement les docs
+// nécessaires à l'actualisation de la balance âgée », 22/10/2026.
+//
+// Ce que la page peut faire : RECEVOIR les quatre fichiers, les ranger avec
+// elle, les horodater et dire qui les a déposés. Ce qu'elle ne peut pas :
+// refaire la balance. La reconstruction lit six fichiers, croise trois
+// facturations et tourne deux minutes hors du navigateur. Le dépôt est donc
+// une boîte aux lettres, et le bloc le dit au lieu de le laisser croire.
+//
+// Les quatre cases sont exactement les quatre fichiers que la construction
+// ouvre chaque mois — même nom de feuille, même séparateur. Un cinquième
+// fichier, l'ancienne balance de référence, ne bouge pas d'un mois sur
+// l'autre et ne se dépose pas.
+const DEPOTS=[
+  {cle:'grand-livre', nom:'Grand livre clients',
+   quoi:'Export Pennylane · .xlsx · onglet « Grand livre - Clients »',
+   ext:['.xlsx'], va:'depot-nouvelle/balance-nouvelle.xlsx'},
+  {cle:'sellsy-factures', nom:'Facturation Sellsy — factures',
+   quoi:'Export Sellsy · .csv · séparateur point-virgule',
+   ext:['.csv'], va:'depot-sellsy/sellsy.csv'},
+  {cle:'sellsy-avoirs', nom:'Facturation Sellsy — avoirs',
+   quoi:'Export Sellsy · .csv · séparateur point-virgule',
+   ext:['.csv'], va:'depot-sellsy/avoirs.csv'},
+  {cle:'filiz', nom:'Dossiers Filiz — échéances',
+   quoi:'Export du financeur · .xlsx · onglet « Échéances »',
+   ext:['.xlsx'], va:'depot-ech/echeances.xlsx'},
+];
+// 20 Mio est le plafond du stockage de la page. Les quatre fichiers du mois
+// tiennent largement dessous — le plus gros, l'export Sellsy, pèse 4,5 Mo.
+const DEPOT_MAX=20*1024*1024;
+let ASSETS=null, DEPOSES=new Map();
+
+const fTaille=o=>o>=1048576?(o/1048576).toFixed(1).replace('.',',')+' Mo'
+  :Math.max(1,Math.round(o/1024))+' ko';
+
+async function ouvrirDepots(){
+  try{ ASSETS=await claude.use('assets'); }catch(e){ ASSETS=null; }
+  // Pas de canal : lecteur sans droit d'écriture, ou fichier autonome. Le bloc
+  // ne s'affiche pas plutôt que d'afficher un bouton qui ne ferait rien.
+  if(!ASSETS||!DB||!admin) return;
+  try{
+    const q=await DB.collection('depots').get();
+    for(const d of q.docs) DEPOSES.set(d.id,d.data());
+  }catch(e){}
+  E('depot-bloc').hidden=false;
+  dessinerDepots();
+}
+
+function dessinerDepots(){
+  E('depot-liste').innerHTML=DEPOTS.map(d=>{
+    const v=DEPOSES.get(d.cle);
+    const etat=v
+      ? '<span class="depot-etat2">'+esc(v.nom||'')+' · '+fTaille(v.octets||0)
+        +'<br>déposé le '+esc(v.quand||'')+'</span>'
+      : '<span class="depot-etat2 vide">rien de déposé</span>';
+    return '<div class="depot-case">'
+      +'<span class="depot-n"><b>'+esc(d.nom)+'</b><span>'+esc(d.quoi)+'</span></span>'
+      +etat
+      +'<label for="dep-'+d.cle+'">'+(v?'Remplacer':'Déposer')+'</label>'
+      +'<input type="file" id="dep-'+d.cle+'" accept="'+d.ext.join(',')+'">'
+      +'</div>';
+  }).join('');
+  for(const d of DEPOTS){
+    const i=E('dep-'+d.cle);
+    if(i) i.addEventListener('change',()=>deposer(d,i));
+  }
+}
+
+async function deposer(d,input){
+  const f=input.files&&input.files[0]; if(!f) return;
+  const lab=document.querySelector('label[for="dep-'+d.cle+'"]');
+  const dire=t=>{ E('depot-etat').textContent=t; };
+  if(!d.ext.some(x=>f.name.toLowerCase().endsWith(x))){
+    dire('« '+f.name+' » n’est pas un '+d.ext.join(' ou ')+' — rien n’a été déposé.');
+    input.value=''; return;
+  }
+  if(f.size>DEPOT_MAX){
+    dire('« '+f.name+' » pèse '+fTaille(f.size)+', au-delà des 20 Mo que la page accepte.');
+    input.value=''; return;
+  }
+  if(lab){ lab.classList.add('occupe'); lab.textContent='Dépôt…'; }
+  dire('');
+  try{
+    const a=await ASSETS.upload(f);
+    const v={slot:d.cle, nom:f.name, octets:f.size, asset:a.id,
+             quand:new Date().toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}),
+             va:d.va};
+    await DB.collection('depots').doc(d.cle).set(v);
+    DEPOSES.set(d.cle,v);
+    dire('« '+f.name+' » est déposé. Il attend la reconstruction de la balance.');
+  }catch(e){
+    dire('Le dépôt a échoué : '+((e&&e.message)||'raison inconnue')+'. Rien n’a été enregistré.');
+  }
+  input.value='';
+  dessinerDepots();
+}
+
 async function ouvrirBase(){
   DISPOS=[...new Set(I.map(i=>V(i,'Type de financement'))
     .filter(c=>c&&c!=='À classer'))].sort();
@@ -1177,6 +1276,8 @@ async function ouvrirBase(){
   parametres();
   ruban();
   if(compl.size) rafraichir();
+  // Le dépôt vient après : il a besoin de savoir qui regarde (DB, admin).
+  if(window.claude&&claude.use) ouvrirDepots();
 }
 
 function rafraichir(){

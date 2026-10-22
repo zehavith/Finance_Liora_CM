@@ -125,6 +125,12 @@ const _ec=d=>{try{localStorage.setItem('_faussebase',JSON.stringify([...d]));}ca
 window.claude={ _d:_lu(), use(n){
   if(n==='downloads') return Promise.resolve({save:async()=>{window.__dl=(window.__dl||0)+1;}});
   if(n==='user') return Promise.resolve({can:async()=>true, isOwner:()=>true});
+  // Le dépôt des fichiers du mois : un faux stockage, pour exercer ici le
+  // chemin qui n'existe que chez le lecteur. Rien n'est envoyé nulle part.
+  if(n==='assets') return Promise.resolve({
+    upload:async(f)=>{ window.__up=(window.__up||0)+1;
+      return {id:'faux-'+window.__up, url:'', sizeBytes:f.size, contentType:f.type||''}; },
+    list:async()=>({assets:[],usage:{}}), delete:async()=>{} });
   if(n!=='db') return Promise.resolve(null);
   const d=this._d;
   const coll=p=>({ async get(){ return {docs:[...d].filter(([k])=>k.startsWith(p+'/'))
