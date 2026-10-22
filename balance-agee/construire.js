@@ -9,7 +9,6 @@ let MANDATS=[];
 try{ MANDATS=JSON.parse(fs.readFileSync('mandats.json','utf8')); }catch(e){}
 console.log('mandats GoCardless : '+MANDATS.length+' client'+(MANDATS.length>1?'s':'')
   +' · '+new Set(MANDATS.flatMap(m=>m.factures||[])).size+' numéros de facture');
-const REF=new Date(2026,9,12);            // date d'arrêté
 const fr=d=>{ if(!d) return ''; const x=new Date(d);
   return String(x.getUTCDate()).padStart(2,'0')+'/'+String(x.getUTCMonth()+1).padStart(2,'0')+'/'+x.getUTCFullYear(); };
 const ar=n=>n==null?'':Math.round(n*100)/100;
@@ -191,6 +190,29 @@ const CONNUS=new Map();
   for(const r of feuille(ANC,'BdD Zoho -Avoir Zoho',0).rows) pose(r['Facture d’avoir#']);
   for(const r of fi.rows) for(const n of numerosDeLaCellule(r['NUMERO FACTURE'])) pose(n); }
 const nouv=feuille(NOUV,'Grand livre - Clients',0);
+
+// LA DATE D'ARRÊTÉ SORT DU GRAND LIVRE DÉPOSÉ.
+//
+// « Si je dépose un gd livre c lui qui doit être retravaillé pour donner une
+// balance agé propre », 22/10/2026. Elle était écrite en dur au 12/10/2026.
+// Le nouvel extrait allant jusqu'au 22/10, l'ancienneté se serait mesurée dix
+// jours avant les montants : une créance de cent jours en aurait compté
+// quatre-vingt-dix, et quelques-unes seraient restées dans une tranche
+// qu'elles avaient quittée. Une balance propre s'arrête à la date de son
+// propre grand livre.
+//
+// Sans dépasser le jour de la construction : l'exercice court jusqu'en juin
+// 2027 et le fichier peut porter des écritures futures — arrêter une balance
+// dans l'avenir ne voudrait rien dire.
+const REF=(()=>{
+  const colonne=(nouv.entetes||[]).find(h=>R.norm(h)==='date') || 'Date';
+  let d=null;
+  for(const r of nouv.rows){ const v=R.parseDate(r[colonne]); if(v && (!d || v>d)) d=v; }
+  const jour=new Date(); jour.setHours(0,0,0,0);
+  if(!d || d>jour) d=jour;
+  return d;
+})();
+console.log('date d’arrêté : '+fr(REF)+' — la dernière écriture du grand livre déposé');
 const REPARATIONS=new Map();
 { const vus=new Map();
   for(const r of nouv.rows){

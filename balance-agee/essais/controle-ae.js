@@ -28,12 +28,20 @@ for(const x of aKO.slice(0,5)) console.log('      '+x.c+' '+x.f+' : '+x.b+' + '+
 
 // ── B. le délai appliqué est-il celui du barème de son dispositif ? ──
 const BAR=new Map(d.regles.map(r=>[r.dispositif,r]));
-let bConf=0, bExc=new Map(), bEcart=[];
+let bSansDisp=0, bConf=0, bExc=new Map(), bEcart=[];
 for(const r of L){
   const disp=V(r,'Type de financement'), reg=BAR.get(disp);
   const base=V(r,'Base de calcul retenue'), j=N(r,'Délai appliqué (jours)');
   const org=V(r,'Origine de l’échéance'), exc=V(r,'Règle de datation appliquée'), rep=V(r,'Repli appliqué');
-  if(!reg){ bEcart.push({disp,pourquoi:'dispositif hors barème'}); continue; }
+  // UNE LIGNE SANS DISPOSITIF N'EST PAS UN ÉCART INEXPLIQUÉ.
+  //
+  // Elle tombait dans le même panier que les vrais écarts, et l'alarme disait
+  // « 9 » avec neuf lignes d'« undefined » — elle ne voulait plus rien dire.
+  // Un dispositif à qualifier est un fait connu, compté à part : ces lignes
+  // portent « type de financement à compléter » et c'est ainsi qu'on les
+  // traite. L'alarme, elle, ne doit sonner que pour ce qu'on ne sait pas
+  // expliquer.
+  if(!reg){ bSansDisp++; continue; }
   const attBase=String(reg.base||''), attJ=Number(reg.jours===''?0:reg.jours);
   if(base===attBase && j===attJ){ bConf++; continue; }
   const cle=(exc?('exception : '+exc):(rep?('repli : '+rep):('origine : '+org)))+'';
@@ -44,6 +52,7 @@ console.log('\nB · le délai appliqué est celui du barème du dispositif');
 console.log('    conforme au barème : '+bConf+' / '+L.length);
 console.log('    écarté par une règle de rang supérieur :');
 for(const [k,v] of [...bExc].sort((a,b)=>b[1]-a[1])) console.log('      '+String(v).padStart(6)+'  '+k);
+if(bSansDisp) console.log('    sans dispositif, donc hors barème (à compléter) : '+bSansDisp);
 console.log('    ÉCART INEXPLIQUÉ (origine « Règle » mais barème non suivi) : '+bEcart.length);
 for(const x of bEcart.slice(0,6)) console.log('      '+x.c+' '+x.f+' '+x.disp+' : '+x.base+' +'+x.j+' au lieu de '+x.attBase+' +'+x.attJ);
 
