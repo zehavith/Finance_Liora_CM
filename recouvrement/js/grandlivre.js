@@ -96,8 +96,10 @@
         // à reconnaître votre feuille d'un export Pennylane brut.
         echeanceRecalculee: ['date d echeance recalculee', 'date echeance recalculee'],
         // La date à laquelle l'écriture est entrée en comptabilité. Dernier
-        // recours pour dater une créance : le classeur s'en sert quand ni la
-        // facturation ni le libellé ne donnent de date.
+        // recours pour dater une créance, et DERNIER depuis le 22/10/2026 :
+        // entre le libellé et elle s'est intercalée la colonne « Date », la
+        // date de l'écriture. Elle ne sert plus que si ni le libellé ni la
+        // colonne « Date » ne donnent rien.
         dateEnregistrement: ['date d enregistrement', 'date enregistrement',
                              'date de saisie', 'date de creation'],
         // L'identifiant du tiers est plus stable que le numéro de compte pour
@@ -2457,7 +2459,8 @@
             const comp = complement(c);
             // Même sans rien trouver à la facturation, l'échéance doit suivre
             // la colonne AA jusqu'au bout : la date lue dans le libellé, puis
-            // la date d'enregistrement. Sortir ici privait d'échéance mille
+            // la date de l'écriture, puis l'enregistrement en dernier recours
+            // (22/10/2026). Sortir ici privait d'échéance mille
             // sept cents créances sur un extrait sans colonne d'échéance.
             // LE MANDAT SE CHERCHE AVANT TOUT LE RESTE.
             //
@@ -2553,8 +2556,10 @@
                     || (d ? d.fin : null) || (m ? m.fin : null) || null,
                 complement: comp || null,
                 dateFactureFacturation: c.dateFactureFacturation || (d ? d.facture : null) || (m ? m.facture : null) || null,
-                // AA : l'échéance du grand livre, sinon la date lue dans le
-                // libellé, sinon l'enregistrement.
+                // AA : l'échéance du grand livre, sinon le repli — la date lue
+                // dans le libellé, sinon celle de l'écriture, sinon
+                // l'enregistrement — avec le délai qu'il porte : trente jours
+                // sur une facture datée de sa colonne « Date », 22/10/2026.
                 //
                 // L'échéance que porte l'export de facturation a été retirée de
                 // cette liste. Elle s'y glissait en deuxième position et servait
@@ -2795,7 +2800,8 @@
             // se dit, même quand on ne sait pas classer.
             //
             // Et ce qu'on retient ici, c'est le repli : la dernière date du
-            // libellé, sinon l'enregistrement. L'annoncer « échéance portée par
+            // libellé, sinon la date de l'écriture, sinon l'enregistrement.
+            // L'annoncer « échéance portée par
             // le grand livre » démentait le motif écrit juste à côté, sur
             // vingt-trois lignes.
             return { ...c, financement: null, typeClient: null,
@@ -3367,8 +3373,9 @@
                 // et le débit qui l'annule, dans un lot qui ne porte aucun
                 // numéro. Ni créance ouverte ni facture soldée ne peut donc les
                 // dater. Votre règle vaut quand même — à défaut de tout, on
-                // prend l'échéance 1 : la dernière date du libellé, sinon
-                // l'enregistrement. Elle est portée par la ligne elle-même, et
+                // prend l'échéance 1 : la dernière date du libellé, sinon la
+                // date de l'écriture, sinon l'enregistrement — et le délai que
+                // la ligne porte. Elle est portée par la ligne elle-même, et
                 // le motif dit d'où elle vient : rien n'est ni inventé ni muet.
                 dateEcheance: dateDeSoi
                     || (source && source.dateEcheance) || echeanceDuRepli(l) || null,

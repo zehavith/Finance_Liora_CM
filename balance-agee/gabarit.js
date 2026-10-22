@@ -206,6 +206,31 @@ const n2=verifierContrat(aApres,COLS,'la page de l’artefact');
 console.log('contrat des colonnes : '+n1+' nommées par la page autonome, '+n2
   +' par l’artefact — toutes présentes dans les '+COLS.length+' colonnes des données');
 
+// LE MÊME CONTRAT POUR LES CONTRÔLES.
+//
+// Il ne couvrait que les deux pages. Les contrôles et les outils d'écart
+// lisent le MÊME fichier avec la MÊME tournure V(l,'…') et n'étaient jamais
+// vérifiés : le 22/10/2026 on a découvert que le contrôle B lisait deux
+// colonnes retirées la veille — sa seule alarme ne pouvait donc plus sonner —
+// et que ecartecheance.js, l'outil que le LISEZMOI fait lancer avant toute
+// livraison qui change une règle d'échéance, en lisait quatre qui n'existent
+// pas, dont « Date d'échéance recalculée » écrite avec une apostrophe droite.
+// Un lecteur aveugle ne dit pas qu'il ne voit rien : il affiche zéro.
+//
+// Sont contrôlés les fichiers qui lisent le dictionnaire de colonnes — les
+// fichiers de cas, eux, montent leurs propres lignes avec les en-têtes du
+// grand livre, qui n'ont rien à voir.
+{
+  const dossier=ICI('essais');
+  const lus=[];
+  for(const nom of fs.readdirSync(dossier).filter(x=>x.endsWith('.js'))){
+    const code=fs.readFileSync(dossier+'/'+nom,'utf8');
+    if(!/cols\.indexOf|d\.cols/.test(code)) continue;
+    lus.push(nom+' ('+verifierContrat(code,COLS,'essais/'+nom)+')');
+  }
+  console.log('contrat des colonnes · contrôles : '+(lus.join(', ')||'aucun'));
+}
+
 const ko=f=>(fs.statSync(f).size/1048576).toFixed(2)+' Mo';
 console.log('Balance-agee-Liora.html : '+ko('Balance-agee-Liora.html'));
 console.log('art/balance-agee.html   : '+(fs.statSync('art/balance-agee.html').size/1024).toFixed(1)+' ko');

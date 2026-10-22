@@ -1091,7 +1091,7 @@ for(let i=0;i<plat.length;i++){
 
   // ── CE QUE LA LIGNE ANNONCE, LA LIGNE DOIT LE PORTER ──
   //
-  // « Dernière date du libellé, sinon date d'enregistrement » est une phrase
+  // « Dernière date du libellé, sinon la date de l'écriture » est une phrase
   // qui se vérifie SUR LA LIGNE : l'auditeur relit le libellé, il doit y
   // retrouver la date. Dix-huit lignes (37 602,33 €) annonçaient cette base
   // en affichant la date d'une AUTRE écriture — une seconde écriture au même
