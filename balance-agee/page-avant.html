@@ -134,6 +134,12 @@ input[type=search]{flex:1 1 220px}
 .champ{padding:9px 16px;border-bottom:1px solid var(--trait);min-width:0}
 .champ dt{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--encre-3);margin:0}
 .champ dd{margin:3px 0 0;font-size:13px;word-break:break-word}
+/* Deux propositions de rapprochement ne se touchent pas : chacune a son bloc
+   et son trait. Sa demande du 22/10/2026. */
+.champ dd ul.props{margin:4px 0 0;padding:0;list-style:none}
+.champ dd ul.props li{margin-top:7px;padding:5px 0 5px 10px;
+  border-left:2px solid var(--corail);background:var(--fond);border-radius:0 4px 4px 0}
+.champ dd ul.props li:first-child{margin-top:0}
 .vide{padding:28px 16px;color:var(--encre-2);text-align:center}
 /* Les paramètres : les deux jeux de règles qui font la balance, lisibles par
    tout le monde et modifiables sur place par l'administratrice seulement. */

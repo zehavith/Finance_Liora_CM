@@ -147,7 +147,11 @@ fs.writeFileSync('essais/index3.html', ENV(FAUX+art));
 try{ fs.unlinkSync('essais/balance.json'); }catch(e){}
 fs.symlinkSync('../art/balance.json','essais/balance.json');
 try{ fs.unlinkSync('essais/tableur.min.js'); }catch(e){}
-fs.symlinkSync('../tableur.min.js','essais/tableur.min.js');
+// Le lien pointait sur « ../tableur.min.js », qui n'existe pas : les essais
+// chargeaient une bibliothèque absente et le classeur ne pouvait pas être
+// écrit depuis la page. Il pointe sur celle du dépôt, la même que la page
+// autonome embarque.
+fs.symlinkSync('../vendor/tableur.min.js','essais/tableur.min.js');
 
 const COLS=JSON.parse(donnees).cols;
 const n1=verifierContrat(apres,COLS,'la page autonome');

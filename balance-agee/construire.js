@@ -757,6 +757,14 @@ for(const r of nouv.rows){ const k=String(r['N° de compte']||'').trim();
 // Un règlement non lettré, et les créances ouvertes de son compte : le moteur
 // comptable dit laquelle il solderait, et avec quel degré de certitude. C'est
 // la matière du filtre « proposition de rapprochement » de la page.
+// DEUX PROPOSITIONS NE SE TOUCHENT PAS.
+//
+// « Je veux une séparation nette entre 2 propositions de rapprochement »,
+// 22/10/2026. Un séparateur au milieu de la ligne ne sépare rien : on lit une
+// phrase. Chacune prend donc sa ligne, précédée d'une puce, et la cellule du
+// classeur est mise au retour à la ligne (voir retoursLigne, plus bas).
+const enListe = a => a.length>1 ? a.map(x=>'• '+x).join('\n') : (a[0]||'');
+
 const nonPointes=plat.filter(l=>(l.credit||0)>0.01 && (l.lettre===GL.POOL_NON_LETTRE||!l.lettre));
 const props=GL.propositionsRapprochement(nonPointes,cl);
 const parLigne=new Map();
@@ -770,7 +778,7 @@ nonPointes.forEach((l,i)=>{ const p=props[i]; if(!p) return;
   const nums=(p.proposition||[]).map(c=>(c.numero||'(solde de compte)')
     +' · reste dû '+eurFr(c.resteDu||0)).filter(Boolean);
   if(!nums.length) return;
-  parLigne.set(l, {quoi:nums.join('   |   '), force:p.force||'', raison:p.raison||'',
+  parLigne.set(l, {quoi:enListe(nums), force:p.force||'', raison:p.raison||'',
     euros:(p.proposition||[]).reduce((a,c)=>a+(c.resteDu||0),0)}); });
 console.log('propositions de rapprochement : '+parLigne.size+' sur '+nonPointes.length+' règlements non pointés');
 
@@ -853,9 +861,10 @@ const autreCote=(l,quoi)=>{
   }
   if(!bouts.length) return '';
   const reste=bouts.length-MONTRE;
-  const t=bouts.slice(0,MONTRE).join('   |   ')
-    +(reste>0?'   |   … et '+reste+' autre'+(reste>1?'s':'')+' rapprochement'
-      +(reste>1?'s':'')+' proposé'+(reste>1?'s':'')+' sur cette ligne':'');
+  const vus2=bouts.slice(0,MONTRE);
+  if(reste>0) vus2.push('… et '+reste+' autre'+(reste>1?'s':'')+' rapprochement'
+    +(reste>1?'s':'')+' proposé'+(reste>1?'s':'')+' sur cette ligne');
+  const t=enListe(vus2);
   // Garde-fou dur : Excel refuse une cellule au-delà de 32 767 caractères.
   return t.length>32000?t.slice(0,31990)+' […]':t;
 };
@@ -1440,6 +1449,52 @@ add('Règles d’échéance',RG.filter(r=>r.key!=='INCONNU').map(r=>{const g=r.g
 
 fs.writeFileSync('Balance-agee-clients.xlsx',Buffer.from(X.write(wb,{type:'array',bookType:'xlsx',compression:true})));
 console.log('écrit : Balance-agee-clients.xlsx');
+
+// LE CLASSEUR DOIT MONTRER CES RETOURS À LA LIGNE.
+//
+// Une cellule qui contient un retour à la ligne s'affiche quand même sur une
+// seule ligne tant qu'Excel n'a pas reçu l'ordre de la renvoyer à la ligne —
+// et les deux propositions se recollent. La bibliothèque qui écrit le
+// classeur ne sait pas poser de mise en forme ; on rouvre donc le fichier,
+// qui est un zip, pour y ajouter UN format (retour à la ligne, aligné en
+// haut) et le poser sur les seules colonnes concernées. Rien d'autre n'est
+// touché : mêmes feuilles, mêmes valeurs, même ordre.
+function retoursLigne(fichier, onglet, colonnes){
+  const CFB=X.CFB;
+  const cfb=CFB.read(fs.readFileSync(fichier),{type:'buffer'});
+  const lire=p=>{ const f=CFB.find(cfb,p); return f?Buffer.from(f.content).toString('utf8'):null; };
+  const ecrire=(p,t)=>{ const f=CFB.find(cfb,p); f.content=Buffer.from(t,'utf8'); f.size=f.content.length; };
+  const i=wb.SheetNames.indexOf(onglet); if(i<0) return 0;
+  // Les feuilles sont écrites dans l'ordre des onglets : sheet1, sheet2…
+  let sh=lire('/xl/worksheets/sheet'+(i+1)+'.xml'); if(!sh) return 0;
+  // Les lettres des colonnes visées, lues sur la ligne d'en-tête elle-même :
+  // un nom de colonne qui bouge ne laisse pas un numéro de colonne périmé.
+  const ws=wb.Sheets[onglet], lettres=[];
+  for(const a of Object.keys(ws)){
+    const m=a[0]!=='!' && /^([A-Z]+)1$/.exec(a);
+    if(m && colonnes.indexOf(String(ws[a].v))>=0) lettres.push(m[1]);
+  }
+  if(lettres.length!==colonnes.length)
+    throw new Error('retour à la ligne : '+lettres.length+' colonne(s) trouvée(s) sur '
+      +colonnes.length+' dans « '+onglet+' »');
+  let st=lire('/xl/styles.xml');
+  const m=/<cellXfs count="(\d+)">/.exec(st||'');
+  if(!m || st.indexOf('</cellXfs>')<0) throw new Error('retour à la ligne : styles.xml illisible');
+  const n=+m[1];
+  ecrire('/xl/styles.xml', st.replace(m[0],'<cellXfs count="'+(n+1)+'">')
+    .replace('</cellXfs>','<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"'
+      +' applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs>'));
+  let posees=0;
+  sh=sh.replace(new RegExp('<c r="(?:'+lettres.join('|')+')(\\d+)"','g'),
+    (t,r)=>{ if(r==='1') return t; posees++; return t.replace('<c ','<c s="'+n+'" '); });
+  ecrire('/xl/worksheets/sheet'+(i+1)+'.xml', sh);
+  fs.writeFileSync(fichier, CFB.write(cfb,{type:'buffer',fileType:'zip',compression:true}));
+  return posees;
+}
+console.log('retour à la ligne posé sur '
+  +retoursLigne('Balance-agee-clients.xlsx','Balance âgée ligne à ligne',
+    ['Proposition de rapprochement','Fiabilité du rapprochement','Justificatif du rapprochement'])
+  +' cellules de rapprochement');
 console.log('onglets : '+wb.SheetNames.join(' · '));
 console.log('\nTOTAL : '+ar(bal.total.total).toLocaleString('fr-FR')+' € · échu '
   +ar(bal.total.echu).toLocaleString('fr-FR')+' € · non échu '+ar(bal.total.nonEchu).toLocaleString('fr-FR')+' €');

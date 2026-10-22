@@ -630,8 +630,8 @@ function feuilleSommaire(wb,idx,nomDetail){
     s1.getCell(3).font={color:{argb:'FFA06B14'}};
     s1.getCell(4).font={size:10,color:{argb:'FFA06B14'}};
     s1.getCell(4).alignment={wrapText:true,vertical:'top'}; s1.height=30;
-    ws.addRow(['','','','Les deux synthèses portent la balance entière.'])
-      .getCell(4).font={size:10,italic:true,color:{argb:ENCRE3}};
+    const s2=ws.addRow(['','Synthèses','balance entière']);
+    for(const c of [2,3]) s2.getCell(c).font={size:10,color:{argb:ENCRE3}};
     ws.addRow([]);
   }
 
@@ -667,8 +667,7 @@ function feuilleSommaire(wb,idx,nomDetail){
   // a vu le 14/10.
   [['Sommaire','Chiffres clés et composition du classeur'],
    ['Règles','Ordre de détermination des échéances et barème de chaque dispositif'],
-   ['Balance âgée','Reste dû par type de client et par tranche d’ancienneté. '
-     +'Chaque ligne se déplie sur les comptes, puis sur leurs écritures.'],
+   ['Balance âgée','Reste dû par type de client et par tranche d’ancienneté'],
    ['Balance âgée par financement','Même ventilation, dispositif par dispositif'],
    // Le nombre de colonnes ANNONCÉ doit être celui de la feuille. Le détail
    // s'arrête à « N° de rapprochement », à sa demande du 16/10/2026 ; le
@@ -683,11 +682,6 @@ function feuilleSommaire(wb,idx,nomDetail){
     r.getCell(4).alignment={wrapText:true,vertical:'top'};
     r.height=quoi.length>70?30:18;
   });
-  ws.addRow([]);
-  const pied=ws.addRow(['','','','Les synthèses intègrent les compléments de classement '
-    +'saisis dans la balance publiée.']);
-  pied.getCell(4).font={size:9,italic:true,color:{argb:ENCRE3}};
-  pied.getCell(4).alignment={wrapText:true,vertical:'top'};
 }
 
 function feuilleRegles(wb){
@@ -695,8 +689,6 @@ function feuilleRegles(wb){
   ws.columns=[{width:26},{width:18},{width:16},{width:30},{width:12},{width:26},{width:44},{width:20}];
   const t=bande(ws,'RÈGLES DE CLASSEMENT ET DE DÉTERMINATION DES ÉCHÉANCES',
     {bold:true,size:14,color:{argb:BLEU}}); t.height=24;
-  bande(ws,'L’échéance est déterminée dans cet ordre. La première règle applicable '
-    +'l’emporte ; les suivantes ne sont pas examinées.',{color:{argb:ENCRE3},size:10});
   ws.addRow([]);
   if((D.ordreEcheance||[]).length){
     // Sa demande du 17/10/2026 : en face de chaque règle, le nombre d'écritures
@@ -731,9 +723,6 @@ function feuilleRegles(wb){
   }
   bande(ws,'BARÈME PAR DISPOSITIF — application de la règle n° 3',
     {bold:true,size:12,color:{argb:BLEU}});
-  bande(ws,'Chaque dispositif est reconnu aux mots ci-dessous. Son échéance se calcule '
-    +'sur la base indiquée, ou sur le repli lorsque cette base est absente.',
-    {color:{argb:ENCRE3},size:10});
   ws.addRow([]);
   poserEntete(ws,ws.addRow(['Type de financement','Type de client','Périmètre','Base de l’échéance',
     'Délai (jours)','Repli si la base manque','Règle','Mots reconnus']));
@@ -752,6 +741,10 @@ function feuilleRegles(wb){
 // Un texte qui court sur toute la largeur de la feuille plutôt que de
 // s'entasser dans la première colonne : sans cela une phrase de trois lignes
 // devenait une cellule de douze, et la feuille n'était plus lisible.
+// « Enlève-moi ce type de phrase de l'export », 22/10/2026 : les paragraphes
+// qui expliquaient comment lire une feuille ou comment la méthode fonctionne
+// sont partis. Il ne reste que des titres, des en-têtes et des tableaux — un
+// fait se dit dans une cellule, pas dans une phrase.
 function bande(ws,texte,police,deCol){
   const d=deCol||1;
   const r=ws.addRow(Array(d-1).fill('').concat([texte]));
@@ -766,7 +759,6 @@ function prorataRegles(ws){
   const P=D.prorata; if(!P) return;
   ws.addRow([]);
   bande(ws,String(P.titre||'').toUpperCase(),{bold:true,size:12,color:{argb:BLEU}});
-  bande(ws,P.regle,{color:{argb:ENCRE3},size:10});
   ws.addRow([]);
   // Le texte de la règle tient sur les colonnes 3 à 8 : c'est lui qui est
   // long, les deux premières ne portent qu'un rang et un titre.
@@ -781,6 +773,13 @@ function prorataRegles(ws){
     l.alignment={vertical:'top',wrapText:true};
     l.height=Math.max(16,Math.ceil(String(x.dit||'').length/130)*15+4);
     if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
+  }
+  if(P.regle){
+    const l=ws.addRow(['','Ce que la règle fait',P.regle]);
+    fus(l);
+    l.getCell(2).font={bold:true};
+    l.alignment={vertical:'top',wrapText:true};
+    l.height=Math.max(16,Math.ceil(String(P.regle||'').length/130)*15+4);
   }
   if(P.limites){
     const l=ws.addRow(['','Ce que la règle ne fait pas',P.limites]);
@@ -801,13 +800,10 @@ function provisionRegles(ws){
   if(!fen.length) return;
   ws.addRow([]);
   // L'exposé de la règle de provision a quitté le classeur le 21/10/2026 :
-  // « retire ça de l'export ». Il reste là où elle le lit, sous les
-  // paramètres de la page. Le classeur garde les taux et le rattachement —
-  // des chiffres, pas un cours.
-  if(!PROV.confirme) bande(ws,'Le rattachement des types de financement aux trois familles '
-    +'n’est pas encore confirmé : celui qui est appliqué ci-dessous est une proposition.',
-    {color:{argb:'FFA06B14'},size:10});
-  ws.addRow([]);
+  // « retire ça de l'export ». Le 22/10, le chapeau du rattachement est parti
+  // à son tour : qu'il ne soit pas confirmé se lit maintenant dans l'en-tête
+  // de sa colonne. Le classeur garde les taux et le rattachement — des
+  // chiffres, pas un cours.
   const pv=provisions();
   poserEntete(ws,ws.addRow(['Famille',...fen.map(f=>f.label),'À provisionner']));
   let y=0;
@@ -822,7 +818,8 @@ function provisionRegles(ws){
   tot.getCell(1).font={bold:true}; tot.getCell(2+fen.length).font={bold:true};
   tot.getCell(2+fen.length).numFmt=EUROS;
   ws.addRow([]);
-  poserEntete(ws,ws.addRow(['Type de financement','Famille de provision','',
+  poserEntete(ws,ws.addRow(['Type de financement',
+    'Famille de provision'+(PROV.confirme?'':' (proposition, à confirmer)'),'',
     'Reste dû','À provisionner']));
   const rd=new Map(), vues=new Set();
   for(const i of I){ const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
@@ -878,12 +875,6 @@ function feuilleBalance(wb,niv,idx){
   const t=ws.addRow([niv==='cat'?'RESTE DÛ PAR TYPE DE CLIENT ET PAR ANCIENNETÉ'
     :'RESTE DÛ PAR DISPOSITIF ET PAR ANCIENNETÉ']);
   t.font={bold:true,size:14,color:{argb:BLEU}}; t.height=24;
-  ws.addRow(['Le « + » de la marge ouvre les comptes clients, puis leurs écritures.'])
-    .font={color:{argb:ENCRE3},size:10};
-  ws.addRow(['La ligne du compte fait foi. Les écritures qui s’y rattachent peuvent différer '
-    +'d’une tranche à l’autre : un règlement s’impute sur une facture, le solde d’un lettrage '
-    +'se répartit au prorata.'])
-    .font={color:{argb:'FFA06B14'},size:10};
   ws.addRow([]);
   const ent=new Array(LARGE).fill('');
   ent[P.lib]=tete; ent[P.total]='Restant dû'; ent[P.echu]='Échu';
@@ -1464,9 +1455,15 @@ function indexRappro(){
 function fiche(i){
   const g=n=>V(i,n), k=cleLigne(i), c=compl.get(k), ac=g('Type de financement : à compléter')&&!c;
   const cal=g('Détail du calcul'), m=metaCreance.get(g('Clé de la créance'));
-  // Les propositions se lisent une par ligne : collées, une somme de trois
-  // factures ne se vérifie pas à l'œil.
-  const enLignes=t=>esc(t).split('   |   ').join('<br>');
+  // « Je veux une séparation nette entre 2 propositions de rapprochement »,
+  // 22/10/2026. Une par ligne ne suffisait pas : deux lignes qui se touchent
+  // se lisent comme une phrase qui revient à la ligne. Chacune prend donc son
+  // bloc, adossé à un trait.
+  const enLignes=t=>{
+    const bouts=esc(t).split('\n').map(x=>x.replace(/^•\s*/,'').trim()).filter(Boolean);
+    return bouts.length<2 ? bouts.join('')
+      : '<ul class="props">'+bouts.map(x=>'<li>'+x+'</li>').join('')+'</ul>';
+  };
   let h='<div class="fiche-tete"><span class="ref">'+(g('N° de facture')||'écriture sans numéro')+'</span>'
     +'<span>'+g('Tiers')+'</span>'
     +'<span class="puce'+(ac?' sig':' ok')+'">'
