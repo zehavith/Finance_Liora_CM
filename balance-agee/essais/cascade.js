@@ -1,4 +1,4 @@
-const {charger}=require('/tmp/claude-0/-home-user-Finance-Liora-CM/9ec582a4-62c5-597a-8d37-eb835b1898d4/scratchpad/charger');
+const {charger}=require('./charger');
 const ctx=charger();const R=ctx.LioraRules;
 const D=(s)=>s?new Date(s+'T00:00:00'):null;
 const FIN=D('2026-06-30'),DEB=D('2026-01-15'),FAC=D('2026-02-10'),

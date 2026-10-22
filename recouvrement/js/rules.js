@@ -523,7 +523,13 @@
     // ses lignes.
     function motifEcheance1(source, jours) {
         if (!source || source === 'libellé') return 'dernière date du libellé';
-        const nom = source === 'écriture' ? 'date de l’écriture' : 'date d’enregistrement';
+        if (source === 'date comptable') return 'échéance portée par le grand livre';
+        // Chaque source est nommée, aucune n'est rangée par défaut avec une
+        // autre : un ternaire à deux branches publiait « date d'enregistrement »
+        // pour toute valeur inattendue, y compris « date comptable ».
+        const nom = source === 'écriture' ? 'date de l’écriture'
+            : source === 'enregistrement' ? 'date d’enregistrement'
+            : String(source);
         return nom + (jours ? ' + ' + jours + ' jours' : '') + ' (aucune date dans le libellé)';
     }
 
@@ -623,11 +629,16 @@
             { champ: principale.base, jours: principale.jours },
             { comptable: true },
             { champ: rule.fallback, jours: rule.fallbackJours != null ? rule.fallbackJours : rule.jours },
-            // Le dernier mot, et c'est le sien, donné le 14/10/2026 : « comme
-            // repli il faut voir dans les libellés, et si y a rien sinon date
-            // d'enregistrement ». C'est l'échéance 1, SANS délai ajouté — sa
-            // feuille de septembre le confirme, FA-771-000948 y porte la même
-            // date en AA et en AC.
+            // Le repli, donné le 14/10/2026 — « comme repli il faut voir dans
+            // les libellés » — puis rouvert le 22/10/2026 : « au lieu de
+            // prendre par défaut la date d'enregistrement je veux que tu
+            // prennes cette date », la colonne « Date » du grand livre, et
+            // « pour les paiements et avoir colonne D, pour les factures
+            // colonne D + 30 jours ».
+            //
+            // La première branche n'a pas de délai — sa feuille de septembre le
+            // confirme, FA-771-000948 y porte la même date en AA et en AC. La
+            // seconde en a trente, mais seulement sur une facture.
             //
             // Elle remplace les replis « date de facture + N » que l'écriture
             // initiale de l'application avait posés par symétrie, en août, sans

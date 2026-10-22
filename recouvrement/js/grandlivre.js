@@ -354,14 +354,6 @@
     const POOL_NON_LETTRE = '(non lettré)';
 
     /**
-     * Le nom de la date qui a servi, pour les phrases publiées.
-     *
-     * « Si tu as pris la date d'enregistrement, cite celle-ci », 21/10/2026.
-     * Une écriture tient sa date de sa colonne « Date », à défaut de la
-     * dernière date lue dans son libellé, à défaut de sa date
-     * d'enregistrement : la phrase dit laquelle des trois.
-     */
-    /**
      * L'échéance que donne le repli : sa base, plus le délai que la nature de
      * la ligne commande.
      *
@@ -375,6 +367,14 @@
         return d ? R.addDays(d, (o && o.echeance1Jours) || 0) : null;
     }
 
+    /**
+     * Le nom de la date qui a servi, pour les phrases publiées.
+     *
+     * « Si tu as pris la date d'enregistrement, cite celle-ci », 21/10/2026.
+     * Une écriture tient sa date de sa colonne « Date », à défaut de la
+     * dernière date lue dans son libellé, à défaut de sa date
+     * d'enregistrement : la phrase dit laquelle des trois.
+     */
     function nomDeLaDate(source) {
         if (source === 'enregistrement') return 'à sa date d’enregistrement';
         if (source === 'libellé') return 'à la dernière date de son libellé';
@@ -826,7 +826,16 @@
                 // colonne D + 30 jours », 22/10/2026. Le délai ne s'ajoute
                 // qu'au repli — une date lue dans le libellé n'en a jamais eu —
                 // et qu'aux factures.
-                echeance1Jours: (!dateTexte && date && debit > 0 && facture)
+                // ET SEULEMENT SUR LA COLONNE « DATE ».
+                //
+                // Sa règle nomme la colonne D, pas le dernier recours : une
+                // écriture qui n'a ni date dans son libellé ni date d'écriture
+                // garde sa date d'enregistrement NUE. La garde ne regardait que
+                // « une date a servi » et ajoutait les trente jours au dernier
+                // recours aussi — ce que le tableau des règles publié dans la
+                // page dément expressément.
+                echeance1Jours: (!dateTexte && R.parseDate(col(r, 'date'))
+                                 && debit > 0 && facture)
                     ? REPLI_FACTURE_JOURS : 0,
                 // Les dates de la facturation, telles que l'extrait les porte.
                 dateDebutFormation: R.parseDate(utile(col(r, 'dateDebutFormation'))),
@@ -1748,6 +1757,10 @@
         if (!choisie) return { date: null, source: null };
         return {
             date: choisie.dateEcheanceRepli || choisie.date || null,
+            // La ligne choisie n'a pas de repli : sa date vient du grand
+            // livre. On le dit — « date comptable » — et motifEcheance1() sait
+            // la nommer. Elle la rangeait avec l'enregistrement, qui est une
+            // tout autre date.
             source: choisie.dateEcheanceRepli ? (choisie.echeance1Source || null) : 'date comptable',
             // Le délai suit la ligne qui a donné la date, comme la source :
             // les trois se lisent ensemble ou ne veulent rien dire.
@@ -3361,7 +3374,10 @@
                     || (source && source.dateEcheance) || echeanceDuRepli(l) || null,
                 // Quand la ligne se date elle-même, ce qui l'a datée se dit :
                 // la base retenue est l'échéance 1 — dernière date du libellé,
-                // sinon date d'enregistrement — et le délai appliqué est nul.
+                // sinon la date de l'écriture, sinon l'enregistrement — et le
+                // délai est celui que porte la ligne : trente jours sur une
+                // facture datée de sa colonne « Date » depuis le 22/10/2026,
+                // zéro partout ailleurs.
                 // Les laisser vides faisait trente-trois lignes datées dont
                 // « Base de calcul retenue » et « Date de la base retenue »
                 // étaient muettes, et dont « Détail du calcul » ne montrait

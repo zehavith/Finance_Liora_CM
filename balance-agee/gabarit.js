@@ -82,7 +82,7 @@ let aApres=apres;
 aApres=coupe(aApres,'</script>\n<script>\nconst DONNEES=JSON.parse(document.getElementById("donnees").textContent);\n',
   '<script>\n','la lecture des données embarquées');
 aApres=coupe(aApres,'Promise.resolve(DONNEES).then(d=>{ D=d;',
-  "fetch('balance.json').then(r=>r.json()).then(d=>{ D=d;",'le chargement des données');
+  "fetch('balance.json').then(r=>r.json()).then(d=>{ D=d; empreinte(d);",'le chargement des données');
 aApres=coupe(aApres,`let remettre=async(nom,octets)=>{const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([octets],{type:MIME}));
   a.download=nom;document.body.appendChild(a);a.click();
@@ -100,7 +100,38 @@ E('telech').hidden=false;`,
 })();`,'le téléchargement');
 // le bouton n'apparaît que si le canal existe : la déclaration du gabarit saute
 aApres=coupe(aApres,'  E("telech").hidden=false;\n','','l’affichage des boutons');
-aApres=coupe(aApres,'</script>\n\n</body>\n</html>','</script>\n','la fin du document');
+// LA PAGE ET SES DONNÉES DOIVENT VENIR DE LA MÊME CONSTRUCTION.
+//
+// Le fichier autonome porte ses données en lui : elles ne peuvent pas se
+// désaccorder. L'artefact, lui, sert deux fichiers — la page et balance.json —
+// et une publication qui n'envoie que la page laisse les données de la veille
+// en place. C'est arrivé le 22/10/2026 : la page affichait 14 635 123,02 €
+// pendant que le grand livre déposé en disait 14 268 635,41 €, et rien ne le
+// signalait. « On n'est pas à 14 268 635,41, prk ? »
+//
+// La construction scelle donc dans la page ce qu'elle attend du fichier — le
+// nombre d'écritures, la date d'arrêté, le jour de construction — et la page
+// le vérifie au chargement. Un désaccord s'affiche en grand, au-dessus de
+// tout : des chiffres faux qui se taisent sont pires que pas de chiffres.
+const att=JSON.parse(donnees);
+const EMPREINTE=JSON.stringify({n:(att.lignes||[]).length, a:att.arrete||'', g:att.genere||''});
+aApres=coupe(aApres,'</script>\n\n</body>\n</html>',
+`
+function empreinte(d){
+  const att=${EMPREINTE};
+  const vu={n:(d.lignes||[]).length, a:d.arrete||'', g:d.genere||''};
+  if(vu.n===att.n && vu.a===att.a && vu.g===att.g) return;
+  const n=x=>Number(x||0).toLocaleString('fr-FR');
+  const b=document.createElement('div');
+  b.className='alerte-donnees';
+  b.textContent='Les données affichées ne sont pas celles de cette page. '
+    +'Elle attend la construction du '+att.g+' — '+n(att.n)+' écritures, arrêté au '+att.a
+    +' — et a reçu celle du '+(vu.g||'?')+' — '+n(vu.n)+' écritures, arrêté au '+(vu.a||'?')
+    +'. Ne vous fiez à aucun montant tant que la page n’a pas été republiée avec son fichier de données.';
+  document.body.insertBefore(b,document.body.firstChild);
+}
+</script>
+`,'la fin du document');
 
 fs.mkdirSync('art',{recursive:true});
 fs.writeFileSync('art/balance-agee.html', aAvant + aApres);

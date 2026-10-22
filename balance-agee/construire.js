@@ -345,7 +345,7 @@ if(complements.length){
 const BASES={dateFacture:'date de facture', dateDebutFormation:'début de formation',
   dateFinFormation:'fin de formation', dateFactureFacturation:'date de facture de la facturation',
   dateEcheanceComptable:'échéance portée par le grand livre',
-  echeance1:'dernière date du libellé, sinon la date de l’écriture',
+  echeance1:'dernière date du libellé, sinon la date de l’écriture, sinon l’enregistrement',
   dateReglement:'date de l’encaissement',
   saisieManuelle:'échéance posée à la main'};
 const valeurBase=c=>({dateFacture:c.dateFacture, dateDebutFormation:c.dateDebutFormation,
@@ -439,16 +439,24 @@ const motifExplicite=c=>{
     // dans une colonne « Repli appliqué » qui ne servait qu'à ça, et qui
     // disparaît. Elle rejoint donc la phrase.
     if(/dispositif non qualifié/.test(lib) && c.echeanceBase==='echeance1'){
-      return lib+' — '+(c.echeance1Source==='libellé'||!c.echeance1Source
-        ? 'dernière date lue dans le libellé'
-        : (c.echeance1Source==='écriture' ? 'date de l’écriture' : 'date d’enregistrement')
-          +((c.echeanceJours||0)?' + '+c.echeanceJours+' jours':''));
+      if(c.echeance1Source==='libellé'||!c.echeance1Source)
+        return lib+' — dernière date lue dans le libellé';
+      return lib+' — '+brancheEcheance1(c)
+        +((c.echeanceJours||0)?' + '+c.echeanceJours+' jours':'')
+        +' (aucune date dans le libellé)';
     }
     return lib;
   }
   return m;
 };
 
+// La BRANCHE qui a servi, pas l'énumération des trois. L'étiquette de la base
+// les nomme toutes ; la phrase du calcul doit nommer celle qui a daté la ligne.
+const brancheEcheance1=c=>c.echeance1Source==='libellé'||!c.echeance1Source
+  ? 'dernière date du libellé'
+  : c.echeance1Source==='écriture' ? 'date de l’écriture'
+  : c.echeance1Source==='date comptable' ? 'échéance portée par le grand livre'
+  : 'date d’enregistrement';
 const bareme=c=>{ if(!c.financement) return '';
   const r=R.getRule(c.financement,RG), g=r&&r.gl?r.gl:r;
   return (!g||!g.base)?'':(BASES[g.base]||g.base)+(g.jours?' + '+g.jours+' j':' (sans délai)'); };
@@ -493,7 +501,8 @@ const calcul=c=>{ if(!c.dateEcheance) return '';
       +' = '+fr(c.dateEcheance);
   const v=valeurBase(c); if(!v||!c.echeanceBase) return fr(c.dateEcheance);
   const j=c.echeanceJours||0;
-  return (BASES[c.echeanceBase]||c.echeanceBase)+' '+fr(v)+(j?' + '+j+' j':'')+' = '+fr(c.dateEcheance); };
+  const nom=c.echeanceBase==='echeance1'?brancheEcheance1(c):(BASES[c.echeanceBase]||c.echeanceBase);
+  return nom+' '+fr(v)+(j?' + '+j+' j':'')+' = '+fr(c.dateEcheance); };
 // La colonne porte le nom de ce qu'elle réclame — « À compléter » ne disait
 // pas QUOI compléter. Sa demande du 20/10/2026 : « au lieu de À compléter il
 // faut mettre type de financement à compléter ». Le libellé de la valeur n'a
@@ -901,6 +910,34 @@ const autreCote=(l,quoi)=>{
   return t.length>32000?t.slice(0,31990)+' […]':t;
 };
 
+// QUELLE RÈGLE A DATÉ CETTE LIGNE.
+//
+// Le tableau des règles publie, en face de chacune, le nombre d'écritures
+// qu'elle a réellement datées. Ce décompte se faisait DANS LA PAGE, par des
+// expressions régulières sur le texte français du motif — et il mentait :
+//   · « Encaissement · daté à la dernière date de son libellé » contient le
+//     mot « libellé », donc 2 782 encaissements étaient comptés comme un repli
+//     de libellé ; 212 autres, qui ne contiennent aucun mot reconnu, tombaient
+//     sous « barème du dispositif ». Un encaissement ne relève ni de l'un ni
+//     de l'autre : il porte sa propre date, et c'est une règle à part entière
+//     qui ne figurait même pas au tableau.
+//   · dix lignes « dispositif non qualifié » étaient comptées sous le barème,
+//     alors que leur motif dit justement qu'aucun dispositif n'était qualifié.
+//
+// Le rang se décide donc ici, sur les champs STRUCTURÉS que le moteur rend —
+// la base retenue et la source du repli — et non sur une phrase ; et il se
+// décide une seule fois, pour le classeur comme pour la page.
+const parRang=new Map();
+const rangDeLaLigne=src=>{
+  const m=String(src.echeanceMotif||'');
+  if(src.echeanceBase==='dateReglement') return '1';
+  if(/mandat de pr/i.test(m)) return '2';
+  if(/apr[èe]s la fin de formation|post[ée]rieure/i.test(m)) return '3';
+  if(src.echeanceBase==='echeance1')
+    return (src.echeance1Source==='libellé'||!src.echeance1Source) ? '5' : '6';
+  return '4';
+};
+
 const principale=[];
 for(let i=0;i<plat.length;i++){
   const l=plat[i], e=lignesEcr[i]||{}, B=l.brut||{};
@@ -1246,6 +1283,7 @@ for(let i=0;i<plat.length;i++){
     'Clé de la créance':propre?(cleDe.get(propre)||grp(propre)+'|'+(propre.numero||'')):'',
   };
   principale.push(o);
+  if(src.dateEcheance){ const g=rangDeLaLigne(src); parRang.set(g,(parRang.get(g)||0)+1); }
 }
 console.log('feuille principale : '+principale.length+' lignes × '+Object.keys(principale[0]).length+' colonnes');
 fs.writeFileSync('principale.json',JSON.stringify({n:principale.length}));
@@ -1624,33 +1662,44 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
   // passe AVANT le barème et l'écarte ; un repli vient APRÈS, faute de base.
   // C'est le même vocabulaire que la colonne « Règle de datation appliquée ».
   ordreEcheance:[
-    {rang:'1', nature:'Règle exception',
+    {rang:'1', nature:'Règle de la ligne',
+     quand:'La ligne est un encaissement',
+     alors:'sa propre date, sans délai',
+     note:'« Un paiement n’a pas la mm date que la facture », 20/10/2026. Un règlement '
+         +'porte la date à laquelle l’argent est rentré, jamais l’échéance de la facture '
+         +'qu’il solde. Cette règle passe avant toutes les autres, et elle ne vaut que '
+         +'pour lui.'},
+    {rang:'2', nature:'Règle exception',
      quand:'Le client a un mandat de prélèvement GoCardless',
      alors:'fin de formation, sans délai',
      note:'Rapproché par numéro de facture, puis e-mail, puis nom et prénom. '
          +'Un client prélevé ne se voit accorder aucun délai de paiement.'},
-    {rang:'2', nature:'Règle exception',
+    {rang:'3', nature:'Règle exception',
      quand:'La date de facture est postérieure à la fin de formation',
      alors:'date de facture + 30 jours',
      note:'C’est une régularisation : le délai court depuis l’émission, pas depuis '
          +'une formation déjà terminée.'},
-    {rang:'3', nature:'Règle barème',
+    {rang:'4', nature:'Règle barème',
      quand:'Sinon — le barème du dispositif',
      alors:'voir le tableau ci-dessous',
      note:'Chaque dispositif a sa base et son délai. C’est le cas ordinaire.'},
-    {rang:'4', nature:'Règle repli',
+    {rang:'5', nature:'Règle repli',
      quand:'Sinon — la base du barème manque',
      alors:'dernière date lue dans le libellé',
      note:'Aucune date de formation ni de facture : on prend la date que le libellé '
          +'de l’écriture porte, sans délai ajouté.'},
-    {rang:'5', nature:'Règle repli',
+    {rang:'6', nature:'Règle repli',
      quand:'Sinon — aucune date dans le libellé',
      alors:'date de l’écriture · une facture, + 30 jours',
      note:'La colonne « Date » du grand livre, sa décision du 22/10/2026. Une facture '
          +'est exigible trente jours après ; un paiement et un avoir le jour même. '
          +'L’écriture qui n’a ni date ni libellé daté garde sa date d’enregistrement, '
-         +'en dernier recours, et le dit.'},
-  ],
+         +'en dernier recours, et le dit — sans les trente jours, qui ne valent que '
+         +'pour la colonne « Date ».'},
+  // Le décompte voyage avec la règle. La page le refaisait de son côté, à
+  // coups d'expressions régulières sur le texte français du motif, et donnait
+  // d'autres chiffres que le classeur. Il n'y a plus qu'un décompte.
+  ].map(r=>({...r, n:parRang.get(r.rang)||0})),
   tranches:buckets.map(b=>b.label),
   // L'ordre de ses trois types de client, pour que la vue « à provisionner »
   // les présente comme le tableau.

@@ -10,9 +10,18 @@ const carte=({d,V})=>{const m=new Map();
   for(const l of d.lignes){const k=V(l,'Clé de la créance'); if(!k||m.has(k))continue;
     const rd=num(V(l,'Reste dû de la créance')); if(Math.abs(rd)<0.005) continue;
     m.set(k,{rd, tr:V(l,'Tranche de la créance')||V(l,'Tranche d’ancienneté'),
-      ech:V(l,"Date d'échéance recalculée"), base:V(l,'Base retenue'),
-      j:V(l,'Délai appliqué (jours)'), motif:V(l,'Motif particulier'),
-      sous:V(l,'Sous-catégorie de la créance'),
+      // QUATRE COLONNES QUI N'EXISTAIENT PAS.
+      //
+      // « Date d'échéance recalculée » portait une apostrophe droite là où la
+      // colonne en a une courbe ; « Base retenue » s'appelle « Base de calcul
+      // retenue » ; « Motif particulier » a été renommée « Règle de datation
+      // appliquée » le 21/10/2026 ; « Sous-catégorie de la créance » n'a
+      // jamais existé. V() rend '' pour une colonne absente : l'outil que le
+      // LISEZMOI fait lancer avant toute livraison qui change une règle
+      // d'échéance était donc aveugle précisément sur l'échéance.
+      ech:V(l,'Date d’échéance recalculée'), base:V(l,'Base de calcul retenue'),
+      j:V(l,'Délai appliqué (jours)'), motif:V(l,'Règle de datation appliquée'),
+      sous:V(l,'Type de financement de la créance'),
       cpt:V(l,'N° de compte')+' - '+(V(l,'Libellé de compte')||V(l,'Tiers')),
       fac:V(l,'N° de facture')||'—'});}
   return m;};

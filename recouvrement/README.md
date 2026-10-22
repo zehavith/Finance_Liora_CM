@@ -1129,7 +1129,20 @@ avance pour 54, d'un écart médian de 170 jours, et **environ 900 créances /
 règle — c'est votre règle appliquée là où votre classeur ne pouvait pas
 l'appliquer.
 
-#### L'échéance de dernier recours, exactement comme votre feuille (v3.5.0)
+#### L'échéance de dernier recours — votre feuille, puis votre décision du 22/10/2026
+
+> **Cette section décrit deux états.** Ce qui suit explique votre colonne AA
+> telle qu'elle était, et comment elle a été reproduite jusqu'au 22/10/2026.
+> **Depuis, le repli n'est plus celui de votre feuille**, à votre demande :
+> la seconde branche n'est plus la date d'enregistrement mais la **date de
+> l'écriture** — la colonne « Date » du grand livre —, et une **facture y
+> gagne trente jours**. La date d'enregistrement ne sert plus que de dernier
+> recours, pour l'écriture qui n'a ni l'une ni l'autre, et sans délai.
+> Mesuré sur le grand livre du 22/10/2026 : 3 690 lignes par le libellé,
+> 478 par la date de l'écriture (dont 220 factures avec les trente jours),
+> aucune par l'enregistrement. L'application ne reproduit donc plus la
+> feuille sur ce point : c'est la divergence que vous avez demandée.
+
 
 Votre colonne **AA** n'est pas une donnée du grand livre : c'est une formule.
 Reproduite sur vos 3 609 lignes, elle s'explique **entièrement** :
@@ -1156,7 +1169,9 @@ lignes, et là où les deux existent elles ne s'accordent que **36 fois sur 100*
 
 Elle n'est donc retenue que si le fichier est **votre balance déjà travaillée**,
 reconnaissable à sa colonne *Date d'échéance recalculée* : là, « Date d'échéance »
-**est** votre AA. Sur un extrait brut, le calcul est refait comme le vôtre.
+**est** votre AA. Sur un extrait brut, le calcul est refait — comme le vôtre
+jusqu'au 22/10/2026, et depuis avec la seconde branche que vous avez changée
+(voir l'encadré en tête de section).
 
 Effet sur la balance de juillet 2026 : l'échu passe de 9 624 233 € à
 **10 811 937 €**, le total restant à 14 635 123 €.

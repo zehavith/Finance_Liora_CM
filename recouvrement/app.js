@@ -5853,7 +5853,7 @@
             dateFinFormation: 'fin de formation',
             dateFactureFacturation: 'date de facture de la facturation',
             dateEcheanceComptable: 'échéance portée par le grand livre',
-            echeance1: 'dernière date du libellé, sinon la date de l’écriture',
+            echeance1: 'dernière date du libellé, sinon la date de l’écriture, sinon l’enregistrement',
             'colonne Monday': 'date d’échéance de Monday',
             saisieManuelle: 'échéance posée à la main',
         };
@@ -5878,6 +5878,11 @@
                 case 'dateFinFormation': return c.dateFinFormation || null;
                 case 'dateFactureFacturation': return c.dateFactureFacturation || null;
                 case 'dateEcheanceComptable': return c.dateEcheanceGrandLivre || c.dateEcheance || null;
+                // Le repli manquait : « Base retenue » s'affichait, « Valeur de
+                // la base » restait vide, et « Calcul » retombait sur la date
+                // nue. Depuis que le repli porte trente jours sur une facture,
+                // « base + délai = échéance » n'y était plus vérifiable.
+                case 'echeance1': return c.dateEcheanceRepli || c.dateEcheance || null;
                 case 'saisieManuelle': return c.dateEcheance || null;
                 default: return null;
             }
@@ -5897,13 +5902,27 @@
             // écriture du même lot affichait donc une date qui ne venait pas
             // d'elle, sans le dire — on lisait une contradiction là où il n'y
             // avait qu'un raccourci. La ligne qui a daté est nommée.
+            // LA BRANCHE QUI A SERVI, NOMMÉE.
+            //
+            // La phrase affirmait « dernière date du libellé » sur toute
+            // écriture sans numéro, quelle que soit la date réellement prise.
+            // Depuis le 22/10/2026 la plupart viennent de la colonne « Date »,
+            // et les factures y gagnent trente jours : la phrase jurait donc
+            // que la date venait d'un libellé qui n'en portait aucune, et
+            // l'égalité affichée sautait de trente jours sans les écrire.
+            const branche = c => c.echeance1Source === 'libellé' || !c.echeance1Source
+                ? 'dernière date du libellé'
+                : c.echeance1Source === 'écriture' ? 'date de l’écriture'
+                : c.echeance1Source === 'date comptable' ? 'échéance portée par le grand livre'
+                : 'date d’enregistrement';
             if (c.sansNumero && c.dateFacture) {
-                return `dernière date du libellé de l’écriture du ${U.dateFR(c.dateFacture)}`
-                    + ` = ${U.dateFR(c.dateEcheance)}`;
+                const j0 = c.echeanceJours || 0;
+                return `${branche(c)} de l’écriture du ${U.dateFR(valeurBase(c) || c.dateFacture)}`
+                    + `${j0 ? ` + ${j0} j` : ''} = ${U.dateFR(c.dateEcheance)}`;
             }
             const v = valeurBase(c);
             if (!v || !c.echeanceBase) return U.dateFR(c.dateEcheance);
-            const nom = BASES[c.echeanceBase] || c.echeanceBase;
+            const nom = c.echeanceBase === 'echeance1' ? branche(c) : (BASES[c.echeanceBase] || c.echeanceBase);
             const j = c.echeanceJours || 0;
             return `${nom} ${U.dateFR(v)}${j ? ` + ${j} j` : ''} = ${U.dateFR(c.dateEcheance)}`;
         };

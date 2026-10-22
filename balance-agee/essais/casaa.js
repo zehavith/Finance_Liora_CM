@@ -66,6 +66,29 @@ ok('  … et le motif nomme la date ET le délai',
 // = échéance » doit se vérifier à l'œil sur la ligne.
 ok('  … la base publiée est bien le 01/07/2024', j(c2.dateEcheanceRepli)==='2024-07-01');
 
+// LE DERNIER RECOURS : NI LIBELLÉ DATÉ, NI COLONNE « DATE ».
+//
+// C'est la branche qu'elle garde expressément — « L'écriture qui n'a ni date
+// ni libellé daté garde sa date d'enregistrement, en dernier recours » — et
+// que rien ne couvrait : les deux cas précédents testent la bascule du
+// libellé vers la colonne « Date », jamais ce qu'il reste quand les deux
+// manquent. Une branche conservée mais jamais regardée se casse en silence.
+//
+// Et les trente jours NE S'Y AJOUTENT PAS, même sur une facture : sa règle
+// nomme la colonne D, pas le jour de la saisie comptable.
+console.log('\n=== ni date dans le libellé, ni colonne « Date » : l’enregistrement ===');
+const brut3=[{...brut[0], 'Libellé de ligne':'Facture sans date', 'Date':''},
+             {...brut[1], 'Date':''}];
+const cDR=GL.classer(GL.creancesOuvertes(GL.lire(brut3,{})),
+  {rules:RG,sellsy:[],mandats:[],referentiel:{},regles:[]})[0];
+ok('07/07/2026, la date d’enregistrement', j(cDR.dateEcheance)==='2026-07-07');
+ok('  … et la source le dit', cDR.echeance1Source==='enregistrement');
+ok('  … sans les trente jours : ce n’est pas la colonne « Date »',
+   (cDR.echeanceJours||0)===0);
+ok('  … et le motif nomme l’enregistrement, sans délai',
+   /date d’enregistrement \(aucune date dans le libellé\)$/.test(cDR.echeanceMotif||'')
+   && !/jours/.test(cDR.echeanceMotif||''));
+
 console.log('\n=== VOTRE balance travaillée : sa colonne « Date d’échéance » EST votre AA ===');
 const sien=brut.map(r=>({...r,
   'Date d\'échéance recalculée':'', 'Sous catégorie de type de client':'B2B'}));

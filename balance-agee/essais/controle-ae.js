@@ -32,7 +32,18 @@ let bSansDisp=0, bConf=0, bExc=new Map(), bEcart=[];
 for(const r of L){
   const disp=V(r,'Type de financement'), reg=BAR.get(disp);
   const base=V(r,'Base de calcul retenue'), j=N(r,'Délai appliqué (jours)');
-  const org=V(r,'Origine de l’échéance'), exc=V(r,'Règle de datation appliquée'), rep=V(r,'Repli appliqué');
+  // L'ALARME LISAIT DEUX COLONNES QUI N'EXISTENT PLUS.
+  //
+  // « Origine de l'échéance » et « Repli appliqué » ont été retirées du
+  // classeur le 21/10/2026. V() rend '' pour une colonne absente : la
+  // condition `org === 'Règle'` ne pouvait donc plus jamais être vraie, et le
+  // seul compteur capable d'attraper une ligne dont le délai ne suit pas son
+  // barème sans qu'aucune règle ne l'explique affichait zéro par
+  // construction. Un contrôle qui ne peut pas sonner ne contrôle rien.
+  //
+  // Ce qui explique une ligne, c'est « Règle de datation appliquée ». Vide, et
+  // le barème non suivi : voilà l'écart inexpliqué.
+  const exc=V(r,'Règle de datation appliquée');
   // UNE LIGNE SANS DISPOSITIF N'EST PAS UN ÉCART INEXPLIQUÉ.
   //
   // Elle tombait dans le même panier que les vrais écarts, et l'alarme disait
@@ -44,9 +55,9 @@ for(const r of L){
   if(!reg){ bSansDisp++; continue; }
   const attBase=String(reg.base||''), attJ=Number(reg.jours===''?0:reg.jours);
   if(base===attBase && j===attJ){ bConf++; continue; }
-  const cle=(exc?('exception : '+exc):(rep?('repli : '+rep):('origine : '+org)))+'';
+  const cle=(exc?('exception : '+exc):'aucune règle nommée')+'';
   bExc.set(cle,(bExc.get(cle)||0)+1);
-  if(!exc && !rep && org==='Règle') bEcart.push({c:V(r,'N° de compte'),f:V(r,'N° de facture'),disp,base,j,attBase,attJ});
+  if(!exc) bEcart.push({c:V(r,'N° de compte'),f:V(r,'N° de facture'),disp,base,j,attBase,attJ});
 }
 console.log('\nB · le délai appliqué est celui du barème du dispositif');
 console.log('    conforme au barème : '+bConf+' / '+L.length);
