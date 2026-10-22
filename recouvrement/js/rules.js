@@ -231,7 +231,7 @@
         // date vient de l'échéance 1, pas d'un délai inventé.
         base: null, jours: null,
         fallback: null, fallbackJours: null,
-        note: 'Type de financement non identifié — dernière date du libellé, sinon date d’enregistrement',
+        note: 'Type de financement non identifié — dernière date du libellé, sinon la date de l’écriture',
         perimetre: 'Inconnu', match: [],
     };
 
@@ -511,6 +511,22 @@
      * @param {object} inv    facture normalisée
      * @param {object} opts   { rules, grandLivre }
      */
+
+    // CE QUI A DATÉ LA LIGNE, DIT EN TOUTES LETTRES.
+    //
+    // Le repli a trois sources possibles — la dernière date du libellé de
+    // ligne, la date de l'écriture (sa colonne « Date »), et en tout dernier
+    // recours sa date d'enregistrement — et un délai qui ne s'ajoute qu'aux
+    // factures. Une seule fonction écrit la phrase, pour que le classeur, la
+    // page et l'application disent exactement la même chose : trois copies
+    // divergeaient déjà, et un filtre qui lit le motif ne reconnaissait plus
+    // ses lignes.
+    function motifEcheance1(source, jours) {
+        if (!source || source === 'libellé') return 'dernière date du libellé';
+        const nom = source === 'écriture' ? 'date de l’écriture' : 'date d’enregistrement';
+        return nom + (jours ? ' + ' + jours + ' jours' : '') + ' (aucune date dans le libellé)';
+    }
+
     function computeEcheance(inv, opts) {
         const o = opts || {};
         const rule = getRule(inv.financement, o.rules);
@@ -656,11 +672,18 @@
         for (const b of bases) {
             if (b.echeance1) {
                 if (!inv.dateEcheanceRepli) continue;
-                return { date: stripTime(inv.dateEcheanceRepli), origine: 'Règle', regle: rule,
-                         baseUtilisee: 'echeance1', jours: 0,
-                         motif: inv.echeance1Source === 'enregistrement'
-                             ? 'date d’enregistrement (aucune date dans le libellé)'
-                             : 'dernière date du libellé' };
+                // LE DÉLAI DU REPLI, ET SEULEMENT LE SIEN.
+                //
+                // « Pour les paiements et avoir colonne D, pour les factures
+                // colonne D + 30 jours », 22/10/2026. Le délai est porté par
+                // la ligne, pas par le barème du dispositif : il vaut 30 sur
+                // une facture datée de sa colonne « Date », et zéro partout
+                // ailleurs — le libellé, lui, n'a jamais eu de délai.
+                const j = inv.echeance1Jours || 0;
+                return { date: addDays(stripTime(inv.dateEcheanceRepli), j),
+                         origine: 'Règle', regle: rule,
+                         baseUtilisee: 'echeance1', jours: j,
+                         motif: motifEcheance1(inv.echeance1Source, j) };
             }
             if (b.comptable) {
                 if (!inv.dateEcheanceComptable) continue;
@@ -728,7 +751,7 @@
     }
 
     global.LioraRules = {
-        norm, parseDate, stripTime, addDays, diffDays, monthKey,
+        norm, parseDate, stripTime, addDays, diffDays, monthKey, motifEcheance1,
         DEFAULT_ECHEANCE_RULES, DEFAULT_FALLBACK_RULE,
         BOARD_ROLE_PATTERNS, ROLE_LABELS, SOURCES,
         detectBoardRole, detectFinancement, getRule, computeEcheance,

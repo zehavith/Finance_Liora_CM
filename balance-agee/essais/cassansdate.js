@@ -39,10 +39,34 @@ ok('  … la dernière date du libellé du débit : 10/02/2025', j(c.dateEcheanc
 ok('  … et l’origine le dit', c.echeanceOrigine==='Règle');
 ok('  … avec un motif lisible', /échéance 1|repli|libellé/i.test(c.echeanceMotif||''));
 
-console.log('\n=== sans date dans le libellé, c’est l’enregistrement ===');
+// SANS DATE DANS LE LIBELLÉ, C'EST LA DATE DE L'ÉCRITURE — ET SANS DÉLAI ICI.
+//
+// Sa règle du 22/10/2026 : la colonne « Date » remplace la date
+// d'enregistrement, et les trente jours ne s'ajoutent qu'aux FACTURES. Ce
+// débit-ci ne porte aucun numéro de facture : ce n'en est pas une, il garde
+// donc sa date nue. C'est tout l'intérêt du cas — la même règle donne deux
+// résultats différents selon la nature de la ligne.
+console.log('\n=== sans date dans le libellé, c’est la date de l’écriture ===');
 const soldeur2=soldeur.map((r,i)=>i?r:{...r,'Libellé de ligne':'acompte formation'});
 const c2=GL.classer(GL.creancesOuvertes(GL.lire(soldeur2,{})),OPT).find(x=>x.resteDu>0);
-ok('15/02/2025, la date d’enregistrement du débit', j(c2.dateEcheance)==='2025-02-15');
+ok('10/02/2025, la date de l’écriture du débit', j(c2.dateEcheance)==='2025-02-10');
+ok('  … et plus le 15/02/2025, sa date d’enregistrement',
+   j(c2.dateEcheance)!=='2025-02-15');
+ok('  … sans délai : ce débit ne porte aucun numéro de facture',
+   c2.echeanceJours===0);
+// Le motif peut être précédé de « dispositif à qualifier — » : ce compte n'a
+// pas de dispositif. C'est la fin de la phrase qui dit la date retenue, et
+// elle ne doit parler d'aucun délai.
+ok('  … et le motif le dit sans parler de délai',
+   /date de l’écriture \(aucune date dans le libellé\)$/.test(c2.echeanceMotif||'')
+   && !/jours/.test(c2.echeanceMotif||''));
+// L'encaissement du même compte, lui aussi sans date dans son libellé : il se
+// date de sa colonne « Date », sans délai — « pour les paiements et avoir
+// colonne D ».
+const r2=GL.classer(GL.creancesOuvertes(GL.lire(soldeur2,{})),OPT).find(x=>x.resteDu<0);
+ok('le règlement se date du 03/03/2025, sa propre date d’écriture',
+   j(r2.dateEcheance)==='2025-03-03');
+ok('  … sans délai ajouté', (r2.echeanceJours||0)===0);
 
 console.log('\n=== l’écriture d’un lot entièrement soldé reste datée ===');
 // Une facture et son avoir, non lettrés : le lot est à zéro, il n'y a plus de

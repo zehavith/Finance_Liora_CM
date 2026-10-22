@@ -39,11 +39,32 @@ ok('  … la base retenue est l’échéance 1', c.echeanceBase==='echeance1');
 ok('  … et le motif nomme le libellé', c.echeanceMotif==='dernière date du libellé');
 ok('  … sans ajouter le délai du barème', c.echeanceJours===0);
 
-console.log('\n=== sans date dans le libellé : la date d’enregistrement ===');
+// SANS DATE DANS LE LIBELLÉ, C'EST LA DATE DE L'ÉCRITURE — ET PLUS CELLE DE
+// L'ENREGISTREMENT.
+//
+// Sa règle du 22/10/2026, capture du classeur à l'appui : « au lieu de prendre
+// par défaut la date d'enregistrement je veux que tu prennes cette date », la
+// colonne « Date ». Puis, le même jour : « pour les paiements et avoir colonne
+// D, pour les factures colonne D + 30 jours ».
+//
+// La ligne est une facture (un débit portant FA-550-3816) : sa colonne « Date »
+// dit le 01/07/2024, et son échéance tombe trente jours plus tard. La date
+// d'enregistrement du 07/07/2026 — le jour de la saisie comptable, deux ans
+// plus tard — ne sert plus à rien ici.
+console.log('\n=== sans date dans le libellé : la date de l’écriture ===');
 const brut2=brut.map((r,i)=>({...r,'Libellé de ligne': i?r['Libellé de ligne']:'Facture sans date'}));
 const c2=GL.classer(GL.creancesOuvertes(GL.lire(brut2,{})),
   {rules:RG,sellsy:[],mandats:[],referentiel:{},regles:[]})[0];
-ok('07/07/2026, la date d’enregistrement', j(c2.dateEcheance)==='2026-07-07');
+ok('01/07/2024 + 30 j = 31/07/2024', j(c2.dateEcheance)==='2024-07-31');
+ok('  … et surtout plus le 07/07/2026, la date d’enregistrement',
+   j(c2.dateEcheance)!=='2026-07-07');
+ok('  … la base retenue reste l’échéance 1', c2.echeanceBase==='echeance1');
+ok('  … le délai de la facture est annoncé', c2.echeanceJours===30);
+ok('  … et le motif nomme la date ET le délai',
+   c2.echeanceMotif==='date de l’écriture + 30 jours (aucune date dans le libellé)');
+// La base affichée est la date de l'écriture, pas l'échéance : « base + délai
+// = échéance » doit se vérifier à l'œil sur la ligne.
+ok('  … la base publiée est bien le 01/07/2024', j(c2.dateEcheanceRepli)==='2024-07-01');
 
 console.log('\n=== VOTRE balance travaillée : sa colonne « Date d’échéance » EST votre AA ===');
 const sien=brut.map(r=>({...r,

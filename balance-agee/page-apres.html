@@ -414,7 +414,16 @@ function appliquer(garderPlace){
       if(L && L!==NON_LETTRE) return false;
       if(N(i,'Débit')<0.009 && N(i,'Crédit')<0.009) return false; }
     // Le moteur comptable a proposé une facture pour ce règlement non lettré.
-    if(a==='rappro'&&!V(i,'Proposition de rapprochement')) return false;
+    //
+    // ET SEULEMENT LE RÈGLEMENT. « Comment cela se fait qu'il n'y a que des
+    // montants au débit ? », 22/10/2026 : depuis que la facture d'en face
+    // porte elle aussi la proposition, elle entrait dans le filtre — puis le
+    // regroupement par couple, plus bas, la rajoutait une seconde fois. Chaque
+    // facture apparaissait donc en double, et les quatorze factures d'un compte
+    // passaient avant son premier règlement. La proposition naît sur le
+    // règlement, qui est toujours au crédit : c'est lui qu'on filtre, et le
+    // couple va chercher ses factures.
+    if(a==='rappro'&&!(V(i,'Proposition de rapprochement')&&N(i,'Crédit')>0.009)) return false;
     // La fiabilité est portée par le RÈGLEMENT ; la facture d'en face la
     // reprend préfixée de son numéro de couple. On cherche donc le mot.
     if(fi&&!new RegExp('(^|\\W)'+fi.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(\\W|$)','i')
@@ -1235,9 +1244,33 @@ const DEPOTS=[
    quoi:'Export du financeur · .xlsx · onglet « Échéances »',
    ext:['.xlsx'], va:'depot-ech/echeances.xlsx'},
 ];
-// 20 Mio est le plafond du stockage de la page. Les quatre fichiers du mois
-// tiennent largement dessous — le plus gros, l'export Sellsy, pèse 4,5 Mo.
-const DEPOT_MAX=20*1024*1024;
+// LE MAGASIN DE LA PAGE N'ACCEPTE PAS UN CLASSEUR.
+//
+// « Lorsque je dépose le grand livre l'artefact ne s'actualise pas, c
+// normal ? », 22/10/2026. Non : le dépôt n'arrivait pas. Le magasin de
+// fichiers de la page n'accepte qu'une liste fermée de types — images, PDF,
+// polices, CSV, Markdown, JSON, texte — et un .xlsx n'en fait pas partie. Les
+// deux classeurs du mois étaient donc refusés à chaque tentative, et un .csv
+// l'était dès que le système annonçait son type autrement (Windows présente
+// volontiers un .csv comme un fichier Excel) ou qu'il n'était pas en UTF-8.
+//
+// Les quatre fichiers montent donc dans une enveloppe JSON, qui est un type
+// accepté : le fichier y voyage en base64, octet pour octet, avec son nom et
+// sa taille. Rien n'est converti, rien n'est perdu — l'enveloppe est ouverte
+// à la reconstruction et le fichier d'origine en ressort tel quel.
+const ENVELOPPE='json/base64';
+// Le plafond du magasin est de 20 Mio, et la base64 pèse un tiers de plus que
+// le fichier : 14 Mio de fichier font 19 Mio d'enveloppe. C'est donc 14 Mio
+// qu'on annonce. Les quatre fichiers du mois tiennent largement dessous — le
+// plus gros, l'export Sellsy, pèse 4,5 Mo.
+const DEPOT_MAX=14*1024*1024;
+// Une pile d'appel ne supporte pas 4 millions d'arguments : la conversion se
+// fait par tranches de 32 ko.
+const enBase64=buf=>{
+  const u=new Uint8Array(buf); let s='';
+  for(let k=0;k<u.length;k+=0x8000) s+=String.fromCharCode.apply(null,u.subarray(k,k+0x8000));
+  return btoa(s);
+};
 let ASSETS=null, DEPOSES=new Map();
 
 const fTaille=o=>o>=1048576?(o/1048576).toFixed(1).replace('.',',')+' Mo'
@@ -1285,14 +1318,17 @@ async function deposer(d,input){
     input.value=''; return;
   }
   if(f.size>DEPOT_MAX){
-    dire('« '+f.name+' » pèse '+fTaille(f.size)+', au-delà des 20 Mo que la page accepte.');
+    dire('« '+f.name+' » pèse '+fTaille(f.size)+', au-delà des 14 Mo que la page accepte.');
     input.value=''; return;
   }
   if(lab){ lab.classList.add('occupe'); lab.textContent='Dépôt…'; }
   dire('');
   try{
-    const a=await ASSETS.upload(f);
-    const v={slot:d.cle, nom:f.name, octets:f.size, asset:a.id,
+    const enveloppe=new Blob([JSON.stringify({
+      fichier:f.name, octets:f.size, type:f.type||'', base64:enBase64(await f.arrayBuffer())})],
+      {type:'application/json'});
+    const a=await ASSETS.upload(enveloppe,{type:'application/json'});
+    const v={slot:d.cle, nom:f.name, octets:f.size, asset:a.id, enveloppe:ENVELOPPE,
              quand:new Date().toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}),
              va:d.va};
     await DB.collection('depots').doc(d.cle).set(v);
@@ -1609,7 +1645,12 @@ function lignesParRegle(){
     // compte : « date d’enregistrement, aucune date dans le libellé » contient
     // le mot « libellé », et un test sur ce mot seul rangeait ces 319 lignes
     // au rang 4 — le rang 5 affichait zéro alors qu'il en portait 319.
-    if(/date d[’']enregistrement/i.test(m)){ pose('5'); continue; }
+    // Le repli de dernier rang se reconnaît à ce qui ne bouge pas : « aucune
+    // date dans le libellé ». Les DEUX dates qu'il peut prendre ont changé le
+    // 22/10/2026 — la date de l'écriture, et l'enregistrement en dernier
+    // recours — et un filtre accroché au mot « enregistrement » aurait laissé
+    // la règle n° 5 vide sans rien signaler.
+    if(/aucune date dans le libell/i.test(m)){ pose('5'); continue; }
     if(/libell/i.test(m)){ pose('4'); continue; }
     pose('3');
   }

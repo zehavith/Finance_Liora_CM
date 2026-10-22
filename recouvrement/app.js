@@ -5853,7 +5853,7 @@
             dateFinFormation: 'fin de formation',
             dateFactureFacturation: 'date de facture de la facturation',
             dateEcheanceComptable: 'échéance portée par le grand livre',
-            echeance1: 'dernière date du libellé, sinon date d’enregistrement',
+            echeance1: 'dernière date du libellé, sinon la date de l’écriture',
             'colonne Monday': 'date d’échéance de Monday',
             saisieManuelle: 'échéance posée à la main',
         };

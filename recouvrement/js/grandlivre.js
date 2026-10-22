@@ -361,6 +361,20 @@
      * dernière date lue dans son libellé, à défaut de sa date
      * d'enregistrement : la phrase dit laquelle des trois.
      */
+    /**
+     * L'échéance que donne le repli : sa base, plus le délai que la nature de
+     * la ligne commande.
+     *
+     * Quatre endroits la calculaient chacun de leur côté, et trois d'entre eux
+     * prenaient la base pour l'échéance. Depuis que le repli porte un délai —
+     * « pour les factures colonne D + 30 jours », 22/10/2026 — ils se seraient
+     * contredits de trente jours sans rien signaler.
+     */
+    function echeanceDuRepli(o) {
+        const d = o && o.dateEcheanceRepli;
+        return d ? R.addDays(d, (o && o.echeance1Jours) || 0) : null;
+    }
+
     function nomDeLaDate(source) {
         if (source === 'enregistrement') return 'à sa date d’enregistrement';
         if (source === 'libellé') return 'à la dernière date de son libellé';
@@ -414,6 +428,14 @@
     // ──────────────────────────────────────────────
     //  3. Lecture comptable
     // ──────────────────────────────────────────────
+
+    // LE DÉLAI DU REPLI D'ÉCHÉANCE.
+    //
+    // « Pour les paiements et avoir colonne D, pour les factures colonne D
+    // + 30 jours », 22/10/2026. Trente jours ne s'ajoutent qu'à une facture,
+    // et qu'au repli : un paiement et un avoir sont exigibles le jour où ils
+    // sont passés.
+    const REPLI_FACTURE_JOURS = 30;
 
     const TOLERANCE = 0.01;   // euros — un solde nul à un centime près l'est
 
@@ -729,6 +751,14 @@
                     return o.reparations.get(I.factureKey(n)) || n;
                 });
 
+            // Une facture est un débit portant un numéro de facture. Le test
+            // se fait ICI, avant l'objet, parce que le repli d'échéance en
+            // dépend : trente jours pour une facture, rien pour un paiement ou
+            // un avoir. Sa justification complète est plus bas, là où les
+            // quatre paniers se remplissent.
+            const facture = EST_FACTURE.test(numero) && (!numeroExtrait
+                || sansColonneNumero || JOURNAL_FACTURE.test(journal));
+
             const ligne = {
                 brut,
                 numero, numeroExtrait, qualif, date, dateSource, debit, credit, journal,
@@ -738,15 +768,20 @@
                 // une formule — la dernière date lue dans le libellé de ligne,
                 // à défaut la date d'enregistrement.
                 //
-                // La deuxième branche a été remise en cause et TRANCHÉE le
-                // 13/10/2026 : sur le nouvel extrait, 4 627 écritures sans date
-                // dans le libellé portent une date comptable fiable, qui diffère
-                // de la date d'enregistrement de 8,4 jours en moyenne sur 1 615
-                // d'entre elles ; une seule écriture sur 16 082 n'aurait alors
-                // plus que l'enregistrement. Zehavit a choisi de garder
-                // l'enregistrement — « on reste sur la date d'enregistrement ».
-                // C'est sa règle, elle s'applique telle quelle : ne pas
-                // substituer la date comptable ici sans le lui redemander.
+                // La deuxième branche a été remise en cause le 13/10/2026 —
+                // 4 627 écritures sans date dans le libellé portent une date
+                // comptable fiable, qui diffère de la date d'enregistrement de
+                // 8,4 jours en moyenne sur 1 615 d'entre elles — et elle avait
+                // alors choisi de garder l'enregistrement.
+                //
+                // Elle l'a TRANCHÉE AUTREMENT le 22/10/2026, capture du
+                // classeur à l'appui, en désignant la colonne « Date » : « au
+                // lieu de prendre par défaut la date d'enregistrement je veux
+                // que tu prennes cette date ». La date d'enregistrement n'est
+                // que le jour où la comptable a saisi l'écriture ; la colonne
+                // « Date » est la date de l'opération. Elle ne reste que comme
+                // tout dernier recours, pour l'écriture qui n'a ni l'une ni
+                // l'autre.
                 //
                 // L'export Pennylane porte, lui, sa PROPRE « Date d'échéance ».
                 // Votre feuille ne la reprend pas : vos vingt-trois colonnes
@@ -769,15 +804,30 @@
                 // donnée d'origine à côté de la date retenue — c'est ainsi
                 // qu'il vérifie qu'on l'a écartée, et non perdue.
                 dateEcheanceFichier: R.parseDate(col(r, 'dateEcheance')) || null,
-                dateEcheanceRepli: dateTexte || R.parseDate(col(r, 'dateEnregistrement')) || null,
-                // Votre formule a deux branches, et elles ne se valent pas :
-                // la date LUE DANS LE LIBELLÉ est l'opération elle-même, la
-                // date d'enregistrement n'est que le jour où l'écriture est
-                // entrée dans Pennylane. La première fait une échéance, la
-                // seconde est un pis-aller. Sans distinguer les deux, on ne
-                // peut pas dire laquelle des lignes reste à confirmer.
+                // LE REPLI, DANS CET ORDRE : le libellé de ligne, puis la
+                // date de l'écriture, puis — pour l'écriture qui n'a ni l'une
+                // ni l'autre — sa date d'enregistrement.
+                //
+                // La première branche ne bouge pas : c'est sa formule AA, et
+                // elle l'a confirmée le 14/10/2026 (« comme repli il faut voir
+                // dans les libellés »). C'est la seconde qui change le
+                // 22/10/2026.
+                dateEcheanceRepli: dateTexte || date || null,
+                // Les trois branches ne se valent pas, et la phrase publiée
+                // doit dire laquelle a servi : la date LUE DANS LE LIBELLÉ est
+                // l'opération elle-même, la DATE DE L'ÉCRITURE est celle que la
+                // comptabilité lui donne, la date d'enregistrement n'est que le
+                // jour de la saisie. Sans les distinguer, on ne peut pas dire
+                // laquelle des lignes reste à confirmer.
                 echeance1Source: dateTexte ? 'libellé'
-                    : (R.parseDate(col(r, 'dateEnregistrement')) ? 'enregistrement' : null),
+                    : (!date ? null
+                       : (R.parseDate(col(r, 'date')) ? 'écriture' : 'enregistrement')),
+                // « Pour les paiements et avoir colonne D, pour les factures
+                // colonne D + 30 jours », 22/10/2026. Le délai ne s'ajoute
+                // qu'au repli — une date lue dans le libellé n'en a jamais eu —
+                // et qu'aux factures.
+                echeance1Jours: (!dateTexte && date && debit > 0 && facture)
+                    ? REPLI_FACTURE_JOURS : 0,
                 // Les dates de la facturation, telles que l'extrait les porte.
                 dateDebutFormation: R.parseDate(utile(col(r, 'dateDebutFormation'))),
                 dateFinFormation: R.parseDate(utile(col(r, 'dateFinFormation'))),
@@ -805,8 +855,9 @@
             // Deux exceptions : le journal de ventes, où seules des factures
             // sont passées, et le fichier sans colonne de numéro, où tout
             // numéro vient forcément du libellé.
-            const facture = EST_FACTURE.test(numero) && (!numeroExtrait
-                || sansColonneNumero || JOURNAL_FACTURE.test(journal));
+            //
+            // Le test lui-même est posé plus haut, avant l'objet : le repli
+            // d'échéance a besoin de savoir si la ligne est une facture.
             if (debit > 0 && facture) g.factures.push(ligne);
             else if (credit > 0 && EST_AVOIR.test(numero)) g.avoirs.push(ligne);
             else if (credit > 0) g.reglements.push(ligne);
@@ -1063,6 +1114,7 @@
             dateEcheanceLivre: f.dateEcheance || null,
             dateEcheanceRepli: f.dateEcheanceRepli || null,
             echeance1Source: f.echeance1Source || null,
+            echeance1Jours: f.echeance1Jours || 0,
             // Les dates de formation ne se propagent pas d'une
             // ligne à l'autre : un lettrage réunit plusieurs
             // factures du même client, aux formations différentes.
@@ -1493,6 +1545,7 @@
                         numeroDocument: l.resteImpute > TOLERANCE ? '' : (l.numero || ''),
                         dateFacture: l.date || null,
                         dateEcheanceRepli: repli.date, echeance1Source: repli.source,
+                        echeance1Jours: repli.jours || 0,
                         libelle: l.libelle || libelleRepresentatif(g),
                         filiz: /filiz/i.test((l.libelle || '') + ' ' + (libelleRepresentatif(g) || '')),
                         brutLigne: l.brut || null,
@@ -1550,6 +1603,7 @@
                         dateFacture: derniereDate(x.lignes),
                         dateEcheanceRepli: repli.date,
                         echeance1Source: repli.source,
+                        echeance1Jours: repli.jours || 0,
                         libelle: (x.lignes[0] && x.lignes[0].libelle) || libelleRepresentatif(g),
                         filiz: /filiz/i.test(x.numero + ' ' + ((x.lignes[0] && x.lignes[0].libelle) || '')),
                         citee: true,
@@ -1577,6 +1631,7 @@
                         dateFacture: l.date || null,
                         dateEcheanceRepli: repli.date,
                         echeance1Source: repli.source,
+                        echeance1Jours: repli.jours || 0,
                         libelle: l.libelle || libelleRepresentatif(g),
                         filiz: /filiz/i.test((l.libelle || '') + ' ' + (libelleRepresentatif(g) || '')),
                         // Le lien vers SA ligne : c'est par lui que le détail
@@ -1694,6 +1749,9 @@
         return {
             date: choisie.dateEcheanceRepli || choisie.date || null,
             source: choisie.dateEcheanceRepli ? (choisie.echeance1Source || null) : 'date comptable',
+            // Le délai suit la ligne qui a donné la date, comme la source :
+            // les trois se lisent ensemble ou ne veulent rien dire.
+            jours: choisie.dateEcheanceRepli ? (choisie.echeance1Jours || 0) : 0,
         };
     }
 
@@ -2214,7 +2272,8 @@
             { ...c, financement: fin, dateEcheanceSource: null,
               mandatGocardless: c.mandatGocardless || mandatDecide(c),
               dateEcheanceComptable: c.dateEcheanceLivre || null,
-              dateEcheanceRepli: c.dateEcheanceRepli || c.dateEcheance || null },
+              dateEcheanceRepli: c.dateEcheanceRepli || c.dateEcheance || null,
+              echeance1Jours: c.echeance1Jours || 0 },
             { rules: o.rules, prefereEcheanceMonday: false, grandLivre: true });
         const pose = c.complement && c.complement.echeance ? c.complement : null;
         const repliSeul = !pose && !ech.date && c.dateEcheance;
@@ -2226,15 +2285,11 @@
             echeanceMotif: pose ? (pose.note || 'échéance posée à la main')
                 : (ech.motif
                     || (repliSeul
-                        ? 'aucun barème applicable — ' + (
-                            c.echeance1Source === 'enregistrement'
-                                ? 'date d’enregistrement (aucune date dans le libellé)'
-                                : 'dernière date du libellé')
+                        ? 'aucun barème applicable — '
+                          + R.motifEcheance1(c.echeance1Source, c.echeance1Jours || 0)
                         : null)
                     || (ech.origine === 'Grand livre' && c.echeance1Source
-                        ? (c.echeance1Source === 'libellé'
-                            ? 'dernière date du libellé'
-                            : 'date d’enregistrement (aucune date dans le libellé)')
+                        ? R.motifEcheance1(c.echeance1Source, c.echeance1Jours || 0)
                         : null)),
             echeanceJours: pose ? 0 : (ech.jours == null ? null : ech.jours),
         };
@@ -2449,7 +2504,7 @@
                     nbPrelevementsGcl: gcl ? gcl.nb : (c.nbPrelevementsGcl || 0),
                 };
                 return base.dateEcheance ? base
-                    : { ...base, dateEcheance: base.dateEcheanceRepli || null };
+                    : { ...base, dateEcheance: echeanceDuRepli(base) };
             }
             return {
                 ...c,
@@ -2494,7 +2549,7 @@
                 // dans un fichier se substituait au recalcul, exactement ce que
                 // votre règle interdit. Sellsy reste la source des dates de
                 // FORMATION, qui sont des faits ; son échéance à elle, non.
-                dateEcheance: c.dateEcheance || c.dateEcheanceRepli || null,
+                dateEcheance: c.dateEcheance || echeanceDuRepli(c) || null,
                 // Le mandat change la règle d'échéance ; le montant prélevé dit
                 // ce qui est déjà rentré par ce canal, rejets exclus.
                 // Le mandat qui décide de l'échéance est celui que vous
@@ -2735,9 +2790,10 @@
                 echeanceBase: c.dateEcheance ? 'echeance1' : '',
                 echeanceOrigine: c.dateEcheance ? 'Règle' : '',
                 echeanceMotif: c.dateEcheance
-                    ? 'dispositif à qualifier — dernière date du libellé, sinon la date d’enregistrement'
+                    ? 'dispositif à qualifier — '
+                      + R.motifEcheance1(c.echeance1Source, c.echeance1Jours || 0)
                     : '',
-                echeanceJours: c.dateEcheance ? 0 : null,
+                echeanceJours: c.dateEcheance ? (c.echeance1Jours || 0) : null,
                 dateEcheanceGrandLivre: c.dateEcheanceLivre || null };
         });
     }
@@ -2802,6 +2858,7 @@
                     dateEcheanceFichier: l.dateEcheanceFichier || l.dateEcheance || null,
                     dateEcheanceRepli: l.dateEcheanceRepli || null,
                     echeance1Source: l.echeance1Source || null,
+                    echeance1Jours: l.echeance1Jours || 0,
                     dateDebutFormation: l.dateDebutFormation || null,
                     dateFinFormation: l.dateFinFormation || null,
                     ancien: l.ancien || null,
@@ -3301,7 +3358,7 @@
                 // l'enregistrement. Elle est portée par la ligne elle-même, et
                 // le motif dit d'où elle vient : rien n'est ni inventé ni muet.
                 dateEcheance: dateDeSoi
-                    || (source && source.dateEcheance) || l.dateEcheanceRepli || null,
+                    || (source && source.dateEcheance) || echeanceDuRepli(l) || null,
                 // Quand la ligne se date elle-même, ce qui l'a datée se dit :
                 // la base retenue est l'échéance 1 — dernière date du libellé,
                 // sinon date d'enregistrement — et le délai appliqué est nul.
@@ -3330,9 +3387,13 @@
                 // De quoi justifier la date sur la ligne elle-même, sans avoir
                 // à remonter à la créance : le délai réellement appliqué,
                 // l'échéance que portait le grand livre, et l'origine.
+                // Le repli porte un délai depuis le 22/10/2026 : l'annoncer à
+                // zéro faisait mentir « base + délai = échéance » de trente
+                // jours sur les factures qui se datent elles-mêmes.
                 echeanceJours: dateDeSoi ? 0
                     : (source && source.echeanceJours != null
-                       ? source.echeanceJours : (seDateSeule ? 0 : null)),
+                       ? source.echeanceJours
+                       : (seDateSeule ? (l.echeance1Jours || 0) : null)),
                 // Le repli EST la règle d'échéance 1, pas une date que le grand
                 // livre portait : ces lignes n'en portent aucune. L'annoncer
                 // « échéance reprise du grand livre » démentait le motif écrit
@@ -3342,6 +3403,7 @@
                        || (seDateSeule ? 'Règle' : '')),
                 dateEcheanceGrandLivre: source ? (source.dateEcheanceGrandLivre || null) : null,
                 echeance1Source: source ? (source.echeance1Source || '') : (l.echeance1Source || ''),
+                echeance1Jours: source ? (source.echeance1Jours || 0) : (l.echeance1Jours || 0),
                 dateFactureFacturationSource: source ? (source.dateFactureFacturation || null) : null,
                 dateDebutFormationSource: source ? (source.dateDebutFormation || null) : null,
                 dateFinFormationSource: source ? (source.dateFinFormation || null) : null,
@@ -4076,7 +4138,7 @@
         pointageParMois, pointageParFinancement, ecrituresAPlat, balanceAgee, comparer,
         dateDepuisTexte,
         MOTIFS_COMPTE, financementDuLibelle, typeDeClient, SEUIL_POEI,
-        COLONNES, TOLERANCE, EST_FACTURE, EST_AVOIR, nomDeLaDate,
+        COLONNES, TOLERANCE, EST_FACTURE, EST_AVOIR, nomDeLaDate, echeanceDuRepli,
         detecterColonnes, estComptable, lettreDe, lire, lireComptable, lireSimple,
     };
 })(window);

@@ -323,7 +323,7 @@ if(complements.length){
 const BASES={dateFacture:'date de facture', dateDebutFormation:'début de formation',
   dateFinFormation:'fin de formation', dateFactureFacturation:'date de facture de la facturation',
   dateEcheanceComptable:'échéance portée par le grand livre',
-  echeance1:'dernière date du libellé, sinon date d’enregistrement',
+  echeance1:'dernière date du libellé, sinon la date de l’écriture',
   dateReglement:'date de l’encaissement',
   saisieManuelle:'échéance posée à la main'};
 const valeurBase=c=>({dateFacture:c.dateFacture, dateDebutFormation:c.dateDebutFormation,
@@ -374,6 +374,8 @@ const NATURE_MOTIF=[
    +' la ligne se date elle-même'],
   [/dispositif [àa] qualifier/i,  'Repli · dispositif non qualifié au moment du calcul'],   // précisé ci-dessous
   [/derni[èe]re date du libell/i, 'Repli · dernière date lue dans le libellé'],
+  [/date de l[’\'][ée]criture/i,  c=>'Repli · date de l’écriture, aucune date dans le libellé'
+    +((c.echeanceJours||0)?' · + '+c.echeanceJours+' jours (facture)':'')],
   [/date d[’\']enregistrement/i,  'Repli · date d’enregistrement, aucune date dans le libellé'],
   // « Ça ne veut rien dire, formule ça de manière pro », 21/10/2026 — et la
   // phrase doit dire LAQUELLE des trois dates a servi. Le motif la nomme déjà ;
@@ -415,8 +417,10 @@ const motifExplicite=c=>{
     // dans une colonne « Repli appliqué » qui ne servait qu'à ça, et qui
     // disparaît. Elle rejoint donc la phrase.
     if(/dispositif non qualifié/.test(lib) && c.echeanceBase==='echeance1'){
-      return lib+' — '+(c.echeance1Source==='enregistrement'
-        ? 'date d’enregistrement' : 'dernière date lue dans le libellé');
+      return lib+' — '+(c.echeance1Source==='libellé'||!c.echeance1Source
+        ? 'dernière date lue dans le libellé'
+        : (c.echeance1Source==='écriture' ? 'date de l’écriture' : 'date d’enregistrement')
+          +((c.echeanceJours||0)?' + '+c.echeanceJours+' jours':''));
     }
     return lib;
   }
@@ -446,10 +450,16 @@ const calcul=c=>{ if(!c.dateEcheance) return '';
   // l'enregistrement. C'est maintenant la même date que « Date de la base
   // retenue », par construction.
   if(c.sansNumero&&c.dateFacture&&(!c.echeanceBase||c.echeanceBase==='echeance1')){
-    const branche=c.echeance1Source==='libellé'
+    // La branche qui a servi, nommée ; et son délai, s'il y en a un. Sans lui,
+    // la phrase sautait de trente jours sans les écrire : « date de l'écriture,
+    // le 12/03/2023 = 11/04/2023 ».
+    const branche=c.echeance1Source==='libellé'||!c.echeance1Source
       ? 'dernière date du libellé de l’écriture'
-      : 'date d’enregistrement de l’écriture';
-    return branche+', le '+fr(valeurBase(c)||c.dateFacture)+' = '+fr(c.dateEcheance);
+      : (c.echeance1Source==='écriture'
+         ? 'date de l’écriture' : 'date d’enregistrement de l’écriture');
+    const jr=c.echeanceJours||0;
+    return branche+', le '+fr(valeurBase(c)||c.dateFacture)
+      +(jr?' + '+jr+' j':'')+' = '+fr(c.dateEcheance);
   }
   // L'avoir daté par la facture qu'il annule : la phrase NOMME cette facture.
   // « Date de facture de la facturation 19/08/2026 » laisserait croire que
@@ -1004,21 +1014,19 @@ for(let i=0;i<plat.length;i++){
     // coup ? », 21/10/2026 — là où le libellé ne dit rien.
     src.dateEcheanceRepli=l.dateEcheanceRepli||null;
     src.echeance1Source=l.echeance1Source||'';
+    src.echeance1Jours=l.echeance1Jours||0;
     // L'écriture à plat a été classée, elle aussi, par la facture du lot :
     // reprendre SA base laissait la ligne annoncer « date de facture de la
     // facturation » avec une case vide à côté — une base sans date, pire que
     // la date d'une voisine. Le repli est donc entier : l'échéance 1 de la
     // ligne, et rien d'autre.
     if(l.nature!=='reglement'){
-      src.dateEcheance=l.dateEcheanceRepli||null;
+      src.dateEcheance=GL.echeanceDuRepli(l);
       src.echeanceBase=l.dateEcheanceRepli?'echeance1':'';
-      src.echeanceJours=0;
+      src.echeanceJours=l.dateEcheanceRepli?(l.echeance1Jours||0):0;
       src.echeanceOrigine=l.dateEcheanceRepli?'Règle':'';
       src.echeanceMotif=l.dateEcheanceRepli
-        ?(l.echeance1Source==='enregistrement'
-          ? 'date d’enregistrement (aucune date dans le libellé)'
-          : 'dernière date du libellé')
-        :'';
+        ? R.motifEcheance1(l.echeance1Source,l.echeance1Jours||0) : '';
     }
   }
 
@@ -1036,13 +1044,12 @@ for(let i=0;i<plat.length;i++){
     // La base affichée se lit dans « dateEcheanceRepli » : la poser seule
     // laissait la colonne annoncer encore la date de la voisine.
     src.dateEcheanceRepli=l.dateEcheanceRepli;
-    src.dateEcheance=l.dateEcheanceRepli;
+    src.dateEcheance=GL.echeanceDuRepli(l);
     src.echeance1Source=l.echeance1Source||'';
-    src.echeanceJours=0;
+    src.echeance1Jours=l.echeance1Jours||0;
+    src.echeanceJours=l.echeance1Jours||0;
     src.echeanceOrigine='Règle';
-    src.echeanceMotif=l.echeance1Source==='enregistrement'
-      ? 'date d’enregistrement (aucune date dans le libellé)'
-      : 'dernière date du libellé';
+    src.echeanceMotif=R.motifEcheance1(l.echeance1Source,l.echeance1Jours||0);
   }
 
   // UNE BASE ANNONCÉE PORTE SA DATE.
@@ -1616,8 +1623,11 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
          +'de l’écriture porte, sans délai ajouté.'},
     {rang:'5', nature:'Règle repli',
      quand:'Sinon — aucune date dans le libellé',
-     alors:'date d’enregistrement',
-     note:'Le dernier recours. La ligne reste datée, et dit qu’elle l’est ainsi.'},
+     alors:'date de l’écriture · une facture, + 30 jours',
+     note:'La colonne « Date » du grand livre, sa décision du 22/10/2026. Une facture '
+         +'est exigible trente jours après ; un paiement et un avoir le jour même. '
+         +'L’écriture qui n’a ni date ni libellé daté garde sa date d’enregistrement, '
+         +'en dernier recours, et le dit.'},
   ],
   tranches:buckets.map(b=>b.label),
   // L'ordre de ses trois types de client, pour que la vue « à provisionner »

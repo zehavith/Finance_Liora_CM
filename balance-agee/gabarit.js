@@ -128,8 +128,24 @@ window.claude={ _d:_lu(), use(n){
   // Le dépôt des fichiers du mois : un faux stockage, pour exercer ici le
   // chemin qui n'existe que chez le lecteur. Rien n'est envoyé nulle part.
   if(n==='assets') return Promise.resolve({
-    upload:async(f)=>{ window.__up=(window.__up||0)+1;
-      return {id:'faux-'+window.__up, url:'', sizeBytes:f.size, contentType:f.type||''}; },
+    // Le faux magasin REFUSE ce que le vrai refuse.
+    //
+    // Il acceptait tout, et l'essai passait là où la page échouait chez elle :
+    // le magasin d'un artefact n'accepte qu'une liste fermée de types, où un
+    // classeur ne figure pas. Le dépôt du grand livre était refusé à chaque
+    // fois — « le gd livre n'est pas accepté », 22/10/2026 — sans qu'aucun
+    // essai ne le voie. Un faux qui pardonne ne prouve rien.
+    upload:async(f,o)=>{
+      const T=['image/png','image/jpeg','image/gif','image/webp','image/svg+xml',
+               'video/mp4','video/webm','application/pdf','font/woff2','font/woff',
+               'font/ttf','font/otf','text/csv','text/markdown','application/json',
+               'text/plain','text/css','text/javascript'];
+      const t=(o&&o.type)||f.type||'';
+      if(T.indexOf(t)<0){ const e=new Error('unsupported_type : '+(t||'type absent'));
+        e.code='unsupported_type'; throw e; }
+      if(f.size>20*1024*1024){ const e=new Error('too_large'); e.code='too_large'; throw e; }
+      window.__up=(window.__up||0)+1;
+      return {id:'faux-'+window.__up, url:'', sizeBytes:f.size, contentType:t}; },
     list:async()=>({assets:[],usage:{}}), delete:async()=>{} });
   if(n!=='db') return Promise.resolve(null);
   const d=this._d;
