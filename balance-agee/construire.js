@@ -1,3 +1,4 @@
+const DEBUT_CONSTRUCTION=Date.now();
 const {ctx,X,ANC,NOUV,feuille,dser}=require('./socle.js');
 const GL=ctx.LioraGrandLivre, R=ctx.LioraRules, SE=ctx.LioraSellsy, I=ctx.LioraIngest;
 const RG=R.DEFAULT_ECHEANCE_RULES, fs=require('fs');
@@ -1675,6 +1676,12 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
   // d'une reconstruction faite avant : la dernière étape de la bande n'aurait
   // jamais été atteinte dans le cas le plus courant.
   genereISO:new Date().toISOString(),
+  // COMBIEN DE TEMPS CETTE RECONSTRUCTION A PRIS.
+  //
+  // La page s'en sert pour faire avancer sa jauge pendant la suivante : une
+  // progression estimée d'après la durée réellement mesurée la fois d'avant,
+  // et non d'après une minuterie choisie au hasard.
+  dureeMs:Date.now()-DEBUT_CONSTRUCTION,
   arrete:fr(REF),
   source:'Grand livre Clients Pennylane · 01/07/2026 → 30/06/2027',
   cols:colsPage, dico, lignes:lignesPage,

@@ -1385,14 +1385,96 @@ let DEMANDE=null;
 // Une barre qui se remplirait sur une minuterie ne mesurerait rien.
 const ETAPES=['Affichage actualisé','Demande enregistrée','Balance reconstruite'];
 
-function poserBande(id,etape,detail){
+// La jauge se pose sur un pourcentage, pas sur un numéro d'étape : chaque
+// étape occupe un tiers de la bande et avance à l'intérieur de son tiers au
+// fur et à mesure de ce qui est réellement fait.
+function poserBande(id,etape,part,detail,nom){
   const b=E(id+'-bande'); if(!b) return;
-  const pc=Math.round(etape/ETAPES.length*100);
+  const t=100/ETAPES.length;
+  const pc=Math.min(100,Math.round((etape-1)*t+Math.max(0,Math.min(1,part))*t));
   b.hidden=false;
-  b.classList.toggle('fini',etape>=ETAPES.length);
+  b.classList.toggle('fini',pc>=100);
   b.querySelector('.actu-jauge').style.width=pc+'%';
+  // Le nom de l'étape peut être repris : « Balance reconstruite » est vrai à
+  // l'arrivée, pas pendant le calcul.
   b.querySelector('.actu-dit').textContent=pc+' % · étape '+etape+'/'+ETAPES.length
-    +' · '+ETAPES[etape-1]+(detail?' '+detail:'');
+    +' · '+(nom||ETAPES[etape-1])+(detail?' '+detail:'');
+}
+
+// Une pause qui laisse le navigateur peindre : sans elle, la jauge saute
+// d'un bout à l'autre sans qu'aucun état intermédiaire ne soit affiché.
+const peindre=()=>new Promise(r=>requestAnimationFrame(()=>setTimeout(r,0)));
+
+// ÉTAPE 1, SOUS-TÂCHE PAR SOUS-TÂCHE.
+//
+// Les poids sont les durées mesurées sur ce jeu de données : l'assiette de
+// provision 10 ms, le tableau des taux 17 ms, les tableaux de règles 1 ms, la
+// balance et le détail 42 ms. La jauge avance de la part réellement faite.
+const TACHES=[
+  ['paramètres',             1,  ()=>{ paramsPrets(); ASSIETTE=null; }],
+  ['assiette de provision', 10,  ()=>{ assiettes(); }],
+  ['taux de provision',     17,  ()=>{ tableProvision(); }],
+  ['règles',                 1,  ()=>{ tableClassement(); tableEcheance(); }],
+  ['balance et détail',     42,  ()=>{ rafraichir(); }],
+];
+
+async function refaireAffichage(id){
+  const total=TACHES.reduce((a,t)=>a+t[1],0);
+  let fait=0;
+  const t0=performance.now();
+  for(const [nom,poids,faire] of TACHES){
+    poserBande(id,1,fait/total,'· '+nom+'…');
+    await peindre();
+    faire();
+    fait+=poids;
+  }
+  poserBande(id,1,1,'en '+Math.max(1,Math.round(performance.now()-t0))+' ms');
+  await peindre();
+}
+
+// ÉTAPE 3 — LA RECONSTRUCTION, QUI SE PASSE HORS DE LA PAGE.
+//
+// La page ne voit pas le calcul ; elle voit le document de demande. Tant qu'il
+// est « en attente », la jauge reste au seuil de l'étape. Dès qu'il passe « en
+// cours », elle avance en continu, du temps écoulé depuis le début rapporté à
+// la durée RÉELLEMENT MESURÉE de la reconstruction précédente — c'est une
+// estimation, elle est annoncée comme telle, et elle plafonne à 99 % : seule
+// la republication de la balance la porte à 100 %.
+let SUIVI=null;
+function suivreReconstruction(){
+  if(SUIVI){ clearInterval(SUIVI); SUIVI=null; }
+  const ids=['ech-actu','prov-actu','depot-actu'];
+  const dessiner=()=>{
+    if(!DEMANDE||!DEMANDE.quand) return false;
+    if(reconstruiteDepuis()){
+      for(const id of ids) poserBande(id,3,1,'le '+(D.genere||'?'));
+      return false;
+    }
+    if(DEMANDE.etat==='en cours' && DEMANDE.debutISO){
+      const duree=Number(D.dureeMs)>0?Number(D.dureeMs):120000;
+      const passe=Date.now()-Date.parse(DEMANDE.debutISO);
+      const part=Math.max(0,Math.min(0.97,passe/duree));
+      const dit=passe>duree ? '· plus longue que la précédente'
+        : '· '+Math.round(passe/1000)+' s sur '+Math.round(duree/1000)+' s estimées';
+      for(const id of ids) poserBande(id,3,part,dit,'Reconstruction en cours');
+      return true;
+    }
+    for(const id of ids) poserBande(id,2,1,'le '+DEMANDE.quand+' · en attente');
+    return true;
+  };
+  if(!dessiner()) return;
+  // On ne relit le document que tant qu'une demande est en cours, et pas
+  // au-delà d'un quart d'heure : une page laissée ouverte ne doit pas
+  // interroger la base indéfiniment.
+  const fin=Date.now()+15*60*1000;
+  SUIVI=setInterval(async()=>{
+    if(Date.now()>fin){ clearInterval(SUIVI); SUIVI=null; return; }
+    if(DB){ try{
+      const q=await DB.collection('demandes').get();
+      q.docs.forEach(doc=>{ if(doc.id==='reconstruction') DEMANDE=doc.data()||DEMANDE; });
+    }catch(e){} }
+    if(!dessiner()){ clearInterval(SUIVI); SUIVI=null; }
+  },4000);
 }
 
 // La reconstruction est faite quand la page a été rebâtie APRÈS la demande.
@@ -1418,19 +1500,17 @@ async function demanderActualisation(motif,etatId,bandeId){
   const dire=t=>{ const e=E(etatId); if(e) e.textContent=t; };
   dire('');
   // ÉTAPE 1 — ce qui se calcule dans la page se recalcule maintenant.
-  const t0=performance.now();
-  paramsPrets(); ASSIETTE=null;
-  tableProvision(); tableClassement(); tableEcheance();
-  rafraichir();
-  poserBande(bandeId,1,'en '+Math.max(1,Math.round(performance.now()-t0))+' ms');
+  await refaireAffichage(bandeId);
   if(!DB||!admin){ dire('Affichage actualisé.'); return; }
   // ÉTAPE 2 — la demande, horodatée et motivée.
+  poserBande(bandeId,2,0,'…');
   const v={quand:leJour(), quandISO:new Date().toISOString(), motif:motif, etat:'en attente'};
   try{
     await DB.collection('demandes').doc('reconstruction').set(v);
     DEMANDE=v; direRecons();
-    poserBande(bandeId,2,'le '+v.quand);
+    poserBande(bandeId,2,1,'le '+v.quand+' · en attente');
     dire('Reconstruction demandée.');
+    suivreReconstruction();
   }catch(e){
     dire('La demande n’a pas pu être enregistrée.');
   }
@@ -1444,12 +1524,10 @@ function brancherActualiser(){
     const b=E(id); if(!b) continue;
     if(admin) b.hidden=false;
     b.addEventListener('click',()=>demanderActualisation(motif,etat,id));
-    // À l'ouverture, la bande dit où en est la dernière demande : reconstruite,
-    // ou toujours en attente.
-    if(DEMANDE&&DEMANDE.quand)
-      poserBande(id, reconstruiteDepuis()?3:2,
-        reconstruiteDepuis()?('le '+(D.genere||'?')):('le '+DEMANDE.quand));
   }
+  // À l'ouverture, la bande dit où en est la dernière demande, et se met à la
+  // suivre si elle n'est pas encore servie.
+  suivreReconstruction();
   direRecons();
 }
 
