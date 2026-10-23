@@ -1560,3 +1560,118 @@ tr.ligne-total td {
     overflow-y: auto;
     white-space: pre-wrap;
 }
+
+/* ══════════════════════════════════════════════
+   LA BARRE DE FILTRES, SUR UNE LIGNE
+   ══════════════════════════════════════════════ */
+
+/* CETTE RÈGLE EST LE PRÉALABLE DE TOUT LE RESTE.
+   `.filter-block { display: flex }` est une déclaration d'auteur ; le
+   `[hidden] { display: none }` du navigateur vient d'une feuille de moindre
+   priorité. L'attribut `hidden` ne masquait donc RIEN sur un bloc de filtre —
+   le bloc « Factures Sellsy manquantes », qui le porte depuis toujours, était
+   visible en permanence, avec le libellé le plus long de la barre. */
+.filter-block[hidden] { display: none; }
+
+/* ── Le déroulé ──
+   Le panneau est en position absolue : la barre est collante et sa hauteur est
+   mesurée dans --filters-h, donc un panneau qui pousserait le contenu ferait
+   sauter la page à chaque ouverture. */
+.dd { position: relative; }
+.dd-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between;
+    min-width: 150px;
+    max-width: 260px;
+    text-align: left;
+}
+.dd-resume {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dd-fleche { opacity: 0.6; flex-shrink: 0; font-size: 10px; }
+.dd.ouvert .dd-btn { border-color: var(--accent); }
+.dd.ouvert .dd-fleche { transform: rotate(180deg); }
+
+.dd-panneau {
+    position: absolute;
+    z-index: 40;
+    top: calc(100% + 4px);
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 220px;
+    max-width: min(420px, 92vw);
+    max-height: 60vh;
+    overflow-y: auto;
+    padding: 8px;
+    background: var(--bg-card, #151a2e);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+}
+/* Sans cette ligne, le display:flex ci-dessus écrase l'attribut hidden et le
+   panneau resterait ouvert en permanence — le même piège qu'au-dessus. */
+.dd-panneau[hidden] { display: none; }
+.dd.dd-droite .dd-panneau { left: auto; right: 0; }
+.dd-panneau-large { min-width: 300px; }
+
+.dd-actions { display: flex; flex-wrap: wrap; gap: 4px; }
+.dd-recherche { width: 100%; }
+.dd-options { display: flex; flex-direction: column; gap: 2px; }
+
+.dd-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 8px;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.dd-option:hover,
+.dd-option:focus-visible { background: var(--bg-hover, rgb(255 255 255 / 0.06)); }
+.dd-libelle { flex: 1; min-width: 0; }
+.dd-detail { color: var(--text-muted, #94a3b8); font-size: 11px; flex-shrink: 0; }
+
+/* La forme de la coche dit la règle : carrée, on peut en prendre plusieurs ;
+   ronde, un seul. Aucune phrase n'a besoin de l'expliquer. */
+.dd-marque {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+}
+.dd-unique .dd-marque { border-radius: 50%; }
+.dd-option.coche .dd-marque {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 2px var(--bg-card, #151a2e);
+}
+
+/* Le panneau des mois : une grille, parce qu'ils se lisent par rangées. */
+.dd-panneau-mois .date-filter-months {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+    gap: 4px;
+    max-height: none;
+    overflow: visible;
+}
+.dd-panneau-mois .date-filter-months.replie { display: grid; }
+
+/* ── La rangée ──
+   Plus aucun bloc ne réclame une ligne entière : les deux modificateurs qui
+   le faisaient ne servaient qu'aux rangées de puces, qui n'existent plus. */
+.filter-bar > .filter-block { flex: 0 0 auto; min-width: 0; }
+.filter-block-large,
+.filter-block-grow { flex: 0 0 auto; }

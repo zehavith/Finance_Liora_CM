@@ -626,6 +626,227 @@
     //  Barre de filtres
     // ══════════════════════════════════════════════
 
+    // ══════════════════════════════════════════════
+    //  Les déroulés de la barre de filtres
+    // ══════════════════════════════════════════════
+    //
+    // Quatre filtres partageaient la barre en rangées de puces : le
+    // financement en occupait une à lui seul, 1 376 px de large, et l'étape du
+    // circuit 889. Il fallait descendre de 569 px — 63 % d'un écran de 900 —
+    // avant de lire le premier chiffre. Ils tiennent maintenant dans un bouton
+    // qui porte déjà ce qu'il vaut, et la barre tient sur une ligne.
+    //
+    // UNE SEULE MÉCANIQUE, BRANCHÉE QUATRE FOIS. Les différences se disent en
+    // configuration : coche carrée pour un choix multiple, ronde pour un choix
+    // unique ; un champ de recherche quand la liste est longue ; des actions
+    // en tête quand il y a un geste d'ensemble à offrir.
+    //
+    // LE PANNEAU EST EN POSITION ABSOLUE, et ce n'est pas un détail : la barre
+    // est collante et sa hauteur est mesurée dans --filters-h. Un panneau qui
+    // pousserait le contenu ferait sauter la page à chaque ouverture.
+    //
+    // Tous les écouteurs posés ici le sont sur des éléments déjà trouvés,
+    // derrière une garde. Aucun $('#id').addEventListener nu n'est ajouté :
+    // c'est ce qui rend ces blocs retirables plus tard sans vider l'écran.
+    let DD_OUVERT = null;
+
+    function fermerDeroules(sauf) {
+        for (const dd of $$('.dd')) {
+            if (dd === sauf) continue;
+            const p = dd.querySelector('.dd-panneau'), b = dd.querySelector('.dd-btn');
+            if (p) p.hidden = true;
+            if (b) b.setAttribute('aria-expanded', 'false');
+            dd.classList.remove('ouvert');
+        }
+        if (sauf !== DD_OUVERT) DD_OUVERT = sauf || null;
+    }
+
+    /**
+     * @param {object} o
+     *   id        l'identifiant du conteneur .dd
+     *   multi     vrai pour un choix multiple (coche carrée)
+     *   resume    () => le texte que porte le bouton fermé
+     *   options   () => [{ cle, label, coche, detail, titre }]
+     *   choisir   cle => void — pose le filtre ; le panneau reste ouvert
+     *   actions   { nom: () => void } — les boutons data-action du panneau
+     *   recherche vrai si le panneau porte un champ de filtrage
+     */
+    function brancherDeroule(o) {
+        const dd = $('#' + o.id);
+        if (!dd) return null;
+        const bouton = dd.querySelector('.dd-btn');
+        const panneau = dd.querySelector('.dd-panneau');
+        const resume = dd.querySelector('.dd-resume');
+        const liste = dd.querySelector('.dd-options') || panneau;
+        const recherche = dd.querySelector('.dd-recherche');
+        if (!bouton || !panneau) return null;
+
+        const majResume = () => { if (resume) resume.textContent = o.resume(); };
+
+        function peindre() {
+            if (!o.options) return;
+            const filtre = (recherche && recherche.value || '').trim().toLowerCase();
+            liste.innerHTML = '';
+            const opts = o.options().filter(x =>
+                !filtre || String(x.label || '').toLowerCase().includes(filtre));
+            if (!opts.length) {
+                liste.innerHTML = '<span class="fv-hint">Rien à cette recherche.</span>';
+                return;
+            }
+            for (const x of opts) {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'dd-option' + (x.coche ? ' coche' : '');
+                b.setAttribute('role', 'option');
+                b.setAttribute('aria-selected', x.coche ? 'true' : 'false');
+                if (x.titre) b.title = x.titre;
+                b.innerHTML = '<span class="dd-marque" aria-hidden="true"></span>'
+                    + '<span class="dd-libelle"></span>'
+                    + (x.detail ? '<span class="dd-detail"></span>' : '');
+                b.querySelector('.dd-libelle').textContent = x.label;
+                if (x.detail) b.querySelector('.dd-detail').textContent = x.detail;
+                b.addEventListener('click', e => {
+                    e.stopPropagation();
+                    o.choisir(x.cle);
+                    peindre();          // la liste se met à jour SANS se refermer
+                    majResume();
+                });
+                liste.appendChild(b);
+            }
+        }
+
+        function ouvrir(oui) {
+            if (oui) fermerDeroules(dd);
+            panneau.hidden = !oui;
+            dd.classList.toggle('ouvert', oui);
+            bouton.setAttribute('aria-expanded', oui ? 'true' : 'false');
+            DD_OUVERT = oui ? dd : null;
+            if (!oui) return;
+            // Au bord droit de l'écran, le panneau s'aligne sur la droite du
+            // bouton plutôt que de sortir de la fenêtre.
+            dd.classList.remove('dd-droite');
+            const r = panneau.getBoundingClientRect();
+            if (r.right > window.innerWidth - 8) dd.classList.add('dd-droite');
+            if (recherche) { recherche.value = ''; peindre(); recherche.focus(); }
+        }
+
+        bouton.addEventListener('click', e => {
+            e.stopPropagation();
+            const ouvert = !panneau.hidden;
+            if (!ouvert) peindre();
+            ouvrir(!ouvert);
+        });
+        // POINTERDOWN, PAS SEULEMENT CLICK.
+        //
+        // La fermeture au clic ailleurs écoute « pointerdown », qui part AVANT
+        // « click ». Arrêter la propagation du seul click laissait donc le
+        // panneau se refermer sous le doigt : on ne pouvait cocher qu'un mois,
+        // puis il fallait rouvrir. Les deux événements sont arrêtés.
+        panneau.addEventListener('pointerdown', e => e.stopPropagation());
+        panneau.addEventListener('click', e => e.stopPropagation());
+        bouton.addEventListener('pointerdown', e => e.stopPropagation());
+        if (recherche) recherche.addEventListener('input', peindre);
+
+        for (const b of dd.querySelectorAll('.dd-actions [data-action]')) {
+            b.addEventListener('click', e => {
+                e.stopPropagation();
+                const f = o.actions && o.actions[b.dataset.action];
+                if (f) { f(); peindre(); majResume(); }
+            });
+        }
+
+        majResume();
+        return { peindre, majResume, ouvrir, dd };
+    }
+
+    // Un clic ailleurs, ou Échap, referme. L'écouteur est posé sur le document
+    // et ne cherche aucun identifiant : il ne peut rien casser.
+    document.addEventListener('pointerdown', () => { if (DD_OUVERT) fermerDeroules(null); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && DD_OUVERT) fermerDeroules(null); });
+
+    const LIB_BASE = { echeance: 'Échéance', facture: 'Facture', paiement: 'Paiement' };
+    let DD = {};
+
+    function brancherDeroulesFiltres() {
+        DD.periode = brancherDeroule({
+            id: 'dd-periode',
+            resume: texteResumePeriode,
+            actions: {
+                tous:  () => { state.filtres.mois = null; apresPeriode(); },
+                aucun: () => { state.filtres.mois = new Set(); apresPeriode(); },
+                douze: () => { state.filtres.mois = new Set(state.moisDispo.slice(-12)); apresPeriode(); },
+            },
+        });
+
+        DD.baseMois = brancherDeroule({
+            id: 'dd-base-mois',
+            resume: () => LIB_BASE[state.filtres.baseMois] || 'Échéance',
+            options: () => ['echeance', 'facture', 'paiement'].map(k =>
+                ({ cle: k, label: LIB_BASE[k], coche: state.filtres.baseMois === k })),
+            choisir: k => {
+                state.filtres.baseMois = k;
+                majSegments();
+                majMoisDisponibles(false);   // la liste des mois dépend de cette base
+                state.ui.page = 1;
+                rendreTout();
+            },
+        });
+
+        DD.avoirs = brancherDeroule({
+            id: 'dd-avoirs',
+            resume: () => state.filtres.inclureAvoirs ? 'Incluses' : 'Exclues',
+            options: () => [
+                { cle: 'exclure', label: 'Exclues',  coche: !state.filtres.inclureAvoirs,
+                  titre: 'Les taux disent ce que le recouvrement a réellement encaissé.' },
+                { cle: 'inclure', label: 'Incluses', coche: !!state.filtres.inclureAvoirs,
+                  titre: 'Le portefeuille se lit tel qu’il a été facturé.' },
+            ],
+            choisir: k => {
+                state.filtres.inclureAvoirs = k === 'inclure';
+                majSegments();
+                state.ui.page = 1;
+                rendreTout();
+            },
+        });
+
+        DD.financements = brancherDeroule({
+            id: 'dd-financements', multi: true,
+            resume: () => {
+                const sel = state.filtres.financements;
+                if (!sel || !sel.size) return 'Tous les dispositifs';
+                const noms = [...sel].map(k => R.getRule(k, state.rules).label);
+                return noms.length <= 2 ? noms.join(', ') : noms.length + ' dispositifs';
+            },
+            options: () => {
+                const sel = state.filtres.financements;
+                return (state.rules || []).filter(r => r && r.key).map(r => ({
+                    cle: r.key, label: r.label || r.key,
+                    coche: !!(sel && sel.has(r.key)),
+                    titre: r.note || '',
+                }));
+            },
+            choisir: k => {
+                const f = state.filtres;
+                if (!f.financements) f.financements = new Set();
+                if (f.financements.has(k)) f.financements.delete(k);
+                else f.financements.add(k);
+                if (!f.financements.size) f.financements = null;
+                state.ui.page = 1;
+                rendreTout();
+            },
+            actions: {
+                tous: () => { state.filtres.financements = null; state.ui.page = 1; rendreTout(); },
+            },
+        });
+    }
+
+    /** Ce qui suit un changement de période, quel que soit le geste. */
+    function apresPeriode() {
+        state.ui.page = 1;
+        majBoutonsMois();
+        rendreTout();
+    }
+
     function rendreBoutonsMois() {
         const c = $('#date-filter-months');
         if (!c) return;
@@ -645,18 +866,44 @@
         majResumePeriode();
     }
 
-    /** La période retenue, en une ligne, quand la liste des mois est repliée. */
-    function majResumePeriode() {
-        const el = $('#periode-resume');
-        if (!el) return;
+    /**
+     * La période retenue, en une ligne : c'est l'étiquette du déroulé.
+     *
+     * Le texte et son écriture sont séparés parce que DEUX chemins le
+     * réclament — majBoutonsMois quand on coche un mois, et la mécanique du
+     * déroulé quand elle rafraîchit l'étiquette. Tant que seul le second
+     * savait l'écrire, il écrivait une chaîne vide par-dessus le premier, et
+     * l'intervalle disparaissait au clic sur « Tout ».
+     */
+    function texteResumePeriode() {
         const dispo = state.moisDispo || [];
+        if (!dispo.length) return '';
         const sel = state.filtres.mois ? [...state.filtres.mois].sort() : dispo;
-        if (!dispo.length) { el.textContent = ''; return; }
-        el.textContent = !state.filtres.mois
+        return !state.filtres.mois
             ? `tous les mois (${U.moisLabel(dispo[0], true)} → ${U.moisLabel(dispo[dispo.length - 1], true)})`
             : sel.length === 0 ? 'aucun mois retenu'
             : sel.length === 1 ? U.moisLabel(sel[0])
             : `${U.moisLabel(sel[0], true)} → ${U.moisLabel(sel[sel.length - 1], true)} · ${U.nombre(sel.length)} mois`;
+    }
+
+    function majResumePeriode() {
+        const el = $('#periode-resume');
+        if (el) el.textContent = texteResumePeriode();
+    }
+
+    /**
+     * L'état des mois, remis à jour SANS reconstruire la liste.
+     *
+     * basculerMois reconstruisait tous les boutons à chaque clic. Tant que la
+     * liste vivait dépliée sous la barre, cela ne se voyait pas ; dans un
+     * déroulé, l'élément cliqué disparaît sous le doigt et le panneau se
+     * referme — on ne pouvait plus cocher deux mois de suite.
+     */
+    function majBoutonsMois() {
+        for (const b of $$('#date-filter-months .date-month-btn'))
+            b.classList.toggle('active',
+                !state.filtres.mois || state.filtres.mois.has(b.dataset.month));
+        majResumePeriode();
     }
 
     function basculerMois(mk) {
@@ -665,9 +912,7 @@
         else if (f.mois.has(mk)) f.mois.delete(mk);
         else f.mois.add(mk);
         if (f.mois && f.mois.size === state.moisDispo.length) f.mois = null;
-        state.ui.page = 1;
-        rendreBoutonsMois();
-        rendreTout();
+        apresPeriode();
     }
 
     /**
@@ -951,6 +1196,18 @@
                 (x.dataset.sellsym === 'inclure') === !!state.filtres.inclureSellsyManquantes));
     }
 
+    /**
+     * L'étiquette de chaque déroulé fermé.
+     *
+     * Un déroulé fermé doit dire ce qu'il vaut, sinon il cache le filtre au
+     * lieu de le ranger. Cette fonction suit majSegments : partout où les
+     * anciens segments se mettaient à jour, les boutons le font aussi.
+     */
+    function majDeroules() {
+        for (const k of Object.keys(DD)) if (DD[k] && DD[k].majResume) DD[k].majResume();
+        majResumePeriode();
+    }
+
     function majSegments() {
         $$('#seg-perimetre .seg-btn').forEach(b =>
             b.classList.toggle('active', b.dataset.perimetre === state.filtres.perimetre));
@@ -960,6 +1217,7 @@
         $$('#seg-avoirs .seg-btn').forEach(b =>
             b.classList.toggle('active',
                 (b.dataset.avoirs === 'inclure') === !!state.filtres.inclureAvoirs));
+        majDeroules();
     }
 
     function appliquerOptionsAuxCases() {
@@ -975,8 +1233,13 @@
 
     function rendreTout() {
         const data = facturesFiltrees();
+        // Les puces de financement et d'étape du circuit ont laissé la place
+        // à un déroulé et à rien du tout. Les deux fonctions sortent sur leur
+        // garde de nullité ; ce qui doit encore se mettre à jour, ce sont les
+        // étiquettes des déroulés.
         rendreChipsSources();
         rendreChipsFinancements();
+        majDeroules();
         rendreChipsEtats();
         majFiltreSellsyManquantes();
         rendreFiltresActifs();
@@ -11383,7 +11646,6 @@
         // est masqué, toutes les largeurs valent zéro et rien n'est masqué.
         if (nom === 'app') requestAnimationFrame(() => {
             mesurerNavbar();
-            ajusterChipsFinancements();
         });
     }
 
@@ -11684,18 +11946,12 @@
         $('#nav-logo-home').addEventListener('click', () => ouvrirOnglet('dashboard'));
 
         // ── Filtres ──
-        $('#btn-periode-ouvrir').addEventListener('click', () => {
-            const c = $('#date-filter-months');
-            const replie = c.classList.toggle('replie');
-            $('#btn-periode-ouvrir').textContent = replie ? 'Choisir les mois' : 'Replier les mois';
-            mesurerNavbar();
-        });
-        $('#date-select-all').addEventListener('click', () => { state.filtres.mois = null; state.ui.page = 1; rendreBoutonsMois(); rendreTout(); });
-        $('#date-select-none').addEventListener('click', () => { state.filtres.mois = new Set(); state.ui.page = 1; rendreBoutonsMois(); rendreTout(); });
-        $('#date-select-12').addEventListener('click', () => {
-            state.filtres.mois = new Set(state.moisDispo.slice(-12));
-            state.ui.page = 1; rendreBoutonsMois(); rendreTout();
-        });
+        // Les quatre boutons de l'ancienne rangée de période — « Choisir les
+        // mois », « Tout », « 12 derniers mois », « Aucun » — étaient branchés
+        // sans vérifier qu'ils existent. Ils sont partis avec leur rangée, et
+        // leurs écouteurs avec eux : c'est ce qui rendait ce retrait dangereux.
+        // Les mêmes gestes sont les actions du panneau de période.
+        brancherDeroulesFiltres();
 
         $$('#seg-base-mois .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.filtres.baseMois = b.dataset.base;

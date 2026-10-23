@@ -155,31 +155,50 @@
 
     <!-- ── Barre de filtres commune à tous les onglets ── -->
     <div class="filters-wrap" id="filters-wrap">
-        <div class="date-filter-bar">
-            <div class="date-filter-label">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                <span>Période :</span>
-            </div>
-            <span class="periode-resume" id="periode-resume"></span>
-            <button class="btn btn-ghost btn-sm" id="btn-periode-ouvrir">Choisir les mois</button>
-            <button class="btn btn-ghost btn-sm" id="date-select-all">Tout</button>
-            <button class="btn btn-ghost btn-sm" id="date-select-12">12 derniers mois</button>
-            <div class="date-filter-months replie" id="date-filter-months"></div>
-            <button class="btn btn-ghost btn-sm date-mois-outil" id="date-select-none">Aucun</button>
-        </div>
-
         <div class="filter-bar">
-            <div class="filter-block">
-                <span class="filter-label">Mois basé sur</span>
-                <span class="aide-ligne">Sur quelle date les mois sont découpés. En recouvrement, l'échéance est la bonne.</span>
-                <div class="seg" id="seg-base-mois">
-                    <button class="seg-btn active" data-base="echeance">Échéance</button>
-                    <button class="seg-btn" data-base="facture">Facture</button>
-                    <button class="seg-btn" data-base="paiement">Paiement</button>
+            <!-- LA PÉRIODE EST UN FILTRE COMME LES AUTRES.
+                 Elle occupait une rangée entière à elle seule — une étiquette,
+                 un résumé, quatre boutons et soixante-dix pastilles de mois
+                 dépliées sous la barre. Elle tient maintenant dans un déroulé,
+                 et son bouton porte déjà l'intervalle retenu. -->
+            <div class="filter-block" id="filter-block-periode">
+                <span class="filter-label">Période</span>
+                <span class="aide-ligne">Les mois retenus. Aucun choix : tous comptent.</span>
+                <div class="dd" id="dd-periode">
+                    <button class="btn btn-ghost btn-sm dd-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="dd-resume" id="periode-resume">tous les mois</span><span class="dd-fleche" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="dd-panneau dd-panneau-mois" hidden>
+                        <div class="dd-actions">
+                            <button class="btn btn-ghost btn-sm" type="button" data-action="tous">Tout</button>
+                            <button class="btn btn-ghost btn-sm" type="button" data-action="douze">12 derniers mois</button>
+                            <button class="btn btn-ghost btn-sm" type="button" data-action="aucun">Aucun</button>
+                        </div>
+                        <div class="date-filter-months" id="date-filter-months"></div>
+                    </div>
                 </div>
             </div>
 
             <div class="filter-block">
+                <span class="filter-label">Mois basé sur</span>
+                <span class="aide-ligne">Sur quelle date les mois sont découpés. En recouvrement, l'échéance est la bonne.</span>
+                <div class="seg" id="seg-base-mois" hidden>
+                    <button class="seg-btn active" data-base="echeance">Échéance</button>
+                    <button class="seg-btn" data-base="facture">Facture</button>
+                    <button class="seg-btn" data-base="paiement">Paiement</button>
+                </div>
+                <div class="dd dd-unique" id="dd-base-mois">
+                    <button class="btn btn-ghost btn-sm dd-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="dd-resume">—</span><span class="dd-fleche" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="dd-panneau" role="listbox" hidden></div>
+                </div>
+            </div>
+
+            <!-- « Enlever le filtre périmètre pour l'instant » : l'attribut se
+                 retire en un mot, et tout ce qui en dépend — dont les quatre
+                 cartes de qualification B2C — revient avec lui. -->
+            <div class="filter-block" id="filter-block-perimetre" hidden>
                 <span class="filter-label">Périmètre</span>
                 <span class="aide-ligne">Corporate = vos clients entreprises. B2C = les apprenants en direct.</span>
                 <div class="seg" id="seg-perimetre">
@@ -196,9 +215,15 @@
                     la créance a été annulée, rien n'est rentré. Exclues, les taux disent ce que le recouvrement a
                     réellement encaissé. Incluses, le portefeuille se lit tel qu'il a été facturé — utile pour
                     rapprocher un chiffre d'affaires, trompeur pour juger le recouvrement.</span>
-                <div class="seg" id="seg-avoirs">
+                <div class="seg" id="seg-avoirs" hidden>
                     <button class="seg-btn" data-avoirs="inclure">Incluses</button>
                     <button class="seg-btn active" data-avoirs="exclure">Exclues</button>
+                </div>
+                <div class="dd dd-unique" id="dd-avoirs">
+                    <button class="btn btn-ghost btn-sm dd-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="dd-resume">—</span><span class="dd-fleche" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="dd-panneau" role="listbox" hidden></div>
                 </div>
             </div>
 
@@ -215,16 +240,19 @@
                 </div>
             </div>
 
-            <div class="filter-block filter-block-large">
+            <div class="filter-block" id="filter-block-financement">
                 <span class="filter-label">Financement</span>
                 <span class="aide-ligne">Restreint l'ensemble de l'application à un ou plusieurs dispositifs. Aucun sélectionné : tous comptent.</span>
-                <div class="chips" id="chips-financements"></div>
-            </div>
-
-            <div class="filter-block filter-block-grow">
-                <span class="filter-label" title="Où la facture est suivie dans le circuit Monday">Étape du circuit</span>
-                <span class="aide-ligne">Où en est la facture dans le circuit Monday — à ne pas confondre avec son financement, filtré juste avant. Éteignez-en une pour l'exclure de tous les chiffres. Le nombre compte toutes les factures de l'étape, payées comprises, comme les deux rangées au-dessus ; le détail du retard est dans l'infobulle.</span>
-                <div class="chips" id="chips-sources"></div>
+                <div class="dd" id="dd-financements">
+                    <button class="btn btn-ghost btn-sm dd-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="dd-resume">Tous les dispositifs</span><span class="dd-fleche" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="dd-panneau dd-panneau-large" role="listbox" hidden>
+                        <input type="search" class="input input-sm dd-recherche" placeholder="Filtrer les dispositifs…" aria-label="Filtrer les dispositifs">
+                        <div class="dd-actions"><button class="btn btn-ghost btn-sm" type="button" data-action="tous">Tous</button></div>
+                        <div class="dd-options"></div>
+                    </div>
+                </div>
             </div>
 
             <div class="filter-block">
