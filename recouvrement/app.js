@@ -175,6 +175,40 @@
     window.__recouvrement = state;   // utile pour le débogage
 
     // ══════════════════════════════════════════════
+    //  Les dates du grand livre, écrites puis relues
+    // ══════════════════════════════════════════════
+    //
+    // UNE DATE EST UN JOUR, PAS UN INSTANT.
+    //
+    // Les dates du moteur sont des minuits LOCAUX : le 22 octobre, c'est le
+    // 22 octobre à 0 h chez vous. Enregistrées par toISOString(), elles
+    // devenaient l'instant universel correspondant — « 2026-10-21T22:00:00Z »
+    // pour le 22 octobre à Paris. R.parseDate, qui lit les quatre premiers
+    // chiffres d'une chaîne comme une date, les relisait alors au 21.
+    //
+    // Toutes les dates du grand livre reculaient ainsi d'un jour à chaque
+    // passage par le stockage : sur le grand livre déposé, 25 602 dates de
+    // créance sur 25 602. L'ancienneté, le partage échu / non échu et donc la
+    // confrontation avec Monday s'en trouvaient décalés d'une journée.
+    //
+    // On écrit désormais le jour lui-même. Les instantanés enregistrés avant
+    // cette correction gardent l'ancienne forme : elle est reconnue et relue à
+    // l'heure locale, pour qu'un classeur ouvert avant ne demande pas de
+    // réimporter le grand livre.
+    const jourISO = d => (d instanceof Date && !isNaN(d))
+        ? d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+            + '-' + String(d.getDate()).padStart(2, '0')
+        : null;
+    const dateStockee = v => {
+        if (!v) return null;
+        if (v instanceof Date) return R.parseDate(v);
+        const s = String(v);
+        // « 2026-10-21T22:00:00.000Z » : un instant, à ramener à son jour local.
+        return /^\d{4}-\d{2}-\d{2}T/.test(s) ? R.parseDate(new Date(s)) : R.parseDate(s);
+    };
+
+
+    // ══════════════════════════════════════════════
     //  Démarrage
     // ══════════════════════════════════════════════
 
@@ -304,7 +338,7 @@
                 || { factures: {}, tiers: {}, comptes: {} };
             state.reglesClassement = (await S.get('rec_regles_classement', [])) || [];
             state.glLignes = ((await S.get('rec_gl_lignes', [])) || [])
-                .map(l => ({ ...l, date: l.date ? R.parseDate(l.date) : null }));
+                .map(l => ({ ...l, date: dateStockee(l.date) }));
         } catch { /* ignore */ }
 
         try {
@@ -335,17 +369,25 @@
      * Le bouton de reprise doit apparaître dès qu'une donnée est enregistrée,
      * factures ou prélèvements : n'avoir chargé que des exports GoCardless ne
      * doit pas laisser bloqué sur l'écran d'accueil.
+     *
+     * Le grand livre comptait pour rien dans ce compte. Un classeur où seul un
+     * grand livre avait été déposé rouvrait donc sur l'écran d'accueil, sans
+     * rien à reprendre : les créances étaient bien enregistrées, mais aucun
+     * chemin n'y menait, et il fallait redéposer le fichier. Il compte
+     * désormais comme les autres.
      */
     function proposerReprise() {
         const btn = $('#btn-open-saved');
         if (!btn) return;
         const nbF = state.brutes.length;
         const nbA = state.apprenants.length;
-        if (!nbF && !nbA) { btn.hidden = true; return; }
+        const nbGL = (state.glOuvertes || []).length;
+        if (!nbF && !nbA && !nbGL) { btn.hidden = true; return; }
 
         const morceaux = [];
         if (nbF) morceaux.push(`${U.nombre(nbF)} factures`);
         if (nbA) morceaux.push(`${U.nombre(nbA)} apprenants`);
+        if (nbGL) morceaux.push(`${U.nombre(nbGL)} créances comptables`);
         btn.innerHTML = `Reprendre les données enregistrées (${morceaux.join(' · ')})`;
         btn.hidden = false;
     }
@@ -3890,12 +3932,13 @@
     function recalculerBalanceGL() {
         const ouvertes = (state.glOuvertes || []).map(c => ({
             ...c,
-            dateFacture: c.dateFacture ? R.parseDate(c.dateFacture) : null,
-            dateEcheance: c.dateEcheance ? R.parseDate(c.dateEcheance) : null,
+            dateFacture: dateStockee(c.dateFacture),
+            dateEcheance: dateStockee(c.dateEcheance),
         }));
         if (!ouvertes.length) {
             state.glCreances = [];
             state.glEcritures = null;
+            state.glProrata = null;
             state.glBalance = null;
             state.glComparaison = null;
             return;
@@ -3912,25 +3955,85 @@
             .filter(c => c.statut && c.statut !== 'Ouverte' && c.statut !== 'Partiellement réglée')
             .map(c => ({
                 ...c,
-                dateFacture: c.dateFacture ? R.parseDate(c.dateFacture) : null,
-                dateEcheance: c.dateEcheance ? R.parseDate(c.dateEcheance) : null,
+                dateFacture: dateStockee(c.dateFacture),
+                dateEcheance: dateStockee(c.dateEcheance),
             })), optionsClassement());
         // Le classement descend sur les écritures : une facture classée classe
         // son règlement et son avoir. Ce qui n'a pas de facture dans son
         // lettrage ressort à part, pour être pointé à la main.
+        // Les dates que le portefeuille connaît descendent aussi sur les
+        // écritures. Elles entraient dans le classement des créances et pas
+        // dans celui des écritures : une facture d'alternance dont seul
+        // Monday porte les dates de formation voyait sa créance datée au
+        // barème et son règlement daté autrement.
+        const opts = optionsClassement() || {};
         state.glEcritures = (state.glLignes && state.glLignes.length)
             ? GL.classerEcritures(state.glLignes, classees, soldees,
-                { sellsy: (optionsClassement() || {}).sellsy, rules: state.rules })
+                { sellsy: opts.sellsy, rules: state.rules, factures: opts.factures })
             : null;
+
+        // LA RÉPARTITION AU PRORATA, COMME DANS LA BALANCE PUBLIÉE.
+        //
+        // « On ne répartit au prorata que les lignes que l'on ne sait pas
+        // classer. » Un encaissement qui ne nomme aucune facture et n'est pas
+        // lettré n'a pas de dispositif à lui : il en emprunte un à une facture
+        // voisine du même compte, choisie sans preuve. La répartition le
+        // ventile sur les dispositifs réellement facturés au client, au
+        // prorata de ce qu'ils pèsent, et tranche entre AIF et POEI au montant
+        // quand le compte est France Travail.
+        //
+        // L'appel était présent dans la construction de la balance publiée et
+        // absent ici. Le total ne s'en trouvait pas changé — la répartition
+        // reclasse, elle ne crée ni ne détruit — mais la ventilation, si :
+        // 222 780 € se rangeaient sous un dispositif différent de part et
+        // d'autre. Or la confrontation avec Monday se fait dispositif par
+        // dispositif ; elle comparait donc deux ventilations qui n'avaient pas
+        // été établies de la même façon. La mesure est refaite à chaque essai
+        // par balance-agee/essais/casappliprorata.js.
+        //
+        // La répartition modifie les créances sur place : sa place est entre
+        // le classement des écritures et la balance âgée, exactement comme
+        // dans la construction de la page.
+        state.glProrata = GL.repartirAuProrata(
+            (state.glEcritures && (state.glEcritures.lignes || state.glEcritures)) || [],
+            classees, { rules: state.rules });
+
         state.glBalance = GL.balanceAgee(classees, state.filtres.dateRef, state.rules,
             state.ui.glNiveau || 'financement');
 
         // La confrontation se fait sur le portefeuille Monday non réglé, sans
         // filtre non plus : comparer une vue filtrée à un compte complet
         // n'aurait aucun sens.
+        //
+        // LES DEUX CÔTÉS SE RANGENT AU MÊME NIVEAU.
+        //
+        // La balance comptable se lit par dispositif ou par catégorie de
+        // client, au choix. Le portefeuille Monday, lui, était toujours rangé
+        // par dispositif : passer la balance en catégories n'opposait plus que
+        // des clés étrangères l'une à l'autre — « Étatique » d'un côté, « CPF »
+        // de l'autre — et chaque ligne affichait un écart de 100 %.
+        const parCategorie = (state.ui.glNiveau || 'financement') === 'categorie';
         const monday = X.balanceAgeeParDimension(
-            state.factures, f => f.financement || 'INCONNU',
-            k => R.getRule(k, state.rules).label);
+            state.factures,
+            f => !f.financement ? 'INCONNU'
+                : parCategorie ? R.categorieDe(f.financement, state.rules) : f.financement,
+            k => (parCategorie || k === 'INCONNU') ? k : R.getRule(k, state.rules).label,
+            // DEUX FOIS LA MÊME GRANDEUR.
+            //
+            // La comptabilité additionne des restes dus. Le portefeuille
+            // additionnait des montants de facture : une facture de 10 000 €
+            // réglée à moitié pesait 10 000 € d'un côté et 5 000 € de l'autre,
+            // et l'écart affiché imputait la différence à des règlements non
+            // lettrés. L'encours — ce qui reste dû sur la facture — est le
+            // pendant exact du reste dû comptable, et c'est d'ailleurs le nom
+            // que l'écran donne déjà à cette colonne.
+            //
+            // Et les factures sans date d'échéance restent dans leur
+            // dispositif, comme leurs homologues comptables : les mettre à
+            // part d'un seul côté vidait chaque ligne d'une partie de son
+            // encours.
+            { montant: f => (f.encours != null ? f.encours : f.montant),
+              isolerSansEcheance: false });
         state.glComparaison = GL.comparer(state.glBalance,
             monday.map(m => ({ cle: m.key, label: m.label, total: m.total, nb: m.nb })), state.rules);
     }
@@ -5677,7 +5780,10 @@
             { couleur: U.couleurs.indigo, valeur: U.euros(c.total.monday), label: 'Encours Monday',
               detail: `${U.nombre(c.total.nbMonday)} factures non réglées`, sub: 'ce que le circuit porte' },
             { couleur: U.couleurs.accent, valeur: U.euros(c.total.grandLivre), label: 'Reste dû comptable',
-              detail: `${U.nombre(c.total.nbGL)} créances`, sub: 'ce que les comptes clients portent' },
+              detail: `${U.nombre(c.total.nbGL)} créances`
+                  + (c.total.nbLignesGL > c.total.nbGL
+                      ? ` · ${U.nombre(c.total.nbLignesGL)} lignes de balance` : ''),
+              sub: 'ce que les comptes clients portent' },
             { couleur: c.total.ecart >= 0 ? U.couleurs.retard : U.couleurs.payeRetard,
               valeur: U.euros(c.total.ecart), label: 'Écart',
               detail: U.pourcent(c.total.ecartRelatif, 1) + ' de l’encours Monday',
@@ -5695,7 +5801,11 @@
             '<p>Un écart positif veut dire que la comptabilité porte plus que le circuit : des factures '
             + 'émises ne sont sur aucun tableau Monday. Un écart négatif veut dire l’inverse : des '
             + 'règlements sont encaissés sans être lettrés, ou des factures Monday n’existent pas en '
-            + 'comptabilité. La ligne « À classer » n’a pas d’équivalent Monday par construction.</p>';
+            + 'comptabilité. La ligne « À classer » n’a pas d’équivalent Monday par construction.</p>'
+            + '<p>Les deux côtés comptent la même chose : des factures non réglées, pour ce qu’il '
+            + 'en reste dû. « Nb » est le nombre de factures ; « Lignes » est le nombre de lignes '
+            + 'de la balance comptable, avoirs et écritures sans numéro compris — l’écart entre '
+            + 'les deux mesure ce que la comptabilité porte au-delà des factures.</p>';
 
         el.innerHTML = U.table([
             { key: 'label', label: 'Financement' },
@@ -5703,12 +5813,14 @@
             { key: 'nbMonday', label: 'Nb', align: 'right', format: U.nombre },
             { key: 'grandLivre', label: 'Reste dû comptable', align: 'right', format: U.euros },
             { key: 'nbGL', label: 'Nb', align: 'right', format: U.nombre },
+            { key: 'nbLignesGL', label: 'Lignes', align: 'right', format: U.nombre },
             { key: 'ecart', label: 'Écart', align: 'right',
               format: v => `<span class="pill ${Math.abs(v) < 1 ? 'pill-muted' : v > 0 ? 'pill-danger' : 'pill-soft'}">${U.euros(v)}</span>` },
             { key: 'ecartRelatif', label: 'Écart relatif', align: 'right', format: v => U.pourcent(v, 0) },
         ], c.rows, { vide: 'Rien à comparer.', total: {
             label: 'TOTAL', monday: U.euros(c.total.monday), grandLivre: U.euros(c.total.grandLivre),
             nbMonday: U.nombre(c.total.nbMonday), nbGL: U.nombre(c.total.nbGL),
+            nbLignesGL: U.nombre(c.total.nbLignesGL),
             ecart: U.euros(c.total.ecart), ecartRelatif: U.pourcent(c.total.ecartRelatif, 0),
         } });
 
@@ -6178,10 +6290,10 @@
             try {
                 const inventaire = state.glToutes.map(c => ({
                     ...c,
-                    dateFacture: c.dateFacture ? R.parseDate(c.dateFacture) : null,
-                    dateEcheance: c.dateEcheance ? R.parseDate(c.dateEcheance) : null,
-                    dateReglement: c.dateReglement ? R.parseDate(c.dateReglement) : null,
-                    dateAvoir: c.dateAvoir ? R.parseDate(c.dateAvoir) : null,
+                    dateFacture: dateStockee(c.dateFacture),
+                    dateEcheance: dateStockee(c.dateEcheance),
+                    dateReglement: dateStockee(c.dateReglement),
+                    dateAvoir: dateStockee(c.dateAvoir),
                 }));
                 const toutes = GL.classer(inventaire, optionsClassement());
                 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
@@ -6208,6 +6320,7 @@
                     'Financement': r.label,
                     'Encours Monday': arrondi(r.monday), 'Nb Monday': r.nbMonday,
                     'Reste dû comptable': arrondi(r.grandLivre), 'Nb comptable': r.nbGL,
+                    'Lignes comptables': r.nbLignesGL,
                     'Écart': arrondi(r.ecart),
                     'Écart %': r.ecartRelatif == null ? '' : Math.round(r.ecartRelatif),
                 })).concat([{
@@ -6216,6 +6329,7 @@
                     'Nb Monday': state.glComparaison.total.nbMonday,
                     'Reste dû comptable': arrondi(state.glComparaison.total.grandLivre),
                     'Nb comptable': state.glComparaison.total.nbGL,
+                    'Lignes comptables': state.glComparaison.total.nbLignesGL,
                     'Écart': arrondi(state.glComparaison.total.ecart),
                     'Écart %': state.glComparaison.total.ecartRelatif == null ? ''
                         : Math.round(state.glComparaison.total.ecartRelatif),
@@ -10767,7 +10881,7 @@
             // donc le classement de ce qui rentre.
             state.glLignes = GL.ecrituresAPlat(lu);
 
-            const iso = d => (d ? d.toISOString() : null);
+            const iso = jourISO;
             state.glOuvertes = GL.creancesOuvertes(lu).map(c => ({
                 ...c, dateFacture: iso(c.dateFacture), dateEcheance: iso(c.dateEcheance),
             }));
@@ -10784,7 +10898,7 @@
             await S.set('rec_gl_ouvertes', state.glOuvertes);
             await S.set('rec_gl_factures', state.glToutes);
             await S.set('rec_gl_lignes', state.glLignes.map(l => ({
-                ...l, date: l.date ? l.date.toISOString() : null })));
+                ...l, date: jourISO(l.date) })));
             await S.set('rec_qualif_ref', state.qualifRef);
             recalculer({ conserverPeriode: true });
             rendreHistoriqueImports();
@@ -11392,8 +11506,11 @@
         $('#btn-open-saved').addEventListener('click', () => {
             recalculer();
             montrerEcran('app');
-            // Sans facture enregistrée, l'onglet utile est celui des prélèvements
+            // Sans facture enregistrée, l'onglet utile est celui des
+            // prélèvements — ou celui de la balance âgée, si c'est un grand
+            // livre qui a été déposé.
             if (!state.brutes.length && state.apprenants.length) ouvrirOnglet('prelevements');
+            else if (!state.brutes.length && (state.glOuvertes || []).length) ouvrirOnglet('aging');
             actualiserAuDemarrageSiUtile();
         });
         $('#btn-demo').addEventListener('click', genererDemo);

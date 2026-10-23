@@ -790,14 +790,39 @@
     }
 
     /** Balance âgée croisée avec une dimension (financement, tableau, propriétaire…). */
-    function balanceAgeeParDimension(factures, dimFn, labelFn) {
+    /**
+     * La balance âgée du portefeuille, rangée par la dimension de votre choix.
+     *
+     * Deux réglages, parce que cette vue sert aussi à CONFRONTER le
+     * portefeuille à la comptabilité, et qu'une confrontation n'a de sens
+     * qu'entre deux grandeurs de même nature :
+     *
+     *   `montant`           — ce qui s'additionne. Par défaut le montant de la
+     *                         facture, qui est ce que l'écran « Balance âgée »
+     *                         montre. Pour la confrontation, c'est l'encours
+     *                         qu'il faut : la comptabilité, en face, additionne
+     *                         des restes dus, et une facture à moitié réglée
+     *                         pesait donc son montant entier d'un côté et son
+     *                         solde de l'autre.
+     *   `isolerSansEcheance` — sortir ou non les factures sans date d'échéance
+     *                         sur une ligne à part. L'écran les isole, parce
+     *                         qu'elles sont à qualifier. La comptabilité, elle,
+     *                         laisse ses créances non datées dans leur
+     *                         dispositif : les isoler d'un seul côté vidait
+     *                         chaque dispositif de ses factures non datées et
+     *                         creusait un écart qui n'existe pas.
+     */
+    function balanceAgeeParDimension(factures, dimFn, labelFn, reglages) {
+        const o = reglages || {};
+        const montantDe = o.montant || (f => f.montant);
+        const isoler = o.isolerSansEcheance !== false;
         const nonPayees = factures.filter(x => !x.paye);
         const map = new Map();
         for (const f of nonPayees) {
             // Une créance sans échéance ne relève d'aucun dispositif tant
             // qu'on ne l'a pas datée : elle a sa propre ligne, qui dit ce
             // qu'il y a à faire.
-            const sansEcheance = !f.dateEcheance;
+            const sansEcheance = isoler && !f.dateEcheance;
             const k = sansEcheance ? ECHEANCE_MANQUANTE : (dimFn(f) || '—');
             let row = map.get(k);
             if (!row) {
@@ -811,16 +836,16 @@
                 map.set(k, row);
             }
             row.items.push(f);
-            const b = sansEcheance ? { key: 'nonEchu' } : f.bucket;
+            const b = (sansEcheance || !f.dateEcheance) ? { key: 'nonEchu' } : f.bucket;
             if (b) {
-                row[b.key] += f.montant || 0; row[b.key + '_nb']++;
+                row[b.key] += montantDe(f) || 0; row[b.key + '_nb']++;
                 (row.itemsParTranche[b.key] || (row.itemsParTranche[b.key] = [])).push(f);
             }
             // Ce qui est échu et toujours dû : tout sauf la tranche « non
             // échu ». C'est le montant en retard, celui sur lequel il y a
             // quelque chose à faire.
-            if (f.etat === 'En retard') { row.echu += f.montant || 0; row.echuNb++; }
-            row.total += f.montant || 0;
+            if (f.etat === 'En retard') { row.echu += montantDe(f) || 0; row.echuNb++; }
+            row.total += montantDe(f) || 0;
             row.nb++;
         }
         // La ligne des échéances manquantes ferme la marche : c'est un reste à

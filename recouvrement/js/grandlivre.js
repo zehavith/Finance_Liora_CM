@@ -3656,11 +3656,30 @@
         const parFin = new Map();
         const ligne = (cle, label) => {
             let l = parFin.get(cle);
-            if (!l) { l = { cle, label, monday: 0, grandLivre: 0, nbMonday: 0, nbGL: 0 }; parFin.set(cle, l); }
+            if (!l) { l = { cle, label, monday: 0, grandLivre: 0, nbMonday: 0, nbGL: 0, nbLignesGL: 0 }; parFin.set(cle, l); }
             return l;
         };
-        for (const r of balanceGL.rows) ligne(r.cle, r.label).grandLivre += r.total,
-            ligne(r.cle, r.label).nbGL += r.nb;
+        // CE QUI SE COMPTE DE PART ET D'AUTRE : DES FACTURES.
+        //
+        // Monday compte des factures non réglées. La balance comptable, elle,
+        // porte trois sortes de lignes : les factures, les avoirs, et ce qui
+        // n'a aucun numéro — acomptes, écarts de règlement, encaissements que
+        // rien ne rattache. Le total de ses lignes vaut deux fois et demie son
+        // nombre de créances : 12 801 contre 5 047 sur le grand livre déposé.
+        // La colonne « Nb » opposait donc 12 801 à un nombre de factures, et
+        // l'encart annonçait « 12 801 créances » là où la balance publiée en
+        // compte 5 047.
+        //
+        // « Une créance c'est là où il y a une facture, qu'elle ait des
+        // paiements ou pas » — « pas d'avoir par contre ». C'est ce compte-là
+        // qui se confronte. Le nombre de lignes reste donné à côté, car c'est
+        // lui qui dit l'ampleur de ce que la comptabilité porte en plus.
+        for (const r of balanceGL.rows) {
+            const l = ligne(r.cle, r.label);
+            l.grandLivre += r.total;
+            l.nbGL += (r.nbFactures != null ? r.nbFactures : r.nb);
+            l.nbLignesGL += r.nb;
+        }
         for (const m of agingMonday) {
             const cle = m.cle || m.key || m.financement;
             const l = ligne(cle, m.label || R.getRule(cle, rules).label);
@@ -3675,7 +3694,8 @@
         const total = rows.reduce((t, r) => ({
             monday: t.monday + r.monday, grandLivre: t.grandLivre + r.grandLivre,
             nbMonday: t.nbMonday + r.nbMonday, nbGL: t.nbGL + r.nbGL,
-        }), { monday: 0, grandLivre: 0, nbMonday: 0, nbGL: 0 });
+            nbLignesGL: t.nbLignesGL + r.nbLignesGL,
+        }), { monday: 0, grandLivre: 0, nbMonday: 0, nbGL: 0, nbLignesGL: 0 });
         total.ecart = total.grandLivre - total.monday;
         total.ecartRelatif = total.monday ? total.ecart / total.monday * 100 : null;
         return { rows, total };
