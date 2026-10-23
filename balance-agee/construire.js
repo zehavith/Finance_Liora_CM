@@ -1666,7 +1666,16 @@ const synthPage=(b)=>{
     crediteur:ar(g.crediteur), buckets:g.buckets.map(ar)}));
 };
 fs.writeFileSync('page-donnees.json',JSON.stringify({
-  genere:fr(new Date()), arrete:fr(REF),
+  genere:fr(new Date()),
+  // L'HEURE, PAS SEULEMENT LE JOUR.
+  //
+  // La page compare la date de la dernière reconstruction à celle de la
+  // demande d'actualisation pour savoir si elle a été servie. À la journée,
+  // une reconstruction faite le jour même de la demande ne se distinguait pas
+  // d'une reconstruction faite avant : la dernière étape de la bande n'aurait
+  // jamais été atteinte dans le cas le plus courant.
+  genereISO:new Date().toISOString(),
+  arrete:fr(REF),
   source:'Grand livre Clients Pennylane · 01/07/2026 → 30/06/2027',
   cols:colsPage, dico, lignes:lignesPage,
   // Les règles telles qu'elles ont servi : le dispositif, le type de client

@@ -136,6 +136,19 @@ input[type=search]{flex:1 1 220px}
 .champ{padding:9px 16px;border-bottom:1px solid var(--trait);min-width:0}
 .champ dt{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--encre-3);margin:0}
 .champ dd{margin:3px 0 0;font-size:13px;word-break:break-word}
+/* LA PROGRESSION DE L'ACTUALISATION.
+   Trois étapes, et aucune ne bouge sans qu'un travail soit fait : l'affichage
+   refait dans la page, la demande enregistrée, la balance reconstruite et
+   republiée. La jauge ne se remplit pas toute seule. */
+.actu-bande{display:inline-flex;align-items:center;gap:8px;margin-left:10px;
+  vertical-align:middle}
+.actu-piste{display:inline-block;width:120px;height:6px;border-radius:3px;
+  background:var(--trait);overflow:hidden}
+.actu-jauge{display:block;height:100%;width:0;border-radius:3px;background:var(--corail);
+  transition:width .35s ease}
+.actu-bande.fini .actu-jauge{background:var(--accent)}
+.actu-dit{font-size:11.5px;color:var(--encre-2);white-space:nowrap}
+
 /* Le numéro de rapprochement se saisit à côté des filtres, et leur ressemble. */
 #frap{width:190px}
 /* Deux propositions de rapprochement ne se touchent pas : chacune a son bloc
@@ -369,6 +382,7 @@ input[type=search]{flex:1 1 220px}
         <h3>Règles d’échéance</h3>
         <button type="button" class="plat" id="ech-modif" hidden>Modifier</button>
         <button type="button" class="plat" id="ech-actu" hidden>Actualiser</button>
+        <span class="actu-bande" id="ech-actu-bande" hidden><span class="actu-piste"><span class="actu-jauge"></span></span><span class="actu-dit"></span></span>
         <span class="etat" id="ech-etat"></span>
       </div>
       <p class="param-note">L’ordre de priorité prévaut sur le barème : une créance sous
@@ -399,6 +413,7 @@ input[type=search]{flex:1 1 220px}
         <h3>Règles de provision</h3>
         <button type="button" class="plat" id="prov-modif" hidden>Modifier</button>
         <button type="button" class="plat" id="prov-actu" hidden>Actualiser</button>
+        <span class="actu-bande" id="prov-actu-bande" hidden><span class="actu-piste"><span class="actu-jauge"></span></span><span class="actu-dit"></span></span>
         <span class="etat" id="prov-etat"></span>
       </div>
       <div class="param-table" id="prov-taux"></div>
@@ -461,12 +476,9 @@ input[type=search]{flex:1 1 220px}
       <div class="param-tete">
         <h3>Déposer les fichiers du mois</h3>
         <button type="button" class="plat" id="depot-actu">Actualiser</button>
+        <span class="actu-bande" id="depot-actu-bande" hidden><span class="actu-piste"><span class="actu-jauge"></span></span><span class="actu-dit"></span></span>
         <span class="etat" id="depot-etat"></span>
       </div>
-      <p class="param-note">Quatre fichiers suffisent à reconstruire la balance. Déposés
-        ici, ils sont conservés avec cette page, horodatés et nommés.
-        <strong>Le dépôt ne déclenche aucun recalcul</strong> : la balance est reconstruite
-        ensuite, puis republiée sur cette page.</p>
       <div id="depot-liste"></div>
       <p class="param-note" id="depot-recons"></p>
     </div>

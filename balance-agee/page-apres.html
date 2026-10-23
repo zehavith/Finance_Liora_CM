@@ -1372,6 +1372,40 @@ async function deposer(d,input){
 // l'écran sans attendre, et les tableaux se redessinent.
 let DEMANDE=null;
 
+// LES TROIS ÉTAPES D'UNE ACTUALISATION.
+//
+// Elles sont ce qu'elles disent, et la jauge n'avance qu'au fur et à mesure
+// qu'elles s'achèvent réellement :
+//   1. l'affichage de la page est refait — mesuré, de l'ordre de 70 ms sur
+//      16 151 écritures ;
+//   2. la demande de reconstruction est enregistrée ;
+//   3. la balance est reconstruite et republiée — hors de la page : le calcul
+//      lit quatre fichiers sources et reprend ce que l'ancienne balance a
+//      appris.
+// Une barre qui se remplirait sur une minuterie ne mesurerait rien.
+const ETAPES=['Affichage actualisé','Demande enregistrée','Balance reconstruite'];
+
+function poserBande(id,etape,detail){
+  const b=E(id+'-bande'); if(!b) return;
+  const pc=Math.round(etape/ETAPES.length*100);
+  b.hidden=false;
+  b.classList.toggle('fini',etape>=ETAPES.length);
+  b.querySelector('.actu-jauge').style.width=pc+'%';
+  b.querySelector('.actu-dit').textContent=pc+' % · étape '+etape+'/'+ETAPES.length
+    +' · '+ETAPES[etape-1]+(detail?' '+detail:'');
+}
+
+// La reconstruction est faite quand la page a été rebâtie APRÈS la demande.
+function reconstruiteDepuis(){
+  if(!DEMANDE||!DEMANDE.quand) return true;
+  // À l'horodatage quand les deux en portent un : une reconstruction du jour
+  // même doit compter.
+  if(D.genereISO && DEMANDE.quandISO) return D.genereISO>DEMANDE.quandISO;
+  const n=s=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(s||'').trim());
+    return m?(+m[3]*10000+ +m[2]*100+ +m[1]):0;};
+  return n(D.genere)>n(DEMANDE.quand);
+}
+
 function direRecons(){
   const e=E('depot-recons'); if(!e) return;
   const faite='Dernière reconstruction : '+(D.genere||'?')+' · arrêté au '+(D.arrete||'?')+'.';
@@ -1380,19 +1414,26 @@ function direRecons(){
     : faite;
 }
 
-async function demanderActualisation(motif,etatId){
+async function demanderActualisation(motif,etatId,bandeId){
   const dire=t=>{ const e=E(etatId); if(e) e.textContent=t; };
-  // Ce qui se recalcule ici se recalcule maintenant.
+  dire('');
+  // ÉTAPE 1 — ce qui se calcule dans la page se recalcule maintenant.
+  const t0=performance.now();
   paramsPrets(); ASSIETTE=null;
   tableProvision(); tableClassement(); tableEcheance();
   rafraichir();
+  poserBande(bandeId,1,'en '+Math.max(1,Math.round(performance.now()-t0))+' ms');
   if(!DB||!admin){ dire('Affichage actualisé.'); return; }
-  const v={quand:leJour(), motif:motif, etat:'en attente'};
+  // ÉTAPE 2 — la demande, horodatée et motivée.
+  const v={quand:leJour(), quandISO:new Date().toISOString(), motif:motif, etat:'en attente'};
   try{
     await DB.collection('demandes').doc('reconstruction').set(v);
     DEMANDE=v; direRecons();
-    dire('Affichage actualisé · reconstruction demandée.');
-  }catch(e){ dire('Affichage actualisé · la demande n’a pas pu être enregistrée.'); }
+    poserBande(bandeId,2,'le '+v.quand);
+    dire('Reconstruction demandée.');
+  }catch(e){
+    dire('La demande n’a pas pu être enregistrée.');
+  }
 }
 
 function brancherActualiser(){
@@ -1402,7 +1443,12 @@ function brancherActualiser(){
   for(const [id,motif,etat] of paires){
     const b=E(id); if(!b) continue;
     if(admin) b.hidden=false;
-    b.addEventListener('click',()=>demanderActualisation(motif,etat));
+    b.addEventListener('click',()=>demanderActualisation(motif,etat,id));
+    // À l'ouverture, la bande dit où en est la dernière demande : reconstruite,
+    // ou toujours en attente.
+    if(DEMANDE&&DEMANDE.quand)
+      poserBande(id, reconstruiteDepuis()?3:2,
+        reconstruiteDepuis()?('le '+(D.genere||'?')):('le '+DEMANDE.quand));
   }
   direRecons();
 }
