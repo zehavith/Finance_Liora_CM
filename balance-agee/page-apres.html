@@ -1359,6 +1359,54 @@ async function deposer(d,input){
   dessinerDepots();
 }
 
+// ───── demander une reconstruction ─────
+//
+// Le calcul de la balance ne se fait pas dans le navigateur : il lit quatre
+// fichiers sources, applique le barème à 16 151 écritures et reprend ce que
+// l'ancienne balance a appris. La page ne peut donc pas se recalculer
+// elle-même. « Actualiser » enregistre la demande, horodatée et motivée ; la
+// reconstruction suit, et la page est republiée avec ses données.
+//
+// Ce que le bouton actualise tout de suite, en revanche, c'est tout ce qui se
+// calcule dans la page : les taux de provision réglés ici s'appliquent à
+// l'écran sans attendre, et les tableaux se redessinent.
+let DEMANDE=null;
+
+function direRecons(){
+  const e=E('depot-recons'); if(!e) return;
+  const faite='Dernière reconstruction : '+(D.genere||'?')+' · arrêté au '+(D.arrete||'?')+'.';
+  e.textContent=DEMANDE&&DEMANDE.quand
+    ? faite+' Actualisation demandée le '+DEMANDE.quand+', en attente de reconstruction.'
+    : faite;
+}
+
+async function demanderActualisation(motif,etatId){
+  const dire=t=>{ const e=E(etatId); if(e) e.textContent=t; };
+  // Ce qui se recalcule ici se recalcule maintenant.
+  paramsPrets(); ASSIETTE=null;
+  tableProvision(); tableClassement(); tableEcheance();
+  rafraichir();
+  if(!DB||!admin){ dire('Affichage actualisé.'); return; }
+  const v={quand:leJour(), motif:motif, etat:'en attente'};
+  try{
+    await DB.collection('demandes').doc('reconstruction').set(v);
+    DEMANDE=v; direRecons();
+    dire('Affichage actualisé · reconstruction demandée.');
+  }catch(e){ dire('Affichage actualisé · la demande n’a pas pu être enregistrée.'); }
+}
+
+function brancherActualiser(){
+  const paires=[['ech-actu','les règles d’échéance','ech-etat'],
+                ['prov-actu','les règles de provision','prov-etat'],
+                ['depot-actu','les fichiers déposés','depot-etat']];
+  for(const [id,motif,etat] of paires){
+    const b=E(id); if(!b) continue;
+    if(admin) b.hidden=false;
+    b.addEventListener('click',()=>demanderActualisation(motif,etat));
+  }
+  direRecons();
+}
+
 async function ouvrirBase(){
   DISPOS=[...new Set(I.map(i=>V(i,'Type de financement'))
     .filter(c=>c&&c!=='À classer'))].sort();
@@ -1390,6 +1438,9 @@ async function ouvrirBase(){
       const q=await DB.collection('complements').get();
       q.docs.forEach(doc=>{ const v=doc.data()||{};
         if(v&&v.cle&&v.dispositif) compl.set(v.cle,{...v,dispositif:dispoActuel(v.dispositif)}); });
+      try{ const dq=await DB.collection('demandes').get();
+        dq.docs.forEach(doc=>{ if(doc.id==='reconstruction') DEMANDE=doc.data()||null; });
+      }catch(e){}
       const pq=await DB.collection('parametres').get();
       pq.docs.forEach(doc=>{ const v=doc.data()||{};
         if(doc.id==='provision'&&v.taux){ paramsPrets(); PROV={...PROV,...v}; }
@@ -1405,6 +1456,7 @@ async function ouvrirBase(){
     }
   }catch(e){}
   parametres();
+  brancherActualiser();
   ruban();
   if(compl.size) rafraichir();
   // Le dépôt vient après : il a besoin de savoir qui regarde (DB, admin).
@@ -1666,8 +1718,8 @@ function tableClassement(){
   const L=D.classement||[];
   if(!L.length){ E('cla-ordre').innerHTML=''; return; }
   const n=x=>Number(x||0).toLocaleString('fr-FR');
-  E('cla-ordre').innerHTML='<table><thead><tr><th>Rang</th><th>Ce qui décide</th>'
-    +'<th>Quand</th><th class="n">Écritures</th></tr></thead><tbody>'
+  E('cla-ordre').innerHTML='<table><thead><tr><th>Rang</th><th>Règle</th>'
+    +'<th>Condition d’application</th><th class="n">Écritures</th></tr></thead><tbody>'
     +L.map(r=>'<tr><td class="fam">'+esc(r.rang)+'</td>'
       +'<td class="fam">'+esc(r.quoi)+'</td><td>'+esc(r.quand)
       +(r.note?'<br><span style="color:var(--encre-2)">'+esc(r.note)+'</span>':'')

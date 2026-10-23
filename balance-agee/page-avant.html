@@ -368,10 +368,11 @@ input[type=search]{flex:1 1 220px}
       <div class="param-tete">
         <h3>Règles d’échéance</h3>
         <button type="button" class="plat" id="ech-modif" hidden>Modifier</button>
+        <button type="button" class="plat" id="ech-actu" hidden>Actualiser</button>
         <span class="etat" id="ech-etat"></span>
       </div>
-      <p class="param-note">L’ordre de priorité passe avant le tableau : une créance sous
-        mandat de prélèvement ne regarde jamais son barème.</p>
+      <p class="param-note">L’ordre de priorité prévaut sur le barème : une créance sous
+        mandat de prélèvement n’est pas soumise au barème de son dispositif.</p>
       <div class="param-table" id="ech-ordre"></div>
       <h4>Le barème, dispositif par dispositif</h4>
       <p class="param-note">Un barème modifié ici est enregistré aussitôt, mais les échéances
@@ -387,9 +388,9 @@ input[type=search]{flex:1 1 220px}
       <div class="param-tete">
         <h3>Règles de classement</h3>
       </div>
-      <p class="param-note">Comment chaque écriture reçoit son type de financement. La
-        première règle applicable l’emporte ; les suivantes ne sont pas examinées. En face
-        de chacune, le nombre d’écritures qu’elle a réellement classées.</p>
+      <p class="param-note">Attribution du type de financement, par ordre de priorité. La
+        première règle applicable est retenue ; les suivantes ne sont pas examinées. Le nombre
+        d’écritures classées par chaque règle figure en regard.</p>
       <div class="param-table" id="cla-ordre"></div>
     </div>
 
@@ -397,6 +398,7 @@ input[type=search]{flex:1 1 220px}
       <div class="param-tete">
         <h3>Règles de provision</h3>
         <button type="button" class="plat" id="prov-modif" hidden>Modifier</button>
+        <button type="button" class="plat" id="prov-actu" hidden>Actualiser</button>
         <span class="etat" id="prov-etat"></span>
       </div>
       <div class="param-table" id="prov-taux"></div>
@@ -417,55 +419,56 @@ input[type=search]{flex:1 1 220px}
         multipliée par le taux de leur famille dans la fenêtre où tombe leur ancienneté.</p>
 
       <h4>Sur quoi porte le taux — l’assiette</h4>
-      <p class="param-note">L’argent se pose sur les factures en <strong>deux temps</strong>,
-        et ce ne sont pas les mêmes règles. Le premier est
-        <strong>l’imputation du règlement</strong> : il se lit ligne à ligne, dans la
-        colonne du même nom. Un encaissement qui <strong>nomme</strong> des factures est
-        imputé sur elles — à montant exact d’abord, sinon de la plus ancienne à la plus
-        récente, à concurrence de ce que chacune doit encore, avoirs déduits. Ce qui reste,
-        parce qu’il nomme une facture rapprochée ailleurs ou qu’aucune de celles qu’il
-        nomme ne doit plus rien, n’est jamais forcé : il reste une écriture à part,
-        visible.</p>
-      <p class="param-note">Le second est <strong>l’imputation pour provision</strong>, et
-        elle ne sert qu’ici : elle ne change aucun reste dû publié, aucune échéance, aucune
-        tranche — seulement le montant exposé au risque. L’assiette d’une créance est son
-        <strong>reste dû</strong>, diminué des encaissements et avoirs du même compte que
-        rien ne rattache à une facture — ceux que le premier temps n’a pas su nommer. Ces
-        crédits se posent sur les dettes <strong>de la plus ancienne à la plus
-        récente</strong>, l’ordre de droit commun. Sans cette déduction, une facture déjà
-        réglée par un virement non pointé serait provisionnée à 100 % alors que le client
-        ne doit plus rien.</p>
-      <p class="param-note">Une créance dont l’assiette est nulle ou négative — un compte
-        créditeur — ne se provisionne pas : il n’y a pas de perte à couvrir. L’ancienneté,
-        elle, reste celle de chaque créance : l’imputation change le montant exposé, jamais
-        la date qui le classe.</p>
+      <p class="param-note">Les règlements s’imputent sur les factures en
+        <strong>deux temps</strong>, selon des règles distinctes. Le premier est
+        <strong>l’imputation du règlement</strong>, détaillée ligne à ligne dans la colonne
+        du même nom : un encaissement mentionnant des factures leur est imputé, par montant
+        exact en priorité, puis de la plus ancienne à la plus récente, à concurrence du
+        solde restant dû de chacune, avoirs déduits. Le solde non imputé — facture
+        rapprochée par ailleurs, ou soldée — demeure une écriture distincte et n’est
+        affecté à aucune facture.</p>
+      <p class="param-note">Le second est <strong>l’imputation pour provision</strong>,
+        propre à ce calcul : elle ne modifie ni les restes dus publiés, ni les échéances,
+        ni les tranches d’ancienneté, mais seulement le montant exposé au risque.
+        L’assiette d’une créance correspond à son <strong>reste dû</strong>, diminué des
+        encaissements et avoirs du même compte non rattachés à une facture. Ces crédits
+        s’imputent sur les créances <strong>de la plus ancienne à la plus récente</strong>,
+        conformément à l’ordre d’imputation de droit commun. À défaut, une facture réglée
+        par un virement non lettré serait provisionnée intégralement alors que le client ne
+        doit plus rien.</p>
+      <p class="param-note">Une créance dont l’assiette est nulle ou négative, le compte
+        étant créditeur, n’est pas provisionnée : aucune perte n’est à couvrir.
+        L’ancienneté demeure celle de chaque créance : l’imputation modifie le montant
+        exposé, jamais la date qui le classe.</p>
 
       <h4>À partir de quand — les quatre fenêtres</h4>
       <p class="param-note">Les fenêtres se comptent en <strong>jours de retard</strong>
         depuis l’échéance, et coïncident exactement avec les tranches de la balance âgée,
         un mois valant trente jours : 121-180 j, c’est « 4 à 6 mois » ; 181-360 j, « 6 à
         12 mois » ; 361-720 j, « 12 à 18 » et « 18 à 24 mois » réunies ; au-delà de 720 j,
-        « 24 à 36 », « 36 à 48 » et « &gt; 48 mois ». Aucune tranche n’est coupée, rien
-        n’est proratisé. <strong>En deçà de 121 jours de retard, et sur tout ce qui n’est
+        « 24 à 36 », « 36 à 48 » et « &gt; 48 mois ». Aucune tranche n’est scindée et aucun
+        prorata n’est appliqué. <strong>En deçà de 121 jours de retard, et sur tout ce qui n’est
         pas échu, la provision est nulle.</strong></p>
 
       <h4>Quel taux — les trois familles</h4>
-      <p class="param-note">Chaque type de financement appartient à une famille, et c’est
-        la famille qui porte le taux. Le rattachement complet se lit sous le tableau.
-        Un type de financement rattaché à aucune famille n’est pas provisionné, et la page
-        le signale plutôt que de l’ignorer.</p>
+      <p class="param-note">Chaque type de financement relève d’une famille, et le taux
+        s’applique au niveau de la famille. Le rattachement complet figure sous le tableau.
+        Un type de financement non rattaché n’est pas provisionné ; il est signalé comme
+        tel.</p>
     </div>
 
     <div class="param-bloc" id="depot-bloc" hidden>
       <div class="param-tete">
         <h3>Déposer les fichiers du mois</h3>
+        <button type="button" class="plat" id="depot-actu">Actualiser</button>
         <span class="etat" id="depot-etat"></span>
       </div>
-      <p class="param-note">Quatre fichiers suffisent à refaire la balance. Déposez-les
-        ici : ils sont rangés avec cette page, horodatés et nommés, et attendent la
-        reconstruction. <strong>Le dépôt ne recalcule rien par lui-même</strong> — la
-        balance est refaite ensuite, puis republiée ici.</p>
+      <p class="param-note">Quatre fichiers suffisent à reconstruire la balance. Déposés
+        ici, ils sont conservés avec cette page, horodatés et nommés.
+        <strong>Le dépôt ne déclenche aucun recalcul</strong> : la balance est reconstruite
+        ensuite, puis republiée sur cette page.</p>
       <div id="depot-liste"></div>
+      <p class="param-note" id="depot-recons"></p>
     </div>
 
     </details>

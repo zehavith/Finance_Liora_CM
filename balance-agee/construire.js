@@ -1561,25 +1561,26 @@ add('Règles d’échéance',RG.filter(r=>r.key!=='INCONNU').map(r=>{const g=r.g
     'Ce que ça dit':'Une créance de moins de 121 jours de retard, ou non échue, '
       +'n’est pas provisionnée.'});
   rows.push({'Section':'Assiette — premier temps','Famille / Règle':'Imputation du règlement',
-    'Ce que ça dit':'Un encaissement qui NOMME des factures est imputé sur elles : à montant '
-      +'exact d’abord, sinon de la plus ancienne à la plus récente, à concurrence de ce que '
-      +'chacune doit encore, avoirs déduits. Ce qui reste n’est jamais forcé : il reste une '
-      +'écriture à part, visible. Cette imputation-là change de vrais restes dus ; elle se lit '
-      +'ligne à ligne dans la colonne « Imputation du règlement » et dans l’onglet du même nom.'});
+    'Ce que ça dit':'Un encaissement mentionnant des factures leur est imputé : par montant '
+      +'exact en priorité, puis de la plus ancienne à la plus récente, à concurrence du solde '
+      +'restant dû de chacune, avoirs déduits. Le solde non imputé demeure une écriture '
+      +'distincte et n’est affecté à aucune facture. Cette imputation modifie les restes dus '
+      +'publiés ; elle est détaillée ligne à ligne dans la colonne « Imputation du règlement » '
+      +'et dans l’onglet du même nom.'});
   rows.push({'Section':'Assiette — second temps','Famille / Règle':'Imputation pour provision',
-    'Ce que ça dit':'Elle ne sert qu’ici : elle ne change aucun reste dû publié, aucune '
-      +'échéance, aucune tranche — seulement le montant exposé au risque. L’assiette d’une '
-      +'créance est son reste dû, diminué des encaissements et avoirs du MÊME COMPTE que rien '
-      +'ne rattache à une facture — ceux que le premier temps n’a pas su nommer. Ces crédits '
-      +'se posent sur les dettes de la plus ancienne à la plus récente, l’ordre de droit '
-      +'commun. Sans cette déduction, une facture déjà réglée par un virement non pointé '
-      +'serait provisionnée à 100 % alors que le client ne doit plus rien.'});
+    'Ce que ça dit':'Imputation propre au calcul de la provision : elle ne modifie ni les '
+      +'restes dus publiés, ni les échéances, ni les tranches d’ancienneté, mais seulement le '
+      +'montant exposé au risque. L’assiette d’une créance correspond à son reste dû, diminué '
+      +'des encaissements et avoirs du même compte non rattachés à une facture. Ces crédits '
+      +'s’imputent sur les créances de la plus ancienne à la plus récente, conformément à '
+      +'l’ordre d’imputation de droit commun. À défaut, une facture réglée par un virement non '
+      +'lettré serait provisionnée intégralement alors que le client ne doit plus rien.'});
   rows.push({'Section':'Assiette','Famille / Règle':'Assiette nulle ou négative',
-    'Ce que ça dit':'Une créance dont l’assiette est nulle ou négative — un compte créditeur — '
-      +'ne se provisionne pas : il n’y a pas de perte à couvrir.'});
-  rows.push({'Section':'Ancienneté','Famille / Règle':'Elle ne bouge pas',
-    'Ce que ça dit':'L’imputation pour provision change le montant exposé, jamais la date qui '
-      +'le classe : chaque créance reste dans la tranche de SON échéance.'});
+    'Ce que ça dit':'Une créance dont l’assiette est nulle ou négative, le compte étant '
+      +'créditeur, n’est pas provisionnée : aucune perte n’est à couvrir.'});
+  rows.push({'Section':'Ancienneté','Famille / Règle':'Inchangée par l’imputation',
+    'Ce que ça dit':'L’imputation pour provision modifie le montant exposé, jamais la date qui '
+      +'le classe : chaque créance demeure dans la tranche de sa propre échéance.'});
   add('Règles de provision',rows);
 }
 
@@ -1696,9 +1697,9 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
   // qu'aucune des deux n'ait à la réécrire.
   prorata:{
     titre:'Répartition au prorata des paiements non rattachés',
-    regle:'Un règlement ou un avoir qui ne nomme aucune facture, sur un compte '
-      +'client dont les factures portent PLUSIEURS types de financement, ne prend '
-      +'plus le type de la première facture venue. Il est réparti au prorata.',
+    regle:'Un règlement ou un avoir ne mentionnant aucune facture, sur un compte client '
+      +'dont les factures relèvent de plusieurs types de financement, est réparti au '
+      +'prorata et non affecté à un type unique.',
     etapes:[
       {rang:'1', quoi:'La clé',
        dit:'Le nombre de factures de chaque type de financement sur le compte. '
@@ -1710,13 +1711,12 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
           +'ENTIÈRES au type dont il manque le plus, en euros, pour atteindre sa cible. '
           +'Aucune ligne ne figure des deux côtés.'},
       {rang:'4', quoi:'Le départage',
-       dit:'À égalité, le type qui porte le plus de factures, puis le plus gros encours. '
-          +'Jamais l’ordre alphabétique : sur une clé 4/4 il décidait du plus gros '
-          +'règlement du compte.'},
+       dit:'À égalité, le type portant le plus de factures, puis le plus gros encours. '
+          +'L’ordre alphabétique n’est jamais retenu comme critère de départage.'},
       {rang:'5', quoi:'Ce qui est écarté',
-       dit:'Un compte dont les factures portent « Alternance » tout court, ou un '
-          +'dispositif non qualifié, n’est pas réparti du tout : le prorata ne '
-          +'choisit pas entre un type valide et un fourre-tout.'},
+       dit:'Un compte dont les factures portent « Alternance » sans précision, ou un '
+          +'dispositif non qualifié, est exclu de la répartition : le prorata ne '
+          +'s’applique qu’entre types de financement pleinement qualifiés.'},
     ],
     limites:'Cette règle ne déplace pas le reste dû des créances d’un lettrage qui '
       +'contient des factures : celui-là est déjà réparti sur ces factures au prorata de leur '
@@ -1740,90 +1740,91 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
   // origine dans la colonne « Origine du classement ». Il n'est donc pas
   // estimé : c'est le travail réellement fait, ligne à ligne.
   classement:[
-    {rang:'1', quoi:'Votre décision',
-     quand:'Le type a été complété à la main dans la balance publiée',
-     note:'Elle passe avant tout le reste et ne se redemande pas : une créance que vous '
-         +'avez tranchée garde son type à chaque reconstruction.',
+    {rang:'1', quoi:'Classement manuel',
+     quand:'Le type de financement a été saisi dans la balance publiée',
+     note:'Une saisie manuelle prime sur l’ensemble des règles suivantes et est conservée '
+         +'d’une reconstruction à l’autre.',
      n:parOrigine.get('Complété à la main dans la balance publiée')||0},
-    {rang:'2', quoi:'La facture que la ligne cite',
-     quand:'La ligne porte un numéro de facture connu de la facturation',
-     note:'Le type vient de la facture elle-même — son dispositif dans l’export de '
-         +'facturation, ou le dispositif nommé dans son libellé (voir « Mots reconnus » '
-         +'du barème).',
+    {rang:'2', quoi:'Facture rattachée à l’écriture',
+     quand:'L’écriture porte un numéro de facture référencé dans la facturation',
+     note:'Le type de financement retenu est celui de la facture : dispositif renseigné '
+         +'dans l’export de facturation, ou dispositif identifié dans son libellé (voir '
+         +'« Mots reconnus » du barème).',
      n:parOrigine.get('Facture citée par la ligne')||0},
-    {rang:'3', quoi:'Le numéro Filiz',
-     quand:'La facture est une FCT-FILIZ',
-     note:'Une facture du financeur de l’alternance est une alternance, quoi que dise le '
-         +'reste.',
+    {rang:'3', quoi:'Facture d’alternance',
+     quand:'Le numéro de facture relève de la série du financeur de l’alternance',
+     note:'Une facture émise par le financeur de l’alternance relève de l’alternance, '
+         +'indépendamment des autres indications.',
      n:parOrigine.get('Facture Filiz : alternance')||0},
-    {rang:'4', quoi:'Le type de client de la facturation',
-     quand:'La facturation range ce client sous un seul dispositif',
-     note:'L’unanimité, pas la majorité : dès que la facturation range le client sous deux '
-         +'dispositifs, elle ne tranche plus rien pour les factures qu’elle n’a pas '
-         +'nommées elle-même.',
+    {rang:'4', quoi:'Type de client de la facturation',
+     quand:'La facturation rattache le client à un dispositif unique',
+     note:'Le rattachement doit être unanime. Lorsque la facturation associe le client à '
+         +'plusieurs dispositifs, il n’est pas retenu pour les factures qu’elle ne nomme '
+         +'pas explicitement.',
      n:parOrigine.get('Type de client (facturation)')||0},
-    {rang:'5', quoi:'France Travail : AIF ou POEI',
-     quand:'Compte France Travail, et rien ne nomme le dispositif',
-     note:'Dans cet ordre : le dispositif écrit sur la ligne l’emporte ; sinon celui que '
-         +'la facturation donne à la facture, ou au client s’il est unanime ; sinon son '
-         +'type de client — « POEI » donne POEI, « AIF » ou un particulier donne AIF. '
-         +'À défaut seulement, le montant tranche : au-dessus de 7 000 €, POEI ; '
-         +'en dessous, AIF. La POEI passe par l’employeur, l’AIF est une aide accordée à '
-         +'la personne.',
+    {rang:'5', quoi:'France Travail — AIF ou POEI',
+     quand:'Compte France Travail dont le dispositif n’est pas renseigné',
+     note:'Ordre d’application : dispositif mentionné sur l’écriture ; à défaut, dispositif '
+         +'de la facture dans la facturation, ou du client lorsqu’il est unanime ; à défaut, '
+         +'son type de client — « POEI » pour POEI, « AIF » ou particulier pour AIF. '
+         +'En dernier lieu, le montant départage : au-delà de 7 000 €, POEI ; en deçà, AIF. '
+         +'La POEI est financée par l’employeur, l’AIF est une aide accordée à la personne.',
      n:parOrigine.get('Montant du règlement (règle France Travail)')||0},
-    {rang:'6', quoi:'La facture du même lettrage',
-     quand:'L’écriture ne porte aucun numéro, mais son lettrage contient une facture',
-     note:'Un règlement pointé avec une facture prend le type de cette facture.',
+    {rang:'6', quoi:'Facture du même lettrage',
+     quand:'L’écriture ne porte pas de numéro de facture et son lettrage en contient une',
+     note:'Le règlement reprend le type de financement de la facture avec laquelle il est '
+         +'pointé.',
      n:parOrigine.get('Hérité de la facture du même lettrage')||0},
-    {rang:'7', quoi:'Une facture non lettrée du même compte',
+    {rang:'7', quoi:'Facture non lettrée du même compte',
      quand:'Le compte client ne porte qu’un seul dispositif',
-     note:'À défaut de lettrage, le compte parle — à condition de parler d’une seule voix.',
+     note:'En l’absence de lettrage, le classement s’appuie sur le compte, sous réserve '
+         +'qu’il soit homogène.',
      n:parOrigine.get('Hérité d’une facture non lettrée du même compte')||0},
-    {rang:'8', quoi:'Au prorata des factures du client',
-     quand:'Le compte porte PLUSIEURS dispositifs et rien ne rattache l’écriture',
-     note:'Son montant se répartit au prorata de ce que doivent les factures du compte, '
-         +'dispositif par dispositif. Rien n’est attribué au premier venu.',
+    {rang:'8', quoi:'Répartition au prorata',
+     quand:'Le compte porte plusieurs dispositifs et l’écriture n’est rattachée à aucune facture',
+     note:'Le montant est réparti au prorata des encours du compte, dispositif par '
+         +'dispositif. Aucune attribution forfaitaire n’est pratiquée.',
      n:parOrigine.get('Réparti au prorata des factures du client')||0},
     {rang:'9', quoi:'À classer',
-     quand:'Aucune des règles ci-dessus ne s’applique',
-     note:'Rien n’est inventé : la ligne reste à compléter, et la balance la compte sous '
-         +'« À classer » jusqu’à ce que vous tranchiez.',
+     quand:'Aucune des règles précédentes ne s’applique',
+     note:'L’écriture reste à qualifier et figure sous « À classer » jusqu’à son classement '
+         +'manuel.',
      n:parOrigine.get('')||0},
   ],
   ordreEcheance:[
     {rang:'1', nature:'Règle de la ligne',
-     quand:'La ligne est un encaissement',
-     alors:'sa propre date, sans délai',
-     note:'Un règlement porte la date à laquelle l’argent est rentré, jamais l’échéance '
-         +'de la facture qu’il solde. Cette règle passe avant toutes les autres, et elle '
-         +'ne vaut que pour lui.'},
+     quand:'L’écriture est un encaissement',
+     alors:'sa date d’encaissement, sans délai',
+     note:'Un encaissement est daté du jour où il est intervenu, et non de l’échéance de '
+         +'la facture qu’il solde. Cette règle s’applique avant toutes les autres et ne '
+         +'concerne que les encaissements.'},
     {rang:'2', nature:'Règle exception',
      quand:'Le client a un mandat de prélèvement GoCardless',
      alors:'fin de formation, sans délai',
-     note:'Rapproché par numéro de facture, puis e-mail, puis nom et prénom. '
-         +'Un client prélevé ne se voit accorder aucun délai de paiement.'},
+     note:'Le rapprochement s’effectue par numéro de facture, puis par adresse '
+         +'électronique, puis par nom et prénom. Aucun délai de paiement n’est accordé à '
+         +'un client prélevé.'},
     {rang:'3', nature:'Règle exception',
      quand:'La date de facture est postérieure à la fin de formation',
      alors:'date de facture + 30 jours',
-     note:'C’est une régularisation : le délai court depuis l’émission, pas depuis '
-         +'une formation déjà terminée.'},
+     note:'Régularisation : le délai court à compter de l’émission de la facture et non '
+         +'d’une formation déjà achevée.'},
     {rang:'4', nature:'Règle barème',
      quand:'Sinon — le barème du dispositif',
      alors:'voir le tableau ci-dessous',
-     note:'Chaque dispositif a sa base et son délai. C’est le cas ordinaire.'},
+     note:'Chaque dispositif dispose de sa base de calcul et de son délai. Cas général.'},
     {rang:'5', nature:'Règle repli',
      quand:'Sinon — la base du barème manque',
      alors:'dernière date lue dans le libellé',
-     note:'Aucune date de formation ni de facture : on prend la date que le libellé '
-         +'de l’écriture porte, sans délai ajouté.'},
+     note:'En l’absence de date de formation et de date de facture, la date retenue est '
+         +'celle figurant dans le libellé de l’écriture, sans délai.'},
     {rang:'6', nature:'Règle repli',
      quand:'Sinon — aucune date dans le libellé',
      alors:'date de l’écriture · une facture, + 30 jours',
-     note:'La colonne « Date » du grand livre. Une facture est exigible trente jours '
-         +'après ; un paiement et un avoir le jour même. '
-         +'L’écriture qui n’a ni date ni libellé daté garde sa date d’enregistrement, '
-         +'en dernier recours, et le dit — sans les trente jours, qui ne valent que '
-         +'pour la colonne « Date ».'},
+     note:'Date de l’écriture au grand livre. Une facture est exigible trente jours '
+         +'après cette date ; un encaissement et un avoir le jour même. À défaut de date '
+         +'d’écriture comme de date dans le libellé, la date d’enregistrement est retenue '
+         +'en dernier lieu, sans délai.'},
   // Le décompte voyage avec la règle. La page le refaisait de son côté, à
   // coups d'expressions régulières sur le texte français du motif, et donnait
   // d'autres chiffres que le classeur. Il n'y a plus qu'un décompte.
