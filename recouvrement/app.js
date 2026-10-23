@@ -199,6 +199,18 @@
         ? d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
             + '-' + String(d.getDate()).padStart(2, '0')
         : null;
+    /**
+     * La date à laquelle la balance comptable est arrêtée.
+     *
+     * C'est celle du grand livre déposé, relevée une fois pour toutes au
+     * dépôt. Tant qu'aucun grand livre n'est chargé, la date du jour fait
+     * l'affaire : il n'y a rien à vieillir.
+     */
+    const dateArreteGL = () => {
+        const d = state.glLecture && state.glLecture.arrete;
+        return (d && R.parseDate(d)) || state.filtres.dateRef || R.stripTime(new Date());
+    };
+
     const dateStockee = v => {
         if (!v) return null;
         if (v instanceof Date) return R.parseDate(v);
@@ -3922,7 +3934,29 @@
             // client sous mandat l'argent est appelé, donc l'échéance est la
             // fin de la formation, sans délai de paiement.
             mandats: clientsGocardless(),
-            factures: state.factures,
+            // LE GRAND LIVRE SE CLASSE SEUL.
+            //
+            // Le portefeuille sert ici de calendrier, pas de classeur. Ses
+            // dates de formation manquent souvent à la comptabilité et sont la
+            // seule façon de dater certaines créances : elles passent.
+            //
+            // Son dispositif, lui, ne passe plus. Il était consulté au rang
+            // « Facture » — devant vos règles, devant l'ancien grand livre,
+            // devant le libellé — et dictait le classement de 3 159 créances.
+            // Confronter ensuite les deux balances revenait à comparer le
+            // portefeuille à lui-même : un désaccord de classement ne pouvait
+            // plus apparaître, puisqu'il avait été effacé avant la comparaison.
+            //
+            // Le grand livre se classe donc par ce qu'il porte — son numéro de
+            // facture, la facturation, l'ancien grand livre, vos règles — et la
+            // confrontation redevient un contrôle. C'est aussi ce que fait la
+            // page publiée.
+            factures: (state.factures || []).map(f => ({
+                cle: f.cle, numero: f.numero,
+                dateDebutFormation: f.dateDebutFormation,
+                dateFinFormation: f.dateFinFormation,
+                dateFacture: f.dateFacture,
+            })),
             sellsy: lignesFacturation(),
             historique: state.grandLivre,
             rules: state.rules,
@@ -3998,7 +4032,7 @@
             (state.glEcritures && (state.glEcritures.lignes || state.glEcritures)) || [],
             classees, { rules: state.rules });
 
-        state.glBalance = GL.balanceAgee(classees, state.filtres.dateRef, state.rules,
+        state.glBalance = GL.balanceAgee(classees, dateArreteGL(), state.rules,
             state.ui.glNiveau || 'financement');
 
         // La confrontation se fait sur le portefeuille Monday non réglé, sans
@@ -4137,7 +4171,8 @@
             : `<strong>${U.escapeHtml(g.fichier || 'grand livre')}</strong>`
               + (g.charge ? ` · chargé ${quandFichier(g.charge)}` : '')
               + ` · ${U.nombre(g.nbLignes || 0)} écritures lues`
-              + ` · balance arrêtée au ${U.dateFR(state.filtres.dateRef)}`;
+              + ` · balance arrêtée au ${U.dateFR(dateArreteGL())}`
+              + (g.arrete ? ' — la dernière écriture du fichier' : '');
         for (const id of ['#gl-source', '#pointage-source']) {
             const el = $(id);
             if (el) el.innerHTML = txt;
@@ -10880,6 +10915,32 @@
             // Les écritures à plat : c'est elles qui portent les règlements, et
             // donc le classement de ce qui rentre.
             state.glLignes = GL.ecrituresAPlat(lu);
+
+            // LA DATE D'ARRÊTÉ DE LA BALANCE COMPTABLE.
+            //
+            // La dernière écriture que le FICHIER contient, sans dépasser le
+            // jour du dépôt — un exercice court parfois sur l'année suivante et
+            // le fichier peut porter des écritures futures.
+            //
+            // La balance vieillissait ses créances à la date du jour, alors que
+            // l'instantané du grand livre, lui, ne bouge plus entre deux
+            // dépôts : un jour d'écart déplaçait déjà 62 424 € du non échu vers
+            // l'échu, et l'écart grandissait tout seul chaque jour. La page
+            // publiée arrête sa balance de la même façon.
+            //
+            // La date se lit sur les lignes du fichier, pas sur les écritures
+            // retenues : toutes les lignes lues ne deviennent pas des
+            // écritures de compte client, et la dernière journée du grand
+            // livre se perdait d'un jour quand elle ne portait que des lignes
+            // écartées.
+            state.glLecture.arrete = jourISO((() => {
+                const colonne = Object.keys(rows[0] || {}).find(h => R.norm(h) === 'date') || 'Date';
+                let d = null;
+                for (const r of rows) { const v = R.parseDate(r[colonne]); if (v && (!d || v > d)) d = v; }
+                const jour = R.stripTime(new Date());
+                return (!d || d > jour) ? jour : d;
+            })());
+
 
             const iso = jourISO;
             state.glOuvertes = GL.creancesOuvertes(lu).map(c => ({

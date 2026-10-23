@@ -434,7 +434,7 @@
     /** Date « nue » (minuit local), tolérante aux formats FR / ISO / série Excel. */
     function parseDate(value) {
         if (value == null || value === '') return null;
-        if (value instanceof Date) return isNaN(value.getTime()) ? null : stripTime(value);
+        if (value instanceof Date) return isNaN(value.getTime()) ? null : jourDe(value);
 
         const s = String(value).trim();
         if (!s || /^(n\/?a|—|-|null|undefined)$/i.test(s)) return null;
@@ -450,7 +450,16 @@
         if (/^\d+(\.\d+)?$/.test(s)) {
             const num = parseFloat(s);
             // Série Excel plausible : 1990-01-01 → 2100-01-01
-            if (num > 32800 && num < 73100) return validate(new Date(Math.round((num - 25569) * MS_DAY)));
+            if (num > 32800 && num < 73100) {
+                // Un numéro de série compte des jours depuis le 30 décembre
+                // 1899, sans fuseau. L'instant obtenu est donc un minuit
+                // UNIVERSEL : à l'ouest de Greenwich, la journée locale dans
+                // laquelle il tombe est la veille, et toutes les dates d'un
+                // classeur y reculaient d'un jour. On lit le jour qu'il
+                // désigne, puis on le pose dans le calendrier local.
+                const u = new Date(Math.round((num - 25569) * MS_DAY));
+                return validate(new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate()));
+            }
             return null;
         }
 
@@ -500,6 +509,39 @@
     }
 
     function stripTime(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
+    /**
+     * Le JOUR que porte une date, et non la journée dans laquelle son instant
+     * tombe.
+     *
+     * Une cellule de date d'un classeur Excel ne porte pas d'heure : elle
+     * porte un numéro de jour. Le lecteur de classeurs le reconvertit en
+     * instant, et cette reconversion perd quelques secondes — sur le grand
+     * livre déposé, le 22 octobre 2026 revient à 23 h 59 min 39 s le 21.
+     * Tronquer l'heure d'un tel instant donne la veille.
+     *
+     * À l'est de Greenwich, c'était TOUTES les dates : 36 332 cellules sur
+     * 36 332 reculaient d'une journée — dates d'écriture, d'enregistrement et
+     * d'échéance comprises. La balance âgée vieillissait donc tout son grand
+     * livre d'un jour, et les échéances affichées étaient fausses d'autant.
+     *
+     * Une heure à moins de cinq minutes d'un minuit est donc traitée comme ce
+     * qu'elle est — un arrondi — et la date est ramenée au jour le plus
+     * proche. Au-delà, l'heure est une vraie heure et le jour est celui dans
+     * lequel elle tombe.
+     */
+    const MARGE_MINUIT = 5 * 60 * 1000;
+    function jourDe(d) {
+        // L'heure se lit sur l'horloge, pas en millisecondes écoulées depuis
+        // le minuit local : le jour du passage à l'heure d'été ne dure que
+        // vingt-trois heures, et 23 h 59 min y tombait à 22 h 59 du minuit
+        // précédent. Les trente-cinq écritures du 30 mars 2026 reculaient
+        // ainsi au 29, les seules que la première version laissait passer.
+        const surLHorloge = d.getHours() * 3600000 + d.getMinutes() * 60000
+            + d.getSeconds() * 1000 + d.getMilliseconds();
+        const jour = stripTime(d);
+        return surLHorloge > MS_DAY - MARGE_MINUIT ? addDays(jour, 1) : jour;
+    }
     function addDays(d, n) { return d ? new Date(d.getFullYear(), d.getMonth(), d.getDate() + n) : null; }
     function diffDays(a, b) { return (a && b) ? Math.round((stripTime(a) - stripTime(b)) / MS_DAY) : null; }
     function monthKey(d) { return d ? d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') : null; }

@@ -147,6 +147,76 @@ const serveur = http.createServer((req, res) => {
        bouge === 0);
   }
 
+  // ── LA MÊME BALANCE QUE LA CHAÎNE DE RÉFÉRENCE ──
+  //
+  // La chaîne de la page publiée, jouée ici hors du navigateur sur le MÊME
+  // fichier et avec les MÊMES options. C'est la question de départ : les deux
+  // tombent-elles sur les mêmes chiffres ? Les imports annexes — facturation,
+  // Sellsy, mandats — sont absents des deux côtés, donc la seule variable
+  // restante est la suite d'appels elle-même.
+  console.log('');
+  console.log('  — la chaîne de la page publiée, sur le même fichier —');
+  const { ctx, NOUV, feuille } = require(path.resolve(__dirname, '..', 'socle.js'));
+  const GL = ctx.LioraGrandLivre, Rg = ctx.LioraRules;
+  const RG = Rg.DEFAULT_ECHEANCE_RULES;
+  const nouv = feuille(path.resolve(__dirname, '..', NOUV), 'Grand livre - Clients', 0);
+  const REF = (() => {
+    let d = null;
+    for (const r of nouv.rows) { const v = Rg.parseDate(r['Date']); if (v && (!d || v > d)) d = v; }
+    const jour = new Date(); jour.setHours(0, 0, 0, 0);
+    return (!d || d > jour) ? jour : d;
+  })();
+  const reference = (() => {
+    const lu = GL.lire(nouv.rows, {});
+    // CE QUE LE GRAND LIVRE S'APPREND À LUI-MÊME.
+    //
+    // L'application retient le dispositif d'une facture, d'un tiers et d'un
+    // compte quand toutes les lignes connues s'accordent, et s'en ressert pour
+    // classer celles qui ne disent rien. Il faut donner le même apprentissage
+    // à la chaîne de référence, sinon l'essai ne compare plus deux suites
+    // d'appels mais deux jeux de sources — et 605 761 € d'écart ne viennent
+    // que de là.
+    const vu = GL.referentielDepuis(lu.lignes, RG);
+    const appris = {
+      factures: Object.fromEntries(Object.entries(vu).map(([k, v]) => [k, v.fin])),
+      tiers: lu.apprisTiers, comptes: lu.apprisComptes,
+    };
+    // La base de facturation que l'application embarque : elle est dans le
+    // dépôt, pas dans un fichier déposé, donc elle est là des deux côtés dès
+    // qu'on charge le même moteur. L'oublier faisait apparaître 969 103 €
+    // d'écart qui ne tenaient qu'à cette source manquante d'un seul côté.
+    const facturation = ctx.LioraZoho ? ctx.LioraZoho.lignes() : [];
+    const OPT = () => ({ rules: RG, sellsy: facturation, factures: [], mandats: [],
+                         referentiel: {}, regles: [], appris });
+    const classees = GL.classer(GL.creancesOuvertes(lu), OPT());
+    const soldees = GL.classer(GL.facturesToutes(lu)
+      .filter(c => c.statut && c.statut !== 'Ouverte' && c.statut !== 'Partiellement réglée'), OPT());
+    const ecr = GL.classerEcritures(GL.ecrituresAPlat(lu), classees, soldees,
+      { sellsy: facturation, rules: RG, factures: [] });
+    GL.repartirAuProrata(ecr.lignes || ecr, classees, { rules: RG });
+    return GL.balanceAgee(classees, REF, RG, 'financement');
+  })();
+  console.log('  total : ' + eur(reference.total.total)
+    + ' · échu ' + eur(reference.total.echu)
+    + ' · non échu ' + eur(reference.total.nonEchu)
+    + ' · arrêté au ' + REF.toLocaleDateString('fr-CA'));
+
+  ok('même date d’arrêté', vu.arrete === REF.toLocaleDateString('fr-CA'));
+  ok('même total', Math.abs(reference.total.total - vu.total) < 0.01);
+  ok('même échu et même non échu',
+     Math.abs(reference.total.echu - vu.echu) < 0.01
+     && Math.abs(reference.total.nonEchu - vu.nonEchu) < 0.01);
+  {
+    const a = new Map(reference.rows.map(r => [r.cle, Math.round((r.total || 0) * 100)]));
+    const z = new Map(vu.rows.map(r => [r.cle, Math.round((r.total || 0) * 100)]));
+    const ecarts = [];
+    for (const k of new Set([...a.keys(), ...z.keys()]))
+      if ((a.get(k) || 0) !== (z.get(k) || 0))
+        ecarts.push('     ' + k + ' : ' + eur(((z.get(k) || 0) - (a.get(k) || 0)) / 100));
+    ok('même ventilation, dispositif par dispositif (' + a.size + ' lignes)', !ecarts.length);
+    for (const e of ecarts) console.log(e);
+  }
+
   ok('aucune erreur de page', soucis.length === 0);
   for (const s of soucis.slice(0, 5)) console.log('     ' + s);
 
