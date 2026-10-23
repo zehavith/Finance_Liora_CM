@@ -1529,3 +1529,34 @@ tr.ligne-total td {
         overflow-x: auto;
     }
 }
+
+
+/* ══════════════════════════════════════════════
+   SELLSY ET PENNYLANE
+   ══════════════════════════════════════════════
+   Deux blocs dans la carte des sources, séparés par un filet plutôt que par
+   deux cartes de plus : ce sont deux portes d'une même pièce. */
+.api-bloc {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px 0;
+    border-top: 1px solid var(--border-color);
+}
+.api-bloc:first-of-type { border-top: 0; padding-top: 4px; }
+.api-bloc .field-row { flex-wrap: wrap; gap: 6px; }
+.api-bloc .input { min-width: 0; }
+.api-bloc > .bloc-repli { margin-top: 2px; }
+.api-bloc > .bloc-repli .input { margin-top: 4px; }
+
+/* L'état d'un appel se lit à sa couleur avant de se lire à son texte. */
+.connect-status.ok   { color: var(--success, #34d399); }
+.connect-status.warn { color: var(--warning, #fbbf24); }
+.connect-status.err  { color: var(--danger, #f87171); }
+
+/* Le journal des pages : il grandit pendant l'import, sans pousser le reste. */
+#api-journal {
+    max-height: 180px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+}

@@ -1427,6 +1427,72 @@
                 </div>
             </div>
 
+            <!-- ══════════════════════════════════════════════
+                 Sellsy et Pennylane, sans passer par un fichier
+                 ══════════════════════════════════════════════ -->
+            <div class="chart-card chart-wide settings-card" id="carte-api">
+                <div class="chart-header"><h3>Aller chercher la facturation et le grand livre</h3></div>
+                <div class="settings-body">
+                    <p class="fv-hint">
+                        Plutôt que d'exporter depuis Sellsy et Pennylane puis de déposer les fichiers,
+                        l'application peut les demander directement. Les identifiants restent dans le
+                        stockage de ce navigateur et ne sont envoyés qu'au service concerné. Cela ne
+                        fonctionne que depuis l'application lancée sur votre poste : une page publiée
+                        n'a pas le droit d'appeler ces adresses.
+                    </p>
+
+                    <!-- ── Pennylane ── -->
+                    <div class="api-bloc">
+                        <span class="filter-label">Pennylane — grand livre</span>
+                        <span class="fv-hint">
+                            Paramètres → Connectivité → Développeurs → « Generate an API Token ».
+                            Prenez <strong>lecture seule</strong> : l'application n'écrit jamais chez vous.
+                            Le jeton ne s'affiche qu'une fois.
+                        </span>
+                        <div class="field-row">
+                            <input type="password" id="pl-jeton" class="input" placeholder="Jeton API Pennylane" autocomplete="off">
+                            <button class="btn btn-ghost btn-sm" id="btn-pl-visible" title="Afficher / masquer">👁</button>
+                            <button class="btn btn-ghost btn-sm" id="btn-pl-tester">Tester</button>
+                            <button class="btn btn-primary btn-sm" id="btn-pl-charger">Charger le grand livre</button>
+                            <button class="btn btn-ghost btn-sm" id="btn-pl-oublier">Oublier</button>
+                        </div>
+                        <details class="bloc-repli">
+                            <summary>Adresse de base</summary>
+                            <span class="fv-hint">À ne changer que si Pennylane déplace son API.</span>
+                            <input type="text" id="pl-base" class="input input-sm" spellcheck="false">
+                        </details>
+                        <div id="pl-etat" class="connect-status"></div>
+                    </div>
+
+                    <!-- ── Sellsy ── -->
+                    <div class="api-bloc">
+                        <span class="filter-label">Sellsy — facturation</span>
+                        <span class="fv-hint">
+                            Menu → Paramètres → Espace développeur → API V2 → « Créer un accès API »,
+                            type <strong>Privé</strong>. Vous obtenez un identifiant client et un secret ;
+                            le secret ne s'affiche qu'une fois.
+                        </span>
+                        <div class="field-row">
+                            <input type="text" id="sy-id" class="input" placeholder="Identifiant client" autocomplete="off">
+                            <input type="password" id="sy-secret" class="input" placeholder="Secret client" autocomplete="off">
+                            <button class="btn btn-ghost btn-sm" id="btn-sy-visible" title="Afficher / masquer">👁</button>
+                            <button class="btn btn-ghost btn-sm" id="btn-sy-tester">Tester</button>
+                            <button class="btn btn-primary btn-sm" id="btn-sy-charger">Charger la facturation</button>
+                            <button class="btn btn-ghost btn-sm" id="btn-sy-oublier">Oublier</button>
+                        </div>
+                        <details class="bloc-repli">
+                            <summary>Adresses de base</summary>
+                            <span class="fv-hint">À ne changer que si Sellsy déplace son API.</span>
+                            <input type="text" id="sy-base" class="input input-sm" spellcheck="false">
+                            <input type="text" id="sy-jetons" class="input input-sm" spellcheck="false">
+                        </details>
+                        <div id="sy-etat" class="connect-status"></div>
+                    </div>
+
+                    <div id="api-journal" class="loader-log" hidden></div>
+                </div>
+            </div>
+
             <!-- Chaîne de traitement -->
             <div class="chart-card chart-wide settings-card">
                 <div class="chart-header"><h3>De Monday au tableau de bord</h3></div>
@@ -1628,6 +1694,7 @@
     <script src="js/grandlivre.js?v=3.9.2"></script>
     <script src="js/sellsy.js?v=3.9.2"></script>
     <script src="js/zoho.js?v=3.9.2"></script>
+<script src="js/api.js?v=3.9.2"></script>
 <script src="js/ui.js?v=3.9.2"></script>
 <script src="app.js?v=3.9.2"></script>
 </body>

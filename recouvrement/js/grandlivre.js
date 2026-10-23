@@ -55,17 +55,35 @@
      * général. « Date » seul arrive en dernier — un grand livre porte plusieurs
      * dates, et celle de l'écriture n'est pas celle de l'échéance.
      */
+    // ── QUAND LE GRAND LIVRE ARRIVE PAR L'API, IL PARLE ANGLAIS ──
+    //
+    // Un export Pennylane porte des en-têtes français ; la même donnée
+    // demandée à son API porte des noms de champs anglais, mis à plat par
+    // js/api.js — « ledger_account.number » devient « ledger account number ».
+    // Les alias ci-dessous les reconnaissent.
+    //
+    // Ils sont écrits d'après la documentation, SANS avoir pu être confrontés
+    // au service : il n'est pas joignable depuis l'endroit où ce code a été
+    // écrit. Un alias qui ne correspond à rien ne coûte rien — il n'est
+    // consulté que si aucun nom français n'a été trouvé — mais un champ
+    // réellement nommé autrement passera à côté. C'est pourquoi le bouton
+    // « Tester » de l'onglet Données rend la liste exacte des colonnes et dit
+    // lesquelles il a su rapprocher : cette liste est ce qui permettra de
+    // remplacer ces suppositions par les vrais noms.
     const COLONNES = {
-        compte:       ['n de compte', 'numero de compte', 'compte', 'compte general', 'compte tiers'],
+        compte:       ['n de compte', 'numero de compte', 'compte', 'compte general', 'compte tiers',
+                       'ledger account number', 'account number', 'ledger account id'],
         // « 4110600400000 - Clients - Alma » : le numéro de compte entier, que
         // la colonne dédiée perd parfois en notation scientifique.
         concat:       ['concat', 'compte et libelle', 'cle compte'],
         libelleCompte:['libelle de compte', 'intitule du compte', 'libelle compte'],
-        lettrage:     ['let', 'lettrage', 'lettre', 'code lettrage', 'let ', 'rapprochement'],
-        journal:      ['journal', 'code journal', 'jrnl'],
+        lettrage:     ['let', 'lettrage', 'lettre', 'code lettrage', 'let ', 'rapprochement',
+                       'lettering', 'matching code', 'reconciliation code'],
+        journal:      ['journal', 'code journal', 'jrnl', 'journal code', 'journal label'],
         date:         ['date d ecriture', 'date ecriture', 'date de piece', 'date piece', 'date'],
         numero:       ['n de facture', 'numero de facture', 'numero facture', 'n facture',
-                       'n de piece', 'numero de piece', 'piece', 'reference'],
+                       'n de piece', 'numero de piece', 'piece', 'reference',
+                       'invoice number', 'document number', 'invoice reference'],
         // Le classeur de trésorerie porte une colonne où le numéro a déjà été
         // extrait du libellé de ligne : sur l'extrait de septembre elle est
         // remplie sur 10 599 lignes, contre 3 435 pour la colonne « N° de
@@ -82,7 +100,8 @@
         // voyait partir au libellé de pièce, d'où les dates ne se lisent pas.
         // La colonne existait, la date était dedans, et la ligne ressortait
         // datée de son enregistrement.
-        libelleLigne: ['libelle de ligne', 'libelle ligne', 'detail', 'libelle ecriture'],
+        libelleLigne: ['libelle de ligne', 'libelle ligne', 'detail', 'libelle ecriture',
+                       'label', 'line label', 'description'],
         // Le libellé de PIÈCE est celui de l'écriture entière. On n'y lit
         // jamais de date — « que ds libéllé de ligne », 20/10/2026 — mais il
         // nomme la nature de l'écriture, report à nouveau compris.
@@ -90,8 +109,9 @@
         debit:        ['debit', 'montant debit', 'debit eur'],
         credit:       ['credit', 'montant credit', 'credit eur'],
         solde:        ['solde', 'solde progressif'],
-        tiers:        ['tiers', 'nom du tiers', 'client', 'raison sociale'],
-        dateEcheance: ['date d echeance', 'date echeance', 'echeance'],
+        tiers:        ['tiers', 'nom du tiers', 'client', 'raison sociale',
+                       'third party name', 'customer name', 'supplier name'],
+        dateEcheance: ['date d echeance', 'date echeance', 'echeance', 'due date', 'deadline'],
         // Cette colonne ne figure que dans VOTRE balance travaillée : elle sert
         // à reconnaître votre feuille d'un export Pennylane brut.
         echeanceRecalculee: ['date d echeance recalculee', 'date echeance recalculee'],
@@ -104,7 +124,8 @@
                              'date de saisie', 'date de creation'],
         // L'identifiant du tiers est plus stable que le numéro de compte pour
         // reconnaître un client d'un extrait à l'autre.
-        identifiantTiers: ['identifiant du tiers', 'id tiers', 'identifiant tiers', 'code tiers'],
+        identifiantTiers: ['identifiant du tiers', 'id tiers', 'identifiant tiers', 'code tiers',
+                           'third party id', 'customer id', 'supplier id'],
         // Le SIREN dit qu'un tiers est une entreprise immatriculée. Il ne dit
         // pas l'inverse — il n'est renseigné que sur un compte sur cinq — mais
         // là où il est présent, il vaut certitude.

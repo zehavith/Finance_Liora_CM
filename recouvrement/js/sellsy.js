@@ -85,22 +85,42 @@
      * tout court : aucun alias générique ne l'attrape, et sans le numéro il n'y
      * a pas de rapprochement possible.
      */
+    // ── QUAND LA FACTURATION ARRIVE PAR L'API, ELLE PARLE ANGLAIS ──
+    //
+    // Un export Sellsy porte des en-têtes français ; la même facture demandée
+    // à son API porte des champs anglais, mis à plat par js/api.js — un client
+    // rattaché devient « related.1.name ». Les alias anglais ci-dessous ne
+    // sont consultés que si aucun nom français n'a été trouvé, donc ils ne
+    // changent rien aux imports de fichiers.
+    //
+    // Ils sont écrits d'après la documentation, sans avoir pu être confrontés
+    // au service. Le bouton « Tester » de l'onglet Données rend la liste
+    // exacte des champs et dit lesquels il a su rapprocher : c'est cette
+    // liste qui permettra de remplacer ces suppositions.
     const ALIAS_SELLSY = {
-        numero:     ['numero', 'num', 'reference', 'ref', 'numero de document', 'document', 'piece'],
-        client:     ['nom du client', 'client', 'tiers', 'societe', 'nom du tiers', 'raison sociale'],
+        numero:     ['numero', 'num', 'reference', 'ref', 'numero de document', 'document', 'piece',
+                     'number', 'invoice number', 'decimal number'],
+        client:     ['nom du client', 'client', 'tiers', 'societe', 'nom du tiers', 'raison sociale',
+                     'related 1 name', 'client name', 'customer name', 'company name',
+                     'individual name', 'contact name', 'third party name'],
         // L'e-mail joint la facturation aux prélèvements : c'est la clé du
         // classeur de trésorerie pour retrouver le mandat GoCardless d'un
         // client, et elle ne souffre pas des variantes d'orthographe d'un nom.
         email:      ['email client', 'e mail client', 'email', 'e mail', 'courriel'],
-        montant:    ['montant ttc', 'total ttc', 'ttc', 'montant', 'total'],
-        montantHT:  ['montant ht', 'total ht', 'ht'],
-        resteDu:    ['montant du ttc', 'montant du', 'restant du', 'reste du', 'reste a payer', 'solde du', 'solde'],
+        montant:    ['montant ttc', 'total ttc', 'ttc', 'montant', 'total',
+                     'amounts total including tax', 'total including tax', 'total incl tax'],
+        montantHT:  ['montant ht', 'total ht', 'ht',
+                     'amounts total excluding tax', 'total excluding tax', 'total excl tax'],
+        resteDu:    ['montant du ttc', 'montant du', 'restant du', 'reste du', 'reste a payer', 'solde du', 'solde',
+                     'amounts due', 'amount due', 'remaining amount', 'balance due'],
         // Le reste à charge après acompte : sur un dossier CPF, l'apprenant
         // verse souvent une part à l'inscription et la Caisse des Dépôts ne
         // règle que ce qui reste. C'est cette colonne qui le porte.
         montantRAC: ['montant rac', 'montant r a c', 'rac', 'reste a charge', 'montant reste a charge'],
-        dateFacture: ['date', 'date de facture', 'date facture', 'date d emission'],
-        dateEcheanceSource: ['date d echeance', 'echeance', 'date limite de paiement'],
+        dateFacture: ['date', 'date de facture', 'date facture', 'date d emission',
+                      'created', 'issue date', 'invoice date'],
+        dateEcheanceSource: ['date d echeance', 'echeance', 'date limite de paiement',
+                             'due date', 'payment deadline'],
         // Sellsy nomme les dates de formation « début » et « fin de service ».
         // Ce sont elles que les règles d'échéance attendent : les récupérer vaut
         // mieux que de recopier l'échéance calculée par Sellsy.
@@ -120,7 +140,8 @@
         // par là que les dates, l'e-mail et le statut se rejoignent.
         numeroZoho: ['numero de facture zoho', 'facture zoho', 'numero zoho',
                      'facture sellsy correspondante', 'numero de facture sellsy'],
-        statut:     ['statut', 'status', 'etat', 'etat du paiement', 'statut de paiement'],
+        statut:     ['statut', 'status', 'etat', 'etat du paiement', 'statut de paiement',
+                     'payment status', 'step'],
     };
 
     /** Le libellé de colonne est-il exactement l'un des alias ? */

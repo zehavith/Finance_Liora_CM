@@ -79,7 +79,7 @@ const COPIES = [
       'inter-latin.woff2']
     .map(f => [path.join(RACINE, 'vendor', f), 'vendor/' + f]),
   ...['rules.js', 'ingest.js', 'metrics.js', 'prelevements.js', 'grandlivre.js',
-      'sellsy.js', 'zoho.js', 'ui.js']
+      'sellsy.js', 'zoho.js', 'ui.js', 'api.js']
     .map(f => [path.join(APP, 'js', f), 'js/' + f]),
 ];
 console.log('recopiés tels quels :');

@@ -23,6 +23,7 @@
     const U = window.LioraUI;
     const SE = window.LioraSellsy;
     const Z = window.LioraZoho;
+    const API = window.LioraAPI;
 
     /**
      * La facturation, Sellsy d'abord puis la table Zoho figée.
@@ -371,6 +372,7 @@
             if (iso) state.derniereActualisation = new Date(iso);
         } catch { /* ignore */ }
 
+        reprendreAPI();
         proposerReprise();
         programmerActualisation();
         // Rafraîchit l'ancienneté affichée sans solliciter Monday
@@ -10553,6 +10555,15 @@
     // ══════════════════════════════════════════════
 
     function lireFichier(file, opts) {
+        // UNE SOURCE DÉJÀ LUE ENTRE PAR LA MÊME PORTE.
+        //
+        // Tout ce qui entre dans l'application passe par ici : un fichier
+        // déposé devient un tableau de lignes, et c'est ce tableau que la
+        // suite rapproche, dédoublonne et compte. Un import d'API produit
+        // exactement la même chose — il n'a donc aucune raison d'emprunter
+        // un autre chemin, ni de refaire ce que celui-ci fait déjà.
+        if (file && Array.isArray(file.rows)) return Promise.resolve(file.rows);
+
         const toutesFeuilles = !!(opts && opts.toutesFeuilles);
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -12005,6 +12016,9 @@
         // ── Mise en page ──
         window.addEventListener('resize', mesurerNavbar);
 
+        // ── Sellsy et Pennylane ──
+        brancherAPI();
+
         // ── Modale ──
         $('#modal-close').addEventListener('click', U.closeModal);
         $('#modal-overlay').addEventListener('click', e => { if (e.target.id === 'modal-overlay') U.closeModal(); });
@@ -12057,6 +12071,204 @@
     }
 
     /** Zone de dépôt cliquable + glisser-déposer. */
+    // ══════════════════════════════════════════════
+    //  Sellsy et Pennylane
+    // ══════════════════════════════════════════════
+    //
+    // Tous les écouteurs de cette section passent par `quand`, qui vérifie
+    // que l'élément existe. Le reste de brancherEvenements ne le fait pas,
+    // et c'est précisément ce qui rend un retrait de balisage dangereux :
+    // une seule référence manquante interrompt le démarrage et laisse
+    // l'écran vide. Ce qui s'ajoute ici n'ajoute pas ce risque-là.
+    function quand(sel, ev, fn) {
+        const e = $(sel);
+        if (e) e.addEventListener(ev, fn);
+        return e;
+    }
+
+    const CLES_API = 'rec_api_identifiants';
+
+    function journalAPI(ligne) {
+        const j = $('#api-journal');
+        if (!j) return;
+        j.hidden = false;
+        j.textContent = (j.textContent ? j.textContent + '\n' : '') + ligne;
+        j.scrollTop = j.scrollHeight;
+    }
+
+    function direAPI(sel, texte, genre) {
+        const e = $(sel);
+        if (!e) return;
+        e.textContent = texte;
+        e.className = 'connect-status' + (genre ? ' ' + genre : '');
+    }
+
+    /**
+     * CE QUE LE SERVICE A RÉPONDU, ET CE QUE L'APPLICATION EN COMPREND.
+     *
+     * « Ça répond » ne suffit pas : ce qui décide, c'est si les colonnes
+     * rendues sont celles que les lecteurs savent reconnaître. Le test les
+     * confronte donc tout de suite, et nomme les deux listes — ce qui est
+     * rapproché, et ce qui manque. La seconde est la liste des corrections à
+     * apporter, et elle part d'une mesure, pas d'une supposition.
+     */
+    const ESSENTIELS_GL = {
+        compte: 'le compte client', date: 'la date de l’écriture',
+        libelleLigne: 'le libellé de ligne', debit: 'le débit', credit: 'le crédit',
+        lettrage: 'le lettrage', numero: 'le numéro de facture',
+    };
+    const ESSENTIELS_SELLSY = {
+        numero: 'le numéro de facture', montant: 'le montant',
+        dateFacture: 'la date de facture', client: 'le client',
+    };
+
+    function rendreDiagnostic(sel, d, quoi) {
+        const colonnes = d.colonnes || [];
+        journalAPI('── ' + d.url);
+        journalAPI('   enveloppe : ' + d.enveloppe.join(', ') + ' · pagination : ' + d.pagination);
+        journalAPI('   colonnes (' + colonnes.length + ') : ' + (colonnes.join(' · ') || '(aucune)'));
+
+        if (!d.reconnu) {
+            direAPI(sel, 'Le service répond, mais aucune ligne n’a été reconnue dans sa réponse. '
+                + 'Le journal ci-dessous montre ce qu’il a renvoyé.', 'warn');
+            return;
+        }
+
+        // Ce que les lecteurs de l'application savent faire de ces colonnes.
+        let mapping = {}, attendus = ESSENTIELS_GL;
+        try {
+            if (quoi === 'sellsy') {
+                attendus = ESSENTIELS_SELLSY;
+                mapping = (SE.lireExport([d.exemple]) || {}).mapping || {};
+            } else {
+                mapping = GL.detecterColonnes(colonnes) || {};
+            }
+        } catch (e) { journalAPI('   (rapprochement impossible : ' + (e && e.message || e) + ')'); }
+
+        const trouves = [], manquants = [];
+        for (const [champ, nom] of Object.entries(attendus))
+            (mapping[champ] ? trouves : manquants).push(
+                mapping[champ] ? nom + ' ← « ' + mapping[champ] + ' »' : nom);
+
+        journalAPI('   reconnu : ' + (trouves.join(' · ') || '(rien)'));
+        if (manquants.length) journalAPI('   MANQUE : ' + manquants.join(' · '));
+
+        if (!manquants.length) {
+            direAPI(sel, 'Connexion établie, et tout ce qui compte est reconnu — '
+                + colonnes.length + ' colonnes. Vous pouvez charger.', 'ok');
+        } else {
+            direAPI(sel, 'Connexion établie, mais ' + manquants.length + ' information(s) sur '
+                + Object.keys(attendus).length + ' ne sont pas reconnues : ' + manquants.join(', ')
+                + '. Copiez le journal ci-dessous et envoyez-le-moi : les noms exacts des '
+                + 'colonnes y sont, et ils suffisent à corriger.', 'warn');
+        }
+    }
+
+    async function retenirAPI() {
+        const v = {
+            plBase: ($('#pl-base') || {}).value || '',
+            plJeton: ($('#pl-jeton') || {}).value || '',
+            syBase: ($('#sy-base') || {}).value || '',
+            syJetons: ($('#sy-jetons') || {}).value || '',
+            syId: ($('#sy-id') || {}).value || '',
+            sySecret: ($('#sy-secret') || {}).value || '',
+        };
+        try { await S.set(CLES_API, v); } catch (e) { /* le magasin le dira lui-même */ }
+    }
+
+    async function reprendreAPI() {
+        if (!API) return;
+        let v = {};
+        try { v = (await S.get(CLES_API, {})) || {}; } catch (e) { v = {}; }
+        const poser = (sel, val) => { const e = $(sel); if (e && val) e.value = val; };
+        poser('#pl-base', v.plBase || API.PENNYLANE_BASE);
+        poser('#pl-jeton', v.plJeton);
+        poser('#sy-base', v.syBase || API.SELLSY_BASE);
+        poser('#sy-jetons', v.syJetons || API.SELLSY_JETONS);
+        poser('#sy-id', v.syId);
+        poser('#sy-secret', v.sySecret);
+    }
+
+    function brancherAPI() {
+        if (!API) return;
+        const basculer = (bouton, champ) => quand(bouton, 'click', () => {
+            const e = $(champ); if (e) e.type = e.type === 'password' ? 'text' : 'password';
+        });
+        basculer('#btn-pl-visible', '#pl-jeton');
+        basculer('#btn-sy-visible', '#sy-secret');
+
+        // ── Pennylane ──
+        quand('#btn-pl-tester', 'click', async () => {
+            const jeton = ($('#pl-jeton') || {}).value;
+            if (!jeton) return direAPI('#pl-etat', 'Collez d’abord le jeton.', 'warn');
+            direAPI('#pl-etat', 'Appel en cours…');
+            try {
+                await retenirAPI();
+                rendreDiagnostic('#pl-etat', await API.pennylane.tester(jeton, ($('#pl-base') || {}).value), 'gl');
+            } catch (e) { direAPI('#pl-etat', e.message, 'err'); }
+        });
+
+        quand('#btn-pl-charger', 'click', async () => {
+            const jeton = ($('#pl-jeton') || {}).value;
+            if (!jeton) return direAPI('#pl-etat', 'Collez d’abord le jeton.', 'warn');
+            direAPI('#pl-etat', 'Lecture du grand livre…');
+            try {
+                await retenirAPI();
+                const { lignes, pages } = await API.pennylane.charger(
+                    jeton, ($('#pl-base') || {}).value, journalAPI);
+                if (!lignes.length) return direAPI('#pl-etat',
+                    'Le service n’a rendu aucune ligne. Lancez « Tester » pour voir sa réponse.', 'warn');
+                direAPI('#pl-etat', U.nombre(lignes.length) + ' lignes lues en ' + pages
+                    + ' pages — intégration…');
+                await importerGrandLivre({ name: 'Pennylane (API) ' + leJourAPI(), rows: lignes });
+                direAPI('#pl-etat', U.nombre(lignes.length) + ' lignes intégrées.', 'ok');
+            } catch (e) { direAPI('#pl-etat', e.message, 'err'); }
+        });
+
+        quand('#btn-pl-oublier', 'click', async () => {
+            const e = $('#pl-jeton'); if (e) e.value = '';
+            await retenirAPI();
+            direAPI('#pl-etat', 'Jeton oublié.');
+        });
+
+        // ── Sellsy ──
+        quand('#btn-sy-tester', 'click', async () => {
+            const id = ($('#sy-id') || {}).value, secret = ($('#sy-secret') || {}).value;
+            if (!id || !secret) return direAPI('#sy-etat', 'Identifiant et secret sont nécessaires.', 'warn');
+            direAPI('#sy-etat', 'Appel en cours…');
+            try {
+                await retenirAPI();
+                rendreDiagnostic('#sy-etat', await API.sellsy.tester(
+                    id, secret, ($('#sy-base') || {}).value, ($('#sy-jetons') || {}).value), 'sellsy');
+            } catch (e) { direAPI('#sy-etat', e.message, 'err'); }
+        });
+
+        quand('#btn-sy-charger', 'click', async () => {
+            const id = ($('#sy-id') || {}).value, secret = ($('#sy-secret') || {}).value;
+            if (!id || !secret) return direAPI('#sy-etat', 'Identifiant et secret sont nécessaires.', 'warn');
+            direAPI('#sy-etat', 'Lecture de la facturation…');
+            try {
+                await retenirAPI();
+                const { lignes, pages } = await API.sellsy.charger(
+                    id, secret, ($('#sy-base') || {}).value, journalAPI, ($('#sy-jetons') || {}).value);
+                if (!lignes.length) return direAPI('#sy-etat',
+                    'Le service n’a rendu aucune facture. Lancez « Tester » pour voir sa réponse.', 'warn');
+                direAPI('#sy-etat', U.nombre(lignes.length) + ' factures lues en ' + pages
+                    + ' pages — intégration…');
+                await importerSellsy([{ name: 'Sellsy (API) ' + leJourAPI(), rows: lignes }]);
+                direAPI('#sy-etat', U.nombre(lignes.length) + ' factures intégrées.', 'ok');
+            } catch (e) { direAPI('#sy-etat', e.message, 'err'); }
+        });
+
+        quand('#btn-sy-oublier', 'click', async () => {
+            for (const s of ['#sy-id', '#sy-secret']) { const e = $(s); if (e) e.value = ''; }
+            await retenirAPI();
+            direAPI('#sy-etat', 'Identifiants oubliés.');
+        });
+    }
+
+    const leJourAPI = () => new Date().toLocaleDateString('fr-FR');
+
     function brancherZoneDepot(zoneSel, inputSel, handler) {
         const zone = $(zoneSel), input = $(inputSel);
         if (!zone || !input) return;
