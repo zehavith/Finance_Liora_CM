@@ -136,6 +136,8 @@ input[type=search]{flex:1 1 220px}
 .champ{padding:9px 16px;border-bottom:1px solid var(--trait);min-width:0}
 .champ dt{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--encre-3);margin:0}
 .champ dd{margin:3px 0 0;font-size:13px;word-break:break-word}
+/* Le numéro de rapprochement se saisit à côté des filtres, et leur ressemble. */
+#frap{width:190px}
 /* Deux propositions de rapprochement ne se touchent pas : chacune a son bloc
    et son trait. Sa demande du 22/10/2026. */
 .champ dd ul.props{margin:4px 0 0;padding:0;list-style:none}
@@ -328,6 +330,8 @@ input[type=search]{flex:1 1 220px}
       <option value="probable">Probable</option>
       <option value="à vérifier">À vérifier</option>
     </select>
+    <input id="frap" type="text" inputmode="numeric" hidden
+           placeholder="N° de rapprochement" aria-label="Numéro de rapprochement">
     <span class="cpt" id="cpt"></span>
   </div>
   <div class="zoom" id="zoom" hidden>
@@ -370,12 +374,25 @@ input[type=search]{flex:1 1 220px}
         mandat de prélèvement ne regarde jamais son barème.</p>
       <div class="param-table" id="ech-ordre"></div>
       <h4>Le barème, dispositif par dispositif</h4>
+      <p class="param-note">Un barème modifié ici est enregistré aussitôt, mais les échéances
+        déjà calculées ne bougent pas : elles sont refaites à la prochaine reconstruction de
+        la balance. Les taux de provision, eux, s’appliquent immédiatement à l’écran.</p>
       <div class="param-table" id="ech-bareme"></div>
       <div class="param-actions" id="ech-actions" hidden>
         <button type="button" id="ech-ok">Enregistrer</button>
         <button type="button" class="plat" id="ech-non">Annuler</button>
       </div>
     </div>
+    <div class="param-bloc">
+      <div class="param-tete">
+        <h3>Règles de classement</h3>
+      </div>
+      <p class="param-note">Comment chaque écriture reçoit son type de financement. La
+        première règle applicable l’emporte ; les suivantes ne sont pas examinées. En face
+        de chacune, le nombre d’écritures qu’elle a réellement classées.</p>
+      <div class="param-table" id="cla-ordre"></div>
+    </div>
+
     <div class="param-bloc">
       <div class="param-tete">
         <h3>Règles de provision</h3>

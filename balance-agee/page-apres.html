@@ -82,7 +82,7 @@ function demarrer(){
   E('fcat').innerHTML+=cats.map(c=>'<option>'+c+'</option>').join('');
   const trs=[...new Set(I.map(i=>V(i,'Tranche d’ancienneté')).filter(Boolean))];
   E('ftr').innerHTML+=trs.map(c=>'<option>'+c+'</option>').join('');
-  ['q','fcat','ftr','fac','ffiab'].forEach(id=>E(id).addEventListener('input',()=>appliquer()));
+  ['q','fcat','ftr','fac','ffiab','frap'].forEach(id=>E(id).addEventListener('input',()=>appliquer()));
   for(const id of ['q','fcat','ftr','fac'])
     E(id).addEventListener('input',()=>{ if(zoom){ zoom=null; E('zoom').hidden=true; } });
   E('zoom-non').addEventListener('click',fermerZoom);
@@ -255,6 +255,7 @@ function ouvrir(cat,tr,niv,prov){
   zoom={niveau:niv||niveau, cat:cat||'', tr:tr||'', prov:!!prov};
   E('fac').value=''; E('fcat').value=''; E('ftr').value='';
   E('ffiab').value=''; E('ffiab').hidden=true;
+  E('frap').value=''; E('frap').hidden=true;
   appliquer();
   E('viewport').scrollIntoView({behavior:'smooth',block:'center'});
 }
@@ -380,6 +381,15 @@ function appliquer(garderPlace){
   if(a!=='rappro'){ if(!vf.hidden){ vf.hidden=true; vf.value=''; } }
   else if(vf.hidden) vf.hidden=false;
   const fi=a==='rappro'?vf.value:'';
+  // UNE PROPOSITION À LA FOIS, PAR SON NUMÉRO.
+  //
+  // Le numéro de rapprochement est le seul lien entre la facture et le
+  // règlement qu'on lui propose : le saisir ici isole le couple, et lui seul.
+  // Comme le filtre de fiabilité, le champ n'existe que dans cette vue.
+  const vr=E('frap');
+  if(a!=='rappro'){ if(!vr.hidden){ vr.hidden=true; vr.value=''; } }
+  else if(vr.hidden) vr.hidden=false;
+  const nrap=a==='rappro'?vr.value.trim():'';
   // Changer de vue vide la sélection : une case cochée hors de l'écran, qu'on
   // compléterait sans la voir, serait pire que de devoir recocher.
   if(!garderPlace&&selection.size){ selection.clear(); }
@@ -424,6 +434,10 @@ function appliquer(garderPlace){
     // règlement, qui est toujours au crédit : c'est lui qu'on filtre, et le
     // couple va chercher ses factures.
     if(a==='rappro'&&!(V(i,'Proposition de rapprochement')&&N(i,'Crédit')>0.009)) return false;
+    // Le numéro saisi, comparé aux numéros que la ligne porte — elle peut en
+    // porter plusieurs : « 3 · 4 ».
+    if(nrap && !V(i,'N° de rapprochement').split('·').map(x=>x.trim()).includes(nrap))
+      return false;
     // La fiabilité est portée par le RÈGLEMENT ; la facture d'en face la
     // reprend préfixée de son numéro de couple. On cherche donc le mot.
     if(fi&&!new RegExp('(^|\\W)'+fi.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(\\W|$)','i')
@@ -1574,7 +1588,7 @@ function parametres(){
     : 'Lecture seule : vous pouvez consulter, filtrer et exporter. Les règles et les '
       +'compléments sont tenus par le responsable recouvrement.';
   for(const id of ['prov-modif','ech-modif']){ const b=E(id); if(b) b.hidden=!admin; }
-  tableProvision(); tableEcheance();
+  tableProvision(); tableClassement(); tableEcheance();
 }
 
 // ───── le barème de provision ─────
@@ -1640,6 +1654,27 @@ function tableProvision(){
 // maintenant sur les champs du moteur — voir rangDeLaLigne() dans
 // construire.js — et le pose sur chaque règle, en « n ». Un seul décompte, le
 // même dans le classeur et dans la page.
+
+// ───── les règles de classement ─────
+//
+// « Ajoute dans les paramètres les règles de classement. » Elles n'étaient
+// écrites nulle part : la page montrait comment une échéance se calcule, et
+// pas comment un type de financement se décide. Le décompte en face de chaque
+// règle vient de la colonne « Origine du classement », donc du travail
+// réellement fait, et non d'une estimation.
+function tableClassement(){
+  const L=D.classement||[];
+  if(!L.length){ E('cla-ordre').innerHTML=''; return; }
+  const n=x=>Number(x||0).toLocaleString('fr-FR');
+  E('cla-ordre').innerHTML='<table><thead><tr><th>Rang</th><th>Ce qui décide</th>'
+    +'<th>Quand</th><th class="n">Écritures</th></tr></thead><tbody>'
+    +L.map(r=>'<tr><td class="fam">'+esc(r.rang)+'</td>'
+      +'<td class="fam">'+esc(r.quoi)+'</td><td>'+esc(r.quand)
+      +(r.note?'<br><span style="color:var(--encre-2)">'+esc(r.note)+'</span>':'')
+      +'</td><td class="n">'+n(r.n)+'</td></tr>').join('')
+    +'<tr class="total"><td></td><td></td><td>TOTAL</td><td class="n">'
+    +n(L.reduce((a,r)=>a+(r.n||0),0))+'</td></tr></tbody></table>';
+}
 
 // ───── les règles d'échéance ─────
 function tableEcheance(){

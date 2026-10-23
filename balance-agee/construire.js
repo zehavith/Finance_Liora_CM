@@ -12,6 +12,58 @@ console.log('mandats GoCardless : '+MANDATS.length+' client'+(MANDATS.length>1?'
 const fr=d=>{ if(!d) return ''; const x=new Date(d);
   return String(x.getUTCDate()).padStart(2,'0')+'/'+String(x.getUTCMonth()+1).padStart(2,'0')+'/'+x.getUTCFullYear(); };
 const ar=n=>n==null?'':Math.round(n*100)/100;
+
+// CE QU'ELLE RÈGLE DANS LA PAGE DOIT ARRIVER JUSQU'ICI.
+//
+// « Lorsque je modifie le barème, dispositif par dispositif, cela s'actualise
+// quand ? » La page enregistre ses réglages dans sa base — le barème sous
+// « echeance », les taux de provision sous « provision » — et les réaffiche
+// ensuite. Mais la construction ne les lisait pas : elle repartait des valeurs
+// écrites dans ce fichier. Le barème affiché à l'écran n'était donc pas celui
+// qui avait daté les lignes juste à côté, et rien ne le disait.
+//
+// L'instantané se prend avec celui des compléments. On ne reprend QUE ce que
+// la page permet de régler — la base et le délai de chaque dispositif, les
+// taux de provision. Le reste, familles, fenêtres d'ancienneté, mots reconnus,
+// reste écrit ici : un instantané ancien ramènerait une liste de dispositifs
+// périmée.
+let parametres=[];
+try{ parametres=JSON.parse(fs.readFileSync('parametres.json','utf8')); }catch(e){}
+const paramDit=id=>{ const d=parametres.find(p=>p&&p.id===id); return d?(d.data||d):null; };
+{
+  let quand=null;
+  try{ quand=fs.statSync('parametres.json').mtime; }catch(e){}
+  console.log('paramètres réglés dans la page : instantané du '
+    +(quand?fr(quand):'(aucun)')+' · '+parametres.length+' réglage'
+    +(parametres.length>1?'s':''));
+  if(!quand || (Date.now()-+quand)>36*3600*1000)
+    console.log('   ATTENTION : instantané absent ou de plus d’un jour. Réexportez la '
+      +'collection « parametres » avant de livrer : ce qu’elle a réglé depuis serait ignoré.');
+}
+
+// LE BARÈME QU'ELLE A RÉGLÉ REMPLACE CELUI DU CODE.
+//
+// Dispositif par dispositif, et seulement sur les deux champs que la page
+// laisse modifier : la base de l'échéance et le délai. Un dispositif que
+// l'instantané ne connaît pas garde ce qui est écrit dans les règles.
+{
+  const p=paramDit('echeance');
+  const pris=[];
+  for(const r of ((p&&p.regles)||[])){
+    if(!r||!r.dispositif) continue;
+    const regle=RG.find(x=>x&&(x.label===r.dispositif||x.key===r.dispositif));
+    if(!regle) continue;
+    const g=regle.gl||regle;
+    const base=String(r.base||'').trim(), j=Number(String(r.jours).trim());
+    let change=false;
+    if(base && base!==g.base){ g.base=base; change=true; }
+    if(isFinite(j) && j!==Number(g.jours)){ g.jours=j; change=true; }
+    if(change) pris.push(r.dispositif);
+  }
+  if(p) console.log('barème : réglé dans la page le '+(p.quand||'?')
+    +(pris.length?' · repris ici pour '+pris.join(' · '):' · identique à celui du code'));
+}
+
 const lab=f=>f?R.getRule(f,RG).label:'À classer';
 // Ses trois types de client, dictés le 16/10/2026. Tout ce qui n'en est pas un
 // est rendu vide plutôt que publié : un quatrième type naîtrait sinon d'un
@@ -927,7 +979,7 @@ const autreCote=(l,quoi)=>{
 // Le rang se décide donc ici, sur les champs STRUCTURÉS que le moteur rend —
 // la base retenue et la source du repli — et non sur une phrase ; et il se
 // décide une seule fois, pour le classeur comme pour la page.
-const parRang=new Map();
+const parRang=new Map(), parOrigine=new Map();
 const rangDeLaLigne=src=>{
   const m=String(src.echeanceMotif||'');
   if(src.echeanceBase==='dateReglement') return '1';
@@ -1284,6 +1336,7 @@ for(let i=0;i<plat.length;i++){
   };
   principale.push(o);
   if(src.dateEcheance){ const g=rangDeLaLigne(src); parRang.set(g,(parRang.get(g)||0)+1); }
+  { const og=String(o['Origine du classement']||''); parOrigine.set(og,(parOrigine.get(og)||0)+1); }
 }
 console.log('feuille principale : '+principale.length+' lignes × '+Object.keys(principale[0]).length+' colonnes');
 fs.writeFileSync('principale.json',JSON.stringify({n:principale.length}));
@@ -1368,6 +1421,22 @@ const PROVISION={
     'Financement personnel':['Financement personnel','Perso-Alternance'],
   },
 };
+
+// Les taux qu'elle a réglés dans la page, famille par famille et fenêtre par
+// fenêtre. Seuls les nombres sont repris : une famille que l'instantané ne
+// connaît pas garde le taux écrit ci-dessus.
+{
+  const p=paramDit('provision');
+  const pris=[];
+  if(p && p.taux) for(const [fam,t] of Object.entries(p.taux)){
+    if(!PROVISION.taux[fam] || !Array.isArray(t)) continue;
+    const avant=PROVISION.taux[fam].join('/');
+    PROVISION.taux[fam]=PROVISION.taux[fam].map((v,i)=>typeof t[i]==='number'?t[i]:v);
+    if(PROVISION.taux[fam].join('/')!==avant) pris.push(fam);
+  }
+  if(p) console.log('taux de provision : réglés dans la page le '+(p.quand||'?')
+    +(pris.length?' · repris ici pour '+pris.join(' · '):' · identiques à ceux du code'));
+}
 
 const add=(nom,rows)=>{
   if(nom.length>31) throw new Error('onglet trop long pour Excel ('+nom.length+' caractères) : '+nom);
@@ -1661,14 +1730,73 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
   // La nature de chaque règle, à sa demande du 20/10/2026 : une exception
   // passe AVANT le barème et l'écarte ; un repli vient APRÈS, faute de base.
   // C'est le même vocabulaire que la colonne « Règle de datation appliquée ».
+  // COMMENT UNE ÉCRITURE REÇOIT SON TYPE DE FINANCEMENT.
+  //
+  // « Ajoute dans les paramètres les règles de classement. » Elles existaient
+  // dans le moteur et nulle part à l'écran : la page disait comment une
+  // échéance se calcule, jamais comment un dispositif se décide.
+  //
+  // Le décompte de chaque règle est le nombre d'écritures qui portent SON
+  // origine dans la colonne « Origine du classement ». Il n'est donc pas
+  // estimé : c'est le travail réellement fait, ligne à ligne.
+  classement:[
+    {rang:'1', quoi:'Votre décision',
+     quand:'Le type a été complété à la main dans la balance publiée',
+     note:'Elle passe avant tout le reste et ne se redemande pas : une créance que vous '
+         +'avez tranchée garde son type à chaque reconstruction.',
+     n:parOrigine.get('Complété à la main dans la balance publiée')||0},
+    {rang:'2', quoi:'La facture que la ligne cite',
+     quand:'La ligne porte un numéro de facture connu de la facturation',
+     note:'Le type vient de la facture elle-même — son dispositif dans l’export de '
+         +'facturation, ou le dispositif nommé dans son libellé (voir « Mots reconnus » '
+         +'du barème).',
+     n:parOrigine.get('Facture citée par la ligne')||0},
+    {rang:'3', quoi:'Le numéro Filiz',
+     quand:'La facture est une FCT-FILIZ',
+     note:'Une facture du financeur de l’alternance est une alternance, quoi que dise le '
+         +'reste.',
+     n:parOrigine.get('Facture Filiz : alternance')||0},
+    {rang:'4', quoi:'Le type de client de la facturation',
+     quand:'La facturation range ce client sous un seul dispositif',
+     note:'L’unanimité, pas la majorité : dès que la facturation range le client sous deux '
+         +'dispositifs, elle ne tranche plus rien pour les factures qu’elle n’a pas '
+         +'nommées elle-même.',
+     n:parOrigine.get('Type de client (facturation)')||0},
+    {rang:'5', quoi:'France Travail : AIF ou POEI',
+     quand:'Compte France Travail, et rien ne nomme le dispositif',
+     note:'Dans cet ordre : le dispositif écrit sur la ligne l’emporte ; sinon celui que '
+         +'la facturation donne à la facture, ou au client s’il est unanime ; sinon son '
+         +'type de client — « POEI » donne POEI, « AIF » ou un particulier donne AIF. '
+         +'À défaut seulement, le montant tranche : au-dessus de 7 000 €, POEI ; '
+         +'en dessous, AIF. La POEI passe par l’employeur, l’AIF est une aide accordée à '
+         +'la personne.',
+     n:parOrigine.get('Montant du règlement (règle France Travail)')||0},
+    {rang:'6', quoi:'La facture du même lettrage',
+     quand:'L’écriture ne porte aucun numéro, mais son lettrage contient une facture',
+     note:'Un règlement pointé avec une facture prend le type de cette facture.',
+     n:parOrigine.get('Hérité de la facture du même lettrage')||0},
+    {rang:'7', quoi:'Une facture non lettrée du même compte',
+     quand:'Le compte client ne porte qu’un seul dispositif',
+     note:'À défaut de lettrage, le compte parle — à condition de parler d’une seule voix.',
+     n:parOrigine.get('Hérité d’une facture non lettrée du même compte')||0},
+    {rang:'8', quoi:'Au prorata des factures du client',
+     quand:'Le compte porte PLUSIEURS dispositifs et rien ne rattache l’écriture',
+     note:'Son montant se répartit au prorata de ce que doivent les factures du compte, '
+         +'dispositif par dispositif. Rien n’est attribué au premier venu.',
+     n:parOrigine.get('Réparti au prorata des factures du client')||0},
+    {rang:'9', quoi:'À classer',
+     quand:'Aucune des règles ci-dessus ne s’applique',
+     note:'Rien n’est inventé : la ligne reste à compléter, et la balance la compte sous '
+         +'« À classer » jusqu’à ce que vous tranchiez.',
+     n:parOrigine.get('')||0},
+  ],
   ordreEcheance:[
     {rang:'1', nature:'Règle de la ligne',
      quand:'La ligne est un encaissement',
      alors:'sa propre date, sans délai',
-     note:'« Un paiement n’a pas la mm date que la facture », 20/10/2026. Un règlement '
-         +'porte la date à laquelle l’argent est rentré, jamais l’échéance de la facture '
-         +'qu’il solde. Cette règle passe avant toutes les autres, et elle ne vaut que '
-         +'pour lui.'},
+     note:'Un règlement porte la date à laquelle l’argent est rentré, jamais l’échéance '
+         +'de la facture qu’il solde. Cette règle passe avant toutes les autres, et elle '
+         +'ne vaut que pour lui.'},
     {rang:'2', nature:'Règle exception',
      quand:'Le client a un mandat de prélèvement GoCardless',
      alors:'fin de formation, sans délai',
@@ -1691,8 +1819,8 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
     {rang:'6', nature:'Règle repli',
      quand:'Sinon — aucune date dans le libellé',
      alors:'date de l’écriture · une facture, + 30 jours',
-     note:'La colonne « Date » du grand livre, sa décision du 22/10/2026. Une facture '
-         +'est exigible trente jours après ; un paiement et un avoir le jour même. '
+     note:'La colonne « Date » du grand livre. Une facture est exigible trente jours '
+         +'après ; un paiement et un avoir le jour même. '
          +'L’écriture qui n’a ni date ni libellé daté garde sa date d’enregistrement, '
          +'en dernier recours, et le dit — sans les trente jours, qui ne valent que '
          +'pour la colonne « Date ».'},

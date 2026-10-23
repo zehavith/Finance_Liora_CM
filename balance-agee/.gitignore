@@ -25,3 +25,4 @@ essais/essai-*.xlsx
 # votre export GoCardless, pas ici.
 complements.json
 mandats.json
+parametres.json
