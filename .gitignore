@@ -12,3 +12,8 @@ dist/
 
 # Logs
 *.log
+
+# Le paquet publiable de « Suivi recouvrement » : il se reconstruit en une
+# commande depuis recouvrement/, et il pèse trois mégaoctets de copies.
+#   node recouvrement/artefact/construire.js
+recouvrement/artefact/paquet/

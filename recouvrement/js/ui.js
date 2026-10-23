@@ -105,7 +105,23 @@
             const b = document.createElement('button');
             b.className = 'btn ' + (a.primary ? 'btn-primary' : 'btn-ghost');
             b.textContent = a.label;
-            b.addEventListener('click', () => { if (a.onClick) a.onClick(); if (a.close !== false) closeModal(); });
+            // UNE ACTION QUI ÉCHOUE NE DOIT PAS PASSER POUR FAITE.
+            //
+            // L'action était appelée sans être attendue et sans que son rejet
+            // soit attrapé : « Tout effacer » est asynchrone, et un échec
+            // d'écriture refermait la fenêtre en laissant croire que c'était
+            // fait. Le rejet est maintenant dit, et la fenêtre se referme
+            // quand même — l'action a eu lieu ou pas, mais la fenêtre n'a
+            // plus rien à montrer.
+            b.addEventListener('click', () => {
+                try {
+                    Promise.resolve(a.onClick && a.onClick()).catch(e =>
+                        toast('Opération impossible : ' + (e && e.message || e), 'error', 10000));
+                } catch (e) {
+                    toast('Opération impossible : ' + (e && e.message || e), 'error', 10000);
+                }
+                if (a.close !== false) closeModal();
+            });
             foot.appendChild(b);
         });
         $('#modal-overlay').hidden = false;

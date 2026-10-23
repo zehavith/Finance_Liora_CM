@@ -1137,7 +1137,7 @@ tr.ligne-total td {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     padding: 10px 14px; margin-bottom: 10px; border-radius: 8px;
     background: var(--surface-2, rgba(255,255,255,.04));
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-color);
 }
 .barre-selection .sel-nb { font-weight: 600; }
 .barre-selection .sel-champ { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
@@ -1153,17 +1153,17 @@ tr.ligne-total td {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     padding: 12px 14px; margin: 12px 0 10px; border-radius: 8px;
     background: var(--surface-2, rgba(255,255,255,.04));
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-color);
 }
 .regle-form .input { min-width: 150px; }
 .regle-form #gl-regle-val { min-width: 200px; flex: 1 1 200px; }
 .regle-form #gl-regle-apercu { flex-basis: 100%; margin-top: 2px; }
 .regle-ordre { display: inline-flex; gap: 2px; }
 .regle-ordre .btn-icone {
-    border: 1px solid var(--border); background: transparent; color: var(--text-secondary);
+    border: 1px solid var(--border-color); background: transparent; color: var(--text-secondary);
     border-radius: 5px; cursor: pointer; padding: 1px 6px; font-size: 12px; line-height: 1.5;
 }
-.regle-ordre .btn-icone:hover:not(:disabled) { color: var(--text); border-color: var(--accent); }
+.regle-ordre .btn-icone:hover:not(:disabled) { color: var(--text-primary); border-color: var(--accent); }
 .regle-ordre .btn-icone:disabled { opacity: .3; cursor: default; }
 
 /* Règles suggérées : le motif est trouvé, le financement reste à dire */
@@ -1172,7 +1172,7 @@ tr.ligne-total td {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     padding: 10px 14px; border-radius: 8px;
     background: var(--surface-2, rgba(255,255,255,.03));
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-color);
 }
 .suggestion .suggestion-motif { font-weight: 600; font-size: 13px; min-width: 240px; }
 .suggestion .fv-hint { flex: 1 1 220px; line-height: 1.5; }
@@ -1185,7 +1185,7 @@ tr.ligne-total td {
 /* Actes du tableau de bord : le récit se voit dans la mise en page */
 .section-acte {
     margin-top: 42px; padding-top: 22px;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--border-color);
     display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
 }
 .section-acte h2 { display: flex; align-items: center; gap: 12px; }
@@ -1201,7 +1201,7 @@ tr.ligne-total td {
 
 /* Actes repliables */
 .acte-toggle {
-    background: none; border: 1px solid var(--border); color: var(--text-muted);
+    background: none; border: 1px solid var(--border-color); color: var(--text-muted);
     border-radius: 6px; padding: 4px 12px; font: inherit; font-size: 12px;
     cursor: pointer; margin-left: auto;
 }
@@ -1269,13 +1269,13 @@ tr.ligne-total td {
 .qualif-ligne {
     display: grid; align-items: center; gap: 8px;
     grid-template-columns: minmax(140px, 1.8fr) minmax(60px, 1fr) 74px 92px 56px;
-    padding: 6px 2px; border-bottom: 1px solid var(--border);
+    padding: 6px 2px; border-bottom: 1px solid var(--border-color);
     font-size: 12px;
 }
 .qualif-ligne:last-child { border-bottom: 0; }
 .qualif-entete {
     font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
-    color: var(--text-muted); border-bottom: 1px solid var(--border);
+    color: var(--text-muted); border-bottom: 1px solid var(--border-color);
     padding-bottom: 6px;
 }
 .qualif-entete .qualif-val, .qualif-entete .qualif-ecart { font-weight: 400; }
@@ -1314,7 +1314,7 @@ tr.ligne-total td {
     position: sticky; top: calc(var(--nav-h, 66px) + var(--filters-h, 300px)); z-index: 30;
     padding: 10px 12px; margin-bottom: 14px; border-radius: 8px;
     background: var(--surface-2, rgba(255,255,255,.04));
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-color);
 }
 .gl-actions .gl-actions-titre {
     font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
@@ -1485,3 +1485,47 @@ tr.ligne-total td {
     white-space: nowrap;
 }
 .barre-champ .input { font-size: 12px; }
+
+/* ══════════════════════════════════════════════
+   LA LARGEUR D'UN TÉLÉPHONE
+   ══════════════════════════════════════════════
+   À 400 px, le tableau de bord s'étalait sur 967 px et la balance âgée sur
+   792 px : le corps défilait de côté sur plus du double de la largeur. En
+   cause, deux rangées de commandes qui ne se replient pas — les barres
+   d'outils des cartes et les segments de choix — là où la barre d'onglets,
+   elle, avait déjà reçu ce traitement. C'est le même, appliqué aux deux
+   autres : la rangée se replie, et le segment défile dans sa propre boîte
+   plutôt que de pousser la page.
+
+   Neutre au-dessus de ce palier, donc sans effet sur l'écran de travail,
+   mais utile aussi en local dans une fenêtre partagée. */
+@media (max-width: 620px) {
+    /* Une rangée de commandes se replie, et chacune de ses commandes accepte
+       de rétrécir. Sans min-width: 0, un enfant de boîte flexible refuse de
+       descendre sous la largeur de son contenu : la rangée faisait 758 px
+       dans une carte de 400, et poussait la page d'autant. */
+    .chart-header,
+    .chart-controls,
+    .table-toolbar { flex-wrap: wrap; min-width: 0; }
+    .chart-header > *,
+    .chart-controls > *,
+    .table-toolbar > * { min-width: 0; max-width: 100%; }
+
+    /* Un segment de choix défile dans sa propre boîte. */
+    .seg {
+        max-width: 100%;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    .seg::-webkit-scrollbar { display: none; }
+
+    /* Et un tableau trop large défile dans la sienne. Les tableaux sont
+       posés par le script dans des conteneurs variés, dont tous ne sont pas
+       des .table-wrap : c'est donc le tableau lui-même qui prend en charge
+       son débordement, plutôt que de compter sur son parent. */
+    .data-table {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+    }
+}

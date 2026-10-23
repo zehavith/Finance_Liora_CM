@@ -37,14 +37,48 @@
         });
     }
 
+    // QUAND LE NAVIGATEUR REFUSE D'ÉCRIRE.
+    //
+    // Les trois écritures — poser, retirer, tout effacer — rejetaient, et
+    // trente et un sites d'appel sur quarante ne traitaient pas ce rejet :
+    // la moitié s'arrêtaient au milieu de leur travail, l'écran ne reflétait
+    // plus l'état, et rien ne le disait. Un navigateur en navigation privée,
+    // un quota atteint, un stockage bloqué par le site : ce sont des cas
+    // ordinaires, pas des pannes.
+    //
+    // L'écriture rend donc toujours la main. Elle rend true quand elle a
+    // tenu, false sinon, et le dit UNE SEULE FOIS à l'écran — répéter le
+    // message à chaque touche noierait l'information. L'application va au
+    // bout de son rendu : ce qu'elle montre est juste pour cette session,
+    // même si rien n'en sera conservé.
+    let refusSignale = false;
+    function refuse(e, quoi) {
+        console.warn('[Recouvrement] ' + quoi + ' impossible', e);
+        if (refusSignale) return false;
+        refusSignale = true;
+        const U = global.LioraUI;
+        if (U && U.toast) U.toast('Ce navigateur refuse d’enregistrer : votre travail '
+            + 'reste affiché, mais il ne sera pas conservé à la prochaine ouverture.',
+            'error', 15000);
+        return false;
+    }
+
+    async function ecrire(quoi, action) {
+        try {
+            const db = await openDB();
+            return await new Promise((resolve, reject) => {
+                const tx = db.transaction(IDB_STORE, 'readwrite');
+                action(tx.objectStore(IDB_STORE));
+                tx.oncomplete = () => { db.close(); resolve(true); };
+                tx.onerror = () => { db.close(); reject(tx.error); };
+            });
+        } catch (e) {
+            return refuse(e, quoi);
+        }
+    }
+
     async function set(key, value) {
-        const db = await openDB();
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(IDB_STORE, 'readwrite');
-            tx.objectStore(IDB_STORE).put(value, key);
-            tx.oncomplete = () => { db.close(); resolve(true); };
-            tx.onerror = () => { db.close(); reject(tx.error); };
-        });
+        return ecrire('Enregistrement', o => o.put(value, key));
     }
 
     async function get(key, fallback) {
@@ -63,23 +97,11 @@
     }
 
     async function del(key) {
-        const db = await openDB();
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(IDB_STORE, 'readwrite');
-            tx.objectStore(IDB_STORE).delete(key);
-            tx.oncomplete = () => { db.close(); resolve(true); };
-            tx.onerror = () => { db.close(); reject(tx.error); };
-        });
+        return ecrire('Suppression', o => o.delete(key));
     }
 
     async function clearAll() {
-        const db = await openDB();
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(IDB_STORE, 'readwrite');
-            tx.objectStore(IDB_STORE).clear();
-            tx.oncomplete = () => { db.close(); resolve(true); };
-            tx.onerror = () => { db.close(); reject(tx.error); };
-        });
+        return ecrire('Effacement', o => o.clear());
     }
 
     /** Estimation de l'espace occupé (best effort). */
@@ -93,10 +115,19 @@
         return { used: 0, quota: 0 };
     }
 
-    // Demande un stockage persistant pour éviter l'éviction par le navigateur
-    if (navigator.storage && navigator.storage.persist) {
-        navigator.storage.persist().catch(() => {});
-    }
-
+    // LE MAGASIN EST PUBLIÉ AVANT TOUT LE RESTE.
+    //
+    // La demande de stockage persistant se faisait avant cette ligne. Un jet
+    // synchrone à cet endroit — un navigateur qui refuse l'API, une fenêtre
+    // privée — laissait window.LioraStore indéfini pour toute l'application,
+    // et plus rien ne se chargeait. L'ordre est inversé et la demande est
+    // protégée : elle est un confort, pas une condition.
     global.LioraStore = { KEYS, set, get, del, clearAll, usage };
+
+    // Demande un stockage persistant pour éviter l'éviction par le navigateur
+    try {
+        if (navigator.storage && navigator.storage.persist) {
+            navigator.storage.persist().catch(() => {});
+        }
+    } catch { /* le navigateur refuse l'API : on s'en passe */ }
 })(window);

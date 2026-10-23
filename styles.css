@@ -91,10 +91,21 @@ html {
 
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    /* La taille est dite plutôt qu'héritée : c'est la valeur par défaut d'un
+       navigateur, donc sans effet ici, mais un hôte qui pose la sienne — un
+       artefact publié en pose une de 14 px — rétrécirait tout le texte de
+       l'application sans que rien ne le rattrape. */
+    font-size: 16px;
     background: var(--bg-primary);
     color: var(--text-primary);
     line-height: 1.6;
-    min-height: 100vh;
+    /* LA HAUTEUR D'UN ÉCRAN, VRAIMENT.
+       100vh ignore la barre d'adresse d'un téléphone, et il ignore aussi le
+       rembourrage qu'un hôte pose pour dégager les encoches : la page
+       dépassait alors toujours d'autant, et défilait sans avoir rien à
+       montrer. En local les deux env() valent zéro et dvh vaut vh : rien ne
+       change ici, tout change ailleurs. */
+    min-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     overflow-x: hidden;
 }
 
@@ -118,7 +129,7 @@ body::before {
 
 .screen {
     display: none;
-    min-height: 100vh;
+    min-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     position: relative;
     z-index: 1;
 }
@@ -226,7 +237,7 @@ body::before {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: calc(100vh - 65px);
+    min-height: calc(100dvh - 65px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     padding: 2rem;
     gap: 4rem;
 }
@@ -1371,15 +1382,15 @@ body::before {
     justify-content: center;
     gap: 0.75rem;
     padding: 0.6rem 0;
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--border-color);
 }
 .dq-pag-btn {
     background: var(--bg-card);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-color);
     border-radius: 6px;
     padding: 0.3rem 0.75rem;
     font-size: 0.8rem;
-    color: var(--text);
+    color: var(--text-primary);
     cursor: pointer;
     transition: background 0.15s;
 }
@@ -1742,7 +1753,7 @@ body::before {
 /* Model explanation */
 .sim-model-explain {
     background: var(--bg-input);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     padding: 0.85rem 1rem;
     font-size: 0.82rem;
@@ -1751,7 +1762,7 @@ body::before {
     margin-bottom: 1.2rem;
 }
 .sim-model-explain strong {
-    color: var(--text);
+    color: var(--text-primary);
 }
 .sim-explain-tip {
     display: inline-block;
@@ -2566,7 +2577,7 @@ body::before {
     background: #dc2626;
 }
 .ft-manual-save-btn {
-    background: var(--accent-color);
+    background: var(--accent);
     color: #fff;
     border: none;
     border-radius: var(--radius-sm);
