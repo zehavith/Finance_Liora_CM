@@ -158,6 +158,12 @@ window.claude={ _d:_lu(), use(n){
   if(n==='user') return Promise.resolve({can:async()=>true, isOwner:()=>true});
   // Le dépôt des fichiers du mois : un faux stockage, pour exercer ici le
   // chemin qui n'existe que chez le lecteur. Rien n'est envoyé nulle part.
+  if(n==='comments') return Promise.resolve({
+    canSendToClaude:async()=>'available',
+    anchorFor:async(el)=>({path:'faux',x:0,y:0}),
+    sendToClaude:async(t)=>{ window.__envoi=t; return {threadId:'f1',commentId:'c1'}; },
+    create:async()=>({threadId:'f1',commentId:'c1'}),
+  });
   if(n==='assets') return Promise.resolve({
     // Le faux magasin REFUSE ce que le vrai refuse.
     //

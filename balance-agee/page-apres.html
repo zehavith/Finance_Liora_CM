@@ -1383,7 +1383,40 @@ let DEMANDE=null;
 //      lit quatre fichiers sources et reprend ce que l'ancienne balance a
 //      appris.
 // Une barre qui se remplirait sur une minuterie ne mesurerait rien.
-const ETAPES=['Affichage actualisé','Demande enregistrée','Balance reconstruite'];
+const ETAPES=['Affichage actualisé','Demande transmise','Balance reconstruite'];
+
+// LE CLIC DOIT PARTIR TOUT DE SUITE.
+//
+// « Je veux pouvoir actualiser quand je clique sur Actualiser, pas toutes les
+// heures. » Enregistrer la demande dans la base ne prévient personne : rien
+// ne lit cette base d'elle-même. Le canal qui prévient, lui, existe — c'est
+// celui qu'emprunte un commentaire envoyé à Claude : la plateforme notifie
+// les sessions qui suivent l'artefact, et la reconstruction part dans la
+// foulée.
+//
+// Réservé aux personnes qui peuvent modifier l'artefact, et seulement sur un
+// geste : le clic. S'il ne peut pas passer — personne à l'écoute, ou
+// commentaire refusé —, la demande reste enregistrée et sera reprise au
+// relevé suivant ; la page le dit plutôt que de laisser croire au départ.
+let COMM=null;
+async function ouvrirCommentaires(){
+  try{ COMM=await claude.use('comments'); }catch(e){ COMM=null; }
+}
+async function prevenir(v){
+  if(!COMM||!COMM.sendToClaude||!COMM.canSendToClaude) return '';
+  let etat='';
+  try{ etat=await COMM.canSendToClaude(); }catch(e){ return ''; }
+  if(etat!=='available') return '';
+  const bloc=E('depot-bloc')||document.body;
+  try{
+    const ancre=await COMM.anchorFor(bloc);
+    await COMM.sendToClaude({anchor:ancre, text:
+      'Actualiser la balance âgée — demande du '+v.quand+', motif : '+v.motif+'.\n'
+      +'Reprendre les fichiers déposés et les réglages, reconstruire, repasser '
+      +'les contrôles, et republier la page avec ses données si tout est vert.'});
+    return 'transmise';
+  }catch(e){ return (e&&e.code==='consent_required')?'consentement':''; }
+}
 
 // La jauge se pose sur un pourcentage, pas sur un numéro d'étape : chaque
 // étape occupe un tiers de la bande et avance à l'intérieur de son tiers au
@@ -1508,8 +1541,20 @@ async function demanderActualisation(motif,etatId,bandeId){
   try{
     await DB.collection('demandes').doc('reconstruction').set(v);
     DEMANDE=v; direRecons();
-    poserBande(bandeId,2,1,'le '+v.quand+' · en attente');
-    dire('Reconstruction demandée.');
+    poserBande(bandeId,2,0.5,'· transmission…');
+    const envoi=await prevenir(v);
+    if(envoi==='transmise'){
+      poserBande(bandeId,2,1,'le '+v.quand+' · reconstruction lancée');
+      // La bande, elle, continue de dire ce que le document dit : « en
+      // attente » tant que la reconstruction n'a pas commencé pour de bon.
+      dire('Demande transmise · la reconstruction va démarrer.');
+    }else if(envoi==='consentement'){
+      poserBande(bandeId,2,1,'le '+v.quand+' · en attente');
+      dire('Demande enregistrée · autorisez l’envoi à Claude pour qu’elle parte tout de suite.');
+    }else{
+      poserBande(bandeId,2,1,'le '+v.quand+' · en attente');
+      dire('Demande enregistrée · elle sera reprise au prochain relevé.');
+    }
     suivreReconstruction();
   }catch(e){
     dire('La demande n’a pas pu être enregistrée.');
@@ -1539,6 +1584,7 @@ async function ouvrirBase(){
   try{
     if(window.claude&&claude.use){
       DB=await claude.use('db');
+      await ouvrirCommentaires();
       const u=await claude.use('user');
       // Deux rôles, et un seul critère : qui peut modifier l'artefact est
       // administrateur. Sa règle, le 16/10/2026 : « tout le monde ne peut pas
