@@ -2404,17 +2404,34 @@
         const el = $('#bandeau-demo');
         if (!el) return;
         el.hidden = !state.demo;
-        if (!state.demo) return;
+        if (!state.demo) {
+            $$('#brand-version').forEach(v => {
+                v.classList.remove('marque-demo');
+                if (v.parentElement) v.parentElement.classList.remove('brand-demo');
+                v.removeAttribute('title');
+                if (v.dataset.versionAvant != null) v.textContent = v.dataset.versionAvant;
+            });
+            return;
+        }
         // ET UNE MARQUE DANS LA BARRE DE NAVIGATION, QUI ELLE RESTE À L'ÉCRAN.
         //
         // Le bandeau est posé en tête du contenu : il défile donc avec lui, et
         // au premier mouvement de molette on ne sait plus à qui appartiennent
         // les chiffres qu'on lit. La barre, elle, est collante. La pastille y
         // remplace le numéro de version tant que le jeu est chargé.
+        // La pastille se range SOUS le titre, elle ne se pose pas à côté.
+        //
+        // « DÉMONSTRATION » fait 113 px là où « v4.0.0 » en faisait 34. Posée en
+        // ligne, elle ajoutait 79 px à une barre qui n'avait que 29 px de marge à
+        // 1920 : l'écran prenait 50 px de défilement latéral. Sous le titre, elle
+        // ne coûte plus un pixel de large — « Suivi Recouvrement » est déjà plus
+        // large qu'elle — et reste tout aussi visible.
         $$('#brand-version').forEach(el => {
+            if (el.dataset.versionAvant == null) el.dataset.versionAvant = el.textContent;
             el.textContent = 'DÉMONSTRATION';
             el.classList.add('marque-demo');
             el.title = 'Jeu de démonstration — aucune de ces factures n’est réelle';
+            if (el.parentElement) el.parentElement.classList.add('brand-demo');
         });
 
         const t = $('#bandeau-demo-texte');

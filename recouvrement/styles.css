@@ -2005,6 +2005,21 @@ html {
 
 /* La pastille de démonstration, dans la barre collante : c'est la seule
    chose qui reste à l'écran quand on fait défiler la page. */
+/* LA PASTILLE DE DÉMONSTRATION NE POUSSE RIEN.
+ *
+ * Posée en ligne à côté du titre, elle débordait la barre de 50 px à 1920 px
+ * et l'écran entier prenait un défilement latéral. Le bloc de marque passe en
+ * colonne tant que le jeu de démonstration est chargé : la pastille se range
+ * sous « Suivi Recouvrement », qui est plus large qu'elle, et la barre
+ * retrouve sa largeur d'origine. */
+.brand-demo {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.15;
+}
+.brand-demo .marque-demo { margin-left: 0; margin-top: 2px; }
+
 .marque-demo {
     background: var(--red, #F47458);
     color: #0b0e1a;

@@ -262,7 +262,7 @@
         { role: 'b2c',          perimetre: 'B2C',       source: 'b2c',           financementDefaut: null,          match: ['financement complexe', 'region transition agefiph'] },
         { role: 'b2c',          perimetre: 'B2C',       source: 'b2c',           financementDefaut: null,          match: ['b2c'] },
         { role: 'adv',          perimetre: 'Corporate', source: 'adv',           financementDefaut: null,          match: ['corporate', 'entreprise'] },
-        { role: 'b2c',          perimetre: 'B2C',       source: 'b2c',           financementDefaut: 'DST_ALLEMAGNE', match: ['bu1 germany', 'germany planning'] },
+        { role: 'b2c',          perimetre: 'B2C',       source: 'b2c',           financementDefaut: 'DST_ALLEMAGNE', match: ['bu1 germany'] },
     ];
 
     const ROLE_LABELS = {
@@ -382,8 +382,30 @@
         return r.categorie || r.perimetre || 'Non catégorisé';
     }
 
-    /** Déduit le rôle d'un tableau à partir de son nom Monday. */
-    function detectBoardRole(boardName) {
+    /**
+     * LE NUMÉRO DU TABLEAU FAIT FOI.
+     *
+     * Les tableaux sont rangés par un numéro qui porte à lui seul le périmètre
+     * et le rang : 0.x pour les factures payées, 1.x pour Corporate, 2.x pour
+     * B2C, et le rang 9 pour la zone technique de chaque série. C'est le
+     * classement de l'utilisatrice ; il figure sur chaque tableau et se
+     * retrouve sur chaque export.
+     *
+     * Il prime sur la reconnaissance par mots du nom, qui se trompait deux
+     * fois sur le compte réel. « DST_Germany_Planning », un planning de
+     * présence d'équipe — six salariés, des colonnes « At work » et
+     * « Holiday », pas un seul montant — était lu comme du financement
+     * allemand et entrait en créances. Et « 2.5. Recouvrement B2C » tombait
+     * en périmètre Corporate, parce que le mot « recouvrement » est testé
+     * avant « b2c » dans la liste des motifs.
+     *
+     * La reconnaissance par mots reste le recours : un export renommé à la
+     * main perd son numéro, et il vaut mieux le reconnaître que l'ignorer.
+     */
+    const NUM_TABLEAU = /^\s*(\d)\s*\.\s*(\d)\s*\./;
+
+    /** Reconnaissance par mots du nom — le recours quand le numéro manque. */
+    function roleParLeNom(boardName) {
         const n = ' ' + norm(boardName) + ' ';
         for (const pat of BOARD_ROLE_PATTERNS) {
             for (const m of pat.match) {
@@ -393,6 +415,36 @@
             }
         }
         return { role: 'ignore', perimetre: 'Inconnu', source: null, financementDefaut: null };
+    }
+
+    /** Déduit le rôle d'un tableau à partir de son nom Monday. */
+    function detectBoardRole(boardName) {
+        const num = NUM_TABLEAU.exec(String(boardName == null ? '' : boardName));
+        if (!num) return roleParLeNom(boardName);
+
+        const serie = +num[1], rang = +num[2];
+
+        // Rang 9 : la zone technique de la série, écartée des analyses.
+        if (rang === 9) return { role: 'technique', perimetre: 'Tous', source: 'technique', financementDefaut: null };
+
+        // Série 0 : les factures payées, toutes origines confondues.
+        if (serie === 0) return { role: 'payees', perimetre: 'Tous', source: 'payees', financementDefaut: null };
+
+        // Séries 1 et 2 : le périmètre vient du numéro, le rôle et le
+        // financement par défaut restent lus dans le nom.
+        if (serie === 1 || serie === 2) {
+            const parLeNom = roleParLeNom(boardName);
+            if (parLeNom.role === 'technique') return parLeNom;
+            const perimetre = serie === 1 ? 'Corporate' : 'B2C';
+            if (parLeNom.role === 'ignore') {
+                return serie === 1
+                    ? { role: 'adv', perimetre: perimetre, source: 'adv', financementDefaut: null }
+                    : { role: 'b2c', perimetre: perimetre, source: 'b2c', financementDefaut: null };
+            }
+            return { role: parLeNom.role, perimetre: perimetre, source: parLeNom.source, financementDefaut: parLeNom.financementDefaut };
+        }
+
+        return roleParLeNom(boardName);
     }
 
     /**
@@ -807,7 +859,7 @@
         norm, parseDate, stripTime, addDays, diffDays, monthKey, motifEcheance1,
         DEFAULT_ECHEANCE_RULES, DEFAULT_FALLBACK_RULE,
         BOARD_ROLE_PATTERNS, ROLE_LABELS, SOURCES,
-        detectBoardRole, detectFinancement, getRule, computeEcheance,
+        detectBoardRole, roleParLeNom, NUM_TABLEAU, detectFinancement, getRule, computeEcheance,
         GROUPES_EXCLUS, estGroupeTechnique, perimetreDepuisTexte,
         ETAPES, etapeDepuisGroupe,
         AGING_BUCKETS, bucketFor, MS_DAY, categorieDe,
