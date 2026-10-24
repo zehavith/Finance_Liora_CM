@@ -329,6 +329,14 @@ corps = remplacer(corps, [
                 jamais envoyés, et ne suivent pas d'un appareil à l'autre. Déposez-les une
                 fois, ils seront retrouvés à la prochaine ouverture sur le même navigateur.
             </p>
+            <p class="connect-desc" style="text-align:center;max-width:620px;margin-inline:auto">
+                <strong>Pour brancher Monday directement, sans aucun export :</strong> ouvrez
+                l'application sur votre poste &mdash; &laquo;&nbsp;Lancer Suivi Recouvrement&nbsp;&raquo;
+                &mdash; puis, sur cet écran, la carte &laquo;&nbsp;Connexion Monday&nbsp;&raquo;. Le jeton
+                se prend dans Monday&nbsp;: avatar &rarr; <em>Développeurs</em> &rarr;
+                <em>Mes jetons d'accès</em>. Une page publiée comme celle-ci n'a pas le droit
+                d'appeler api.monday.com&nbsp;; c'est pourquoi le champ n'y figure pas.
+            </p>
             <div class="welcome-actions">
                 <button class="btn btn-ghost" id="btn-open-saved" hidden>Reprendre les données enregistrées</button>
                 <button class="btn btn-primary" id="btn-demo">Voir une démonstration</button>
