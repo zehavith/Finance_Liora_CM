@@ -1797,3 +1797,21 @@ tr.ligne-total td {
     font-size: 12.5px; line-height: 1.4; color: var(--text-muted);
     white-space: normal;
 }
+
+
+/* LE TROU ENTRE DEUX POINTS DE RUPTURE.
+   Sous 620 px, un tableau trop large défile dans sa propre boîte ; au-delà
+   de 1024, il tient. Entre les deux — la largeur d'une tablette — il
+   sortait de la page et poussait tout l'écran de deux cents pixels vers la
+   droite. Le même traitement s'applique donc sur toute la plage. */
+@media (min-width: 621px) and (max-width: 1024px) {
+    .chart-header,
+    .chart-controls,
+    .table-toolbar { flex-wrap: wrap; min-width: 0; }
+    .chart-header > *,
+    .chart-controls > *,
+    .table-toolbar > * { min-width: 0; max-width: 100%; }
+    .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+    .seg::-webkit-scrollbar { display: none; }
+    .data-table { display: block; width: 100%; overflow-x: auto; }
+}

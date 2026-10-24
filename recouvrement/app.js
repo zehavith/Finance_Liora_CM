@@ -1301,6 +1301,10 @@
         encours:      { titre: 'Reste à encaisser',
                         filtre: f => !f.paye,
                         note: 'Les factures non réglées, échues ou non.' },
+        enRecouvrement: { titre: 'En recouvrement',
+                        filtre: f => f.etat === 'En retard',
+                        note: 'Échues à la date d’arrêté et toujours pas encaissées : '
+                            + 'l’argent à aller chercher.' },
         impayees:     { titre: 'Factures impayées',
                         filtre: f => f.etat === 'En retard',
                         note: 'Les factures sur lesquelles se calcule le retard moyen.' },
@@ -1340,6 +1344,14 @@
         $('#kpi-encaisse').textContent = U.euros(v.eurosPayees);
         $('#kpi-encaisse-sub').textContent =
             `${U.nombre(v.nbPayees)} factures réglées · ${U.pourcent(X.pct(v.eurosPayees, v.totalEuros))} du facturé`;
+
+        // Le chiffre qu'elle pilote : « Reste à encaisser » comprend le non
+        // échu, donc il ne le disait pas. Les trois grandeurs tiennent dans
+        // une seule tuile — montant, nombre, part — là où le tableau de bord
+        // en occupait trois.
+        $('#kpi-recouvrement').textContent = U.euros(v.eurosEnRetard);
+        $('#kpi-recouvrement-sub').textContent =
+            `${U.nombre(v.nbEnRetard)} factures · ${U.pourcent(v.tauxEuros, 1)} du facturé`;
 
         $('#kpi-encours').textContent = U.euros(v.encoursTotal);
         // La lecture trésorerie : de ce qu'il reste à rentrer, quelle part est

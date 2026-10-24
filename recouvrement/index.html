@@ -278,8 +278,8 @@
 
             <!-- ═════════════════ ACTE 1 ═════════════════ -->
             <div class="section-header section-acte" data-acte="1">
-                <h2><span class="acte-num">1</span>Où en est l'argent qu'on me doit</h2>
-                <span class="acte-sous">Le portefeuille, ce qui est tombé en recouvrement ce mois-ci, et ce qui attend depuis plus d'un an</span>
+                <h2><span class="acte-num">1</span>Vue d'ensemble</h2>
+                <span class="acte-sous">Où en est l'argent qu'on me doit</span>
                 <button class="acte-toggle" data-acte-toggle="1" aria-expanded="true">Replier</button>
             </div>
             <div class="acte-corps" data-acte-corps="1">
@@ -323,6 +323,17 @@
                             <span class="kpi-value" id="kpi-encours">—</span>
                             <span class="kpi-sub" id="kpi-encours-sub"></span>
                             <span class="aide-ligne">Montant total des factures non réglées : celles en retard, plus celles qui ne sont pas encore arrivées à échéance. Le pourcentage indique la part de ce reste qui est <strong>déjà en retard</strong>.</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card kpi-cliquable" data-kpi="enRecouvrement">
+                        <div class="kpi-icon kpi-red">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">En recouvrement</span>
+                            <span class="kpi-value" id="kpi-recouvrement">—</span>
+                            <span class="kpi-sub" id="kpi-recouvrement-sub"></span>
+                            <span class="aide-ligne">Les factures dont l'échéance calculée est dépassée à la date d'arrêté <strong>et qui ne sont toujours pas réglées</strong> : l'argent à aller chercher. C'est une part de « Reste à encaisser », qui comprend en plus ce qui n'est pas encore échu. Le pourcentage est pris sur le <strong>total facturé</strong> ; la part du seul reste à encaisser, plus élevée, figure sous la tuile voisine.</span>
                         </div>
                     </div>
             </div>
