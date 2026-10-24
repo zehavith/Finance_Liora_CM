@@ -1813,8 +1813,13 @@
                 { key: 'dateEcheance', label: 'Échéance', align: 'center',
                   format: v => v ? U.dateFR(v) : '<span class="pill pill-muted">à qualifier</span>' },
                 { key: 'retardJours', label: 'Retard', align: 'right', format: U.pastilleRetard },
+                // Le classement se survole : sa source y est écrite, et un
+                // signal approximatif se signale plutôt que de se taire.
                 { key: 'financement', label: 'Financement',
-                  format: v => U.escapeHtml(v ? R.getRule(v, state.rules).label : '—') },
+                  format: (v, r) => `<span title="${U.escapeHtml(r.origineFinancement
+                        || 'Origine du classement inconnue')}"`
+                    + `${r.financementFiable === false ? ' class="fin-approx"' : ''}>`
+                    + `${U.escapeHtml(v ? R.getRule(v, state.rules).label : '—')}</span>` },
                 { key: 'groupe', label: 'Groupe Monday', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
             ].concat(o.colonnesSup || []), rows.slice(0, 300), { vide: 'Aucune facture.', onRowClick: true })
             + (rows.length > 300
@@ -4784,8 +4789,13 @@
                 { key: 'montant', label: 'Montant', align: 'right', format: U.euros },
                 { key: 'dateEcheance', label: 'Échéance', align: 'center', format: v => v ? U.dateFR(v) : '—' },
                 { key: 'retardJours', label: 'Retard', align: 'right', format: U.pastilleRetard },
+                // Le classement se survole : sa source y est écrite, et un
+                // signal approximatif se signale plutôt que de se taire.
                 { key: 'financement', label: 'Financement',
-                  format: v => U.escapeHtml(v ? R.getRule(v, state.rules).label : '—') },
+                  format: (v, r) => `<span title="${U.escapeHtml(r.origineFinancement
+                        || 'Origine du classement inconnue')}"`
+                    + `${r.financementFiable === false ? ' class="fin-approx"' : ''}>`
+                    + `${U.escapeHtml(v ? R.getRule(v, state.rules).label : '—')}</span>` },
             ], rows.slice(0, 25), { vide: '', onRowClick: true })
             + (rows.length > 25 ? `<p class="fv-hint">25 premières sur ${U.nombre(rows.length)}.</p>` : '');
         U.bindTable(el, rows.slice(0, 25), { onRowClick: f => ouvrirFiche(f) });
@@ -8732,6 +8742,11 @@
                         + '</select>'
                         + (f.financementManuel ? '' : ` <span class="fv-hint">déduit : ${U.escapeHtml(R.getRule(f.financement, state.rules).label)}</span>`)
                         + (f.financementBrut ? ` <span class="fv-hint">(« ${U.escapeHtml(f.financementBrut)} »)</span>` : ''))}
+                    ${f.origineFinancement ? ligne('Classée d’après',
+                        `<span class="${f.financementFiable === false ? 'cell-danger' : ''}">`
+                        + `${U.escapeHtml(f.origineFinancement)}</span>`
+                        + (f.financementFiable === false
+                            ? ` <span class="fv-hint">signal approximatif — à vérifier</span>` : '')) : ''}
                     ${ligne('Montant', U.euros(f.montant, true))}
                     ${(!f.paye && f.encours !== f.montant) ? ligne('Reste dû', U.euros(f.encours, true)) : ''}
                     ${ligne('Date de facture', U.dateFR(f.dateFacture))}

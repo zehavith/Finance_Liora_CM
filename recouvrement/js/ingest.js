@@ -1379,9 +1379,34 @@
                 if (!fin) continue;
                 finRededuit = fin;
                 f.origineFinancement = nom + (valeur ? ' : ' + String(valeur).slice(0, 60) : '');
+                f.financementFiable = true;
                 break;
             }
             if (finRededuit) f.financement = finRededuit;
+
+            // LES DEUX DERNIERS ÉCHELONS SE NOMMENT AUSSI.
+            //
+            // Quand aucune des quatre sources sûres ne dit rien, le classement
+            // vient de l'import : la raison sociale du client, ou la valeur par
+            // défaut du tableau. Ces deux-là ne laissaient aucune trace — une
+            // facture classée « ETAT » parce que son tableau l'est par défaut
+            // avait exactement la même apparence qu'une facture dont la colonne
+            // Monday le dit. Elles se nomment désormais, et se signalent comme
+            // approximatives : c'est la seule façon de savoir laquelle vérifier.
+            if (!finRededuit && f.financement) {
+                const parLeClient = R.detectFinancement(f.client, o.rules);
+                if (parLeClient === f.financement) {
+                    f.origineFinancement = 'Raison sociale du client : '
+                        + String(f.client || '').slice(0, 60);
+                } else {
+                    f.origineFinancement = 'Valeur par défaut du tableau : '
+                        + String(f.board || '').slice(0, 60);
+                }
+                f.financementFiable = false;
+            } else if (!f.financement) {
+                f.origineFinancement = null;
+                f.financementFiable = false;
+            }
 
             // Une correction saisie à la main l'emporte sur toute déduction, et
             // précède le calcul de l'échéance : c'est la règle du financement
@@ -1393,6 +1418,7 @@
             if (manuel) {
                 f.financement = manuel; f.financementManuel = true;
                 f.origineFinancement = 'Corrigé à la main dans l’application';
+                f.financementFiable = true;
             } else f.financementManuel = false;
 
             // Le périmètre suit le financement, non le tableau où la facture se

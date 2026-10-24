@@ -1930,3 +1930,14 @@ html {
     .nav-brand { min-width: 0; }
     .brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+
+
+/* UN CLASSEMENT VENU D'UN SIGNAL APPROXIMATIF SE SIGNALE.
+   La raison sociale du client et la valeur par défaut du tableau sont les
+   deux derniers échelons de la cascade : ils valent mieux qu'un
+   financement manquant, mais ils se vérifient. Le trait pointillé le dit
+   sans crier, et le survol donne la source exacte. */
+.fin-approx {
+    border-bottom: 1px dotted var(--red, #F47458);
+    cursor: help;
+}
