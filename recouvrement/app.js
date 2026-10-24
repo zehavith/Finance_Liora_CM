@@ -3087,8 +3087,18 @@
                             label: item => {
                                 const d = item.raw._data;
                                 const part = total > 0 ? (item.raw.v / total) * 100 : 0;
-                                return [`${U.euros(item.raw.v)} (${U.pourcent(part, 1)})`,
-                                    `${U.nombre(d.nb)} factures · retard moyen ${U.jours(d.retard)}`];
+                                const lignes = [`${U.euros(item.raw.v)} (${U.pourcent(part, 1)})`];
+                                // `groups: ['label']` fait reconstruire l'objet par
+                                // le greffon : _data ne porte plus que la clé de
+                                // regroupement, et nb comme retard y étaient perdus.
+                                // On les reprend donc à la source.
+                                const g = groupes.find(x => x.label === (d && d.label));
+                                if (g) {
+                                    lignes.push(`${U.nombre(g.nb)} factures`
+                                        + (g.retardMoyen != null
+                                            ? ` · retard moyen ${U.jours(g.retardMoyen)}` : ''));
+                                }
+                                return lignes;
                             },
                         },
                     },
@@ -3654,48 +3664,86 @@
      * La carte thermique dit l'état mois par mois ; elle dit mal le sens de la
      * pente. C'est pourtant la question — quelles catégories se dégradent ?
      */
+    /**
+     * Quels dispositifs se dégradent, mois après mois.
+     *
+     * DES COURBES, ET RIEN QUE DES COURBES. Un point isolé — un mois
+     * mesurable entouré de deux mois qui ne le sont pas — se lisait comme
+     * une erreur de données. Il n'est plus tracé : seuls les tronçons d'au
+     * moins deux mois voisins font une ligne. Rien n'est perdu pour autant,
+     * et c'est la condition : tout ce qui n'est pas tracé est compté, nommé
+     * et ouvrable sous le graphique.
+     *
+     * La courbe n'interpole jamais : un trait coupé est un trait coupé.
+     */
     function rendreChartEvoCategorie(data) {
         const eur = state.ui.evoCatUnite === 'euros';
-        const { mois, series, moisEnCours } = X.evolutionParFinancement(
+        const { mois, series, moisEnCours, ecartees } = X.evolutionParFinancement(
             data, state.filtres.baseMois, state.rules, null, state.filtres.dateRef);
-
-        // Ce que la courbe ne montre pas, et pourquoi : sans cette phrase, la
-        // coupure passerait pour un manque de données.
-        const note = $('#evo-cat-note');
-        if (note) {
-            note.innerHTML = moisEnCours
-                ? `La courbe s'arrête à <strong>${U.escapeHtml(U.moisLabel(mois[mois.length - 1]))}</strong> : `
-                  + (moisEnCours === 1
-                      ? `le mois suivant n'est pas encore échu`
-                      : `les ${U.nombre(moisEnCours)} mois suivants ne sont pas encore échus`)
-                  + ` aux quatre cinquièmes. Leur taux ne porterait que sur la poignée de factures `
-                  + `déjà exigibles, et se lirait comme un redressement.`
-                : '';
-        }
 
         if (!mois.length || !series.length) {
             U.chart('chart-evo-categorie', videConfig('Pas assez de factures échues pour tracer une évolution'));
+            const vide = $('#evo-cat-note');
+            if (vide) vide.innerHTML = '';
             return;
         }
 
-        // Trop de courbes ne se lisent plus : les catégories marginales sont
-        // regroupées hors du graphique plutôt que de le saturer.
-        const principales = series.slice(0, 8);
+        // Un tronçon est une suite d'au moins deux mois voisins mesurables.
+        // Les points qui n'en font pas partie sont retirés du TRACÉ — jamais
+        // du décompte, qui les reprend juste en dessous.
+        const MIN_TRONCON = 2;
+        const orphelins = [];
+        const tracable = (s2) => {
+            const brut = eur ? s2.pointsEur : s2.pointsNb;
+            const garde = brut.map((v, i) => {
+                if (v == null) return null;
+                const avant = i > 0 && brut[i - 1] != null;
+                const apres = i < brut.length - 1 && brut[i + 1] != null;
+                if (avant || apres) return v;
+                orphelins.push({ cle: s2.cle, label: s2.label, mois: mois[i],
+                                 nb: s2.cohortes[i] || 0 });
+                return null;
+            });
+            return { serie: s2, points: garde, nb: garde.filter(v => v != null).length };
+        };
+
+        const candidates = series.map(tracable);
+        const tracees = candidates.filter(c => c.nb >= MIN_TRONCON)
+            .sort((a, b) => b.serie.eurRetard - a.serie.eurRetard);
+        // Au-delà de huit courbes, plus rien ne se distingue. Les suivantes
+        // ne sont pas effacées en silence : elles sont nommées sous le
+        // graphique, avec ce qu'elles pèsent.
+        const MAX_COURBES = 8;
+        const dessinees = tracees.slice(0, MAX_COURBES);
+        const nonDessinees = tracees.slice(MAX_COURBES)
+            .concat(candidates.filter(c => c.nb < MIN_TRONCON));
+
+        rendreNoteEvoCategorie({ mois, moisEnCours, ecartees, orphelins, nonDessinees, data });
+
+        if (!dessinees.length) {
+            U.chart('chart-evo-categorie', videConfig(
+                'Aucun dispositif n’a deux mois voisins mesurables sur ce périmètre'));
+            return;
+        }
 
         U.chart('chart-evo-categorie', {
             type: 'line',
             data: {
                 labels: mois.map(m => U.moisLabel(m, true)),
-                datasets: principales.map((s2, i) => ({
-                    label: s2.label,
-                    data: eur ? s2.pointsEur : s2.pointsNb,
+                datasets: dessinees.map((c, i) => ({
+                    label: c.serie.label,
+                    data: c.points,
                     borderColor: U.palette[i % U.palette.length],
                     backgroundColor: U.palette[i % U.palette.length],
-                    borderWidth: 2, tension: 0.3, spanGaps: false,
-                    pointRadius: 2, pointHoverRadius: 5,
+                    borderWidth: 2.2, tension: 0.3, spanGaps: false,
+                    // Aucun marqueur : la ligne porte la lecture, et des
+                    // pastilles sur chaque mois redonnaient l'aspect semé de
+                    // points qu'on vient de retirer. Le survol les rappelle.
+                    pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 12,
                 })),
             },
             options: {
+                maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 scales: {
                     y: { grid: U.grille, min: 0, max: 100, ticks: { callback: v => v + ' %' } },
@@ -3706,20 +3754,117 @@
                     tooltip: {
                         callbacks: {
                             label: ctx => {
-                                const s2 = principales[ctx.datasetIndex];
+                                const c = dessinees[ctx.datasetIndex];
                                 if (ctx.parsed.y == null) return null;
-                                return `${s2.label} : ${U.pourcent(ctx.parsed.y, 1)}`
-                                    + ` (${U.nombre(s2.cohortes[ctx.dataIndex])} factures échues)`;
+                                return `${c.serie.label} : ${U.pourcent(ctx.parsed.y, 1)}`
+                                    + ` (${U.nombre(c.serie.cohortes[ctx.dataIndex])} factures échues)`;
                             },
-                            afterBody: () => ['', 'Cliquez pour ouvrir le détail mois par mois'],
+                            afterBody: () => ['', 'Cliquez un point pour ouvrir ses factures'],
                         },
                     },
                 },
-                // La carte thermique dit le détail que la courbe résume : elle
-                // s'ouvre au clic, plutôt que d'occuper l'écran en permanence.
-                onClick: () => rendreApresClic(() => { state.ui.evoDetail = !state.ui.evoDetail; }),
+                // Un point ouvre les factures de sa cohorte : le mois et le
+                // dispositif sur lesquels le taux a été calculé, et rien
+                // d'autre. Le détail mois par mois se replie à part.
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    const c = dessinees[els[0].datasetIndex];
+                    const mk = mois[els[0].index];
+                    const items = (data || []).filter(f =>
+                        (f.financement || 'INCONNU') === c.serie.cle
+                        && f[state.filtres.baseMois === 'facture' ? 'moisFacture'
+                            : state.filtres.baseMois === 'paiement' ? 'moisPaiement' : 'moisEcheance'] === mk
+                        && f.dateEcheance && f.dateEcheance <= (state.filtres.dateRef || new Date()));
+                    rendreApresClic(() => montrerFacturesListe(
+                        `${c.serie.label} — ${U.moisLabel(mk)}`, items,
+                        'Les factures échues de ce mois pour ce dispositif : celles sur lesquelles '
+                        + 'le taux du point a été calculé.',
+                        { onExport: rows => exporterFacturesSimple(rows, `${c.serie.label} ${mk}`) }));
+                },
             },
         });
+    }
+
+    /**
+     * Ce que la courbe ne trace pas, et pourquoi.
+     *
+     * Sept règles écartaient des factures et une seule était avouée ; les
+     * avouer toutes valait un paragraphe de quatre lignes au-dessus du
+     * graphique — honnête, et illisible. Le compte tient donc en une ligne,
+     * et le motif de chaque lot se déplie pour qui veut le lire. Chaque lot
+     * s'ouvre sur ses factures : un trou qu'on ne peut pas ouvrir se lit
+     * comme une facture perdue.
+     */
+    function rendreNoteEvoCategorie(o) {
+        const note = $('#evo-cat-note');
+        if (!note) return;
+        const e = o.ecartees || {};
+        const lignes = [];
+        const lots = [];
+        let nbEcartees = 0;
+
+        const ajouter = (lot, phrase, cle) => {
+            if (!lot || !lot.nb) return;
+            nbEcartees += lot.nb;
+            lots.push({ cle, titre: phrase, items: lot.items });
+            lignes.push(`<li><button class="cell-lien" data-evo="${cle}">${U.nombre(lot.nb)} factures</button>`
+                + ` (${U.euros(lot.euros)}) ${phrase}.</li>`);
+        };
+
+        ajouter(e.immatures, `dont le mois d'échéance n'est pas encore échu à `
+            + `${Math.round((e.completude || 0.8) * 100)} %`, 'immatures');
+        ajouter(e.souscohorte, `dont le dispositif compte moins de ${U.nombre(e.seuil || 5)} factures `
+            + `échues ce mois-là — un taux sur si peu ne se lit pas`, 'souscohorte');
+        ajouter(e.sansEcheance, `sans échéance calculable, qui n'entrent dans aucun taux`, 'sansEcheance');
+        ajouter(e.horsSerie, `sur les mois coupés en fin de série`, 'horsSerie');
+
+        if (o.orphelins && o.orphelins.length) {
+            const n = X.sum(o.orphelins, x => x.nb);
+            nbEcartees += n;
+            lignes.push(`<li>${U.nombre(n)} factures sur ${U.nombre(o.orphelins.length)} mois isolés — `
+                + `un mois mesurable sans mois voisin mesurable ne fait pas une courbe `
+                + `(${o.orphelins.slice(0, 3).map(x => U.escapeHtml(x.label) + ' en '
+                    + U.escapeHtml(U.moisLabel(x.mois, true))).join(', ')}`
+                + `${o.orphelins.length > 3 ? '…' : ''}).</li>`);
+        }
+        if (o.nonDessinees && o.nonDessinees.length) {
+            lignes.push(`<li>${U.nombre(o.nonDessinees.length)} dispositifs non tracés, faute de deux mois `
+                + `voisins mesurables ou parce que la carte en porte déjà huit : `
+                + `${o.nonDessinees.slice(0, 5).map(c => U.escapeHtml(c.serie.label)).join(', ')}`
+                + `${o.nonDessinees.length > 5 ? '…' : ''} — ${U.euros(X.sum(o.nonDessinees, c => c.serie.eurRetard))} `
+                + `de retard au total.</li>`);
+        }
+        if (o.moisEnCours) {
+            lignes.push(`<li>La série s'arrête à ${U.escapeHtml(U.moisLabel(o.mois[o.mois.length - 1]))} : `
+                + `${o.moisEnCours === 1 ? `le mois suivant n'est pas` : `les ${U.nombre(o.moisEnCours)} mois suivants ne sont pas`}`
+                + ` échus aux quatre cinquièmes.</li>`);
+        }
+
+        if (!lignes.length) {
+            note.innerHTML = '<span class="fv-hint">Tous les dispositifs et tous les mois mesurables '
+                + 'sont tracés.</span>';
+            return;
+        }
+
+        const resume = [
+            nbEcartees ? `${U.nombre(nbEcartees)} factures` : null,
+            (o.nonDessinees && o.nonDessinees.length)
+                ? `${U.nombre(o.nonDessinees.length)} dispositifs` : null,
+        ].filter(Boolean).join(' et ');
+
+        note.innerHTML = `<details class="bloc-repli bloc-reserve">
+            <summary>Ce qui n'est pas tracé — ${resume}</summary>
+            <ul class="liste-reserve">${lignes.join('')}</ul>
+        </details>`;
+
+        $$('[data-evo]', note).forEach(b => b.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            const l = lots.find(x => x.cle === b.dataset.evo);
+            if (!l || !l.items.length) return;
+            rendreApresClic(() => montrerFacturesListe(
+                'Factures hors du tracé', l.items, l.titre,
+                { onExport: rows => exporterFacturesSimple(rows, 'Hors du trace') }));
+        }));
     }
 
     function rendreHeatmap(croise) {

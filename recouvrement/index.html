@@ -426,6 +426,45 @@
                 </div>
             </div>
 
+<div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Quels dispositifs se dégradent</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-evocat-unite">
+                                <button class="seg-btn active" data-unite="nb">Nombre</button>
+                                <button class="seg-btn" data-unite="euros">€</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">Part des factures tombées en retard, par dispositif et par mois d'échéance. Une courbe qui monte est un dispositif qui se dégrade.</span>
+                    <div id="evo-cat-note" class="note-reserve"></div>
+                    <div class="chart-container chart-tall"><canvas id="chart-evo-categorie"></canvas></div>
+                </div>
+            </div>
+
+                                    <!-- Détail de la courbe : la carte thermique, mois par mois -->
+            <div id="evo-detail" hidden>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>% en recouvrement par mois et par financement</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-unite-heat">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">Chaque case : part des factures échues du mois qui sont en retard. Cliquez pour filtrer.</span>
+                    <div class="heatmap-wrap" id="heatmap-mois-financement"></div>
+                </div>
+            </div>
+            </div>
+
+
+
+
             <!-- La bad debt : le seuil est écrit en toutes lettres sous le
                  chiffre, et il se règle dans l'onglet Réglages. -->
             <div class="section-header section-header-sub">
@@ -624,48 +663,6 @@
                     </div>
                 </div>
             </div>
-<div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Évolution du % en recouvrement, par catégorie</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-evocat-unite">
-                                <button class="seg-btn active" data-unite="nb">Nombre</button>
-                                <button class="seg-btn" data-unite="euros">€</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint">
-                        Une courbe par type de financement : sur les factures arrivées à échéance dans le mois,
-                        la part tombée en recouvrement. Montante, la catégorie se dégrade ;
-                        descendante, elle s'assainit. Cliquez sur une légende pour isoler une catégorie.
-                    </span>
-                    <span class="fv-hint" id="evo-cat-note"></span>
-                    <div class="chart-container chart-tall"><canvas id="chart-evo-categorie"></canvas></div>
-                </div>
-            </div>
-
-                                    <!-- Détail de la courbe : la carte thermique, mois par mois -->
-            <div id="evo-detail" hidden>
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>% en recouvrement par mois et par financement</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-unite-heat">
-                                <button class="seg-btn active" data-unite="euros">€</button>
-                                <button class="seg-btn" data-unite="nb">Nombre</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint">Chaque case : part des factures échues du mois qui sont en retard. Cliquez pour filtrer.</span>
-                    <div class="heatmap-wrap" id="heatmap-mois-financement"></div>
-                </div>
-            </div>
-            </div>
-
-
-
             <!-- Treemap : outil de fouille, dimension au choix -->
             <div class="charts-grid">
                 <div class="chart-card chart-wide">

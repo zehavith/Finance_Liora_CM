@@ -1885,3 +1885,36 @@ html {
     /* La barre de filtres n'y colle plus : seule la navigation compte. */
     html { scroll-padding-top: calc(var(--nav-h, 66px) + 12px); }
 }
+
+
+/* LA RÉSERVE D'UN GRAPHIQUE, EN UNE LIGNE.
+   Dire les sept règles d'exclusion valait un paragraphe au-dessus de la
+   courbe. Le compte tient sur une ligne, le détail se déplie. */
+.note-reserve { margin: 2px 0 10px; }
+.bloc-reserve > summary {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    cursor: pointer;
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+}
+.bloc-reserve > summary::-webkit-details-marker { display: none; }
+.bloc-reserve > summary::before {
+    content: '▸';
+    font-size: 10px;
+    transition: transform .15s;
+}
+.bloc-reserve[open] > summary::before { transform: rotate(90deg); }
+.bloc-reserve > summary:hover { color: var(--text-primary); }
+.liste-reserve {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    font-size: 12.5px;
+    line-height: 1.75;
+    color: var(--text-muted);
+    max-width: 92ch;
+}
+.liste-reserve li { margin-bottom: 2px; }

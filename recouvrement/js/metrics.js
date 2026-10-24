@@ -667,20 +667,29 @@
         const COMPLETUDE = 0.8;
         const parFin = new Map();
         const moisVus = new Set();
+        // Ce que la courbe n'a pas pu tracer, rangé par motif. Chaque facture
+        // entre dans un lot et un seul : tracées + écartées font le total.
+        const sansEcheance = [], nonEchues = [];
         for (const f of factures) {
             const mk = f[champ];
-            if (!mk || !f.dateEcheance) continue;
+            if (!mk || !f.dateEcheance) { sansEcheance.push(f); continue; }
             const cle = f.financement || 'INCONNU';
             let g = parFin.get(cle);
             if (!g) { g = { cle, mois: new Map() }; parFin.set(cle, g); }
             let c = g.mois.get(mk);
-            if (!c) { c = { nb: 0, eur: 0, nbRetard: 0, eurRetard: 0, nbTotal: 0 }; g.mois.set(mk, c); }
+            if (!c) {
+                // `items` retient les factures de la case : sans elles, un
+                // point non tracé ne peut ni se compter ni s'ouvrir, et
+                // l'écran ne peut qu'être muet sur ce qu'il écarte.
+                c = { nb: 0, eur: 0, nbRetard: 0, eurRetard: 0, nbTotal: 0, items: [] };
+                g.mois.set(mk, c);
+            }
             c.nbTotal++;
             // Assiette : les factures dont l'échéance est passée à la date
             // d'arrêté, qu'elles soient réglées ou non.
-            if (f.dateEcheance > ref) continue;
+            if (f.dateEcheance > ref) { nonEchues.push(f); continue; }
             moisVus.add(mk);
-            c.nb++; c.eur += f.montant || 0;
+            c.nb++; c.eur += f.montant || 0; c.items.push(f);
             if (f.etat === 'En retard' || f.etat === 'Payée en retard') {
                 c.nbRetard++; c.eurRetard += f.montant || 0;
             }
@@ -710,8 +719,20 @@
                 const c = g.mois.get(m);
                 return c && c.nbTotal ? Math.round(c.nb / c.nbTotal * 100) : null;
             }),
-        })).filter(s => s.pointsNb.some(v => v != null))
-           .sort((a, b) => b.eurRetard - a.eurRetard);
+        })).sort((a, b) => b.eurRetard - a.eurRetard);
+
+        // UN DISPOSITIF SANS MOIS MESURABLE NE DISPARAÎT PLUS.
+        //
+        // Il était retiré de l'objet rendu : l'écran ne pouvait même pas le
+        // nommer, faute que la donnée existe à son niveau. Un dispositif
+        // pouvait ainsi porter cent quatre-vingts factures et cent huit mille
+        // euros de retard sans qu'une ligne ne le laisse soupçonner. Il est
+        // désormais marqué, non supprimé — à l'écran de dire pourquoi il
+        // n'est pas tracé.
+        for (const s2 of series) {
+            s2.nbPoints = s2.pointsNb.filter(v => v != null).length;
+            s2.tracable = s2.nbPoints > 0;
+        }
 
         // Les derniers mois où plus aucune série n'a de point traçable : ce
         // sont les cohortes encore en cours. Les garder laissait la courbe
@@ -729,7 +750,39 @@
             }
         }
 
-        return { mois, series, moisEnCours: coupes };
+        // Le compte, motif par motif. Une case non tracée l'est soit parce
+        // que le mois n'est pas assez mûr, soit parce que la cohorte est trop
+        // courte ; les deux se distinguent et se comptent séparément.
+        const immatures = [], souscohorte = [], horsSerie = [];
+        for (const s2 of series) {
+            const g = parFin.get(s2.cle);
+            for (let i = 0; i < mois.length; i++) {
+                const c = g && g.mois.get(mois[i]);
+                if (!c || !c.nb || s2.pointsNb[i] != null) continue;
+                (mure(c) ? souscohorte : immatures).push(...c.items);
+            }
+            // Les mois coupés en fin de série : leurs factures existent.
+            if (g) {
+                for (const [mk2, c] of g.mois) {
+                    if (!mois.includes(mk2) && c.items.length) horsSerie.push(...c.items);
+                }
+            }
+        }
+        const lot = (items) => ({
+            nb: items.length, euros: sum(items, f => f.montant || 0), items,
+        });
+
+        return {
+            mois, series, moisEnCours: coupes,
+            ecartees: {
+                sansEcheance: lot(sansEcheance),
+                nonEchues: lot(nonEchues),
+                immatures: lot(immatures),
+                souscohorte: lot(souscohorte),
+                horsSerie: lot(horsSerie),
+                seuil, completude: COMPLETUDE,
+            },
+        };
     }
 
     /**
