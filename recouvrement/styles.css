@@ -1804,7 +1804,7 @@ tr.ligne-total td {
 
 /* Le terme accordé tient sur deux lignes plutôt que de se couper. */
 .cell-terme {
-    display: block; max-width: 22ch;
+    display: block; max-width: 15ch;
     font-size: 12.5px; line-height: 1.4; color: var(--text-muted);
     white-space: normal;
 }
@@ -1940,4 +1940,22 @@ html {
 .fin-approx {
     border-bottom: 1px dotted var(--red, #F47458);
     cursor: help;
+}
+
+
+/* UN TABLEAU QUI CONTINUE À DROITE DOIT LE DIRE.
+   Le total « 633 · 4 599 750 € » était coupé net sur le « 4 », à toutes
+   les largeurs, sans qu'aucun signe n'indique qu'il y avait une suite :
+   la boîte défile, mais la barre n'apparaît qu'au geste. L'ombre portée
+   se montre du côté où il reste du contenu et s'efface au bout — c'est
+   le seul repère qui tienne sans JavaScript. */
+.table-wrap, .mini-table-wrap {
+    background:
+        linear-gradient(to right, var(--bg-card) 30%, rgba(17, 22, 40, 0)) left center,
+        linear-gradient(to left, var(--bg-card) 30%, rgba(17, 22, 40, 0)) right center,
+        radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, .45), rgba(0, 0, 0, 0)) left center,
+        radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, .45), rgba(0, 0, 0, 0)) right center;
+    background-repeat: no-repeat;
+    background-size: 42px 100%, 42px 100%, 15px 100%, 15px 100%;
+    background-attachment: local, local, scroll, scroll;
 }

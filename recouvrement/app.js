@@ -3340,7 +3340,7 @@
                   ? `<button class="lien-cellule" data-cmpcat="cohorte" data-cat="${U.escapeHtml(r.categorie)}">${U.nombre(v)}</button>`
                     + `<span class="cell-mini">${U.euros(r.cur.euros)}</span>`
                   : '<span class="ag-zero">·</span>' },
-            { key: r => r.cur.nbRecouv, label: 'Passées en recouvrement', align: 'right',
+            { key: r => r.cur.nbRecouv, label: 'En recouvrement', align: 'right',
               title: 'Factures de la cohorte qui sont ou ont été en retard',
               format: (v, r) => (v
                   ? `<button class="lien-cellule" data-cmpcat="recouv" data-cat="${U.escapeHtml(r.categorie)}"><strong>${U.nombre(v)}</strong></button>`
@@ -3361,7 +3361,7 @@
               format: v => v == null ? '<span class="ag-zero">·</span>' : U.jours(v) },
             { key: r => r.dRetardMoyen, label: 'Écart', align: 'right',
               format: v => fleche(v, x => U.jours(x), true) },
-            { key: r => r.cur.delaiReglement, label: 'Délai de règlement', align: 'right',
+            { key: r => r.cur.delaiReglement, label: 'Délai règlement', align: 'right',
               title: 'Facture → encaissement, en moyenne, sur les factures réglées de la cohorte',
               format: v => v == null ? '<span class="ag-zero">·</span>' : U.jours(v) },
             { key: r => r.dDelai, label: 'Écart', align: 'right',
@@ -3730,7 +3730,10 @@
         // Un tronçon est une suite d'au moins deux mois voisins mesurables.
         // Les points qui n'en font pas partie sont retirés du TRACÉ — jamais
         // du décompte, qui les reprend juste en dessous.
-        const MIN_TRONCON = 2;
+        // Trois mois, et non deux : un segment de deux points flottant
+        // entre deux trous se lit comme une erreur plutôt que comme une
+        // tendance. Ce qui n'est pas tracé reste compté juste en dessous.
+        const MIN_TRONCON = 3;
         const orphelins = [];
         const tracable = (s2) => {
             const brut = eur ? s2.pointsEur : s2.pointsNb;
@@ -3774,7 +3777,11 @@
                     data: c.points,
                     borderColor: U.palette[i % U.palette.length],
                     backgroundColor: U.palette[i % U.palette.length],
-                    borderWidth: 2.2, tension: 0.3, spanGaps: false,
+                    // Aucun lissage : une courbe de Bézier dessine, ENTRE deux
+                    // mois mesurés, des valeurs que personne n'a constatées, et
+                    // elle dépasse les points qu'elle relie. Des segments droits
+                    // ne disent que ce qui a été mesuré.
+                    borderWidth: 2.2, tension: 0, spanGaps: false,
                     // Aucun marqueur : la ligne porte la lecture, et des
                     // pastilles sur chaque mois redonnaient l'aspect semé de
                     // points qu'on vient de retirer. Le survol les rappelle.
@@ -4187,7 +4194,7 @@
         const seuil = $('#bad-debt-seuil');
         if (seuil) {
             seuil.textContent = `seuil : ${U.nombre(S)} jours d'échéance dépassée, soit ${mois} mois`
-                + ' — réglable dans Réglages';
+                + ' — réglable dans Données › Options de calcul';
         }
 
         const tuile = (o) => `
@@ -4505,18 +4512,18 @@
         };
 
         el.innerHTML = U.table([
-            { key: 'label', label: 'Type de financement' },
+            { key: 'label', label: 'Financement' },
             // C'est la référence que l'écart voisin met à l'épreuve : la
             // couper à trois mots lui ôterait sa raison d'être.
             { key: 'terme', label: 'Terme accordé',
               title: 'La règle de délai du dispositif, telle qu’elle est écrite',
               format: v2 => `<span class="cell-terme">${U.escapeHtml(v2 || '—')}</span>` },
-            { key: 'eurAvant', label: "Avant l'échéance", align: 'right', format: lien('avant', 'nbAvant') },
-            { key: 'eurApres', label: "Après l'échéance", align: 'right', format: lien('apres', 'nbApres') },
+            { key: 'eurAvant', label: 'Avant échéance', align: 'right', format: lien('avant', 'nbAvant') },
+            { key: 'eurApres', label: 'Après échéance', align: 'right', format: lien('apres', 'nbApres') },
             { key: 'eurSansEcheanceReglees', label: 'Sans échéance', align: 'right',
               title: 'Réglées, mais aucune règle n’a pu dater la facture',
               format: lien('sansEch', 'nbSansEcheanceReglees') },
-            { key: 'eurSansDateReglement', label: 'Sans date de règlement', align: 'right',
+            { key: 'eurSansDateReglement', label: 'Sans date', align: 'right',
               title: 'Échéance connue, date d’encaissement absente : la ponctualité n’est pas mesurable',
               format: lien('sansDate', 'nbSansDateReglement') },
             { key: 'partApresEur', label: '% après', align: 'right',
@@ -4535,14 +4542,20 @@
             // Le filet : la somme des lignes retombe sur l'encaissé du premier
             // acte, aux deux grandeurs près. Si elle n'y retombe pas, c'est
             // qu'une facture est comptée deux fois.
-            total: {
-                label: 'Total général',
-                eurAvant: U.euros(X.sum(rows, r => r.eurAvant)),
-                eurApres: U.euros(X.sum(rows, r => r.eurApres)),
-                eurSansEcheanceReglees: U.euros(X.sum(rows, r => r.eurSansEcheanceReglees)),
-                eurSansDateReglement: U.euros(X.sum(rows, r => r.eurSansDateReglement)),
-                nbTotal: `${U.nombre(v.nbPayees)} · ${U.euros(v.eurosPayees)}`,
-            },
+            // Le corps écrit « · » pour un zéro ; le pied écrivait « 0 € ».
+            // Deux conventions pour la même valeur dans le même tableau se
+            // lisent comme deux choses différentes.
+            total: (() => {
+                const z = (n) => n ? U.euros(n) : '<span class="ag-zero">·</span>';
+                return {
+                    label: 'Total général',
+                    eurAvant: z(X.sum(rows, r => r.eurAvant)),
+                    eurApres: z(X.sum(rows, r => r.eurApres)),
+                    eurSansEcheanceReglees: z(X.sum(rows, r => r.eurSansEcheanceReglees)),
+                    eurSansDateReglement: z(X.sum(rows, r => r.eurSansDateReglement)),
+                    nbTotal: `${U.nombre(v.nbPayees)} · ${U.euros(v.eurosPayees)}`,
+                };
+            })(),
         });
 
         $$('.cell-lien', el).forEach(b => b.addEventListener('click', (e) => {
