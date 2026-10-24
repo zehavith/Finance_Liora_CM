@@ -1675,3 +1675,125 @@ tr.ligne-total td {
 .filter-bar > .filter-block { flex: 0 0 auto; min-width: 0; }
 .filter-block-large,
 .filter-block-grow { flex: 0 0 auto; }
+
+
+/* ══════════════════════════════════════════════════════════════════
+   Le tableau de bord en quatre actes
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Le premier acte ouvre l'écran : il n'a rien au-dessus dont se séparer,
+   et les 64 px de marge et de filet repoussaient le premier chiffre. */
+.dashboard-content > .section-acte:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
+/* La phrase qui dit ce que le passage d'un acte au suivant raconte. */
+.acte-transition {
+    margin: -8px 0 22px;
+    max-width: 78ch;
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--text-muted);
+    border-left: 2px solid var(--border-color);
+    padding-left: 14px;
+}
+
+/* La variation du mois, en toutes lettres. Les deux compteurs s'ouvrent
+   sur leurs factures : ils se voient donc comme des boutons. */
+.ligne-flux {
+    margin: 0 0 18px;
+    font-size: 15px;
+    line-height: 1.8;
+    color: var(--text-primary);
+}
+.ligne-flux strong { font-weight: 700; }
+.ligne-flux .flux-lien {
+    background: none;
+    border: none;
+    border-bottom: 1px dashed var(--accent);
+    color: var(--accent);
+    font: inherit;
+    font-weight: 700;
+    padding: 0 1px;
+    cursor: pointer;
+}
+.ligne-flux .flux-lien:hover { border-bottom-style: solid; }
+.ligne-flux .flux-hausse { color: var(--red, #F47458); font-weight: 700; }
+.ligne-flux .flux-baisse { color: #84cc16; font-weight: 700; }
+.ligne-flux .flux-vide { color: var(--text-muted); }
+
+/* Un renvoi vers un autre onglet, écrit dans une phrase. */
+.lien-interne {
+    background: none; border: none; padding: 0;
+    color: var(--accent); font: inherit; text-decoration: underline;
+    cursor: pointer;
+}
+
+/* Les deux tuiles jumelles de la bad debt portent leur seuil. */
+.kpi-seuil {
+    display: block;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+
+/* La barre à 100 % de l'encaissé : quatre parts qui s'excluent. */
+.barre-parts {
+    display: flex; width: 100%; height: 30px;
+    border-radius: 6px; overflow: hidden; margin-bottom: 12px;
+}
+.barre-parts > * {
+    border: none; padding: 0; font: inherit; color: #fff;
+    font-size: 11.5px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; min-width: 0; overflow: hidden; white-space: nowrap;
+}
+.barre-parts > *[disabled] { cursor: default; }
+.barre-parts > *:hover:not([disabled]) { filter: brightness(1.12); }
+.barre-legende {
+    display: flex; flex-wrap: wrap; gap: 6px 20px;
+    font-size: 12.5px; color: var(--text-muted); margin-bottom: 6px;
+}
+.barre-legende .pastille {
+    display: inline-block; width: 10px; height: 10px;
+    border-radius: 2px; margin-right: 6px; vertical-align: -1px;
+}
+.barre-legende b { color: var(--text-primary); }
+
+/* Une cellule de tableau qui s'ouvre sur ses factures. */
+.cell-lien {
+    background: none; border: none; padding: 0; font: inherit;
+    color: var(--accent); cursor: pointer; text-align: right;
+    border-bottom: 1px dashed transparent;
+}
+.cell-lien:hover { border-bottom-color: var(--accent); }
+
+/* Une carte qui n'a rien à dire le dit, plutôt que de rester vide. */
+.carte-vide {
+    color: var(--text-muted);
+    font-size: 13.5px;
+    font-style: italic;
+    padding: 14px 2px;
+}
+
+@media (max-width: 620px) {
+    .barre-parts { height: 26px; }
+    .barre-parts > * { font-size: 10px; }
+    .acte-transition { padding-left: 10px; font-size: 13px; }
+}
+
+
+/* Un chiffre qui s'ouvre reste un chiffre : quatre colonnes entières en
+   couleur d'accent se lisaient comme quatre colonnes d'alerte. Le trait
+   pointillé dit qu'on peut cliquer ; la couleur est gardée pour le survol. */
+.cell-lien { color: inherit; border-bottom: 1px dashed var(--border-hover, var(--border-color)); }
+.cell-lien:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Le terme accordé tient sur deux lignes plutôt que de se couper. */
+.cell-terme {
+    display: block; max-width: 22ch;
+    font-size: 12.5px; line-height: 1.4; color: var(--text-muted);
+    white-space: normal;
+}

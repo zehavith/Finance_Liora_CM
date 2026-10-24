@@ -192,6 +192,18 @@
         const totalEuros = sum(factures, x => x.montant);
 
         const enRetard = factures.filter(x => x.etat === 'En retard');
+        // 180 jours : borne haute de la tranche « 4 à 6 mois » de la balance
+        // âgée, dont la suivante commence à 181. Le recouvrement est exact.
+        const vieux = enRetard.filter(x => x.retardJours > 180);
+        const vieuxQualifies = vieux.filter(x => x.etape === 'CONTENTIEUX' || x.etape === 'PERTE');
+        // L'écart à l'échéance ne se mesure que là où une date de règlement
+        // existe : sur une facture réglée, retardJours vaut l'écart entre le
+        // règlement et l'échéance, et il est signé — négatif quand l'argent
+        // est arrivé en avance. C'est la seule mesure qui réponde à « avant
+        // ou après l'échéance », et le filtre porte sur retardJours et non
+        // sur dateEcheance, sinon l'effectif annoncé serait plus large que
+        // celui réellement mesuré.
+        const reglees = factures.filter(x => x.paye && x.retardJours != null);
         const nonEchues = factures.filter(x => x.etat === 'Non échue');
         const payees = factures.filter(x => x.paye);
         const payeesRetard = factures.filter(x => x.etat === 'Payée en retard');
@@ -268,6 +280,24 @@
             retardMoyenPondere: moyennePonderee(enRetard, x => x.retardJours, x => x.montant),
             retardMoyenPaiement: moyenne(payeesRetard.map(x => x.retardJours)),
             delaiPaiementMoyen: moyenne(payees.map(x => x.delaiPaiement).filter(d => d != null && d >= 0)),
+            // Même population que la moyenne ci-dessus, au filtre près : sans
+            // cela, la médiane et la moyenne ne porteraient pas sur le même
+            // ensemble et leur écart ne dirait plus rien.
+            delaiPaiementMedian: mediane(payees.map(x => x.delaiPaiement).filter(d => d != null && d >= 0)),
+
+            // Ce qui attend depuis plus de six mois, et ce qui en est déjà
+            // parti en procédure.
+            nbEnRetardVieux: vieux.length,
+            eurosEnRetardVieux: sum(vieux, x => x.montant),
+            tauxEnRetardVieux: pct(sum(vieux, x => x.montant), montantRetard),
+            nbEnRetardVieuxQualifie: vieuxQualifies.length,
+            eurosEnRetardVieuxQualifie: sum(vieuxQualifies, x => x.montant),
+
+            // L'écart à l'échéance sur ce qui est rentré, avec son effectif :
+            // une médiane sans son dénominateur ne se vérifie pas.
+            ecartEcheanceMedian: mediane(reglees.map(x => x.retardJours)),
+            ecartEcheanceMoyen: moyenne(reglees.map(x => x.retardJours)),
+            nbEcartMesurable: reglees.length,
 
             // ── Répartition du portefeuille entier ──
             // Base : toutes les factures, échues ou non. C'est la lecture
@@ -437,6 +467,11 @@
                 nbEnRetard: enRetard.length,
                 eurEnRetard: sum(enRetard, x => x.montant),
                 nbPayeeRetard: payeeRetard.length,
+                // Le dénominateur du taux de rentrée en euros est exactement
+                // le numérateur du taux de bascule tauxCohorteEur : les deux
+                // barres sont cohérentes par construction.
+                eurPayeeRetard: sum(payeeRetard, x => x.montant),
+                eurSansEcheanceReglees: sum(sansEcheanceReglees, x => x.montant),
                 nbAssiette: assiette.length,
                 eurAssiette,
                 tauxNb: pct(enRetard.length, g.items.length),
@@ -450,6 +485,100 @@
         });
         rows.sort((a, b) => b.eurEnRetard - a.eurEnRetard);
         return rows;
+    }
+
+    /**
+     * Le cœur de l'acte II : quand les clients payent, avant ou après
+     * l'échéance, par type de financement.
+     *
+     * Quatre lots qui s'excluent et se totalisent, et c'est le point entier de
+     * cette fonction. La colonne « avant » se définit sur retardJours <= 0 et
+     * NON sur l'état « Payée » : cet état est posé par défaut quand la date de
+     * règlement manque, si bien qu'une partition à deux termes range dans
+     * « avant l'échéance » des factures dont rien n'atteste qu'elles y soient.
+     * C'est une catégorie tampon déguisée, et les deux derniers lots — réglées
+     * sans échéance calculable, réglées sans date de règlement connue — sont
+     * là pour qu'elle n'existe pas.
+     *
+     * Contrôle : la somme des nbTotal vaut le nombre de payées du tableau de
+     * bord et celle des eurTotal vaut l'encaissé, les deux étant sommés sur le
+     * montant de la facture comme ici.
+     *
+     * Nommage : surtout pas nbSansEcheance, qui dans parFinancement désigne
+     * les NON réglées.
+     */
+    function reglementsParEcheance(factures, rules) {
+        const map = new Map();
+        for (const f of factures.filter(x => x.paye)) {
+            const cle = f.financement || 'INCONNU';
+            let g = map.get(cle);
+            if (!g) {
+                const r = R.getRule(cle, rules);
+                // `terme` est la règle de délai du dispositif, telle qu'elle
+                // est écrite : c'est la seule référence qui existe, et c'est
+                // elle qui tranche entre relancer plus tôt et renégocier.
+                g = { cle, label: r.label, terme: r.note, items: [] };
+                map.set(cle, g);
+            }
+            g.items.push(f);
+        }
+        return [...map.values()].map(g => {
+            const avant = g.items.filter(x => x.retardJours != null && x.retardJours <= 0);
+            const apres = g.items.filter(x => x.etat === 'Payée en retard');
+            const sansEch = g.items.filter(x => !x.dateEcheance);
+            const sansDate = g.items.filter(x => x.dateEcheance && !x.datePaiementEffective);
+            const ecarts = g.items.filter(x => x.retardJours != null).map(x => x.retardJours);
+            const eurAvant = sum(avant, x => x.montant), eurApres = sum(apres, x => x.montant);
+            return Object.assign({}, g, {
+                nbAvant: avant.length, eurAvant,
+                nbApres: apres.length, eurApres,
+                nbSansEcheanceReglees: sansEch.length,
+                eurSansEcheanceReglees: sum(sansEch, x => x.montant),
+                nbSansDateReglement: sansDate.length,
+                eurSansDateReglement: sum(sansDate, x => x.montant),
+                nbTotal: g.items.length, eurTotal: sum(g.items, x => x.montant),
+                partApresEur: pct(eurApres, eurAvant + eurApres),
+                // L'effectif s'affiche à côté de la médiane : sans lui, elle
+                // porterait sur une population plus étroite que le nombre de
+                // la ligne, et le tableau cesserait d'être auditable.
+                ecartMedian: mediane(ecarts), ecartMoyen: moyenne(ecarts), nbEcarts: ecarts.length,
+                avant, apres, sansEch, sansDate,
+            });
+        }).sort((a, b) => b.eurApres - a.eurApres);
+    }
+
+    /**
+     * La part mensuelle de l'encaissement arrivée après l'échéance.
+     *
+     * Une part, et non un volume : la carte de flux de l'acte I donne déjà les
+     * volumes, et c'est la pente qui se lit ici. La couverture — ce qui est
+     * datable face à l'encaissé entier — s'affiche sous la courbe, faute de
+     * quoi le graphique contredirait en silence la barre de l'acte II.
+     */
+    function partApresParMois(factures) {
+        const payees = factures.filter(f => f.paye);
+        const map = new Map();
+        for (const f of payees) {
+            if (!f.moisPaiement) continue;        // pas de date de règlement, pas de point
+            let g = map.get(f.moisPaiement);
+            if (!g) { g = { mois: f.moisPaiement, avant: [], apres: [] }; map.set(f.moisPaiement, g); }
+            if (f.etat === 'Payée en retard') g.apres.push(f);
+            else if (f.retardJours != null && f.retardJours <= 0) g.avant.push(f);
+        }
+        const rows = [...map.values()].sort((a, b) => a.mois < b.mois ? -1 : 1).map(g => {
+            const eurAvant = sum(g.avant, x => x.montant), eurApres = sum(g.apres, x => x.montant);
+            return {
+                mois: g.mois, items: g.avant.concat(g.apres),
+                itemsAvant: g.avant, itemsApres: g.apres,
+                nbAvant: g.avant.length, nbApres: g.apres.length,
+                eurAvant, eurApres, partApres: pct(eurApres, eurAvant + eurApres),
+            };
+        });
+        return {
+            rows,
+            eurDatables: sum(rows, r => r.eurAvant + r.eurApres),
+            eurTotal: sum(payees, x => x.montant),
+        };
     }
 
     /** Croisement mois × financement — taux en nb et en €. */
@@ -874,8 +1003,16 @@
         const limite = dateRef ? R.monthKey(dateRef) : null;
         const mois = moisList.filter(m => !limite || m <= limite);
 
+        // Le mois en cours s'arrête à la date d'arrêté, et non à son dernier
+        // jour calendaire. Sans cette borne, le stock de fin de série est
+        // calculé à une date future : il compte des factures qui ne sont pas
+        // encore échues, et la courbe montre une aggravation qui n'est que du
+        // calendrier.
+        const borne = dateRef ? R.stripTime(dateRef) : R.stripTime(new Date());
+
         return mois.map(mk => {
-            const fin = finDeMois(mk);
+            const brut = finDeMois(mk);
+            const fin = brut > borne ? borne : brut;
 
             // Une date d'encaissement ne suffit pas à faire un règlement : une
             // date saisie sur un tableau opérationnel, sans ligne dans le
@@ -899,14 +1036,24 @@
                 f.dateEcheance && f.dateEcheance <= fin &&
                 (!regle(f) || f.datePaiementEffective > fin));
 
+            // 180 jours est la borne haute de la tranche « 4 à 6 mois » de la
+            // balance âgée, dont la suivante commence à 181 : la part ancienne
+            // de ce stock et la tranche « 6 à 12 mois » sont le même trait.
+            const stockVieux = stock.filter(f => R.diffDays(fin, f.dateEcheance) > 180);
+
             return {
                 mois: mk,
+                // Les trois lots étaient construits puis jetés : sans eux
+                // aucun compteur du flux ne s'ouvre sur ses factures.
+                fin, entrees, sorties, stock,
                 nbEntrees: entrees.length,
                 eurEntrees: sum(entrees, f => f.montant),
                 nbSorties: sorties.length,
                 eurSorties: sum(sorties, f => f.montant),
                 nbStock: stock.length,
                 eurStock: sum(stock, f => f.montant),
+                nbStockVieux: stockVieux.length,
+                eurStockVieux: sum(stockVieux, f => f.montant),
                 retardMoyenStock: moyenne(stock.map(f => R.diffDays(fin, f.dateEcheance))),
                 retardMedianStock: mediane(stock.map(f => R.diffDays(fin, f.dateEcheance))),
                 // Écart signé entre règlement et échéance sur les factures
@@ -916,6 +1063,42 @@
                         && R.monthKey(f.datePaiementEffective) === mk)
                     .map(f => R.diffDays(f.datePaiementEffective, f.dateEcheance))),
                 variation: sum(entrees, f => f.montant) - sum(sorties, f => f.montant),
+            };
+        });
+    }
+
+    /**
+     * Le tas de bad debt, mois par mois : grossit-il, ou se résorbe-t-il ?
+     *
+     * Reprend mot pour mot la fin de mois, le prédicat de règlement et le
+     * filtre de stock de fluxRecouvrement : les deux courbes doivent parler de
+     * la même chose.
+     *
+     * Le dernier point et la tuile « Créances de plus de 12 mois » ne tombent
+     * pas sur le même chiffre, et c'est attendu : le point recule dans le
+     * temps, donc il se lit sur la date de règlement ; la tuile se lit sur
+     * l'état d'aujourd'hui. L'écart est exactement l'ensemble des factures
+     * marquées payées sans date de règlement — la population que compte déjà
+     * la note d'historique incomplet.
+     */
+    function badDebtParMois(factures, moisList, seuilJours, dateRef) {
+        const S = (seuilJours == null ? 360 : seuilJours);
+        const borne = dateRef ? R.stripTime(dateRef) : R.stripTime(new Date());
+        const limite = R.monthKey(borne);
+        const regle = f => f.paye === true && !!f.datePaiementEffective;
+        return moisList.filter(m => m <= limite).map(mk => {
+            const brut = finDeMois(mk);
+            const fin = brut > borne ? borne : brut;   // le mois courant s'arrête à l'arrêté
+            const stock = factures.filter(f =>
+                f.dateEcheance && f.dateEcheance <= fin &&
+                (!regle(f) || f.datePaiementEffective > fin));
+            const bad = stock.filter(f => R.diffDays(fin, f.dateEcheance) > S);
+            return {
+                mois: mk, fin, items: bad,
+                nb: bad.length,
+                euros: sum(bad, f => f.montant || 0),
+                eurStock: sum(stock, f => f.montant || 0),
+                nbStock: stock.length,
             };
         });
     }
@@ -1331,6 +1514,66 @@
     }
 
     /**
+     * La bad debt : ce qui est échu depuis plus d'un an et toujours pas rentré.
+     *
+     * Le seuil n'est pas un chiffre rond posé au hasard. La balance âgée range
+     * ses tranches par pas de trente jours : « 6 à 12 mois » s'arrête à
+     * 12 × 30 = 360 jours et « 12 à 18 mois » commence à 361. Le seuil et la
+     * frontière « plus de douze mois » de la balance âgée sont donc le même
+     * trait, au jour près, et les deux écrans se recoupent exactement.
+     *
+     * L'état « En retard » implique déjà trois choses : la facture n'est pas
+     * réglée, son échéance existe, et elle est passée. Une créance annulée par
+     * avoir porte retardJours nul et ne peut pas entrer ici.
+     */
+    function badDebt(factures, seuilJours) {
+        const S = (seuilJours == null ? 360 : seuilJours);
+        const items = factures.filter(f => f.etat === 'En retard' && f.retardJours > S);
+        const dejaQualifiees = items.filter(f => f.etape === 'CONTENTIEUX' || f.etape === 'PERTE');
+        return {
+            seuil: S, items,
+            nb: items.length,
+            // Deux grandeurs, et il ne faut pas les diviser l'une par l'autre :
+            // `euros` est le montant facturé, comparable à l'encours total du
+            // portefeuille ; `resteDuBD` est ce qui reste réellement dû, donc
+            // la base d'une provision. Rapporter le second au premier
+            // mélangerait un reste dû à un montant facturé.
+            euros: sum(items, f => f.montant || 0),
+            resteDuBD: sum(items, f => f.encours || 0),
+            nbQualifiees: dejaQualifiees.length,
+            eurQualifiees: sum(dejaQualifiees, f => f.montant || 0),
+            itemsQualifiees: dejaQualifiees,
+        };
+    }
+
+    /**
+     * Ce qui finit quand même par rentrer au-delà du seuil.
+     *
+     * Les impayées comptées ici sont exactement celles de badDebt : les deux
+     * tuiles restent cohérentes par construction. Le taux est donné en euros
+     * et en nombre, parce qu'un taux en euros sans son pendant en nombre ne se
+     * vérifie pas — une seule grosse facture récupérée le ferait mentir.
+     *
+     * Réserve : l'histogramme des tranches de retard borne sa dernière tranche
+     * à 366 jours là où ce seuil est à 361. Les deux écrans diffèrent donc sur
+     * les factures dont le retard tombe entre 361 et 365 jours.
+     */
+    function recuperationAuDela(factures, seuilJours) {
+        const S = (seuilJours == null ? 360 : seuilJours);
+        const recuperees = factures.filter(f => f.etat === 'Payée en retard' && f.retardJours > S);
+        const impayees = factures.filter(f => f.etat === 'En retard' && f.retardJours > S);
+        const eurRec = sum(recuperees, f => f.montant || 0);
+        const eurImp = sum(impayees, f => f.montant || 0);
+        return {
+            seuil: S, recuperees, impayees,
+            nbRec: recuperees.length, nbImp: impayees.length,
+            eurRec, eurImp,
+            taux: pct(eurRec, eurRec + eurImp),
+            tauxNb: pct(recuperees.length, recuperees.length + impayees.length),
+        };
+    }
+
+    /**
      * Créances douteuses : contentieux et pertes, au sens des groupes Monday.
      * Ce sont les créances dont le recouvrement ordinaire a échoué.
      */
@@ -1669,6 +1912,145 @@
         };
     }
 
+    // ──────────────────────────────────────────────
+    //  Acte IV — ce qui change l'ordre des appels
+    // ──────────────────────────────────────────────
+
+    /**
+     * Les clients qui payaient il y a trois mois et ne payent plus.
+     *
+     * Deux fenêtres de trois mois d'échéance, prises bout à bout à partir du
+     * dernier mois complet. Un client n'est retenu que s'il a au moins
+     * `minFactures` factures dans CHACUNE des deux : sans cela, deux factures
+     * d'un côté contre une de l'autre produiraient un décrochage de cinquante
+     * points qui ne dit rien.
+     *
+     * Le taux à temps est la définition exacte employée par la comparaison par
+     * catégorie. Les factures sans client sont écartées : les ranger sous un
+     * tiret agrégerait des clients différents en un faux client.
+     */
+    function clientsQuiChangent(factures, dateRef, minFactures, seuilPoints) {
+        const ref = dateRef || R.stripTime(new Date());
+        const minF = minFactures || 3;
+        const seuil = seuilPoints == null ? -15 : seuilPoints;
+        const moisArrete = R.monthKey(ref);
+        const m0 = moisComplet(moisArrete, ref) ? moisArrete : moisAvant(moisArrete);
+        const recents = [m0, moisAvant(m0), moisAvant(moisAvant(m0))];
+        const p0 = moisAvant(recents[2]);
+        const precedents = [p0, moisAvant(p0), moisAvant(moisAvant(p0))];
+        const SR = new Set(recents), SP = new Set(precedents);
+        const par = new Map();
+        for (const f of factures) {
+            if (!f.client || !f.dateEcheance || f.dateEcheance > ref || !f.moisEcheance) continue;
+            const ou = SR.has(f.moisEcheance) ? 'rec' : SP.has(f.moisEcheance) ? 'pre' : null;
+            if (!ou) continue;
+            let g = par.get(f.client);
+            if (!g) { g = { client: f.client, rec: [], pre: [] }; par.set(f.client, g); }
+            g[ou].push(f);
+        }
+        const tauxATemps = W => pct(W.filter(x => x.etat === 'Payée').length, W.length);
+        const retardMoyen = W => moyenne(W.filter(x => x.etat === 'En retard' || x.etat === 'Payée en retard')
+            .map(x => x.retardJours).filter(v => v != null));
+        const ecart = (a, b) => (a == null || b == null) ? null : a - b;
+        const lignes = [...par.values()]
+            .filter(g => g.rec.length >= minF && g.pre.length >= minF)
+            .map(g => ({
+                client: g.client,
+                nbRecent: g.rec.length, nbPrecedent: g.pre.length,
+                tauxRecent: tauxATemps(g.rec), tauxPrecedent: tauxATemps(g.pre),
+                dTauxATemps: tauxATemps(g.rec) - tauxATemps(g.pre),
+                dRetardMoyen: ecart(retardMoyen(g.rec), retardMoyen(g.pre)),
+                eurEnJeu: sum(g.rec.filter(x => x.etat === 'En retard'), x => x.montant),
+                financements: [...new Set(g.rec.concat(g.pre).map(x => x.financement).filter(Boolean))],
+                itemsRecent: g.rec, itemsPrecedent: g.pre, items: g.rec.concat(g.pre),
+            }));
+        return {
+            moisRecents: recents.slice().reverse(), moisPrecedents: precedents.slice().reverse(),
+            // Le nombre de clients suivis s'affiche sur la carte : sans lui, un
+            // tableau vide se lit comme une mesure cassée au lieu de
+            // « aucun décrochage ».
+            nbSuivis: lignes.length,
+            degrades: lignes.filter(l => l.dTauxATemps <= seuil).sort((a, b) => b.eurEnJeu - a.eurEnJeu),
+            nbRedresses: lignes.filter(l => l.dTauxATemps >= -seuil).length,
+        };
+    }
+
+    /**
+     * Ce qui tombe à échéance dans les trente jours chez un client qui doit
+     * déjà : les seules factures non échues qu'on relance.
+     *
+     * Les trente jours sont une fenêtre de lecture, pas une date posée sur une
+     * facture : aucune échéance n'est inventée. L'état « Non échue » implique
+     * déjà une échéance présente et un retard négatif ou nul, si bien que la
+     * seule borne utile est la borne haute.
+     */
+    function echeancesARisque(factures, dateRef, jours) {
+        const ref = dateRef || R.stripTime(new Date());
+        const n = jours || 30;
+        const borne = R.addDays(ref, n);
+        const enDefaut = factures.filter(f => f.etat === 'En retard' && f.client);
+        const clientsEnDefaut = new Set(enDefaut.map(f => f.client));
+        const aVenir = factures.filter(f => f.etat === 'Non échue' && f.dateEcheance && f.dateEcheance <= borne);
+        const aRisque = aVenir.filter(f => f.client && clientsEnDefaut.has(f.client));
+        const clientsARisque = new Set(aRisque.map(f => f.client));
+        const dejaDus = enDefaut.filter(f => clientsARisque.has(f.client));
+        return {
+            jours: n, borne, items: aRisque, itemsAVenir: aVenir,
+            nb: aRisque.length, euros: sum(aRisque, f => f.montant),
+            nbAVenir: aVenir.length, eurosAVenir: sum(aVenir, f => f.montant),
+            part: pct(sum(aRisque, f => f.montant), sum(aVenir, f => f.montant)),
+            nbClients: clientsARisque.size,
+            itemsDejaDus: dejaDus, eurosDejaDus: sum(dejaDus, f => f.montant),
+        };
+    }
+
+    /**
+     * Du retard qui n'en est peut-être pas un : non pas une créance
+     * compromise, mais une donnée incertaine — et celle-là se corrige dans
+     * Monday, pas en justice.
+     *
+     * Le troisième motif ne peut pas s'annoncer comme « l'échéance vient de la
+     * règle par défaut, facture + 30 jours » : la règle de repli porte une
+     * base nulle et un nombre de jours nul, et le calcul d'échéance refuse
+     * d'inventer une date. Une facture que les règles ne savent pas dater n'a
+     * plus d'échéance du tout et sort en « Échéance inconnue », jamais en
+     * « En retard ».
+     */
+    function retardDouteux(factures) {
+        const enRetard = factures.filter(f => f.etat === 'En retard');
+        const base = sum(enRetard, f => f.montant);
+        const motifs = [
+            {
+                code: 'SIGNAL',
+                label: "Un règlement est signalé sur le tableau opérationnel, sans ligne dans le 0.1",
+                geste: "Retrouver le règlement",
+                items: enRetard.filter(f => f.signalPaiementHorsTableau),
+            },
+            {
+                code: 'ECHEANCE',
+                label: "L'échéance saisie dans Monday et l'échéance calculée divergent de plus de 60 jours",
+                geste: "Trancher l'échéance",
+                items: enRetard.filter(f => f.dateEcheance && f.dateEcheanceSource
+                    && Math.abs(R.diffDays(f.dateEcheanceSource, f.dateEcheance)) > 60),
+            },
+            {
+                code: 'FINANCEMENT',
+                label: "Dispositif non renseigné — l'échéance ne sort d'aucune règle de délai : "
+                    + "elle vient du grand livre, de la dernière date du libellé, ou de Sellsy",
+                geste: "Renseigner le type de financement",
+                items: enRetard.filter(f => !f.financement),
+            },
+        ].map(m => Object.assign({}, m, { nb: m.items.length, euros: sum(m.items, f => f.montant) }));
+        // Une facture peut porter deux motifs : le total la compte une fois.
+        const vues = new Set(); const items = [];
+        for (const m of motifs) for (const f of m.items) { if (vues.has(f)) continue; vues.add(f); items.push(f); }
+        return {
+            motifs, items, nb: items.length, base,
+            euros: sum(items, f => f.montant),
+            part: pct(sum(items, f => f.montant), base),
+        };
+    }
+
     global.LioraMetrics = {
         sum, pct, moyenne, moyennePonderee, mediane,
         filtrer, sourceDe, origineRecouvrement, vueEnsemble, parMois, parFinancement, croiseMoisFinancement,
@@ -1679,5 +2061,9 @@
         qualite, scoreQualite, comparaisonMensuelle, comparaisonParCategorie,
         inventaireQualifications, repartitionQualification,
         qualificationsParTableau, estColonneQualification, creancesDouteuses,
+        badDebt, recuperationAuDela, badDebtParMois,
+        reglementsParEcheance, partApresParMois,
+        clientsQuiChangent, echeancesARisque, retardDouteux,
+        moisComplet, moisAvant,
     };
 })(window);

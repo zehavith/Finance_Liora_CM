@@ -352,7 +352,10 @@ const AVANT_CHEMINS = corps;
 corps = corps
   .replace(/\.\.\/vendor\//g, 'vendor/')
   .replace(/\.\.\/Liora_Logo_Orange_alpha\.png/g, 'Liora_Logo_Orange_alpha.png')
-  .replace(/\?v=3\.9\.2/g, '');
+  // Le numéro de version se lit dans app.js, il ne s'écrit pas ici : une
+  // copie dans ce script devenait fausse à chaque publication, et la
+  // substitution suivante échouait sans qu'on sache pourquoi.
+  .replace(/\?v=[0-9]+\.[0-9]+\.[0-9]+/g, '');
 if (corps === AVANT_CHEMINS) throw new Error('index.html : aucun chemin réécrit, vérifier les motifs');
 if (/\.\.\//.test(corps)) {
   const reste = corps.match(/[^\s"']*\.\.\/[^\s"']*/g) || [];

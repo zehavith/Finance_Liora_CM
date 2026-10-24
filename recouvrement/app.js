@@ -11,8 +11,8 @@
     // Version de l'application, affichée dans la barre supérieure et dans
     // l'onglet Données. Elle figure ainsi sur toute capture d'écran, ce qui
     // évite d'avoir à deviner quelle version tourne quand un chiffre surprend.
-    const VERSION = '3.9.2';
-    const VERSION_DATE = '22 octobre 2026';
+    const VERSION = '4.0.0';
+    const VERSION_DATE = '24 octobre 2026';
 
     const R = window.LioraRules;
     const PR = window.LioraPrelevements;
@@ -99,6 +99,10 @@
             masquerTechnique: true,
             payeesHorsPortefeuille: false,
             montantsExacts: true,         // balances âgées : à l'euro, pas en k€
+            // « On ne met pas de date arbitraire » vaut aussi pour un seuil :
+            // 360 jours est la frontière « plus de douze mois » de la balance
+            // âgée, au jour près, et il se règle ici.
+            seuilBadDebtJours: 360,
             actualisationAuto: 30,        // minutes, 0 = désactivée
             actualiserAuDemarrage: true,
         },
@@ -159,7 +163,8 @@
             cmpCatBase: 'precedent',
             evoDetail: false,
             reglOrigine: 'recouvrement',
-            vueEcheance: 'retard',
+            topClients: 'gros',           // ou 'degrades'
+            badDebtFin: null,             // dispositif isolé sur la courbe de bad debt
             finDetail: null,
             sellsyVue: 'absentes',
             sellsyPortee: 'traiter',
@@ -315,6 +320,9 @@
             $('#settings-token').value = state.token;
         }
         appliquerOptionsAuxCases();
+        // Les actes ont été branchés avant cette relecture : leur état
+        // enregistré n'est connu que maintenant.
+        appliquerActes();
 
         // L'aide reste activée d'une session à l'autre
         try {
@@ -1117,9 +1125,12 @@
         const chips = [];
         const add = (label, onRemove) => chips.push({ label, onRemove });
 
+        // Ne figure ici que ce dont la commande n'est PAS visible dans la
+        // barre : répéter un contrôle qu'on a sous les yeux fait relire deux
+        // fois le même filtre. Le périmètre tient le premier rang — son
+        // contrôle est masqué, mais un clic sur une cellule de la treemap le
+        // pose encore, et sans cette puce il ne se déferait plus.
         if (f.perimetre !== 'Tous') add('Périmètre : ' + f.perimetre, () => { f.perimetre = 'Tous'; majSegments(); });
-        if (f.financements && f.financements.size)
-            add('Financement : ' + [...f.financements].map(k => R.getRule(k, state.rules).label).join(', '), () => { f.financements = null; });
         if (f.bucket) add('Antériorité : ' + (R.AGING_BUCKETS.find(b => b.key === f.bucket) || {}).label, () => { f.bucket = null; });
         if (f.retardMin != null || f.retardMax != null) {
             const t = X.TRANCHES_RETARD.find(x => x.min === f.retardMin && x.max === f.retardMax);
@@ -1134,9 +1145,6 @@
         }
         if (f.boards && f.boards.size) add('Tableau : ' + [...f.boards].join(', '), () => { f.boards = null; });
         if (f.etats && f.etats.size) add('État : ' + [...f.etats].join(', '), () => { f.etats = null; rendreChipsEtats(); });
-        if (f.recherche) add('Recherche : ' + f.recherche, () => { f.recherche = ''; $('#search-input').value = ''; });
-        if (f.mois) add(`Période : ${f.mois.size} mois sur ${state.moisDispo.length}`, () => { f.mois = null; rendreBoutonsMois(); });
-        if (f.inclureAvoirs) add('Avoirs inclus', () => { f.inclureAvoirs = false; majSegments(); });
         if (f.inclureSellsyManquantes) {
             add('Absentes de Monday incluses', () => {
                 f.inclureSellsyManquantes = false;
@@ -1222,6 +1230,8 @@
 
     function appliquerOptionsAuxCases() {
         $('#opt-masquer-technique').checked = state.options.masquerTechnique;
+        const seuil = $('#opt-seuil-bad-debt');
+        if (seuil) seuil.value = String(state.options.seuilBadDebtJours || 360);
         $('#opt-payees-hors-portefeuille').checked = state.options.payeesHorsPortefeuille;
         $('#opt-actualisation-auto').value = String(state.options.actualisationAuto);
         $('#opt-actualiser-demarrage').checked = state.options.actualiserAuDemarrage;
@@ -1291,15 +1301,13 @@
         encours:      { titre: 'Reste à encaisser',
                         filtre: f => !f.paye,
                         note: 'Les factures non réglées, échues ou non.' },
-        retard:       { titre: 'En retard',
-                        filtre: f => f.etat === 'En retard',
-                        titreNonEchu: 'Pas encore échu',
-                        filtreNonEchu: f => f.etat === 'Non échue',
-                        note: 'Échues à la date d’arrêté et toujours pas encaissées.',
-                        noteNonEchu: 'Non réglées, mais dont l’échéance n’est pas encore atteinte.' },
         impayees:     { titre: 'Factures impayées',
                         filtre: f => f.etat === 'En retard',
                         note: 'Les factures sur lesquelles se calcule le retard moyen.' },
+        retardVieux:  { titre: 'Impayées de plus de six mois',
+                        filtre: f => f.etat === 'En retard' && f.retardJours > 180,
+                        note: 'Échues depuis plus de six mois à la date d’arrêté et toujours pas '
+                            + 'encaissées — même borne que la tranche « 6 à 12 mois » de la balance âgée.' },
         payeesRetard: { titre: 'Payées en retard',
                         filtre: f => f.etat === 'Payée en retard',
                         note: 'Réglées, mais après leur échéance : le retard a été subi.' },
@@ -1312,17 +1320,9 @@
             carte.addEventListener('click', () => {
                 const lot = LOTS_KPI[carte.dataset.kpi];
                 if (!lot) return;
-                // La bascule « en retard / pas encore échu » se lit au clic et
-                // non au branchement : l'écouteur n'est posé qu'une fois, et
-                // une valeur figée à ce moment-là ouvrait toujours la même
-                // liste quelle que soit la vue affichée.
-                const bascule = state.ui.vueEcheance === 'nonEchu' && lot.filtreNonEchu;
-                const items = (state.dernieresFactures || []).filter(
-                    bascule ? lot.filtreNonEchu : lot.filtre);
-                montrerFacturesListe(bascule ? lot.titreNonEchu : lot.titre, items,
-                    bascule ? lot.noteNonEchu : lot.note,
-                    { onExport: rows => exporterFacturesSimple(rows,
-                        bascule ? lot.titreNonEchu : lot.titre) });
+                const items = (state.dernieresFactures || []).filter(lot.filtre);
+                montrerFacturesListe(lot.titre, items, lot.note,
+                    { onExport: rows => exporterFacturesSimple(rows, lot.titre) });
             });
         });
     }
@@ -1334,30 +1334,6 @@
         brancherKPIs();
 
         // ── KPIs ──
-        // Le groupe central se lit de deux façons : ce qui est en retard, ou ce
-        // qui n'est pas encore échu. Les libellés et l'aide suivent la bascule.
-        rendreGroupeEcheance(v);
-        const nonEchu = state.ui.vueEcheance === 'nonEchu';
-
-        // Le sous-titre disait « X déjà réglés en retard » juste sous le montant
-        // en retard, ce qui laissait croire que ce montant en faisait partie.
-        // Il n'en fait pas partie : ce KPI ne compte que l'échu impayé.
-        $('#kpi-euros-retard').textContent = U.euros(nonEchu ? v.eurosNonEchues : v.eurosEnRetard);
-        $('#kpi-euros-retard-sub').textContent = nonEchu
-            ? 'émises, échéance à venir' : 'échues et toujours impayées';
-
-        $('#kpi-nb-retard').textContent = U.nombre(nonEchu ? v.nbNonEchues : v.nbEnRetard);
-        $('#kpi-nb-retard-sub').textContent = `sur ${U.nombre(v.total)} factures · `
-            + U.pourcent(nonEchu ? X.pct(v.nbNonEchues, v.total) : v.tauxNb);
-
-        // Un pourcentage sans son dénominateur ne veut rien dire : celui-ci se
-        // calcule sur le total facturé, pas sur le reste à encaisser, et les
-        // deux lectures donnent des chiffres très différents.
-        $('#kpi-taux-euros').textContent =
-            U.pourcent(nonEchu ? v.tauxPortefeuilleNonEchu : v.tauxEuros);
-        $('#kpi-taux-nb-sub').textContent =
-            `${U.eurosCourt(nonEchu ? v.eurosNonEchues : v.eurosEnRetard)} sur ${U.eurosCourt(v.totalEuros)} facturés`;
-
         $('#kpi-total-euros').textContent = U.euros(v.totalEuros);
         $('#kpi-total-sub').textContent = `${U.nombre(v.total)} factures`;
 
@@ -1370,24 +1346,17 @@
         // déjà en retard. C'est le pourcentage auquel on s'attend spontanément
         // en lisant « Reste à encaisser », et il n'est pas le même que le taux
         // de recouvrement, calculé lui sur le total facturé.
-        // Trois parts, pas deux. « 3,0 M€ pas encore échus · 43,5 % en retard »
-        // laissait 28 % de l'encours sans explication : les factures dont
-        // l'échéance n'a pas pu être calculée, ni en retard ni non échues.
-        // Les taire faisait douter du total ; les nommer dit ce qu'il reste à
-        // qualifier.
-        const partsEncours = [
-            `${U.eurosCourt(v.eurosNonEchues)} pas encore échus`,
-            `${U.pourcent(X.pct(v.eurosEnRetard, v.encoursTotal))} déjà en retard`,
-        ];
-        if (v.eurosSansEcheance > 0) {
-            partsEncours.push(`${U.eurosCourt(v.eurosSansEcheance)} sans échéance calculable`);
-        }
-        $('#kpi-encours-sub').textContent = partsEncours.join(' · ');
-        $('#kpi-encours-sub').title = v.eurosSansEcheance > 0
-            ? `Les trois parts font le reste à encaisser : ${U.euros(v.eurosNonEchues)} non échus, `
-              + `${U.euros(v.eurosEnRetard)} en retard, ${U.euros(v.eurosSansEcheance)} sans échéance `
-              + `(${U.nombre(v.nbSansEcheance)} factures à qualifier).`
-            : '';
+        // Une seule part, et c'est celle que la bande « Où en est le
+        // portefeuille » ne donne pas : le pas-encore-échu et le sans-échéance
+        // y sont déjà deux tuiles, mais aucune ne rapporte le retard à
+        // l'ENCOURS. C'est pourtant le pourcentage auquel on s'attend en
+        // lisant « Reste à encaisser », et il n'est pas celui du facturé.
+        $('#kpi-encours-sub').textContent =
+            `${U.pourcent(X.pct(v.eurosEnRetard, v.encoursTotal))} déjà en retard`;
+        $('#kpi-encours-sub').title =
+            `${U.euros(v.eurosEnRetard)} en retard sur ${U.euros(v.encoursTotal)} à encaisser. `
+            + `Le détail du reste — non échu, sans échéance calculable — se lit sur la bande `
+            + `« Où en est le portefeuille », juste en dessous.`;
 
         $('#kpi-retard-moyen').textContent = U.jours(v.retardMoyen);
         // « C'est tiré par quelques vieux dossiers » est la première objection
@@ -1417,22 +1386,27 @@
 
         rendreRepartition(data);
 
+        // ── Acte I : la variation du mois, puis ce qui attend depuis un an ──
+        rendreLigneFlux(data);
+        rendreBadDebt(data);
+
         // ── Graphique mensuel ──
         const rows = X.parMois(data, state.filtres.baseMois);
         rendreChartMois(rows);
-        rendreComparaison(rows);
         rendreComparaisonCategorie(data);
 
         rendreChartFlux(data);
         rendreChartRetardEvolution(data);
-        rendreChartDSO(data);
+
+        // ── Acte III : la troisième tuile, et les écarts au dernier mois clos ──
+        rendreRetardTuiles(data, v);
         rendreChartHistoRetards(data);
         rendreTreemap(data);
 
         // ── Financement / balance âgée ──
         const fins = X.parFinancement(data, state.rules, state.filtres.dateRef);
-        rendreChartFinancement(fins);
-        rendreChartAging(X.balanceAgee(data));
+        rendreRetardFinancements(fins, data);
+        rendreBasculeRentree(fins);
 
         // ── Heatmap mois × financement ──
         // Le détail de la courbe : replié tant qu'on ne l'a pas demandé.
@@ -1444,11 +1418,18 @@
         }
         rendreChartEvoCategorie(data);
         rendreQualifB2C(data);
-        rendreReglements(data);
+        // ── Acte II : quand les clients payent ──
+        rendreEncaissements(data);
+        rendreReglementsEcheance(data);
+        rendreEcartEcheance(v);
+        rendrePartApres(data);
+        rendreReglementsOrigine(data);
 
 
         // ── Classements ──
-        rendreTopClients(X.topClients(data, 12));
+        rendreClientsAAppeler(data, X.topClients(data, 12));
+        rendreEcheancesARisque(data);
+        rendreRetardDouteux(data);
     }
 
     /**
@@ -1579,7 +1560,12 @@
         });
 
         const el = U.modal(`${titre} — ${U.nombre(totalNb)} factures · ${U.euros(totalEur)}`, corps,
-            [{ label: 'Voir toutes les factures', onClick: () => {
+            [{ label: 'Exporter cette répartition', close: false,
+               // La bande annonce un chemin vers les factures « export
+               // compris » : laisser la promesse sur un chemin qui n'en a pas
+               // ferait mentir l'auditabilité.
+               onClick: () => exporterFacturesSimple(lignes, titre) },
+             { label: 'Voir toutes les factures', onClick: () => {
                 state.filtres.etats = new Set(etats);
                 state.filtres.financements = null;
                 state.ui.page = 1;
@@ -2478,24 +2464,52 @@
      * place. Les deux derniers actes s'ouvrent donc à la demande, et le choix
      * est mémorisé. Rien n'est perdu, la page s'ouvre courte.
      */
+    /**
+     * L'état d'ouverture des actes, lu au moment où l'on en a besoin.
+     *
+     * Surtout pas capturé : brancherActes tourne avant que les réglages ne
+     * soient relus du disque, et la relecture remplace l'objet. Une référence
+     * prise trop tôt devient orpheline — les clics y écrivent, la sauvegarde
+     * sérialise l'autre, et le choix n'est ni enregistré ni retrouvé.
+     */
+    function etatsActes() {
+        // Le tableau de bord a été réécrit en quatre actes : un repli mémorisé
+        // portait sur un découpage qui n'existe plus. Les valeurs par défaut
+        // sont donc reposées une fois, et seulement une.
+        if (state.options.acteRecit !== 4) {
+            state.options.acteRecit = 4;
+            state.options.actesOuverts = { 1: true, 2: true, 3: true, 4: false };
+        }
+        return state.options.actesOuverts || (state.options.actesOuverts = {});
+    }
+
+    /** Porte l'état enregistré à l'écran. Appelé aussi après la relecture. */
+    function appliquerActes() {
+        const etats = etatsActes();
+        $$('[data-acte-toggle]').forEach(btn => {
+            const num = btn.dataset.acteToggle;
+            const corps = $(`[data-acte-corps="${num}"]`);
+            if (!corps || etats[num] == null) return;
+            const ouvert = !!etats[num];
+            corps.hidden = !ouvert;
+            btn.textContent = ouvert ? 'Replier' : 'Déplier';
+            btn.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
+        });
+    }
+
     function brancherActes() {
-        const etats = state.options.actesOuverts || (state.options.actesOuverts = {});
+        appliquerActes();
         $$('[data-acte-toggle]').forEach(btn => {
             const num = btn.dataset.acteToggle;
             const corps = $(`[data-acte-corps="${num}"]`);
             if (!corps) return;
 
-            const appliquer = (ouvert) => {
+            btn.addEventListener('click', () => {
+                const ouvert = corps.hidden;
                 corps.hidden = !ouvert;
                 btn.textContent = ouvert ? 'Replier' : 'Déplier';
                 btn.setAttribute('aria-expanded', ouvert ? 'true' : 'false');
-            };
-            if (etats[num] != null) appliquer(!!etats[num]);
-
-            btn.addEventListener('click', () => {
-                const ouvert = corps.hidden;
-                appliquer(ouvert);
-                etats[num] = ouvert;
+                etatsActes()[num] = ouvert;
                 sauverReglages();
                 // Les graphiques d'un acte replié n'ont pas de taille : ils se
                 // dessinent de travers si on ne les redessine pas à l'ouverture.
@@ -2754,67 +2768,6 @@
         });
     }
 
-    function rendreChartDSO(data) {
-        const noteDso = $('#dso-note');
-        if (noteDso) noteDso.innerHTML = noteHistoriqueIncomplet(data);
-        const toutes = X.dsoParMois(data, state.moisDispo, state.filtres.dateRef);
-        if (!toutes.length) { U.chart('chart-dso', videConfig('Aucun mois exploitable')); return; }
-        const rows = derniersMois(toutes);
-
-        const methode = state.ui.dsoMethode;
-        const courbes = [];
-        if (methode !== 'simple') courbes.push({
-            type: 'line', label: 'DSO count-back', yAxisID: 'y1', order: 0,
-            data: rows.map(r => r.dsoCountBack),
-            borderColor: U.couleurs.accent, backgroundColor: U.couleurs.accent,
-            borderWidth: 2.5, tension: 0.3, pointRadius: 2, pointHoverRadius: 5, spanGaps: true,
-        });
-        if (methode !== 'countback') courbes.push({
-            type: 'line', label: 'DSO simple', yAxisID: 'y1', order: 0,
-            data: rows.map(r => r.dsoSimple),
-            borderColor: U.couleurs.indigo, borderDash: [5, 4],
-            borderWidth: 2, tension: 0.3, pointRadius: 0, spanGaps: true,
-        });
-
-        U.chart('chart-dso', {
-            type: 'bar',
-            data: {
-                labels: rows.map(r => U.moisLabel(r.mois, true)),
-                // Les barres en euros et la courbe en jours partageaient un
-                // graphique à deux axes, dont l'alignement ne veut rien dire :
-                // le reste à encaisser se lit dans la balance âgée. Ne subsiste
-                // ici que ce que le DSO mesure — un nombre de jours.
-                datasets: courbes.map(c => ({ ...c, yAxisID: 'y' })),
-            },
-            options: {
-                interaction: { mode: 'index', intersect: false },
-                scales: {
-                    x: { grid: { display: false } },
-                    y: {
-                        grid: U.grille, beginAtZero: true,
-                        ticks: { callback: v => v + ' j' },
-                    },
-                },
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            label: ctx => `${ctx.dataset.label} : `
-                                + (ctx.parsed.y == null ? 'non calculable' : U.jours(ctx.parsed.y)),
-                            afterBody: items => {
-                                const r = rows[items[0].dataIndex];
-                                if (!r) return '';
-                                const l = [`Reste à encaisser : ${U.euros(r.encours)}`,
-                                    `CA facturé du mois : ${U.euros(r.ca)}`,
-                                    `${U.nombre(r.nbEncours)} factures non réglées`];
-                                if (r.tronque) l.push("⚠ encours plus ancien que l'historique chargé");
-                                return ['', ...l];
-                            },
-                        },
-                    },
-                },
-            },
-        });
-    }
 
     const treemapPalette = [
         '#1e2a5e', '#2a3a80', '#3b4fa0', '#4f62b8', '#6474cc', '#7c8ae0',
@@ -3116,138 +3069,8 @@
         });
     }
 
-    function rendreComparaison(rows) {
-        const el = $('#month-compare-body');
-        const base = state.ui.cmpBase || 'precedent';
-        $$('#seg-cmp-base .seg-btn').forEach(b => b.classList.toggle('active', b.dataset.base === base));
 
-        const cmp = X.comparaisonMensuelle(rows, R.monthKey(state.filtres.dateRef), base, state.filtres.dateRef);
-        if (!cmp) { el.innerHTML = '<p class="fv-hint">Deux mois au minimum sont nécessaires pour comparer.</p>'; $('#month-compare-title').textContent = ''; return; }
-        if (cmp.indisponible) {
-            el.innerHTML = `<p class="fv-hint">${U.moisLabel(cmp.moisCible)} n'est pas dans l'historique
-                chargé : la comparaison d'une année sur l'autre n'est pas possible pour
-                ${U.moisLabel(cmp.mois)}.</p>`;
-            $('#month-compare-title').textContent = '';
-            return;
-        }
 
-        $('#month-compare-title').textContent = `${U.moisLabel(cmp.mois)} vs ${U.moisLabel(cmp.moisPrec)}`
-            + (base === 'annee' ? ' — un an plus tôt' : '');
-
-        const ligne = (label, d, fmt, inverse) => {
-            const hausse = d.ecart > 0;
-            const bon = inverse ? !hausse : hausse;
-            const cls = d.ecart === 0 ? 'neutre' : (bon ? 'bon' : 'mauvais');
-            const fleche = d.ecart === 0 ? '=' : (hausse ? '▲' : '▼');
-            return `<div class="cmp-row">
-                <span class="cmp-label">${U.escapeHtml(label)}</span>
-                <span class="cmp-prev">${fmt(d.prev)}</span>
-                <span class="cmp-arrow cmp-${cls}">${fleche}</span>
-                <span class="cmp-cur">${fmt(d.cur)}</span>
-                <span class="cmp-delta cmp-${cls}">${d.ecartPct == null ? '—' : (d.ecartPct > 0 ? '+' : '') + U.pourcent(d.ecartPct, 0)}</span>
-            </div>`;
-        };
-
-        el.innerHTML = `<div class="cmp-table">
-            <div class="cmp-row cmp-head"><span>Indicateur</span><span>${U.moisLabel(cmp.moisPrec, true)}</span><span></span><span>${U.moisLabel(cmp.mois, true)}</span><span>Écart</span></div>
-            ${ligne('Montant en retard', cmp.eurEnRetard, U.eurosCourt, true)}
-            ${ligne('Factures en retard', cmp.nbEnRetard, U.nombre, true)}
-            ${ligne('% en retard (€)', cmp.tauxEur, v => U.pourcent(v), true)}
-            ${ligne('% en retard (nb)', cmp.tauxNb, v => U.pourcent(v), true)}
-            ${ligne('Retard moyen', cmp.retardMoyen, U.jours, true)}
-        </div>`;
-    }
-
-    function rendreChartFinancement(fins) {
-        const top = fins.filter(f => f.eurEnRetard > 0).slice(0, 12);
-        if (!top.length) { U.chart('chart-financement', videConfig('Aucune facture en retard')); return; }
-
-        U.chart('chart-financement', {
-            type: 'bar',
-            data: {
-                labels: top.map(f => f.label),
-                datasets: [{
-                    label: 'Montant en retard',
-                    data: top.map(f => f.eurEnRetard),
-                    backgroundColor: top.map((_, i) => U.palette[i % U.palette.length]),
-                    borderRadius: 4,
-                }],
-            },
-            options: {
-                indexAxis: 'y',
-                scales: {
-                    x: { grid: U.grille, ticks: { callback: v => U.eurosCourt(v) } },
-                    y: { grid: { display: false } },
-                },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: ctx => U.euros(ctx.parsed.x),
-                            afterLabel: ctx => {
-                                const f = top[ctx.dataIndex];
-                                return [`${U.nombre(f.nbEnRetard)} factures · ${U.pourcent(f.tauxEur)} du portefeuille`,
-                                    `Retard moyen : ${U.jours(f.retardMoyen)}`];
-                            },
-                        },
-                    },
-                },
-                onClick: (evt, els) => {
-                    if (!els.length) return;
-                    const f = top[els[0].index];
-                    const impayees = (f.items || []).filter(x => x.etat === 'En retard');
-                    montrerFacturesListe(`${f.label} — en retard`, impayees,
-                        `${U.escapeHtml(f.label)} : factures échues et toujours pas encaissées. `
-                        + `${U.pourcent(f.tauxEur)} du portefeuille, `
-                        + `retard moyen ${U.jours(f.retardMoyen)}.`,
-                        {
-                            onExport: rows => exporterFacturesSimple(rows, f.label + '_en_retard'),
-                            labelFiltre: 'Filtrer le tableau sur ce financement',
-                            onFiltrer: () => {
-                                state.filtres.financements = new Set([f.key]);
-                                state.ui.page = 1;
-                                rendreApresClic();
-                            },
-                        });
-                },
-            },
-        });
-    }
-
-    function rendreChartAging(buckets) {
-        const actifs = buckets.filter(b => b.nb > 0);
-        if (!actifs.length) { U.chart('chart-aging', videConfig('Aucun encours')); return; }
-
-        U.chart('chart-aging', {
-            type: 'doughnut',
-            data: {
-                labels: actifs.map(b => b.label),
-                datasets: [{
-                    data: actifs.map(b => b.euros),
-                    backgroundColor: actifs.map(b => b.couleur),
-                    borderColor: 'rgba(11,14,26,0.9)', borderWidth: 2,
-                }],
-            },
-            options: {
-                cutout: '60%',
-                plugins: {
-                    legend: { position: 'right' },
-                    tooltip: {
-                        callbacks: {
-                            label: ctx => {
-                                const b = actifs[ctx.dataIndex];
-                                return `${U.euros(b.euros)} · ${U.nombre(b.nb)} factures · ${U.pourcent(b.partEuros)}`;
-                            },
-                        },
-                    },
-                },
-                onClick: (evt, els) => {
-                    if (!els.length) return;
-                    montrerFacturesBucket(actifs[els[0].index]);
-                },
-            },
-        });
-    }
 
     /** Les factures d'une tranche d'ancienneté, et de quoi filtrer dessus. */
     function montrerFacturesBucket(b) {
@@ -3295,54 +3118,6 @@
     }
 
     /** Heatmap mois × financement du taux de retard. */
-    /**
-     * Le groupe central de la vue d'ensemble, à deux lectures.
-     *
-     * Ce qui est en retard répond au métier du recouvrement ; ce qui n'est pas
-     * encore échu répond à celui de la trésorerie — combien va rentrer, et
-     * quand. Les deux se lisent sur les mêmes trois cases, une bascule passant
-     * de l'une à l'autre, plutôt que de doubler la vue d'ensemble.
-     */
-    function rendreGroupeEcheance(v) {
-        const nonEchu = state.ui.vueEcheance === 'nonEchu';
-        const t = $('#kpi-groupe-titre');
-        if (t) t.textContent = nonEchu ? "Ce qui n'est pas encore échu" : 'Ce qui est en recouvrement';
-
-        const textes = nonEchu ? {
-            l1: 'Montant pas encore échu',
-            a1: "Montant des factures déjà émises dont l'échéance, calculée selon les règles de "
-              + "financement, <strong>n'est pas encore atteinte</strong>. C'est ce qui doit rentrer "
-              + 'sans avoir à le réclamer — la lecture trésorerie du portefeuille.',
-            l2: 'Factures pas encore échues',
-            a2: "Nombre de factures émises dont l'échéance est à venir. Elles ne sont ni en retard "
-              + 'ni réglées : elles attendent simplement leur date.',
-            l3: '% pas encore échu (€)',
-            a3: 'Montant pas encore échu divisé par le <strong>total facturé</strong> de la période. '
-              + 'Plus il est élevé, plus votre portefeuille est jeune.',
-        } : {
-            l1: 'Montant en retard',
-            a1: "Montant des factures dont la date d'échéance, calculée selon les règles de "
-              + "financement, est dépassée à la date d'arrêté <strong>et qui ne sont toujours pas "
-              + "réglées</strong>. C'est l'argent que vous devez aller chercher. Les factures "
-              + "finalement payées, mais en retard, n'y figurent pas : elles sont dans « Encaissé ».",
-            l2: 'Factures en retard',
-            a2: "Nombre de factures dont l'échéance calculée est dépassée et qui ne sont pas réglées, "
-              + 'tous tableaux confondus.',
-            l3: '% du facturé en retard',
-            a3: 'Montant en retard divisé par le <strong>total facturé</strong> de la période. '
-              + "À ne pas confondre avec la part du reste à encaisser qui est en retard : ce second "
-              + 'pourcentage, plus élevé, figure sous « Reste à encaisser ». Ni avec '
-              + '« Récupéré par le recouvrement », qui mesure ce qui est <strong>rentré</strong> '
-              + 'après échéance, là où celui-ci mesure ce qui est <strong>encore dehors</strong>.',
-        };
-        const poser = (n, label, aide) => {
-            const l = $(`#aide-kpi-${n}-label`); if (l) l.textContent = label;
-            const a2 = $(`#aide-kpi-${n}-texte`); if (a2) a2.innerHTML = aide;
-        };
-        poser(1, textes.l1, textes.a1);
-        poser(2, textes.l2, textes.a2);
-        poser(3, textes.l3, textes.a3);
-    }
 
     // ══════════════════════════════════════════════
     //  Les qualifications du portefeuille B2C
@@ -3536,49 +3311,31 @@
      * et celles qui sont rentrées seules. La bascule passe de l'une à l'autre,
      * sur la même mise en page, pour qu'elles se comparent d'un coup d'œil.
      */
-    function rendreReglements(data) {
+    /**
+     * La lecture par processus, au pied de l'acte II.
+     *
+     * Elle découpe l'encaissé d'après le groupe Monday d'ORIGINE du
+     * règlement — par quel chemin l'argent est rentré — et non d'après une
+     * date. C'est une distinction de processus, pas de délai : passer ou non
+     * par le recouvrement ne dit rien de la ponctualité. Elle est donc repliée
+     * sous l'acte, et non mêlée à la partition par échéance qui l'ouvre.
+     */
+    function rendreReglementsOrigine(data) {
+        const hote = $('#regl-origine-kpi');
+        if (!hote) return;
         const origine = state.ui.reglOrigine || 'recouvrement';
         const r = X.reglementsParOrigine(data, origine, state.rules);
         const viaRecouv = origine === 'recouvrement';
 
-        const t = $('#regl-titre');
-        if (t) t.textContent = viaRecouv
-            ? 'Encaissements après passage en recouvrement'
-            : 'Encaissements sans passage en recouvrement';
 
         const enRetard = data.filter(f => f.etat === 'En retard');
         const enCours = { nb: enRetard.length, euros: X.sum(enRetard, f => f.montant) };
 
-        const h = $('#regl-hint');
-        if (h) h.innerHTML = (viaRecouv
-            ? "Population : les factures <strong>encaissées</strong> qui étaient passées par le tableau "
-              + "de recouvrement avant de l'être — c'est le groupe d'origine conservé dans "
-              + "« 0.1. ALL - Factures payées » qui l'établit. Le recouvrement a donc obtenu leur règlement."
-              : "Ces factures ont été payées sans jamais entrer dans le circuit de recouvrement : "
-              + "<strong>Cela ne veut pas dire qu'elles ont été payées à l'heure</strong> : le compteur "
-              + "« dont payées en retard » ci-dessous montre combien l'ont été après leur échéance, "
-              + "sans qu'une relance ait été engagée. C'est une distinction de processus, pas de délai.")
-            + (r.nbOrigineInconnue
-                ? ` <strong>${U.nombre(r.nbOrigineInconnue)} factures réglées ne peuvent être attribuées</strong>,
-                    faute de groupe d'origine renseigné dans « 0.1. ALL - Factures payées » : elles sont
-                    hors de ce décompte.`
-                : '')
-            // Le compteur ne porte que sur ce qui est rentré. Une facture en
-            // retard est en recouvrement — mais tant qu'elle n'est pas
-            // encaissée, elle n'a pas sa place ici, et la lire comme « une
-            // seule facture en recouvrement » serait un contresens. Le reste
-            // à recouvrer est donc rappelé en regard.
-            + (viaRecouv && enCours.nb
-                ? ` <strong>Ce bloc ne compte que ce qui est rentré.</strong> À la même date,
-                    <strong>${U.nombre(enCours.nb)} factures</strong> sont encore en retard —
-                    donc en recouvrement — pour ${U.euros(enCours.euros)} : elles ne figurent pas
-                    ici, faute d'avoir été encaissées.`
-                : '');
 
         // Chaque tuile dit sur quoi elle est calculée : sans cela, « 416 payées
         // avant échéance » parmi des factures passées en recouvrement se lit
         // comme une contradiction, alors que c'est un signal — voir plus bas.
-        $('#regl-kpi').innerHTML = [
+        hote.innerHTML = [
             tuileDetail(U.nombre(r.nb), viaRecouv ? 'Factures récupérées' : 'Réglées hors recouvrement',
                 U.euros(r.euros), viaRecouv ? U.couleurs.payeRetard : U.couleurs.paye,
                 viaRecouv ? 'encaissées après être passées par le tableau de recouvrement'
@@ -3612,93 +3369,14 @@
                 'Les factures du retard moyen'),
         ].join('');
 
-        // Hors de la grille : dans une case de 215 px, l'explication s'étirait
-        // sur quinze lignes d'un mot. Elle a sa place, en pleine largeur.
-        const note = $('#regl-note');
-        const avant = r.nb - r.nbEnRetard;
-        if (note) {
-            // Une hypothèse n'a rien à faire sur un tableau de bord qu'on
-            // présente : elle appelle une question à laquelle on ne peut pas
-            // répondre en réunion. Le fait est rappelé en une ligne, et la
-            // tuile ouvre les factures ; l'explication et son incertitude sont
-            // dans l'onglet Data Quality, qui est fait pour ça.
-            note.hidden = !(viaRecouv && avant > 0);
-            note.innerHTML = (viaRecouv && avant > 0)
-                ? `<p>${U.nombre(avant)} de ces factures apparaissent réglées avant leur échéance
-                   calculée. Ce sont, pour l'essentiel, des factures refaites — la nouvelle date
-                   repousse l'échéance après le règlement. La tuile « Payées avant échéance »
-                   les ouvre ; l'onglet <strong>Data Quality</strong> en tient le détail.</p>`
-                : '';
-        }
 
         // Chaque tuile ouvre sa population : un chiffre qu'on ne peut pas
         // ouvrir ne se vérifie pas.
-        $$('[data-regl]', $('#regl-kpi')).forEach(el => el.addEventListener('click', () => {
+        $$('[data-regl]', hote).forEach(el => el.addEventListener('click', () => {
             rendreApresClic(() => montrerReglements(r, el.dataset.regl, viaRecouv));
         }));
 
-        // Ce qui rentre chaque mois
-        const mois = derniersMois(r.mois);
-        if (!mois.length) {
-            U.chart('chart-regl-mois', videConfig('Aucun règlement daté sur ce périmètre'));
-        } else {
-            U.chart('chart-regl-mois', {
-                type: 'bar',
-                data: {
-                    labels: mois.map(m => U.moisLabel(m.mois, true)),
-                    datasets: [{
-                        label: viaRecouv ? 'Encaissé après relance' : 'Encaissé hors recouvrement',
-                        data: mois.map(m => m.euros),
-                        backgroundColor: viaRecouv ? U.couleurs.payeRetard : U.couleurs.paye,
-                        borderRadius: 3,
-                    }],
-                },
-                options: {
-                    interaction: { mode: 'index', intersect: false },
-                    scales: {
-                        x: { grid: { display: false } },
-                        y: { grid: U.grille, ticks: { callback: v => U.eurosCourt(v) } },
-                    },
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: ctx => `${U.euros(ctx.parsed.y)}`,
-                                afterBody: items => {
-                                    const m = mois[items[0].dataIndex];
-                                    return ['', `${U.nombre(m.nb)} factures`,
-                                        m.retardMoyen != null ? `retard moyen ${U.jours(m.retardMoyen)}` : ''];
-                                },
-                            },
-                        },
-                    },
-                },
-            });
-        }
 
-        const el = $('#regl-financements');
-        el.innerHTML = U.table([
-            { key: 'label', label: 'Type de financement' },
-            { key: 'nb', label: 'Factures', align: 'right', format: U.nombre },
-            { key: 'euros', label: 'Montant', align: 'right', format: v => U.euros(v) },
-            // La moyenne porte sur toutes les factures réglées de la catégorie,
-            // paiements en avance compris : un chiffre négatif est un règlement
-            // avant échéance, ce que « retard » ne pouvait pas dire.
-            { key: 'retardMoyen', label: 'Écart à l\'échéance', align: 'right',
-              title: 'Négatif : payé avant échéance. Positif : payé en retard.',
-              format: v => v == null ? '—'
-                  : `<span class="${v > 0 ? 'cell-danger' : ''}">${v > 0 ? '+' : ''}${U.jours(v)}</span>` },
-        ], r.financements, {
-            vide: 'Aucune facture réglée dans cette catégorie.', onRowClick: true,
-            total: { label: 'Total', nb: U.nombre(r.nb), euros: U.euros(r.euros) },
-        });
-        U.bindTable(el, r.financements, {
-            onRowClick: f => {
-                state.filtres.financements = new Set([f.cle]);
-                state.ui.page = 1;
-                ouvrirOnglet('factures');
-            },
-        });
     }
 
     /**
@@ -3831,6 +3509,1029 @@
             state.filtres.financements = new Set([th.dataset.fin]);
             state.ui.page = 1;
             rendreTout();
+        }));
+    }
+
+    // ══════════════════════════════════════════════
+    //  ACTE I — Où en est l'argent qu'on me doit
+    // ══════════════════════════════════════════════
+
+    /**
+     * Les mois d'échéance présents dans la vue.
+     *
+     * state.moisDispo change de nature quand elle bascule « Mois basé sur »
+     * vers la date de facture ou la date de paiement. Les séries bâties sur
+     * l'échéance — le flux, la bad debt — s'en trouveraient trouées sans que
+     * rien à l'écran ne le dise. Elles prennent donc leur liste ici.
+     */
+    const moisEcheanceDispo = (data) =>
+        [...new Set((data || []).map(f => f.moisEcheance).filter(Boolean))].sort();
+
+    /** Le seuil de bad debt, réglable dans les Réglages. */
+    const seuilBadDebt = () => {
+        const v = state.options.seuilBadDebtJours;
+        return (v == null || !(v > 0)) ? 360 : v;
+    };
+
+    /**
+     * La variation du mois, en une phrase chiffrée.
+     *
+     * Le nombre ET le montant, parce que « tant de factures tombées en
+     * recouvrement » et « tant d'euros » ne se déduisent pas l'un de l'autre.
+     * Les deux compteurs s'ouvrent sur leurs factures : un chiffre qu'on ne
+     * peut pas ouvrir ne se vérifie pas.
+     */
+    function rendreLigneFlux(data) {
+        const el = $('#ligne-flux');
+        if (!el) return;
+        const flux = X.fluxRecouvrement(data, moisEcheanceDispo(data), state.filtres.dateRef);
+        const bandeau = $('#flux-mois');
+        if (!flux.length) {
+            el.innerHTML = '<span class="flux-vide">Aucun mois d’échéance exploitable sur ce périmètre.</span>';
+            if (bandeau) bandeau.textContent = '';
+            return;
+        }
+        const d = flux[flux.length - 1];
+        const p = flux.length > 1 ? flux[flux.length - 2] : null;
+        if (bandeau) {
+            bandeau.textContent = `${U.moisLabel(d.mois)} — arrêté au ${U.dateFR(d.fin)}`;
+        }
+
+        const delta = p ? d.eurStock - p.eurStock : null;
+        const deltaNb = p ? d.nbStock - p.nbStock : null;
+        const sens = delta == null ? '' : delta > 0 ? 'flux-hausse' : delta < 0 ? 'flux-baisse' : '';
+        const phrase = [
+            `<button class="flux-lien" data-flux="entrees">${U.nombre(d.nbEntrees)} factures</button>`,
+            `sont tombées en recouvrement ce mois-ci, pour <strong>${U.euros(d.eurEntrees)}</strong> ;`,
+            `<button class="flux-lien" data-flux="sorties">${U.nombre(d.nbSorties)}</button>`,
+            `en sont sorties, pour <strong>${U.euros(d.eurSorties)}</strong>.`,
+        ];
+        if (delta == null) {
+            phrase.push(`Le stock s'établit à <strong>${U.euros(d.eurStock)}</strong> `
+                + `sur ${U.nombre(d.nbStock)} factures.`);
+        } else if (delta === 0) {
+            phrase.push(`Le stock n'a pas bougé : <strong>${U.euros(d.eurStock)}</strong>.`);
+        } else {
+            phrase.push(`Le stock a <span class="${sens}">${delta > 0 ? 'monté' : 'baissé'} de `
+                + `${U.euros(Math.abs(delta))}</span>`
+                + (deltaNb ? ` (${deltaNb > 0 ? '+' : '−'}${U.nombre(Math.abs(deltaNb))} factures)` : '')
+                + ` depuis ${U.moisLabel(p.mois)}, à <strong>${U.euros(d.eurStock)}</strong>.`);
+        }
+        el.innerHTML = phrase.join(' ');
+
+        $$('.flux-lien', el).forEach(b => b.addEventListener('click', () => {
+            const quoi = b.dataset.flux;
+            const items = quoi === 'entrees' ? d.entrees : d.sorties;
+            const titre = quoi === 'entrees'
+                ? `Tombées en recouvrement en ${U.moisLabel(d.mois)}`
+                : `Sorties du recouvrement en ${U.moisLabel(d.mois)}`;
+            const contexte = quoi === 'entrees'
+                ? "Échues dans le mois et non réglées à leur échéance. Une facture réglée avant son "
+                  + "échéance n'y figure pas : elle n'est jamais entrée en retard."
+                : "Encaissées dans le mois, après leur échéance. C'est ce que le recouvrement a "
+                  + 'fait rentrer.';
+            rendreApresClic(() => montrerFacturesListe(titre, items, contexte,
+                { onExport: rows => exporterFacturesSimple(rows, titre) }));
+        }));
+    }
+
+    /**
+     * La bad debt : deux tuiles jumelles, une note, et le détail replié.
+     *
+     * La part affichée rapporte le MONTANT FACTURÉ de ces créances au reste à
+     * encaisser, qui se somme lui aussi sur le montant facturé. Rapporter le
+     * reste dû à l'encours total mêlerait deux grandeurs de nature différente.
+     */
+    function rendreBadDebt(data) {
+        const hote = $('#bad-debt-kpi');
+        if (!hote) return;
+        const S = seuilBadDebt();
+        const v = X.vueEnsemble(data, state.filtres.dateRef);
+        const bd = X.badDebt(data, S);
+        const rec = X.recuperationAuDela(data, S);
+        const mois = Math.round(S / 30);
+
+        const seuil = $('#bad-debt-seuil');
+        if (seuil) {
+            seuil.textContent = `seuil : ${U.nombre(S)} jours d'échéance dépassée, soit ${mois} mois`
+                + ' — réglable dans Réglages';
+        }
+
+        const tuile = (o) => `
+            <${o.items && o.items.length ? 'button' : 'div'} class="kpi-card${o.items && o.items.length ? ' kpi-cliquable' : ''}"
+                ${o.items && o.items.length ? `data-bd="${o.cle}" title="Voir ces factures"` : ''}>
+                <div class="kpi-icon ${o.icone}">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </div>
+                <div class="kpi-data">
+                    <span class="kpi-label">${U.escapeHtml(o.label)}</span>
+                    <span class="kpi-value">${o.valeur}</span>
+                    <span class="kpi-sub">${o.sub}</span>
+                    <span class="kpi-seuil">${o.seuil}</span>
+                </div>
+            </${o.items && o.items.length ? 'button' : 'div'}>`;
+
+        hote.innerHTML = [
+            tuile({
+                cle: 'bad', icone: 'kpi-red', items: bd.items,
+                label: `Créances de plus de ${mois} mois`,
+                valeur: U.euros(bd.euros),
+                sub: `${U.nombre(bd.nb)} factures · ${U.pourcent(X.pct(bd.euros, v.encoursTotal), 1)} `
+                    + `du reste à encaisser · reste réellement dû ${U.euros(bd.resteDuBD)}`,
+                seuil: `échues depuis plus de ${U.nombre(S)} jours à la date d'arrêté`
+                    + (bd.nbQualifiees
+                        ? ` · dont ${U.nombre(bd.nbQualifiees)} déjà en contentieux ou en perte `
+                          + `(${U.euros(bd.eurQualifiees)})`
+                        : ' · aucune n’est encore en contentieux ni en perte'),
+            }),
+            tuile({
+                cle: 'rec', icone: 'kpi-green', items: rec.recuperees,
+                label: `Ce qui finit par rentrer au-delà de ${mois} mois`,
+                valeur: rec.nbRec + rec.nbImp ? U.pourcent(rec.taux, 1) : '—',
+                sub: rec.nbRec + rec.nbImp
+                    ? `${U.euros(rec.eurRec)} rentrés contre ${U.euros(rec.eurImp)} encore dus · `
+                      + `${U.pourcent(rec.tauxNb, 1)} en nombre (${U.nombre(rec.nbRec)} sur `
+                      + `${U.nombre(rec.nbRec + rec.nbImp)})`
+                    : 'aucune créance n’a dépassé ce seuil sur ce périmètre',
+                seuil: 'part, en euros, des créances ayant dépassé le seuil qui ont été encaissées',
+            }),
+        ].join('');
+
+        $$('[data-bd]', hote).forEach(b => b.addEventListener('click', () => {
+            const bad = b.dataset.bd === 'bad';
+            const items = bad ? bd.items : rec.recuperees;
+            const titre = bad ? `Créances de plus de ${mois} mois`
+                              : `Récupérées au-delà de ${mois} mois`;
+            rendreApresClic(() => montrerFacturesListe(titre, items,
+                bad ? `Échues depuis plus de ${U.nombre(S)} jours et toujours pas encaissées.`
+                    : `Encaissées alors que l'échéance était dépassée de plus de ${U.nombre(S)} jours.`,
+                { onExport: rows => exporterFacturesSimple(rows, titre) }));
+        }));
+
+        // La note dit pourquoi la tuile et le dernier point de la courbe ne
+        // tombent pas sur le même chiffre : la tuile se lit sur l'état
+        // d'aujourd'hui, le point recule dans le temps et se lit donc sur la
+        // date de règlement. L'écart est exactement cette population-là.
+        const note = $('#bad-debt-note');
+        if (note) note.innerHTML = noteHistoriqueIncomplet(data)
+            || '<strong>Toutes les factures réglées portent leur date de règlement :</strong> la '
+               + 'tuile ci-dessus et le dernier point de la courbe du détail tombent donc sur le '
+               + 'même chiffre.';
+
+        rendreBadDebtDetail(data, S, bd);
+    }
+
+    /** Le détail replié : par dispositif sur les cinq tranches, puis la courbe. */
+    function rendreBadDebtDetail(data, S, bd) {
+        const el = $('#bad-debt-table');
+        if (!el) return;
+        const TRANCHES = R.AGING_BUCKETS.filter(b => b.min > 360);
+        const par = new Map();
+        for (const f of bd.items) {
+            const cle = f.financement || 'INCONNU';
+            let l = par.get(cle);
+            if (!l) {
+                l = { cle, label: R.getRule(cle, state.rules).label, items: [],
+                      nb: 0, euros: 0, resteDu: 0, nbQualif: 0, eurQualif: 0 };
+                TRANCHES.forEach(t => { l['nb_' + t.key] = 0; l['eur_' + t.key] = 0; l['items_' + t.key] = []; });
+                par.set(cle, l);
+            }
+            l.items.push(f); l.nb++; l.euros += f.montant || 0; l.resteDu += f.encours || 0;
+            if (f.etape === 'CONTENTIEUX' || f.etape === 'PERTE') { l.nbQualif++; l.eurQualif += f.montant || 0; }
+            const t = f.bucket;
+            if (t && TRANCHES.some(x => x.key === t.key)) {
+                l['nb_' + t.key]++; l['eur_' + t.key] += f.montant || 0; l['items_' + t.key].push(f);
+            }
+        }
+        const rows = [...par.values()].sort((a, b) => b.euros - a.euros);
+        const cellule = (cle) => ({
+            key: 'eur_' + cle, label: (R.AGING_BUCKETS.find(b => b.key === cle) || {}).label,
+            align: 'right',
+            format: (v, r) => v
+                ? `<button class="cell-lien" data-tranche="${cle}" data-fin="${U.escapeHtml(r.cle)}">`
+                  + `${U.eurosCourt(v)}<span class="cell-mini">${U.nombre(r['nb_' + cle])} fact.</span></button>`
+                : '<span class="ag-zero">·</span>',
+        });
+
+        const note = $('#bad-debt-detail-note');
+        if (note) {
+            note.innerHTML = `Les cinq tranches au-delà de douze mois. Leur somme vaut exactement le `
+                + `montant de la tuile, parce que la tranche « 12 à 18 mois » commence à 361 jours et `
+                + `que le seuil est à ${U.nombre(S)}`
+                + (S === 360 ? '' : ' — en déplaçant le seuil, les deux cessent de coïncider')
+                + `. La colonne <strong>déjà qualifié</strong> dit ce qui est parti en contentieux ou `
+                + `en perte : une décision ne se prend pas sans le savoir.`;
+        }
+
+        el.innerHTML = U.table([
+            { key: 'label', label: 'Type de financement' },
+            { key: 'nb', label: 'Factures', align: 'right', format: U.nombre },
+            { key: 'euros', label: 'Montant facturé', align: 'right', format: U.euros },
+            { key: 'resteDu', label: 'Reste dû', align: 'right', format: U.euros },
+            { key: 'eurQualif', label: 'Déjà qualifié', align: 'right',
+              title: 'Déjà en contentieux ou en perte',
+              format: (v, r) => v ? `${U.eurosCourt(v)}<span class="cell-mini">${U.nombre(r.nbQualif)} fact.</span>`
+                                  : '<span class="ag-zero">·</span>' },
+        ].concat(TRANCHES.map(t => cellule(t.key))), rows, {
+            vide: `Aucune créance au-delà de ${U.nombre(S)} jours sur ce périmètre.`,
+            total: {
+                label: 'Total général', nb: U.nombre(bd.nb), euros: U.euros(bd.euros),
+                resteDu: U.euros(bd.resteDuBD), eurQualif: U.euros(bd.eurQualifiees),
+            },
+        });
+
+        $$('.cell-lien', el).forEach(b => b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const r = rows.find(x => x.cle === b.dataset.fin);
+            if (!r) return;
+            const items = r['items_' + b.dataset.tranche];
+            const tr = R.AGING_BUCKETS.find(x => x.key === b.dataset.tranche);
+            rendreApresClic(() => montrerFacturesListe(
+                `${r.label} — ${tr ? tr.label : ''}`, items,
+                'Créances échues depuis cette tranche d’ancienneté et toujours pas encaissées.',
+                { onExport: rows2 => exporterFacturesSimple(rows2, `${r.label} ${tr ? tr.label : ''}`) }));
+        }));
+
+        // Une ligne cliquée recalcule la courbe sur ce dispositif seul.
+        U.bindTable(el, rows, { onRowClick: r => {
+            state.ui.badDebtFin = state.ui.badDebtFin === r.cle ? null : r.cle;
+            rendreCourbeBadDebt(data, S);
+        } });
+        rendreCourbeBadDebt(data, S);
+    }
+
+    function rendreCourbeBadDebt(data, S) {
+        const fin = state.ui.badDebtFin;
+        const jeu = fin ? data.filter(f => (f.financement || 'INCONNU') === fin) : data;
+        const serie = derniersMois(X.badDebtParMois(jeu, moisEcheanceDispo(jeu), S, state.filtres.dateRef));
+        if (!serie.length) { U.chart('chart-bad-debt', videConfig('Aucun mois exploitable')); return; }
+        const titre = fin
+            ? `${R.getRule(fin, state.rules).label} — cliquez à nouveau la ligne pour revenir à tout`
+            : 'Tous dispositifs — cliquez une ligne du tableau pour en isoler un';
+        U.chart('chart-bad-debt', {
+            type: 'line',
+            data: {
+                labels: serie.map(r => U.moisLabel(r.mois, true)),
+                datasets: [{
+                    label: 'Échu depuis plus de ' + U.nombre(S) + ' jours',
+                    data: serie.map(r => r.euros),
+                    borderColor: U.couleurs.retard, backgroundColor: 'rgba(244,116,88,.14)',
+                    fill: true, tension: .25, pointRadius: 3,
+                }],
+            },
+            options: {
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    const pt = serie[els[0].index];
+                    rendreApresClic(() => montrerFacturesListe(
+                        `Bad debt à fin ${U.moisLabel(pt.mois)}`, pt.items,
+                        `Échues depuis plus de ${U.nombre(S)} jours au ${U.dateFR(pt.fin)}, et non `
+                        + 'réglées à cette date-là.',
+                        { onExport: rows => exporterFacturesSimple(rows, 'Bad debt ' + pt.mois) }));
+                },
+                scales: {
+                    x: { grid: { display: false }, title: { display: true, text: titre } },
+                    y: { grid: U.grille, ticks: { callback: v => U.eurosCourt(v) } },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: {
+                        label: ctx => U.euros(ctx.parsed.y),
+                        afterBody: it => {
+                            const p = serie[it[0].dataIndex];
+                            return ['', `${U.nombre(p.nb)} factures`,
+                                `soit ${U.pourcent(X.pct(p.euros, p.eurStock), 1)} du stock impayé du mois`];
+                        },
+                    } },
+                },
+            },
+        });
+    }
+
+    // ══════════════════════════════════════════════
+    //  ACTE II — Quand mes clients payent
+    // ══════════════════════════════════════════════
+
+    /**
+     * La partition de l'encaissé, en QUATRE parts et non en deux.
+     *
+     * L'état « Payée » est posé par défaut quand la date de règlement manque :
+     * une partition à deux termes range donc dans « avant l'échéance » des
+     * factures dont rien ne l'atteste. C'est une catégorie tampon déguisée.
+     * Les deux dernières parts la défont, et elles s'ouvrent : ce sont les
+     * deux files de travail que cet acte crée.
+     */
+    function rendreEncaissements(data) {
+        const hote = $('#regl-kpi');
+        if (!hote) return;
+        const payees = data.filter(f => f.paye);
+        const lots = {
+            avant: payees.filter(f => f.retardJours != null && f.retardJours <= 0),
+            apres: payees.filter(f => f.etat === 'Payée en retard'),
+            sansEch: payees.filter(f => !f.dateEcheance),
+            sansDate: payees.filter(f => f.dateEcheance && !f.datePaiementEffective),
+        };
+        const eur = o => X.sum(o, f => f.montant || 0);
+        const total = eur(payees);
+        const parts = [
+            { cle: 'avant', label: "Réglées avant l'échéance", couleur: U.couleurs.paye,
+              aide: "L'argent est arrivé au plus tard le jour de l'échéance." },
+            { cle: 'apres', label: "Réglées après l'échéance", couleur: U.couleurs.payeRetard,
+              aide: "L'argent est arrivé après la date : le retard a été subi, il est rentré depuis." },
+            { cle: 'sansEch', label: 'Réglées sans échéance calculable', couleur: U.couleurs.nonEchue,
+              aide: "Aucune règle de délai n'a pu dater ces factures : on ne peut rien dire de leur ponctualité." },
+            { cle: 'sansDate', label: 'Réglées sans date de règlement connue', couleur: '#94a3b8',
+              aide: "L'échéance est connue, mais pas la date d'encaissement : la ponctualité n'est pas mesurable." },
+        ].map(p => Object.assign(p, {
+            items: lots[p.cle], nb: lots[p.cle].length, euros: eur(lots[p.cle]),
+            part: X.pct(eur(lots[p.cle]), total),
+        }));
+
+        const titre = $('#regl-titre');
+        if (titre) titre.textContent = "Comment l'encaissé est arrivé";
+        const hint = $('#regl-hint');
+        if (hint) {
+            hint.innerHTML = `Dénominateur : <strong>l'encaissé</strong>, soit ${U.euros(total)} sur `
+                + `${U.nombre(payees.length)} factures réglées, au montant facturé — et non le `
+                + `portefeuille du premier acte. Les quatre parts s'excluent et totalisent 100 %. `
+                + `Base de mois retenue par le filtre : `
+                + `<strong>${U.escapeHtml(libelleBaseMois())}</strong>.`;
+        }
+
+        if (!total) {
+            hote.innerHTML = '<p class="carte-vide">Aucune facture réglée sur ce périmètre : '
+                + 'il n’y a rien à répartir.</p>';
+            return;
+        }
+
+        hote.innerHTML =
+            '<div class="barre-parts">'
+            + parts.filter(p => p.euros > 0).map(p =>
+                `<button data-part="${p.cle}" style="background:${p.couleur};flex:${p.euros}"
+                         title="${U.escapeHtml(p.label)} — ${U.escapeHtml(p.aide)}">`
+                + (p.part >= 7 ? U.pourcent(p.part, 0) : '') + '</button>').join('')
+            + '</div>'
+            + '<div class="barre-legende">'
+            + parts.map(p => `<span><span class="pastille" style="background:${p.couleur}"></span>`
+                + `${U.escapeHtml(p.label)} — <b>${U.euros(p.euros)}</b> · ${U.nombre(p.nb)} factures · `
+                + `${U.pourcent(p.part, 1)}</span>`).join('')
+            + '</div>';
+
+        $$('[data-part]', hote).forEach(b => b.addEventListener('click', () => {
+            const p = parts.find(x => x.cle === b.dataset.part);
+            if (!p) return;
+            rendreApresClic(() => montrerFacturesListe(p.label, p.items, p.aide,
+                { onExport: rows => exporterFacturesSimple(rows, p.label) }));
+        }));
+
+        const note = $('#regl-note');
+        if (note) {
+            const aQualifier = parts[2].nb + parts[3].nb;
+            note.hidden = !aQualifier;
+            note.innerHTML = aQualifier
+                ? `<p><strong>${U.nombre(aQualifier)} factures réglées (${U.euros(parts[2].euros + parts[3].euros)}) `
+                  + `ne se mesurent pas.</strong> ${U.nombre(parts[2].nb)} n'ont pas d'échéance calculable, `
+                  + `${U.nombre(parts[3].nb)} n'ont pas de date de règlement. Elles ne sont pas rangées `
+                  + `d'office du côté des bons payeurs : les deux parts s'ouvrent, et c'est la seule `
+                  + `file de travail que ce bloc crée.</p>`
+                : '';
+        }
+    }
+
+    /** Le libellé de la base de mois retenue par le filtre. */
+    function libelleBaseMois() {
+        return ({ echeance: "date d'échéance", facture: 'date de facture', paiement: 'date de paiement' })[
+            state.filtres.baseMois] || "date d'échéance";
+    }
+
+    /**
+     * Avant ou après l'échéance, par type de financement.
+     *
+     * Le terme accordé est la note de la règle du dispositif : c'est la seule
+     * référence qui existe, et c'est la colonne voisine de l'écart constaté
+     * qui tranche entre relancer plus tôt et renégocier. L'écart médian porte
+     * son effectif, parce qu'il n'est pas celui de la ligne : une facture
+     * réglée sans date de règlement ne s'y mesure pas.
+     */
+    function rendreReglementsEcheance(data) {
+        const el = $('#regl-financements');
+        if (!el) return;
+        const rows = X.reglementsParEcheance(data, state.rules);
+        const v = X.vueEnsemble(data, state.filtres.dateRef);
+        const lien = (cle, champNb, champEur, items) => (vEur, r) => {
+            const nb = r[champNb];
+            if (!nb) return '<span class="ag-zero">·</span>';
+            return `<button class="cell-lien" data-rg="${cle}" data-fin="${U.escapeHtml(r.cle)}">`
+                + `${U.eurosCourt(vEur)}<span class="cell-mini">${U.nombre(nb)} fact.</span></button>`;
+        };
+
+        el.innerHTML = U.table([
+            { key: 'label', label: 'Type de financement' },
+            // C'est la référence que l'écart voisin met à l'épreuve : la
+            // couper à trois mots lui ôterait sa raison d'être.
+            { key: 'terme', label: 'Terme accordé',
+              title: 'La règle de délai du dispositif, telle qu’elle est écrite',
+              format: v2 => `<span class="cell-terme">${U.escapeHtml(v2 || '—')}</span>` },
+            { key: 'eurAvant', label: "Avant l'échéance", align: 'right', format: lien('avant', 'nbAvant') },
+            { key: 'eurApres', label: "Après l'échéance", align: 'right', format: lien('apres', 'nbApres') },
+            { key: 'eurSansEcheanceReglees', label: 'Sans échéance', align: 'right',
+              title: 'Réglées, mais aucune règle n’a pu dater la facture',
+              format: lien('sansEch', 'nbSansEcheanceReglees') },
+            { key: 'eurSansDateReglement', label: 'Sans date de règlement', align: 'right',
+              title: 'Échéance connue, date d’encaissement absente : la ponctualité n’est pas mesurable',
+              format: lien('sansDate', 'nbSansDateReglement') },
+            { key: 'partApresEur', label: '% après', align: 'right',
+              title: 'Part, en euros, du mesurable qui est arrivé après l’échéance',
+              format: (v2, r) => (r.nbAvant + r.nbApres)
+                  ? `<span class="${v2 > 50 ? 'cell-danger' : ''}">${U.pourcent(v2, 1)}</span>`
+                  : '<span class="ag-zero">·</span>' },
+            { key: 'ecartMedian', label: 'Écart médian', align: 'right',
+              title: 'Négatif : payé avant l’échéance. Positif : après.',
+              format: (v2, r) => v2 == null ? '<span class="ag-zero">·</span>'
+                  : `<span class="${v2 > 0 ? 'cell-danger' : ''}">${v2 > 0 ? '+' : ''}${U.jours(v2)}`
+                    + `</span><span class="cell-mini">sur ${U.nombre(r.nbEcarts)} mesurables</span>` },
+            { key: 'nbTotal', label: 'Réglées', align: 'right', format: U.nombre },
+        ], rows, {
+            vide: 'Aucune facture réglée sur ce périmètre.',
+            // Le filet : la somme des lignes retombe sur l'encaissé du premier
+            // acte, aux deux grandeurs près. Si elle n'y retombe pas, c'est
+            // qu'une facture est comptée deux fois.
+            total: {
+                label: 'Total général',
+                eurAvant: U.euros(X.sum(rows, r => r.eurAvant)),
+                eurApres: U.euros(X.sum(rows, r => r.eurApres)),
+                eurSansEcheanceReglees: U.euros(X.sum(rows, r => r.eurSansEcheanceReglees)),
+                eurSansDateReglement: U.euros(X.sum(rows, r => r.eurSansDateReglement)),
+                nbTotal: `${U.nombre(v.nbPayees)} · ${U.euros(v.eurosPayees)}`,
+            },
+        });
+
+        $$('.cell-lien', el).forEach(b => b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const r = rows.find(x => x.cle === b.dataset.fin);
+            if (!r) return;
+            const lots = { avant: ['avant', "Réglées avant l'échéance"],
+                           apres: ['apres', "Réglées après l'échéance"],
+                           sansEch: ['sansEch', 'Réglées sans échéance calculable'],
+                           sansDate: ['sansDate', 'Réglées sans date de règlement'] };
+            const [champ, titre] = lots[b.dataset.rg];
+            rendreApresClic(() => montrerFacturesListe(`${r.label} — ${titre.toLowerCase()}`, r[champ],
+                `Terme accordé par la règle du dispositif : ${r.terme || 'non renseigné'}.`,
+                { onExport: rows2 => exporterFacturesSimple(rows2, `${r.label} ${titre}`) }));
+        }));
+        U.bindTable(el, rows, { onRowClick: r => {
+            state.filtres.financements = new Set([r.cle]);
+            state.ui.page = 1;
+            ouvrirOnglet('factures');
+        } });
+    }
+
+    /** L'écart à l'échéance : la médiane à côté de la moyenne, et son effectif. */
+    function rendreEcartEcheance(v) {
+        const el = $('#ecart-echeance-kpi');
+        if (!el) return;
+        const med = v.ecartEcheanceMedian, moy = v.ecartEcheanceMoyen;
+        const phrase = med == null
+            ? 'Aucune facture réglée ne porte à la fois une échéance et une date de règlement.'
+            : med > 0
+                ? `la moitié de ce qui rentre arrive plus de ${U.jours(med)} après l'échéance`
+                : med < 0
+                    ? `la moitié de ce qui rentre arrive plus de ${U.jours(-med)} avant l'échéance`
+                    : "la moitié de ce qui rentre arrive le jour même de l'échéance";
+        el.innerHTML = `
+            <div class="kpi-card">
+                <div class="kpi-icon ${med != null && med > 0 ? 'kpi-red' : 'kpi-green'}">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"/><polyline points="7 7 12 2 17 7"/></svg>
+                </div>
+                <div class="kpi-data">
+                    <span class="kpi-label">Écart à l'échéance</span>
+                    <span class="kpi-value">${med == null ? '—' : (med > 0 ? '+' : '') + U.jours(med)}</span>
+                    <span class="kpi-sub">médiane · moyenne ${moy == null ? '—' : (moy > 0 ? '+' : '') + U.jours(moy)}
+                        · sur ${U.nombre(v.nbEcartMesurable)} factures mesurables</span>
+                    <span class="kpi-seuil">objectif : zéro jour — ${U.escapeHtml(phrase)}</span>
+                </div>
+            </div>`;
+    }
+
+    /**
+     * Ce qui bascule en recouvrement, et ce qui en revient.
+     *
+     * Deux taux par dispositif, sur la même assiette échue : la bascule est la
+     * part du facturé échu qui a connu du retard ; la rentrée est la part de
+     * ce retard qui a fini par être encaissée. Son dénominateur est exactement
+     * le numérateur de la bascule — les deux barres sont donc cohérentes par
+     * construction.
+     */
+    function rendreBasculeRentree(fins) {
+        const MIN = 5;
+        const rows = (fins || []).filter(r => r.nbAssiette >= MIN)
+            .map(r => Object.assign({}, r, {
+                rentree: X.pct(r.eurPayeeRetard, r.eurPayeeRetard + r.eurEnRetard),
+            }))
+            .sort((a, b) => b.tauxCohorteEur - a.tauxCohorteEur)
+            .slice(0, 12);
+        if (!rows.length) {
+            U.chart('chart-bascule-rentree', videConfig(
+                `Aucun dispositif n'atteint ${MIN} factures échues sur ce périmètre`));
+            return;
+        }
+        U.chart('chart-bascule-rentree', {
+            type: 'bar',
+            data: {
+                labels: rows.map(r => r.label),
+                datasets: [
+                    { label: 'Bascule en recouvrement', data: rows.map(r => r.tauxCohorteEur),
+                      backgroundColor: U.couleurs.retard, borderRadius: 3 },
+                    { label: 'Revient ensuite', data: rows.map(r => r.rentree),
+                      backgroundColor: U.couleurs.payeRetard, borderRadius: 3 },
+                ],
+            },
+            options: {
+                maintainAspectRatio: false, indexAxis: 'y',
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    const r = rows[els[0].index];
+                    const bascule = els[0].datasetIndex === 0;
+                    const items = bascule
+                        ? r.items.filter(f => f.etat === 'En retard' || f.etat === 'Payée en retard')
+                        : r.items.filter(f => f.etat === 'Payée en retard');
+                    rendreApresClic(() => montrerFacturesListe(
+                        `${r.label} — ${bascule ? 'passées par le retard' : 'revenues du retard'}`,
+                        items,
+                        bascule ? "Factures échues qui ont connu du retard, réglées depuis ou non."
+                                : 'Factures échues en retard qui ont fini par être encaissées.',
+                        { onExport: rows2 => exporterFacturesSimple(rows2, r.label) }));
+                },
+                scales: {
+                    x: { grid: U.grille, max: 100, ticks: { callback: v => v + ' %' } },
+                    y: { grid: { display: false } },
+                },
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: { callbacks: {
+                        label: ctx => `${ctx.dataset.label} : ${U.pourcent(ctx.parsed.x, 1)}`,
+                        afterBody: it => {
+                            const r = rows[it[0].dataIndex];
+                            return ['', `${U.nombre(r.nbAssiette)} factures échues`,
+                                `${U.nombre(r.nbEnRetard)} encore dues · ${U.nombre(r.nbPayeeRetard)} rentrées`];
+                        },
+                    } },
+                },
+            },
+        });
+    }
+
+    /** La part mensuelle de l'encaissement arrivée après l'échéance. */
+    function rendrePartApres(data) {
+        const r = X.partApresParMois(data);
+        const serie = derniersMois(r.rows);
+        const note = $('#part-apres-couverture');
+        if (note) {
+            note.innerHTML = r.eurTotal
+                ? `Couverture : ${U.euros(r.eurDatables)} datables sur ${U.euros(r.eurTotal)} encaissés `
+                  + `(${U.pourcent(X.pct(r.eurDatables, r.eurTotal), 1)}). Le reste n'a pas de date de `
+                  + `règlement et ne peut pas être placé sur un mois.`
+                : '';
+        }
+        if (!serie.length) { U.chart('chart-regl-mois', videConfig('Aucun règlement daté')); return; }
+        U.chart('chart-regl-mois', {
+            type: 'line',
+            data: {
+                labels: serie.map(m => U.moisLabel(m.mois, true)),
+                datasets: [{
+                    label: "Part arrivée après l'échéance",
+                    data: serie.map(m => m.partApres),
+                    borderColor: U.couleurs.payeRetard, backgroundColor: 'rgba(234,179,8,.14)',
+                    fill: true, tension: .25, pointRadius: 3,
+                }],
+            },
+            options: {
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                onClick: (evt, els) => {
+                    if (!els.length) return;
+                    const m = serie[els[0].index];
+                    rendreApresClic(() => montrerFacturesListe(
+                        `Encaissé en ${U.moisLabel(m.mois)}`, m.items,
+                        `${U.nombre(m.nbApres)} factures sur ${U.nombre(m.nbAvant + m.nbApres)} sont `
+                        + `arrivées après leur échéance.`,
+                        { onExport: rows => exporterFacturesSimple(rows, 'Encaissé ' + m.mois) }));
+                },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { grid: U.grille, max: 100, ticks: { callback: v => v + ' %' } },
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: {
+                        label: ctx => U.pourcent(ctx.parsed.y, 1) + ' après échéance',
+                        afterBody: it => {
+                            const m = serie[it[0].dataIndex];
+                            return ['', `${U.euros(m.eurApres)} après · ${U.euros(m.eurAvant)} avant`,
+                                `${U.nombre(m.nbApres + m.nbAvant)} factures datées`];
+                        },
+                    } },
+                },
+            },
+        });
+    }
+
+    // ══════════════════════════════════════════════
+    //  ACTE III — Depuis combien de temps j'attends
+    // ══════════════════════════════════════════════
+
+    /**
+     * La troisième tuile de l'acte, et les deux écarts au dernier mois clos.
+     *
+     * Les deux écarts sont lus DES DEUX CÔTÉS sur la même définition — celle
+     * du flux — et jamais entre un point de flux et une tuile d'état : le
+     * stock du flux tient pour impayée toute facture marquée payée sans date
+     * de règlement, et comparer deux définitions différentes serait la
+     * catégorie tampon déguisée en variation.
+     */
+    function rendreRetardTuiles(data, v) {
+        const flux = X.fluxRecouvrement(data, moisEcheanceDispo(data), state.filtres.dateRef);
+        const clos = flux.filter(r => X.moisComplet(r.mois, state.filtres.dateRef));
+        const avant = clos.length > 1 ? clos[clos.length - 2] : null;
+        const dernier = clos.length ? clos[clos.length - 1] : null;
+
+        const ecart = (sel, valeur, unite) => {
+            const el = $(sel);
+            if (!el) return;
+            if (valeur == null) { el.textContent = ''; return; }
+            const signe = valeur > 0 ? '+' : valeur < 0 ? '−' : '';
+            const classe = valeur > 0 ? 'flux-hausse' : valeur < 0 ? 'flux-baisse' : '';
+            el.innerHTML = `<span class="${classe}">${signe}${unite(Math.abs(valeur))}</span>`
+                + ` ${U.escapeHtml(entreLesDeux)}`;
+        };
+
+        const dRetard = (avant && dernier && avant.retardMoyenStock != null && dernier.retardMoyenStock != null)
+            ? dernier.retardMoyenStock - avant.retardMoyenStock : null;
+        const partVieux = r => (r && r.eurStock > 0) ? (r.eurStockVieux / r.eurStock) * 100 : null;
+        const dPartVieux = (partVieux(dernier) != null && partVieux(avant) != null)
+            ? partVieux(dernier) - partVieux(avant) : null;
+
+        // Le sous-titre du retard moyen porte déjà médiane et max : l'écart
+        // au mois clos s'y ajoute plutôt que de l'écraser.
+        // « de août » ne s'écrit pas : un mois qui commence par une voyelle
+        // prend l'élision, et avril, août et octobre sont dans ce cas.
+        const depuis = (m) => {
+            const t = U.moisLabel(m, true);
+            return (/^[aeiouéè]/i.test(t) ? "d'" : 'de ') + t;
+        };
+        const entreLesDeux = (avant && dernier)
+            ? `${depuis(avant.mois)} à ${U.moisLabel(dernier.mois, true)}`
+            : '';
+        const sub = $('#kpi-retard-moyen-sub');
+        if (sub && dRetard != null) {
+            const ecartTexte = ` · <span class="${dRetard > 0 ? 'flux-hausse' : 'flux-baisse'}">`
+                + `${dRetard > 0 ? '+' : '−'}${U.jours(Math.abs(dRetard))}</span>`
+                + ` ${U.escapeHtml(entreLesDeux)}`;
+            // Le sous-titre se termine par une phrase d'explication en bloc :
+            // ajouté après elle, l'écart tomberait à la ligne, loin du chiffre
+            // qu'il commente. Il se glisse donc juste avant.
+            const i = sub.innerHTML.indexOf('<span class="cell-mini"');
+            sub.innerHTML = i === -1 ? sub.innerHTML + ecartTexte
+                : sub.innerHTML.slice(0, i) + ecartTexte + sub.innerHTML.slice(i);
+        }
+
+        const el = $('#kpi-vieux');
+        if (el) {
+            el.textContent = U.euros(v.eurosEnRetardVieux);
+            const s = $('#kpi-vieux-sub');
+            if (s) {
+                s.innerHTML = `${U.nombre(v.nbEnRetardVieux)} factures · `
+                    + `${U.pourcent(v.tauxEnRetardVieux, 1)} du montant en retard`
+                    // Un écart entre deux pourcentages se compte en POINTS :
+                    // l'écrire « % » laisserait croire à une variation relative.
+                    + (dPartVieux != null
+                        ? ` · <span class="${dPartVieux > 0 ? 'flux-hausse' : 'flux-baisse'}">`
+                          + `${dPartVieux > 0 ? '+' : '−'}${Math.abs(dPartVieux).toFixed(1).replace('.', ',')} `
+                          + `point${Math.abs(dPartVieux) >= 2 ? 's' : ''} de part</span> `
+                          + `${U.escapeHtml(entreLesDeux)}`
+                        : '')
+                    + (v.nbEnRetardVieuxQualifie
+                        ? ` · dont ${U.nombre(v.nbEnRetardVieuxQualifie)} en contentieux ou en perte`
+                        : '');
+            }
+        }
+        rendreFranchissements(avant, dernier);
+    }
+
+    /** Les créances qui ont franchi les six mois depuis le dernier arrêté clos. */
+    function rendreFranchissements(avant, dernier) {
+        const el = $('#franchissements');
+        if (!el) return;
+        if (!avant || !dernier) {
+            el.innerHTML = '<p class="carte-vide">Il faut deux mois clos pour dire ce qui vient de '
+                + 'franchir le seuil ; l’historique chargé n’en compte pas assez.</p>';
+            return;
+        }
+        const vus = new Set(avant.stock.filter(f => R.diffDays(avant.fin, f.dateEcheance) > 180));
+        const entrants = dernier.stock.filter(f =>
+            R.diffDays(dernier.fin, f.dateEcheance) > 180 && !vus.has(f));
+        if (!entrants.length) {
+            el.innerHTML = `<p class="carte-vide">Aucune créance n’a franchi les six mois entre `
+                + `${U.escapeHtml(U.moisLabel(avant.mois))} et ${U.escapeHtml(U.moisLabel(dernier.mois))}.</p>`;
+            return;
+        }
+        const rows = entrants.slice().sort((a, b) => (b.montant || 0) - (a.montant || 0));
+        el.innerHTML = `<p class="fv-hint">${U.nombre(rows.length)} créances `
+            + `(${U.euros(X.sum(rows, f => f.montant))}) ont franchi les six mois entre `
+            + `${U.escapeHtml(U.moisLabel(avant.mois))} et ${U.escapeHtml(U.moisLabel(dernier.mois))}.</p>`
+            + U.table([
+                { key: 'numero', label: 'Facture', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'client', label: 'Client', format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'montant', label: 'Montant', align: 'right', format: U.euros },
+                { key: 'dateEcheance', label: 'Échéance', align: 'center', format: v => v ? U.dateFR(v) : '—' },
+                { key: 'retardJours', label: 'Retard', align: 'right', format: U.pastilleRetard },
+                { key: 'financement', label: 'Financement',
+                  format: v => U.escapeHtml(v ? R.getRule(v, state.rules).label : '—') },
+            ], rows.slice(0, 25), { vide: '', onRowClick: true })
+            + (rows.length > 25 ? `<p class="fv-hint">25 premières sur ${U.nombre(rows.length)}.</p>` : '');
+        U.bindTable(el, rows.slice(0, 25), { onRowClick: f => ouvrirFiche(f) });
+    }
+
+    /** Le retard par type de financement — l'axe de travail déclaré. */
+    function rendreRetardFinancements(fins, data) {
+        const el = $('#retard-financements');
+        if (!el) return;
+        const vieux = new Map();
+        for (const f of data) {
+            if (f.etat !== 'En retard' || !(f.retardJours > 180)) continue;
+            const c = f.financement || 'INCONNU';
+            const o = vieux.get(c) || { nb: 0, euros: 0, items: [] };
+            o.nb++; o.euros += f.montant || 0; o.items.push(f);
+            vieux.set(c, o);
+        }
+        const rows = (fins || []).filter(r => r.nbEnRetard)
+            .map(r => {
+                const o = vieux.get(r.key) || { nb: 0, euros: 0, items: [] };
+                return Object.assign({}, r, {
+                    nbVieux: o.nb, eurVieux: o.euros, itemsVieux: o.items,
+                    partVieux: X.pct(o.euros, r.eurEnRetard),
+                });
+            })
+            .sort((a, b) => b.eurEnRetard - a.eurEnRetard);
+        if (!rows.length) {
+            el.innerHTML = '<p class="carte-vide">Aucune facture en retard sur ce périmètre.</p>';
+            return;
+        }
+        const max = Math.max(...rows.map(r => r.eurEnRetard));
+        el.innerHTML = U.table([
+            { key: 'label', label: 'Type de financement' },
+            { key: 'eurEnRetard', label: 'Encore dû, en retard', align: 'right',
+              format: (v, r) => `${U.eurosCourt(v)} ${U.barre(v, max, U.couleurs.retard)}`
+                  + `<span class="cell-mini">${U.nombre(r.nbEnRetard)} factures</span>` },
+            { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
+            { key: 'retardMoyenPondere', label: 'Pondéré €', align: 'right',
+              title: 'Chaque facture pèse à hauteur de son montant : au-dessus du retard moyen, ce sont les grosses qui traînent',
+              format: (v, r) => v == null ? '—'
+                  : `<span class="${(r.retardMoyen != null && v > r.retardMoyen + 15) ? 'cell-danger' : ''}">${U.jours(v)}</span>` },
+            { key: 'eurVieux', label: 'Plus de six mois', align: 'right',
+              format: (v, r) => v
+                  ? `<button class="cell-lien" data-vieux="${U.escapeHtml(r.key)}">${U.eurosCourt(v)}`
+                    + `<span class="cell-mini">${U.pourcent(r.partVieux, 0)} · ${U.nombre(r.nbVieux)} fact.</span></button>`
+                  : '<span class="ag-zero">·</span>' },
+        ], rows, { vide: '', onRowClick: true,
+            total: { label: 'Total général',
+                     eurEnRetard: U.euros(X.sum(rows, r => r.eurEnRetard)),
+                     eurVieux: U.euros(X.sum(rows, r => r.eurVieux)) } });
+
+        $$('.cell-lien', el).forEach(b => b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const r = rows.find(x => x.key === b.dataset.vieux);
+            if (!r) return;
+            rendreApresClic(() => montrerFacturesListe(
+                `${r.label} — plus de six mois d'attente`, r.itemsVieux,
+                'Échues depuis plus de 180 jours à la date d’arrêté et toujours pas encaissées.',
+                { onExport: rows2 => exporterFacturesSimple(rows2, r.label) }));
+        }));
+        U.bindTable(el, rows, { onRowClick: r => {
+            state.filtres.financements = new Set([r.key]);
+            state.ui.page = 1;
+            rendreTout();
+        } });
+    }
+
+    // ══════════════════════════════════════════════
+    //  ACTE IV — Ce qui change l'ordre de mes appels
+    // ══════════════════════════════════════════════
+
+    /**
+     * Les clients à appeler, en deux lectures.
+     *
+     * Les plus gros, et ceux qui payaient il y a trois mois et ne payent plus.
+     * Les deux tiennent six lignes, pour que la bascule ne change pas la
+     * hauteur de la carte. Le nombre de clients suivis est écrit dans tous les
+     * cas : sans lui, un tableau vide se lit comme une mesure en panne au lieu
+     * de « aucun décrochage ».
+     */
+    function rendreClientsAAppeler(data, rowsTop) {
+        const el = $('#top-clients');
+        if (!el) return;
+        const vue = state.ui.topClients === 'degrades' ? 'degrades' : 'gros';
+        const titre = $('#top-clients-titre');
+        const note = $('#top-clients-note');
+
+        if (vue === 'gros') {
+            if (titre) titre.textContent = 'Les clients à appeler — les plus gros';
+            if (note) {
+                note.innerHTML = 'Classés par montant encore dû et en retard. Cliquez une ligne pour '
+                    + 'filtrer tout l’écran sur ce client ; cliquez le nombre de factures pour les voir.';
+            }
+            const rows = (rowsTop || []).slice(0, 6);
+            if (!rows.length) {
+                el.innerHTML = '<p class="carte-vide">Aucune facture en retard sur ce périmètre.</p>';
+                return;
+            }
+            const max = rows[0].euros;
+            el.innerHTML = U.table([
+                { key: 'client', label: 'Client' },
+                { key: 'euros', label: 'Montant en retard', align: 'right',
+                  format: v => `${U.euros(v)} ${U.barre(v, max, U.couleurs.retard)}` },
+                { key: 'nb', label: 'Nb', align: 'right',
+                  format: (v, r) => `<button class="cell-lien" data-client="${U.escapeHtml(r.client)}">${U.nombre(v)}</button>` },
+                { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
+                { key: 'plusVieille', label: 'Plus ancien', align: 'right', format: v => U.pastilleRetard(v) },
+            ], rows, { vide: '', onRowClick: true });
+            // Le clic de ligne est déjà pris par le filtre client : la cellule
+            // du nombre est donc un bouton, et il intercepte avant de retomber
+            // dessus. Sans cela, le nombre serait un compteur sans chemin.
+            $$('.cell-lien', el).forEach(b => b.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const nom = b.dataset.client;
+                const items = (state.dernieresFactures || [])
+                    .filter(f => f.client === nom && f.etat === 'En retard');
+                rendreApresClic(() => montrerFacturesListe(`${nom} — factures en retard`, items,
+                    'Échues à la date d’arrêté et toujours pas encaissées.',
+                    { onExport: rows2 => exporterFacturesSimple(rows2, nom) }));
+            }));
+            U.bindTable(el, rows, { onRowClick: r => {
+                state.filtres.client = r.client; state.ui.page = 1; rendreTout();
+            } });
+            return;
+        }
+
+        // Seconde lecture : ceux qui se dégradent.
+        const c = X.clientsQuiChangent(data, state.filtres.dateRef, 3, -15);
+        const fen = (m) => m.length ? `${U.moisLabel(m[m.length - 1], true)} → ${U.moisLabel(m[0], true)}` : '—';
+        if (titre) titre.textContent = 'Les clients à appeler — ceux qui se dégradent';
+        if (note) {
+            note.innerHTML = `Deux fenêtres de trois mois d'échéance comparées : `
+                + `<strong>${U.escapeHtml(fen(c.moisRecents))}</strong> contre `
+                + `<strong>${U.escapeHtml(fen(c.moisPrecedents))}</strong>. `
+                + `${U.nombre(c.nbSuivis)} clients ont au moins trois factures dans chacune des deux `
+                + `et peuvent donc être comparés ; ${U.nombre(c.nbRedresses)} se sont redressés.`;
+        }
+        if (!c.degrades.length) {
+            el.innerHTML = `<p class="carte-vide">Aucun décrochage : sur les ${U.nombre(c.nbSuivis)} `
+                + `clients comparables, aucun n'a perdu plus de quinze points de ponctualité.</p>`;
+            return;
+        }
+        const rows = c.degrades.slice(0, 6);
+        el.innerHTML = U.table([
+            { key: 'client', label: 'Client' },
+            { key: 'dTauxATemps', label: 'Ponctualité', align: 'right',
+              title: 'Part des factures réglées avant échéance, récemment contre avant',
+              format: (v, r) => `<span class="cell-danger">${U.pourcent(v, 0)}</span>`
+                  + `<span class="cell-mini">${U.pourcent(r.tauxPrecedent, 0)} → ${U.pourcent(r.tauxRecent, 0)}</span>` },
+            { key: 'dRetardMoyen', label: 'Retard moyen', align: 'right',
+              format: v => v == null ? '—'
+                  : `<span class="${v > 0 ? 'cell-danger' : ''}">${v > 0 ? '+' : ''}${U.jours(v)}</span>` },
+            { key: 'eurEnJeu', label: 'En jeu', align: 'right',
+              title: 'Montant encore dû et en retard sur la fenêtre récente',
+              format: (v, r) => v
+                  ? `<button class="cell-lien" data-deg="${U.escapeHtml(r.client)}">${U.euros(v)}</button>`
+                  : '<span class="ag-zero">·</span>' },
+            { key: 'nbRecent', label: 'Factures', align: 'right',
+              format: (v, r) => `${U.nombre(v)}<span class="cell-mini">contre ${U.nombre(r.nbPrecedent)} avant</span>` },
+        ], rows, { vide: '', onRowClick: true });
+        $$('.cell-lien', el).forEach(b => b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const l = rows.find(x => x.client === b.dataset.deg);
+            if (!l) return;
+            const items = l.itemsRecent.filter(f => f.etat === 'En retard');
+            rendreApresClic(() => montrerFacturesListe(`${l.client} — en jeu sur la fenêtre récente`,
+                items, 'Échues sur les trois derniers mois d’échéance et toujours pas encaissées.',
+                { onExport: rows2 => exporterFacturesSimple(rows2, l.client) }));
+        }));
+        U.bindTable(el, rows, { onRowClick: r => {
+            state.filtres.client = r.client; state.ui.page = 1; rendreTout();
+        } });
+    }
+
+    /** Ce qui tombe à échéance chez des clients déjà en défaut. */
+    function rendreEcheancesARisque(data) {
+        const hote = $('#risque-kpi');
+        if (!hote) return;
+        const r = X.echeancesARisque(data, state.filtres.dateRef, 30);
+        const note = $('#risque-note');
+        if (note) {
+            const combien = !r.nb ? 'Aucune'
+                : r.nb === r.nbAVenir ? 'Toutes'
+                : U.nombre(r.nb);
+            note.innerHTML = r.nbAVenir
+                ? `${U.nombre(r.nbAVenir)} factures (${U.euros(r.eurosAVenir)}) tombent à échéance d'ici `
+                  + `le ${U.dateFR(r.borne)}. ${combien} `
+                  + (r.nb ? `sont chez ${U.nombre(r.nbClients)} clients qui doivent déjà `
+                            + `${U.euros(r.eurosDejaDus)}.`
+                          : "n'est chez un client déjà en défaut : rien à relancer par anticipation.")
+                : 'Aucune facture ne tombe à échéance dans les trente prochains jours sur ce périmètre.';
+        }
+        hote.innerHTML = `
+            <div class="kpi-card${r.nb ? ' kpi-cliquable' : ''}"${r.nb ? ' data-risque="1" title="Voir ces factures"' : ''}>
+                <div class="kpi-icon ${r.nb ? 'kpi-amber' : 'kpi-green'}">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                </div>
+                <div class="kpi-data">
+                    <span class="kpi-label">À relancer avant l'échéance</span>
+                    <span class="kpi-value">${U.euros(r.euros)}</span>
+                    <span class="kpi-sub">${U.nombre(r.nb)} factures · ${U.pourcent(r.part, 0)} de ce qui tombe d'ici trente jours</span>
+                    <span class="kpi-seuil">chez ${U.nombre(r.nbClients)} clients qui doivent déjà ${U.euros(r.eurosDejaDus)}</span>
+                </div>
+            </div>`;
+        $$('[data-risque]', hote).forEach(b => b.addEventListener('click', () => {
+            rendreApresClic(() => montrerFacturesListe('À relancer avant l’échéance', r.items,
+                'Non encore échues, mais chez un client qui a déjà des factures en retard.',
+                { onExport: rows => exporterFacturesSimple(rows, 'Échéances à risque') }));
+        }));
+
+        const tbl = $('#risque-financements');
+        if (!tbl) return;
+        if (!r.nb) { tbl.innerHTML = ''; return; }
+        const rows = X.parDimension(r.items, f => f.financement || 'INCONNU',
+            k => R.getRule(k, state.rules).label);
+        // parDimension nomme sa somme `valeur`, et non `euros` : lire le
+        // mauvais champ laissait la colonne entière à « — ».
+        const max = rows.length ? Math.max(...rows.map(x => x.valeur)) : 0;
+        tbl.innerHTML = U.table([
+            { key: 'label', label: 'Type de financement' },
+            { key: 'valeur', label: 'Montant', align: 'right',
+              format: v => `${U.euros(v)} ${U.barre(v, max, U.couleurs.nonEchue)}` },
+            { key: 'nb', label: 'Factures', align: 'right', format: U.nombre },
+        ], rows, { vide: '', total: { label: 'Total', valeur: U.euros(r.euros), nb: U.nombre(r.nb) } });
+    }
+
+    /**
+     * Du retard qui n'est peut-être pas du retard.
+     *
+     * La frontière avec le premier acte : là une créance compromise, ici une
+     * donnée incertaine. Celle-ci se corrige dans Monday, pas en justice.
+     */
+    function rendreRetardDouteux(data) {
+        const el = $('#douteux-motifs');
+        if (!el) return;
+        const r = X.retardDouteux(data);
+        if (!r.nb) {
+            el.innerHTML = '<p class="carte-vide">Aucun des retards en cours n’est rendu douteux par '
+                + 'la donnée : pas de règlement signalé sans ligne, pas d’échéance divergente, '
+                + 'pas de dispositif manquant.</p>';
+            return;
+        }
+        el.innerHTML = `<p class="fv-hint">${U.nombre(r.nb)} factures (${U.euros(r.euros)}, `
+            + `${U.pourcent(r.part, 1)} du montant en retard) portent au moins un de ces trois signes. `
+            + `Une même facture peut en porter deux : le total ne la compte qu'une fois.</p>`
+            + '<div class="recup-grid">'
+            + r.motifs.map((m, i) => `
+                <${m.nb ? 'button' : 'div'} class="recup-card${m.nb ? '' : ' recup-muted'}"
+                    ${m.nb ? `data-motif="${i}" title="Voir ces factures"` : ''}>
+                    <span class="recup-bar" style="background:${m.nb ? U.couleurs.nonEchue : 'var(--border-color)'}"></span>
+                    <span class="recup-taux">${m.nb ? U.nombre(m.nb) : '—'}</span>
+                    <span class="recup-label">${U.escapeHtml(m.geste)}</span>
+                    <span class="recup-value">${m.nb ? U.euros(m.euros) : 'aucune'}</span>
+                    <span class="recup-sub">${U.escapeHtml(m.label)}</span>
+                </${m.nb ? 'button' : 'div'}>`).join('')
+            + '</div>';
+
+        $$('[data-motif]', el).forEach(b => b.addEventListener('click', () => {
+            const m = r.motifs[+b.dataset.motif];
+            if (!m || !m.items.length) return;
+            // Les colonnes de vérification : on ne tranche pas sans voir ce
+            // qui a servi à poser le doute.
+            const sup = {
+                SIGNAL: [{ key: 'motifSignalPaiement', label: 'Signal' }],
+                ECHEANCE: [
+                    { key: 'dateEcheanceSource', label: 'Échéance Monday', align: 'center',
+                      format: v => v ? U.dateFR(v) : '—' },
+                    { key: 'echeanceBase', label: 'Base du calcul', align: 'center',
+                      format: v => v ? U.dateFR(v) : '—' },
+                    { key: 'echeanceOrigine', label: 'Origine', format: v => U.escapeHtml(v || '—') },
+                ],
+                FINANCEMENT: [
+                    { key: 'echeanceOrigine', label: "D'où vient l'échéance", format: v => U.escapeHtml(v || '—') },
+                    { key: 'echeanceBase', label: 'Base du calcul', align: 'center',
+                      format: v => v ? U.dateFR(v) : '—' },
+                ],
+            }[m.code] || [];
+            rendreApresClic(() => montrerFacturesListe(m.geste, m.items, m.label, {
+                colonnesSup: sup,
+                onExport: rows => exporterFacturesSimple(rows, m.geste),
+                onFiltrer: () => ouvrirOnglet('quality'),
+                labelFiltre: 'Ouvrir la qualité des données',
+            }));
         }));
     }
 
@@ -11891,21 +12592,24 @@
 
         brancherActes();
         brancherFenetreMois();
-        $$('#seg-vue-echeance .seg-btn').forEach(b => b.addEventListener('click', () => {
-            state.ui.vueEcheance = b.dataset.vue;
-            $$('#seg-vue-echeance .seg-btn').forEach(x => x.classList.toggle('active', x === b));
-            rendreTout();
-        }));
-        $$('#seg-cmp-base .seg-btn').forEach(b => b.addEventListener('click', () => {
-            state.ui.cmpBase = b.dataset.base;
-            rendreApresClic(() => rendreTout());
-        }));
 
         $$('#seg-cmpcat-base .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.cmpCatBase = b.dataset.base;
             rendreApresClic(() => rendreTout());
         }));
 
+        $$('#seg-top-clients .seg-btn').forEach(b => b.addEventListener('click', () => {
+            state.ui.topClients = b.dataset.vue;
+            $$('#seg-top-clients .seg-btn').forEach(x => x.classList.toggle('active', x === b));
+            rendreTout();
+        }));
+        // Un renvoi vers un autre onglet, écrit dans une phrase d'aide : la
+        // tuile ne donne qu'un point de la distribution d'âge, l'onglet la
+        // donne entière.
+        document.addEventListener('click', e => {
+            const lien = e.target.closest && e.target.closest('.lien-interne[data-onglet]');
+            if (lien) { e.preventDefault(); ouvrirOnglet(lien.dataset.onglet); }
+        });
         $$('#seg-regl-origine .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.reglOrigine = b.dataset.origine;
             $$('#seg-regl-origine .seg-btn').forEach(x => x.classList.toggle('active', x === b));
@@ -11989,11 +12693,6 @@
         $$('#seg-flux-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
             state.ui.fluxUnite = b.dataset.unite;
             $$('#seg-flux-unite .seg-btn').forEach(x => x.classList.toggle('active', x === b));
-            rendreTout();
-        }));
-        $$('#seg-dso-methode .seg-btn').forEach(b => b.addEventListener('click', () => {
-            state.ui.dsoMethode = b.dataset.methode;
-            $$('#seg-dso-methode .seg-btn').forEach(x => x.classList.toggle('active', x === b));
             rendreTout();
         }));
         $$('#seg-histo-unite .seg-btn').forEach(b => b.addEventListener('click', () => {
@@ -12222,6 +12921,11 @@
         opt('#opt-masquer-technique', 'masquerTechnique', false);
         $('#opt-masquer-technique').addEventListener('change', rendreExclusions);
         opt('#opt-payees-hors-portefeuille', 'payeesHorsPortefeuille', true);
+        $('#opt-seuil-bad-debt').addEventListener('change', async e => {
+            state.options.seuilBadDebtJours = parseInt(e.target.value, 10) || 360;
+            await sauverReglages();
+            rendreTout();
+        });
         $('#opt-actualisation-auto').addEventListener('change', async e => {
             state.options.actualisationAuto = parseInt(e.target.value, 10) || 0;
             await sauverReglages();

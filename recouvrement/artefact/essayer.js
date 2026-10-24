@@ -192,6 +192,36 @@ const serveur = http.createServer((q, r) => {
   ok('aucune commande Monday ne reste proposée' + (visibles.length ? ' — ' + visibles.join(', ') : ''),
      visibles.length === 0);
 
+  // ── 5 bis. le tableau de bord raconte bien ses quatre actes ──
+  //
+  // La page publiée est celle qu’elle lit : vérifier le récit sur le dépôt
+  // et pas dans le paquet laisserait passer un acte perdu à la construction.
+  await page.click('.nav-tab[data-tab="dashboard"]');
+  await page.waitForTimeout(900);
+  const recit = await page.evaluate(() => {
+    const actes = [...document.querySelectorAll('.section-acte')].map(h => ({
+      num: h.dataset.acte,
+      titre: h.querySelector('h2') ? h.querySelector('h2').textContent.replace(/^\d/, '').trim() : null,
+      ouvert: !(document.querySelector('[data-acte-corps="' + h.dataset.acte + '"]') || {}).hidden,
+    }));
+    const hotes = ['ligne-flux', 'bad-debt-kpi', 'regl-kpi', 'regl-financements',
+                   'ecart-echeance-kpi', 'retard-financements', 'top-clients',
+                   'risque-kpi', 'douteux-motifs'];
+    return { actes, muets: hotes.filter(id => {
+      const e = document.getElementById(id);
+      return !e || !e.textContent.trim();
+    }) };
+  });
+  ok('les quatre actes sont là, dans l’ordre — '
+     + recit.actes.map(a => a.num + '. ' + a.titre).join(' · '),
+     recit.actes.length === 4 && recit.actes.every((a, i) => a.num === String(i + 1) && a.titre));
+  ok('les actes 1 à 3 s’ouvrent, le 4 attend qu’on le demande',
+     recit.actes.length === 4 && recit.actes[0].ouvert && recit.actes[1].ouvert
+     && recit.actes[2].ouvert && !recit.actes[3].ouvert);
+  ok('aucun bloc du récit ne reste muet'
+     + (recit.muets.length ? ' — ' + recit.muets.join(', ') : ''),
+     recit.muets.length === 0);
+
   // ── 6. la largeur d’un téléphone, onglet par onglet ──
   await page.setViewportSize({ width: 400, height: 900 });
   const ONGLETS = ['dashboard', 'aging', 'factures', 'donnees'];

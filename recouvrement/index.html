@@ -17,12 +17,12 @@
     <meta name="theme-color" content="#0b0e1a">
     <meta name="application-name" content="Suivi Recouvrement">
     <!-- Librairies intégrées en local (fonctionnement hors-ligne hormis l'API Monday) -->
-    <script src="../vendor/chart.umd.min.js?v=3.9.2"></script>
-    <script src="../vendor/chartjs-chart-treemap.min.js?v=3.9.2"></script>
-    <script src="../vendor/papaparse.min.js?v=3.9.2"></script>
-    <script src="../vendor/xlsx.full.min.js?v=3.9.2"></script>
-    <link rel="stylesheet" href="../styles.css?v=3.9.2">
-    <link rel="stylesheet" href="styles.css?v=3.9.2">
+    <script src="../vendor/chart.umd.min.js?v=4.0.0"></script>
+    <script src="../vendor/chartjs-chart-treemap.min.js?v=4.0.0"></script>
+    <script src="../vendor/papaparse.min.js?v=4.0.0"></script>
+    <script src="../vendor/xlsx.full.min.js?v=4.0.0"></script>
+    <link rel="stylesheet" href="../styles.css?v=4.0.0">
+    <link rel="stylesheet" href="styles.css?v=4.0.0">
 </head>
 <body>
 
@@ -276,10 +276,13 @@
     <div class="tab-content active" id="tab-dashboard">
         <div class="dashboard-content">
 
-            <div class="section-header">
-                <h2>Vue d'ensemble</h2>
-                <div class="period-badge" id="period-badge"></div>
+            <!-- ═════════════════ ACTE 1 ═════════════════ -->
+            <div class="section-header section-acte" data-acte="1">
+                <h2><span class="acte-num">1</span>Où en est l'argent qu'on me doit</h2>
+                <span class="acte-sous">Le portefeuille, ce qui est tombé en recouvrement ce mois-ci, et ce qui attend depuis plus d'un an</span>
+                <button class="acte-toggle" data-acte-toggle="1" aria-expanded="true">Replier</button>
             </div>
+            <div class="acte-corps" data-acte-corps="1">
             <p class="aide-bloc">
                 Une facture est dite <strong>en recouvrement</strong> dès que sa <strong>date d'échéance
                 calculée selon les règles de financement</strong> est dépassée à la date d'arrêté, et
@@ -287,13 +290,9 @@
                 La date d'échéance éventuellement saisie dans Monday n'est pas utilisée, sauf à cocher
                 l'option correspondante dans l'onglet Données.
                 Le <strong>montant en retard</strong> est ce que ces factures représentent en euros.
-                Les trois colonnes ci-dessous répondent à : combien ça pèse, combien j'ai facturé en tout,
-                et depuis combien de temps ça traîne.
             </p>
-            <div class="kpi-grid kpi-grid-grouped">
-                <div class="kpi-group kpi-group-general">
-                    <div class="kpi-group-label">Le portefeuille</div>
-                    <div class="kpi-card kpi-cliquable" data-kpi="total">
+            <div class="kpi-grid">
+<div class="kpi-card kpi-cliquable" data-kpi="total">
                         <div class="kpi-icon kpi-blue">
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                         </div>
@@ -304,7 +303,7 @@
                             <span class="aide-ligne">Somme de toutes les factures de la période filtrée, réglées ou non.</span>
                         </div>
                     </div>
-                    <div class="kpi-card kpi-cliquable" data-kpi="encaisse">
+<div class="kpi-card kpi-cliquable" data-kpi="encaisse">
                         <div class="kpi-icon kpi-purple">
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
                         </div>
@@ -315,7 +314,7 @@
                             <span class="aide-ligne">Montant déjà encaissé. Une facture est considérée réglée si elle figure dans le tableau des factures payées, si elle porte une date de paiement, ou si le grand livre la lettre.</span>
                         </div>
                     </div>
-                    <div class="kpi-card kpi-cliquable" data-kpi="encours">
+<div class="kpi-card kpi-cliquable" data-kpi="encours">
                         <div class="kpi-icon kpi-blue">
                             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
                         </div>
@@ -326,87 +325,7 @@
                             <span class="aide-ligne">Montant total des factures non réglées : celles en retard, plus celles qui ne sont pas encore arrivées à échéance. Le pourcentage indique la part de ce reste qui est <strong>déjà en retard</strong>.</span>
                         </div>
                     </div>
-                </div>
-                <div class="kpi-group kpi-group-dec">
-                    <div class="kpi-group-label">
-                        <span id="kpi-groupe-titre">Ce qui est en recouvrement</span>
-                        <div class="seg seg-sm" id="seg-vue-echeance">
-                            <button class="seg-btn active" data-vue="retard">En retard</button>
-                            <button class="seg-btn" data-vue="nonEchu">Pas encore échu</button>
-                        </div>
-                    </div>
-                    <div class="kpi-card kpi-cliquable" data-kpi="retard">
-                        <div class="kpi-icon kpi-red">
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        </div>
-                        <div class="kpi-data">
-                            <span class="kpi-label" id="aide-kpi-1-label">Montant en retard</span>
-                            <span class="kpi-value" id="kpi-euros-retard">—</span>
-                            <span class="kpi-sub" id="kpi-euros-retard-sub"></span>
-                            <span class="aide-ligne" id="aide-kpi-1-texte">Montant des factures dont la date d'échéance, calculée selon les règles de financement, est dépassée à la date d'arrêté <strong>et qui ne sont toujours pas réglées</strong>. C'est l'argent que vous devez aller chercher. Les factures finalement payées, mais en retard, n'y figurent pas : elles sont dans « Encaissé ».</span>
-                        </div>
-                    </div>
-                    <div class="kpi-card kpi-cliquable" data-kpi="retard">
-                        <div class="kpi-icon kpi-red">
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                        </div>
-                        <div class="kpi-data">
-                            <span class="kpi-label" id="aide-kpi-2-label">Factures en retard</span>
-                            <span class="kpi-value" id="kpi-nb-retard">—</span>
-                            <span class="kpi-sub" id="kpi-nb-retard-sub"></span>
-                            <span class="aide-ligne" id="aide-kpi-2-texte">Nombre de factures dont l'échéance calculée est dépassée et qui ne sont pas réglées, tous tableaux confondus — recouvrement, ADV, OPCO et B2C selon les sources activées.</span>
-                        </div>
-                    </div>
-                    <div class="kpi-card kpi-cliquable" data-kpi="retard">
-                        <div class="kpi-icon kpi-amber">
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="21 3 21 9 15 9"/></svg>
-                        </div>
-                        <div class="kpi-data">
-                            <span class="kpi-label" id="aide-kpi-3-label">% du facturé en retard</span>
-                            <span class="kpi-value" id="kpi-taux-euros">—</span>
-                            <span class="kpi-sub" id="kpi-taux-nb-sub"></span>
-                            <span class="aide-ligne" id="aide-kpi-3-texte">Montant en retard divisé par le <strong>total facturé</strong> de la période. Attention à ne pas le confondre avec la part du reste à encaisser qui est en retard : ce second pourcentage, plus élevé, figure sous « Reste à encaisser ».</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="kpi-group kpi-group-enc">
-                    <div class="kpi-group-label">Depuis combien de temps</div>
-                    <div class="kpi-card kpi-cliquable" data-kpi="impayees">
-                        <div class="kpi-icon kpi-volatility">
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                        </div>
-                        <div class="kpi-data">
-                            <span class="kpi-label">Retard moyen</span>
-                            <span class="kpi-value" id="kpi-retard-moyen">—</span>
-                            <span class="kpi-sub" id="kpi-retard-moyen-sub"></span>
-                            <span class="aide-ligne">Nombre de jours écoulés depuis l'échéance, en moyenne, sur les factures encore impayées. La médiane est souvent plus parlante : la moyenne est tirée vers le haut par quelques créances très anciennes.</span>
-                        </div>
-                    </div>
-                    <div class="kpi-card kpi-cliquable" data-kpi="impayees">
-                        <div class="kpi-icon kpi-volatility">
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
-                        </div>
-                        <div class="kpi-data">
-                            <span class="kpi-label">Retard moyen pondéré €</span>
-                            <span class="kpi-value" id="kpi-retard-pondere">—</span>
-                            <span class="kpi-sub">pondéré par le montant</span>
-                            <span class="aide-ligne">Même retard moyen, mais où chaque facture pèse à hauteur de son montant. Un gros impayé ancien compte plus qu'un petit. Si ce chiffre dépasse nettement le retard moyen, ce sont vos grosses factures qui traînent.</span>
-                        </div>
-                    </div>
-                    <div class="kpi-card kpi-cliquable" data-kpi="payeesRetard">
-                        <div class="kpi-icon kpi-green">
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                        </div>
-                        <div class="kpi-data">
-                            <span class="kpi-label">Retard moyen au paiement</span>
-                            <span class="kpi-value" id="kpi-retard-paiement">—</span>
-                            <span class="kpi-sub" id="kpi-delai-paiement-sub"></span>
-                            <span class="aide-ligne">Sur les factures <strong>qui ont fini par être payées</strong>, combien de jours après l'échéance l'argent est réellement tombé. À ne pas confondre avec « Retard moyen », qui porte sur les factures <strong>toujours impayées</strong> : l'un dit combien de temps vos clients mettent à payer, l'autre depuis combien de temps vous attendez.</span>
-                        </div>
-                    </div>
-                </div>
             </div>
-
             <!-- Où en est la récupération des factures échues -->
             <div class="section-header section-header-sub">
                 <h3>Où en est le portefeuille</h3>
@@ -423,19 +342,313 @@
             <!-- Alerte OPCO / ADV -->
             <div id="scope-note" class="scope-note"></div>
 
-            <!-- Répartition des montants : hors / en recouvrement -->
-
-            <div class="section-header section-acte" data-acte="1">
-                <h2><span class="acte-num">1</span>Par type de financement</h2>
-                <span class="acte-sous">Où le retard se concentre, puis comment chaque catégorie évolue</span>
-                <button class="acte-toggle" data-acte-toggle="1" aria-expanded="true">Replier</button>
+<div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Montants — ce qui est en retard, et le reste</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-repartition">
+                                <button class="seg-btn active" data-dims="perimetre,financement">Périmètre › Financement</button>
+                                <button class="seg-btn" data-dims="financement,board">Financement › Tableau</button>
+                                <button class="seg-btn" data-dims="board,groupe">Tableau › Groupe</button>
+                                <button class="seg-btn" data-dims="etape,financement">Qualification recouv. › Financement</button>
+                                <button class="seg-btn" data-dims="mois,financement">Mois › Financement</button>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" id="btn-repartition-toggle">Tout déplier</button>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Montant total = « pas en retard » + « échu et impayé ». « Pas en retard » réunit
+                        le réglé, le non échu et ce dont l'échéance n'est pas calculable — le détail
+                        s'affiche en passant la souris. Cliquez sur une flèche pour déplier, sur une
+                        ligne pour ouvrir les factures correspondantes.
+                    </span>
+                    <span class="fv-hint" id="repartition-note"></span>
+                    <div class="table-wrap" id="repartition-table"></div>
+                </div>
             </div>
-            <div class="acte-corps" data-acte-corps="1">
+
+
+
+            <!-- La variation du mois, en toutes lettres : les deux compteurs
+                 s'ouvrent sur leurs factures, et la carte qui suit porte la
+                 même série. -->
+            <div class="section-header section-header-sub">
+                <h3>Ce qui a bougé ce mois-ci</h3>
+                <span class="fv-hint" id="flux-mois"></span>
+            </div>
+            <p class="ligne-flux" id="ligne-flux"></p>
+            <!-- Comparaison mensuelle -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Flux de recouvrement</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-flux-unite">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Gagne-t-on ou perd-on du terrain ? Au-dessus de zéro, les factures tombées en
+                        retard dans le mois ; en dessous, celles qui en sont sorties, c'est-à-dire
+                        <strong>encaissées après leur échéance</strong>. Une facture réglée avant son
+                        échéance n'apparaît pas : elle n'est jamais entrée en retard, elle ne peut pas
+                        en sortir. Un mois sans colonne verte signifie donc qu'aucune créance échue
+                        n'est rentrée ce mois-là — sur le périmètre affiché, filtres compris.
+                    </span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-flux"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- La bad debt : le seuil est écrit en toutes lettres sous le
+                 chiffre, et il se règle dans l'onglet Réglages. -->
+            <div class="section-header section-header-sub">
+                <h3>Ce qui attend depuis plus d'un an</h3>
+                <span class="fv-hint" id="bad-debt-seuil"></span>
+            </div>
+            <div class="kpi-grid" id="bad-debt-kpi"></div>
+            <span class="fv-hint" id="bad-debt-note"></span>
+            <details class="bloc-repli" id="bad-debt-detail">
+                <summary>Le détail de la bad debt</summary>
+                <span class="fv-hint" id="bad-debt-detail-note"></span>
+                <div class="table-wrap" id="bad-debt-table"></div>
+                <div class="chart-container chart-tall"><canvas id="chart-bad-debt"></canvas></div>
+            </details>
+            </div>
+
+            <!-- ═════════════════ ACTE 2 ═════════════════ -->
+            <div class="section-header section-acte" data-acte="2">
+                <h2><span class="acte-num">2</span>Quand mes clients payent, avant ou après l'échéance</h2>
+                <span class="acte-sous">Sur ce qui est déjà rentré : combien est arrivé avant la date, combien après, et sous quel dispositif</span>
+                <button class="acte-toggle" data-acte-toggle="2" aria-expanded="true">Replier</button>
+            </div>
+            <div class="acte-corps" data-acte-corps="2">
+            <p class="acte-transition">On vient de dire combien reste dehors. Savoir pourquoi se lit sur l'argent déjà rentré&nbsp;: ces factures-là ont fini leur course, et leur date de règlement dit si le délai que le dispositif accorde a été tenu, ou de combien il a été dépassé.</p>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3 id="regl-titre">Comment l'encaissé est arrivé</h3></div>
+                    <span class="fv-hint" id="regl-hint"></span>
+                    <div class="recup-grid" id="regl-kpi"></div>
+                    <div id="regl-note" class="scope-note"></div>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Avant ou après l'échéance, par type de financement</h3></div>
+                    <span class="fv-hint">
+                        Le <strong>terme accordé</strong> est la règle de délai du dispositif, telle
+                        qu'elle est écrite&nbsp;: c'est la seule référence qui existe, et c'est elle
+                        que l'écart constaté juste à côté met à l'épreuve. L'écart médian porte son
+                        effectif, qui n'est pas toujours le nombre de la ligne&nbsp;: une facture
+                        réglée sans date de règlement connue ne s'y mesure pas.
+                    </span>
+                    <div class="table-wrap" id="regl-financements"></div>
+                </div>
+            </div>
+            <div class="kpi-grid" id="ecart-echeance-kpi"></div>
+<div class="kpi-grid"><div class="kpi-card kpi-cliquable" data-kpi="payeesRetard">
+                        <div class="kpi-icon kpi-green">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Retard moyen au paiement</span>
+                            <span class="kpi-value" id="kpi-retard-paiement">—</span>
+                            <span class="kpi-sub" id="kpi-delai-paiement-sub"></span>
+                            <span class="aide-ligne">Sur les factures <strong>qui ont fini par être payées</strong>, combien de jours après l'échéance l'argent est réellement tombé. À ne pas confondre avec « Retard moyen », qui porte sur les factures <strong>toujours impayées</strong> : l'un dit combien de temps vos clients mettent à payer, l'autre depuis combien de temps vous attendez.</span>
+                        </div>
+                    </div></div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Ce qui bascule en recouvrement, et ce qui en revient</h3></div>
+                    <span class="fv-hint">Deux taux par dispositif, côte à côte. « Bascule toujours mais finit par rentrer » n'appelle pas le même geste que « bascule peu et ne rentre jamais ». Les dispositifs de moins de cinq factures échues sont écartés : un taux sur trois factures ne se lit pas.</span>
+                    <div class="chart-container chart-tall"><canvas id="chart-bascule-rentree"></canvas></div>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>La part de l'encaissement qui arrive après l'échéance</h3></div>
+                    <span class="fv-hint">Mois par mois, sur la date de règlement. C'est la pente qui se lit ici&nbsp;: les volumes sont donnés par la carte de flux du premier acte.</span>
+                    <span class="fv-hint" id="part-apres-couverture"></span>
+                    <div class="chart-container chart-tall"><canvas id="chart-regl-mois"></canvas></div>
+                </div>
+            </div>
+                        <!-- Flux : ce qui entre, ce qui sort, ce qui reste -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Taux de recouvrement par mois</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-unite-mois">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Que sont devenues les factures arrivées à échéance chaque mois. La hauteur de la
+                        colonne, c'est la taille du mois ; les couleurs, son issue. Cliquez sur un mois
+                        pour n'afficher que lui.
+                    </span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-mois"></canvas>
+                    </div>
+                </div>
+            </div>
+            <details class="bloc-repli">
+                <summary>La lecture par processus — après relance, sans relance</summary>
+                <span class="fv-hint">
+                    Ce découpage-là se fait sur le groupe Monday d'origine du règlement, et non sur
+                    une date&nbsp;: il dit par quel chemin l'argent est rentré, pas quand.
+                </span>
+                <div class="chart-controls">
+                    <div class="seg seg-sm" id="seg-regl-origine">
+                        <button class="seg-btn active" data-origine="recouvrement">Après relance</button>
+                        <button class="seg-btn" data-origine="hors">Sans relance</button>
+                    </div>
+                </div>
+                <div class="recup-grid" id="regl-origine-kpi"></div>
+            </details>
+            </div>
+
+            <!-- ═════════════════ ACTE 3 ═════════════════ -->
+            <div class="section-header section-acte" data-acte="3">
+                <h2><span class="acte-num">3</span>Depuis combien de temps j'attends, et si cela s'aggrave</h2>
+                <span class="acte-sous">Le stock d'impayés, son âge, et le sens dans lequel il bouge</span>
+                <button class="acte-toggle" data-acte-toggle="3" aria-expanded="true">Replier</button>
+            </div>
+            <div class="acte-corps" data-acte-corps="3">
+            <p class="acte-transition">On sait maintenant comment ils payent quand ils payent. Reste à regarder ce qui n'est pas payé du tout, et depuis quand.</p>
+            <div class="kpi-grid">
+<div class="kpi-card kpi-cliquable" data-kpi="impayees">
+                        <div class="kpi-icon kpi-volatility">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Retard moyen</span>
+                            <span class="kpi-value" id="kpi-retard-moyen">—</span>
+                            <span class="kpi-sub" id="kpi-retard-moyen-sub"></span>
+                            <span class="aide-ligne">Nombre de jours écoulés depuis l'échéance, en moyenne, sur les factures encore impayées. La médiane est souvent plus parlante : la moyenne est tirée vers le haut par quelques créances très anciennes.</span>
+                        </div>
+                    </div>
+<div class="kpi-card kpi-cliquable" data-kpi="impayees">
+                        <div class="kpi-icon kpi-volatility">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Retard moyen pondéré €</span>
+                            <span class="kpi-value" id="kpi-retard-pondere">—</span>
+                            <span class="kpi-sub">pondéré par le montant</span>
+                            <span class="aide-ligne">Même retard moyen, mais où chaque facture pèse à hauteur de son montant. Un gros impayé ancien compte plus qu'un petit. Si ce chiffre dépasse nettement le retard moyen, ce sont vos grosses factures qui traînent.</span>
+                        </div>
+                    </div>
+                <div class="kpi-card kpi-cliquable" data-kpi="retardVieux">
+                    <div class="kpi-icon kpi-red">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+                    </div>
+                    <div class="kpi-data">
+                        <span class="kpi-label">Plus de six mois d'attente</span>
+                        <span class="kpi-value" id="kpi-vieux">—</span>
+                        <span class="kpi-sub" id="kpi-vieux-sub"></span>
+                        <span class="aide-ligne">Montant échu depuis plus de six mois à la date d'arrêté et toujours pas encaissé — la même borne que la tranche « 6 à 12 mois » de la balance âgée, au jour près. Cette tuile n'en donne qu'un point&nbsp;: <button class="lien-interne" data-onglet="aging">la balance âgée</button> donne toute la distribution d'âge.</span>
+                    </div>
+                </div>
+            </div>
+            <!-- Évolution du retard moyen -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Le stock d'impayés vieillit-il, ou s'assainit-il ?</h3></div>
+                    <span class="fv-hint">
+                        Depuis combien de jours vos factures impayées attendent, à la fin de chaque mois.
+                        La médiane écarte les quelques très vieilles créances qui tirent la moyenne vers
+                        le haut.
+                    </span>
+                    <span class="fv-hint" id="retard-evolution-note"></span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-retard-evolution"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Le retard par type de financement</h3></div>
+                    <span class="fv-hint">Son axe de travail&nbsp;: le retard moyen, ce que la pondération par le montant en dit, et la part qui attend depuis plus de six mois.</span>
+                    <div class="table-wrap" id="retard-financements"></div>
+                </div>
+            </div>
+<div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Les créances anciennes finissent-elles par rentrer ?</h3>
+                        <span class="fv-hint">le vert est une histoire, le rouge une photographie</span>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-histo-unite">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Chaque colonne se lit de haut en bas : parmi les factures ayant atteint ce
+                        retard, la part qui a fini par rentrer (vert) et celle qui est toujours due
+                        (rouge). Plus on va vers la droite, moins il rentre. Cliquez sur une tranche
+                        pour ouvrir ses factures.
+                    </span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-histo-retards"></canvas>
+                    </div>
+                </div>
+            </div>
+<div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Évolution du % en recouvrement, par catégorie</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-evocat-unite">
+                                <button class="seg-btn active" data-unite="nb">Nombre</button>
+                                <button class="seg-btn" data-unite="euros">€</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Une courbe par type de financement : sur les factures arrivées à échéance dans le mois,
+                        la part tombée en recouvrement. Montante, la catégorie se dégrade ;
+                        descendante, elle s'assainit. Cliquez sur une légende pour isoler une catégorie.
+                    </span>
+                    <span class="fv-hint" id="evo-cat-note"></span>
+                    <div class="chart-container chart-tall"><canvas id="chart-evo-categorie"></canvas></div>
+                </div>
+            </div>
+
+                                    <!-- Détail de la courbe : la carte thermique, mois par mois -->
+            <div id="evo-detail" hidden>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>% en recouvrement par mois et par financement</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-unite-heat">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">Chaque case : part des factures échues du mois qui sont en retard. Cliquez pour filtrer.</span>
+                    <div class="heatmap-wrap" id="heatmap-mois-financement"></div>
+                </div>
+            </div>
+            </div>
+
+
+
             <!-- Treemap : outil de fouille, dimension au choix -->
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header">
-                        <h3>Où se concentre le montant en retard</h3>
+                        <h3>Où se loge ce qui reste dû</h3>
                         <div class="chart-controls">
                             <div class="seg seg-sm" id="seg-treemap-dim">
                                 <button class="seg-btn active" data-dim="financement">Financement</button>
@@ -480,86 +693,6 @@
                 </div>
             </div>
 
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Montants — ce qui est en retard, et le reste</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-repartition">
-                                <button class="seg-btn active" data-dims="perimetre,financement">Périmètre › Financement</button>
-                                <button class="seg-btn" data-dims="financement,board">Financement › Tableau</button>
-                                <button class="seg-btn" data-dims="board,groupe">Tableau › Groupe</button>
-                                <button class="seg-btn" data-dims="etape,financement">Qualification recouv. › Financement</button>
-                                <button class="seg-btn" data-dims="mois,financement">Mois › Financement</button>
-                            </div>
-                            <button class="btn btn-ghost btn-sm" id="btn-repartition-toggle">Tout déplier</button>
-                        </div>
-                    </div>
-                    <span class="fv-hint">
-                        Montant total = « pas en retard » + « échu et impayé ». « Pas en retard » réunit
-                        le réglé, le non échu et ce dont l'échéance n'est pas calculable — le détail
-                        s'affiche en passant la souris. Cliquez sur une flèche pour déplier, sur une
-                        ligne pour ouvrir les factures correspondantes.
-                    </span>
-                    <span class="fv-hint" id="repartition-note"></span>
-                    <div class="table-wrap" id="repartition-table"></div>
-                </div>
-            </div>
-
-
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Évolution du % en recouvrement, par catégorie</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-evocat-unite">
-                                <button class="seg-btn active" data-unite="nb">Nombre</button>
-                                <button class="seg-btn" data-unite="euros">€</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint">
-                        Une courbe par type de financement : sur les factures arrivées à échéance dans le mois,
-                        la part tombée en recouvrement. Montante, la catégorie se dégrade ;
-                        descendante, elle s'assainit. Cliquez sur une légende pour isoler une catégorie.
-                    </span>
-                    <span class="fv-hint" id="evo-cat-note"></span>
-                    <div class="chart-container chart-tall"><canvas id="chart-evo-categorie"></canvas></div>
-                </div>
-            </div>
-
-            <!-- Détail de la courbe : la carte thermique, mois par mois -->
-            <div id="evo-detail" hidden>
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>% en recouvrement par mois et par financement</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-unite-heat">
-                                <button class="seg-btn active" data-unite="euros">€</button>
-                                <button class="seg-btn" data-unite="nb">Nombre</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint">Chaque case : part des factures échues du mois qui sont en retard. Cliquez pour filtrer.</span>
-                    <div class="heatmap-wrap" id="heatmap-mois-financement"></div>
-                </div>
-            </div>
-            </div>
-
-
-
-            <!-- Financement + balance âgée -->
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header"><h3>Montant en retard par financement</h3></div>
-                    <div class="chart-container">
-                        <canvas id="chart-financement"></canvas>
-                    </div>
-                </div>
-            </div>
-            </div>
-
             <!-- Les qualifications B2C, quand le périmètre B2C est retenu -->
             <div id="qualif-b2c" hidden>
                 <div class="section-header section-header-sub">
@@ -573,158 +706,6 @@
                 <div class="charts-grid charts-grid-4" id="qualif-b2c-grid"></div>
             </div>
 
-            <div class="section-header section-acte" data-acte="2">
-                <h2><span class="acte-num">2</span>Les encaissements</h2>
-                <span class="acte-sous">Ce qui est rentré après relance, et ce qui est rentré sans intervention</span>
-                <button class="acte-toggle" data-acte-toggle="2" aria-expanded="true">Replier</button>
-            </div>
-            <div class="acte-corps" data-acte-corps="2">
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3 id="regl-titre">Encaissements après passage en recouvrement</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-regl-origine">
-                                <button class="seg-btn active" data-origine="recouvrement">Après relance</button>
-                                <button class="seg-btn" data-origine="hors">Sans relance</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint" id="regl-hint"></span>
-                    <div class="recup-grid" id="regl-kpi"></div>
-                    <div id="regl-note" class="scope-note"></div>
-                    <div class="chart-container chart-tall"><canvas id="chart-regl-mois"></canvas></div>
-                    <div class="table-wrap" id="regl-financements"></div>
-                </div>
-            </div>
-            </div>
-
-            <div class="section-header section-acte" data-acte="3">
-                <h2><span class="acte-num">3</span>Analyse du retard</h2>
-                <span class="acte-sous">Ce qui reste dû, depuis quand, et à quel rythme cela rentre</span>
-                <button class="acte-toggle" data-acte-toggle="3" aria-expanded="false">Déplier</button>
-            </div>
-            <div class="acte-corps" data-acte-corps="3" hidden>
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Les créances anciennes finissent-elles par rentrer ?</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-histo-unite">
-                                <button class="seg-btn active" data-unite="euros">€</button>
-                                <button class="seg-btn" data-unite="nb">Nombre</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint">
-                        Chaque colonne se lit de haut en bas : parmi les factures ayant atteint ce
-                        retard, la part qui a fini par rentrer (vert) et celle qui est toujours due
-                        (rouge). Plus on va vers la droite, moins il rentre. Cliquez sur une tranche
-                        pour ouvrir ses factures.
-                    </span>
-                    <div class="chart-container chart-tall">
-                        <canvas id="chart-histo-retards"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header"><h3>Balance âgée</h3><span class="fv-hint">montant non réglé</span></div>
-                    <div class="chart-container">
-                        <canvas id="chart-aging"></canvas>
-                    </div>
-                </div>
-            </div>
-            <!-- Flux : ce qui entre, ce qui sort, ce qui reste -->
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Taux de recouvrement par mois</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-unite-mois">
-                                <button class="seg-btn active" data-unite="euros">€</button>
-                                <button class="seg-btn" data-unite="nb">Nombre</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint">
-                        Que sont devenues les factures arrivées à échéance chaque mois. La hauteur de la
-                        colonne, c'est la taille du mois ; les couleurs, son issue. Cliquez sur un mois
-                        pour n'afficher que lui.
-                    </span>
-                    <div class="chart-container chart-tall">
-                        <canvas id="chart-mois"></canvas>
-                    </div>
-                </div>
-            </div>
-            <!-- Comparaison mensuelle -->
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Flux de recouvrement</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-flux-unite">
-                                <button class="seg-btn active" data-unite="euros">€</button>
-                                <button class="seg-btn" data-unite="nb">Nombre</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint">
-                        Gagne-t-on ou perd-on du terrain ? Au-dessus de zéro, les factures tombées en
-                        retard dans le mois ; en dessous, celles qui en sont sorties, c'est-à-dire
-                        <strong>encaissées après leur échéance</strong>. Une facture réglée avant son
-                        échéance n'apparaît pas : elle n'est jamais entrée en retard, elle ne peut pas
-                        en sortir. Un mois sans colonne verte signifie donc qu'aucune créance échue
-                        n'est rentrée ce mois-là — sur le périmètre affiché, filtres compris.
-                    </span>
-                    <div class="chart-container chart-tall">
-                        <canvas id="chart-flux"></canvas>
-                    </div>
-                </div>
-            </div>
-            <!-- Évolution du retard moyen -->
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header"><h3>Évolution du retard moyen</h3></div>
-                    <span class="fv-hint">
-                        Depuis combien de jours vos factures impayées attendent, à la fin de chaque mois.
-                        La médiane écarte les quelques très vieilles créances qui tirent la moyenne vers
-                        le haut.
-                    </span>
-                    <span class="fv-hint" id="retard-evolution-note"></span>
-                    <div class="chart-container chart-tall">
-                        <canvas id="chart-retard-evolution"></canvas>
-                    </div>
-                </div>
-            </div>
-            <!-- DSO -->
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>DSO — délai moyen de règlement client</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-dso-methode">
-                                <button class="seg-btn active" data-methode="countback">Count-back</button>
-                                <button class="seg-btn" data-methode="simple">Simple</button>
-                                <button class="seg-btn" data-methode="deux">Les deux</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint">
-                        Courbe = nombre de jours de chiffre d'affaires que représente le reste à encaisser
-                        à la fin du mois (factures émises non réglées, échues ou non). Le DSO simple rapporte
-                        cet encours au chiffre d'affaires des trois derniers mois : un seul mois de facturation
-                        est un dénominateur trop étroit, et un mois creux y produisait des milliers de jours.
-                        La courbe s'interrompt sur les mois où l'historique chargé est trop court pour la
-                        calculer, ou lorsque l'encours dépasse trois ans de facturation : elle mesurerait la
-                        longueur de cet historique, pas votre délai de règlement.
-                    </span>
-                    <span class="fv-hint" id="dso-note"></span>
-                    <div class="chart-container chart-tall">
-                        <canvas id="chart-dso"></canvas>
-                    </div>
-                </div>
-            </div>
             <!-- Le mois écoulé, catégorie par catégorie -->
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
@@ -749,31 +730,50 @@
             </div>
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Évolution du dernier mois</h3>
-                        <span class="fv-hint" id="month-compare-title"></span>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-cmp-base">
-                                <button class="seg-btn active" data-base="precedent">vs mois précédent</button>
-                                <button class="seg-btn" data-base="annee">vs même mois l'an dernier</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="month-compare-body"></div>
+                    <div class="chart-header"><h3>Les créances qui viennent de franchir les six mois</h3></div>
+                    <span class="fv-hint">Depuis le dernier arrêté mensuel clos. C'est la seule chose de cet acte qui se termine par un geste.</span>
+                    <div class="mini-table-wrap" id="franchissements"></div>
                 </div>
             </div>
             </div>
 
+            <!-- ═════════════════ ACTE 4 ═════════════════ -->
             <div class="section-header section-acte" data-acte="4">
-                <h2><span class="acte-num">4</span>Les clients à appeler</h2>
-                <span class="acte-sous">Ceux qui pèsent le plus dans le retard</span>
+                <h2><span class="acte-num">4</span>Ce qui change l'ordre de mes appels</h2>
+                <span class="acte-sous">Les clients qui décrochent, ce qui tombe à échéance chez eux, et le retard que la donnée rend douteux</span>
                 <button class="acte-toggle" data-acte-toggle="4" aria-expanded="false">Déplier</button>
             </div>
             <div class="acte-corps" data-acte-corps="4" hidden>
+            <p class="acte-transition">Tout cela décrit le stock. Il reste ce qui change l'ordre des appels de demain matin.</p>
+<div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3 id="top-clients-titre">Les clients à appeler</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-top-clients">
+                                <button class="seg-btn active" data-vue="gros">Les plus gros</button>
+                                <button class="seg-btn" data-vue="degrades">Ceux qui se dégradent</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint" id="top-clients-note"></span>
+                    <div class="mini-table-wrap" id="top-clients"></div>
+                </div>
+            </div>
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
-                    <div class="chart-header"><h3>Top clients en retard</h3></div>
-                    <div class="mini-table-wrap" id="top-clients"></div>
+                    <div class="chart-header"><h3>Ce qui tombe à échéance chez des clients déjà en défaut</h3></div>
+                    <span class="fv-hint">La seule carte de l'écran qui regarde devant. Les trente jours sont une fenêtre de lecture, pas une date posée sur une facture&nbsp;: aucune échéance n'est inventée.</span>
+                    <span class="fv-hint" id="risque-note"></span>
+                    <div class="kpi-grid" id="risque-kpi"></div>
+                    <div class="mini-table-wrap" id="risque-financements"></div>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Du retard qui n'est peut-être pas du retard</h3></div>
+                    <span class="fv-hint">L'acte 1 porte les créances compromises&nbsp;; celui-ci ne porte que le retard que la donnée rend douteux — et celui-là se corrige dans Monday, pas en justice.</span>
+                    <div id="douteux-motifs"></div>
                 </div>
             </div>
             </div>
@@ -1605,6 +1605,17 @@
                         Exclure les factures déjà payées du portefeuille affiché
                     </label>
                     <label class="check">
+                        <span>Une créance est dite <strong>compromise</strong> au-delà de :</span>
+                        <select id="opt-seuil-bad-debt" class="input input-sm">
+                            <option value="180">6 mois d'échéance dépassée (180 jours)</option>
+                            <option value="360">12 mois d'échéance dépassée (360 jours)</option>
+                            <option value="540">18 mois d'échéance dépassée (540 jours)</option>
+                            <option value="720">24 mois d'échéance dépassée (720 jours)</option>
+                        </select>
+                        <span class="fv-hint">360 jours est la frontière « plus de 12 mois » de la
+                        balance âgée, au jour près : au-delà, les deux écrans cessent de coïncider.</span>
+                    </label>
+                    <label class="check">
                         <input type="checkbox" id="opt-actualiser-demarrage" checked>
                         Actualiser depuis Monday à l'ouverture de l'application
                         <span class="fv-hint">(sauté si les données ont moins d'un quart d'heure)</span>
@@ -1713,17 +1724,17 @@
 
 <div class="toast-stack" id="toast-stack"></div>
 
-<script src="js/rules.js?v=3.9.2"></script>
-<script src="js/store.js?v=3.9.2"></script>
-<script src="js/monday.js?v=3.9.2"></script>
-<script src="js/ingest.js?v=3.9.2"></script>
-<script src="js/metrics.js?v=3.9.2"></script>
-<script src="js/prelevements.js?v=3.9.2"></script>
-    <script src="js/grandlivre.js?v=3.9.2"></script>
-    <script src="js/sellsy.js?v=3.9.2"></script>
-    <script src="js/zoho.js?v=3.9.2"></script>
-<script src="js/api.js?v=3.9.2"></script>
-<script src="js/ui.js?v=3.9.2"></script>
-<script src="app.js?v=3.9.2"></script>
+<script src="js/rules.js?v=4.0.0"></script>
+<script src="js/store.js?v=4.0.0"></script>
+<script src="js/monday.js?v=4.0.0"></script>
+<script src="js/ingest.js?v=4.0.0"></script>
+<script src="js/metrics.js?v=4.0.0"></script>
+<script src="js/prelevements.js?v=4.0.0"></script>
+    <script src="js/grandlivre.js?v=4.0.0"></script>
+    <script src="js/sellsy.js?v=4.0.0"></script>
+    <script src="js/zoho.js?v=4.0.0"></script>
+<script src="js/api.js?v=4.0.0"></script>
+<script src="js/ui.js?v=4.0.0"></script>
+<script src="app.js?v=4.0.0"></script>
 </body>
 </html>
