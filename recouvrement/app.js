@@ -1426,6 +1426,7 @@
         rendreRepartition(data);
 
         // ── Acte I : la variation du mois, puis ce qui attend depuis un an ──
+        rendreCarteCircuit(data);
         rendreLigneFlux(data);
         rendreBadDebt(data);
 
@@ -2497,15 +2498,13 @@
             }
         }
 
-        const advRetard = data.filter(f => f.etat === 'En retard' && (f.role === 'adv' || f.role === 'tampon'));
-        if (advRetard.length) {
-            notes.push({
-                ton: 'warn',
-                titre: `${U.nombre(advRetard.length)} factures en retard encore côté ADV / Tampon`,
-                texte: `${U.euros(X.sum(advRetard, x => x.montant))} de factures. Elles dépassent l'échéance sans être passées en recouvrement.`,
-                action: { label: 'Voir ces factures', fn: () => { state.filtres.sources = new Set(['adv']); state.filtres.etats = new Set(['En retard']); ouvrirOnglet('factures'); } },
-            });
-        }
+        // LA BANNIÈRE ADV A QUITTÉ LE PREMIER COUP D'ŒIL.
+        //
+        // Elle énonçait un fait de portefeuille, vrai en permanence, qui
+        // n'invalide aucun chiffre affiché : sa place n'est pas au-dessus de
+        // tout. Elle est devenue la carte « Où en est le retard de … », qui
+        // ne s'écrit qu'une fois entrée dans un dispositif — et qui dit en
+        // plus où se trouve le reste du retard, pas seulement la part ADV.
 
         const opcoRetard = data.filter(f => f.etat === 'En retard' && (f.role === 'opco' || f.financement === 'OPCO'));
         if (opcoRetard.length) {
@@ -3946,6 +3945,124 @@
         const v = state.options.seuilBadDebtJours;
         return (v == null || !(v > 0)) ? 360 : v;
     };
+
+
+    /**
+     * Où en est le retard d'un dispositif dans le circuit.
+     *
+     * Une facture échue qui n'est jamais sortie de l'ADV n'a personne pour
+     * la relancer : elle n'est pas « en recouvrement », elle attend sans que
+     * quiconque s'en occupe. C'est la question que pose cette carte, et elle
+     * ne se pose qu'une fois qu'on est entré dans un dispositif — au premier
+     * coup d'œil, elle ne ferait qu'encombrer.
+     *
+     * Le rôle est celui du TABLEAU où la facture se trouve, et non une
+     * déduction : « tampon » est le transit entre ADV et recouvrement, donc
+     * compté avec l'ADV — la facture n'a pas encore d'interlocuteur.
+     */
+    function rendreCarteCircuit(data) {
+        const hote = $('#carte-circuit');
+        if (!hote) return;
+        const sel = state.filtres.financements;
+        // « En profondeur » : un dispositif et un seul.
+        if (!sel || sel.size !== 1) { hote.innerHTML = ''; return; }
+        const cle = [...sel][0];
+        const regle = R.getRule(cle, state.rules);
+
+        const enRetard = (data || []).filter(f => f.etat === 'En retard');
+        if (!enRetard.length) {
+            hote.innerHTML = `<div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>Où en est le retard de ${U.escapeHtml(regle.label)}</h3></div>
+                <p class="carte-vide">Aucune facture en retard sur ce dispositif : rien à placer
+                dans le circuit.</p></div></div>`;
+            return;
+        }
+
+        const COTES = [
+            { cle: 'adv', label: 'Encore côté ADV', roles: ['adv', 'tampon'],
+              couleur: U.couleurs.retard,
+              quoi: 'Échues et impayées, mais jamais passées en recouvrement : personne ne les relance.' },
+            { cle: 'recouvrement', label: 'En recouvrement', roles: ['recouvrement'],
+              couleur: U.couleurs.payeRetard,
+              quoi: 'Prises en charge par le circuit de relance.' },
+            { cle: 'opco', label: 'Côté OPCO', roles: ['opco'], couleur: U.couleurs.nonEchue,
+              quoi: 'Pas de recouvrement OPCO : suivi du retard uniquement.' },
+            { cle: 'b2c', label: 'Côté B2C', roles: ['b2c'], couleur: U.couleurs.indigo,
+              quoi: 'Suivies sur les tableaux du portefeuille B2C.' },
+        ];
+        const vus = new Set();
+        const lots = COTES.map(c => {
+            const items = enRetard.filter(f => c.roles.includes(f.role));
+            items.forEach(f => vus.add(f));
+            return Object.assign({}, c, { items, nb: items.length,
+                euros: X.sum(items, f => f.montant || 0) });
+        });
+        // Le reste, nommé plutôt que tu : factures payées d'origine, tableaux
+        // sans rôle reconnu, factures venues de Sellsy seules.
+        const reste = enRetard.filter(f => !vus.has(f));
+        if (reste.length) {
+            lots.push({ cle: 'autre', label: 'Hors des tableaux de circuit',
+                roles: [], couleur: '#94a3b8', items: reste, nb: reste.length,
+                euros: X.sum(reste, f => f.montant || 0),
+                quoi: 'Factures dont le tableau d’origine ne porte aucun rôle de circuit — '
+                    + 'y compris celles que seul Sellsy connaît.' });
+        }
+
+        const total = X.sum(lots, l => l.euros);
+        const adv = lots[0];
+        const presents = lots.filter(l => l.nb);
+
+        hote.innerHTML = `<div class="charts-grid"><div class="chart-card chart-wide">
+            <div class="chart-header"><h3>Où en est le retard de ${U.escapeHtml(regle.label)}</h3></div>
+            <span class="fv-hint">${adv.nb
+                ? `<strong>${U.nombre(adv.nb)} factures en retard (${U.euros(adv.euros)}) n'ont jamais `
+                  + `quitté l'ADV</strong> : elles dépassent l'échéance sans être passées en `
+                  + `recouvrement, donc sans que personne ne les relance. C'est le premier geste `
+                  + `à faire sur ce dispositif.`
+                : `Tout ce qui est en retard sur ce dispositif est pris en charge : aucune facture `
+                  + `échue n'est restée côté ADV.`}</span>
+            <div class="barre-parts">${presents.map(l =>
+                `<button data-circuit="${l.cle}" style="background:${l.couleur};flex:${l.euros}"
+                         title="${U.escapeHtml(l.label)} — ${U.escapeHtml(l.quoi)}">`
+                + (X.pct(l.euros, total) >= 8 ? U.pourcent(X.pct(l.euros, total), 0) : '')
+                + '</button>').join('')}</div>
+            <div class="barre-legende">${presents.map(l =>
+                `<span><span class="pastille" style="background:${l.couleur}"></span>`
+                + `${U.escapeHtml(l.label)} — <b>${U.euros(l.euros)}</b> · ${U.nombre(l.nb)} factures · `
+                + `${U.pourcent(X.pct(l.euros, total), 1)}</span>`).join('')}</div>
+            <div class="mini-table-wrap" id="circuit-table"></div>
+        </div></div>`;
+
+        const max = Math.max(...presents.map(l => l.euros), 1);
+        $('#circuit-table', hote).innerHTML = U.table([
+            { key: 'label', label: 'Où elle se trouve' },
+            { key: 'euros', label: 'Montant en retard', align: 'right',
+              format: (v, r) => `${U.euros(v)} ${U.barre(v, max, r.couleur)}` },
+            { key: 'nb', label: 'Factures', align: 'right', format: U.nombre },
+            { key: 'retardMoyen', label: 'Retard moyen', align: 'right',
+              format: v => v == null ? '—' : U.jours(v) },
+            { key: 'quoi', label: 'Ce que cela veut dire' },
+        ], presents.map(l => Object.assign({}, l, {
+            retardMoyen: X.moyenne(l.items.map(f => f.retardJours).filter(v => v != null)),
+        })), {
+            vide: '', onRowClick: true,
+            total: { label: 'Total en retard', euros: U.euros(total),
+                     nb: U.nombre(X.sum(presents, l => l.nb)) },
+        });
+
+        const ouvrir = (c) => {
+            const l = lots.find(x => x.cle === c);
+            if (!l || !l.nb) return;
+            rendreApresClic(() => montrerFacturesListe(
+                `${regle.label} — ${l.label.toLowerCase()}`, l.items, l.quoi, {
+                    colonnesSup: [{ key: 'board', label: 'Tableau',
+                        format: v => `<span class="cell-clip" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` }],
+                    onExport: rows => exporterFacturesSimple(rows, `${regle.label} ${l.label}`),
+                }));
+        };
+        $$('[data-circuit]', hote).forEach(b => b.addEventListener('click', () => ouvrir(b.dataset.circuit)));
+        U.bindTable($('#circuit-table', hote), presents, { onRowClick: l => ouvrir(l.cle) });
+    }
 
     /**
      * La variation du mois, en une phrase chiffrée.

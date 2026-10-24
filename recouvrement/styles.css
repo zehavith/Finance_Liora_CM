@@ -1918,3 +1918,15 @@ html {
     max-width: 92ch;
 }
 .liste-reserve li { margin-bottom: 2px; }
+
+
+/* SOUS 420 PIXELS, LE BANDEAU DE MARQUE NE TIENT PLUS.
+   Le logo, le nom de l'application et le numéro de version faisaient
+   357 px dans un écran de 320 : la page entière était poussée de 37 px
+   vers la droite. Le numéro de version s'efface — il reste dans
+   l'infobulle du nom — et le nom accepte de rétrécir. */
+@media (max-width: 420px) {
+    .brand-version { display: none; }
+    .nav-brand { min-width: 0; }
+    .brand-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
