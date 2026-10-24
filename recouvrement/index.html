@@ -418,12 +418,10 @@
                         </div>
                     </div>
                     <span class="fv-hint">
-                        Gagne-t-on ou perd-on du terrain ? Au-dessus de zéro, les factures tombées en
-                        retard dans le mois ; en dessous, celles qui en sont sorties, c'est-à-dire
-                        <strong>encaissées après leur échéance</strong>. Une facture réglée avant son
-                        échéance n'apparaît pas : elle n'est jamais entrée en retard, elle ne peut pas
-                        en sortir. Un mois sans colonne verte signifie donc qu'aucune créance échue
-                        n'est rentrée ce mois-là — sur le périmètre affiché, filtres compris.
+                        Gagne-t-on ou perd-on du terrain ? Une facture réglée avant son échéance
+                        n'y figure pas : elle n'est jamais tombée en retard, elle ne peut pas en
+                        sortir — un mois sans colonne verte veut donc dire qu'aucune créance échue
+                        n'est rentrée ce mois-là.
                     </span>
                     <div class="chart-container chart-tall">
                         <canvas id="chart-flux"></canvas>
@@ -529,8 +527,8 @@
                     </div></div>
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
-                    <div class="chart-header"><h3>Ce qui bascule en recouvrement, et ce qui en revient</h3></div>
-                    <span class="fv-hint">Deux taux par dispositif, côte à côte. « Bascule toujours mais finit par rentrer » n'appelle pas le même geste que « bascule peu et ne rentre jamais ». Les dispositifs de moins de cinq factures échues sont écartés : un taux sur trois factures ne se lit pas.</span>
+                    <div class="chart-header"><h3>Qui tombe en retard, et qui finit par payer</h3></div>
+                    <span class="fv-hint">La barre <strong>rouge</strong> : sur tout ce qui est arrivé à échéance, la part qui a connu du retard. La barre <strong>verte</strong> : sur ces seules retardataires, la part qui a fini par rentrer. Les deux ne se comparent donc pas en longueur — « tombe souvent mais finit par payer » n'appelle pas le même geste que « tombe peu et ne paye jamais ». Les dispositifs de moins de cinq factures échues sont écartés : un taux sur trois factures ne se lit pas.</span>
                     <div class="chart-container chart-tall"><canvas id="chart-bascule-rentree"></canvas></div>
                 </div>
             </div>
@@ -555,9 +553,9 @@
                         </div>
                     </div>
                     <span class="fv-hint">
-                        Que sont devenues les factures arrivées à échéance chaque mois. La hauteur de la
-                        colonne, c'est la taille du mois ; les couleurs, son issue. Cliquez sur un mois
-                        pour n'afficher que lui.
+                        Rangées par mois d'échéance. La hauteur de la colonne, c'est la taille du
+                        mois ; les couleurs, ce qu'elles sont devenues. Cliquez un mois pour n'afficher
+                        que lui.
                     </span>
                     <div class="chart-container chart-tall">
                         <canvas id="chart-mois"></canvas>

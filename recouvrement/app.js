@@ -2395,6 +2395,36 @@
         // qu'aucun d'eux n'ait l'air anormal — sur un chargement interrompu,
         // seul le premier tableau était arrivé, et le tableau de bord
         // présentait un neuvième du portefeuille comme s'il était entier.
+        // UN TABLEAU CHARGÉ À MOITIÉ NE SE VOYAIT PAS.
+        //
+        // L'écart entre le nombre que Monday annonce et le nombre reçu était
+        // calculé, mais seulement dans l'onglet Data Quality. Un tableau
+        // arrivé aux trois quarts laissait donc tous les chiffres du tableau
+        // de bord porter sur une partie du portefeuille, sans un mot. C'est
+        // la définition même d'une alarme : ce que vous lisez est partiel.
+        const partiels = (state.boards || []).filter(b => b.actif
+            && b.role !== 'technique' && b.role !== 'ignore'
+            && !b.erreurChargement
+            && b.itemsCount != null && b.charge != null
+            && b.charge > 0 && b.charge < b.itemsCount);
+        if (partiels.length) {
+            const manque = X.sum(partiels, b => b.itemsCount - b.charge);
+            const annonce = X.sum(partiels, b => b.itemsCount);
+            notes.push({
+                ton: 'danger',
+                html: true,
+                titre: `${U.nombre(manque)} lignes annoncées par Monday ne sont pas arrivées`
+                    + ` — tous les chiffres portent sur une partie du portefeuille`,
+                texte: partiels.map(b => `<strong>${U.escapeHtml(b.name)}</strong> : `
+                        + `${U.nombre(b.charge)} reçues sur ${U.nombre(b.itemsCount)}`).join(' · ')
+                    + `. Soit ${U.pourcent(X.pct(manque, annonce), 1)} du total annoncé. `
+                    + `L'écart vient presque toujours d'un chargement interrompu — connexion, `
+                    + `session expirée, limite d'API. L'API Monday ne dit pas LESQUELLES manquent, `
+                    + `seulement combien : le contrôle de facturation, lui, les nomme.`,
+                action: { label: 'Recharger les tableaux', fn: () => chargerBoardsActifs() },
+            });
+        }
+
         const presents = new Set(state.factures.map(f => f.board));
         const vides = state.boards.filter(b => b.actif && b.role !== 'technique' && b.role !== 'ignore'
             && !presents.has(b.name));
@@ -2901,12 +2931,12 @@
                 labels: rows.map(r => U.moisLabel(r.mois, true)),
                 datasets: [
                     {
-                        label: 'Entrées en retard', order: 2,
+                        label: 'Tombées en retard (au-dessus de zéro)', order: 2,
                         data: rows.map(r => r[champ('Entrees')]),
                         backgroundColor: 'rgba(239, 68, 68, 0.75)', borderRadius: 3,
                     },
                     {
-                        label: 'Sorties (encaissées)', order: 2,
+                        label: 'Rentrées, encaissées (en dessous)', order: 2,
                         data: rows.map(r => -r[champ('Sorties')]),
                         backgroundColor: 'rgba(132, 204, 22, 0.75)', borderRadius: 3,
                     },
@@ -2916,6 +2946,11 @@
                 interaction: { mode: 'index', intersect: false },
                 scales: {
                     x: { grid: { display: false } },
+                    // Les valeurs sous zéro s'affichent sans signe — une sortie
+                    // n'est pas une perte — mais l'axe semblait alors remonter
+                    // après zéro. La direction est donc portée par la LÉGENDE :
+                    // un titre d'axe vertical serait tourné de quatre-vingt-dix
+                    // degrés, donc illisible là où il faut qu'on le lise.
                     y: { grid: U.grille, ticks: { callback: v => fmt(Math.abs(v)) } },
                 },
                 plugins: {
@@ -4584,10 +4619,13 @@
             data: {
                 labels: rows.map(r => r.label),
                 datasets: [
-                    { label: 'Bascule en recouvrement', data: rows.map(r => r.tauxCohorteEur),
+                    // Rouge pour la mauvaise nouvelle, vert pour la bonne : les
+                    // deux teintes chaudes d'avant se ressemblaient trop pour
+                    // qu'on sache, d'un coup d'œil, laquelle on souhaite longue.
+                    { label: 'Tombe en retard', data: rows.map(r => r.tauxCohorteEur),
                       backgroundColor: U.couleurs.retard, borderRadius: 3 },
-                    { label: 'Revient ensuite', data: rows.map(r => r.rentree),
-                      backgroundColor: U.couleurs.payeRetard, borderRadius: 3 },
+                    { label: 'Finit quand même par rentrer', data: rows.map(r => r.rentree),
+                      backgroundColor: U.couleurs.paye, borderRadius: 3 },
                 ],
             },
             options: {
@@ -4607,13 +4645,26 @@
                         { onExport: rows2 => exporterFacturesSimple(rows2, r.label) }));
                 },
                 scales: {
-                    x: { grid: U.grille, max: 100, ticks: { callback: v => v + ' %' } },
+                    // LES DEUX BARRES N'ONT PAS LE MÊME DÉNOMINATEUR.
+                    //
+                    // La rouge se calcule sur tout ce qui est arrivé à échéance,
+                    // la verte sur les seules retardataires. Partageant un axe,
+                    // leurs longueurs s'invitaient à une comparaison qui n'a pas
+                    // de sens. L'axe le dit maintenant, et l'infobulle redit à
+                    // chaque fois sur quoi le pourcentage est pris.
+                    x: { grid: U.grille, max: 100, ticks: { callback: v => v + ' %' },
+                         title: { display: true, color: '#94a3b8',
+                             text: 'rouge : sur 100 € arrivés à échéance   ·   '
+                                 + 'vert : sur 100 € qui étaient en retard' } },
                     y: { grid: { display: false } },
                 },
                 plugins: {
                     legend: { position: 'bottom' },
                     tooltip: { callbacks: {
-                        label: ctx => `${ctx.dataset.label} : ${U.pourcent(ctx.parsed.x, 1)}`,
+                        label: ctx => `${ctx.dataset.label} : ${U.pourcent(ctx.parsed.x, 1)}`
+                            + (ctx.datasetIndex === 0
+                                ? ' du montant arrivé à échéance'
+                                : ' du montant qui était en retard'),
                         afterBody: it => {
                             const r = rows[it[0].dataIndex];
                             return ['', `${U.nombre(r.nbAssiette)} factures échues`,
