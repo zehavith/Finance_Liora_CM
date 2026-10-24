@@ -314,6 +314,16 @@
         if (rules && rules.length) state.rules = rules;
         if (options && options.options) Object.assign(state.options, options.options);
 
+        // LE JEU DE DÉMONSTRATION SE RECONNAÎT À SES TABLEAUX.
+        //
+        // Inutile de persister un drapeau de plus : les tableaux inventés
+        // portent « Démonstration » comme espace de travail, et eux sont
+        // enregistrés. Au rechargement, le bandeau revient donc tout seul —
+        // c'est précisément ce qui manquait, puisque le message d'alerte, lui,
+        // ne revenait pas.
+        state.demo = (state.boards || []).length > 0
+            && state.boards.every(b => b.workspace === 'Démonstration');
+
 
         if (state.token) {
             $('#monday-token').value = state.token;
@@ -1269,6 +1279,7 @@
     // ══════════════════════════════════════════════
 
     function rendreTout() {
+        majBandeauDemo();
         const data = facturesFiltrees();
         // Les puces de financement et d'étape du circuit ont laissé la place
         // à un déroulé et à rien du tout. Les deux fonctions sortent sur leur
@@ -2378,6 +2389,40 @@
             .filter(v => v.score >= 0.25)
             .sort((a, b) => b.score - a.score)
             .slice(0, 5);
+    }
+
+    /**
+     * Le bandeau du jeu de démonstration.
+     *
+     * Un message de sept secondes ne suffit pas à dire qu'un portefeuille
+     * entier est inventé : il s'efface, et au rechargement il ne revient
+     * même pas. On lisait donc des chiffres fictifs en les croyant siens —
+     * et c'est le seul défaut d'auditabilité qui porte, non sur un chiffre,
+     * mais sur la provenance de tous les autres.
+     */
+    function majBandeauDemo() {
+        const el = $('#bandeau-demo');
+        if (!el) return;
+        el.hidden = !state.demo;
+        if (!state.demo) return;
+        // ET UNE MARQUE DANS LA BARRE DE NAVIGATION, QUI ELLE RESTE À L'ÉCRAN.
+        //
+        // Le bandeau est posé en tête du contenu : il défile donc avec lui, et
+        // au premier mouvement de molette on ne sait plus à qui appartiennent
+        // les chiffres qu'on lit. La barre, elle, est collante. La pastille y
+        // remplace le numéro de version tant que le jeu est chargé.
+        $$('#brand-version').forEach(el => {
+            el.textContent = 'DÉMONSTRATION';
+            el.classList.add('marque-demo');
+            el.title = 'Jeu de démonstration — aucune de ces factures n’est réelle';
+        });
+
+        const t = $('#bandeau-demo-texte');
+        if (t) {
+            t.innerHTML = `Ces <strong>${U.nombre((state.factures || []).length)} factures sont `
+                + `inventées</strong> : elles ne viennent ni de Monday, ni de votre facturation. `
+                + `Aucun chiffre de cet écran ne concerne votre portefeuille.`;
+        }
     }
 
     function rendreNoteperimetre(data, v) {
@@ -13123,6 +13168,9 @@
             }));
         }
 
+        // La marque est posée AVANT le calcul : tout ce qui s'affiche
+        // ensuite en découle, bandeau compris.
+        state.demo = true;
         state.brutes = brutes;
         state.boards = [...new Set(brutes.map(f => f.board))].map(name => {
             const s = brutes.find(f => f.board === name);
@@ -13133,6 +13181,7 @@
         });
         recalculer();
         montrerEcran('app');
+        majBandeauDemo();
         U.toast('Jeu de démonstration chargé — les données sont fictives.', 'info', 7000);
     }
 
@@ -13454,6 +13503,25 @@
         });
 
         $('#btn-reset-filters').addEventListener('click', reinitialiserFiltres);
+        // brancherEvenements pose ses écouteurs sans garde : un élément
+        // absent y lèverait et viderait l'écran entier. Celui-ci existe
+        // toujours dans le document, mais la garde ne coûte rien.
+        const boutonDemo = $('#btn-quitter-demo');
+        if (boutonDemo) boutonDemo.addEventListener('click', async () => {
+            // On efface le jeu inventé plutôt que de le laisser se mêler à
+            // un import réel : deux portefeuilles dans le même écran ne se
+            // démêlent plus.
+            state.demo = false;
+            state.brutes = []; state.factures = []; state.boards = [];
+            state.grandLivre = []; state.imports = [];
+            try {
+                await S.set(S.KEYS.factures, []);
+                await S.set(S.KEYS.boards, []);
+                await S.set(S.KEYS.imports, []);
+            } catch { /* le rechargement suffira */ }
+            majBandeauDemo();
+            montrerEcran('welcome');
+        });
 
         $('#page-size').addEventListener('change', e => {
             state.ui.pageSize = parseInt(e.target.value, 10) || 50;

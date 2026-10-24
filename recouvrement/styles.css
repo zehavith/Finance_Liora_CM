@@ -1959,3 +1959,59 @@ html {
     background-size: 42px 100%, 42px 100%, 15px 100%, 15px 100%;
     background-attachment: local, local, scroll, scroll;
 }
+
+
+/* LE BANDEAU DU JEU DE DÉMONSTRATION.
+   Il ne s'annonçait que par un message de sept secondes : passé ce délai,
+   rien ne distinguait un portefeuille inventé d'un portefeuille réel, et
+   au rechargement le message ne revenait même pas. Celui-ci reste tant
+   que le jeu est chargé, au-dessus de tous les onglets. */
+.bandeau-demo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 10px 2rem;
+    background: linear-gradient(90deg, rgba(244, 116, 88, .22), rgba(244, 116, 88, .08));
+    border-bottom: 1px solid var(--red, #F47458);
+    font-size: 13.5px;
+    color: var(--text-primary);
+}
+.bandeau-demo[hidden] { display: none; }
+.bandeau-demo-pastille {
+    flex: none;
+    background: var(--red, #F47458);
+    color: #0b0e1a;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+}
+.bandeau-demo #btn-quitter-demo {
+    margin-left: auto;
+    flex: none;
+    background: var(--red, #F47458);
+    color: #0b0e1a;
+    border: none;
+    font-weight: 600;
+}
+.bandeau-demo #btn-quitter-demo:hover { filter: brightness(1.1); }
+@media (max-width: 620px) {
+    .bandeau-demo { padding: 8px 1rem; font-size: 12.5px; }
+    .bandeau-demo #btn-quitter-demo { margin-left: 0; }
+}
+
+/* La pastille de démonstration, dans la barre collante : c'est la seule
+   chose qui reste à l'écran quand on fait défiler la page. */
+.marque-demo {
+    background: var(--red, #F47458);
+    color: #0b0e1a;
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: .08em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
