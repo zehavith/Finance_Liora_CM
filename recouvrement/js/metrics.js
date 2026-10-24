@@ -1267,8 +1267,14 @@
         { label: '61 → 90 j',   min: 61,  max: 90 },
         { label: '91 → 120 j',  min: 91,  max: 120 },
         { label: '121 → 180 j', min: 121, max: 180 },
-        { label: '181 → 365 j', min: 181, max: 365 },
-        { label: '> 365 j',     min: 366, max: Infinity },
+        // 180 et 360 sont les bornes hautes des tranches « 4 à 6 mois » et
+        // « 6 à 12 mois » de la balance âgée. Cette grille en est donc un
+        // raffinement exact, et « plus de douze mois » désigne la même
+        // population ici et dans la bad debt. Elle s'arrêtait à 365 : les
+        // retards de 361 à 365 jours étaient comptés « plus de 12 mois »
+        // par la bad debt et rangés dans la colonne « moins d'un an » ici.
+        { label: '181 → 360 j', min: 181, max: 360 },
+        { label: '> 360 j',     min: 361, max: Infinity },
     ];
 
     /**
@@ -1599,7 +1605,10 @@
     //  Qualité de données
     // ──────────────────────────────────────────────
 
-    function qualite(factures) {
+    function qualite(factures, seuilJours) {
+        // Le même seuil que la bad debt, par défaut la frontière « plus de
+        // douze mois » de la balance âgée.
+        const S = (seuilJours == null ? 360 : seuilJours);
         const anomalies = [];
         /** Quels signaux ont parlé, et combien de fois — du plus fréquent au moins. */
         function repartitionSignaux(items) {
@@ -1732,8 +1741,11 @@
             + "Le plus souvent, la colonne d'échéance reconnue n'est pas la bonne : vérifiez la "
             + "correspondance des colonnes dans l'onglet Données.");
 
-        push('RETARD_EXTREME', "Retard supérieur à 1 an", 'haute',
-            factures.filter(f => f.etat === 'En retard' && f.retardJours > 365),
+        // Le seuil est celui des Réglages, et non un 365 écrit ici : sans
+        // cela, cette liste et la tuile de bad debt annonçaient toutes deux
+        // « plus d'un an » sur deux populations différentes.
+        push('RETARD_EXTREME', `Retard supérieur à ${Math.round(S / 30)} mois`, 'haute',
+            factures.filter(f => f.etat === 'En retard' && f.retardJours > S),
             "Créances anciennes : passage en contentieux ou en perte à arbitrer.");
 
         push('ADV_ECHU', "Échue mais encore côté ADV / Tampon", 'moyenne',

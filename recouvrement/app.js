@@ -783,6 +783,8 @@
                 tous:  () => { state.filtres.mois = null; apresPeriode(); },
                 aucun: () => { state.filtres.mois = new Set(); apresPeriode(); },
                 douze: () => { state.filtres.mois = new Set(state.moisDispo.slice(-12)); apresPeriode(); },
+                courant:   () => poserMois(0),
+                precedent: () => poserMois(1),
             },
         });
 
@@ -846,6 +848,30 @@
                 tous: () => { state.filtres.financements = null; state.ui.page = 1; rendreTout(); },
             },
         });
+    }
+
+    /**
+     * Le mois en cours, ou l'un des précédents, d'après la DATE D'ARRÊTÉ.
+     *
+     * Et non d'après aujourd'hui : l'arrêté se recule pour revoir la
+     * situation telle qu'elle était, et « mois en cours » doit alors suivre
+     * l'arrêté, sinon le raccourci ramènerait un mois hors de la vue.
+     *
+     * Le mois est posé seulement s'il existe dans la liste disponible — qui
+     * dépend elle-même de la base de mois retenue. Sinon on le dit, plutôt
+     * que de poser un filtre vide qui mettrait tout l'écran à zéro.
+     */
+    function poserMois(reculDeMois) {
+        const ref = state.filtres.dateRef || new Date();
+        const d = new Date(ref.getFullYear(), ref.getMonth() - reculDeMois, 1);
+        const mk = R.monthKey(d);
+        if (!state.moisDispo.includes(mk)) {
+            U.toast(`Aucune facture sur ${U.moisLabel(mk)} pour la base de mois retenue `
+                + `(${LIB_BASE[state.filtres.baseMois] || 'Échéance'}).`, 'error');
+            return;
+        }
+        state.filtres.mois = new Set([mk]);
+        apresPeriode();
     }
 
     /** Ce qui suit un changement de période, quel que soit le geste. */
@@ -1156,14 +1182,15 @@
         c.classList.remove('hidden');
         c.innerHTML = chips.map((ch, i) =>
             `<span class="filter-chip">${U.escapeHtml(ch.label)}<button data-i="${i}" title="Retirer">×</button></span>`
-        ).join('') + '<button class="btn btn-ghost btn-sm" id="clear-all-filters">Tout retirer</button>';
+        // « Tout retirer » doublonnait « Réinitialiser », posé juste avant
+        // dans la même barre : deux boutons côte à côte pour le même geste.
+        ).join('');
 
         $$('.filter-chip button', c).forEach(b => b.addEventListener('click', () => {
             chips[+b.dataset.i].onRemove();
             state.ui.page = 1;
             rendreTout();
         }));
-        $('#clear-all-filters', c).addEventListener('click', reinitialiserFiltres);
     }
 
     function reinitialiserFiltres() {
@@ -2134,10 +2161,228 @@
         XLSX.writeFile(wb, `Pourquoi_impaye_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
 
+
+    /**
+     * Pourquoi l'écran est vide.
+     *
+     * Un tableau de bord entièrement à zéro se lit comme une application en
+     * panne. Il n'en est presque jamais une : c'est un filtre qui a tout
+     * écarté, et la seule question utile est lequel. On reprend donc le
+     * portefeuille entier, on relâche les filtres un par un, et on nomme
+     * celui qui retient les factures manquantes — avec le bouton qui le
+     * défait.
+     *
+     * Le cas le plus traître est ailleurs. Les factures que Sellsy connaît et
+     * que Monday ignore ne sont pas filtrées : tant que « Factures Sellsy —
+     * manquantes sur Monday » reste sur « Exclues », elles ne sont JAMAIS
+     * entrées dans les données. Aucune recherche ne peut les trouver, et
+     * l'écran ne disait pas qu'elles existaient. On les interroge donc
+     * séparément, là où elles vivent.
+     */
+    function diagnosticVide(data) {
+        if (data && data.length) return null;
+        const f = state.filtres;
+        const toutes = state.factures || [];
+        const sr = state.sellsyResultat;
+        const absentes = (sr && sr.absentes) || [];
+        const horsPerimetre = (sr && sr.horsPerimetre) || [];
+        if (!toutes.length && !absentes.length) return null;
+
+        const base = () => Object.assign({}, f, { masquerTechnique: state.options.masquerTechnique });
+        const compter = (modif) => X.filtrer(toutes, Object.assign(base(), modif)).length;
+
+        // Chaque filtre, avec de quoi le relâcher et de quoi le défaire.
+        const LEVIERS = [
+            { label: 'Période', actif: !!f.mois, neutre: { mois: null },
+              defaire: () => { f.mois = null; rendreBoutonsMois(); } },
+            { label: 'Financement', actif: !!(f.financements && f.financements.size),
+              neutre: { financements: null }, defaire: () => { f.financements = null; } },
+            { label: 'État', actif: !!(f.etats && f.etats.size), neutre: { etats: null },
+              defaire: () => { f.etats = null; } },
+            { label: 'Périmètre', actif: f.perimetre && f.perimetre !== 'Tous',
+              neutre: { perimetre: 'Tous' }, defaire: () => { f.perimetre = 'Tous'; } },
+            { label: 'Client', actif: !!f.client, neutre: { client: null },
+              defaire: () => { f.client = null; } },
+            { label: 'Tableau', actif: !!(f.boards && f.boards.size), neutre: { boards: null },
+              defaire: () => { f.boards = null; } },
+            { label: 'Étape du circuit', actif: !!(f.etapes && f.etapes.size), neutre: { etapes: null },
+              defaire: () => { f.etapes = null; } },
+            { label: 'Antériorité', actif: !!f.bucket, neutre: { bucket: null },
+              defaire: () => { f.bucket = null; } },
+            { label: 'Tranche de retard', actif: f.retardMin != null || f.retardMax != null,
+              neutre: { retardMin: null, retardMax: null },
+              defaire: () => { f.retardMin = null; f.retardMax = null; } },
+            { label: 'Qualification', actif: !!f.qualif, neutre: { qualif: null },
+              defaire: () => { f.qualif = null; } },
+            { label: 'Source du circuit', actif: !!(f.sources && f.sources.size < R.SOURCES.length),
+              neutre: { sources: null },
+              defaire: () => { f.sources = new Set(R.SOURCES.map(x => x.key)); } },
+            { label: 'Factures annulées par avoir', actif: !f.inclureAvoirs,
+              neutre: { inclureAvoirs: true }, defaire: () => { f.inclureAvoirs = true; } },
+            { label: 'Sans échéance seulement', actif: !!f.sansEcheance,
+              neutre: { sansEcheance: false }, defaire: () => { f.sansEcheance = false; } },
+        ].filter(l => l.actif);
+
+        // La recherche est tenue à part des autres leviers : la relâcher rouvre
+        // toujours l'écran, et « relâchez la recherche » n'apprend rien à
+        // quelqu'un qui vient de chercher. On lève donc TOUS les autres
+        // filtres en gardant le terme, pour savoir d'abord où il existe.
+        const recherche = f.recherche || '';
+        const toutNeutre = Object.assign({}, ...LEVIERS.map(l => l.neutre));
+        const q = R.norm(recherche);
+        const dansSellsy = q
+            ? absentes.filter(l => R.norm([l.numero, l.client].join(' ')).includes(q)).length
+            : 0;
+        const dansHorsPerimetre = q
+            ? horsPerimetre.filter(l => R.norm([l.numero, l.client].join(' ')).includes(q)).length
+            : 0;
+
+        const parts = [];
+        let action = null;
+        let sansFiltres = 0;
+
+        // Celui des autres filtres qui, relâché seul, rouvre l'écran.
+        const coupables = LEVIERS
+            .map(l => ({ l, n: compter(l.neutre) }))
+            .filter(x => x.n > 0)
+            .sort((a, b) => b.n - a.n);
+
+        // `quoi` est l'amorce de phrase ; vide, la fonction annonce elle-même
+        // le nombre, pour ne pas l'imprimer deux fois.
+        const nommerCoupables = (quoi) => {
+            if (coupables.length) {
+                const c = coupables[0];
+                parts.push(`${quoi ? quoi + ' ' : ''}<strong>${U.nombre(c.n)}${quoi ? '' : ' factures'}</strong> reviennent en relâchant `
+                    + `« ${U.escapeHtml(c.l.label)} » — c'est ce filtre-là qui vide l'écran.`);
+                if (coupables.length > 1) {
+                    parts.push('Les autres filtres qui y suffiraient : '
+                        + coupables.slice(1, 4).map(x => `${U.escapeHtml(x.l.label)} (${U.nombre(x.n)})`).join(', ')
+                        + '.');
+                }
+                action = { label: `Relâcher « ${c.l.label} »`, fn: () => {
+                    c.l.defaire(); majSegments(); state.ui.page = 1; rendreTout();
+                } };
+            } else {
+                parts.push(`${quoi ? quoi + ' ' : '<strong>' + U.nombre(sansFiltres) + ' factures</strong> '}reviennent en relâchant tous les filtres à la fois : aucun `
+                    + `ne suffit seul, c'est leur combinaison qui ne laisse rien passer.`);
+                action = { label: 'Tout retirer', fn: () => reinitialiserFiltres() };
+            }
+        };
+
+        if (recherche) {
+            // Le terme existe-t-il dans le portefeuille, tous autres filtres levés ?
+            const dansPortefeuille = compter(toutNeutre);
+            if (dansPortefeuille > 0) {
+                nommerCoupables(`<strong>${U.nombre(dansPortefeuille)} factures</strong> portent ce `
+                    + `nom dans les données chargées, mais aucune ne passe les filtres en cours ;`);
+            } else if (dansSellsy > 0) {
+                parts.push(`<strong>${U.nombre(dansSellsy)} factures Sellsy</strong> portent ce nom, `
+                    + `mais aucune n'existe dans Monday : elles ne sont pas dans les données tant que `
+                    + `« Factures Sellsy — manquantes sur Monday » reste sur « Exclues ». `
+                    + `Aucune recherche ne peut les atteindre d'ici.`);
+                action = { label: `Inclure les factures Sellsy manquantes`, fn: () => {
+                    f.inclureSellsyManquantes = true;
+                    recalculer({ conserverPeriode: true });
+                } };
+            } else if (dansHorsPerimetre > 0) {
+                parts.push(`${U.nombre(dansHorsPerimetre)} lignes de l'export Sellsy portent ce nom, `
+                    + `mais hors du périmètre attendu de l'export : elles ne sont reprises nulle part. `
+                    + `Le détail est dans l'onglet Contrôle Sellsy.`);
+                action = { label: 'Ouvrir le contrôle Sellsy', fn: () => ouvrirOnglet('sellsy') };
+            } else {
+                parts.push(`Aucune facture ne porte ce nom, ni dans les tableaux Monday chargés, `
+                    + `ni dans l'export Sellsy.`);
+                const voisins = clientsVoisins(q, toutes, absentes, horsPerimetre);
+                if (voisins.length) {
+                    parts.push('Clients au nom proche : '
+                        + voisins.map(v => `<strong>${U.escapeHtml(v.nom)}</strong> `
+                            + `(${U.nombre(v.nb)} factures)`).join(', ')
+                        + '. Cliquez pour reprendre la recherche sur le premier.');
+                    action = { label: `Chercher « ${voisins[0].nom} »`, fn: () => {
+                        f.recherche = voisins[0].nom;
+                        const e = $('#search-input'); if (e) e.value = voisins[0].nom;
+                        state.ui.page = 1;
+                        rendreTout();
+                    } };
+                } else {
+                    parts.push('Aucun nom de client ne s’en approche non plus : il n’est '
+                        + 'probablement pas dans les sources chargées.');
+                }
+            }
+            // Même quand le terme a été trouvé ailleurs, le dire s'il existe
+            // AUSSI hors du portefeuille : les deux populations sont réelles.
+            if (dansPortefeuille > 0 && dansSellsy > 0) {
+                parts.push(`${U.nombre(dansSellsy)} autres factures Sellsy portent ce nom sans `
+                    + `exister dans Monday ; elles restent hors du portefeuille.`);
+            }
+        } else {
+            sansFiltres = compter(toutNeutre);
+            if (!sansFiltres) return null;
+            nommerCoupables('');
+        }
+
+        if (!parts.length) return null;
+        return {
+            ton: 'danger',
+            titre: recherche
+                ? `« ${recherche} » ne ressort nulle part sur ce périmètre`
+                : 'Aucune facture sur ce périmètre — tous les chiffres sont à zéro',
+            // Tout ce qui vient des données — nom de client, libellé de filtre —
+            // est déjà passé par U.escapeHtml dans les phrases ci-dessus.
+            html: true,
+            texte: parts.join(' '),
+            action,
+        };
+    }
+
+    /**
+     * Les noms de clients les plus proches d'un terme introuvable.
+     *
+     * Comparaison par trigrammes : « stelantis » et « stellantis » partagent
+     * l'essentiel de leurs triplets de lettres, là où une comparaison exacte
+     * ne dit rien. C'est le seul moyen de distinguer « ce client n'existe
+     * pas » de « ce client est enregistré autrement » — et les deux appellent
+     * un geste différent.
+     */
+    function clientsVoisins(q, toutes, absentes, horsPerimetre) {
+        const trigrammes = (s) => {
+            const t = ' ' + R.norm(s) + ' ';
+            const out = new Set();
+            for (let i = 0; i + 3 <= t.length; i++) out.add(t.slice(i, i + 3));
+            return out;
+        };
+        const G = trigrammes(q);
+        if (!G.size) return [];
+        const compte = new Map();
+        const ajouter = (nom) => {
+            if (!nom || nom === '—') return;
+            compte.set(nom, (compte.get(nom) || 0) + 1);
+        };
+        for (const x of toutes) ajouter(x.client);
+        for (const l of absentes) ajouter(l.client);
+        for (const l of horsPerimetre) ajouter(l.client);
+
+        return [...compte.entries()]
+            .map(([nom, nb]) => {
+                const B = trigrammes(nom);
+                let commun = 0;
+                for (const g of G) if (B.has(g)) commun++;
+                return { nom, nb, score: commun / (G.size + B.size - commun) };
+            })
+            .filter(v => v.score >= 0.25)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 5);
+    }
+
     function rendreNoteperimetre(data, v) {
         const el = $('#scope-note');
         if (!el) return;
         const notes = [];
+
+        // L'écran vide a son hôte à lui, tout en haut : sous les tuiles, son
+        // explication arrive après les zéros qu'elle explique.
+        const vide = diagnosticVide(data);
+        ecrireNotes($('#ecran-vide'), vide ? [vide] : []);
 
         // Avant toute lecture métier : le portefeuille est-il complet ? Un
         // tableau coché mais vide de données rend tous les chiffres faux sans
@@ -2291,13 +2536,25 @@
             });
         }
 
+        ecrireNotes(el, notes);
+    }
+
+    /**
+     * Écrit une liste de bannières dans un hôte.
+     *
+     * Une bannière peut porter de la mise en forme, à condition d'avoir
+     * échappé elle-même ce qui vient des données : c'est ce que son drapeau
+     * html déclare. Sans lui, tout est échappé.
+     */
+    function ecrireNotes(el, notes) {
+        if (!el) return;
         if (!notes.length) { el.innerHTML = ''; el.classList.add('hidden'); return; }
         el.classList.remove('hidden');
         el.innerHTML = notes.map((n, i) => `
             <div class="note note-${n.ton}">
                 <div class="note-body">
                     <strong>${U.escapeHtml(n.titre)}</strong>
-                    <span>${U.escapeHtml(n.texte)}</span>
+                    <span>${n.html ? n.texte : U.escapeHtml(n.texte)}</span>
                 </div>
                 ${n.action ? `<button class="btn btn-ghost btn-sm" data-note="${i}">${U.escapeHtml(n.action.label)}</button>` : ''}
             </div>`).join('');
@@ -3623,6 +3880,8 @@
         const rec = X.recuperationAuDela(data, S);
         const mois = Math.round(S / 30);
 
+        const titre = $('#bad-debt-titre');
+        if (titre) titre.textContent = `Ce qui attend depuis plus de ${U.nombre(mois)} mois`;
         const seuil = $('#bad-debt-seuil');
         if (seuil) {
             seuil.textContent = `seuil : ${U.nombre(S)} jours d'échéance dépassée, soit ${mois} mois`
@@ -3697,7 +3956,11 @@
     function rendreBadDebtDetail(data, S, bd) {
         const el = $('#bad-debt-table');
         if (!el) return;
-        const TRANCHES = R.AGING_BUCKETS.filter(b => b.min > 360);
+        // Les tranches au-delà du SEUIL, et non d'un 360 écrit en dur : à
+        // 6 mois, les créances de 181 à 360 jours comptaient dans le total
+        // sans tomber dans aucune colonne — un chiffre qu'on ne pouvait
+        // ouvrir nulle part.
+        const TRANCHES = R.AGING_BUCKETS.filter(b => b.min > S);
         const par = new Map();
         for (const f of bd.items) {
             const cle = f.financement || 'INCONNU';
@@ -9853,7 +10116,10 @@
             masquerTechnique: state.options.masquerTechnique,
         });
         const population = annulees.length ? data.concat(annulees) : data;
-        const anomalies = [...anomaliesImport(), ...X.qualite(population)];
+        // Le seuil des Réglages descend jusqu'à l'anomalie « plus de N mois »,
+        // sans quoi elle annoncerait son propre an là où la bad debt en
+        // annonce un autre.
+        const anomalies = [...anomaliesImport(), ...X.qualite(population, seuilBadDebt())];
         const score = X.scoreQualite(population, anomalies.filter(a => a.items));
         const couleur = score >= 85 ? 'var(--green)' : score >= 65 ? 'var(--amber)' : 'var(--red)';
 

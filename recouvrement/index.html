@@ -171,6 +171,8 @@
                     <div class="dd-panneau dd-panneau-mois" hidden>
                         <div class="dd-actions">
                             <button class="btn btn-ghost btn-sm" type="button" data-action="tous">Tout</button>
+                            <button class="btn btn-ghost btn-sm" type="button" data-action="courant">Mois en cours</button>
+                            <button class="btn btn-ghost btn-sm" type="button" data-action="precedent">Mois précédent</button>
                             <button class="btn btn-ghost btn-sm" type="button" data-action="douze">12 derniers mois</button>
                             <button class="btn btn-ghost btn-sm" type="button" data-action="aucun">Aucun</button>
                         </div>
@@ -267,14 +269,23 @@
             </div>
 
             <button class="btn btn-ghost btn-sm" id="btn-reset-filters">Réinitialiser</button>
-        </div>
 
-        <div id="active-filters" class="active-filters hidden"></div>
+            <!-- Les filtres actifs tiennent dans la ligne des commandes, et
+                 non sur une bande à eux : une seule puce occupait une rangée
+                 entière sous la barre. -->
+            <div id="active-filters" class="active-filters hidden"></div>
+        </div>
     </div>
 
     <!-- ══════════ ONGLET : TABLEAU DE BORD ══════════ -->
     <div class="tab-content active" id="tab-dashboard">
         <div class="dashboard-content">
+
+            <!-- Pourquoi l'écran est vide. Hors des actes, et au-dessus de
+                 tout : au moment où tous les chiffres valent zéro, c'est la
+                 seule chose qui mérite d'être lue, et un acte replié ne doit
+                 pas pouvoir la cacher. -->
+            <div id="ecran-vide" class="scope-note"></div>
 
             <!-- ═════════════════ ACTE 1 ═════════════════ -->
             <div class="section-header section-acte" data-acte="1">
@@ -418,7 +429,7 @@
             <!-- La bad debt : le seuil est écrit en toutes lettres sous le
                  chiffre, et il se règle dans l'onglet Réglages. -->
             <div class="section-header section-header-sub">
-                <h3>Ce qui attend depuis plus d'un an</h3>
+                <h3 id="bad-debt-titre">Ce qui attend depuis plus de douze mois</h3>
                 <span class="fv-hint" id="bad-debt-seuil"></span>
             </div>
             <div class="kpi-grid" id="bad-debt-kpi"></div>

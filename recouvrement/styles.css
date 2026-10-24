@@ -1573,6 +1573,15 @@ tr.ligne-total td {
    visible en permanence, avec le libellé le plus long de la barre. */
 .filter-block[hidden] { display: none; }
 
+/* ET LA MÊME CHOSE POUR LES SEGMENTS, QUI N'ÉTAIENT PAS MASQUÉS DU TOUT.
+   .seg porte display: inline-flex, qui l'emporte sur le display: none que
+   le navigateur attache à [hidden] depuis sa feuille par défaut. Les
+   anciens segments — base de mois, avoirs — restaient donc affichés à côté
+   des déroulés qui les remplacent : deux commandes pour le même filtre, à
+   toutes les largeurs. Seule l'enveloppe de l'artefact publié, qui pose un
+   [hidden] en !important, le cachait par accident. */
+.seg[hidden] { display: none; }
+
 /* ── Le déroulé ──
    Le panneau est en position absolue : la barre est collante et sa hauteur est
    mesurée dans --filters-h, donc un panneau qui pousserait le contenu ferait
@@ -1682,8 +1691,10 @@ tr.ligne-total td {
    ══════════════════════════════════════════════════════════════════ */
 
 /* Le premier acte ouvre l'écran : il n'a rien au-dessus dont se séparer,
-   et les 64 px de marge et de filet repoussaient le premier chiffre. */
-.dashboard-content > .section-acte:first-child {
+   et les 64 px de marge et de filet repoussaient le premier chiffre.
+   Visé par son numéro et non par sa position : la bannière d'écran vide se
+   place avant lui, et un :first-child cessait alors de le reconnaître. */
+.dashboard-content > .section-acte[data-acte="1"] {
     margin-top: 0;
     padding-top: 0;
     border-top: none;
@@ -1814,4 +1825,63 @@ tr.ligne-total td {
     .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
     .seg::-webkit-scrollbar { display: none; }
     .data-table { display: block; width: 100%; overflow-x: auto; }
+}
+
+
+/* LES FILTRES ACTIFS, DANS LA LIGNE DES COMMANDES.
+   Ils occupaient une bande entière sous la barre pour y porter parfois une
+   seule puce. Ils prennent place au bout de la rangée, et passent à la
+   ligne d'eux-mêmes quand il y en a trop. */
+.filter-bar > .active-filters {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    min-width: 0;
+}
+.filter-bar > .active-filters.hidden { display: none; }
+
+/* La rangée des commandes fait déjà 1 388 px sur 1 408 : les puces ne
+   peuvent pas tenir à côté. Elles prennent donc la largeur entière juste
+   en dessous, dans la même boîte et sans filet — une ligne de la barre, et
+   non une bande à part. */
+.filter-bar > .active-filters { flex: 1 0 100%; margin-top: 2px; }
+.filter-bar > .active-filters .filter-chip {
+    font-size: 11.5px;
+    padding: 2px 6px 2px 9px;
+}
+
+
+/* LA BARRE DE FILTRES NE COLLE PLUS SUR UN ÉCRAN ÉTROIT.
+   Collante, elle occupait 304 px des 760 d'un téléphone : les commandes
+   passent à la ligne les unes sous les autres, et le contenu défilait sous
+   une barre qui en couvrait la moitié. En dessous de 760 px elle défile
+   donc avec la page — on la retrouve en remontant, comme le reste. Les
+   tableaux qui s'ancraient sous elle retrouvent du même coup leur place. */
+@media (max-width: 760px) {
+    .filters-wrap {
+        position: static;
+        backdrop-filter: none;
+        background: var(--bg-card, rgba(11, 14, 26, 0.92));
+    }
+    .data-table thead th { top: 0; }
+}
+
+
+/* CE QU'ON FAIT DÉFILER NE DOIT PAS S'ARRÊTER SOUS LA BARRE.
+   La navigation et la barre de filtres sont toutes deux collantes en haut.
+   Un défilement vers un bloc — un clic de tranche, un renvoi d'onglet, une
+   ancre — posait donc ce bloc à zéro pixel du haut, c'est-à-dire DERRIÈRE
+   elles : le premier chiffre de la carte était coupé. Les deux hauteurs
+   sont déjà mesurées au chargement ; il suffit de les réserver. */
+html {
+    scroll-padding-top: calc(var(--nav-h, 66px) + var(--filters-h, 90px) + 16px);
+}
+@media (max-width: 760px) {
+    /* La barre de filtres n'y colle plus : seule la navigation compte. */
+    html { scroll-padding-top: calc(var(--nav-h, 66px) + 12px); }
 }
