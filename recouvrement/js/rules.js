@@ -404,6 +404,36 @@
      */
     const NUM_TABLEAU = /^\s*(\d)\s*\.\s*(\d)\s*\./;
 
+    /**
+     * TABLEAUX ÉCARTÉS NOMMÉMENT.
+     *
+     * Un tableau peut porter un numéro parfaitement régulier et ne contenir que
+     * des lignes d'essai. Le numéro ne peut pas le dire ; seule une décision le
+     * peut. Chacun est donc écarté par son nom, avec son motif et la date de la
+     * décision — une balance à laquelle on retire des lignes doit pouvoir dire
+     * lesquelles et pourquoi, sans quoi elle n'est plus auditable.
+     */
+    const TABLEAUX_ECARTES = [
+        {
+            numero: /^\s*2\s*\.\s*5\s*\./,
+            nom: /recouvrement\s*b2c/i,
+            motif: "Lignes d'essai : les cinq lignes ont été créées le 13/09/2026 à la même "
+                 + "minute, sous des noms de clients génériques (ABC Formation SARL, Complex "
+                 + "Finance Ltd, PE Consulting), avec des montants ronds et trois dates de "
+                 + "facture à venir. 22 500 € qui n'ont jamais été dus.",
+            decide: '2026-10-25',
+        },
+    ];
+
+    /** Ce tableau a-t-il été écarté nommément ? Retourne la décision, ou null. */
+    function tableauEcarte(boardName) {
+        const brut = String(boardName == null ? '' : boardName);
+        for (const x of TABLEAUX_ECARTES) {
+            if (x.numero.test(brut) && x.nom.test(brut)) return x;
+        }
+        return null;
+    }
+
     /** Reconnaissance par mots du nom — le recours quand le numéro manque. */
     function roleParLeNom(boardName) {
         const n = ' ' + norm(boardName) + ' ';
@@ -419,6 +449,12 @@
 
     /** Déduit le rôle d'un tableau à partir de son nom Monday. */
     function detectBoardRole(boardName) {
+        const ecarte = tableauEcarte(boardName);
+        if (ecarte) {
+            return { role: 'ignore', perimetre: 'Inconnu', source: null, financementDefaut: null,
+                     motif: ecarte.motif, decide: ecarte.decide };
+        }
+
         const num = NUM_TABLEAU.exec(String(boardName == null ? '' : boardName));
         if (!num) return roleParLeNom(boardName);
 
@@ -859,7 +895,8 @@
         norm, parseDate, stripTime, addDays, diffDays, monthKey, motifEcheance1,
         DEFAULT_ECHEANCE_RULES, DEFAULT_FALLBACK_RULE,
         BOARD_ROLE_PATTERNS, ROLE_LABELS, SOURCES,
-        detectBoardRole, roleParLeNom, NUM_TABLEAU, detectFinancement, getRule, computeEcheance,
+        detectBoardRole, roleParLeNom, NUM_TABLEAU, TABLEAUX_ECARTES, tableauEcarte,
+        detectFinancement, getRule, computeEcheance,
         GROUPES_EXCLUS, estGroupeTechnique, perimetreDepuisTexte,
         ETAPES, etapeDepuisGroupe,
         AGING_BUCKETS, bucketFor, MS_DAY, categorieDe,
