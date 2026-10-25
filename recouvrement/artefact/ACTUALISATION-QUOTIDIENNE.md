@@ -101,6 +101,41 @@ fichier), encodé en UTF-8 avec BOM, séparateur virgule :
 Groupe,Nom,<titre colonne 1>,<titre colonne 2>,…
 ```
 
+### Trois pièges, payés comptant
+
+**1. Le format doit être celui d'un export Monday, pas un CSV plat.**
+L'application a été écrite pour la forme hiérarchique que Monday produit, et
+elle en tire deux choses distinctes : le **titre du groupe** où la facture est
+rangée, et la colonne **« Groupe »** du tableau, qui porte l'origine. Sur
+« 0.1. ALL - Factures payées » les deux existent et ne disent pas la même
+chose. Un CSV plat avec une colonne « Groupe » ajoutée les confond, et des
+factures payées passent pour des factures en tampon. La forme attendue :
+
+```
+<titre du tableau>              <- une seule cellule remplie
+<titre du groupe>               <- une seule cellule remplie
+Name,<colonnes du tableau>      <- l'en-tête, après le premier groupe
+<lignes du groupe>
+<titre du groupe suivant>
+<lignes>
+```
+
+Aucune ligne de données ne doit avoir une seule cellule remplie : elle passerait
+pour un titre de groupe et effacerait le groupe courant.
+
+**2. Le nom du fichier doit être en ASCII.** Un nom accentué —
+« Factures payées.csv », « pôle emploi » — est **silencieusement perdu** au
+dépôt : le fichier n'arrive jamais à l'import, sans erreur ni message. Sept
+tableaux sur neuf passaient, et les deux manquants — dont les 7 249 factures
+payées — ne laissaient aucune trace. Le classement n'en souffre pas : le rôle
+se déduit du **titre du tableau écrit dans le fichier**, pas du nom du fichier.
+
+**3. Les colonnes miroir et formule n'ont pas de `text`.** Il faut demander
+`display_value`, et retomber sur `text` puis sur la valeur brute analysée — la
+cascade exacte de `columnValue()` dans `js/monday.js`. Sans cela « 1.1. ADV »
+et « 1.2. Recouvrement », qui ne sont presque que des miroirs, ressortent
+entièrement vides.
+
 `Groupe` porte le titre du groupe Monday : il est indispensable. C'est lui qui
 permet d'écarter les groupes techniques **à l'intérieur** d'un tableau retenu
 — au 25/10, 874 lignes du seul Tampon, dont 667 déjà parties vers ADV ou

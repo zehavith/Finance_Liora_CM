@@ -529,6 +529,20 @@ fs.writeFileSync(path.join(DIST, 'essai.html'), ENVELOPPE);
     if (absents.length) {
       throw new Error('donn\u00e9es du jour : le manifeste annonce des fichiers absents \u2014 ' + absents.join(', '));
     }
+    // Le drapeau qui autorise la page à aller les chercher. Sans lui elle ne
+    // demande rien : l'application locale n'a pas de données déposées, et une
+    // requête sans réponse la laissait pendue.
+    const page = path.join(DIST, 'index.html');
+    let html = fs.readFileSync(page, 'utf8');
+    const marque = '<script>window.LIORA_DONNEES_DU_JOUR = true;</script>';
+    if (html.indexOf(marque) === -1) {
+      const cible = '<script src="app.js';
+      const i = html.indexOf(cible);
+      if (i === -1) throw new Error('donn\u00e9es du jour : impossible de poser le drapeau, app.js introuvable dans la page');
+      html = html.slice(0, i) + marque + '\n    ' + html.slice(i);
+      fs.writeFileSync(page, html);
+    }
+
     console.log('donn\u00e9es du jour \u00b7 ' + n + ' fichiers \u00b7 ' + Math.round(octets / 1024)
       + ' Ko \u00b7 arr\u00eat\u00e9 au ' + (m.arreteLe || '?') + (m.arreteA ? ' \u00e0 ' + m.arreteA : ''));
   } else {

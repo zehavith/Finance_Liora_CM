@@ -417,9 +417,26 @@
     async function chargerDonneesDuJour() {
         if (state.brutes.length || (state.glOuvertes || []).length) return false;
 
+        // ON NE DEMANDE PAS UN FICHIER QU'ON SAIT ABSENT.
+        //
+        // L'application locale n'a pas de données déposées à côté d'elle, et le
+        // petit serveur de poste répondait 404 sans refermer la requête : la
+        // page restait indéfiniment « en cours de chargement » pour le
+        // navigateur. Un drapeau posé par la construction dit s'il y a quelque
+        // chose à chercher. Sans lui, on ne demande rien.
+        if (!window.LIORA_DONNEES_DU_JOUR) return false;
+
+        // Et même alors, une requête qui ne revient pas ne doit pas retenir la
+        // page : elle s'interrompt d'elle-même.
+        const minuteur = (ms) => {
+            const a = new AbortController();
+            setTimeout(() => a.abort(), ms);
+            return a.signal;
+        };
+
         let manifeste = null;
         try {
-            const r = await fetch('donnees/du-jour.json', { cache: 'no-store' });
+            const r = await fetch('donnees/du-jour.json', { cache: 'no-store', signal: minuteur(10000) });
             if (!r.ok) return false;
             manifeste = await r.json();
         } catch { return false; }
@@ -432,7 +449,7 @@
         const fichiers = [], manquants = [];
         for (const nom of liste) {
             try {
-                const rep = await fetch('donnees/' + encodeURIComponent(nom), { cache: 'no-store' });
+                const rep = await fetch('donnees/' + encodeURIComponent(nom), { cache: 'no-store', signal: minuteur(60000) });
                 if (!rep.ok) { manquants.push(nom); continue; }
                 fichiers.push(new File([await rep.blob()], nom, { type: 'text/csv' }));
             } catch { manquants.push(nom); }
