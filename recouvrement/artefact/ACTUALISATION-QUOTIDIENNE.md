@@ -1,5 +1,29 @@
 # Actualisation quotidienne du Suivi Recouvrement
 
+> **L'export tient désormais dans un seul programme : `actualiser.js`.**
+>
+> ```bash
+> node recouvrement/artefact/actualiser.js     # lit MONDAY_TOKEN dans l'environnement
+> ```
+>
+> Il appelle `api.monday.com` directement avec le jeton de l'environnement, et
+> ne demande donc **aucun connecteur**. Sans la coupure à soixante secondes du
+> bac à sable, les neuf tableaux se lisent d'une traite : plus de curseurs
+> passés d'un appel à l'autre, plus d'occasion de s'arrêter au milieu.
+>
+> **Ses codes de sortie font loi** — `0` tout s'est bien passé, `1` il refuse
+> (ne republiez rien), `2` le jeton manque. Il refuse de lui-même si un champ
+> essentiel n'est plus reconnu, si un tableau revient vide, ou si une ligne
+> pourrait passer pour un titre de groupe.
+>
+> **Il ne fait que lire.** Aucune mutation GraphQL n'y figure et il n'en
+> construit jamais. Le jeton porte les droits de son auteur : la garantie est
+> dans le code, pas dans le jeton.
+>
+> Ce qui suit reste vrai et explique **pourquoi** le programme fait ce qu'il
+> fait. À lire avant d'y toucher.
+
+
 Cette procédure est exécutée chaque matin par une tâche programmée, dans une
 session neuve qui ne sait rien de la veille. Elle est écrite pour être suivie
 sans rien deviner.
