@@ -496,6 +496,46 @@ fs.writeFileSync(path.join(DIST, 'essai.html'), ENVELOPPE);
 // ══════════════════════════════════════════════
 //  6. Le compte rendu
 // ══════════════════════════════════════════════
+// ══════════════════════════════════════════════
+//  LES DONNÉES DU JOUR
+// ══════════════════════════════════════════════
+//
+// La tâche programmée du matin dépose ici les exports Monday de la journée.
+// S'ils sont là, ils partent avec la page, qui s'ouvre déjà remplie. S'ils n'y
+// sont pas, la construction ne s'arrête pas et ne se tait pas non plus : la
+// page retombe sur son écran d'accueil, qui reste son comportement normal.
+//
+// Ces fichiers ne vont jamais au dépôt — .gitignore les écarte. Ils portent le
+// portefeuille réel, et leur place est dans l'artefact privé, pas dans l'historique.
+{
+  const SOURCE = path.join(__dirname, 'donnees-du-jour');
+  const MANIFESTE = path.join(SOURCE, 'du-jour.json');
+  if (fs.existsSync(MANIFESTE)) {
+    const cible = path.join(DIST, 'donnees');
+    fs.mkdirSync(cible, { recursive: true });
+    const m = JSON.parse(fs.readFileSync(MANIFESTE, 'utf8'));
+    const annonces = Array.isArray(m.fichiers) ? m.fichiers : [];
+    let n = 0, octets = 0;
+    const absents = [];
+    for (const f of annonces.concat(['du-jour.json'])) {
+      const src = path.join(SOURCE, f);
+      if (!fs.existsSync(src)) { absents.push(f); continue; }
+      fs.copyFileSync(src, path.join(cible, f));
+      octets += fs.statSync(src).size;
+      n++;
+    }
+    // Un manifeste qui annonce un fichier absent produirait une page qui
+    // s'ouvre sur un portefeuille incomplet sans le dire. On refuse.
+    if (absents.length) {
+      throw new Error('donn\u00e9es du jour : le manifeste annonce des fichiers absents \u2014 ' + absents.join(', '));
+    }
+    console.log('donn\u00e9es du jour \u00b7 ' + n + ' fichiers \u00b7 ' + Math.round(octets / 1024)
+      + ' Ko \u00b7 arr\u00eat\u00e9 au ' + (m.arreteLe || '?') + (m.arreteA ? ' \u00e0 ' + m.arreteA : ''));
+  } else {
+    console.log('donn\u00e9es du jour \u00b7 aucune \u00b7 la page s\u2019ouvrira sur son accueil');
+  }
+}
+
 const tous = [];
 (function parcourir(d, prefixe) {
   for (const e of fs.readdirSync(d, { withFileTypes: true })) {

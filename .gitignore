@@ -17,3 +17,5 @@ dist/
 # commande depuis recouvrement/, et il pèse trois mégaoctets de copies.
 #   node recouvrement/artefact/construire.js
 recouvrement/artefact/paquet/
+# Donnees reelles du portefeuille : elles ne vont pas au depot.
+recouvrement/artefact/donnees-du-jour/

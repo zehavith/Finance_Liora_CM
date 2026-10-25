@@ -395,6 +395,70 @@
         programmerActualisation();
         // Rafraîchit l'ancienneté affichée sans solliciter Monday
         setInterval(majIndicateurActualisation, 60000);
+
+        await chargerDonneesDuJour();
+    }
+
+    /**
+     * LES DONNÉES DU JOUR, DÉPOSÉES À CÔTÉ DE LA PAGE.
+     *
+     * La page publiée s'ouvrait vide : tout vivait dans le stockage du
+     * navigateur, et il fallait redéposer ses exports sur chaque appareil. Une
+     * tâche programmée lit Monday chaque matin et dépose le résultat à côté de
+     * la page, avec la date et l'heure de l'arrêté.
+     *
+     * Au démarrage, la page va le chercher. Trois prudences : elle ne fait
+     * rien si quelque chose est déjà chargé — sans quoi elle écraserait ce que
+     * l'utilisatrice vient d'importer elle-même —, l'absence du fichier est un
+     * cas normal et non une panne, et un fichier manquant dans la liste
+     * n'interrompt pas les autres : mieux vaut huit tableaux sur neuf, en le
+     * disant, que rien du tout.
+     */
+    async function chargerDonneesDuJour() {
+        if (state.brutes.length || (state.glOuvertes || []).length) return false;
+
+        let manifeste = null;
+        try {
+            const r = await fetch('donnees/du-jour.json', { cache: 'no-store' });
+            if (!r.ok) return false;
+            manifeste = await r.json();
+        } catch { return false; }
+        const liste = manifeste && Array.isArray(manifeste.fichiers) ? manifeste.fichiers : [];
+        if (!liste.length) return false;
+
+        montrerEcran('loading');
+        statut('Lecture des données Monday' + (manifeste.arreteLe ? ' du ' + manifeste.arreteLe : ''));
+
+        const fichiers = [], manquants = [];
+        for (const nom of liste) {
+            try {
+                const rep = await fetch('donnees/' + encodeURIComponent(nom), { cache: 'no-store' });
+                if (!rep.ok) { manquants.push(nom); continue; }
+                fichiers.push(new File([await rep.blob()], nom, { type: 'text/csv' }));
+            } catch { manquants.push(nom); }
+        }
+        if (!fichiers.length) { montrerEcran('welcome'); return false; }
+
+        await importerFichiers(fichiers);
+
+        // La date d'arrêté est une mesure, pas une décoration : tout le retard
+        // se compte à partir d'elle. Elle se pose donc dans le filtre qui la
+        // porte déjà, et non dans un coin de l'écran.
+        if (manifeste.arreteLe && /^\d{4}-\d{2}-\d{2}$/.test(manifeste.arreteLe)) {
+            const champ = $('#date-ref');
+            if (champ && champ.value !== manifeste.arreteLe) {
+                champ.value = manifeste.arreteLe;
+                champ.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }
+
+        const quand = manifeste.arreteA
+            ? manifeste.arreteLe + ' à ' + manifeste.arreteA
+            : (manifeste.arreteLe || 'ce jour');
+        U.toast('Données Monday arrêtées au ' + quand
+            + (manquants.length ? ' — ' + manquants.length + ' tableau(x) manquant(s) : ' + manquants.join(', ') : ''),
+            manquants.length ? 'error' : 'info', manquants.length ? 15000 : 8000);
+        return true;
     }
 
     /**
