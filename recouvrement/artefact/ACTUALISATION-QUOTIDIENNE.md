@@ -196,3 +196,41 @@ réussit n'a pas à se faire remarquer. Lui écrire, en revanche, si :
 Dans ces cas, **ne pas republier une balance partielle** : mieux vaut que la
 page garde les chiffres de la veille, qui sont justes et datés, qu'un arrêté
 du jour amputé d'un tableau.
+
+---
+
+## 5. La relecture incrémentale — règles validées par Zehavit le 25/10/2026
+
+Sur 18 628 lignes, **55 changent en vingt-quatre heures** (0,3 %), et le relevé
+de ce qui a bougé prend 15 secondes contre plus de trois minutes pour l'export
+entier. Mesuré, pas supposé. La relecture complète quotidienne est donc deux
+cents fois le travail nécessaire.
+
+Le filtre : colonne virtuelle `__last_updated__`, opérateur `within_the_last`,
+`compare_value: ["DAYS", N]`. L'opérateur `greater_than` est refusé sur cette
+colonne — `no_operator_config`.
+
+**Mais une mise à jour incrémentale ment facilement**, et une balance qui ment
+sans le dire est pire qu'une balance lente. Trois protections, non
+négociables :
+
+1. **Les suppressions ne se voient pas.** Une facture effacée dans Monday ne
+   « change » pas, elle disparaît, et aucun filtre sur la date de modification
+   ne la rattrapera. Chaque matin, comparer le nombre de lignes annoncé par
+   Monday (`items_count`) à celui détenu, tableau par tableau. **Au moindre
+   écart, ce tableau est relu en entier**, sans discussion.
+2. **Récupérer les modifiées SANS filtrer les groupes.** Une facture déplacée
+   vers « Technique - Archive » a bien changé, mais un export qui écarte les
+   groupes techniques à la source ne la verrait plus : elle resterait dans la
+   copie pour toujours. On prend tout ce qui a bougé, et l'on décide ensuite,
+   ligne par ligne, de garder ou de retirer.
+3. **Relecture complète chaque lundi**, quoi qu'il arrive. Le filet contre ce
+   que les deux premières n'attrapent pas : une colonne renommée, un groupe
+   créé, une dérive silencieuse.
+
+La base de départ se reprend depuis l'artefact publié (`Artifact` action `read`
+avec le `path` de chaque fichier de `donnees/`) : c'est lui qui porte l'état de
+la veille, daté.
+
+À construire une fois que la tâche tourne avec son connecteur et son dépôt :
+bâtir l'incrémental sur une chaîne qui ne démarre pas serait bâtir sur du vide.
