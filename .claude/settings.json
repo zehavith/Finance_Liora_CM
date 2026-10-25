@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__monday_com__execute_code",
+      "mcp__monday_com__all_api_read",
+      "mcp__monday_com__get_board_items_page",
+      "mcp__monday_com__get_board_info",
+      "mcp__monday_com__get_user_context",
+      "mcp__monday_com__list_workspaces",
+      "mcp__monday_com__search",
+      "mcp__monday_com__get_updates",
+      "mcp__monday_com__read_docs",
+      "mcp__monday_com__get_activity_logs",
+      "mcp__monday_com__get_board_activity",
+      "mcp__monday_com__get_assets",
+      "mcp__monday_com__get_column_type_info",
+      "mcp__monday_com__get_graphql_schema",
+      "mcp__monday_com__get_type_details"
+    ]
+  }
+}
