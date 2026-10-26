@@ -459,10 +459,22 @@ function aujourdhui() {
         + '-' + String(d.getDate()).padStart(2, '0');
 }
 
+/**
+ * L'heure de l'arrêté : celle du relevé, et non un horaire écrit d'avance.
+ *
+ * Elle disait 10h00 en dur, du temps où l'actualisation n'avait lieu qu'une
+ * fois par matin. Dès lors qu'elle tourne dans la journée, un arrêté qui
+ * annonce dix heures à seize heures est un arrêté qui ment.
+ */
+function maintenant() {
+    const d = new Date();
+    return String(d.getHours()).padStart(2, '0') + 'h' + String(d.getMinutes()).padStart(2, '0');
+}
+
 function ecrireManifeste(bilan, mode) {
     const manifeste = {
         arreteLe: aujourdhui(),
-        arreteA: '10h00',
+        arreteA: maintenant(),
         source: 'Monday \u2014 api.monday.com, groupes techniques \u00e9cart\u00e9s'
             + (mode === 'incrementiel' ? ', relev\u00e9 des modifications' : ''),
         fichiers: bilan.map(b => b.fichier).sort(),
@@ -522,7 +534,16 @@ async function main() {
     // aucun \u2014 ce que l'on ne fait qu'en essai.
     const JOUR_COMPLET = process.env.ACTUALISATION_JOUR_COMPLET == null
         ? 1 : Number(process.env.ACTUALISATION_JOUR_COMPLET);
-    const jourDeRelecture = JOUR_COMPLET >= 0 && new Date().getDay() === JOUR_COMPLET;
+    // UNE SEULE FOIS DANS LA JOURNÉE, pas à chaque heure.
+    //
+    // Tant que l'actualisation n'avait lieu qu'une fois par matin, « on est
+    // lundi » suffisait. Dès qu'elle tourne toutes les heures, cela
+    // relancerait un quart d'heure de relecture complète à chaque passage du
+    // lundi. Elle n'a donc lieu que si le dernier arrêté n'est pas déjà
+    // d'aujourd'hui.
+    const jourDeRelecture = JOUR_COMPLET >= 0
+        && new Date().getDay() === JOUR_COMPLET
+        && !(prec && prec.arreteLe === aujourdhui());
 
     // Le lundi, relecture compl\u00e8te quoi qu'il arrive : le filet contre une
     // colonne renomm\u00e9e, un groupe cr\u00e9\u00e9, une d\u00e9rive que rien d'autre n'attrape.
