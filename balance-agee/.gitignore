@@ -3,6 +3,10 @@
 # attrapent aussi les liens symboliques — c'est par là qu'un export avait
 # failli passer.
 depot-*
+# Un dépôt renommé reste un dépôt : il porte le portefeuille réel. Les
+# variantes cachées — renommages temporaires d'un essai — ne doivent pas
+# devenir committables par accident.
+.depot-*
 *.xlsx
 *.csv
 *.pdf
