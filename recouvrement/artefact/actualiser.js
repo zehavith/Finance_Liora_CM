@@ -80,9 +80,22 @@ function chargerApplication() {
 // ──────────────────────────────────────────────
 const JETON = process.env.MONDAY_TOKEN || '';
 
+/**
+ * UN RELÈVEMENT SANS SURVEILLANCE NE DOIT JAMAIS RESTER PENDU.
+ *
+ * `fetch` n'a pas de délai par défaut : une connexion qui s'ouvre et ne
+ * répond jamais attend indéfiniment, et la tâche de huit heures quarante-cinq
+ * serait encore en train d'attendre à midi, sans un mot. Quatre-vingt-dix
+ * secondes, puis on abandonne et on recommence — la lecture du corps est sous
+ * le même délai, car un flux qui s'arrête à mi-chemin pend tout autant.
+ */
+const DELAI = 90000;
+
 async function gql(query, variables, essai) {
     const n = essai || 0;
-    let rep;
+    let rep, corps;
+    const horloge = new AbortController();
+    const minuteur = setTimeout(() => horloge.abort(), DELAI);
     try {
         rep = await fetch(API, {
             method: 'POST',
@@ -92,24 +105,43 @@ async function gql(query, variables, essai) {
                 'API-Version': '2024-10',
             },
             body: JSON.stringify({ query, variables: variables || {} }),
+            signal: horloge.signal,
         });
+        if (rep.ok) corps = await rep.json();
     } catch (e) {
         if (n >= 4) throw new Error('api.monday.com injoignable : ' + e.message);
         await pause(1000 * Math.pow(2, n));
         return gql(query, variables, n + 1);
+    } finally {
+        clearTimeout(minuteur);
     }
 
     if (rep.status === 401 || rep.status === 403) {
         throw new Error('jeton Monday refusé (' + rep.status + ') — vérifiez MONDAY_TOKEN');
     }
     // La limite de débit n'est pas une panne : on attend et on recommence.
-    if (rep.status === 429 || rep.status === 503) {
+    if (rep.status === 429) {
         if (n >= 5) throw new Error('limite de débit Monday après plusieurs tentatives');
         await pause(1000 * Math.pow(2, n + 1));
         return gql(query, variables, n + 1);
     }
+    // Une panne chez Monday non plus. Seul le 503 était rattrapé ; un 500 ou
+    // un 502 tombait sur la lecture du corps, qui n'est pas du JSON, et le
+    // relèvement s'arrêtait sur une erreur d'analyse au lieu de dire ce qui
+    // s'était passé. Rejouer est sans danger : ce programme n'envoie que des
+    // « query », jamais de « mutation ».
+    if (rep.status >= 500) {
+        if (n >= 5) throw new Error('Monday en panne (' + rep.status + ') après plusieurs tentatives');
+        await pause(1000 * Math.pow(2, n + 1));
+        return gql(query, variables, n + 1);
+    }
+    // Tout autre code d'erreur : le corps n'a pas été lu, et il n'y aurait
+    // rien à en tirer. On le dit, plutôt que de buter sur une analyse
+    // impossible trois lignes plus bas.
+    if (!rep.ok) {
+        throw new Error('Monday a répondu ' + rep.status + ' — rien d\u0027exploitable');
+    }
 
-    const corps = await rep.json();
     // Monday répond 200 avec un tableau « errors » : le code HTTP ne dit rien.
     if (corps.errors) {
         const m = JSON.stringify(corps.errors).slice(0, 400);
@@ -271,7 +303,7 @@ function ecrireCsv(chemin, r) {
 // ──────────────────────────────────────────────
 //  Relire seulement ce qui a changé
 //
-//  Sur 18\u202f628 lignes, 55 changent en vingt-quatre heures — 0,3\u202f%. Relire tout
+//  Sur 18 628 lignes, 55 changent en vingt-quatre heures — 0,3 %. Relire tout
 //  chaque matin, c'est deux cents fois le travail nécessaire, quarante-cinq
 //  requêtes paginées et un quart d'heure ; relever ce qui a bougé prend quinze
 //  secondes.
@@ -280,21 +312,21 @@ function ecrireCsv(chemin, r) {
 //  sans le dire est pire qu'une balance lente. Trois protections, validées :
 //
 //   0. UNE FACTURE QUI CHANGE DE TABLEAU est le cas qui rend le contrôle des
-//      nombres indispensable. Qu'elle passe de «\u202f1.2. Recouvrement\u202f» à
-//      «\u202f0.1. Factures payées\u202f», et le tableau d'arrivée la voit comme
+//      nombres indispensable. Qu'elle passe de « 1.2. Recouvrement » à
+//      « 0.1. Factures payées », et le tableau d'arrivée la voit comme
 //      modifiée — elle entre. Mais le tableau de départ, lui, ne voit RIEN :
 //      elle n'y a pas changé, elle en est partie. Sans le contrôle des
 //      nombres, elle figurerait dans les deux copies à la fois, en
 //      recouvrement ET payée. Vérifié : les deux tableaux concernés sont relus
 //      en entier, les sept autres restent en incrémental.
 //   1. Les suppressions ne se voient pas. Une facture effacée dans Monday ne
-//      «\u202fchange\u202f» pas, elle disparaît : aucun filtre sur la date de
+//      « change » pas, elle disparaît : aucun filtre sur la date de
 //      modification ne la rattrapera. On compare donc le nombre de lignes
 //      annoncé par Monday à celui du dernier relevé. S'il a baissé, ou s'il a
 //      monté sans que les lignes nouvelles l'expliquent, ce tableau est relu
 //      EN ENTIER.
 //   2. On récupère les modifiées SANS filtrer les groupes. Une facture déplacée
-//      vers «\u202fTechnique - Archive\u202f» a bien changé, mais un relevé qui écarte
+//      vers « Technique - Archive » a bien changé, mais un relevé qui écarte
 //      ces groupes à la source ne la verrait plus : elle resterait dans la
 //      copie pour toujours. On prend tout, et l'on tranche ensuite.
 //   3. Relecture complète le lundi, quoi qu'il arrive. Le filet contre ce que
@@ -431,20 +463,20 @@ async function incrementerTableau(bid, app, etatPrec, jours) {
     const mapping = I.autoMapColumns(colonnes, null) || {};
     const gardees = [...new Set(Object.values(mapping))].filter(c => c && c !== 'name');
     const titreDe = new Map(colonnes.map(c => [c.id, c.title]));
-    // Le fichier remplace les retours \u00e0 la ligne par des espaces en \u00e9crivant\u00a0:
-    // le titre Monday \u00ab\u00a0Montant d\u00fb \u23ce TTC\u00a0\u00bb y devient \u00ab\u00a0Montant d\u00fb  TTC\u00a0\u00bb.
-    // Compar\u00e9 au titre brut, il ne co\u00efncidait jamais, et \u00ab\u00a00.1. Factures
-    // pay\u00e9es\u00a0\u00bb comme \u00ab\u00a01.0. Tampon\u00a0\u00bb se relisaient en entier \u00e0 chaque heure
-    // \u2014 sept mille deux cent soixante et une lignes pour rien. On compare
-    // donc les deux c\u00f4t\u00e9s pass\u00e9s par la m\u00eame moulinette.
+    // Le fichier remplace les retours à la ligne par des espaces en écrivant :
+    // le titre Monday « Montant dû ⏎ TTC » y devient « Montant dû  TTC ».
+    // Comparé au titre brut, il ne coïncidait jamais, et « 0.1. Factures
+    // payées » comme « 1.0. Tampon » se relisaient en entier à chaque heure
+    // — sept mille deux cent soixante et une lignes pour rien. On compare
+    // donc les deux côtés passés par la même moulinette.
     const sansRetour = s => String(s == null ? '' : s).replace(/\r?\n/g, ' ').trim();
     const enteteAttendue = ['Name', ...gardees.map(c => titreDe.get(c) || c)].map(sansRetour);
     const enteteCopie = base.entete.map(sansRetour);
 
     if (enteteAttendue.join('\u0001') !== enteteCopie.join('\u0001')) {
-        // Dire LAQUELLE. Un refus muet envoie corriger \u00e0 l'aveugle\u00a0: deux
+        // Dire LAQUELLE. Un refus muet envoie corriger à l'aveugle : deux
         // tableaux se sont relus en entier chaque heure sans que personne
-        // sache quelle colonne avait boug\u00e9.
+        // sache quelle colonne avait bougé.
         let ecart = '';
         const n = Math.max(enteteAttendue.length, enteteCopie.length);
         for (let i = 0; i < n; i++) {
@@ -459,14 +491,14 @@ async function incrementerTableau(bid, app, etatPrec, jours) {
 
     // 1. Ce que Monday contient vraiment, hors groupes techniques.
     //
-    //    UN NUM\u00c9RO PEUT FIGURER DEUX FOIS. Deux factures distinctes portent
-    //    parfois le m\u00eame nom d'\u00e9l\u00e9ment, et ce n'est pas parce que c'est le
-    //    m\u00eame num\u00e9ro que c'est la m\u00eame facture. Une table index\u00e9e par le
-    //    num\u00e9ro seul en garde une et perd l'autre, sans rien dire : le 2.4
-    //    est pass\u00e9 ainsi de 358 lignes \u00e0 353, et le contr\u00f4le final, qui
-    //    comptait la m\u00eame table, n'y voyait rien. On garde donc pour chaque
-    //    num\u00e9ro la LISTE de ses groupes, et l'on compte les lignes, pas les
-    //    num\u00e9ros.
+    //    UN NUMÉRO PEUT FIGURER DEUX FOIS. Deux factures distinctes portent
+    //    parfois le même nom d'élément, et ce n'est pas parce que c'est le
+    //    même numéro que c'est la même facture. Une table indexée par le
+    //    numéro seul en garde une et perd l'autre, sans rien dire : le 2.4
+    //    est passé ainsi de 358 lignes à 353, et le contrôle final, qui
+    //    comptait la même table, n'y voyait rien. On garde donc pour chaque
+    //    numéro la LISTE de ses groupes, et l'on compte les lignes, pas les
+    //    numéros.
     const tousLesNoms = await nomsDuTableau(bid);
     const estTech = t => R.estGroupeTechnique(t);
     const retenus = [];
@@ -481,7 +513,7 @@ async function incrementerTableau(bid, app, etatPrec, jours) {
         chezMonday.get(n).push(g);
     }
 
-    // 2. Ce que la copie contient, compt\u00e9 de la m\u00eame fa\u00e7on.
+    // 2. Ce que la copie contient, compté de la même façon.
     const chezNous = new Map();
     for (const [g, l] of base.parGroupe) for (const ligne of l) {
         const c = String(ligne[0] || '').trim();
@@ -490,8 +522,8 @@ async function incrementerTableau(bid, app, etatPrec, jours) {
         chezNous.get(c).push(g);
     }
 
-    // 3. Ce qui a chang\u00e9 de valeur sans forc\u00e9ment changer de place. Les
-    //    groupes techniques sont \u00e9cart\u00e9s ici aussi : une facture partie s'y
+    // 3. Ce qui a changé de valeur sans forcément changer de place. Les
+    //    groupes techniques sont écartés ici aussi : une facture partie s'y
     //    ranger doit sortir de la copie, pas y revenir.
     const items = await modifiesDepuis(bid, gardees, jours);
     const parNom = new Map();
@@ -503,7 +535,7 @@ async function incrementerTableau(bid, app, etatPrec, jours) {
         parNom.get(c).push(it);
     }
 
-    // 4. Les num\u00e9ros \u00e0 refaire : disparus, arriv\u00e9s, d\u00e9plac\u00e9s, ou modifi\u00e9s.
+    // 4. Les numéros à refaire : disparus, arrivés, déplacés, ou modifiés.
     const memeRangement = (a, b) => {
         if (a.length !== b.length) return false;
         const x = [...a].sort(), y = [...b].sort();
@@ -515,7 +547,7 @@ async function incrementerTableau(bid, app, etatPrec, jours) {
         aRefaire.push(n);
     }
 
-    // Un num\u00e9ro \u00e0 reposer dont on n'a pas TOUTES les occurrences : on ne
+    // Un numéro à reposer dont on n'a pas TOUTES les occurrences : on ne
     // l'invente pas, et l'on ne choisit pas laquelle garder.
     const incomplets = aRefaire.filter(n =>
         (parNom.get(n) || []).length < (chezMonday.get(n) || []).length);
@@ -546,10 +578,10 @@ async function incrementerTableau(bid, app, etatPrec, jours) {
 
     const ecrit = ecrireCsvBrut(chemin, base.tableau, base.entete, base.parGroupe);
 
-    // Dernier contr\u00f4le, gratuit\u00a0: la copie doit maintenant compter exactement
+    // Dernier contrôle, gratuit : la copie doit maintenant compter exactement
     // autant de LIGNES que Monday en porte hors groupes techniques, doublons
-    // compris. Compar\u00e9 \u00e0 un nombre de num\u00e9ros distincts, ce contr\u00f4le se
-    // mentait \u00e0 lui-m\u00eame.
+    // compris. Comparé à un nombre de numéros distincts, ce contrôle se
+    // mentait à lui-même.
     if (ecrit.lignes !== retenus.length) {
         return { nom, meta, complet: true,
                  raison: 'apr\u00e8s mise \u00e0 jour, ' + ecrit.lignes + ' lignes pour ' + retenus.length + ' attendues' };
@@ -570,11 +602,11 @@ const FORCE_COMPLET = ARGS.includes('--complet');
 /**
  * LA DATE ET L'HEURE DE PARIS, ET NON CELLES DU SERVEUR.
  *
- * Le conteneur vit \u00e0 l'heure UTC. Un rel\u00e8vement fait \u00e0 14\u202fh\u202f27 \u00e0 Paris
- * s'inscrivait \u00ab\u00a013h27\u00a0\u00bb, et l'arr\u00eat\u00e9 affich\u00e9 sur la page retardait d'une
- * heure l'hiver, de deux l'\u00e9t\u00e9. Une balance dat\u00e9e d'une heure qui n'est pas
- * la sienne n'est pas auditable. Et pass\u00e9 minuit \u00e0 Paris, c'est la date
- * elle-m\u00eame qui se trompait de jour.
+ * Le conteneur vit à l'heure UTC. Un relèvement fait à 14 h 27 à Paris
+ * s'inscrivait « 13h27 », et l'arrêté affiché sur la page retardait d'une
+ * heure l'hiver, de deux l'été. Une balance datée d'une heure qui n'est pas
+ * la sienne n'est pas auditable. Et passé minuit à Paris, c'est la date
+ * elle-même qui se trompait de jour.
  */
 const ICI = 'Europe/Paris';
 
@@ -612,8 +644,8 @@ function ecrireManifeste(bilan, mode) {
         source: 'Monday \u2014 api.monday.com, groupes techniques \u00e9cart\u00e9s'
             + (mode === 'incrementiel' ? ', relev\u00e9 des modifications' : ''),
         fichiers: bilan.map(b => b.fichier).sort(),
-        // Ce que le prochain rel\u00e8vement incr\u00e9mental compare pour d\u00e9tecter une
-        // suppression : sans ces deux nombres par tableau, une facture effac\u00e9e
+        // Ce que le prochain relèvement incrémental compare pour détecter une
+        // suppression : sans ces deux nombres par tableau, une facture effacée
         // dans Monday resterait dans la copie sans que rien ne le dise.
         tableaux: bilan.map(b => ({ fichier: b.fichier, totalMonday: b.annonceMonday, retenues: b.retenues })),
     };
@@ -627,7 +659,7 @@ function lireManifeste() {
     try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; }
 }
 
-/** Relecture compl\u00e8te : les neuf tableaux, d'un bout \u00e0 l'autre. */
+/** Relecture complète : les neuf tableaux, d'un bout à l'autre. */
 async function tourComplet(app, seulement) {
     const liste = seulement && seulement.length ? seulement : TABLEAUX;
     const bilan = [], alertes = [];
@@ -663,9 +695,9 @@ async function main() {
     fs.mkdirSync(SORTIE, { recursive: true });
 
     const prec = lireManifeste();
-    // Le jour de la relecture compl\u00e8te : lundi par d\u00e9faut, r\u00e9glable par
-    // ACTUALISATION_JOUR_COMPLET (0 dimanche \u2026 6 samedi), et -1 pour n'en avoir
-    // aucun \u2014 ce que l'on ne fait qu'en essai.
+    // Le jour de la relecture complète : lundi par défaut, réglable par
+    // ACTUALISATION_JOUR_COMPLET (0 dimanche … 6 samedi), et -1 pour n'en avoir
+    // aucun — ce que l'on ne fait qu'en essai.
     const JOUR_COMPLET = process.env.ACTUALISATION_JOUR_COMPLET == null
         ? 1 : Number(process.env.ACTUALISATION_JOUR_COMPLET);
     // UNE SEULE FOIS DANS LA JOURNÉE, pas à chaque heure.
@@ -679,8 +711,8 @@ async function main() {
         && new Date().getDay() === JOUR_COMPLET
         && !(prec && prec.arreteLe === aujourdhui());
 
-    // Le lundi, relecture compl\u00e8te quoi qu'il arrive : le filet contre une
-    // colonne renomm\u00e9e, un groupe cr\u00e9\u00e9, une d\u00e9rive que rien d'autre n'attrape.
+    // Le lundi, relecture complète quoi qu'il arrive : le filet contre une
+    // colonne renommée, un groupe créé, une dérive que rien d'autre n'attrape.
     let mode = 'complet';
     if (VEUT_INCREMENT && !FORCE_COMPLET) {
         if (!prec || !prec.arreteLe) {
@@ -698,7 +730,7 @@ async function main() {
     if (mode === 'complet') {
         ({ bilan, alertes } = await tourComplet(app));
     } else {
-        // Depuis quand ? Le dernier arr\u00eat\u00e9, plus un jour de marge : mieux vaut
+        // Depuis quand ? Le dernier arrêté, plus un jour de marge : mieux vaut
         // relire deux fois une ligne que la manquer une fois.
         let jours = 2;
         if (prec.arreteLe) {

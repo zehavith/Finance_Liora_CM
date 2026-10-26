@@ -3,8 +3,14 @@
 > **L'export tient désormais dans un seul programme : `actualiser.js`.**
 >
 > ```bash
-> node recouvrement/artefact/actualiser.js     # lit MONDAY_TOKEN dans l'environnement
+> node recouvrement/artefact/actualiser.js --incrementiel   # lit MONDAY_TOKEN dans l'environnement
 > ```
+>
+> **À LANCER EN ARRIÈRE-PLAN, TOUJOURS.** Un tour incrémental prend deux à
+> trois minutes ; un tour complet, un quart d'heure. Or une commande lancée
+> en avant-plan est coupée à dix minutes, et la coupure ressemble à une
+> panne : elle tue le programme au milieu de ses écritures, sans message.
+> Relever le délai ne sert à rien — c'est un plafond. Il faut l'arrière-plan.
 >
 > Il appelle `api.monday.com` directement avec le jeton de l'environnement, et
 > ne demande donc **aucun connecteur**. Sans la coupure à soixante secondes du
