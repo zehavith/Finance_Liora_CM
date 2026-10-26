@@ -379,6 +379,44 @@ async function modifiesDepuis(bid, cols, jours) {
     return items;
 }
 
+/** Tous les noms d'un tableau, avec leur groupe. Deux colonnes : c'est rapide. */
+async function nomsDuTableau(bid) {
+    const Q1 = "query ($ids:[ID!], $l:Int!) { boards (ids:$ids) { items_page (limit:$l) { cursor items { name group { title } } } } }";
+    const Q2 = "query ($c:String!, $l:Int!) { next_items_page (cursor:$c, limit:$l) { cursor items { name group { title } } } }";
+    const p = (await gql(Q1, { ids: [bid], l: 500 })).boards[0].items_page;
+    const items = [...p.items];
+    let cur = p.cursor, tours = 0;
+    while (cur && tours < 200) {
+        tours++;
+        const q = (await gql(Q2, { c: cur, l: 500 })).next_items_page;
+        if (!q) break;
+        items.push(...q.items);
+        cur = q.cursor;
+    }
+    if (cur) throw new Error('relev\u00e9 des noms inachev\u00e9 sur ' + bid);
+    return items.map(it => [it.name || '', (it.group && it.group.title) || '']);
+}
+
+/**
+ * LA RÉCONCILIATION PAR LES NUMÉROS, ET NON PAR LES TOTAUX.
+ *
+ * Le contrôle précédent comparait le nombre de lignes annoncé par Monday à
+ * celui du dernier relèvement. Il laissait passer le cas le plus courant :
+ * ADV et Recouvrement ont perdu sept factures parties en payées et en ont
+ * gagné autant le même jour. Leur total n'a pas bougé, le contrôle n'a rien
+ * vu, et les sept parties seraient restées dans la copie — comptées en
+ * recouvrement alors qu'elles sont payées.
+ *
+ * On relève donc la LISTE des numéros, pas leur nombre. Deux colonnes par
+ * ligne, c'est rapide : une minute pour les dix-huit mille, contre un quart
+ * d'heure pour l'export entier. La liste dit tout : ce qui a disparu, ce qui
+ * est arrivé, ce qui a changé de groupe.
+ *
+ * Et ce qu'elle ne sait pas reconstituer — une facture présente dans Monday,
+ * absente de la copie, et trop ancienne pour figurer parmi les modifiées —
+ * déclenche une relecture complète de ce tableau. Mieux vaut un quart d'heure
+ * qu'une ligne manquante.
+ */
 async function incrementerTableau(bid, app, etatPrec, jours) {
     const { R, I } = app;
     const meta = (await gql(Q_META, { ids: [bid] })).boards[0];
@@ -387,8 +425,7 @@ async function incrementerTableau(bid, app, etatPrec, jours) {
     const nom = nomDeFichier(meta.name);
     const chemin = path.join(SORTIE, nom);
     const base = lireCsvMonday(chemin);
-    const prec = (etatPrec || []).find(b => b.fichier === nom);
-    if (!base || !prec) return { nom, meta, raison: 'pas de relev\u00e9 pr\u00e9c\u00e9dent', complet: true };
+    if (!base) return { nom, meta, raison: 'pas de copie pr\u00e9c\u00e9dente', complet: true };
 
     const colonnes = meta.columns.map(c => ({ id: c.id, title: c.title, type: c.type }));
     const mapping = I.autoMapColumns(colonnes, null) || {};
@@ -396,53 +433,72 @@ async function incrementerTableau(bid, app, etatPrec, jours) {
     const titreDe = new Map(colonnes.map(c => [c.id, c.title]));
     const enteteAttendue = ['Name', ...gardees.map(c => titreDe.get(c) || c)];
 
-    // Une colonne renomm\u00e9e ou ajout\u00e9e change l'en-t\u00eate : on ne sait plus o\u00f9
-    // ranger les valeurs dans les lignes d\u00e9j\u00e0 \u00e9crites. Relecture compl\u00e8te.
     if (enteteAttendue.join('\u0001') !== base.entete.join('\u0001')) {
         return { nom, meta, raison: 'les colonnes ont chang\u00e9', complet: true };
     }
 
-    const items = await modifiesDepuis(bid, gardees, jours);
-    const estTech = new Map(meta.groups.map(g => [g.title, R.estGroupeTechnique(g.title)]));
-
-    // Un nom pr\u00e9sent dans la copie ?
-    const vus = new Set();
-    for (const lignes of base.parGroupe.values()) for (const l of lignes) vus.add(String(l[0] || '').trim());
-
-    let remplacees = 0, ajoutees = 0, retirees = 0;
-    const nouvelles = [];
-    for (const it of items) {
-        const titre = (it.group && it.group.title) || '(sans groupe)';
-        const cle = String(it.name || '').trim();
-        // D'abord la retirer de l\u00e0 o\u00f9 elle \u00e9tait — elle a pu changer de groupe.
-        let etait = false;
-        for (const [g, lignes] of base.parGroupe) {
-            const avant = lignes.length;
-            base.parGroupe.set(g, lignes.filter(l => String(l[0] || '').trim() !== cle));
-            if (base.parGroupe.get(g).length !== avant) etait = true;
-        }
-        if (estTech.get(titre)) { if (etait) retirees++; continue; }
-        const par = new Map((it.column_values || []).map(cv => [cv.id, valeur(cv)]));
-        const ligne = [it.name || '', ...gardees.map(c => par.get(c) || '')];
-        if (!base.parGroupe.has(titre)) base.parGroupe.set(titre, []);
-        base.parGroupe.get(titre).push(ligne);
-        if (etait) remplacees++; else { ajoutees++; nouvelles.push(cle); }
+    // 1. Ce que Monday contient vraiment, hors groupes techniques.
+    const tousLesNoms = await nomsDuTableau(bid);
+    const estTech = t => R.estGroupeTechnique(t);
+    const chezMonday = new Map();
+    for (const [n, g] of tousLesNoms) {
+        if (!n || estTech(g)) continue;
+        chezMonday.set(n.trim(), g);
     }
 
-    // LA PROTECTION CONTRE LES SUPPRESSIONS.
-    //
-    // Monday annonce un nombre total par tableau. S'il a baiss\u00e9, des lignes ont
-    // \u00e9t\u00e9 effac\u00e9es, et rien dans un relev\u00e9 par date de modification ne le dira.
-    // S'il a mont\u00e9, les lignes nouvelles doivent l'expliquer ; sinon on ne sait
-    // pas ce qui s'est pass\u00e9, et on relit tout.
-    const ecart = meta.items_count - prec.totalMonday;
-    if (ecart < 0) return { nom, meta, raison: 'Monday annonce ' + (-ecart) + ' ligne(s) de moins — suppression', complet: true };
-    if (ecart > 0 && ajoutees < ecart) {
-        return { nom, meta, raison: 'Monday annonce ' + ecart + ' ligne(s) de plus, dont ' + ajoutees + ' seulement expliqu\u00e9e(s)', complet: true };
+    // 2. Ce que la copie contient.
+    const chezNous = new Map();
+    for (const [g, l] of base.parGroupe) for (const ligne of l) {
+        const c = String(ligne[0] || '').trim();
+        if (c) chezNous.set(c, g);
+    }
+
+    // 3. Ce qui a chang\u00e9 de valeur sans forc\u00e9ment changer de place.
+    const items = await modifiesDepuis(bid, gardees, jours);
+    const parNom = new Map(items.map(it => [String(it.name || '').trim(), it]));
+
+    const aRetirer = [...chezNous.keys()].filter(n => !chezMonday.has(n));
+    const aPoser = [];
+    for (const [n, g] of chezMonday) {
+        const ici = chezNous.get(n);
+        if (ici === undefined) { aPoser.push([n, g]); continue; }     // arriv\u00e9e
+        if (ici !== g) { aPoser.push([n, g]); continue; }             // d\u00e9placement
+        if (parNom.has(n)) aPoser.push([n, g]);                       // valeur modifi\u00e9e
+    }
+
+    // Une ligne \u00e0 poser dont on n'a pas le contenu : on ne l'invente pas.
+    const sansContenu = aPoser.filter(([n]) => !parNom.has(n));
+    if (sansContenu.length) {
+        return { nom, meta, complet: true,
+                 raison: sansContenu.length + ' facture(s) pr\u00e9sente(s) chez Monday et absente(s) du relev\u00e9 des modifi\u00e9es, dont ' + sansContenu[0][0] };
+    }
+
+    for (const n of aRetirer) {
+        for (const [g, l] of base.parGroupe) {
+            base.parGroupe.set(g, l.filter(x => String(x[0] || '').trim() !== n));
+        }
+    }
+    for (const [n, g] of aPoser) {
+        for (const [gg, l] of base.parGroupe) {
+            base.parGroupe.set(gg, l.filter(x => String(x[0] || '').trim() !== n));
+        }
+        const it = parNom.get(n);
+        const par = new Map((it.column_values || []).map(cv => [cv.id, valeur(cv)]));
+        if (!base.parGroupe.has(g)) base.parGroupe.set(g, []);
+        base.parGroupe.get(g).push([it.name || n, ...gardees.map(c => par.get(c) || '')]);
     }
 
     const ecrit = ecrireCsvBrut(chemin, base.tableau, base.entete, base.parGroupe);
-    return { nom, meta, complet: false, modifiees: items.length, remplacees, ajoutees, retirees,
+
+    // Dernier contr\u00f4le, gratuit\u00a0: la copie doit maintenant compter exactement
+    // ce que Monday contient hors groupes techniques.
+    if (ecrit.lignes !== chezMonday.size) {
+        return { nom, meta, complet: true,
+                 raison: 'apr\u00e8s mise \u00e0 jour, ' + ecrit.lignes + ' lignes pour ' + chezMonday.size + ' attendues' };
+    }
+
+    return { nom, meta, complet: false, modifiees: items.length,
+             retirees: aRetirer.length, posees: aPoser.length,
              retenues: ecrit.lignes, solitaires: ecrit.solitaires };
 }
 
@@ -549,7 +605,7 @@ async function main() {
     // colonne renomm\u00e9e, un groupe cr\u00e9\u00e9, une d\u00e9rive que rien d'autre n'attrape.
     let mode = 'complet';
     if (VEUT_INCREMENT && !FORCE_COMPLET) {
-        if (!prec || !prec.tableaux || !prec.tableaux.length) {
+        if (!prec || !prec.arreteLe) {
             console.log('Aucun relev\u00e9 pr\u00e9c\u00e9dent exploitable \u2192 relecture compl\u00e8te.');
         } else if (jourDeRelecture) {
             console.log('Jour de relecture compl\u00e8te \u2192 on relit tout, comme convenu.');
@@ -577,7 +633,7 @@ async function main() {
 
         const aRelire = [];
         for (const bid of TABLEAUX) {
-            const r = await incrementerTableau(bid, app, prec.tableaux, jours);
+            const r = await incrementerTableau(bid, app, null, jours);
             if (r.complet) {
                 console.log('  \u2192 relecture compl\u00e8te de ' + r.meta.name + ' : ' + r.raison);
                 aRelire.push(bid);
@@ -591,9 +647,9 @@ async function main() {
             }
             bilan.push({ tableau: r.meta.name, fichier: r.nom, annonceMonday: r.meta.items_count,
                          retenues: r.retenues, groupesEcartes: [] });
-            console.log('  modifs   ' + String(r.modifiees).padStart(4) + ' lue(s) \u00b7 '
-                + r.remplacees + ' remplac\u00e9e(s), ' + r.ajoutees + ' ajout\u00e9e(s), '
-                + r.retirees + ' retir\u00e9e(s)  \u2192 ' + r.retenues + ' lignes   ' + r.meta.name);
+            console.log('  r\u00e9concili\u00e9 ' + String(r.retenues).padStart(6) + ' lignes  \u00b7 '
+                + String(r.posees).padStart(3) + ' pos\u00e9e(s), ' + String(r.retirees).padStart(3)
+                + ' retir\u00e9e(s), sur ' + r.modifiees + ' modifi\u00e9e(s) lue(s)   ' + r.meta.name);
         }
 
         if (aRelire.length) {
