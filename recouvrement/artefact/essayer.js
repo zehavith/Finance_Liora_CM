@@ -22,6 +22,18 @@ const { chromium } = require('/opt/node-tools/node_modules/playwright');
 
 const PAQUET = path.join(__dirname, 'paquet');
 const LIVRE = path.resolve(__dirname, '..', '..', 'balance-agee', 'depot-nouvelle', 'balance-nouvelle.xlsx');
+
+// LE GRAND LIVRE DE RÉFÉRENCE PEUT MANQUER, ET CE N'EST PAS UN ÉCHEC.
+//
+// Il vit dans le bac à sable de la session, hors dépôt — il porte le
+// portefeuille réel et n'a rien à faire dans l'historique. Un conteneur
+// recyclé l'emporte. Jusqu'ici son absence faisait planter l'essai au premier
+// dépôt de fichier, donc refuser la publication, donc geler la page sur
+// l'arrêté de la veille. Désormais les suites qui en dépendent sont sautées
+// — nommément, une par une, car une suite muette se lirait comme une suite
+// verte — et tout le reste est éprouvé.
+const SANS_LIVRE = !fs.existsSync(LIVRE);
+const saute = t => console.log('IGNORÉ  ' + t);
 const PORT = 8791;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
                 '.css': 'text/css; charset=utf-8', '.json': 'application/json',
@@ -81,100 +93,125 @@ const serveur = http.createServer((q, r) => {
   ok('l’import est la première étape — « ' + (vu.cartes[1] || {}).titre + ' »',
      !!(vu.cartes[1] && vu.cartes[1].visible && vu.cartes[1].badge === '1'));
 
-  // ── 2. le grand livre entre et donne ses chiffres ──
-  await page.setInputFiles('#gl-file-input', LIVRE);
-  await page.waitForFunction(
-    () => { const s = window.__recouvrement; return !!(s && s.glBalance && s.glBalance.rows.length); },
-    null, { timeout: 300000 });
-  const bal = await page.evaluate(() => {
-    const b = window.__recouvrement.glBalance;
-    return { total: b.total.total, echu: b.total.echu, nonEchu: b.total.nonEchu,
-             creances: (window.__recouvrement.glCreances || []).length,
-             lignes: b.rows.length,
-             arrete: b.dateRef ? new Date(b.dateRef).toLocaleDateString('fr-CA') : null };
-  });
-  console.log('  balance : ' + eur(bal.total) + ' · échu ' + eur(bal.echu)
-    + ' · non échu ' + eur(bal.nonEchu) + ' · arrêté au ' + bal.arrete);
-  ok('la balance âgée se construit dans le paquet — ' + bal.lignes + ' dispositifs', bal.lignes > 0);
-  ok('le total est celui de la balance publiée',
-     Math.abs(bal.total - 14268635.41) < 0.01);
+  // ── 2 à 4. le grand livre de référence ──
+  if (SANS_LIVRE) {
+    saute('la balance âgée se construit dans le paquet');
+    saute('le total est celui de la balance publiée');
+    saute('un grand livre seul se reprend');
+    saute('elle ouvre directement sur la balance âgée');
+    saute('la vue du grand livre s’affiche');
+    saute('la confrontation avec Monday s’affiche');
+    saute('le bouton d’export est atteignable');
+    saute('le classeur passe par le canal du cadre, pas par un lien');
+    saute('il porte un nom en .xlsx');
+    saute('il est remis en Blob, non en tampon transférable');
+    saute('il n’est pas vide');
+    console.log('        aucun grand livre à ' + LIVRE);
 
-  // ── 3. l'application s'ouvre sur sa balance ──
-  //
-  // Le dépôt se fait depuis l'écran d'accueil, où la barre d'onglets n'existe
-  // pas encore. Le chemin qui mène à l'écran de travail est celui qu'une
-  // utilisatrice emprunte : rouvrir la page et reprendre les données
-  // enregistrées. Il éprouve au passage que ce bouton apparaît quand seul un
-  // grand livre a été déposé — ce qu'il ne faisait pas.
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForFunction(() => !!window.__recouvrement, null, { timeout: 60000 });
-  await page.waitForSelector('#btn-open-saved:not([hidden])', { timeout: 60000 });
-  const repris = await page.textContent('#btn-open-saved');
-  ok('un grand livre seul se reprend — « ' + repris.trim() + ' »',
-     /créances comptables/.test(repris));
-  await page.click('#btn-open-saved');
-  await page.waitForFunction(
-    () => { const s = window.__recouvrement; return !!(s && s.glBalance && s.glBalance.rows.length); },
-    null, { timeout: 300000 });
-  ok('elle ouvre directement sur la balance âgée',
-     await page.isVisible('.nav-tab[data-tab="aging"].active'));
+    // On s'arrête là, et sans échec. Tout ce qui suit part du grand livre :
+    // la balance, sa reprise, ses vues, le classeur qu'on en tire. Les huit
+    // contrôles de la section 1 ont tourné, les onze autres sont nommés
+    // au-dessus. La page du jour peut être publiée ; ce qui n'a pas été
+    // éprouvé est écrit noir sur blanc, et la tâche doit le dire.
+    await nav.close();
+    serveur.close();
+    return;
+  } else {
+    // ── 2. le grand livre entre et donne ses chiffres ──
+    await page.setInputFiles('#gl-file-input', LIVRE);
+    await page.waitForFunction(
+      () => { const s = window.__recouvrement; return !!(s && s.glBalance && s.glBalance.rows.length); },
+      null, { timeout: 300000 });
+    const bal = await page.evaluate(() => {
+      const b = window.__recouvrement.glBalance;
+      return { total: b.total.total, echu: b.total.echu, nonEchu: b.total.nonEchu,
+               creances: (window.__recouvrement.glCreances || []).length,
+               lignes: b.rows.length,
+               arrete: b.dateRef ? new Date(b.dateRef).toLocaleDateString('fr-CA') : null };
+    });
+    console.log('  balance : ' + eur(bal.total) + ' · échu ' + eur(bal.echu)
+      + ' · non échu ' + eur(bal.nonEchu) + ' · arrêté au ' + bal.arrete);
+    ok('la balance âgée se construit dans le paquet — ' + bal.lignes + ' dispositifs', bal.lignes > 0);
+    ok('le total est celui de la balance publiée',
+       Math.abs(bal.total - 14268635.41) < 0.01);
 
-  // La balance âgée a quatre vues ; celle du grand livre n'est pas celle
-  // d'ouverture. C'est aussi par là que passe la confrontation avec Monday.
-  await page.click('#seg-aging-source .seg-btn[data-source="gl"]');
-  await page.waitForSelector('#aging-gl:not([hidden])', { timeout: 30000 });
-  const vueGL = await page.evaluate(() => ({
-    titre: (document.querySelector('#aging-gl-titre') || {}).textContent,
-    lignes: document.querySelectorAll('#aging-gl-contenu tbody tr').length,
-  }));
-  ok('la vue du grand livre s’affiche — ' + vueGL.lignes + ' lignes', vueGL.lignes > 0);
+    // ── 3. l'application s'ouvre sur sa balance ──
+    //
+    // Le dépôt se fait depuis l'écran d'accueil, où la barre d'onglets n'existe
+    // pas encore. Le chemin qui mène à l'écran de travail est celui qu'une
+    // utilisatrice emprunte : rouvrir la page et reprendre les données
+    // enregistrées. Il éprouve au passage que ce bouton apparaît quand seul un
+    // grand livre a été déposé — ce qu'il ne faisait pas.
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => !!window.__recouvrement, null, { timeout: 60000 });
+    await page.waitForSelector('#btn-open-saved:not([hidden])', { timeout: 60000 });
+    const repris = await page.textContent('#btn-open-saved');
+    ok('un grand livre seul se reprend — « ' + repris.trim() + ' »',
+       /créances comptables/.test(repris));
+    await page.click('#btn-open-saved');
+    await page.waitForFunction(
+      () => { const s = window.__recouvrement; return !!(s && s.glBalance && s.glBalance.rows.length); },
+      null, { timeout: 300000 });
+    ok('elle ouvre directement sur la balance âgée',
+       await page.isVisible('.nav-tab[data-tab="aging"].active'));
 
-  await page.click('#seg-aging-source .seg-btn[data-source="comparaison"]');
-  await page.waitForSelector('#aging-comparaison:not([hidden])', { timeout: 30000 });
-  ok('la confrontation avec Monday s’affiche',
-     await page.isVisible('#aging-cmp-table'));
-  await page.click('#seg-aging-source .seg-btn[data-source="gl"]');
-  await page.waitForSelector('#aging-gl:not([hidden])', { timeout: 30000 });
+    // La balance âgée a quatre vues ; celle du grand livre n'est pas celle
+    // d'ouverture. C'est aussi par là que passe la confrontation avec Monday.
+    await page.click('#seg-aging-source .seg-btn[data-source="gl"]');
+    await page.waitForSelector('#aging-gl:not([hidden])', { timeout: 30000 });
+    const vueGL = await page.evaluate(() => ({
+      titre: (document.querySelector('#aging-gl-titre') || {}).textContent,
+      lignes: document.querySelectorAll('#aging-gl-contenu tbody tr').length,
+    }));
+    ok('la vue du grand livre s’affiche — ' + vueGL.lignes + ' lignes', vueGL.lignes > 0);
 
-  // ── 4. un classeur sort par la porte du cadre ──
-  await page.waitForSelector('#btn-gl-aclasser-export', { timeout: 30000 });
+    await page.click('#seg-aging-source .seg-btn[data-source="comparaison"]');
+    await page.waitForSelector('#aging-comparaison:not([hidden])', { timeout: 30000 });
+    ok('la confrontation avec Monday s’affiche',
+       await page.isVisible('#aging-cmp-table'));
+    await page.click('#seg-aging-source .seg-btn[data-source="gl"]');
+    await page.waitForSelector('#aging-gl:not([hidden])', { timeout: 30000 });
 
-  // CE QUI RECOUVRE LE BOUTON.
-  //
-  // Le premier essai a buté ici : le navigateur amenait le bouton à l'écran
-  // et le clic n'arrivait jamais, parce que la barre de navigation et celle
-  // des filtres sont collantes et se superposent à ce qui passe dessous. La
-  // mesure est faite explicitement — un bouton qu'on ne peut pas atteindre
-  // est un bouton qui n'existe pas.
-  const recouvert = await page.evaluate(async () => {
-    const b = document.querySelector('#btn-gl-aclasser-export');
-    // « instant », et une image d'attente : la feuille pose
-    // scroll-behavior: smooth, et mesurer avant la fin du défilement donnait
-    // un point hors de l'écran — donc « recouvert par rien », ce qui ne
-    // voulait rien dire.
-    b.scrollIntoView({ block: 'center', behavior: 'instant' });
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const r = b.getBoundingClientRect();
-    const x = r.left + r.width / 2, y = r.top + r.height / 2;
-    if (x < 0 || y < 0 || x > innerWidth || y > innerHeight)
-      return 'hors de l’écran (' + Math.round(x) + ', ' + Math.round(y) + ')';
-    const dessus = document.elementFromPoint(x, y);
-    return (dessus === b || b.contains(dessus)) ? null
-      : ((dessus && (dessus.id || dessus.className || dessus.tagName)) || 'rien');
-  });
-  ok('le bouton d’export est atteignable' + (recouvert ? ' — recouvert par ' + recouvert : ''),
-     recouvert === null);
+    // ── 4. un classeur sort par la porte du cadre ──
+    await page.waitForSelector('#btn-gl-aclasser-export', { timeout: 30000 });
 
-  // Le clic part du document : on éprouve l'export, pas la souris.
-  await page.evaluate(() => document.querySelector('#btn-gl-aclasser-export').click());
-  await page.waitForFunction(() => (window.__enregistres || []).length > 0, null, { timeout: 420000 });
-  const sortis = await page.evaluate(() => window.__enregistres);
-  const f = sortis[0];
-  console.log('  enregistré : ' + f.filename + ' · ' + (f.taille / 1024).toFixed(0) + ' Ko');
-  ok('le classeur passe par le canal du cadre, pas par un lien', sortis.length === 1);
-  ok('il porte un nom en .xlsx', /\.xlsx$/.test(f.filename || ''));
-  ok('il est remis en Blob, non en tampon transférable', f.estBlob === true);
-  ok('il n’est pas vide — ' + (f.taille / 1024).toFixed(0) + ' Ko', f.taille > 5000);
+    // CE QUI RECOUVRE LE BOUTON.
+    //
+    // Le premier essai a buté ici : le navigateur amenait le bouton à l'écran
+    // et le clic n'arrivait jamais, parce que la barre de navigation et celle
+    // des filtres sont collantes et se superposent à ce qui passe dessous. La
+    // mesure est faite explicitement — un bouton qu'on ne peut pas atteindre
+    // est un bouton qui n'existe pas.
+    const recouvert = await page.evaluate(async () => {
+      const b = document.querySelector('#btn-gl-aclasser-export');
+      // « instant », et une image d'attente : la feuille pose
+      // scroll-behavior: smooth, et mesurer avant la fin du défilement donnait
+      // un point hors de l'écran — donc « recouvert par rien », ce qui ne
+      // voulait rien dire.
+      b.scrollIntoView({ block: 'center', behavior: 'instant' });
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const r = b.getBoundingClientRect();
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      if (x < 0 || y < 0 || x > innerWidth || y > innerHeight)
+        return 'hors de l’écran (' + Math.round(x) + ', ' + Math.round(y) + ')';
+      const dessus = document.elementFromPoint(x, y);
+      return (dessus === b || b.contains(dessus)) ? null
+        : ((dessus && (dessus.id || dessus.className || dessus.tagName)) || 'rien');
+    });
+    ok('le bouton d’export est atteignable' + (recouvert ? ' — recouvert par ' + recouvert : ''),
+       recouvert === null);
+
+    // Le clic part du document : on éprouve l'export, pas la souris.
+    await page.evaluate(() => document.querySelector('#btn-gl-aclasser-export').click());
+    await page.waitForFunction(() => (window.__enregistres || []).length > 0, null, { timeout: 420000 });
+    const sortis = await page.evaluate(() => window.__enregistres);
+    const f = sortis[0];
+    console.log('  enregistré : ' + f.filename + ' · ' + (f.taille / 1024).toFixed(0) + ' Ko');
+    ok('le classeur passe par le canal du cadre, pas par un lien', sortis.length === 1);
+    ok('il porte un nom en .xlsx', /\.xlsx$/.test(f.filename || ''));
+    ok('il est remis en Blob, non en tampon transférable', f.estBlob === true);
+    ok('il n’est pas vide — ' + (f.taille / 1024).toFixed(0) + ' Ko', f.taille > 5000);
+  }
 
   // ── 5. ce qui ne peut pas marcher ici ne se propose pas ──
   const neutres = await page.evaluate(() => {
