@@ -175,17 +175,25 @@ Recouvrement, qui seraient comptées deux fois sans lui.
 
 ## 2. Déposer les fichiers
 
-Les récupérer par leurs liens de téléchargement (valables 5 minutes) et les
-écrire dans `recouvrement/artefact/donnees-du-jour/`, avec un manifeste :
+`actualiser.js` écrit lui-même les fichiers et leur manifeste dans
+`recouvrement/artefact/donnees-du-jour/`. **Ce manifeste ne s'écrit pas à la
+main** : il porte, en plus des noms de fichiers, les comptes par tableau dont
+le relèvement du lendemain se sert pour détecter une disparition. Le voici
+pour le lire, non pour le recopier :
 
 ```json
 {
-  "arreteLe": "2026-10-25",
-  "arreteA": "10h00",
-  "source": "Monday — connecteur monday.com",
-  "fichiers": ["0.1. ALL - Factures payées.csv", "…"]
+  "arreteLe": "2026-10-26",
+  "arreteA": "14h58",
+  "source": "Monday — api.monday.com, groupes techniques écartés",
+  "fichiers": ["0.1. ALL - Factures payees.csv", "…"],
+  "tableaux": [{ "fichier": "…", "totalMonday": 7261, "retenues": 7261 }]
 }
 ```
+
+L'heure est celle du relevé, à Paris — pas un horaire écrit d'avance, et pas
+celle du serveur, qui vit en UTC. Les noms de fichiers sont sans accent : un
+nom accentué est perdu en silence au dépôt.
 
 `arreteLe` est au format `AAAA-MM-JJ` : la page la pose dans son filtre
 « Arrêté au », et tout le calcul du retard en dépend.
@@ -328,3 +336,25 @@ Vérifié hors ligne : le départ annonce une ligne de moins et est relu en ent
 l'arrivée une de plus et est relue en entier, les sept autres tableaux restent
 en incrémental. On ne paie le prix fort que là où quelque chose d'inexplicable
 s'est produit.
+
+## Ce qui reste ouvert, et qu'il ne faut pas oublier
+
+**Les essais tournent sur une page qui n'ouvre pas les données du jour.**
+`construire.js` pose le drapeau `LIORA_DONNEES_DU_JOUR` sur `index.html`
+seulement ; `essai.html`, que `essayer.js` ouvre, est bâti avant ce bloc et
+ne le reçoit jamais. Conséquence : **rien ne vérifie que la page publiée
+s'ouvre remplie** — la seule chose qui compte le matin. Mesuré à la main le
+26/10 : elle s'ouvre bien, 11 220 lignes et 11 135 créances.
+
+Poser le drapeau sur les deux pages suffit à combler le trou, mais fait alors
+tomber deux suites écrites pour une application vide — « l'écran d'accueil est
+là » et « elle ouvre directement sur la balance âgée ». Les réécrire demande
+de trancher ce que la page DOIT montrer quand elle porte à la fois les données
+du jour et un grand livre déposé : une décision de Zehavit, pas un ajustement
+d'essai. À faire avec elle, pas à la volée sur le garde-fou de sa balance.
+
+**Le grand livre de référence n'a pas d'abri durable.** Il vit dans le bac à
+sable de la session. Son absence ne gèle plus la publication, mais onze
+contrôles cessent alors de tourner, dont « le total est celui de la balance
+publiée ». Tant qu'il n'a pas d'autre place, chaque conteneur recyclé coûte
+ces onze contrôles jusqu'au prochain dépôt manuel.
