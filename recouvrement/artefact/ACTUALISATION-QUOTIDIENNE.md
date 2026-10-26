@@ -258,3 +258,22 @@ la veille, daté.
 
 À construire une fois que la tâche tourne avec son connecteur et son dépôt :
 bâtir l'incrémental sur une chaîne qui ne démarre pas serait bâtir sur du vide.
+
+### Une facture qui change de tableau
+
+C'est le cas qui rend le contrôle des nombres indispensable, et il arrive tous
+les jours : une facture réglée quitte « 1.2. Recouvrement » pour
+« 0.1. ALL - Factures payées ».
+
+Le tableau d'arrivée la voit comme modifiée : elle entre. Le tableau de départ,
+lui, **ne voit rien** — elle n'y a pas changé, elle en est partie, et aucun
+filtre sur la date de modification ne rattrape une absence.
+
+Sans le contrôle des nombres, elle resterait dans la copie du départ **et**
+apparaîtrait dans celle de l'arrivée : la même facture comptée en recouvrement
+et en payée.
+
+Vérifié hors ligne : le départ annonce une ligne de moins et est relu en entier,
+l'arrivée une de plus et est relue en entier, les sept autres tableaux restent
+en incrémental. On ne paie le prix fort que là où quelque chose d'inexplicable
+s'est produit.

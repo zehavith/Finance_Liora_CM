@@ -279,6 +279,14 @@ function ecrireCsv(chemin, r) {
 //  MAIS UNE MISE À JOUR INCRÉMENTALE MENT FACILEMENT, et une balance qui ment
 //  sans le dire est pire qu'une balance lente. Trois protections, validées :
 //
+//   0. UNE FACTURE QUI CHANGE DE TABLEAU est le cas qui rend le contrôle des
+//      nombres indispensable. Qu'elle passe de «\u202f1.2. Recouvrement\u202f» à
+//      «\u202f0.1. Factures payées\u202f», et le tableau d'arrivée la voit comme
+//      modifiée — elle entre. Mais le tableau de départ, lui, ne voit RIEN :
+//      elle n'y a pas changé, elle en est partie. Sans le contrôle des
+//      nombres, elle figurerait dans les deux copies à la fois, en
+//      recouvrement ET payée. Vérifié : les deux tableaux concernés sont relus
+//      en entier, les sept autres restent en incrémental.
 //   1. Les suppressions ne se voient pas. Une facture effacée dans Monday ne
 //      «\u202fchange\u202f» pas, elle disparaît : aucun filtre sur la date de
 //      modification ne la rattrapera. On compare donc le nombre de lignes
