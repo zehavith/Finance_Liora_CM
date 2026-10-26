@@ -235,29 +235,74 @@ Le filtre : colonne virtuelle `__last_updated__`, opérateur `within_the_last`,
 colonne — `no_operator_config`.
 
 **Mais une mise à jour incrémentale ment facilement**, et une balance qui ment
-sans le dire est pire qu'une balance lente. Trois protections, non
+sans le dire est pire qu'une balance lente. Quatre protections, non
 négociables :
 
-1. **Les suppressions ne se voient pas.** Une facture effacée dans Monday ne
-   « change » pas, elle disparaît, et aucun filtre sur la date de modification
-   ne la rattrapera. Chaque matin, comparer le nombre de lignes annoncé par
-   Monday (`items_count`) à celui détenu, tableau par tableau. **Au moindre
-   écart, ce tableau est relu en entier**, sans discussion.
-2. **Récupérer les modifiées SANS filtrer les groupes.** Une facture déplacée
-   vers « Technique - Archive » a bien changé, mais un export qui écarte les
-   groupes techniques à la source ne la verrait plus : elle resterait dans la
-   copie pour toujours. On prend tout ce qui a bougé, et l'on décide ensuite,
-   ligne par ligne, de garder ou de retirer.
-3. **Relecture complète chaque lundi**, quoi qu'il arrive. Le filet contre ce
-   que les deux premières n'attrapent pas : une colonne renommée, un groupe
-   créé, une dérive silencieuse.
+1. **On rapproche les numéros, pas les totaux.** Une facture effacée dans
+   Monday ne « change » pas, elle disparaît ; aucun filtre sur la date de
+   modification ne la rattrapera. Comparer les nombres ne suffit pas non
+   plus : le 26/10, ADV et Recouvrement ont perdu sept factures parties en
+   payées et en ont gagné autant le même jour — total inchangé, contrôle
+   aveugle, et les sept parties seraient restées dans la copie, comptées en
+   recouvrement ET en payé. On relève donc la LISTE des numéros avec leur
+   groupe (deux colonnes, une minute pour dix-huit mille lignes), et l'on en
+   tire ce qui a disparu, ce qui est arrivé, ce qui a changé de place.
+2. **UN NUMÉRO N'EST PAS UNE CLÉ.** Au 26/10, 68 lignes sur 11 220 portent un
+   numéro déjà vu : 54 sur « 0.1. Factures payées », 8 sur ADV, 5 sur le 2.4,
+   1 sur OPCO — et celle-là porte deux apprenants différents sous le même
+   numéro. Une table indexée par le numéro seul en garde une et perd l'autre,
+   en silence : le 2.4 est ainsi passé de 358 lignes à 353. On garde pour
+   chaque numéro la LISTE de ses groupes, et le contrôle final compte les
+   LIGNES retenues chez Monday, jamais les numéros distincts — sans quoi il
+   se compare à lui-même et ne voit rien.
+3. **Récupérer les modifiées SANS filtrer les groupes à la source.** Une
+   facture déplacée vers « Technique - Archive » a bien changé, mais un
+   relevé qui écarte ces groupes dans la requête ne la verrait plus : elle
+   resterait dans la copie pour toujours. On prend tout ce qui a bougé, et
+   l'on tranche ensuite, ligne par ligne.
+4. **Ce qu'on ne sait pas reconstituer déclenche une relecture complète.** Une
+   facture présente chez Monday, absente de la copie et trop ancienne pour
+   figurer parmi les modifiées ; un numéro en double dont une seule
+   occurrence a bougé ; un compte de lignes qui ne tombe pas juste après
+   écriture. On n'invente pas une ligne et l'on ne choisit pas laquelle
+   garder : on relit ce tableau en entier. Et relecture complète chaque
+   lundi, quoi qu'il arrive.
+
+### Trois pièges de la relecture incrémentale, payés comptant le 26/10
+
+* **Un titre de colonne peut contenir un retour à la ligne.** « Montant dû ⏎
+  TTC » s'écrit « Montant dû  TTC » dans le fichier — le retour devient un
+  espace — et ne coïncidait jamais avec le titre brut. « 0.1. Factures
+  payées » et « 1.0. Tampon » se relisaient donc en entier à chaque heure,
+  7 261 lignes pour rien. Les deux côtés de la comparaison passent par la
+  même moulinette.
+* **Un refus muet envoie corriger à l'aveugle.** Le message dit désormais
+  QUELLE colonne a bougé, avant et après. Sans cela, deux tableaux se
+  relisaient en entier sans que personne sache pourquoi.
+* **Le conteneur vit à l'heure UTC.** Un relèvement fait à 14 h 27 à Paris
+  s'inscrivait « 13h27 » : une heure de retard l'hiver, deux l'été, et le
+  mauvais jour passé minuit. L'arrêté porte l'heure de Paris, pas celle du
+  serveur.
 
 La base de départ se reprend depuis l'artefact publié (`Artifact` action `read`
-avec le `path` de chaque fichier de `donnees/`) : c'est lui qui porte l'état de
-la veille, daté.
+avec le `path` de chaque fichier de `donnees/`) : c'est lui qui porte l'état de
+la veille, daté. Il ne sert pas qu'à cela : le conteneur d'une session est
+recyclé et `.gitignore` écarte les données réelles du dépôt — l'artefact est
+le seul endroit où l'état de la veille survit.
 
-À construire une fois que la tâche tourne avec son connecteur et son dépôt :
-bâtir l'incrémental sur une chaîne qui ne démarre pas serait bâtir sur du vide.
+### Où tourne la tâche, et pourquoi
+
+Quatre exécutions lancées dans une **session neuve** se sont arrêtées sans
+jamais publier — 17, 5, 8 et 8 minutes — sans compte rendu lisible depuis
+l'extérieur. La cause est structurelle : une session créée par une tâche
+planifiée démarre **sans dépôt attaché** (`config:no-git-repo`, aucune source
+git), et rien dans l'API de création ne permet de lui en attacher un.
+
+La tâche est donc rattachée à la **session de travail**, qui a déjà le dépôt,
+le jeton `MONDAY_TOKEN` et le droit de republier l'artefact. Rien à cloner,
+aucun identifiant à fournir, et le compte rendu arrive là où Zehavit le lit.
+Le prix : plus de notification sur son téléphone — une tâche rattachée à une
+session n'en émet pas.
 
 ### Une facture qui change de tableau
 

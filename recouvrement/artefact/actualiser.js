@@ -431,74 +431,132 @@ async function incrementerTableau(bid, app, etatPrec, jours) {
     const mapping = I.autoMapColumns(colonnes, null) || {};
     const gardees = [...new Set(Object.values(mapping))].filter(c => c && c !== 'name');
     const titreDe = new Map(colonnes.map(c => [c.id, c.title]));
-    const enteteAttendue = ['Name', ...gardees.map(c => titreDe.get(c) || c)];
+    // Le fichier remplace les retours \u00e0 la ligne par des espaces en \u00e9crivant\u00a0:
+    // le titre Monday \u00ab\u00a0Montant d\u00fb \u23ce TTC\u00a0\u00bb y devient \u00ab\u00a0Montant d\u00fb  TTC\u00a0\u00bb.
+    // Compar\u00e9 au titre brut, il ne co\u00efncidait jamais, et \u00ab\u00a00.1. Factures
+    // pay\u00e9es\u00a0\u00bb comme \u00ab\u00a01.0. Tampon\u00a0\u00bb se relisaient en entier \u00e0 chaque heure
+    // \u2014 sept mille deux cent soixante et une lignes pour rien. On compare
+    // donc les deux c\u00f4t\u00e9s pass\u00e9s par la m\u00eame moulinette.
+    const sansRetour = s => String(s == null ? '' : s).replace(/\r?\n/g, ' ').trim();
+    const enteteAttendue = ['Name', ...gardees.map(c => titreDe.get(c) || c)].map(sansRetour);
+    const enteteCopie = base.entete.map(sansRetour);
 
-    if (enteteAttendue.join('\u0001') !== base.entete.join('\u0001')) {
-        return { nom, meta, raison: 'les colonnes ont chang\u00e9', complet: true };
+    if (enteteAttendue.join('\u0001') !== enteteCopie.join('\u0001')) {
+        // Dire LAQUELLE. Un refus muet envoie corriger \u00e0 l'aveugle\u00a0: deux
+        // tableaux se sont relus en entier chaque heure sans que personne
+        // sache quelle colonne avait boug\u00e9.
+        let ecart = '';
+        const n = Math.max(enteteAttendue.length, enteteCopie.length);
+        for (let i = 0; i < n; i++) {
+            if (enteteAttendue[i] === enteteCopie[i]) continue;
+            const avant = enteteCopie[i] === undefined ? '\u2014' : enteteCopie[i];
+            const apres = enteteAttendue[i] === undefined ? '\u2014' : enteteAttendue[i];
+            ecart = ' (colonne ' + (i + 1) + ' sur ' + n + '\u00a0: \u00ab\u00a0' + avant + '\u00a0\u00bb devient \u00ab\u00a0' + apres + '\u00a0\u00bb)';
+            break;
+        }
+        return { nom, meta, raison: 'les colonnes ont chang\u00e9' + ecart, complet: true };
     }
 
     // 1. Ce que Monday contient vraiment, hors groupes techniques.
+    //
+    //    UN NUM\u00c9RO PEUT FIGURER DEUX FOIS. Deux factures distinctes portent
+    //    parfois le m\u00eame nom d'\u00e9l\u00e9ment, et ce n'est pas parce que c'est le
+    //    m\u00eame num\u00e9ro que c'est la m\u00eame facture. Une table index\u00e9e par le
+    //    num\u00e9ro seul en garde une et perd l'autre, sans rien dire : le 2.4
+    //    est pass\u00e9 ainsi de 358 lignes \u00e0 353, et le contr\u00f4le final, qui
+    //    comptait la m\u00eame table, n'y voyait rien. On garde donc pour chaque
+    //    num\u00e9ro la LISTE de ses groupes, et l'on compte les lignes, pas les
+    //    num\u00e9ros.
     const tousLesNoms = await nomsDuTableau(bid);
     const estTech = t => R.estGroupeTechnique(t);
-    const chezMonday = new Map();
+    const retenus = [];
     for (const [n, g] of tousLesNoms) {
-        if (!n || estTech(g)) continue;
-        chezMonday.set(n.trim(), g);
+        const c = String(n || '').trim();
+        if (!c || estTech(g)) continue;
+        retenus.push([c, g]);
+    }
+    const chezMonday = new Map();
+    for (const [n, g] of retenus) {
+        if (!chezMonday.has(n)) chezMonday.set(n, []);
+        chezMonday.get(n).push(g);
     }
 
-    // 2. Ce que la copie contient.
+    // 2. Ce que la copie contient, compt\u00e9 de la m\u00eame fa\u00e7on.
     const chezNous = new Map();
     for (const [g, l] of base.parGroupe) for (const ligne of l) {
         const c = String(ligne[0] || '').trim();
-        if (c) chezNous.set(c, g);
+        if (!c) continue;
+        if (!chezNous.has(c)) chezNous.set(c, []);
+        chezNous.get(c).push(g);
     }
 
-    // 3. Ce qui a chang\u00e9 de valeur sans forc\u00e9ment changer de place.
+    // 3. Ce qui a chang\u00e9 de valeur sans forc\u00e9ment changer de place. Les
+    //    groupes techniques sont \u00e9cart\u00e9s ici aussi : une facture partie s'y
+    //    ranger doit sortir de la copie, pas y revenir.
     const items = await modifiesDepuis(bid, gardees, jours);
-    const parNom = new Map(items.map(it => [String(it.name || '').trim(), it]));
-
-    const aRetirer = [...chezNous.keys()].filter(n => !chezMonday.has(n));
-    const aPoser = [];
-    for (const [n, g] of chezMonday) {
-        const ici = chezNous.get(n);
-        if (ici === undefined) { aPoser.push([n, g]); continue; }     // arriv\u00e9e
-        if (ici !== g) { aPoser.push([n, g]); continue; }             // d\u00e9placement
-        if (parNom.has(n)) aPoser.push([n, g]);                       // valeur modifi\u00e9e
+    const parNom = new Map();
+    for (const it of items) {
+        const c = String(it.name || '').trim();
+        const g = (it.group && it.group.title) || '(sans groupe)';
+        if (!c || estTech(g)) continue;
+        if (!parNom.has(c)) parNom.set(c, []);
+        parNom.get(c).push(it);
     }
 
-    // Une ligne \u00e0 poser dont on n'a pas le contenu : on ne l'invente pas.
-    const sansContenu = aPoser.filter(([n]) => !parNom.has(n));
-    if (sansContenu.length) {
+    // 4. Les num\u00e9ros \u00e0 refaire : disparus, arriv\u00e9s, d\u00e9plac\u00e9s, ou modifi\u00e9s.
+    const memeRangement = (a, b) => {
+        if (a.length !== b.length) return false;
+        const x = [...a].sort(), y = [...b].sort();
+        return x.every((v, i) => v === y[i]);
+    };
+    const aRefaire = [];
+    for (const n of new Set([...chezMonday.keys(), ...chezNous.keys()])) {
+        if (memeRangement(chezMonday.get(n) || [], chezNous.get(n) || []) && !parNom.has(n)) continue;
+        aRefaire.push(n);
+    }
+
+    // Un num\u00e9ro \u00e0 reposer dont on n'a pas TOUTES les occurrences : on ne
+    // l'invente pas, et l'on ne choisit pas laquelle garder.
+    const incomplets = aRefaire.filter(n =>
+        (parNom.get(n) || []).length < (chezMonday.get(n) || []).length);
+    if (incomplets.length) {
         return { nom, meta, complet: true,
-                 raison: sansContenu.length + ' facture(s) pr\u00e9sente(s) chez Monday et absente(s) du relev\u00e9 des modifi\u00e9es, dont ' + sansContenu[0][0] };
+                 raison: incomplets.length + ' facture(s) pr\u00e9sente(s) chez Monday et absente(s) du relev\u00e9 des modifi\u00e9es, dont ' + incomplets[0] };
     }
 
-    for (const n of aRetirer) {
-        for (const [g, l] of base.parGroupe) {
-            base.parGroupe.set(g, l.filter(x => String(x[0] || '').trim() !== n));
+    const refaire = new Set(aRefaire);
+    for (const [g, l] of base.parGroupe) {
+        base.parGroupe.set(g, l.filter(x => !refaire.has(String(x[0] || '').trim())));
+    }
+    let posees = 0;
+    for (const n of aRefaire) {
+        for (const it of (parNom.get(n) || [])) {
+            const g = (it.group && it.group.title) || '(sans groupe)';
+            const par = new Map((it.column_values || []).map(cv => [cv.id, valeur(cv)]));
+            if (!base.parGroupe.has(g)) base.parGroupe.set(g, []);
+            base.parGroupe.get(g).push([it.name || n, ...gardees.map(c => par.get(c) || '')]);
+            posees++;
         }
     }
-    for (const [n, g] of aPoser) {
-        for (const [gg, l] of base.parGroupe) {
-            base.parGroupe.set(gg, l.filter(x => String(x[0] || '').trim() !== n));
-        }
-        const it = parNom.get(n);
-        const par = new Map((it.column_values || []).map(cv => [cv.id, valeur(cv)]));
-        if (!base.parGroupe.has(g)) base.parGroupe.set(g, []);
-        base.parGroupe.get(g).push([it.name || n, ...gardees.map(c => par.get(c) || '')]);
+    let retirees = 0;
+    for (const n of aRefaire) {
+        const ici = (chezNous.get(n) || []).length, la = (chezMonday.get(n) || []).length;
+        if (ici > la) retirees += ici - la;
     }
 
     const ecrit = ecrireCsvBrut(chemin, base.tableau, base.entete, base.parGroupe);
 
     // Dernier contr\u00f4le, gratuit\u00a0: la copie doit maintenant compter exactement
-    // ce que Monday contient hors groupes techniques.
-    if (ecrit.lignes !== chezMonday.size) {
+    // autant de LIGNES que Monday en porte hors groupes techniques, doublons
+    // compris. Compar\u00e9 \u00e0 un nombre de num\u00e9ros distincts, ce contr\u00f4le se
+    // mentait \u00e0 lui-m\u00eame.
+    if (ecrit.lignes !== retenus.length) {
         return { nom, meta, complet: true,
-                 raison: 'apr\u00e8s mise \u00e0 jour, ' + ecrit.lignes + ' lignes pour ' + chezMonday.size + ' attendues' };
+                 raison: 'apr\u00e8s mise \u00e0 jour, ' + ecrit.lignes + ' lignes pour ' + retenus.length + ' attendues' };
     }
 
     return { nom, meta, complet: false, modifiees: items.length,
-             retirees: aRetirer.length, posees: aPoser.length,
+             retirees, posees,
              retenues: ecrit.lignes, solitaires: ecrit.solitaires };
 }
 
@@ -509,10 +567,30 @@ const ARGS = process.argv.slice(2);
 const VEUT_INCREMENT = ARGS.includes('--incrementiel');
 const FORCE_COMPLET = ARGS.includes('--complet');
 
+/**
+ * LA DATE ET L'HEURE DE PARIS, ET NON CELLES DU SERVEUR.
+ *
+ * Le conteneur vit \u00e0 l'heure UTC. Un rel\u00e8vement fait \u00e0 14\u202fh\u202f27 \u00e0 Paris
+ * s'inscrivait \u00ab\u00a013h27\u00a0\u00bb, et l'arr\u00eat\u00e9 affich\u00e9 sur la page retardait d'une
+ * heure l'hiver, de deux l'\u00e9t\u00e9. Une balance dat\u00e9e d'une heure qui n'est pas
+ * la sienne n'est pas auditable. Et pass\u00e9 minuit \u00e0 Paris, c'est la date
+ * elle-m\u00eame qui se trompait de jour.
+ */
+const ICI = 'Europe/Paris';
+
+function aParis(d) {
+    const p = new Intl.DateTimeFormat('fr-FR', {
+        timeZone: ICI, year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(d);
+    const v = {};
+    for (const x of p) v[x.type] = x.value;
+    return v;
+}
+
 function aujourdhui() {
-    const d = new Date();
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
-        + '-' + String(d.getDate()).padStart(2, '0');
+    const v = aParis(new Date());
+    return v.year + '-' + v.month + '-' + v.day;
 }
 
 /**
@@ -523,8 +601,8 @@ function aujourdhui() {
  * annonce dix heures à seize heures est un arrêté qui ment.
  */
 function maintenant() {
-    const d = new Date();
-    return String(d.getHours()).padStart(2, '0') + 'h' + String(d.getMinutes()).padStart(2, '0');
+    const v = aParis(new Date());
+    return (v.hour === '24' ? '00' : v.hour) + 'h' + v.minute;
 }
 
 function ecrireManifeste(bilan, mode) {
