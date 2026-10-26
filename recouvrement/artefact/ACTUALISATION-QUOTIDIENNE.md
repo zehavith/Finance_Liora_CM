@@ -240,9 +240,10 @@ du jour amputé d'un tableau.
 ## 5. La relecture incrémentale — règles validées par Zehavit le 25/10/2026
 
 Sur 18 628 lignes, **55 changent en vingt-quatre heures** (0,3 %), et le relevé
-de ce qui a bougé prend 15 secondes contre plus de trois minutes pour l'export
-entier. Mesuré, pas supposé. La relecture complète quotidienne est donc deux
-cents fois le travail nécessaire.
+de ce qui a bougé prend deux à trois minutes, contre un quart d’heure pour
+l’export entier. Mesuré, pas supposé. La relecture complète quotidienne est
+donc cinq fois le travail nécessaire — et c’est le quart d’heure qui décide de
+la suite : une commande lancée en avant-plan est coupée à dix minutes.
 
 Le filtre : colonne virtuelle `__last_updated__`, opérateur `within_the_last`,
 `compare_value: ["DAYS", N]`. L'opérateur `greater_than` est refusé sur cette
