@@ -491,6 +491,30 @@
                 <div class="table-wrap" id="bad-debt-table"></div>
                 <div class="chart-container chart-tall"><canvas id="chart-bad-debt"></canvas></div>
             </details>
+            <!-- Treemap : outil de fouille, dimension au choix. Remontée dans
+                 l’acte 1 — c’est une question de vue d’ensemble, pas d’ancienneté. -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Où se loge ce qui reste dû</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-treemap-dim">
+                                <button class="seg-btn active" data-dim="financement">Financement</button>
+                                <button class="seg-btn" data-dim="client">Client</button>
+                                <button class="seg-btn" data-dim="board">Tableau</button>
+                                <button class="seg-btn" data-dim="etape">Qualification recouv.</button>
+                                <button class="seg-btn" data-dim="groupe">Groupe</button>
+                                <button class="seg-btn" data-dim="proprietaire">Propriétaire</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">La surface est proportionnelle au montant en retard.
+                        Cliquez sur une case pour filtrer l’application dessus.</span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-treemap"></canvas>
+                    </div>
+                </div>
+            </div>
             </div>
 
             <!-- ═════════════════ ACTE 2 ═════════════════ -->
@@ -675,54 +699,6 @@
                     </div>
                 </div>
             </div>
-            <!-- Treemap : outil de fouille, dimension au choix -->
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Où se loge ce qui reste dû</h3>
-                        <div class="chart-controls">
-                            <div class="seg seg-sm" id="seg-treemap-dim">
-                                <button class="seg-btn active" data-dim="financement">Financement</button>
-                                <button class="seg-btn" data-dim="client">Client</button>
-                                <button class="seg-btn" data-dim="board">Tableau</button>
-                                <button class="seg-btn" data-dim="etape">Qualification recouv.</button>
-                                <button class="seg-btn" data-dim="groupe">Groupe</button>
-                                <button class="seg-btn" data-dim="proprietaire">Propriétaire</button>
-                            </div>
-                        </div>
-                    </div>
-                    <span class="fv-hint">La surface est proportionnelle au montant en retard. Cliquez sur une case
-                        pour filtrer l'application dessus — et lire juste en dessous pourquoi cet argent n'est
-                        pas rentré, colonne de qualification par colonne de qualification.</span>
-                    <div class="chart-container chart-tall">
-                        <canvas id="chart-treemap"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Pourquoi ce n'est pas payé, juste sous la carte des montants :
-                 on clique une case, on lit dans la foulée pourquoi cet argent
-                 n'est pas rentré. Placé au-dessus, le bloc répondait à une
-                 question qu'on ne s'était pas encore posée. -->
-            <div class="charts-grid">
-                <div class="chart-card chart-wide">
-                    <div class="chart-header">
-                        <h3>Pourquoi ce n'est pas payé</h3>
-                        <div class="chart-controls">
-                            <button class="btn btn-ghost btn-sm" id="btn-motifs-export">Exporter</button>
-                        </div>
-                    </div>
-                    <span class="fv-hint" id="motifs-note"></span>
-                    <div class="motifs-colonnes" id="motifs-colonnes"></div>
-                    <!-- Le détail ligne à ligne double les camemberts : utile
-                         pour chercher un motif précis, encombrant le reste du
-                         temps. Il est là, replié. -->
-                    <details class="bloc-repli">
-                        <summary>Le détail, motif par motif</summary>
-                        <div class="table-wrap" id="motifs-table"></div>
-                    </details>
-                </div>
-            </div>
 
             <!-- Les qualifications B2C, quand le périmètre B2C est retenu -->
             <div id="qualif-b2c" hidden>
@@ -845,10 +821,10 @@
                 <div id="aging-regles-corps"></div>
             </details>
 
-            <!-- « Pourquoi ce n'est pas payé » ne figure plus ici : le bloc poussait
-                 la balance âgée sous la ligne de flottaison, alors qu'on vient sur cet
-                 écran pour la balance. Il reste sur le tableau de bord, sous la carte des
-                 montants, et part dans l'export en feuille « Pourquoi ce n'est pas payé ». -->
+            <!-- « Pourquoi ce n'est pas payé » ne figure plus nulle part : la liste
+                 plate des motifs, colonne de qualification par colonne, répondait mal
+                 à la question. Elle doit se lire en descendant depuis un financement
+                 — tableau par tableau, puis groupe par groupe — et non d'un bloc. -->
             <div id="aging-monday">
             <div id="aging-synthese"></div>
             <div class="bucket-grid" id="bucket-cards"></div>
