@@ -414,8 +414,9 @@
      * n'interrompt pas les autres : mieux vaut huit tableaux sur neuf, en le
      * disant, que rien du tout.
      */
+    const CLE_ARRETE_SERVI = 'rec_arrete_servi';
+
     async function chargerDonneesDuJour() {
-        if (state.brutes.length || (state.glOuvertes || []).length) return false;
 
         // ON NE DEMANDE PAS UN FICHIER QU'ON SAIT ABSENT.
         //
@@ -443,6 +444,29 @@
         const liste = manifeste && Array.isArray(manifeste.fichiers) ? manifeste.fichiers : [];
         if (!liste.length) return false;
 
+        // ══════════════════════════════════════════════
+        //  CE QUI EST DÉPOSÉ À CÔTÉ DE LA PAGE FAIT LOI
+        // ══════════════════════════════════════════════
+        //
+        // Le garde-fou disait : « ne rien faire si quelque chose est déjà
+        // chargé ». Or l'import enregistre les créances dans le navigateur.
+        // Dès la seconde visite elles étaient donc restaurées, la condition
+        // se déclenchait, et la page servait sa copie — indéfiniment. Les
+        // actualisations publiées toutes les heures n'atteignaient jamais
+        // personne, et rien ne le disait : la page s'ouvrait pleine, juste
+        // avec les chiffres d'un autre jour. Un grand livre déposé suffisait
+        // aussi à bloquer, alors qu'il ne concurrence pas les données Monday.
+        //
+        // On compare donc l'arrêté déposé à celui déjà servi ici. Identique :
+        // la copie du navigateur est à jour, on n'y touche pas. Différent :
+        // l'arrêté déposé gagne, et remplace les neuf tableaux — le grand
+        // livre, lui, reste en place et se recale dessus.
+        const arreteDepose = (manifeste.arreteLe || '') + ' ' + (manifeste.arreteA || '');
+        let arreteServi = null;
+        try { arreteServi = await S.get(CLE_ARRETE_SERVI, null); } catch { arreteServi = null; }
+        const dejaCharge = state.brutes.length || (state.glOuvertes || []).length;
+        if (dejaCharge && arreteServi === arreteDepose) return false;
+
         montrerEcran('loading');
         statut('Lecture des données Monday' + (manifeste.arreteLe ? ' du ' + manifeste.arreteLe : ''));
 
@@ -457,6 +481,9 @@
         if (!fichiers.length) { montrerEcran('welcome'); return false; }
 
         await importerFichiers(fichiers);
+        // L'arrêté servi n'est inscrit qu'une fois l'import passé : un
+        // chargement interrompu doit être repris à la prochaine ouverture.
+        try { await S.set(CLE_ARRETE_SERVI, arreteDepose); } catch { /* le stockage peut refuser */ }
 
         // La date d'arrêté est une mesure, pas une décoration : tout le retard
         // se compte à partir d'elle. Elle se pose donc dans le filtre qui la
