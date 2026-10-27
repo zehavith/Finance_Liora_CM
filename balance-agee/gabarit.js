@@ -108,7 +108,7 @@ aApres=coupe(aApres,`let remettre=async(nom,octets)=>{const a=document.createEle
   a.href=URL.createObjectURL(new Blob([octets],{type:MIME}));
   a.download=nom;document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);};
-E('telech').hidden=false;`,
+E('arrete-ok').hidden=false;`,
 `let remettre=null;
 // Le visualiseur bloque les téléchargements qu'une page déclenche elle-même :
 // seul le canal « downloads » en ouvre un, et le lecteur confirme. Sans lui,
@@ -117,10 +117,10 @@ E('telech').hidden=false;`,
   try{ DL=await window.claude?.use?.('downloads'); }catch(e){ DL=null; }
   if(!DL) return;
   remettre=async(nom,octets)=>{ await DL.save({filename:nom,data:octets}); };
-  E('telech').hidden=false;
+  E('arrete-ok').hidden=false;
 })();`,'le téléchargement');
 // le bouton n'apparaît que si le canal existe : la déclaration du gabarit saute
-aApres=coupe(aApres,'  E("telech").hidden=false;\n','','l’affichage des boutons');
+aApres=coupe(aApres,'  E("arrete-ok").hidden=false;\n','','l’affichage du bouton');
 // LA PAGE ET SES DONNÉES DOIVENT VENIR DE LA MÊME CONSTRUCTION.
 //
 // Le fichier autonome porte ses données en lui : elles ne peuvent pas se

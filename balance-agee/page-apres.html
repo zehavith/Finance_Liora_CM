@@ -67,6 +67,17 @@ function partirVers(d,telecharger){
   location.href=u.toString();
 }
 
+// La fenêtre du téléchargement. Elle ne propose que ce qui est à l'écran :
+// l'arrêté choisi au-dessus, et rien d'autre.
+function ouvrirPop(){
+  const p=E('pop-telech'); if(!p) return;
+  const d=E('pop-date');
+  if(d) d.textContent = (ARRETE_VU && ARRETES[ARRETE_VU]) ? ARRETES[ARRETE_VU].a : D.arrete;
+  E('dl-note').textContent='';
+  p.hidden=false;
+}
+function fermerPop(){ const p=E('pop-telech'); if(p) p.hidden=true; }
+
 function choisirArrete(telecharger){
   const sel=E('arrete-select'), note=t=>{ E('arrete-note').textContent=t; };
   const v=sel.value;
@@ -88,6 +99,10 @@ function choisirArrete(telecharger){
 
 function brancherArrete(){
   const bloc=E('arrete'); if(!bloc) return;
+  // La ligne du haut est la seule, et elle s'affiche toujours : c'est par elle
+  // qu'on choisit ce que la page montre. Seul le bouton « Télécharger » attend
+  // que le canal du cadre existe — sans lui, il ne ferait rien.
+  bloc.hidden=false;
   const dates=Object.keys(ARRETES).sort().reverse();
   const sel=E('arrete-select');
   const opt=(v,t,c)=>{ const o=document.createElement('option');
@@ -97,21 +112,41 @@ function brancherArrete(){
     opt(d,'arrêtée au '+ARRETES[d].a+' — '+(ARRETES[d].n||0).toLocaleString('fr-FR')+' écritures',
         d===ARRETE_VU);
   opt('libre','à une date précise…');
+  // CHOISIR UNE DATE CHANGE L'ÉCRAN, SANS ATTENDRE LE TÉLÉCHARGEMENT.
+  //
+  // « Qd je met ça je vois pas direct à l'ecran la balance agé », 27/10/2026.
+  // Le menu ne préparait qu'un téléchargement : il fallait un second bouton
+  // pour regarder. Il n'y en a plus — la page bascule sur l'arrêté dès qu'il
+  // est choisi, et « Télécharger » prend alors ce qui est sous les yeux.
   sel.addEventListener('change',()=>{
-    E('arrete-date').hidden = sel.value!=='libre';
     E('arrete-note').textContent='';
+    if(sel.value==='libre'){ E('arrete-date').hidden=false; return; }
+    E('arrete-date').hidden=true;
+    if((sel.value||'')!==(ARRETE_VU||'')) partirVers(sel.value,false);
   });
-  E('arrete-non').addEventListener('click',()=>{ bloc.hidden=true; });
-  E('arrete-ok').addEventListener('click',()=>choisirArrete(true));
-  E('arrete-voir').addEventListener('click',()=>choisirArrete(false));
+  E('arrete-ok').addEventListener('click',()=>{
+    // Une date précise qu'on n'a pas ne se télécharge pas : on le dit, et la
+    // fenêtre ne s'ouvre pas sur un choix qui ne mènerait nulle part.
+    if(sel.value==='libre'){
+      const v=E('arrete-date').value;
+      if(!v){ E('arrete-note').textContent='Choisissez une date.'; return; }
+      if(!ARRETES[v]) return demanderArrete(v);
+      return partirVers(v,true);
+    }
+    ouvrirPop();
+  });
+  E('pop-non').addEventListener('click',fermerPop);
+  E('pop-telech').addEventListener('click',(ev)=>{ if(ev.target===E('pop-telech')) fermerPop(); });
+  document.addEventListener('keydown',(ev)=>{ if(ev.key==='Escape') fermerPop(); });
   if(ARRETE_VU) E('arrete-date').value=ARRETE_VU;
 
-  // Ce qui est à l'écran dit de quelle balance il s'agit : sans cela, un
-  // classeur du 30 septembre se télécharge en croyant prendre celui du jour.
-  if(ARRETE_VU && ARRETES[ARRETE_VU]){
-    E('dl-xlsx').textContent='Télécharger toute la balance au '+ARRETES[ARRETE_VU].a;
-    E('dl-csv').textContent='Télécharger la sélection à l’écran (au '+ARRETES[ARRETE_VU].a+')';
-  }
+  // LES DEUX LIBELLÉS SONT CEUX QU'ELLE A DICTÉS, ET RIEN DE PLUS.
+  //
+  // « je veux que ici il y ait téléchargé tt la balance ou téléchargé la
+  //   selection à l'ecran », 27/10/2026. J'y avais collé « au 30/06/2026 » :
+  // les deux boutons devenaient des pavés qui passaient l'un sous l'autre et
+  // mangeaient le haut de la page. La date se lit déjà sur la ligne au-dessus,
+  // « arrêté au … », et dans le nom du classeur qui sort.
   if(ARRETE_VU && !ARRETES[ARRETE_VU])
     E('arrete-note').textContent='Le '+ARRETE_VU+' n’est pas arrêté : voici la balance du jour.';
 
@@ -203,7 +238,7 @@ function demarrer(){
   E('viewport').addEventListener('scroll',dessiner);
   brancherTri();
   appliquer();
-  E("telech").hidden=false;
+  E("arrete-ok").hidden=false;
   brancherArrete();
   brancherParametres();
   parametres();
@@ -1175,7 +1210,7 @@ let remettre=async(nom,octets)=>{const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([octets],{type:MIME}));
   a.download=nom;document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);};
-E('telech').hidden=false;
+E('arrete-ok').hidden=false;
 // ↑ la seule ligne qui diffère ↑
 const envoyer=async(bouton,nom,idx,quoi,nomDetail)=>{
   if(!remettre) return;
@@ -1184,19 +1219,16 @@ const envoyer=async(bouton,nom,idx,quoi,nomDetail)=>{
     await remettre(nom, await classeur(idx,nomDetail));
     E('dl-note').textContent=idx.length.toLocaleString('fr-FR')+' écritures · '+quoi
       +' · 5 onglets, sommaire en tête';
+    setTimeout(fermerPop,1600);
   }catch(e){ E('dl-note').textContent='Le classeur n’a pas pu être écrit.'; }
   b.disabled=false;
 };
 // « lorsque l'on clique cela propose balance arrêté à aujourd hui, etc.. ou
 // date précise ». Le choix s'ouvre sous les boutons ; sans arrêté disponible —
 // le fichier autonome — le téléchargement part directement.
-E('dl-xlsx').addEventListener('click',()=>{
-  const bloc=E('arrete');
-  if(!bloc || !Object.keys(ARRETES).length)
-    return envoyer('dl-xlsx','Balance-agee-clients.xlsx',I,'toutes les colonnes','Détail ligne à ligne');
-  bloc.hidden=!bloc.hidden;
-  E('arrete-note').textContent='';
-});
+E('dl-xlsx').addEventListener('click',()=>
+  envoyer('dl-xlsx',nomClasseur('Balance-agee-clients.xlsx'),I,
+          'toutes les colonnes','Détail ligne à ligne'));
 // La sélection ne vaut que pour la balance affichée : la recharger sur une
 // autre date effacerait les filtres qui la définissent. Elle part donc telle
 // quelle, et son nom porte l'arrêté.
