@@ -3291,6 +3291,29 @@
         const enRetard = data.filter(f => f.etat === 'En retard');
         const groupes = X.parDimension(enRetard, dim.fn, dim.labelFn, f => f.montant).slice(0, 24);
 
+        // UNE CARTE QUI DIT SUR QUOI ELLE PORTE.
+        //
+        // Posée sous « Le détail de la bad debt », elle se lisait comme un
+        // détail de celle-ci : « je veux que cela soit aussi pas pour la bad
+        // debt mais aussi tt les factures en recouvrement », 27/10/2026. Elle
+        // portait déjà tout le retard — la bad debt n'en fait qu'une part —
+        // mais rien dans la carte ne le disait. Elle l'écrit maintenant, avec
+        // la part que la bad debt y occupe : la question ne se repose pas.
+        const assiette = $('#treemap-assiette');
+        if (assiette) {
+            const S = seuilBadDebt();
+            const vieilles = enRetard.filter(f => f.retardJours != null && f.retardJours > S);
+            const eurRetard = X.sum(enRetard, f => f.montant);
+            const eurVieilles = X.sum(vieilles, f => f.montant);
+            assiette.innerHTML = enRetard.length
+                ? `<strong>Toutes les factures en retard</strong> à la date d'arrêté : `
+                  + `${U.nombre(enRetard.length)} factures, ${U.euros(eurRetard)}. `
+                  + `Ce qui attend depuis plus de ${U.jours(S)} en représente `
+                  + `${U.pourcent(X.pct(eurVieilles, eurRetard), 0)} — `
+                  + `${U.nombre(vieilles.length)} factures, ${U.euros(eurVieilles)}.`
+                : '';
+        }
+
         if (!groupes.length) { U.chart('chart-treemap', videConfig('Aucune facture en retard')); return; }
 
         const total = X.sum(groupes, g => g.valeur);

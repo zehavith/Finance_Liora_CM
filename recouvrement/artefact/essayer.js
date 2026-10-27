@@ -389,6 +389,20 @@ const serveur = http.createServer((q, r) => {
     } else {
       ok('le clic sur un financement ouvre son détail', false);
     }
+    // ── la treemap dit sur quoi elle porte, et passe devant la bad debt ──
+    const assiette = await pj.evaluate(() => {
+      const t = document.querySelector('#chart-treemap');
+      const b = document.querySelector('#bad-debt-titre');
+      const avant = t && b
+        ? !!(t.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) : null;
+      return { avant, texte: (document.querySelector('#treemap-assiette') || {}).textContent || '' };
+    });
+    console.log('     ' + assiette.texte.replace(/\s+/g, ' ').trim());
+    ok('la treemap passe devant la bad debt, et n’en est plus un détail', assiette.avant === true);
+    ok('elle écrit son assiette : toutes les factures en retard',
+       /Toutes les factures en retard/.test(assiette.texte)
+       && /factures,/.test(assiette.texte));
+
     // ── les avoirs : un AVR n'est pas une facture manquante ──
     //
     // « tt les facture qui commence par AVR sont d avoir attention, il faut

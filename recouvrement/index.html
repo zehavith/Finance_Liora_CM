@@ -477,22 +477,14 @@
 
 
 
-            <!-- La bad debt : le seuil est écrit en toutes lettres sous le
-                 chiffre, et il se règle dans l'onglet Réglages. -->
-            <div class="section-header section-header-sub">
-                <h3 id="bad-debt-titre">Ce qui attend depuis plus de douze mois</h3>
-                <span class="fv-hint" id="bad-debt-seuil"></span>
-            </div>
-            <div class="kpi-grid" id="bad-debt-kpi"></div>
-            <span class="fv-hint" id="bad-debt-note"></span>
-            <details class="bloc-repli" id="bad-debt-detail">
-                <summary>Le détail de la bad debt</summary>
-                <span class="fv-hint" id="bad-debt-detail-note"></span>
-                <div class="table-wrap" id="bad-debt-table"></div>
-                <div class="chart-container chart-tall"><canvas id="chart-bad-debt"></canvas></div>
-            </details>
             <!-- Treemap : outil de fouille, dimension au choix. Remontée dans
-                 l’acte 1 — c’est une question de vue d’ensemble, pas d’ancienneté. -->
+                 l’acte 1 — c’est une question de vue d’ensemble, pas d’ancienneté.
+                 PLACÉE AVANT LA BAD DEBT, ET NON APRÈS. Collée sous « Le détail de
+                 la bad debt », elle se lisait comme un détail de celle-ci : « je veux
+                 que cela soit aussi pas pour la bad debt mais aussi tt les factures en
+                 recouvrement », 27/10/2026. Elle portait déjà TOUTES les factures en
+                 retard — 2 322 pour 11,1 M€, dont 4,9 M€ de bad debt — mais rien ne le
+                 disait. Elle passe donc devant, et écrit son assiette elle-même. -->
             <div class="charts-grid">
                 <div class="chart-card chart-wide">
                     <div class="chart-header">
@@ -508,6 +500,7 @@
                             </div>
                         </div>
                     </div>
+                    <span class="fv-hint" id="treemap-assiette"></span>
                     <span class="fv-hint">La surface est proportionnelle au montant en retard.
                         Cliquez une case&nbsp;: sur «&nbsp;Financement&nbsp;» elle ouvre le détail du
                         dispositif — tableau, puis groupe, puis qualification. Sur les autres
@@ -517,6 +510,20 @@
                     </div>
                 </div>
             </div>
+            <!-- La bad debt : le seuil est écrit en toutes lettres sous le
+                 chiffre, et il se règle dans l'onglet Réglages. -->
+            <div class="section-header section-header-sub">
+                <h3 id="bad-debt-titre">Ce qui attend depuis plus de douze mois</h3>
+                <span class="fv-hint" id="bad-debt-seuil"></span>
+            </div>
+            <div class="kpi-grid" id="bad-debt-kpi"></div>
+            <span class="fv-hint" id="bad-debt-note"></span>
+            <details class="bloc-repli" id="bad-debt-detail">
+                <summary>Le détail de la bad debt</summary>
+                <span class="fv-hint" id="bad-debt-detail-note"></span>
+                <div class="table-wrap" id="bad-debt-table"></div>
+                <div class="chart-container chart-tall"><canvas id="chart-bad-debt"></canvas></div>
+            </details>
             </div>
 
             <!-- ═════════════════ ACTE 2 ═════════════════ -->
