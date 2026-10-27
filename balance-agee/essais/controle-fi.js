@@ -1,5 +1,23 @@
 const fs=require('fs');
-const d=JSON.parse(fs.readFileSync('/home/user/Finance_Liora_CM/balance-agee/art/balance.json','utf8'));
+// LA BALANCE À VÉRIFIER EST CELLE DU DOSSIER DE TRAVAIL.
+//
+// Ce chemin était écrit en dur. Le contrôle ne pouvait donc vérifier qu'une
+// seule balance — celle du dépôt — et rendait ses chiffres quelle que soit
+// celle qu'on venait de construire. Une balance à date, bâtie à côté,
+// repartait avec un satisfecit qui ne la concernait pas.
+//
+// Le défaut est le même partout : le code se résout depuis son propre
+// dossier, les données depuis le répertoire de travail.
+const path=require('path');
+const CIBLE=process.argv[2] || path.resolve(process.cwd(),'art','balance.json');
+if(!fs.existsSync(CIBLE)){
+  console.error('balance introuvable : '+CIBLE);
+  console.error('lancez le contrôle depuis le dossier qui porte art/balance.json,');
+  console.error('ou donnez-lui le fichier en argument.');
+  process.exit(2);
+}
+console.log('balance vérifiée : '+CIBLE);
+const d=JSON.parse(fs.readFileSync(CIBLE,'utf8'));
 const C=d.cols, dico=d.dico, L=d.lignes;
 const ix=new Map(C.map((c,i)=>[c,i]));
 const V=(r,n)=>{const j=ix.get(n); if(j===undefined) return ''; const v=r[j];

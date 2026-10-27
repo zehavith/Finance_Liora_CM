@@ -2,6 +2,24 @@ const DEBUT_CONSTRUCTION=Date.now();
 const {ctx,X,ANC,NOUV,feuille,dser}=require('./socle.js');
 const GL=ctx.LioraGrandLivre, R=ctx.LioraRules, SE=ctx.LioraSellsy, I=ctx.LioraIngest;
 const RG=R.DEFAULT_ECHEANCE_RULES, fs=require('fs');
+
+// LA DATE D'ARRÊTÉ DEMANDÉE, s'il y en a une : --arrete AAAA-MM-JJ.
+// Sans elle, la balance s'arrête à la dernière écriture de son grand livre,
+// ce qui reste le comportement normal.
+const ARRETE_DEMANDE=(()=>{
+  const a=process.argv.slice(2);
+  let v=null;
+  const i=a.indexOf('--arrete');
+  if(i>=0) v=a[i+1];
+  if(!v){ const eq=a.find(x=>/^--arrete=/.test(x)); if(eq) v=eq.split('=')[1]; }
+  if(!v) return null;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(v))
+    throw new Error('--arrete attend une date AAAA-MM-JJ, reçu : '+v);
+  const d=new Date(v+'T00:00:00');
+  if(isNaN(d.getTime())) throw new Error('--arrete : date illisible : '+v);
+  d.setHours(0,0,0,0);
+  return d;
+})();
 // Les mandats de prélèvement, tirés de son export GoCardless. Sans eux,
 // l'exception qu'elle a posée — « les GoCardless sont prioritaires, date
 // d'échéance fin de formation » — ne se déclenchait sur aucune créance :
@@ -244,6 +262,33 @@ const CONNUS=new Map();
   for(const r of fi.rows) for(const n of numerosDeLaCellule(r['NUMERO FACTURE'])) pose(n); }
 const nouv=feuille(NOUV,'Grand livre - Clients',0);
 
+// ══════════════════════════════════════════════
+//  UNE BALANCE À UNE DATE PASSÉE
+// ══════════════════════════════════════════════
+//
+// « j'aimerais pv télécharger une balance âgée à date », 27/10/2026.
+//
+// ARRÊTER N'EST PAS FILTRER. Masquer les écritures postérieures laisserait le
+// reste dû tel qu'il a été calculé aujourd'hui : l'imputation des règlements
+// aux factures — lettrage, rapprochement, répartition au prorata — a été
+// faite avec les paiements d'octobre sous les yeux. On obtiendrait une
+// balance qui ressemble au 30 septembre sans en être une, et qui ne se
+// justifierait devant personne.
+//
+// On coupe donc le grand livre à la date demandée et l'on refait TOUT : une
+// facture réglée le 15 octobre redevient due, son ancienneté se compte au 30
+// septembre, et son règlement n'existe pas encore. C'est exactement ce que la
+// chaîne aurait produit ce jour-là.
+if(ARRETE_DEMANDE){
+  const colonne=(nouv.entetes||[]).find(h=>R.norm(h)==='date') || 'Date';
+  const avant=nouv.rows.length;
+  nouv.rows=nouv.rows.filter(r=>{ const v=R.parseDate(r[colonne]); return v && v<=ARRETE_DEMANDE; });
+  if(!nouv.rows.length)
+    throw new Error('arrêté au '+fr(ARRETE_DEMANDE)+' : aucune écriture à cette date, rien à arrêter');
+  console.log('arrêté demandé : '+fr(ARRETE_DEMANDE)+' — '+(avant-nouv.rows.length)
+    +' écriture(s) postérieure(s) écartée(s), '+nouv.rows.length+' retenue(s) sur '+avant);
+}
+
 // LA DATE D'ARRÊTÉ SORT DU GRAND LIVRE DÉPOSÉ.
 //
 // « Si je dépose un gd livre c lui qui doit être retravaillé pour donner une
@@ -258,6 +303,8 @@ const nouv=feuille(NOUV,'Grand livre - Clients',0);
 // 2027 et le fichier peut porter des écritures futures — arrêter une balance
 // dans l'avenir ne voudrait rien dire.
 const REF=(()=>{
+  // Une date demandée fait loi : c'est elle, et non la dernière écriture.
+  if(ARRETE_DEMANDE) return ARRETE_DEMANDE;
   const colonne=(nouv.entetes||[]).find(h=>R.norm(h)==='date') || 'Date';
   let d=null;
   for(const r of nouv.rows){ const v=R.parseDate(r[colonne]); if(v && (!d || v>d)) d=v; }
@@ -265,7 +312,9 @@ const REF=(()=>{
   if(!d || d>jour) d=jour;
   return d;
 })();
-console.log('date d’arrêté : '+fr(REF)+' — la dernière écriture du grand livre déposé');
+console.log('date d’arrêté : '+fr(REF)+(ARRETE_DEMANDE
+  ? ' — demandée en ligne de commande'
+  : ' — la dernière écriture du grand livre déposé'));
 const REPARATIONS=new Map();
 { const vus=new Map();
   for(const r of nouv.rows){
