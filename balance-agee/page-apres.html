@@ -50,33 +50,80 @@ const FICHIER_DONNEES=()=>
 const SIGNATURE_ATTENDUE=()=>
   (ARRETE_VU && ARRETES[ARRETE_VU]) ? ARRETES[ARRETE_VU] : null;
 
-function allerArrete(d){
+// Le nom du classeur porte son arrêté : deux fichiers de même nom dans un
+// dossier de téléchargements ne se distinguent plus une heure après.
+function nomClasseur(base){
+  return ARRETE_VU && ARRETES[ARRETE_VU]
+    ? base.replace(/\.xlsx$/,'-'+ARRETE_VU+'.xlsx') : base;
+}
+
+// Changer d'arrêté recharge la page dessus. C'est le chemin le plus sûr : tout
+// ce que la page montre et exporte vient de D, et une page rechargée ne peut
+// pas se retrouver à moitié sur une date et à moitié sur l'autre.
+function partirVers(d,telecharger){
   const u=new URL(location.href);
   if(d) u.searchParams.set('arrete',d); else u.searchParams.delete('arrete');
+  if(telecharger) u.searchParams.set('telecharger','1'); else u.searchParams.delete('telecharger');
   location.href=u.toString();
+}
+
+function choisirArrete(telecharger){
+  const sel=E('arrete-select'), note=t=>{ E('arrete-note').textContent=t; };
+  const v=sel.value;
+  if(v==='libre'){
+    const d=E('arrete-date').value;
+    if(!d){ note('Choisissez une date.'); return; }
+    if(ARRETES[d]) return partirVers(d,telecharger);
+    return demanderArrete(d);
+  }
+  // Déjà sur l'arrêté demandé : rien à recharger.
+  if((v||'')===(ARRETE_VU||'')){
+    E('arrete').hidden=true;
+    if(telecharger) envoyer('dl-xlsx', nomClasseur('Balance-agee-clients.xlsx'),
+                            I, 'toutes les colonnes', 'Détail ligne à ligne');
+    return;
+  }
+  partirVers(v,telecharger);
 }
 
 function brancherArrete(){
   const bloc=E('arrete'); if(!bloc) return;
   const dates=Object.keys(ARRETES).sort().reverse();
-  if(!dates.length) return;        // fichier autonome : rien à charger
-  bloc.hidden=false;
   const sel=E('arrete-select');
   const opt=(v,t,c)=>{ const o=document.createElement('option');
     o.value=v; o.textContent=t; o.selected=!!c; sel.appendChild(o); };
-  opt('','aujourd’hui — le grand livre déposé ('+D.arrete+')',!ARRETE_VU);
+  opt('','arrêtée aujourd’hui — le grand livre déposé ('+D.arrete+')',!ARRETE_VU);
   for(const d of dates)
-    opt(d, ARRETES[d].a+' — '+(ARRETES[d].n||0).toLocaleString('fr-FR')+' écritures', d===ARRETE_VU);
-  sel.addEventListener('change',()=>allerArrete(sel.value));
-  if(ARRETE_VU) E('arrete-date').value=ARRETE_VU;
-  E('arrete-voir').addEventListener('click',()=>{
-    const v=E('arrete-date').value;
-    if(!v){ E('arrete-note').textContent='Choisissez une date.'; return; }
-    if(ARRETES[v]) return allerArrete(v);
-    demanderArrete(v);
+    opt(d,'arrêtée au '+ARRETES[d].a+' — '+(ARRETES[d].n||0).toLocaleString('fr-FR')+' écritures',
+        d===ARRETE_VU);
+  opt('libre','à une date précise…');
+  sel.addEventListener('change',()=>{
+    E('arrete-date').hidden = sel.value!=='libre';
+    E('arrete-note').textContent='';
   });
+  E('arrete-non').addEventListener('click',()=>{ bloc.hidden=true; });
+  E('arrete-ok').addEventListener('click',()=>choisirArrete(true));
+  E('arrete-voir').addEventListener('click',()=>choisirArrete(false));
+  if(ARRETE_VU) E('arrete-date').value=ARRETE_VU;
+
+  // Ce qui est à l'écran dit de quelle balance il s'agit : sans cela, un
+  // classeur du 30 septembre se télécharge en croyant prendre celui du jour.
+  if(ARRETE_VU && ARRETES[ARRETE_VU]){
+    E('dl-xlsx').textContent='Télécharger toute la balance au '+ARRETES[ARRETE_VU].a;
+    E('dl-csv').textContent='Télécharger la sélection à l’écran (au '+ARRETES[ARRETE_VU].a+')';
+  }
   if(ARRETE_VU && !ARRETES[ARRETE_VU])
     E('arrete-note').textContent='Le '+ARRETE_VU+' n’est pas arrêté : voici la balance du jour.';
+
+  // Revenue de son propre fait : la page a été rechargée POUR télécharger.
+  try{
+    if(new URLSearchParams(location.search).get('telecharger')==='1'){
+      const u=new URL(location.href); u.searchParams.delete('telecharger');
+      history.replaceState(null,'',u.toString());
+      setTimeout(()=>envoyer('dl-xlsx', nomClasseur('Balance-agee-clients.xlsx'),
+                             I, 'toutes les colonnes', 'Détail ligne à ligne'), 150);
+    }
+  }catch(e){}
 }
 
 Promise.resolve(DONNEES).then(d=>{ D=d;
@@ -802,8 +849,16 @@ function feuilleRegles(wb){
       l.height=52;
       if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
     }
+    // LE TOTAL SE COMPTE SUR CE QUE LA PAGE A, PAS SUR CE QUE LA CHAÎNE AVAIT.
+    //
+    // Cette ligne lisait « parRang », une table du programme de construction
+    // qui n'existe pas dans la page. Chaque clic sur « Télécharger » levait
+    // donc « parRang is not defined » au tout début du classeur, et la page
+    // répondait « Le classeur n'a pas pu être écrit » — sans dire pourquoi,
+    // et sans qu'aucun essai ne l'exerce. Le compte par rang est déjà dans les
+    // données servies, un par ligne : c'est lui qu'on additionne.
     const t=ws.addRow(['','','','','','TOTAL','',
-      [...parRang.values()].reduce((a,b)=>a+b,0)]);
+      D.ordreEcheance.reduce((a,o)=>a+(o.n||0),0)]);
     t.getCell(6).font={bold:true}; t.getCell(8).font={bold:true}; t.getCell(8).numFmt='# ##0';
     t.getCell(8).alignment={horizontal:'right'};
     ws.addRow([]);
@@ -1132,10 +1187,22 @@ const envoyer=async(bouton,nom,idx,quoi,nomDetail)=>{
   }catch(e){ E('dl-note').textContent='Le classeur n’a pas pu être écrit.'; }
   b.disabled=false;
 };
-E('dl-xlsx').addEventListener('click',()=>
-  envoyer('dl-xlsx','Balance-agee-clients.xlsx',I,'toutes les colonnes','Détail ligne à ligne'));
+// « lorsque l'on clique cela propose balance arrêté à aujourd hui, etc.. ou
+// date précise ». Le choix s'ouvre sous les boutons ; sans arrêté disponible —
+// le fichier autonome — le téléchargement part directement.
+E('dl-xlsx').addEventListener('click',()=>{
+  const bloc=E('arrete');
+  if(!bloc || !Object.keys(ARRETES).length)
+    return envoyer('dl-xlsx','Balance-agee-clients.xlsx',I,'toutes les colonnes','Détail ligne à ligne');
+  bloc.hidden=!bloc.hidden;
+  E('arrete-note').textContent='';
+});
+// La sélection ne vaut que pour la balance affichée : la recharger sur une
+// autre date effacerait les filtres qui la définissent. Elle part donc telle
+// quelle, et son nom porte l'arrêté.
 E('dl-csv').addEventListener('click',()=>
-  envoyer('dl-csv','Balance-agee-clients-selection.xlsx',filtre,'la sélection à l’écran','Sélection'));
+  envoyer('dl-csv',nomClasseur('Balance-agee-clients-selection.xlsx'),filtre,
+          'la sélection à l’écran','Sélection'));
 
 // ───────── compléter une ligne, et s'en souvenir ─────────
 // La clé d'un complément est celle de la créance dès qu'il y en a une : un
@@ -1479,7 +1546,7 @@ async function demanderArrete(date){
       +(dispo.join(', ')||'aucun')+'.');
     return;
   }
-  const bouton=E('arrete-voir'); if(bouton) bouton.disabled=true;
+  const bouton=E('arrete-ok'); if(bouton) bouton.disabled=true;
   const v={date:date, quand:leJour(), quandISO:new Date().toISOString(),
            motif:'arrêté au '+date, etat:'en attente'};
   try{

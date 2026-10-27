@@ -330,23 +330,29 @@ input[type=search]{flex:1 1 220px}
   <p class="sous" id="sous">Chargement…</p>
   <p class="sous">Fichier autonome : il fonctionne hors connexion, sans compte, dans n’importe quel navigateur.</p>
 
-  <!-- ARRÊTER N'EST PAS FILTRER : les dates proposées ici sont des balances
-       REFAITES à cette date par la chaîne, pas la balance du jour amputée de
-       ses dernières écritures. Le choix recharge la page sur l'arrêté demandé ;
-       tout ce qui suit — ruban, synthèse, détail, téléchargement — en découle. -->
-  <div class="arrete" id="arrete" hidden>
-    <label for="arrete-select">Balance arrêtée au</label>
-    <select id="arrete-select"></select>
-    <span class="arrete-sep">ou</span>
-    <input type="date" id="arrete-date" min="2020-01-01">
-    <button type="button" id="arrete-voir">Arrêter à cette date</button>
-    <span class="dl-note" id="arrete-note"></span>
-  </div>
-
   <div class="telech" id="telech" hidden>
     <button type="button" id="dl-xlsx">Télécharger toute la balance</button>
     <button type="button" id="dl-csv">Télécharger la sélection à l’écran</button>
     <span class="dl-note" id="dl-note"></span>
+  </div>
+
+  <!-- LE CHOIX DE L'ARRÊTÉ VIENT APRÈS LE CLIC, PAS AVANT.
+       « je veux que ici il y ait téléchargé tt la balance ou téléchargé la
+       selection à l'ecran — lorsque l'on clique cela propose balance arrêté à
+       aujourd hui, etc.. ou date précise », 27/10/2026. Le choix était posé
+       au-dessus des boutons : il se lisait comme un réglage de la page, et
+       repoussait vers le bas ce qu'elle venait chercher.
+       ARRÊTER N'EST PAS FILTRER : chaque date proposée est une balance refaite
+       de bout en bout par la chaîne à cette date, pas celle du jour amputée de
+       ses dernières écritures. -->
+  <div class="arrete" id="arrete" hidden>
+    <label for="arrete-select">Quelle balance&nbsp;?</label>
+    <select id="arrete-select"></select>
+    <input type="date" id="arrete-date" min="2020-01-01" hidden>
+    <button type="button" id="arrete-ok">Télécharger</button>
+    <button type="button" id="arrete-voir">Voir à l’écran</button>
+    <button type="button" id="arrete-non">Annuler</button>
+    <span class="dl-note" id="arrete-note"></span>
   </div>
 
   <div class="ruban" id="ruban"></div>
