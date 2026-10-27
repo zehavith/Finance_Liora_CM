@@ -3544,6 +3544,74 @@
             }
             lignes.push(ligne);
         }
+
+        // UN LOT LETTRÉ EST UN SEUL ÉVÉNEMENT.
+        //
+        // « Comment se fait-il que je doive classer des lignes alors qu'avant
+        // que je te donne le grand livre entier je n'en avais aucune à
+        // classer ? Les seules lignes que j'ai ajoutées sont lettrées »,
+        // 27/10/2026. Elle a raison sur les deux points, et la réponse est
+        // dans le lot : sur 90 des 108 écritures qui restaient, le lot ne
+        // contenait AUCUNE facture. Il est fait d'un à-nouveau et d'une OD,
+        // d'un avoir et de son encaissement, d'un rejet bancaire et du
+        // virement qui le reprend — la facture d'origine est antérieure à
+        // l'exercice et ne figure pas dans l'extrait.
+        //
+        // Le rang du lettrage exigeait une facture AU DÉBIT. Un avoir classé,
+        // ou une ligne de banque qui cite sa facture, ne comptaient pas : la
+        // ligne d'en face restait « à qualifier » en face d'une contrepartie
+        // parfaitement classée. C'est ce qu'elle voyait, et c'était un défaut
+        // du moteur, pas de ses données.
+        //
+        // Un lot lettré est pourtant un seul événement : ce qui y est classé
+        // classe le reste — à condition que tout y soit d'accord. L'unanimité,
+        // pas la majorité, comme partout ailleurs. Mesuré sur la balance du
+        // 27/10/2026 : 47 écritures classées, et pas un seul lot en désaccord.
+        //
+        // Le classement seulement : sans facture désignée, aucune date n'est
+        // due, et l'échéance reste celle que la ligne se donne.
+        {
+            const parLot = new Map();
+            for (const x of lignes) {
+                if (!x.lettre || x.lettre === POOL_NON_LETTRE) continue;
+                const k = (x.compte || '') + '|' + x.lettre;
+                let e = parLot.get(k);
+                if (!e) { e = { fins: new Set(), muettes: [] }; parLot.set(k, e); }
+                if (x.financement) e.fins.add(x.financement); else e.muettes.push(x);
+            }
+            for (const e of parLot.values()) {
+                if (e.fins.size !== 1 || !e.muettes.length) continue;
+                const fin = [...e.fins][0];
+                for (const x of e.muettes) {
+                    x.financement = fin;
+                    x.typeClient = typeDeClient(fin, sources) || x.typeClient || null;
+                    x.origineClassement = 'Lot lettré : ses lignes classées sont unanimes';
+                    x.preuveClassement = 'lot « ' + x.lettre + ' » du compte '
+                        + (x.compte || '') + ' : '
+                        + nomDuFinancement(fin, sources && sources.rules);
+                }
+            }
+            // Les compteurs se refont sur le résultat, plutôt que de se
+            // corriger à la main : une ligne qui cesse d'être orpheline doit
+            // disparaître de la liste des orphelines comme de son total.
+            orphelins.length = 0;
+            stats.classees = 0; stats.orphelines = 0; stats.eurosOrphelins = 0;
+            stats.reglementsClasses = 0; stats.reglementsOrphelins = 0;
+            stats.eurosReglementsOrphelins = 0;
+            for (const x of lignes) {
+                const enc = x.nature === 'reglement' || x.nature === 'avoir';
+                if (x.financement) { stats.classees++; if (enc) stats.reglementsClasses++; }
+                else {
+                    stats.orphelines++;
+                    stats.eurosOrphelins += (x.credit || 0) - (x.debit || 0);
+                    if (enc) {
+                        stats.reglementsOrphelins++;
+                        stats.eurosReglementsOrphelins += (x.credit || 0) - (x.debit || 0);
+                        orphelins.push(x);
+                    }
+                }
+            }
+        }
         orphelins.sort((a, b) => (b.credit || 0) - (a.credit || 0));
         // Ce que la comptabilité tient pour non pointé : tout règlement ou
         // avoir resté dans le pool non lettré de son compte. Le classement par
