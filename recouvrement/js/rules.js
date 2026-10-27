@@ -38,7 +38,7 @@
         {
             key: 'BTC_ENTREPRISE',
             label: 'B2C-Entreprise',
-            base: 'dateFinFormation', jours: 30,
+            base: 'dateFacture', jours: 30,
             fallback: 'dateDebutFormation', fallbackJours: 30,
             plafondDebutFormation: true,
             // Le classeur de trésorerie compte autrement pour la balance âgée
@@ -51,7 +51,7 @@
             // livre : début de formation » : deux états antérieurs de la règle,
             // abandonnés l'un après l'autre. Il dit maintenant ce que le calcul
             // fait — un auditeur qui applique la phrase doit retrouver la date.
-            note: "Fin de formation +30 jours, sans dépasser début de formation +30 jours",
+            note: "Date de facture +30 jours, sans dépasser début de formation +30 jours",
             categorie: 'Corporate', perimetre: 'Corporate',
             // Monday écrit « B2C - Entreprise », le référentiel « BTC-Entreprise ».
             // Les deux graphies désignent la même chose : un particulier dont la
@@ -67,26 +67,26 @@
             // facturation — mais le type de client est « Alternance », comme
             // dans le classeur de trésorerie.
             key: 'CORPORATE_ALTERNANCE', label: 'Corporate - Alternance',
-            base: 'dateFinFormation', jours: 30,
+            base: 'dateFacture', jours: 30,
             fallback: 'dateDebutFormation', fallbackJours: 30,
             plafondDebutFormation: true,
             gl: { base: 'dateFinFormation', jours: 30 },
-            note: 'Fin de formation +30 jours',
+            note: "Date de facture +30 jours, sans dépasser début de formation +30 jours",
             categorie: 'Corporate', perimetre: 'Corporate',
             match: ['corporate alternance', 'corporate-alternance'],
         },
         {
             key: 'B2B', label: 'B2B',
-            base: 'dateFinFormation', jours: 30,
+            base: 'dateFinFormation', jours: 60,
             gl: { base: 'dateFinFormation', jours: 30 },
-            note: 'Fin de formation +30 jours — au grand livre : début de formation',
+            note: "Fin de formation +60 jours — au grand livre : fin de formation +30 jours",
             categorie: 'Corporate', perimetre: 'Corporate',
             match: ['b2b', 'btob', 'entreprise', 'corporate'],
         },
         {
             key: 'ALTERNANCE', label: 'Alternance',
-            base: 'dateFinFormation', jours: 30,
-            note: 'Fin de formation +30 jours', categorie: 'Alternance', perimetre: 'Corporate',
+            base: 'dateFinFormation', jours: 60,
+            note: "Fin de formation +60 jours", categorie: 'Alternance', perimetre: 'Corporate',
             match: ['alternance', 'apprentissage', 'contrat pro'],
             gl: { base: 'dateFinFormation', jours: 30 },
         },
@@ -136,8 +136,8 @@
         },
         {
             key: 'ETAT', label: 'ETAT',
-            base: 'dateFinFormation', jours: 30,
-            note: 'Fin de formation +30 jours',
+            base: 'dateFinFormation', jours: 60,
+            note: "Fin de formation +60 jours",
             categorie: 'Étatique',            perimetre: 'Corporate',
             match: ['etat', 'public etat', 'ministere', 'prefecture'],
             gl: { base: 'dateFinFormation', jours: 30 },
@@ -162,8 +162,8 @@
         },
         {
             key: 'OPCO', label: 'OPCO',
-            base: 'dateFinFormation', jours: 30,
-            note: 'Fin de formation +30 jours — pas de recouvrement OPCO, suivi du retard uniquement',
+            base: 'dateFinFormation', jours: 60,
+            note: "Fin de formation +60 jours — pas de recouvrement OPCO, suivi du retard uniquement",
             categorie: 'Étatique',            perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco', 'akto', 'atlas', 'uniformation', 'ocapiat', 'constructys', 'afdas', 'opcommerce', 'l opcommerce', 'opco ep', 'opco 2i', 'opco mobilites', 'opco sante'],
             gl: { base: 'dateFinFormation', jours: 30 },
@@ -175,8 +175,8 @@
             // SI(AP<>"" ; AP+30 ; AA)) ». Un passage à quinze jours avait été
             // posé puis repris — c'est la feuille qui fait foi.
             key: 'OPCO_ALTERNANCE', label: 'OPCO - Alternance',
-            base: 'dateFinFormation', jours: 30,
-            note: 'Fin de formation +30 jours — pas de recouvrement OPCO, suivi du retard uniquement',
+            base: 'dateFinFormation', jours: 60,
+            note: "Fin de formation +60 jours — pas de recouvrement OPCO, suivi du retard uniquement",
             categorie: 'Étatique', perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco alternance', 'opco-alternance'],
             gl: { base: 'dateFinFormation', jours: 30 },
@@ -215,10 +215,10 @@
         },
         {
             key: 'CPF', label: 'CPF',
-            base: 'dateFinFormation', jours: 45,
+            base: 'dateFinFormation', jours: 60,
             // Quarante-cinq jours, son tableau du 14/10/2026 ; le texte imprimé
             // était resté aux soixante d'un barème qu'elle avait écarté.
-            note: 'Fin de formation +45 jours', categorie: 'Étatique', perimetre: 'B2C',
+            note: "Fin de formation +60 jours", categorie: 'Étatique', perimetre: 'B2C',
             match: ['cpf', 'compte personnel de formation', 'edof', 'caisse des depots', 'cdc'],
             gl: { base: 'dateFinFormation', jours: 45 },
         },
