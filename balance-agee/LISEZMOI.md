@@ -19,7 +19,7 @@ noms et des adresses de vos clients. Avant de lancer la construction :
 | fichier | d'où il vient |
 |---|---|
 | `depot-ancienne/balance-ancienne.xlsx` | votre balance travaillée du mois précédent |
-| `depot-nouvelle/balance-nouvelle.xlsx` | l'export Pennylane du mois |
+| `depot-nouvelle/balance-nouvelle.xlsx` | l'export Pennylane du mois — **le grand livre COMPLET**, voir plus bas |
 | `depot-sellsy/sellsy.csv` | export Sellsy, toutes les factures |
 | `depot-sellsy/avoirs.csv` | export Sellsy, les avoirs |
 | `depot-ech/echeances.xlsx` | les dossiers d'alternance Filiz, onglet « Échéances » |
@@ -50,7 +50,7 @@ redéposer :
 
 | à remplacer | ce que c'est |
 |---|---|
-| `balance-agee/depot-nouvelle/balance-nouvelle.xlsx` | l'export Pennylane du grand livre clients, onglet « Grand livre - Clients » |
+| `balance-agee/depot-nouvelle/balance-nouvelle.xlsx` | l'export Pennylane du grand livre clients, onglet « Grand livre - Clients », **sans filtre de lettrage** |
 | `balance-agee/depot-sellsy/sellsy.csv` | l'export Sellsy des factures (séparateur `;`) |
 | `balance-agee/depot-sellsy/avoirs.csv` | l'export Sellsy des avoirs (séparateur `;`) |
 | `balance-agee/depot-ech/echeances.xlsx` | les dossiers d'alternance Filiz, onglet « Échéances » |
@@ -106,6 +106,46 @@ node gocardless/mandats.js gocardless.json mandats.json
 Le rapprochement se fait par **numéro de facture d'abord**, puis e-mail, puis
 nom et prénom — le numéro désigne la créance, les deux autres seulement le
 client.
+
+## Le grand livre doit être complet
+
+L'export Pennylane doit porter **toutes les lignes, lettrées et soldées
+comprises** — pas seulement les créances encore ouvertes.
+
+Pourquoi : une facture de mai, encore due au 30 juin, encaissée en août,
+disparaît d'un extrait des seules créances ouvertes. Elle en disparaît sur ses
+DEUX jambes — ni la facture, ni son règlement — et rien ne distingue alors
+« cette facture n'a jamais existé » de « cette facture a été soldée avant
+l'export ». Tout arrêté passé est donc amputé : au 30/06/2026, l'extrait
+filtré donnait 12 113 392 € là où le grand livre complet en donne
+15 090 860 €, soit 2 977 468 € de moins.
+
+Comment reconnaître un extrait filtré : grouper les écritures par
+(compte + code de lettrage) et compter celles dont le net débit−crédit est
+nul. Dans un grand livre complet, le lettrage soldé est le cas majoritaire ;
+dans l'extrait déposé jusqu'au 27/10/2026, **aucun** des 1 251 groupes ne
+l'était. Deux autres traces disent la même chose : un taux d'encaissement
+apparent absurde (11,9 % sur juillet-octobre) et un taux qui DÉCROÎT avec
+l'âge des créances, alors que les vieilles devraient être les mieux encaissées.
+
+Ce que le complet coûte : 38 288 écritures au lieu de 16 151, trois minutes de
+construction au lieu de quatre-vingt-quinze secondes, un `balance.json` de
+14 Mo au lieu de 6, et surtout — le lettrage changeant avec le fichier — une
+partie des compléments à repasser : 40 sur 60 ont été repris à la bascule.
+
+Une limite à connaître : l'export part du 01/07/2025, et tout ce qui précède y
+arrive en report à nouveau. La chaîne les redate depuis le « Libellé de
+ligne », ce qui garde l'ancienneté juste, mais **aucun arrêté antérieur au
+01/07/2025 n'est calculable** depuis ce fichier.
+
+## Publier : plusieurs envois
+
+La page, ses données et les arrêtés pèsent ensemble plus de 80 Mo, pour une
+limite de **64 Mo par envoi** et de 16 Mo par fichier. Un envoi unique serait
+refusé. On publie donc d'abord les arrêtés, deux ou trois par envoi, puis
+`balance.json` et `tableur.min.js` EN DERNIER — ainsi la page ne pointe jamais
+vers un arrêté qui n'est pas encore en ligne. Les fichiers qu'un envoi ne
+nomme pas sont conservés : c'est ce qui rend le découpage possible.
 
 ## Arrêter la balance à une date
 
