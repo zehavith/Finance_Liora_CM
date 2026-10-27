@@ -2803,10 +2803,11 @@
             // inconnue complète, et elle se range avec ses semblables.
             // Un numéro de devis — « DV-003356 » — est une vente à une
             // entreprise : c'est sa règle, et elle ne vaut que PAR DÉFAUT,
-            // c'est-à-dire quand rien de plus sûr n'a parlé. Sur les 112
-            // créances portant un numéro DV, 111 sont déjà classées par
-            // Sellsy, par l'ancienne balance ou par le compte client — dont 31
-            // en B2B, qui restent B2B. Cette règle en rattrape une.
+            // c'est-à-dire quand rien de plus sûr n'a parlé. Sur un compte
+            // d'OPCO, le libellé du compte a déjà répondu plus haut, et c'est
+            // bien lui qui fait foi : « nan nan, c'est bien OPCO pour le DV »,
+            // 27/10/2026. Le devis ne parle donc que lorsque personne d'autre
+            // n'a parlé.
             if (/^dv[-_.\s]?\d/i.test(String(c.numero || '').trim())) {
                 return poser(c, 'BTC_ENTREPRISE', 'Numéro de devis (B2C - Entreprise par défaut)',
                     c.numero || '');
@@ -3195,12 +3196,28 @@
         // aucune créance n'en sort, et l'écriture finissait « dispositif à
         // qualifier » alors que Sellsy répond « B2C ». La facturation est donc
         // interrogée en dernier, après la créance et la facture soldée.
-        const parSellsy = new Map();
+        const parSellsy = new Map(), brutSellsyEcr = new Map(),
+              parNomSellsyEcr = new Map(), alternanceEcr = new Set();
         for (const l of ((sources && sources.sellsy) || [])) {
+            for (const k of [l.cle, l.cleZoho])
+                if (k && l.typeClient && !brutSellsyEcr.has(k)) brutSellsyEcr.set(k, l.typeClient);
+            if (l.alternance) for (const k of [l.cle, l.cleZoho]) if (k) alternanceEcr.add(k);
             const fin = R.detectFinancement(l.typeClient, sources.rules);
             if (!fin) continue;
             for (const k of [l.cle, l.cleZoho]) if (k && !parSellsy.has(k)) parSellsy.set(k, fin);
+            const n = R.norm(l.client || '');
+            if (n.length < 3) continue;
+            let m = parNomSellsyEcr.get(n);
+            if (!m) { m = new Map(); parNomSellsyEcr.set(n, m); }
+            m.set(fin, (m.get(fin) || 0) + 1);
         }
+        // Les arbitrages — France Travail, OPCO, Corporate — ont besoin de ce
+        // que sait la facturation. Même objet que pour les créances, construit
+        // à partir des mêmes sources : la règle doit être LA MÊME des deux
+        // côtés, pas une imitation.
+        const oArbEcr = { rules: (sources && sources.rules) || null,
+                          parCleSellsy: parSellsy, brutSellsy: brutSellsyEcr,
+                          parNomSellsy: parNomSellsyEcr, alternanceSellsy: alternanceEcr };
         // Et ce que la facturation sait des DATES du document, par son numéro.
         //
         // Le repêchage ci-dessous donnait le dispositif et refusait la date :
@@ -3309,6 +3326,9 @@
                            dateEcheance: null, echeanceBase: '', echeanceMotif: '', numero: l.numero };
             }
             // Un numéro de devis vaut B2C - Entreprise par défaut, ici aussi.
+            // Par DÉFAUT : sur un compte d'OPCO, le libellé du compte a déjà
+            // répondu plus haut — « nan nan, c'est bien OPCO pour le DV »,
+            // 27/10/2026.
             if (!source && /^dv[-_.\s]?\d/i.test(String(l.numero || '').trim())) {
                 source = { financement: 'BTC_ENTREPRISE', typeClient: null,
                            origineClassement: 'Numéro de devis (B2C - Entreprise par défaut)',
@@ -3325,6 +3345,52 @@
                                     origineClassement: 'Financement unanime du compte client',
                                     preuveClassement: 'toutes les factures connues de ' + (l.compte || ''),
                                     dateEcheance: null, echeanceBase: '', echeanceMotif: '', numero: '' };
+            }
+            // LE LIBELLÉ DU COMPTE NOMME LE FINANCEUR — ICI AUSSI.
+            //
+            // « Tu n'as pas besoin de moi pour classer la majorité des lignes,
+            // regarde bien », 27/10/2026. Elle a raison, et le défaut est
+            // structurel : « DR Pôle Emploi Occitanie », « AKTO »,
+            // « Transitions Pro Pays de la Loire » sont lus pour les CRÉANCES
+            // — duLibelle, MOTIFS_COMPTE — et ne l'ont jamais été pour les
+            // écritures. Un encaissement sans facture sur un compte France
+            // Travail finissait donc « à qualifier » alors que son compte dit
+            // le financeur et que SA règle du 21/10/2026 — au-dessus de
+            // 7 000 €, une POEI — dit le dispositif.
+            //
+            // Ce n'est pas une règle nouvelle : c'est la sienne, portée là où
+            // elle manquait, avec le même arbitrage et le même objet de
+            // facturation. Et elle passe APRÈS tout le reste : une ligne déjà
+            // classée par sa facture, son lettrage ou son compte ne bouge pas.
+            if (!source) {
+                const m = financementDuLibelle(l.tiers) || financementDuLibelle(l.compte);
+                if (m) {
+                    const commeUneCreance = {
+                        cle: l.numero ? I.factureKey(l.numero) : null,
+                        numero: l.numero || '', libelle: l.libelle || '',
+                        tiers: l.tiers || '', compte: l.compte || '', qualif: '',
+                        filiz: /filiz/i.test((l.numero || '') + ' ' + (l.libelle || '')),
+                        montant: Math.abs((l.debit || 0) - (l.credit || 0)),
+                        resteDu: Math.abs((l.debit || 0) - (l.credit || 0)) };
+                    const fin = m.arbitrage
+                        ? (arbitrer(m.arbitrage, commeUneCreance, oArbEcr) || m.fin)
+                        : m.fin;
+                    if (fin) source = { financement: fin, typeClient: null,
+                        origineClassement: 'Libellé du compte client',
+                        preuveClassement: m.libelle
+                            + (m.arbitrage && Math.abs((l.debit || 0) - (l.credit || 0)) > SEUIL_POEI
+                                ? ' · au-dessus de 7 000 €' : ''),
+                        dateEcheance: null, echeanceBase: '', echeanceMotif: '', numero: '' };
+                }
+            }
+            // Un règlement passé par GoCardless ou Stripe est un paiement de
+            // particulier : ces canaux ne servent qu'au financement personnel.
+            // La règle existait pour les créances, pas pour les écritures.
+            if (!source && PAIEMENT_PERSO.test(R.norm(l.libelle || ''))) {
+                source = { financement: 'BTC_PERSO', typeClient: null,
+                    origineClassement: 'Réglée par GoCardless ou Stripe',
+                    preuveClassement: (R.norm(l.libelle || '').match(PAIEMENT_PERSO) || [''])[0],
+                    dateEcheance: null, echeanceBase: '', echeanceMotif: '', numero: '' };
             }
             stats[NATURES[l.nature] || 'autres']++;
             const encaissement = l.nature === 'reglement' || l.nature === 'avoir';
@@ -3371,11 +3437,19 @@
                 typeClient: source
                     ? (typeDeClient(finHerite, sources) || source.typeClient || null)
                     : null,
+                // Une origine qui appartient à la LIGNE se dit telle quelle ;
+                // seules celles qui viennent d'une créance voisine se
+                // réécrivent en « hérité ». Le libellé du compte et le canal
+                // de paiement sont des preuves de la ligne elle-même : sans
+                // cette liste, 243 écritures annonçaient « hérité de la
+                // facture du même lettrage » alors que leur justificatif
+                // disait « Pôle emploi, France Travail · au-dessus de
+                // 7 000 € » ou « payout ». « Ma balance âgée doit être
+                // auditable » : l'origine doit nommer ce qui a vraiment
+                // classé la ligne.
                 origineClassement: source
                     ? (l.nature === 'facture' ? source.origineClassement
-                        : (source.origineClassement === 'Facture citée par la ligne'
-                           || source.origineClassement === 'Financement unanime du compte client'
-                           || source.origineClassement === 'Facture Filiz : alternance')
+                        : ORIGINES_DE_LA_LIGNE.has(source.origineClassement)
                             ? source.origineClassement
                             : (l.lettre && l.lettre !== POOL_NON_LETTRE
                                ? HERITE_LETTRAGE : HERITE_POOL))
@@ -3853,6 +3927,15 @@
     // Les dispositifs d'alternance, quelle que soit la catégorie qui les
     // porte. Ils changent de catégorie quand elle refond son classement ;
     // leurs clés, non.
+    // Les classements qu'une écriture tient d'elle-même, et non d'une créance
+    // voisine : ils survivent tels quels à l'export.
+    const ORIGINES_DE_LA_LIGNE = new Set([
+        'Facture citée par la ligne',
+        'Financement unanime du compte client',
+        'Facture Filiz : alternance',
+        'Libellé du compte client',
+        'Réglée par GoCardless ou Stripe',
+    ]);
     const ALTERNANCES = new Set(['ALTERNANCE', 'CORPORATE_ALTERNANCE',
                                  'OPCO_ALTERNANCE', 'PERSO_ALTERNANCE']);
 
