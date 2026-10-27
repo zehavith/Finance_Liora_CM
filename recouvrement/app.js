@@ -53,6 +53,8 @@
         financementsManuels: {},
         grandLivre: [],
         imports: [],
+        // L'arrêté des données déposées à côté de la page : { le, a }.
+        arreteDepose: null,
 
         // Contrôle d'exhaustivité Sellsy ↔ Monday
         sellsy: { lignes: [], mapping: {}, entetes: [], ignorees: 0, nomFichier: null, date: null },
@@ -462,6 +464,17 @@
         // l'arrêté déposé gagne, et remplace les neuf tableaux — le grand
         // livre, lui, reste en place et se recale dessus.
         const arreteDepose = (manifeste.arreteLe || '') + ' ' + (manifeste.arreteA || '');
+
+        // L'ARRÊTÉ SE LIT EN HAUT À DROITE, QU'ON RECHARGE OU NON.
+        //
+        // L'emplacement existait déjà, mais il affichait l'âge de la dernière
+        // actualisation Monday — qui n'a jamais lieu sur la page publiée,
+        // faute de jeton. Il restait donc vide, et rien ne disait de quand
+        // dataient les chiffres. C'est pourtant la première question qu'on se
+        // pose devant une balance. On le pose ici, avant même de décider s'il
+        // faut recharger : la copie servie porte le même arrêté que le dépôt.
+        state.arreteDepose = { le: manifeste.arreteLe || '', a: manifeste.arreteA || '' };
+        majIndicateurActualisation();
         let arreteServi = null;
         try { arreteServi = await S.get(CLE_ARRETE_SERVI, null); } catch { arreteServi = null; }
         const dejaCharge = state.brutes.length || (state.glOuvertes || []).length;
@@ -12285,7 +12298,20 @@
             }
             return;
         }
-        if (!state.derniereActualisation) { el.textContent = ''; el.className = 'maj-indic'; return; }
+        // Pas d'actualisation Monday dans cette page : c'est l'arrêté du
+        // dépôt qui date les chiffres, et c'est lui qu'il faut montrer.
+        if (!state.derniereActualisation) {
+            const a = state.arreteDepose;
+            if (a && a.le) {
+                el.className = 'maj-indic';
+                el.textContent = 'Arrêté au ' + U.dateFR(R.parseDate(a.le)) + (a.a ? ' à ' + a.a : '');
+                el.title = 'Date et heure auxquelles les neuf tableaux Monday ont été relevés.\n'
+                    + 'La page suit ce qui est déposé à côté d\u2019elle : si un arrêté plus '
+                    + 'récent est publié, elle le reprend à l\u2019ouverture suivante.';
+                return;
+            }
+            el.textContent = ''; el.className = 'maj-indic'; return;
+        }
 
         const minutes = Math.round((Date.now() - state.derniereActualisation.getTime()) / 60000);
         const quand = minutes < 1 ? "à l'instant"
