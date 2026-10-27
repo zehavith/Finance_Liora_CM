@@ -20,6 +20,65 @@ const selection=new Set();
 // aux trois menus — ils restent disponibles par-dessus.
 let zoom=null;
 
+// ───────── l'arrêté regardé ─────────
+//
+// « j'aimerais pv télécharger une balance agé à date (dc pas tt la balance
+//   agé, par exemple balance agé jusqu'au 30 sept) », 23/10/2026.
+//
+// ARRÊTER N'EST PAS FILTRER. Masquer les écritures postérieures laisserait le
+// reste dû tel qu'il a été calculé aujourd'hui : l'imputation des règlements
+// — lettrage, rapprochement, répartition au prorata — a été faite avec les
+// paiements d'octobre sous les yeux. On obtiendrait une balance qui ressemble
+// au 30 septembre sans en être une, et qui ne se justifierait devant personne.
+//
+// La page ne recalcule donc RIEN. Chaque date proposée est une balance refaite
+// de bout en bout par la chaîne à cette date — même code, mêmes contrôles —
+// et servie dans son propre fichier. Changer de date recharge la page dessus :
+// le ruban, la synthèse, le détail et le téléchargement en découlent tous,
+// sans qu'aucun d'eux ait à savoir qu'on a changé d'arrêté.
+//
+// Le fichier autonome porte ses données en lui et ne peut pas en charger
+// d'autres : la liste y reste vide, et le choix ne s'affiche pas.
+let ARRETES={};
+const ARRETE_VU=(()=>{ try{
+  return new URLSearchParams(location.search).get('arrete')||''; }catch(e){ return ''; } })();
+const FICHIER_DONNEES=()=>
+  (ARRETE_VU && ARRETES[ARRETE_VU]) ? 'arretes/balance-'+ARRETE_VU+'.json' : 'balance.json';
+// L'empreinte vérifie que la page a reçu LES données qu'elle attend. Chaque
+// arrêté porte la sienne : sans cela, charger le 30 septembre déclencherait
+// l'alerte « les données ne sont pas celles de cette page » à chaque fois.
+const SIGNATURE_ATTENDUE=()=>
+  (ARRETE_VU && ARRETES[ARRETE_VU]) ? ARRETES[ARRETE_VU] : null;
+
+function allerArrete(d){
+  const u=new URL(location.href);
+  if(d) u.searchParams.set('arrete',d); else u.searchParams.delete('arrete');
+  location.href=u.toString();
+}
+
+function brancherArrete(){
+  const bloc=E('arrete'); if(!bloc) return;
+  const dates=Object.keys(ARRETES).sort().reverse();
+  if(!dates.length) return;        // fichier autonome : rien à charger
+  bloc.hidden=false;
+  const sel=E('arrete-select');
+  const opt=(v,t,c)=>{ const o=document.createElement('option');
+    o.value=v; o.textContent=t; o.selected=!!c; sel.appendChild(o); };
+  opt('','aujourd’hui — le grand livre déposé ('+D.arrete+')',!ARRETE_VU);
+  for(const d of dates)
+    opt(d, ARRETES[d].a+' — '+(ARRETES[d].n||0).toLocaleString('fr-FR')+' écritures', d===ARRETE_VU);
+  sel.addEventListener('change',()=>allerArrete(sel.value));
+  if(ARRETE_VU) E('arrete-date').value=ARRETE_VU;
+  E('arrete-voir').addEventListener('click',()=>{
+    const v=E('arrete-date').value;
+    if(!v){ E('arrete-note').textContent='Choisissez une date.'; return; }
+    if(ARRETES[v]) return allerArrete(v);
+    demanderArrete(v);
+  });
+  if(ARRETE_VU && !ARRETES[ARRETE_VU])
+    E('arrete-note').textContent='Le '+ARRETE_VU+' n’est pas arrêté : voici la balance du jour.';
+}
+
 Promise.resolve(DONNEES).then(d=>{ D=d;
   d.cols.forEach((c,i)=>col[c]=i);
   I=d.lignes.map((_,i)=>i);
@@ -98,6 +157,7 @@ function demarrer(){
   brancherTri();
   appliquer();
   E("telech").hidden=false;
+  brancherArrete();
   brancherParametres();
   parametres();
   ouvrirBase();
@@ -1402,6 +1462,39 @@ let COMM=null;
 async function ouvrirCommentaires(){
   try{ COMM=await claude.use('comments'); }catch(e){ COMM=null; }
 }
+/**
+ * UNE DATE QUI N'EST PAS ENCORE ARRÊTÉE.
+ *
+ * Les arrêtés servis à côté de la page sont ceux qu'on a construits d'avance.
+ * Pour toute autre date, la page ne bricole rien : elle enregistre la demande,
+ * et la relève planifiée la construit — même chaîne, mêmes contrôles. Mieux
+ * vaut attendre une balance juste qu'obtenir tout de suite une balance qui
+ * ressemble à celle qu'on voulait.
+ */
+async function demanderArrete(date){
+  const dire=t=>{ const e=E('arrete-note'); if(e) e.textContent=t; };
+  const dispo=Object.keys(ARRETES).sort().reverse().map(d=>ARRETES[d].a);
+  if(!DB||!admin){
+    dire('Le '+date+' n’est pas encore arrêté. Disponibles : '
+      +(dispo.join(', ')||'aucun')+'.');
+    return;
+  }
+  const bouton=E('arrete-voir'); if(bouton) bouton.disabled=true;
+  const v={date:date, quand:leJour(), quandISO:new Date().toISOString(),
+           motif:'arrêté au '+date, etat:'en attente'};
+  try{
+    await DB.collection('demandes').doc('arrete').set(v);
+    let envoi='';
+    try{ envoi=await prevenir({quand:v.quand, motif:v.motif}); }catch(e){ envoi=''; }
+    dire(envoi==='transmise'
+      ? 'Demande transmise · l’arrêté au '+date+' sera construit et ajouté à la liste.'
+      : 'Demande enregistrée · l’arrêté au '+date+' sera construit à la prochaine relève.');
+  }catch(e){
+    dire('La demande n’a pas pu être enregistrée.');
+  }
+  if(bouton) bouton.disabled=false;
+}
+
 async function prevenir(v){
   if(!COMM||!COMM.sendToClaude||!COMM.canSendToClaude) return '';
   let etat='';

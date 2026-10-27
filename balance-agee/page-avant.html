@@ -72,6 +72,20 @@ h2{font-family:var(--titre);font-size:17px;font-weight:600;margin:34px 0 10px;
 .telech button:disabled{opacity:.5;cursor:default}
 .telech button+button{color:var(--encre);background:transparent;border-color:var(--trait-fort)}
 .dl-note{font-size:12px;color:var(--encre-2)}
+/* Le choix de l'arrêté : la même barre que le téléchargement, mais elle
+   s'affiche même sans le canal « downloads » — changer de date se regarde
+   à l'écran avant de se télécharger. */
+.arrete{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:16px;
+  padding:10px 12px;background:var(--carte);border:1px solid var(--trait);border-radius:8px}
+.arrete label{font-size:13px;color:var(--encre-2)}
+.arrete select,.arrete input[type=date]{font:inherit;font-size:13px;color:var(--encre);
+  background:var(--fond);border:1px solid var(--trait-fort);border-radius:6px;padding:6px 8px}
+.arrete button{font:inherit;font-size:13px;font-weight:500;color:var(--encre);
+  background:transparent;border:1px solid var(--trait-fort);border-radius:6px;
+  padding:7px 12px;cursor:pointer}
+.arrete button:hover{border-color:var(--corail)}
+.arrete button:disabled{opacity:.5;cursor:default}
+.arrete-sep{color:var(--encre-3);font-size:13px}
 .ruban{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
 .tuile{flex:1 1 180px;min-width:0;background:var(--carte);border:1px solid var(--trait);
   border-radius:8px;padding:12px 14px}
@@ -315,6 +329,19 @@ input[type=search]{flex:1 1 220px}
   </div>
   <p class="sous" id="sous">Chargement…</p>
   <p class="sous">Fichier autonome : il fonctionne hors connexion, sans compte, dans n’importe quel navigateur.</p>
+
+  <!-- ARRÊTER N'EST PAS FILTRER : les dates proposées ici sont des balances
+       REFAITES à cette date par la chaîne, pas la balance du jour amputée de
+       ses dernières écritures. Le choix recharge la page sur l'arrêté demandé ;
+       tout ce qui suit — ruban, synthèse, détail, téléchargement — en découle. -->
+  <div class="arrete" id="arrete" hidden>
+    <label for="arrete-select">Balance arrêtée au</label>
+    <select id="arrete-select"></select>
+    <span class="arrete-sep">ou</span>
+    <input type="date" id="arrete-date" min="2020-01-01">
+    <button type="button" id="arrete-voir">Arrêter à cette date</button>
+    <span class="dl-note" id="arrete-note"></span>
+  </div>
 
   <div class="telech" id="telech" hidden>
     <button type="button" id="dl-xlsx">Télécharger toute la balance</button>

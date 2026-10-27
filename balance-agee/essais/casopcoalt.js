@@ -47,16 +47,32 @@ ok('  … et le délai annoncé est celui appliqué', cl[1].echeanceJours===30);
 
 console.log('\n=== le barème lui-même, tel qu’il est écrit ===');
 const r=k=>RG.find(x=>x.key===k);
-ok('OPCO - Alternance : fin de formation + 30 (suivi)',
-   r('OPCO_ALTERNANCE').base==='dateFinFormation' && r("OPCO_ALTERNANCE").jours===30);
+// LE SUIVI ET LA BALANCE ÂGÉE NE SUIVENT PLUS LE MÊME BARÈME.
+//
+// « les dates d'echeances st à date de facture +30 JOUR pour B2C entreprise,
+//   debut de formation pour Financement personnel, le reste fin de formation
+//   +60 jours » puis « Corporate - Alternance c'est date de facture +30
+//   jours », 27/10/2026 — et, la veille : « je parle pour l'appli suivi
+//   recouv », « ds la partie tableau de bord, à differencier avec onglet
+//   balance agé ».
+//
+// Le tableau de bord a donc changé de barème, la balance âgée non : ses
+// variantes « gl » sont restées telles quelles, et c'est ce que les lignes
+// ci-dessous vérifient, côte à côte. Ce fichier attendait encore l'ancien
+// barème des deux côtés et criait depuis le changement : trois échecs qu'on
+// n'avait pas vus, parce que les cas de la balance âgée n'ont pas été relancés
+// après avoir touché rules.js.
+ok('OPCO - Alternance : fin de formation + 60 (suivi)',
+   r('OPCO_ALTERNANCE').base==='dateFinFormation' && r("OPCO_ALTERNANCE").jours===60);
 ok('OPCO - Alternance : fin de formation + 30 (balance âgée)',
    r('OPCO_ALTERNANCE').gl.base==='dateFinFormation' && r("OPCO_ALTERNANCE").gl.jours===30);
-ok('Corporate - Alternance : fin de formation + 30 (suivi)',
-   r('CORPORATE_ALTERNANCE').base==='dateFinFormation' && r('CORPORATE_ALTERNANCE').jours===30);
+ok('Corporate - Alternance : date de facture + 30 (suivi)',
+   r('CORPORATE_ALTERNANCE').base==='dateFacture' && r('CORPORATE_ALTERNANCE').jours===30
+   && r('CORPORATE_ALTERNANCE').plafondDebutFormation===true);
 ok('Corporate - Alternance : fin de formation + 30 (balance âgée)',
    r('CORPORATE_ALTERNANCE').gl.base==='dateFinFormation' && r('CORPORATE_ALTERNANCE').gl.jours===30);
 ok('  … et la phrase imprimée dit la même chose',
-   /fin de formation \+30/i.test(r('CORPORATE_ALTERNANCE').note||''));
+   /date de facture \+30/i.test(r('CORPORATE_ALTERNANCE').note||''));
 ok('l’OPCO reste hors recouvrement', r('OPCO_ALTERNANCE').sansRecouvrement===true);
 
 console.log('\n=== sans fin de formation, rien n’est inventé ===');

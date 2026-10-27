@@ -81,8 +81,29 @@ aAvant=coupe(aAvant,'<script id="donnees" type="application/json">','','la balis
 let aApres=apres;
 aApres=coupe(aApres,'</script>\n<script>\nconst DONNEES=JSON.parse(document.getElementById("donnees").textContent);\n',
   '<script>\n','la lecture des données embarquées');
+// LES ARRÊTÉS CONSTRUITS D'AVANCE, SCELLÉS DANS LA PAGE.
+//
+// « j'aimerais pv télécharger une balance agé à date », 23/10/2026. Chacun est
+// une balance refaite de bout en bout à sa date par cette même chaîne, posée
+// dans art/arretes/. La page n'en recalcule aucun : elle les charge.
+//
+// La signature de chaque fichier — écritures, arrêté, jour de construction —
+// part avec la liste : c'est elle que l'empreinte vérifiera au chargement, à
+// la place de celle de la balance du jour.
+const ARRETES_DISPO=(()=>{
+  const dir='art/arretes';
+  if(!fs.existsSync(dir)) return {};
+  const out={};
+  for(const f of fs.readdirSync(dir).filter(n=>/^balance-\d{4}-\d{2}-\d{2}\.json$/.test(n))){
+    const m=JSON.parse(fs.readFileSync(require('path').join(dir,f),'utf8'));
+    out[f.slice(8,18)]={n:(m.lignes||[]).length, a:m.arrete||'', g:m.genere||''};
+  }
+  return out;
+})();
+aApres=coupe(aApres,'let ARRETES={};',
+  'let ARRETES='+JSON.stringify(ARRETES_DISPO)+';','la liste des arrêtés');
 aApres=coupe(aApres,'Promise.resolve(DONNEES).then(d=>{ D=d;',
-  "fetch('balance.json').then(r=>r.json()).then(d=>{ D=d; empreinte(d);",'le chargement des données');
+  "fetch(FICHIER_DONNEES()).then(r=>r.json()).then(d=>{ D=d; empreinte(d);",'le chargement des données');
 aApres=coupe(aApres,`let remettre=async(nom,octets)=>{const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([octets],{type:MIME}));
   a.download=nom;document.body.appendChild(a);a.click();
@@ -118,7 +139,7 @@ const EMPREINTE=JSON.stringify({n:(att.lignes||[]).length, a:att.arrete||'', g:a
 aApres=coupe(aApres,'</script>\n\n</body>\n</html>',
 `
 function empreinte(d){
-  const att=${EMPREINTE};
+  const att=SIGNATURE_ATTENDUE()||${EMPREINTE};
   const vu={n:(d.lignes||[]).length, a:d.arrete||'', g:d.genere||''};
   if(vu.n===att.n && vu.a===att.a && vu.g===att.g) return;
   const n=x=>Number(x||0).toLocaleString('fr-FR');
@@ -205,6 +226,11 @@ try{ fs.unlinkSync('essais/tableur.min.js'); }catch(e){}
 // écrit depuis la page. Il pointe sur celle du dépôt, la même que la page
 // autonome embarque.
 fs.symlinkSync('../vendor/tableur.min.js','essais/tableur.min.js');
+// Les arrêtés aussi : sans eux, le choix de date s'affiche dans les essais et
+// chaque date répond 404 — un essai qui ne peut pas exercer le chemin qu'il
+// montre ne prouve rien.
+try{ fs.unlinkSync('essais/arretes'); }catch(e){}
+if(fs.existsSync('art/arretes')) fs.symlinkSync('../art/arretes','essais/arretes');
 
 const COLS=JSON.parse(donnees).cols;
 const n1=verifierContrat(apres,COLS,'la page autonome');
@@ -241,3 +267,10 @@ const ko=f=>(fs.statSync(f).size/1048576).toFixed(2)+' Mo';
 console.log('Balance-agee-Liora.html : '+ko('Balance-agee-Liora.html'));
 console.log('art/balance-agee.html   : '+(fs.statSync('art/balance-agee.html').size/1024).toFixed(1)+' ko');
 console.log('art/balance.json        : '+ko('art/balance.json'));
+{
+  const n=Object.keys(ARRETES_DISPO).length;
+  console.log('arrêtés à date          : '+(n
+    ? n+' — '+Object.keys(ARRETES_DISPO).sort().reverse()
+        .map(k=>ARRETES_DISPO[k].a+' ('+ARRETES_DISPO[k].n+' écritures)').join(', ')
+    : 'aucun — le choix de date ne s’affichera pas'));
+}
