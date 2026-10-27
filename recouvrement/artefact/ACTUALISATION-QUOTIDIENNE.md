@@ -340,19 +340,21 @@ s'est produit.
 
 ## Ce qui reste ouvert, et qu'il ne faut pas oublier
 
-**Les essais tournent sur une page qui n'ouvre pas les données du jour.**
-`construire.js` pose le drapeau `LIORA_DONNEES_DU_JOUR` sur `index.html`
-seulement ; `essai.html`, que `essayer.js` ouvre, est bâti avant ce bloc et
-ne le reçoit jamais. Conséquence : **rien ne vérifie que la page publiée
-s'ouvre remplie** — la seule chose qui compte le matin. Mesuré à la main le
-26/10 : elle s'ouvre bien, 11 220 lignes et 11 135 créances.
+**Les essais tournent maintenant sur les deux pages.** `construire.js` pose le
+drapeau `LIORA_DONNEES_DU_JOUR` sur `index.html`, et écrit en plus
+`essai-du-jour.html` : la même enveloppe que `essai.html`, avec le drapeau.
+`essayer.js` ouvre les deux — la première pour les suites écrites pour une
+application vide (l'écran d'accueil, la reprise d'un grand livre seul), la
+seconde pour ce que la tâche du matin promet. Sept contrôles y vivent : la page
+s'ouvre remplie et porte son arrêté, le clic sur un financement descend tableau
+→ groupe → qualification puis remonte par le fil, un AVR ne compte jamais dans
+les factures manquantes, et la vignette des avoirs non rapprochés compte ce
+qu'elle doit. Aucune des deux pages ne se publie : `A-PUBLIER.txt` les écarte
+toutes les deux, et l'essai le vérifie.
 
-Poser le drapeau sur les deux pages suffit à combler le trou, mais fait alors
-tomber deux suites écrites pour une application vide — « l'écran d'accueil est
-là » et « elle ouvre directement sur la balance âgée ». Les réécrire demande
-de trancher ce que la page DOIT montrer quand elle porte à la fois les données
-du jour et un grand livre déposé : une décision de Zehavit, pas un ajustement
-d'essai. À faire avec elle, pas à la volée sur le garde-fou de sa balance.
+Ce qui reste à trancher, et qui ne l'est pas ici : ce que la page DOIT montrer
+quand elle porte à la fois les données du jour et un grand livre déposé. Les
+deux essais cohabitent justement pour ne pas avoir à le décider à la volée.
 
 **Le grand livre de référence n'a pas d'abri durable.** Il vit dans le bac à
 sable de la session. Son absence ne gèle plus la publication, mais onze

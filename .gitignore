@@ -17,5 +17,9 @@ dist/
 # commande depuis recouvrement/, et il pèse trois mégaoctets de copies.
 #   node recouvrement/artefact/construire.js
 recouvrement/artefact/paquet/
+
+# L'empreinte de ce qui a été publié : un état de poste, pas une source. Elle
+# vit hors du paquet pour survivre à sa reconstruction.
+recouvrement/artefact/.empreinte
 # Donnees reelles du portefeuille : elles ne vont pas au depot.
 recouvrement/artefact/donnees-du-jour/

@@ -3351,7 +3351,12 @@
                     const label = ctx && ctx.raw && ctx.raw._data && ctx.raw._data.label;
                     if (!label) return;
                     const g = groupes.find(x => x.label === label);
-                    if (g) filtrerParDimension(state.ui.treemapDim, g.cle);
+                    if (!g) return;
+                    // Sur la dimension financement, le clic ouvre le détail du
+                    // dispositif — tableau, puis groupe, puis qualification. Le
+                    // filtre reste accessible, dans le pied de la fenêtre.
+                    if (state.ui.treemapDim === 'financement') { montrerDetailFinancement(g.cle); return; }
+                    filtrerParDimension(state.ui.treemapDim, g.cle);
                 },
             },
         };
@@ -3478,6 +3483,224 @@
         state.ui.page = 1;
         rendreTout();
     }
+
+    // ══════════════════════════════════════════════
+    //  LE DÉTAIL D'UN FINANCEMENT
+    // ══════════════════════════════════════════════
+
+    /**
+     * Où se loge le retard d'un dispositif : tableau, puis groupe, puis
+     * qualification.
+     *
+     * « lorsque l'on clique sur un des financements cela doit nous amener à
+     *   une page avec le % de ce financement en retard par tableau, puis par
+     *   groupe […] puis les groupes sont des fois qualifiés avec une
+     *   qualification », 26/10/2026.
+     *
+     * Trois étages, toujours dans le même sens. Un dispositif se partage entre
+     * les tableaux Monday ; un tableau entre ses groupes ; un groupe entre les
+     * valeurs de la colonne qui le qualifie. Cette colonne n'est pas la même
+     * d'un tableau à l'autre — « Problématique pré-échéance » à l'ADV,
+     * « Groupe / Qualification » au CPF, « Statut Créance » au financement
+     * personnel : elle est choisie sur les factures du groupe, la plus
+     * renseignée d'abord, et reste changeable à la main.
+     *
+     * DEUX POURCENTAGES, QUI NE DISENT PAS LA MÊME CHOSE :
+     *   · la PART DU RETARD — combien de ce qui est en retard sur le dispositif
+     *     est porté ici. Les lignes font 100 %.
+     *   · le TAUX DE RETARD — combien de ce qui est suivi ici est en retard.
+     * Un petit groupe entièrement en retard affiche 2 % de part et 100 % de
+     * taux. Les confondre fait rater le second, qui est celui qui alerte.
+     *
+     * La lecture suit les filtres de la barre : ce qui s'ouvre est le détail
+     * de ce qui était affiché, pas celui de tout le portefeuille.
+     */
+
+    /** Les colonnes de qualification que portent ces factures, la plus remplie d'abord. */
+    function colonnesQualifDe(items) {
+        const m = new Map();
+        for (const f of items) {
+            const q = f.qualifs || {};
+            for (const nom of Object.keys(q)) {
+                const val = String(q[nom] == null ? '' : q[nom]).trim();
+                // Une date n'est pas une qualification. Monday en fait des
+                // colonnes à choix comme les autres, mais un jour de calendrier
+                // ne répond pas à « pourquoi ce n'est pas payé ».
+                if (!val || R.parseDate(val)) continue;
+                m.set(nom, (m.get(nom) || 0) + 1);
+            }
+        }
+        return [...m.entries()].map(([nom, nb]) => ({ nom, nb }))
+            .sort((a, b) => b.nb - a.nb || a.nom.localeCompare(b.nom));
+    }
+
+    function montrerDetailFinancement(finKey) {
+        const regle = R.getRule(finKey, state.rules);
+        const base = (state.dernieresFactures || [])
+            .filter(f => (f.financement || 'INCONNU') === finKey);
+        if (!base.length) {
+            U.toast('Aucune facture sur ce dispositif avec les filtres en cours.', 'error');
+            return;
+        }
+
+        const DIM_BOARD = { titre: 'Tableau', pluriel: 'tableaux',
+                            fn: f => f.board || '— hors tableau' };
+        const DIM_GROUPE = { titre: 'Groupe', pluriel: 'groupes',
+                             fn: f => f.groupe || f.groupeOrigine || '— sans groupe' };
+
+        // Le chemin parcouru, relu depuis la base à chaque rendu : un retour en
+        // arrière n'a rien à défaire, il raccourcit le chemin.
+        const chemin = [];
+        let colonne = null;
+
+        const itemsCourants = () =>
+            chemin.reduce((items, e) => items.filter(f => e.fn(f) === e.valeur), base);
+
+        function repartir(items, fn) {
+            const m = new Map();
+            for (const f of items) {
+                const v = fn(f);
+                let g = m.get(v);
+                if (!g) {
+                    g = { valeur: v, items: [], nb: 0, euros: 0, nbRetard: 0, eurRetard: 0, jours: [] };
+                    m.set(v, g);
+                }
+                g.items.push(f); g.nb++; g.euros += f.montant || 0;
+                if (f.etat === 'En retard') {
+                    g.nbRetard++; g.eurRetard += f.montant || 0;
+                    if (f.retardJours != null) g.jours.push(f.retardJours);
+                }
+            }
+            const lignes = [...m.values()];
+            const totalRetard = X.sum(lignes, g => g.eurRetard);
+            for (const g of lignes) {
+                g.partRetard = X.pct(g.eurRetard, totalRetard);
+                g.tauxRetard = X.pct(g.eurRetard, g.euros);
+                g.retardMoyen = g.jours.length
+                    ? Math.round(g.jours.reduce((s, j) => s + j, 0) / g.jours.length) : null;
+            }
+            return lignes.sort((a, b) => b.eurRetard - a.eurRetard || b.euros - a.euros);
+        }
+
+        function listeDe(titre, items, contexte) {
+            montrerFacturesListe(titre, items, contexte,
+                { onExport: rows => exporterFacturesSimple(rows, titre) });
+        }
+
+        function rendre() {
+            const items = itemsCourants();
+            const enRetard = items.filter(f => f.etat === 'En retard');
+            const eurRetard = X.sum(enRetard, f => f.montant);
+            const eurTotal = X.sum(items, f => f.montant);
+            const niveau = chemin.length === 0 ? DIM_BOARD : chemin.length === 1 ? DIM_GROUPE : null;
+
+            // Au troisième étage, la dimension est la colonne de qualification
+            // du tableau. Elle se recalcule sur les factures du groupe : si
+            // celle qui était retenue n'y est plus renseignée, la plus remplie
+            // prend sa place plutôt que de rendre un tableau vide.
+            const dispo = niveau ? [] : colonnesQualifDe(items);
+            if (!niveau) {
+                if (!dispo.length) colonne = null;
+                else if (!dispo.some(c => c.nom === colonne)) colonne = dispo[0].nom;
+            }
+            const dim = niveau || (colonne
+                ? { titre: 'Qualification — ' + colonne, pluriel: 'qualifications',
+                    fn: f => String((f.qualifs || {})[colonne] || '').trim() || '(non qualifiée)' }
+                : null);
+
+            const fil = ['<button class="cell-lien" data-remonter="0">'
+                         + U.escapeHtml(regle.label) + '</button>']
+                .concat(chemin.map((e, i) =>
+                    ` <span class="fv-hint">›</span> <button class="cell-lien" data-remonter="${i + 1}">`
+                    + `${U.escapeHtml(e.valeur)}</button>`))
+                .join('');
+
+            const entete = `<p class="fv-hint">${fil}</p>`
+                + `<p class="fv-hint">${U.nombre(items.length)} factures · ${U.euros(eurTotal)} suivis ici, `
+                + `dont <strong>${U.euros(eurRetard)}</strong> en retard `
+                + `(${U.pourcent(X.pct(eurRetard, eurTotal), 1)} du montant, `
+                + `${U.nombre(enRetard.length)} factures). `
+                + `Lecture sur les filtres en cours.</p>`;
+
+            let corps;
+            let lignes = [];
+            if (!dim) {
+                // Sa colonne de qualification, ce tableau ne l'a pas — ou
+                // personne ne l'a renseignée sur ce groupe. Le dire vaut mieux
+                // qu'un tableau vide, qui se lirait comme « rien à signaler ».
+                corps = entete
+                    + '<p class="carte-vide">Aucune colonne de qualification renseignée sur ce groupe. '
+                    + 'Le détail s\'arrête ici : ouvrez les factures pour voir ligne à ligne.</p>';
+            } else {
+                lignes = repartir(items, dim.fn);
+                const max = Math.max(...lignes.map(l => l.eurRetard), 1);
+                const choix = (!niveau && dispo.length > 1)
+                    ? '<p class="fv-hint">Colonne qui qualifie : '
+                      + dispo.map(c => `<button class="cell-lien${c.nom === colonne ? ' actif' : ''}" `
+                          + `data-colonne="${U.escapeHtml(c.nom)}">${U.escapeHtml(c.nom)}`
+                          + `<span class="cell-mini">${U.nombre(c.nb)} renseignées</span></button>`).join(' ')
+                      + '</p>'
+                    : '';
+                corps = entete + choix + U.table([
+                    { key: 'valeur', label: dim.titre,
+                      format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v)}">${U.escapeHtml(v)}</span>` },
+                    { key: 'eurRetard', label: 'En retard', align: 'right',
+                      format: (v, r) => `${U.eurosCourt(v)} ${U.barre(v, max, U.couleurs.retard)}`
+                          + `<span class="cell-mini">${U.nombre(r.nbRetard)} factures</span>` },
+                    { key: 'partRetard', label: 'Part du retard', align: 'right',
+                      title: 'Part du retard du dispositif portée ici — les lignes font 100 %',
+                      format: v => U.pourcent(v, 1) },
+                    { key: 'tauxRetard', label: 'Taux de retard', align: 'right',
+                      title: 'Part de ce qui est suivi ici qui est en retard, en euros',
+                      format: v => `<span class="${v >= 50 ? 'cell-danger' : ''}">${U.pourcent(v, 0)}</span>` },
+                    { key: 'retardMoyen', label: 'Retard moyen', align: 'right', format: U.jours },
+                    { key: 'nb', label: 'Factures', align: 'right',
+                      // Un nombre de factures doit toujours pouvoir s'ouvrir :
+                      // c'est la règle de cet écran depuis le premier jour.
+                      format: (v, r) => `<button class="cell-lien" data-liste="${lignes.indexOf(r)}">${U.nombre(v)}</button>` },
+                ], lignes, {
+                    vide: 'Aucune facture ici.', onRowClick: true,
+                    total: { valeur: 'Total', eurRetard: U.euros(eurRetard),
+                             partRetard: '100 %', nb: U.nombre(items.length) },
+                });
+            }
+
+            const titre = `${regle.label}${chemin.length ? ' — ' + chemin[chemin.length - 1].valeur : ''}`;
+            const el = U.modal(titre, corps, [
+                { label: `Voir les ${U.nombre(items.length)} factures`, close: false,
+                  onClick: () => listeDe(titre, items, 'Toutes les factures de ce niveau, filtres en cours compris.') },
+                { label: 'Filtrer l’écran sur ce dispositif',
+                  onClick: () => { filtrerParDimension('financement', finKey); } },
+                { label: 'Fermer', primary: true },
+            ], { large: true });
+
+            $$('[data-remonter]', el).forEach(b => b.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                chemin.length = +b.dataset.remonter;
+                rendre();
+            }));
+            $$('[data-colonne]', el).forEach(b => b.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                colonne = b.dataset.colonne;
+                rendre();
+            }));
+            $$('[data-liste]', el).forEach(b => b.addEventListener('click', (ev) => {
+                ev.stopPropagation();
+                const l = lignes[+b.dataset.liste];
+                if (l) listeDe(`${titre} — ${l.valeur}`, l.items, `${dim.titre} : ${l.valeur}.`);
+            }));
+            U.bindTable(el, lignes, { onRowClick: l => {
+                // Au dernier étage il n'y a plus de sous-ensemble à montrer :
+                // la ligne mène aux factures elles-mêmes.
+                if (!niveau) { listeDe(`${titre} — ${l.valeur}`, l.items, `${dim.titre} : ${l.valeur}.`); return; }
+                chemin.push({ titre: dim.titre, valeur: l.valeur, fn: dim.fn });
+                rendre();
+            } });
+        }
+
+        rendre();
+    }
+
 
 
     /**
@@ -5123,11 +5346,12 @@
                 'Échues depuis plus de 180 jours à la date d’arrêté et toujours pas encaissées.',
                 { onExport: rows2 => exporterFacturesSimple(rows2, r.label) }));
         }));
-        U.bindTable(el, rows, { onRowClick: r => {
-            state.filtres.financements = new Set([r.key]);
-            state.ui.page = 1;
-            rendreTout();
-        } });
+        // La ligne ouvre le détail du dispositif plutôt que de filtrer l'écran :
+        // « lorsque l'on clique sur un des financements cela doit nous amener à
+        // une page avec le % de ce financement en retard par tableau ». Le
+        // filtre n'est pas perdu — il est dans le pied de la fenêtre, et le
+        // sélecteur « Financement » de la barre le pose toujours.
+        U.bindTable(el, rows, { onRowClick: r => montrerDetailFinancement(r.key) });
     }
 
     // ══════════════════════════════════════════════
@@ -8760,6 +8984,7 @@
                 <div class="chart-header">
                     <h3>${U.escapeHtml(ligne.label)}</h3>
                     <div class="chart-controls">
+                        <button class="btn btn-ghost btn-sm" id="fin-detail-retard">Le retard, tableau par tableau</button>
                         <button class="btn btn-ghost btn-sm" id="fin-detail-factures">Voir les factures</button>
                         <button class="btn btn-ghost btn-sm" id="fin-detail-fermer">Fermer</button>
                     </div>
@@ -8791,6 +9016,7 @@
         $('#fin-detail-fermer').addEventListener('click', () => {
             state.ui.finDetail = null; rendreTout();
         });
+        $('#fin-detail-retard').addEventListener('click', () => montrerDetailFinancement(cle));
         $('#fin-detail-factures').addEventListener('click', () => {
             state.filtres.financements = new Set([cle]);
             state.ui.page = 1;
@@ -9828,7 +10054,10 @@
     function rendreRepartitionSellsy(res) {
         const parStatut = SE.absentesParStatut(res.absentes);
         const el = $('#sellsy-repartition');
-        if (!parStatut.length) { el.innerHTML = ''; return; }
+        // Les avoirs non rapprochés ne sont pas des absentes : ils ont leur
+        // vignette, et elle doit pouvoir s'afficher seule.
+        const avoirs = res.avoirsNonRapproches || [];
+        if (!parStatut.length && !avoirs.length) { el.innerHTML = ''; return; }
         const total = res.absentes.length;
         // Le gris de « Justifié » n'est pas un oubli : rien à y faire, donc
         // rien qui doive attirer l'œil. Les trois autres gardent leur alerte.
@@ -9847,7 +10076,31 @@
                     s.key === 'justifiee'
                         ? ' · ' + [...s.motifs.entries()].map(([m, n]) => U.nombre(n) + ' ' + m).join(' · ')
                         : s.key !== 'payee' ? ' · ' + U.euros(s.resteDu) + ' à encaisser' : ''}</span>
-            </button>`).join('');
+            </button>`).join('')
+            // ── Les avoirs ──
+            //
+            // « tt les facture qui commence par AVR sont d avoir attention, il
+            //   faut ajouter une vignette supplémentaire si il y en a qui ne st
+            //   pas rapproché », 27/10/2026.
+            //
+            // La vignette ne paraît que s'il y en a. Elle ne compte pas dans
+            // les absentes — un avoir n'est pas une créance — d'où le
+            // pourcentage pris sur les avoirs de l'export, et non sur elles.
+            + (avoirs.length ? `
+            <button class="recup-card" data-avoirs="1"
+                    title="Voir les ${U.nombre(avoirs.length)} avoirs">
+                <span class="recup-bar" style="background:${U.couleurs.payeRetard}"></span>
+                <span class="recup-taux">${U.nombre(avoirs.length)}</span>
+                <span class="recup-label">Avoirs — non rapprochés</span>
+                <span class="recup-value">${U.euros(res.stats.eurosAvoirsNonRapproches)} d'avoirs</span>
+                <span class="recup-sub">${U.pourcent(res.stats.nbAvoirs
+                        ? avoirs.length / res.stats.nbAvoirs * 100 : null, 0)} des ${U.nombre(res.stats.nbAvoirs)} avoirs · `
+                + SE.avoirsParMotif(avoirs).map(m => U.nombre(m.nb) + ' ' + m.motif).join(' · ') + `</span>
+            </button>` : '');
+
+        $$('[data-avoirs]', el).forEach(b => b.addEventListener('click', () => {
+            montrerLignesSellsy('Avoirs non rapprochés', avoirs);
+        }));
 
         $$('[data-statut-sellsy]', el).forEach(b => b.addEventListener('click', () => {
             const k = b.dataset.statutSellsy;
@@ -9881,7 +10134,13 @@
                 { key: 'statutLabel', label: 'Statut Sellsy', format: v => `<span class="pill">${U.escapeHtml(v || '—')}</span>` },
                 { key: 'dateFacture', label: 'Date de facture', align: 'center', format: U.dateFR },
                 { key: 'dateEcheance', label: 'Échéance Sellsy', align: 'center', format: U.dateFR },
-            ], rows.slice(0, 300), { vide: 'Aucune ligne.' })
+            ].concat(rows.some(l => l.motifAvoir)
+                // Un avoir signalé doit dire pourquoi : sans le motif, la liste
+                // se lit comme un reproche sans objet.
+                ? [{ key: 'motifAvoir', label: 'Pourquoi il est signalé',
+                     format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` }]
+                : []),
+            rows.slice(0, 300), { vide: 'Aucune ligne.' })
             + (rows.length > 300 ? `<p class="fv-hint">300 premières sur ${U.nombre(rows.length)} — l'export les donne toutes.</p>` : ''),
             [{ label: 'Exporter', close: false, onClick: () => {
                 const wb = XLSX.utils.book_new();
@@ -9892,6 +10151,7 @@
                     'Statut Sellsy': l.statutLabel || '',
                     'Date de facture': l.dateFacture ? U.dateFR(l.dateFacture) : '',
                     'Échéance Sellsy': l.dateEcheance ? U.dateFR(l.dateEcheance) : '',
+                    ...(l.motifAvoir ? { 'Pourquoi il est signalé': l.motifAvoir } : {}),
                 }))), 'Sellsy');
                 XLSX.writeFile(wb, `Sellsy_${String(titre).replace(/[^\w\u00C0-\u024F-]+/g, '_').slice(0, 40)}`
                     + `_${new Date().toISOString().slice(0, 10)}.xlsx`);

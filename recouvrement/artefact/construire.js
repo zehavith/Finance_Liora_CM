@@ -543,6 +543,16 @@ fs.writeFileSync(path.join(DIST, 'essai.html'), ENVELOPPE);
       fs.writeFileSync(page, html);
     }
 
+    // LA MÊME ENVELOPPE, MAIS REMPLIE.
+    //
+    // essai.html refait le squelette de la publication, sans le drapeau : la
+    // page s'y ouvre donc toujours vide, et rien ne vérifiait qu'elle s'ouvre
+    // REMPLIE — qui est pourtant ce que la tâche du matin promet. Ce second
+    // fichier porte le drapeau ; il sert les mêmes fichiers, depuis le même
+    // dossier. Il ne se publie pas davantage que le premier.
+    fs.writeFileSync(path.join(DIST, 'essai-du-jour.html'),
+      ENVELOPPE.replace('<script src="app.js', marque + '<script src="app.js'));
+
     console.log('donn\u00e9es du jour \u00b7 ' + n + ' fichiers \u00b7 ' + Math.round(octets / 1024)
       + ' Ko \u00b7 arr\u00eat\u00e9 au ' + (m.arreteLe || '?') + (m.arreteA ? ' \u00e0 ' + m.arreteA : ''));
   } else {
@@ -568,13 +578,14 @@ tous.sort((a, b) => b[1] - a[1]);
 // un squelette complet, et deviendrait une seconde page incohérente servie à
 // la même adresse. La liste est donc écrite ici, à chaque construction.
 {
-  const aPublier = tous.map(f => f[0]).filter(n => n !== 'index.html' && n !== 'essai.html');
+  const aPublier = tous.map(f => f[0]).filter(n =>
+    n !== 'index.html' && n !== 'essai.html' && n !== 'essai-du-jour.html');
   fs.writeFileSync(path.join(DIST, 'A-PUBLIER.txt'),
     'La page : index.html\n'
     + 'Les ' + aPublier.length + ' fichiers à publier avec elle :\n'
     + aPublier.sort().map(n => '  ' + n).join('\n')
     + '\n\nCapacités : downloads (les classeurs Excel passent par là).\n'
-    + 'Ne JAMAIS publier : essai.html (faux canal, squelette complet),\n'
+    + 'Ne JAMAIS publier : essai.html et essai-du-jour.html (faux canal, squelette complet),\n'
     + '                   A-PUBLIER.txt (ce fichier).\n');
   console.log('à publier · ' + aPublier.length + ' fichiers avec la page · liste dans A-PUBLIER.txt');
 }

@@ -20,7 +20,7 @@
  * page, et un jour nouveau mérite d'être publié.
  *
  *   node empreinte.js            écrit l'empreinte courante
- *   node empreinte.js --pose     l'inscrit dans paquet/.empreinte (après publication)
+ *   node empreinte.js --pose     l'inscrit dans .empreinte (après publication)
  *   node empreinte.js --verifie  compare : code 0 si quelque chose a changé,
  *                                code 9 si rien n'a bougé (rien à faire)
  *
@@ -32,7 +32,15 @@ const crypto = require('crypto');
 
 const PAQUET = path.join(__dirname, 'paquet');
 const LISTE = path.join(PAQUET, 'A-PUBLIER.txt');
-const MARQUE = path.join(PAQUET, '.empreinte');
+// LA MARQUE VIT HORS DU PAQUET.
+//
+// Elle était posée dans paquet/.empreinte — que construire.js efface d'un
+// rmSync au début de chaque construction. Comme la tâche du matin construit
+// AVANT de comparer, la marque n'existait jamais au moment de la lecture :
+// --verifie répondait « première publication » à chaque passage, et la
+// comparaison, écrite pour ne republier que ce qui change, ne comparait rien.
+// À côté des scripts, elle survit à la construction.
+const MARQUE = path.join(__dirname, '.empreinte');
 
 /** Les fichiers publiés, tels que la construction vient de les énumérer. */
 function aPublier() {

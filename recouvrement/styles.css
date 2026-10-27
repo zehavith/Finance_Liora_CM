@@ -1780,6 +1780,8 @@ tr.ligne-total td {
     border-bottom: 1px dashed transparent;
 }
 .cell-lien:hover { border-bottom-color: var(--accent); }
+/* La colonne de qualification retenue, dans le détail d'un financement. */
+.cell-lien.actif { color: var(--accent); border-bottom-style: solid; font-weight: 600; }
 
 /* Une carte qui n'a rien à dire le dit, plutôt que de rester vide. */
 .carte-vide {

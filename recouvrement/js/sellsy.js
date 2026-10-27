@@ -55,6 +55,29 @@
     };
 
     /**
+     * UN NUMÉRO QUI COMMENCE PAR AVR EST UN AVOIR.
+     *
+     * « tt les facture qui commence par AVR sont d avoir attention », 27/10/2026.
+     *
+     * Le statut ne suffisait pas à les reconnaître : l'export des avoirs porte
+     * « Soldé », « À solder », « Partiel » — aucun ne contient le mot avoir, et
+     * « à solder » tombait même sur le motif des payées. Les 3 512 avoirs
+     * entraient donc dans le contrôle comme des factures ordinaires, et leur
+     * absence de Monday se comptait comme un trou de suivi.
+     *
+     * Un avoir n'est pas une créance — c'est la règle de cette application
+     * depuis le premier jour. Il ne compte ni dans les factures attendues, ni
+     * dans les manquantes, ni dans le taux de couverture. Il a sa propre
+     * vignette, plus bas.
+     */
+    const PREFIXE_AVOIR = /^\s*avr/i;
+    const STATUT_AVOIR = STATUTS.find(x => x.key === 'avoir');
+
+    function estAvoir(numero) {
+        return PREFIXE_AVOIR.test(String(numero || ''));
+    }
+
+    /**
      * Statut Sellsy normalisé, à défaut déduit du reste dû.
      *
      * Beaucoup d'exports ne portent pas de colonne « statut » mais un reste dû :
@@ -293,7 +316,9 @@
 
             const montant = mapping.montant ? I.parseMontant(r[mapping.montant]) : null;
             const resteDu = mapping.resteDu ? I.parseMontant(r[mapping.resteDu]) : null;
-            const statut = normaliserStatut(mapping.statut ? r[mapping.statut] : '', resteDu, montant);
+            const statut = estAvoir(numero)
+                ? STATUT_AVOIR
+                : normaliserStatut(mapping.statut ? r[mapping.statut] : '', resteDu, montant);
 
             lignes.push({
                 cle, numero, cleZoho, numeroZoho,
@@ -346,6 +371,7 @@
                 statutBrut: mapping.statut ? String(r[mapping.statut] || '').trim() : '',
                 statut: statut.key,
                 statutLabel: statut.label,
+                avoir: statut.key === 'avoir',
                 paye: statut.paye,
                 attendue: statut.attendueDansMonday,
             });
@@ -410,6 +436,55 @@
         return l.resteDu != null ? l.resteDu : (l.paye ? 0 : l.montant);
     }
 
+    /** Une colonne de l'export, cherchée sur son nom, accents et casse ignorés. */
+    function champ(l, ...noms) {
+        const c = l.champs || {};
+        const cibles = noms.map(R.norm);
+        for (const k of Object.keys(c)) {
+            if (cibles.indexOf(R.norm(k)) !== -1) return String(c[k] == null ? '' : c[k]).trim();
+        }
+        return '';
+    }
+
+    /**
+     * UN AVOIR QUI N'EST RAPPROCHÉ DE RIEN.
+     *
+     * « il faut ajouter une vignette supplémentaire si il y en a qui ne st pas
+     *   rapproché », 27/10/2026.
+     *
+     * Trois cas, du plus coûteux au plus bénin :
+     *
+     *   · LA FACTURE D'ORIGINE EST ENCORE SUIVIE DANS MONDAY. L'avoir existe,
+     *     il est passé en banque, et la facture qu'il annule est toujours sur
+     *     un tableau de recouvrement : on relance une facture déjà créditée.
+     *     C'est le seul des trois qui fait perdre du temps et de la crédibilité.
+     *   · LE RAPPROCHEMENT BANCAIRE EST EN ATTENTE. Sellsy lui-même dit « à
+     *     rapprocher » ou « partiellement rapprochée » : le mouvement n'est pas
+     *     soldé côté banque.
+     *   · AUCUNE FACTURE D'ORIGINE. L'avoir ne désigne aucune facture : il n'y
+     *     a rien à annuler, ou la référence manque.
+     *
+     * Un avoir dont la facture d'origine est réglée, ou simplement absente du
+     * périmètre Monday, N'EST PAS signalé : Monday ne suit que ce qui est en
+     * recouvrement, et faire une anomalie de chaque avoir hors périmètre
+     * noierait les trois cas ci-dessus sous deux mille lignes sans objet.
+     */
+    const MOTIF_AVOIR_ORIGINE = 'facture d\u2019origine encore suivie dans Monday';
+    const MOTIF_AVOIR_BANQUE = 'rapprochement bancaire en attente';
+    const MOTIF_AVOIR_SANS_ORIGINE = 'aucune facture d\u2019origine';
+
+    function avoirNonRapproche(l, indexMonday) {
+        const parente = champ(l, 'facture parente', 'facture d origine',
+                              'numero de facture d origine', 'parent invoice');
+        const cleParente = parente ? I.factureKey(parente) : null;
+        const origine = cleParente && indexMonday ? indexMonday.get(cleParente) : null;
+        if (origine && !origine.paye) return MOTIF_AVOIR_ORIGINE;
+        const banque = champ(l, 'rapprochement bancaire', 'rapprochement');
+        if (banque && R.norm(banque) !== 'rapprochee') return MOTIF_AVOIR_BANQUE;
+        if (!parente) return MOTIF_AVOIR_SANS_ORIGINE;
+        return null;
+    }
+
     /**
      * Confronte l'export Sellsy aux factures Monday.
      *
@@ -464,9 +539,21 @@
         // le contrôle comme exhaustif alors qu'il ne l'est pas.
         const sansNumero = factures.filter(f => !f.cle);
 
+        // Les avoirs, à part. Ils ne sont pas des créances et ne comptent dans
+        // aucun des chiffres ci-dessus ; seuls ceux qui ne se rapprochent de
+        // rien ont quelque chose à dire.
+        const avoirs = lignes.filter(l => l.avoir);
+        const avoirsNonRapproches = [];
+        for (const l of avoirs) {
+            const motif = avoirNonRapproche(l, indexMonday);
+            if (motif) avoirsNonRapproches.push({ ...l, motifAvoir: motif });
+        }
+
         return {
             absentes, horsPerimetre, rapprochees, surnumeraires, sansNumero, bornes,
-            stats: statistiques({ lignes, absentes, horsPerimetre, rapprochees, surnumeraires, sansNumero }),
+            avoirs, avoirsNonRapproches,
+            stats: statistiques({ lignes, absentes, horsPerimetre, rapprochees, surnumeraires,
+                                  sansNumero, avoirs, avoirsNonRapproches }),
         };
     }
 
@@ -497,6 +584,12 @@
             nbRapprochees: o.rapprochees.length,
             nbSurnumeraires: o.surnumeraires.length,
             nbMondaySansNumero: o.sansNumero.length,
+            nbAvoirs: (o.avoirs || []).length,
+            nbAvoirsNonRapproches: (o.avoirsNonRapproches || []).length,
+            // Un avoir porte un montant négatif : sa valeur absolue est ce
+            // qu'il pèse, et c'est ce qui se lit sur la vignette.
+            eurosAvoirsNonRapproches: somme(o.avoirsNonRapproches || [],
+                l => Math.abs(montantSommable(l) || 0)),
             nbMontantAberrant: o.lignes.filter(l => l.montantAberrant).length,
             numerosMontantAberrant: o.lignes.filter(l => l.montantAberrant).map(l => l.numero),
             eurosSurnumeraires: somme(o.surnumeraires, f => f.montant),
@@ -598,6 +691,18 @@
             .map(x => ({ ...x, part: x.total ? x.absentes / x.total * 100 : null }));
     }
 
+    /** Les avoirs non rapprochés, par motif — ce que contient la vignette. */
+    function avoirsParMotif(avoirs) {
+        const m = new Map();
+        for (const l of avoirs || []) {
+            const k = l.motifAvoir || 'motif inconnu';
+            if (!m.has(k)) m.set(k, { motif: k, nb: 0, euros: 0, items: [] });
+            const e2 = m.get(k);
+            e2.nb++; e2.euros += Math.abs(montantSommable(l) || 0); e2.items.push(l);
+        }
+        return [...m.values()].sort((a, b) => b.nb - a.nb);
+    }
+
     /** Les manquantes par client — dit si le trou est concentré sur un compte. */
     function absentesParClient(absentes, limite) {
         const m = new Map();
@@ -615,5 +720,6 @@
         montantAberrant, montantSommable, resteDuSommable,
         normaliserStatut, lireExport, rapprocher,
         absentesParStatut, absentesParMois, absentesParClient, absenceJustifiee,
+        estAvoir, avoirNonRapproche, avoirsParMotif,
     };
 })(window);
