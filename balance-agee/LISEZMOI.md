@@ -107,6 +107,36 @@ Le rapprochement se fait par **numéro de facture d'abord**, puis e-mail, puis
 nom et prénom — le numéro désigne la créance, les deux autres seulement le
 client.
 
+## Arrêter la balance à une date
+
+```
+bash arreter.sh 2026-09-30
+```
+
+Dépose `art/arretes/balance-2026-09-30.json`, que la page sert sous son choix
+« Balance arrêtée au ». Compter trois minutes par date.
+
+**Arrêter n'est pas filtrer.** Le script coupe le grand livre à la date
+demandée et refait TOUT — lettrage, rapprochement, imputation au prorata,
+ancienneté. Une facture réglée le 15 octobre redevient due, et son règlement
+n'existe pas encore. C'est exactement ce que la chaîne aurait produit ce
+jour-là, et c'est la seule façon qu'un arrêté se justifie devant un
+commissaire aux comptes. Masquer les écritures postérieures laisserait le
+reste dû tel qu'il a été calculé aujourd'hui : on obtiendrait une balance qui
+ressemble au 30 septembre sans en être une.
+
+Le travail se fait dans un dossier temporaire : la balance du jour, ses
+fichiers et son classeur ne sont jamais touchés.
+
+Après avoir ajouté une date, relancer `node construire.js` : la liste des
+arrêtés est scellée dans la page à la construction, avec la signature de
+chaque fichier — sans ce passage, la nouvelle date n'apparaît pas dans le
+choix. Et publier **tous** les `art/arretes/*.json`, pas seulement le nouveau :
+un `files` incomplet retire les arrêtés déjà publiés.
+
+Une date demandée depuis la page (champ « ou … Arrêter à cette date ») est
+enregistrée dans `demandes/arrete` et construite par la relève horaire.
+
 ## Vérifier
 
 ```
@@ -124,6 +154,7 @@ classeur téléchargé depuis la page :
 
 | | |
 |---|---|
+| `controle-ae.js` et `controle-fi.js` | prennent un fichier en argument : `node essais/controle-ae.js art/arretes/balance-2026-09-30.json` |
 | `verifbal.js` | les deux balances âgées : colonnes et dépliement |
 | `verifpaie.js` | l'onglet « Montants non lettrés » |
 | `verifexc.js` | le filtre « comptes en excédent de trésorerie » |
