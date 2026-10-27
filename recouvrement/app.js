@@ -3516,7 +3516,28 @@
      * de ce qui était affiché, pas celui de tout le portefeuille.
      */
 
-    /** Les colonnes de qualification que portent ces factures, la plus remplie d'abord. */
+    /**
+     * L'ORDRE DU CHOIX : D'ABORD CE QUI RÉPOND À « POURQUOI CE N'EST PAS PAYÉ ».
+     *
+     * Classées au seul remplissage, « Basculements » — qui dit quel service
+     * tient la facture, et qui est renseignée sur les 385 lignes de l'ADV —
+     * passait devant « Problématique Pré-échéance », qui dit ce qui bloque.
+     * Les deux sont utiles, mais une seule est une réponse. À remplissage
+     * égal, c'est donc le titre qui tranche, et l'autre reste à un clic.
+     */
+    const RANGS_QUALIF = [
+        { motif: /problematique/, rang: 3 },
+        { motif: /qualification|qualif/, rang: 2 },
+        { motif: /basculement/, rang: 0 },
+    ];
+
+    function rangQualif(nom) {
+        const n = R.norm(nom || '');
+        for (const r of RANGS_QUALIF) if (r.motif.test(n)) return r.rang;
+        return 1;
+    }
+
+    /** Les colonnes de qualification que portent ces factures, la plus parlante d'abord. */
     function colonnesQualifDe(items) {
         const m = new Map();
         for (const f of items) {
@@ -3530,8 +3551,8 @@
                 m.set(nom, (m.get(nom) || 0) + 1);
             }
         }
-        return [...m.entries()].map(([nom, nb]) => ({ nom, nb }))
-            .sort((a, b) => b.nb - a.nb || a.nom.localeCompare(b.nom));
+        return [...m.entries()].map(([nom, nb]) => ({ nom, nb, rang: rangQualif(nom) }))
+            .sort((a, b) => b.rang - a.rang || b.nb - a.nb || a.nom.localeCompare(b.nom));
     }
 
     function montrerDetailFinancement(finKey) {

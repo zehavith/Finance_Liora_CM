@@ -233,14 +233,26 @@ function cellule(v) {
 // porter n'importe quoi — une date, un montant, une pièce jointe — et son
 // type ne permet pas d'en juger. Les autres miroirs restent dehors : les
 // prendre tous doublerait le fichier pour y verser des colonnes muettes.
-const TITRE_QUALIFIANT = /qualification|qualif |problematique|basculement|statut creance|etat de la facture|type de paiement/;
+// C'EST LE TITRE QUI TRANCHE, PAS LE TYPE.
+//
+// Premier essai : garder toute liste de choix non prise. Monday s'en sert
+// aussi comme boutons d'automatisation — « Envoyer relance 1 », « Générer le
+// certificat », « Update ligne », « Badge Etat ». Le financement personnel en
+// a trente-trois, et les cinq colonnes qui disent vraiment pourquoi ce n'est
+// pas paye s'y perdaient. On ne garde donc que celles dont le titre l'annonce.
+//
+// Une colonne qui commence par « Date » est ecartee : « Date MAJ Qualif ADV »
+// porte le mot, mais un jour de calendrier n'est pas un motif.
+const TITRE_QUALIFIANT = /qualification|qualif |problematique|basculement|statut creance|statut initiale|etat de la facture|etat facture|etat dossier|etape process|categorie de dette|categorie de facture|type de paiement/;
 
 function colonnesQualifiantes(colonnes, mapping, R) {
     const prises = new Set(Object.values(mapping || {}));
     return colonnes.filter(c => {
         if (!c.id || prises.has(c.id) || c.id === 'name') return false;
-        if (['status', 'color', 'dropdown'].indexOf(c.type) !== -1) return true;
-        return c.type === 'mirror' && TITRE_QUALIFIANT.test(R.norm(c.title || '') + ' ');
+        if (['status', 'color', 'dropdown', 'mirror'].indexOf(c.type) === -1) return false;
+        const t = R.norm(c.title || '');
+        if (!t || t.indexOf('date') === 0) return false;
+        return TITRE_QUALIFIANT.test(t + ' ');
     }).map(c => c.id);
 }
 
