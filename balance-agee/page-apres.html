@@ -1538,28 +1538,22 @@ async function ouvrirCommentaires(){
  * vaut attendre une balance juste qu'obtenir tout de suite une balance qui
  * ressemble à celle qu'on voulait.
  */
-async function demanderArrete(date){
-  const dire=t=>{ const e=E('arrete-note'); if(e) e.textContent=t; };
+/**
+ * UNE DATE QUI N'EST PAS ENCORE ARRÊTÉE.
+ *
+ * « je veux pas qu'il y ait besoin d'une relève pour voir, je veux que dès que
+ *   je met une date cela actualise l'ecran », 27/10/2026.
+ *
+ * La demande différée est retirée. Tant que la page ne sait pas refaire
+ * l'imputation des règlements à une date — et elle ne le saura pas sans
+ * emporter le moteur entier — elle dit ce qu'elle a et ce qu'elle n'a pas,
+ * sans promettre un délai.
+ */
+function demanderArrete(date){
   const dispo=Object.keys(ARRETES).sort().reverse().map(d=>ARRETES[d].a);
-  if(!DB||!admin){
-    dire('Le '+date+' n’est pas encore arrêté. Disponibles : '
-      +(dispo.join(', ')||'aucun')+'.');
-    return;
-  }
-  const bouton=E('arrete-ok'); if(bouton) bouton.disabled=true;
-  const v={date:date, quand:leJour(), quandISO:new Date().toISOString(),
-           motif:'arrêté au '+date, etat:'en attente'};
-  try{
-    await DB.collection('demandes').doc('arrete').set(v);
-    let envoi='';
-    try{ envoi=await prevenir({quand:v.quand, motif:v.motif}); }catch(e){ envoi=''; }
-    dire(envoi==='transmise'
-      ? 'Demande transmise · l’arrêté au '+date+' sera construit et ajouté à la liste.'
-      : 'Demande enregistrée · l’arrêté au '+date+' sera construit à la prochaine relève.');
-  }catch(e){
-    dire('La demande n’a pas pu être enregistrée.');
-  }
-  if(bouton) bouton.disabled=false;
+  const e=E('arrete-note');
+  if(e) e.textContent='Le '+date+' n’est pas arrêté. Disponibles : '
+    +(dispo.join(', ')||'aucun')+'.';
 }
 
 async function prevenir(v){
@@ -1769,7 +1763,12 @@ async function ouvrirBase(){
       q.docs.forEach(doc=>{ const v=doc.data()||{};
         if(v&&v.cle&&v.dispositif) compl.set(v.cle,{...v,dispositif:dispoActuel(v.dispositif)}); });
       try{ const dq=await DB.collection('demandes').get();
-        dq.docs.forEach(doc=>{ if(doc.id==='reconstruction') DEMANDE=doc.data()||null; });
+        dq.docs.forEach(doc=>{
+          if(doc.id==='reconstruction') DEMANDE=doc.data()||null;
+          // Une demande d'arrêté laissée en plan se reprend au chargement :
+          // elle a toutes les chances d'avoir été demandée depuis cette page,
+          // puis rechargée pour voir où elle en est.
+        });
       }catch(e){}
       const pq=await DB.collection('parametres').get();
       pq.docs.forEach(doc=>{ const v=doc.data()||{};
