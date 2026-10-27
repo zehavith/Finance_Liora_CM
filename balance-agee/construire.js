@@ -315,6 +315,22 @@ const REF=(()=>{
 console.log('date d’arrêté : '+fr(REF)+(ARRETE_DEMANDE
   ? ' — demandée en ligne de commande'
   : ' — la dernière écriture du grand livre déposé'));
+
+// UNE BALANCE ARRÊTÉE AU J NE PORTE PAS D'ÉCRITURE DU J+1.
+//
+// La date d'arrêté est plafonnée au jour de la construction, mais les lignes
+// postérieures restaient dans le fichier : le grand livre complet du
+// 27/10/2026 en portait deux, des 28 et 30 octobre, pour 799 € — un document
+// qui s'annonce arrêté au 27 et qui compte le 30 ne se justifie pas, si petit
+// que soit l'écart. La branche --arrete coupait déjà ; le chemin ordinaire
+// coupe maintenant pareil, et le dit.
+{
+  const colonne=(nouv.entetes||[]).find(h=>R.norm(h)==='date') || 'Date';
+  const avant=nouv.rows.length;
+  nouv.rows=nouv.rows.filter(r=>{ const v=R.parseDate(r[colonne]); return !v || v<=REF; });
+  const coupees=avant-nouv.rows.length;
+  if(coupees) console.log('écritures postérieures à l’arrêté, écartées : '+coupees);
+}
 const REPARATIONS=new Map();
 { const vus=new Map();
   for(const r of nouv.rows){
