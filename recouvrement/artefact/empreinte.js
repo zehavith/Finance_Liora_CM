@@ -58,6 +58,58 @@ function aPublier() {
     return noms.length ? noms : null;
 }
 
+/** Découpe une ligne CSV en champs, guillemets compris. */
+function decouper(ligne) {
+    const out = [];
+    let champ = '', guill = false;
+    for (let i = 0; i < ligne.length; i++) {
+        const c = ligne[i];
+        if (guill) {
+            if (c === '"' && ligne[i + 1] === '"') { champ += '"'; i++; }
+            else if (c === '"') guill = false;
+            else champ += c;
+        } else if (c === '"') guill = true;
+        else if (c === ',') { out.push(champ); champ = ''; }
+        else champ += c;
+    }
+    out.push(champ);
+    return out;
+}
+
+/**
+ * UN CSV MONDAY, MIS À PLAT POUR ÊTRE COMPARÉ.
+ *
+ * Le relevé incrémental réécrit chaque tableau en reposant à la fin de leur
+ * groupe les lignes qu'il vient de relire. Les lignes sont les mêmes, leur
+ * ordre non : à 13 h 49, cinq fichiers sur neuf avaient changé d'octets sans
+ * qu'une seule valeur ait bougé — même nombre de lignes, mêmes groupes, mêmes
+ * champs. L'empreinte annonçait donc « le paquet a changé » à chaque heure, et
+ * la règle « ne publie que ce qui a changé » ne se déclenchait jamais.
+ *
+ * On compare le CONTENU. Chaque ligne porte le nom de son groupe — passer d'un
+ * groupe à l'autre reste une vraie différence, et c'est même le mouvement qui
+ * compte le plus ici — et l'ensemble est trié. L'ordre à l'intérieur d'un
+ * groupe ne dit rien, et cesse de parler.
+ */
+function canoniqueMonday(txt) {
+    const lignes = String(txt).split(/\r?\n/);
+    const tete = [];
+    const corps = [];
+    let groupe = '';
+    for (let i = 0; i < lignes.length; i++) {
+        const l = lignes[i];
+        if (!l.trim()) continue;
+        if (i === 0) { tete.push(l); continue; }
+        const champs = decouper(l);
+        if (champs[0] === 'Name') { tete.push(l); continue; }
+        // Un titre de groupe occupe la première colonne, et elle seule.
+        if (champs.slice(1).every(c => !c.trim())) { groupe = champs[0].trim(); continue; }
+        corps.push(groupe + '\u0001' + l);
+    }
+    corps.sort();
+    return tete.join('\n') + '\n' + corps.join('\n');
+}
+
 function empreinte() {
     const noms = aPublier();
     if (!noms) return null;
@@ -75,6 +127,10 @@ function empreinte() {
                 h.update(JSON.stringify(m), 'utf8');
                 continue;
             } catch { /* illisible : on le prend tel quel */ }
+        }
+        if (/^donnees\/.+\.csv$/.test(nom)) {
+            h.update(canoniqueMonday(fs.readFileSync(p, 'utf8')), 'utf8');
+            continue;
         }
         h.update(fs.readFileSync(p));
     }
