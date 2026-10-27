@@ -9830,8 +9830,11 @@
         const el = $('#sellsy-repartition');
         if (!parStatut.length) { el.innerHTML = ''; return; }
         const total = res.absentes.length;
+        // Le gris de « Justifié » n'est pas un oubli : rien à y faire, donc
+        // rien qui doive attirer l'œil. Les trois autres gardent leur alerte.
         const couleur = k => k === 'payee' ? U.couleurs.paye
-            : k === 'partielle' ? U.couleurs.payeRetard : U.couleurs.retard;
+            : k === 'partielle' ? U.couleurs.payeRetard
+            : k === 'justifiee' ? U.couleurs.inconnu : U.couleurs.retard;
         state.sellsyParStatut = parStatut;
         el.innerHTML = parStatut.map(s => `
             <button class="recup-card" data-statut-sellsy="${U.escapeHtml(s.key)}"
@@ -9841,12 +9844,18 @@
                 <span class="recup-label">Absentes — ${U.escapeHtml(s.label)}</span>
                 <span class="recup-value">${U.euros(s.euros)} facturés</span>
                 <span class="recup-sub">${U.pourcent(total ? s.nb / total * 100 : null, 0)} des absentes${
-                    s.key !== 'payee' ? ' · ' + U.euros(s.resteDu) + ' à encaisser' : ''}</span>
+                    s.key === 'justifiee'
+                        ? ' · ' + [...s.motifs.entries()].map(([m, n]) => U.nombre(n) + ' ' + m).join(' · ')
+                        : s.key !== 'payee' ? ' · ' + U.euros(s.resteDu) + ' à encaisser' : ''}</span>
             </button>`).join('');
 
         $$('[data-statut-sellsy]', el).forEach(b => b.addEventListener('click', () => {
             const k = b.dataset.statutSellsy;
-            const lot = res.absentes.filter(a => a.statut === k);
+            // « Justifié » n'est pas un statut Sellsy : c'est une règle, et les
+            // factures qu'elle retient gardent leur statut d'origine.
+            const lot = k === 'justifiee'
+                ? res.absentes.filter(a => SE.absenceJustifiee(a))
+                : res.absentes.filter(a => a.statut === k && !SE.absenceJustifiee(a));
             montrerLignesSellsy(`Absentes de Monday — ${(parStatut.find(x => x.key === k) || {}).label || k}`,
                 lot);
         }));

@@ -516,16 +516,62 @@
     // ──────────────────────────────────────────────
 
     /** Les manquantes par statut Sellsy — dit lesquelles sont à relancer. */
+    /**
+     * UNE ABSENCE QUI N'EN EST PAS UNE.
+     *
+     * « j'aimerais ici une vignette supplémentaire qui reprend les factures
+     * absente - justifié, dedans il y a tt les factures à 0 et 1€, et ces 2
+     * clients », 27/10/2026.
+     *
+     * Deux cas, et deux seulement :
+     *   · la facture ne porte rien — 0 € ou 1 € : une pièce de service, un
+     *     avoir technique, un essai. Il n'y a rien à aller chercher.
+     *   · le client ne passe pas par le circuit Monday : DST Germany et
+     *     Datascientest Spain sont facturés ailleurs. Leur absence est la
+     *     règle, pas l'incident.
+     *
+     * Ces factures QUITTENT les autres vignettes. Les laisser dans « impayée »
+     * ferait compter comme travail de relance ce que personne n'ira relancer,
+     * et le seul chiffre qui compte sur cet écran — ce qui manque VRAIMENT à
+     * Monday — resterait noyé.
+     *
+     * Le seuil est à un euro inclus : il couvre les 0,00 €, le 0,50 € isolé et
+     * les 1,00 €. Les noms de clients se comparent sans accent ni casse.
+     */
+    const CLIENTS_HORS_CIRCUIT = ['dst germany', 'datascientest spain'];
+
+    function absenceJustifiee(l) {
+        const m = montantSommable(l);
+        if (m != null && Math.abs(m) <= 1) return 'montant nul ou symbolique';
+        const c = R.norm(l.client || l.clientNom || '');
+        if (c && CLIENTS_HORS_CIRCUIT.some(x => c.indexOf(x) !== -1)) return 'client hors du circuit Monday';
+        return null;
+    }
+
     function absentesParStatut(absentes) {
         const m = new Map();
-        for (const l of absentes) {
-            if (!m.has(l.statut)) m.set(l.statut, { key: l.statut, label: l.statutLabel, nb: 0, euros: 0, resteDu: 0 });
-            const e = m.get(l.statut);
+        const pose = (key, label, l) => {
+            if (!m.has(key)) m.set(key, { key, label, nb: 0, euros: 0, resteDu: 0, motifs: new Map() });
+            const e = m.get(key);
             e.nb++;
             e.euros += montantSommable(l) || 0;
             e.resteDu += resteDuSommable(l) || 0;
+            return e;
+        };
+        for (const l of absentes) {
+            const motif = absenceJustifiee(l);
+            if (motif) {
+                const e = pose('justifiee', 'Justifié', l);
+                e.motifs.set(motif, (e.motifs.get(motif) || 0) + 1);
+                continue;
+            }
+            pose(l.statut, l.statutLabel, l);
         }
-        return [...m.values()].sort((a, b) => b.nb - a.nb);
+        // Les justifiées en dernier : c'est la pile dont il n'y a rien à faire,
+        // et elle est la plus grosse. En tête, elle écraserait les trois autres.
+        const out = [...m.values()];
+        return out.filter(x => x.key !== 'justifiee').sort((a, b) => b.nb - a.nb)
+            .concat(out.filter(x => x.key === 'justifiee'));
     }
 
     /**
@@ -568,6 +614,6 @@
         STATUTS, STATUT_INCONNU, ALIAS_SELLSY, ECART_MONTANT_TOLERE, MONTANT_ABERRANT,
         montantAberrant, montantSommable, resteDuSommable,
         normaliserStatut, lireExport, rapprocher,
-        absentesParStatut, absentesParMois, absentesParClient,
+        absentesParStatut, absentesParMois, absentesParClient, absenceJustifiee,
     };
 })(window);
