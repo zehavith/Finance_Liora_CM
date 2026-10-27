@@ -218,6 +218,41 @@ function cellule(v) {
 }
 
 // ──────────────────────────────────────────────
+//  LES COLONNES QUI DISENT POURQUOI CE N'EST PAS PAYÉ
+// ──────────────────────────────────────────────
+//
+// autoMapColumns ne retient que les champs canoniques — numéro, client,
+// montant, dates. Tout le vocabulaire métier restait donc dehors : l'ADV
+// qualifie ses factures dans « Problématique Pré-échéance », « Qualification
+// ADV » et « Basculements », et aucune des trois n'arrivait dans le CSV. Le
+// détail d'un financement n'avait alors rien à montrer à son troisième étage,
+// là où se lit précisément ce qui bloque l'encaissement.
+//
+// On ajoute donc toute liste de choix qu'aucun champ n'a prise, et les
+// colonnes miroir dont le TITRE annonce une qualification : un miroir peut
+// porter n'importe quoi — une date, un montant, une pièce jointe — et son
+// type ne permet pas d'en juger. Les autres miroirs restent dehors : les
+// prendre tous doublerait le fichier pour y verser des colonnes muettes.
+const TITRE_QUALIFIANT = /qualification|qualif |problematique|basculement|statut creance|etat de la facture|type de paiement/;
+
+function colonnesQualifiantes(colonnes, mapping, R) {
+    const prises = new Set(Object.values(mapping || {}));
+    return colonnes.filter(c => {
+        if (!c.id || prises.has(c.id) || c.id === 'name') return false;
+        if (['status', 'color', 'dropdown'].indexOf(c.type) !== -1) return true;
+        return c.type === 'mirror' && TITRE_QUALIFIANT.test(R.norm(c.title || '') + ' ');
+    }).map(c => c.id);
+}
+
+/** Les colonnes demandées à Monday : les champs reconnus, plus les qualifications. */
+function colonnesAGarder(colonnes, mapping, R) {
+    return [...new Set([
+        ...Object.values(mapping),
+        ...colonnesQualifiantes(colonnes, mapping, R),
+    ])].filter(c => c && c !== 'name');
+}
+
+// ──────────────────────────────────────────────
 //  Un tableau
 // ──────────────────────────────────────────────
 async function sortirTableau(bid, app) {
@@ -229,7 +264,7 @@ async function sortirTableau(bid, app) {
     const mapping = I.autoMapColumns(colonnes, null) || {};
     // « name » n'est pas une colonne : c'est le pseudo-champ vide de Monday, et
     // il porte le même alias que « Nom ». Demandé, il écrase le numéro de facture.
-    const gardees = [...new Set(Object.values(mapping))].filter(c => c && c !== 'name');
+    const gardees = colonnesAGarder(colonnes, mapping, R);
     const champs = Object.keys(mapping).sort();
 
     const ESSENTIELS = ['numero', 'client', 'montant', 'dateFacture', 'dateEcheanceSource'];
@@ -461,7 +496,7 @@ async function incrementerTableau(bid, app, etatPrec, jours) {
 
     const colonnes = meta.columns.map(c => ({ id: c.id, title: c.title, type: c.type }));
     const mapping = I.autoMapColumns(colonnes, null) || {};
-    const gardees = [...new Set(Object.values(mapping))].filter(c => c && c !== 'name');
+    const gardees = colonnesAGarder(colonnes, mapping, R);
     const titreDe = new Map(colonnes.map(c => [c.id, c.title]));
     // Le fichier remplace les retours à la ligne par des espaces en écrivant :
     // le titre Monday « Montant dû ⏎ TTC » y devient « Montant dû  TTC ».
