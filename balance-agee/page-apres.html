@@ -1212,16 +1212,32 @@ let remettre=async(nom,octets)=>{const a=document.createElement('a');
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);};
 E('arrete-ok').hidden=false;
 // ↑ la seule ligne qui diffère ↑
+// LE CLASSEUR SE CONSTRUIT SOUS LES YEUX, PAS DANS LE DOS.
+//
+// « ça prend beaucoup à passer de la page télécharger a ou b et la page
+// enregistrer le fichier, c'est normal ? », 27/10/2026. Oui et non : mesuré à
+// 15,4 s pour 38 286 écritures et 8,68 Mo, dont 17 ms pour l'enregistrement
+// lui-même — tout le temps part dans la construction des cinq onglets. Ce qui
+// n'était pas normal, c'est qu'on ne voyait rien : le message « Préparation du
+// classeur… » était bien posé, mais la construction accaparait le fil
+// principal dans la même foulée, si bien qu'il n'était JAMAIS peint. La page
+// semblait figée. Deux images d'attente avant de commencer suffisent à le
+// montrer, et le compte des écritures dit pourquoi c'est long.
 const envoyer=async(bouton,nom,idx,quoi,nomDetail)=>{
   if(!remettre) return;
-  const b=E(bouton); b.disabled=true; E('dl-note').textContent='Préparation du classeur…';
+  const b=E(bouton), autre=E(bouton==='dl-xlsx'?'dl-csv':'dl-xlsx');
+  b.disabled=true; if(autre) autre.disabled=true;
+  E('dl-note').textContent='Préparation du classeur — '
+    +idx.length.toLocaleString('fr-FR')+' écritures, '
+    +(idx.length>20000?'une quinzaine de secondes':'quelques secondes')+'…';
+  await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>setTimeout(r,0))));
   try{
     await remettre(nom, await classeur(idx,nomDetail));
     E('dl-note').textContent=idx.length.toLocaleString('fr-FR')+' écritures · '+quoi
       +' · 5 onglets, sommaire en tête';
     setTimeout(fermerPop,1600);
   }catch(e){ E('dl-note').textContent='Le classeur n’a pas pu être écrit.'; }
-  b.disabled=false;
+  b.disabled=false; if(autre) autre.disabled=false;
 };
 // « lorsque l'on clique cela propose balance arrêté à aujourd hui, etc.. ou
 // date précise ». Le choix s'ouvre sous les boutons ; sans arrêté disponible —
