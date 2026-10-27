@@ -33,6 +33,23 @@ const REF = (() => {
 })();
 const JOUR = (() => { const j = new Date(); j.setHours(0, 0, 0, 0); return j; })();
 
+// LA RÉFÉRENCE COUPE OÙ LA CHAÎNE COUPE.
+//
+// Une balance arrêtée au J ne porte pas d'écriture du J+1 : construire.js
+// écarte les lignes postérieures à l'arrêté depuis le 27/10/2026. Le grand
+// livre complet déposé ce jour-là en portait deux, des 28 et 30 octobre, pour
+// 799 € — et la référence de cet essai, qui recalcule tout de son côté, les
+// comptait encore. Les deux premiers contrôles tombaient donc de 798 € et
+// d'une créance, pour une différence qui n'était pas une erreur mais une
+// règle que la référence ne connaissait pas.
+{
+  const avant = nouv.rows.length;
+  nouv.rows = nouv.rows.filter(r => { const v = R.parseDate(r['Date']); return !v || v <= REF; });
+  if (avant !== nouv.rows.length)
+    console.log('écritures postérieures à l’arrêté, écartées de la référence : '
+      + (avant - nouv.rows.length));
+}
+
 // ───────── la table de réparation, comme construire.js la construit ─────────
 const csv = f => ctx.Papa.parse(fs.readFileSync(path.resolve(D, f), 'utf8'),
   { header: true, skipEmptyLines: true, delimiter: ';' }).data;
