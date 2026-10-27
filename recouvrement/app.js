@@ -494,6 +494,26 @@
         if (!fichiers.length) { montrerEcran('welcome'); return false; }
 
         await importerFichiers(fichiers);
+
+        // LES TABLEAUX FANTÔMES, RENOMMÉS CHEZ MONDAY.
+        //
+        // « 2.3. Financement pôle emploi : AIF - POEI » est devenu « … AIF /
+        // POEI ». L'ancienne fiche restait dans le navigateur, cochée et sans
+        // une seule facture, et la page annonçait en rouge 889 factures
+        // manquantes qui étaient là, sous le nouveau nom. Un dépôt complet
+        // dit quels tableaux existent : ceux qu'il ne nomme pas et qui ne
+        // portent aucune facture n'ont plus de raison d'être.
+        if (!manquants.length) {
+            const vivants = new Set(state.brutes.map(f => f.board));
+            const fantomes = state.boards.filter(b => !vivants.has(b.name));
+            if (fantomes.length) {
+                state.boards = state.boards.filter(b => vivants.has(b.name));
+                await sauverBoards();
+                console.info('[Recouvrement] tableaux fantômes retirés : '
+                    + fantomes.map(b => b.name).join(', '));
+            }
+        }
+
         // L'arrêté servi n'est inscrit qu'une fois l'import passé : un
         // chargement interrompu doit être repris à la prochaine ouverture.
         try { await S.set(CLE_ARRETE_SERVI, arreteDepose); } catch { /* le stockage peut refuser */ }
