@@ -10733,6 +10733,39 @@
         XLSX.utils.book_append_sheet(wb,
             XLSX.utils.json_to_sheet(res.absentes.map(ligneSellsy)), 'Absentes de Monday');
 
+        // LES ABSENTES QU'IL FAUT VRAIMENT ALLER CHERCHER.
+        //
+        // « j'aimerais un onglet avec les absente impayé et partiellement payé
+        // (sans les justifié et les payées) — j'aimerais qu'il y ait une
+        // colonne supplémentaire avec le type de financement », 28/10/2026.
+        //
+        // L'onglet précédent les porte TOUTES : celles dont l'absence est
+        // justifiée — les 0 et 1 €, DST Germany, Datascientest Spain — et
+        // celles que Sellsy donne déjà encaissées. Ni les unes ni les autres ne
+        // se relancent. Ce qui reste est la liste de travail : ce qui manque à
+        // Monday ET reste dû.
+        //
+        // Le dispositif se lit sur l'export Sellsy lui-même, dans l'ordre de ce
+        // qui est le plus explicite : le champ personnalisé qui nomme le
+        // financement quand il y en a un, puis le « Type de client », puis la
+        // mention d'alternance. Aucune de ces factures n'étant dans Monday, il
+        // n'y a pas d'autre source — et c'est précisément pourquoi la colonne
+        // est utile : elle dit à qui adresser la relance.
+        const A_RELANCER = new Set(['impayee', 'partielle']);
+        const financementSellsy = l => {
+            const k = R.detectFinancement(l.financementPersonnalise, state.rules)
+                || R.detectFinancement(l.typeClient, state.rules)
+                || R.detectFinancement(l.alternanceTexte, state.rules);
+            return k ? R.getRule(k, state.rules).label : 'À qualifier';
+        };
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+            res.absentes
+                .filter(l => A_RELANCER.has(l.statut) && !SE.absenceJustifiee(l))
+                .sort((a, b) => (b.resteDu || 0) - (a.resteDu || 0))
+                .map(l => Object.assign(ligneSellsy(l), {
+                    'Type de financement': financementSellsy(l),
+                }))), 'Absentes à relancer');
+
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
             res.rapprochees.filter(r => r.ecartMontant != null || r.ecartStatut).map(r => ({
                 'Numéro': r.sellsy.numero, 'Client': r.sellsy.client || r.facture.client,
