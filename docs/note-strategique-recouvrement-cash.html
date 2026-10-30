@@ -105,6 +105,7 @@ td:first-child,th:first-child{padding-left:4px}
 <p>La facture est émise sans délai anormal : il n'existe pas d'écart significatif entre l'inscription et la facturation. Le retard se forme après, et son mécanisme est précis.</p>
 <p><strong>Tant que l'administration des ventes n'a pas achevé son dossier, la facture ne passe pas au recouvrement — y compris lorsqu'elle est déjà échue.</strong> Elle reste donc invisible pour la personne chargée de la relancer. Le dépassement d'échéance ne déclenche rien, personne ne l'observe, et le retard s'accumule en silence jusqu'à ce qu'il soit découvert incidemment.</p>
 <p>La règle de circulation existe, <strong>mais son déclencheur est l'achèvement du dossier par l'administration des ventes, et non l'échéance de la facture</strong>. La correction consiste donc à ajouter un second déclencheur : toute facture atteignant sa date limite bascule au recouvrement, accompagnée de son motif de blocage, sans attendre l'achèvement du dossier. Le recouvrement cesse alors de découvrir les retards et peut agir en amont.</p>
+<p>Un second mécanisme allonge le délai. <strong>Le passage au recouvrement intervient trente jours après la fin de l'ensemble des demandes adressées au dossier</strong> : chaque pièce réclamée repoussant cette fin, la date se recalcule et recule d'autant. L'échéance n'est donc jamais connue d'avance, ni pour déclencher une relance, ni pour alimenter la prévision de trésorerie. La solution consiste à l'ancrer sur un événement non déplaçable — <strong>un dossier doit être complet trente jours après le début de la formation</strong>, et bascule au recouvrement au-delà, quel que soit son état d'avancement.</p>
 <p class="tbdnote">Le nombre de jours moyen entre l'échéance et la prise en charge effective reste à établir <span class="tbd">[à compléter]</span>. Il constitue l'indicateur central de cette note.</p>
 
 <h3 class="s">Cinq canaux, cinq recouvrements distincts</h3>
@@ -169,6 +170,7 @@ td:first-child,th:first-child{padding-left:4px}
 <li>Tableau des impayés classés par ancienneté : les données s'alimentent automatiquement, mais nous ne les relisons pas assez souvent.</li>
 <li>Fiches fournisseurs incomplètes.</li>
 <li>Le passage au recouvrement est déclenché par l'achèvement du dossier en amont, non par l'échéance : une facture échue dont le dossier reste ouvert n'est pas prise en charge.</li>
+<li>Cette date se recalcule à chaque nouvelle pièce demandée, et recule d'autant : l'échéance n'est jamais connue d'avance.</li>
 <li>Les virements reçus sont rattachés aux factures en lisant le libellé du virement, et non une référence de facture : ce rapprochement reste manuel et ne passera pas l'échelle.</li>
 <li>Outils conçus pour un périmètre national et un usage interne : ni multi-pays, ni multi-devises.</li>
 <li>Dépendance à la qualité et à la rapidité de la constitution des dossiers de financement.</li>
@@ -206,6 +208,7 @@ td:first-child,th:first-child{padding-left:4px}
 <thead><tr><th style="width:44%">Problématique</th><th>Réponse</th></tr></thead>
 <tbody>
 <tr><td>Facture échue restant bloquée en amont, invisible du recouvrement</td><td>Bascule automatique au recouvrement à l'échéance, avec le motif de blocage, et mesure du délai échéance — prise en charge</td></tr>
+<tr><td>Échéance mobile, repoussée à chaque pièce demandée</td><td>Date fixe ancrée sur le début de formation : dossier complet à J+30, bascule au recouvrement au-delà</td></tr>
 <tr><td>Processus non structurés — POEI, Région, Transitions Pro, AGEFIPH</td><td>Formalisation d'un circuit par dispositif, avec pièces requises et responsable</td></tr>
 <tr><td>Contrôle irrégulier des factures à établir</td><td>Revue mensuelle systématique, rattachée à la clôture</td></tr>
 <tr><td>Anomalies de facturation</td><td>Contrôle des données de facturation avant émission, à la source</td></tr>
@@ -232,7 +235,7 @@ td:first-child,th:first-child{padding-left:4px}
 <ul>
 <li>obtenir avant le démarrage l'accord de financement et la subrogation, qui nous autorise à facturer le financeur directement plutôt que le stagiaire ;</li>
 <li>sécuriser émargements et certificat de réalisation dès la fin de formation ;</li>
-<li>programmer une alerte à l'approche de chaque échéance de fin de formation ;</li>
+<li>fixer dès le démarrage la date à laquelle le dossier doit être complet — début de formation plus trente jours — et alerter à son approche ;</li>
 <li>engager les démarches de paiement avant la date limite, et non après ;</li>
 <li>contrôler les données de facturation et le bon de commande côté B2B ;</li>
 <li>obtenir l'accès au portail du client et le numéro de bon de commande dès la signature, et non au moment de facturer ;</li>
@@ -276,10 +279,9 @@ td:first-child,th:first-child{padding-left:4px}
 <h4 class="s">Indicateurs prioritaires</h4>
 <ul>
 <li>délai entre l'échéance et la prise en charge par le recouvrement, aujourd'hui non mesuré ;</li>
-<li>DSO global et par canal ; taux d'échéances respectées ;</li>
-<li>montant des factures dont la date de paiement est dépassée, réparti par ancienneté du retard : plus de 30, 60 et 90 jours ;</li>
+<li>DSO global et par canal, taux d'échéances respectées, et montant des factures échues réparti par ancienneté du retard — plus de 30, 60 et 90 jours ;</li>
 <li>taux de dossiers rejetés par les financeurs, et motifs ;</li>
-<li>taux de promesses respectées ; montant et délai de résolution des litiges ;</li>
+<li>taux de promesses respectées, montant et délai de résolution des litiges ;</li>
 <li>part des virements rattachés automatiquement à leur facture ;</li>
 <li>trésorerie disponible, prévision à 13 semaines, et écart entre cette prévision et le réalisé ;</li>
 <li>exposition par banque et par devise.</li>
@@ -315,6 +317,7 @@ td:first-child,th:first-child{padding-left:4px}
 
 <h4 class="s">0–6 mois — Stabiliser</h4>
 <ul>
+<li>fixer l'échéance interne des dossiers sur le début de formation plus trente jours, au lieu de la recalculer à partir de la fin des demandes ;</li>
 <li>instaurer la bascule automatique au recouvrement de toute facture atteignant son échéance, avec son motif de blocage ;</li>
 <li>instaurer la règle « pas de dossier complet, pas de démarrage » ;</li>
 <li>mesurer le délai entre l'échéance et la prise en charge effective ;</li>
@@ -354,15 +357,13 @@ td:first-child,th:first-child{padding-left:4px}
 <h2 class="s">10. Cibles et conclusion</h2>
 <p>À maturité, la fonction devra atteindre :</p>
 <ul>
-<li>une prise en charge par le recouvrement <strong>déclenchée par l'échéance elle-même</strong>, sans condition d'achèvement en amont ;</li>
-<li>un DSO aligné sur les conditions contractuelles, canal par canal ;</li>
-<li>plus de 90 % d'échéances respectées, et moins de 3 % de factures impayées depuis plus de 90 jours ;</li>
-<li>plus de 90 % des virements rattachés automatiquement à leur facture ;</li>
-<li>une prévision à 13 semaines s'écartant de moins de 5 % du réalisé ;</li>
+<li>une échéance <strong>fixée dès le démarrage de la formation</strong> et une prise en charge déclenchée par cette date, sans condition d'achèvement en amont ;</li>
+<li>un DSO aligné sur les conditions contractuelles, canal par canal ; plus de 90 % d'échéances respectées et moins de 3 % de factures impayées au-delà de 90 jours ;</li>
+<li>plus de 90 % des virements rattachés automatiquement à leur facture, et une prévision à 13 semaines s'écartant de moins de 5 % du réalisé ;</li>
 <li>trois à quatre postes de recouvrement et un poste de trésorerie, dimensionnement permettant de tenir l'ensemble des tâches.</li>
 </ul>
 <p>Une donnée reste à établir : le DSO constaté <span class="tbd">[à compléter]</span>, qui permettra de chiffrer le gain accessible dès cet exercice.</p>
-<p>Nos conditions de paiement sont favorables et nos factures partent sans délai anormal. <strong>Le retard vient de ce que le passage au recouvrement est déclenché par l'achèvement du dossier et non par l'échéance, et de processus non structurés sur plusieurs dispositifs.</strong> C'est la première source de gain, et elle ne demande aucun budget.</p>
+<p>Nos conditions de paiement sont favorables et nos factures partent sans délai anormal. <strong>Le retard vient de ce que le passage au recouvrement est déclenché par l'achèvement du dossier et non par une échéance fixe, et de processus non structurés sur plusieurs dispositifs.</strong> C'est la première source de gain, et elle ne demande aucun budget.</p>
 <p>La transformation repose sur quatre leviers — <strong>Prévenir, Industrialiser, Anticiper, Piloter</strong> — qui font du Recouvrement et de la Trésorerie des fonctions de sécurisation de la croissance.</p>
 </section>
 
