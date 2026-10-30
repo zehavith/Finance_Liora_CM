@@ -96,7 +96,7 @@ td:first-child,th:first-child{padding-left:4px}
 
 <h3 class="s">Nos conditions de paiement</h3>
 <ul>
-<li><strong>30 jours date de facture</strong> pour le régime général, dont le B2B ;</li>
+<li><strong>début de formation + 30 jours</strong> pour le régime général, dont le B2B ;</li>
 <li><strong>fin de formation + 60 jours</strong> pour les financeurs institutionnels : OPCO, secteur public, Régions ;</li>
 <li><strong>paiement au démarrage</strong> pour le financement personnel.</li>
 </ul>
@@ -119,7 +119,7 @@ td:first-child,th:first-child{padding-left:4px}
 <p>La facture est émise sans délai anormal : il n'existe pas d'écart significatif entre l'inscription et la facturation. Le retard se forme après, et son mécanisme est précis.</p>
 <p><strong>Tant que l'administration des ventes n'a pas achevé son dossier, la facture ne passe pas au recouvrement — y compris lorsqu'elle est déjà échue.</strong> Elle reste donc invisible pour la personne chargée de la relancer. Le dépassement d'échéance ne déclenche rien, personne ne l'observe, et le retard s'accumule en silence jusqu'à ce qu'il soit découvert incidemment.</p>
 <p>La règle de circulation existe, <strong>mais son déclencheur est l'achèvement du dossier par l'administration des ventes, et non l'échéance de la facture</strong>. La correction consiste donc à ajouter un second déclencheur : toute facture atteignant sa date limite bascule au recouvrement, accompagnée de son motif de blocage, sans attendre l'achèvement du dossier. Le recouvrement cesse alors de découvrir les retards et peut agir en amont.</p>
-<p>Un second mécanisme allonge le délai. <strong>Le passage au recouvrement intervient trente jours après la fin de l'ensemble des demandes adressées au dossier</strong> : chaque pièce réclamée repoussant cette fin, la date se recalcule et recule d'autant. L'échéance n'est donc jamais connue d'avance, ni pour déclencher une relance, ni pour alimenter la prévision de trésorerie. La solution consiste à l'ancrer sur un événement non déplaçable — <strong>un dossier doit être complet trente jours après le début de la formation</strong>, et bascule au recouvrement au-delà, quel que soit son état d'avancement.</p>
+<p>Un second mécanisme allonge le délai. <strong>Le passage au recouvrement intervient trente jours après la fin de l'ensemble des demandes adressées au dossier</strong> : chaque pièce réclamée repoussant cette fin, la date se recalcule et recule d'autant. L'échéance n'est donc jamais connue d'avance, ni pour déclencher une relance, ni pour alimenter la prévision de trésorerie. La solution consiste à l'ancrer sur un événement non déplaçable. <strong>Ce principe est déjà appliqué au régime général, dont l'échéance est fixée au début de formation plus trente jours</strong> : il s'agit de l'étendre aux financements institutionnels. Un dossier doit être complet trente jours après le début de la formation, et bascule au recouvrement au-delà, quel que soit son état d'avancement.</p>
 <p class="tbdnote">Le nombre de jours moyen entre l'échéance et la prise en charge effective reste à établir <span class="tbd">[à compléter]</span>. Il constitue l'indicateur central de cette note.</p>
 
 <h3 class="s">Cinq canaux, cinq recouvrements distincts</h3>
@@ -130,7 +130,7 @@ td:first-child,th:first-child{padding-left:4px}
 <tr><td>OPCO, dont alternance</td><td>Fin de formation + 60 jours</td><td>Processus de paiement enclenché après l'échéance, pièce manquante</td></tr>
 <tr><td>CPF</td><td>Délai de la Caisse des Dépôts</td><td>Dossier en anomalie sur EDOF</td></tr>
 <tr><td>Public, Région, Transitions Pro, France Travail</td><td>Fin de formation + 60 jours</td><td>Processus non structuré, mandatement, pièces de marché</td></tr>
-<tr><td>B2B — 181 comptes</td><td>30 jours date de facture</td><td>Accès au portail du client indisponible, bon de commande manquant, entité erronée</td></tr>
+<tr><td>B2B — 181 comptes</td><td>Début de formation + 30 jours</td><td>Accès au portail du client indisponible, bon de commande manquant, entité erronée</td></tr>
 <tr><td>Financement personnel</td><td>Au démarrage de la formation</td><td>Échec de prélèvement, dossier non soldé</td></tr>
 </tbody>
 </table>
@@ -223,7 +223,7 @@ td:first-child,th:first-child{padding-left:4px}
 <thead><tr><th style="width:44%">Problématique</th><th>Réponse</th></tr></thead>
 <tbody>
 <tr><td>Facture échue restant bloquée en amont, invisible du recouvrement</td><td>Bascule automatique au recouvrement à l'échéance, avec le motif de blocage, et mesure du délai échéance — prise en charge</td></tr>
-<tr><td>Échéance mobile, repoussée à chaque pièce demandée</td><td>Date fixe ancrée sur le début de formation : dossier complet à J+30, bascule au recouvrement au-delà</td></tr>
+<tr><td>Échéance mobile, repoussée à chaque pièce demandée</td><td>Extension aux financeurs institutionnels de l'ancrage déjà appliqué au régime général : dossier complet à début de formation + 30 jours, bascule au recouvrement au-delà</td></tr>
 <tr><td>Processus non structurés — POEI, Région, Transitions Pro, AGEFIPH</td><td>Formalisation d'un circuit par dispositif, avec pièces requises et responsable</td></tr>
 <tr><td>Contrôle irrégulier des factures à établir</td><td>Revue mensuelle systématique, rattachée à la clôture</td></tr>
 <tr><td>Anomalies de facturation</td><td>Contrôle des données de facturation avant émission, à la source</td></tr>
@@ -331,7 +331,7 @@ td:first-child,th:first-child{padding-left:4px}
 
 <h4 class="s">0–6 mois — Stabiliser</h4>
 <ul>
-<li>fixer l'échéance interne des dossiers sur le début de formation plus trente jours, au lieu de la recalculer à partir de la fin des demandes ;</li>
+<li>étendre aux financements institutionnels l'ancrage déjà en vigueur sur le régime général : échéance fixée au début de formation plus trente jours, au lieu d'un recalcul à partir de la fin des demandes ;</li>
 <li>instaurer la bascule automatique au recouvrement de toute facture atteignant son échéance, avec son motif de blocage ;</li>
 <li>instaurer la règle « pas de dossier complet, pas de démarrage » ;</li>
 <li>mesurer le délai entre l'échéance et la prise en charge effective ;</li>
