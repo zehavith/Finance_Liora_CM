@@ -123,7 +123,7 @@ td:first-child,th:first-child{padding-left:4px}
 
 <h3 class="s">L'outillage en place</h3>
 <p>L'ensemble de nos factures clients en attente de paiement, ainsi que la trésorerie, sont pilotés par deux applications développées et documentées en interne : balance âgée, DSO, relances, litiges et promesses de paiement d'un côté ; lecture des flux bancaires, catégorisation par financeur et prévision de l'autre. La chaîne est complétée par Pennylane, Agicap, Zoho Invoice, Stripe, GoCardless, Swan et Tomorro.</p>
-<p>Deux réserves : les données du poste client remontent automatiquement mais la balance âgée n'est pas revue avec la régularité nécessaire, et <strong>le rapprochement des encaissements repose sur la reconnaissance de mots-clés dans les libellés bancaires</strong> — 774 règles intégrées et 114 apprises — et non sur la référence de facture. Le rapprochement entre chaque virement reçu et la facture qu'il règle — le lettrage — reste donc manuel, et chaque nouveau client suppose une règle supplémentaire.</p>
+<p>Deux réserves : les données du poste client remontent automatiquement mais la balance âgée n'est pas revue avec la régularité nécessaire, et <strong>le rapprochement des encaissements repose sur la reconnaissance de mots-clés dans les libellés bancaires</strong> — 774 règles intégrées et 114 apprises — et non sur la référence de facture. Le rapprochement entre chaque virement reçu et la facture qu'il règle — le lettrage — reste donc manuel, et chaque nouveau client suppose une règle supplémentaire. La cause est simple : <strong>nos clients ne portent pas le numéro de facture en référence de leur virement</strong>, et nous ne le leur demandons pas.</p>
 
 <h3 class="s">Les portails clients inaccessibles</h3>
 <p>Plusieurs grands comptes n'acceptent les factures que déposées sur leur propre portail fournisseur, et <strong>nous n'avons pas d'accès opérationnel à une partie d'entre eux</strong>. La facture n'est alors jamais formellement reçue : elle n'entre pas dans le circuit de validation du client et son délai de paiement ne commence pas à courir. Le bon de commande n'est pas davantage récupérable, alors que beaucoup de ces clients appliquent la règle « pas de bon de commande, pas de paiement ». Le blocage n'est découvert qu'à la relance, plusieurs semaines plus tard. Ce point ne relève ni du recouvrement ni de la qualité de nos factures : c'est un problème d'accès, qui se règle une fois et définitivement.</p>
@@ -212,7 +212,7 @@ td:first-child,th:first-child{padding-left:4px}
 <tr><td>Balance âgée non exploitée à jour</td><td>Mise à jour hebdomadaire et responsable désigné</td></tr>
 <tr><td>Fiches fournisseurs incomplètes</td><td>Référentiel fournisseur complété et contrôle des coordonnées bancaires</td></tr>
 <tr><td>Rejets de dossiers par les financeurs</td><td>Liste des pièces obligatoires, contraignante pour tous, partagée avec l'administration des ventes et les opérations</td></tr>
-<tr><td>Virements rattachés aux factures à la main, en lisant leur libellé</td><td>Référence de facture portée de l'émission jusqu'à l'encaissement</td></tr>
+<tr><td>Virements rattachés aux factures à la main, en lisant leur libellé</td><td>Demande automatique, à chaque envoi de facture, de porter le numéro de facture en référence du virement — puis rapprochement automatisé</td></tr>
 <tr><td>Visibilité insuffisante sur la trésorerie</td><td>Point de trésorerie quotidien et prévision à 13 semaines construite à partir des factures réellement en attente</td></tr>
 <tr><td>Augmentation des volumes</td><td>Automatisation et industrialisation</td></tr>
 <tr><td>Internationalisation</td><td>Structuration Groupe à partir de l'Allemagne</td></tr>
@@ -269,6 +269,7 @@ td:first-child,th:first-child{padding-left:4px}
 <section>
 <h2 class="s">7. Automatisation et indicateurs</h2>
 <p>Une partie du chemin est faite : relances, suivi des litiges et des promesses, catégorisation des flux bancaires sont outillés. Restent à automatiser le départ des relances dès qu'un client marque notre facture « rejetée » ou la laisse sans approbation, le classement des comptes par priorité, les alertes sur dossiers bloqués, et le rapprochement des virements avec les factures qu'ils règlent — aujourd'hui effectué par reconnaissance de libellés bancaires.</p>
+<p>Le rapprochement automatique suppose une étape préalable sans coût : obtenir que le numéro de facture figure en référence du virement, par une demande automatique jointe à chaque facture. Elle produira surtout son effet sur le B2B — les financeurs institutionnels règlent par lots, selon leurs propres références.</p>
 <p>L'objectif est de concentrer l'intervention humaine sur <strong>les risques, les exceptions, les litiges et les décisions</strong>.</p>
 
 <h4 class="s">Indicateurs prioritaires</h4>
@@ -318,6 +319,7 @@ td:first-child,th:first-child{padding-left:4px}
 <li>mesurer le délai entre l'échéance et l'enclenchement du processus de paiement ;</li>
 <li>structurer les circuits POEI, Région, Transitions Pro et AGEFIPH ;</li>
 <li>mettre à jour la balance âgée chaque semaine et instaurer une revue mensuelle des factures à établir ;</li>
+<li>joindre à chaque facture un courriel automatique demandant que le numéro de facture soit porté en référence du virement ;</li>
 <li>fiabiliser les données de facturation et compléter le référentiel fournisseurs ;</li>
 <li>recenser les portails clients, régulariser les accès manquants et désigner un titulaire et un suppléant pour chacun ;</li>
 <li>revue quotidienne des dossiers CPF en anomalie ;</li>
