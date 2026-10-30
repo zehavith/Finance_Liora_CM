@@ -114,7 +114,7 @@ td:first-child,th:first-child{padding-left:4px}
 <tr><td>OPCO</td><td>Fin de formation + 60 jours</td><td>Processus de paiement enclenché après l'échéance, pièce manquante</td></tr>
 <tr><td>CPF</td><td>Délai de la Caisse des Dépôts</td><td>Dossier en anomalie sur EDOF</td></tr>
 <tr><td>Public, Région, Transitions Pro</td><td>Fin de formation + 60 jours</td><td>Processus non structuré, mandatement, pièces de marché</td></tr>
-<tr><td>B2B — 181 comptes</td><td>30 jours date de facture</td><td>Bon de commande manquant, entité erronée</td></tr>
+<tr><td>B2B — 181 comptes</td><td>30 jours date de facture</td><td>Accès au portail du client indisponible, bon de commande manquant, entité erronée</td></tr>
 <tr><td>Financement personnel</td><td>Au démarrage de la formation</td><td>Échec de prélèvement, dossier non soldé</td></tr>
 </tbody>
 </table>
@@ -124,6 +124,9 @@ td:first-child,th:first-child{padding-left:4px}
 <h3 class="s">L'outillage en place</h3>
 <p>L'ensemble de nos factures clients en attente de paiement, ainsi que la trésorerie, sont pilotés par deux applications développées et documentées en interne : balance âgée, DSO, relances, litiges et promesses de paiement d'un côté ; lecture des flux bancaires, catégorisation par financeur et prévision de l'autre. La chaîne est complétée par Pennylane, Agicap, Zoho Invoice, Stripe, GoCardless, Swan et Tomorro.</p>
 <p>Deux réserves : les données du poste client remontent automatiquement mais la balance âgée n'est pas revue avec la régularité nécessaire, et <strong>le rapprochement des encaissements repose sur la reconnaissance de mots-clés dans les libellés bancaires</strong> — 774 règles intégrées et 114 apprises — et non sur la référence de facture. Le rapprochement entre chaque virement reçu et la facture qu'il règle — le lettrage — reste donc manuel, et chaque nouveau client suppose une règle supplémentaire.</p>
+
+<h3 class="s">Les portails clients inaccessibles</h3>
+<p>Plusieurs grands comptes n'acceptent les factures que déposées sur leur propre portail fournisseur, et <strong>nous n'avons pas d'accès opérationnel à une partie d'entre eux</strong>. La facture n'est alors jamais formellement reçue : elle n'entre pas dans le circuit de validation du client et son délai de paiement ne commence pas à courir. Le bon de commande n'est pas davantage récupérable, alors que beaucoup de ces clients appliquent la règle « pas de bon de commande, pas de paiement ». Le blocage n'est découvert qu'à la relance, plusieurs semaines plus tard. Ce point ne relève ni du recouvrement ni de la qualité de nos factures : c'est un problème d'accès, qui se règle une fois et définitivement.</p>
 
 <h3 class="s">Échéances réglementaires</h3>
 <div class="tw">
@@ -161,6 +164,7 @@ td:first-child,th:first-child{padding-left:4px}
 <li>Processus non structurés sur les dispositifs POEI, financement Région, Transitions Pro et AGEFIPH.</li>
 <li>Les prestations déjà réalisées mais pas encore facturées ne sont pas contrôlées assez régulièrement.</li>
 <li>Anomalies de facturation récurrentes.</li>
+<li>Accès manquants aux portails fournisseurs de plusieurs clients : factures non déposables et bons de commande non récupérables.</li>
 <li>Tableau des impayés classés par ancienneté : les données s'alimentent automatiquement, mais nous ne les relisons pas assez souvent.</li>
 <li>Fiches fournisseurs incomplètes.</li>
 <li>Absence de déclenchement à l'échéance sur les financements payés en fin de formation : le délai entre la date limite et l'engagement des démarches de paiement n'est ni suivi ni mesuré.</li>
@@ -204,6 +208,7 @@ td:first-child,th:first-child{padding-left:4px}
 <tr><td>Processus non structurés — POEI, Région, Transitions Pro, AGEFIPH</td><td>Formalisation d'un circuit par dispositif, avec pièces requises et responsable</td></tr>
 <tr><td>Contrôle irrégulier des factures à établir</td><td>Revue mensuelle systématique, rattachée à la clôture</td></tr>
 <tr><td>Anomalies de facturation</td><td>Contrôle des données de facturation avant émission, à la source</td></tr>
+<tr><td>Portails clients inaccessibles</td><td>Recensement des portails, comptes au nom de l'entreprise avec un titulaire et un suppléant, identifiants centralisés</td></tr>
 <tr><td>Balance âgée non exploitée à jour</td><td>Mise à jour hebdomadaire et responsable désigné</td></tr>
 <tr><td>Fiches fournisseurs incomplètes</td><td>Référentiel fournisseur complété et contrôle des coordonnées bancaires</td></tr>
 <tr><td>Rejets de dossiers par les financeurs</td><td>Liste des pièces obligatoires, contraignante pour tous, partagée avec l'administration des ventes et les opérations</td></tr>
@@ -229,6 +234,7 @@ td:first-child,th:first-child{padding-left:4px}
 <li>programmer une alerte à l'approche de chaque échéance de fin de formation ;</li>
 <li>engager les démarches de paiement avant la date limite, et non après ;</li>
 <li>contrôler les données de facturation et le bon de commande côté B2B ;</li>
+<li>obtenir l'accès au portail du client et le numéro de bon de commande dès la signature, et non au moment de facturer ;</li>
 <li>vérifier l'encaissement préalable sur le financement personnel.</li>
 </ul>
 
@@ -313,6 +319,7 @@ td:first-child,th:first-child{padding-left:4px}
 <li>structurer les circuits POEI, Région, Transitions Pro et AGEFIPH ;</li>
 <li>mettre à jour la balance âgée chaque semaine et instaurer une revue mensuelle des factures à établir ;</li>
 <li>fiabiliser les données de facturation et compléter le référentiel fournisseurs ;</li>
+<li>recenser les portails clients, régulariser les accès manquants et désigner un titulaire et un suppléant pour chacun ;</li>
 <li>revue quotidienne des dossiers CPF en anomalie ;</li>
 <li>généraliser le prélèvement et réclamer les intérêts moratoires ;</li>
 <li>mettre en place le point de trésorerie quotidien et le prévision à 13 semaines.</li>
