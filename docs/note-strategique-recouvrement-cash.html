@@ -123,7 +123,7 @@ td:first-child,th:first-child{padding-left:4px}
 
 <h3 class="s">L'outillage en place</h3>
 <p>Le poste client et la trésorerie sont pilotés par deux applications développées et documentées en interne : balance âgée, DSO, relances, litiges et promesses de paiement d'un côté ; lecture des flux bancaires, catégorisation par financeur et prévision de l'autre. La chaîne est complétée par Pennylane, Agicap, Zoho Invoice, Stripe, GoCardless, Swan et Tomorro.</p>
-<p>Deux réserves : les données du poste client remontent automatiquement mais la balance âgée n'est pas revue avec la régularité nécessaire, et <strong>Salesforce et HubSpot sont payés en parallèle</strong>, si bien qu'aucun identifiant client unique ne circule jusqu'à l'encaissement.</p>
+<p>Deux réserves : les données du poste client remontent automatiquement mais la balance âgée n'est pas revue avec la régularité nécessaire, et <strong>le rapprochement des encaissements repose sur la reconnaissance de mots-clés dans les libellés bancaires</strong> — 774 règles intégrées et 114 apprises — et non sur la référence de facture. Le lettrage reste donc manuel, et chaque nouveau client suppose une règle supplémentaire.</p>
 
 <h3 class="s">Échéances réglementaires</h3>
 <div class="tw">
@@ -164,7 +164,7 @@ td:first-child,th:first-child{padding-left:4px}
 <li>Balance âgée non exploitée à jour : les données remontent automatiquement, mais la revue n'est pas assez régulière.</li>
 <li>Fiches fournisseurs incomplètes.</li>
 <li>Absence de déclenchement à l'échéance sur les financements payés en fin de formation : le délai entre la date limite et l'engagement des démarches de paiement n'est ni suivi ni mesuré.</li>
-<li>Référentiel client éclaté entre deux CRM, sans identifiant unique jusqu'à l'encaissement.</li>
+<li>Rapprochement des encaissements fondé sur les libellés bancaires et non sur la référence de facture : le lettrage reste manuel et ne passera pas l'échelle.</li>
 <li>Outils conçus pour un périmètre national et un usage interne : ni multi-pays, ni multi-devises.</li>
 <li>Dépendance à la qualité et à la rapidité de la constitution des dossiers de financement.</li>
 <li>Sensibilité du cash à l'évolution des délais de paiement et au risque de créances échues.</li>
@@ -207,7 +207,7 @@ td:first-child,th:first-child{padding-left:4px}
 <tr><td>Balance âgée non exploitée à jour</td><td>Mise à jour hebdomadaire et responsable désigné</td></tr>
 <tr><td>Fiches fournisseurs incomplètes</td><td>Référentiel fournisseur complété et contrôle des coordonnées bancaires</td></tr>
 <tr><td>Rejets de dossiers par les financeurs</td><td>Checklist documentaire opposable, partagée avec l'ADV et les opérations</td></tr>
-<tr><td>Référentiel client éclaté</td><td>Désignation d'un CRM maître et identifiant client unique</td></tr>
+<tr><td>Rapprochement par libellé bancaire, lettrage manuel</td><td>Référence de facture portée de l'émission jusqu'à l'encaissement</td></tr>
 <tr><td>Visibilité insuffisante sur le cash</td><td>Daily Cash et prévision à 13 semaines adossée aux créances réelles</td></tr>
 <tr><td>Augmentation des volumes</td><td>Automatisation et industrialisation</td></tr>
 <tr><td>Internationalisation</td><td>Structuration Groupe à partir de l'Allemagne</td></tr>
@@ -308,7 +308,7 @@ td:first-child,th:first-child{padding-left:4px}
 
 <h4 class="s">6–18 mois — Industrialiser</h4>
 <ul>
-<li>désigner un CRM maître et faire circuler un identifiant client unique ;</li>
+<li>faire porter la référence de facture de l'émission jusqu'à l'encaissement ;</li>
 <li>choisir la plateforme de facturation électronique et brancher les statuts sur les relances ;</li>
 <li>mettre en place le lettrage automatique par référence de facture ;</li>
 <li>négocier une ligne de mobilisation de créances adossée aux créances OPCO et publiques ;</li>
