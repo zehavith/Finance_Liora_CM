@@ -131,14 +131,14 @@ input[type=search]{flex:1 1 220px}
   font-variant-numeric:tabular-nums;margin-left:auto;white-space:nowrap}
 #viewport{max-height:70vh;overflow:auto;position:relative}
 #cale{position:relative}
-.lig{display:grid;grid-template-columns:92px 112px 1fr 128px 104px 96px 86px;gap:0;
+.lig{display:grid;grid-template-columns:92px 112px 1fr 128px 104px 112px 96px 86px;gap:0;
   align-items:center;border-bottom:1px solid var(--trait);cursor:pointer;
   position:absolute;left:0;right:0;font-size:12.5px}
 .lig>div{padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lig:hover{background:var(--accent-doux)}
 .lig.sel{background:var(--accent-doux);box-shadow:inset 3px 0 0 var(--accent)}
 .lig .num{font-family:var(--chiffre);font-variant-numeric:tabular-nums;text-align:right}
-.ent{display:grid;grid-template-columns:92px 112px 1fr 128px 104px 96px 86px;
+.ent{display:grid;grid-template-columns:92px 112px 1fr 128px 104px 112px 96px 86px;
   position:sticky;top:0;background:var(--carte);z-index:2;border-bottom:1px solid var(--trait-fort)}
 .ent>div{padding:8px 10px;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
   color:var(--encre-3);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -427,6 +427,7 @@ input[type=search]{flex:1 1 220px}
       <div data-tri="facture"><input type="checkbox" id="coche-tout" title="Tout sélectionner" hidden> Facture<i></i></div>
       <div data-tri="compte">Compte<i></i></div><div data-tri="client">Client<i></i></div>
       <div class="num" data-tri="debit">Débit<i></i></div><div class="num" data-tri="credit">Crédit<i></i></div>
+      <div class="num" data-tri="prov" title="Provision portée par la créance — répétée sur chacune de ses écritures">À provisionner<i></i></div>
       <div data-tri="echeance">Échéance<i></i></div><div data-tri="financement">Financement<i></i></div>
     </div>
     <div id="viewport"><div id="cale"></div></div>

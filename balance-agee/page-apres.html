@@ -462,6 +462,11 @@ const COLS_TRI={
   credit:{col:'Crédit', type:'num'},
   echeance:{col:'Date d’échéance recalculée', type:'date'},
   financement:{col:'Type de financement', type:'fin'},
+  // La provision n'est pas une colonne du grand livre : elle se calcule. Le
+  // tri l'appelle comme les autres, et les créances sans provision — dont le
+  // montant vaut zéro — passent en fin de liste dans les deux sens, comme une
+  // date absente : zéro n'est pas « le plus petit », c'est « rien à couvrir ».
+  prov:{col:'', type:'prov'},
 };
 // Une date jj/mm/aaaa se compare en nombre ; une date absente passe en
 // dernier, dans les deux sens — une case vide n'est pas une date ancienne.
@@ -474,11 +479,13 @@ function valTri(i,k){
   // Le financement affiché est celui que la ligne MONTRE : un complément posé
   // à la main prime, comme dans la liste.
   if(d.type==='fin'){ const c=compl.get(cleLigne(i)); return (c?c.dispositif:V(i,d.col))||''; }
+  if(d.type==='prov'){ const p=provLigne(i).prov; return p>0?p:null; }
   return String(V(i,d.col)||'');
 }
 function trier(liste){
   const k=TRI.col; if(!k||!COLS_TRI[k]) return liste;
-  const num=COLS_TRI[k].type==='num'||COLS_TRI[k].type==='date';
+  const num=COLS_TRI[k].type==='num'||COLS_TRI[k].type==='date'
+    ||COLS_TRI[k].type==='prov';
   return liste.slice().sort((a,b)=>{
     const x=valTri(a,k), y=valTri(b,k);
     const vx=(x===null||x===''), vy=(y===null||y==='');
@@ -695,6 +702,7 @@ function dessiner(){
         +(c?' <span class="puce ok">complété</span>':'')+'</div>'
       +'<div class="num">'+(N(i,'Débit')?eur(N(i,'Débit')):'')+'</div>'
       +'<div class="num">'+(N(i,'Crédit')?eur(N(i,'Crédit')):'')+'</div>'
+      +'<div class="num prov">'+(provLigne(i).prov?eur(provLigne(i).prov):'·')+'</div>'
       +'<div class="mono">'+V(i,'Date d’échéance recalculée')+'</div>'
       +'<div>'+(c?c.dispositif:V(i,'Type de financement'))+'</div></div>';
   }
@@ -1157,6 +1165,10 @@ function feuilleBalance(wb,niv,idx){
 // illisible et impossible à rapprocher de la balance.
 // La première colonne retirée du classeur. Tout ce qui la suit l'est aussi.
 const COUPE='N° de rapprochement';
+// Les deux colonnes de provision ajoutées au détail, à sa demande du
+// 31/10/2026. Leur nom dit « de la créance » : c'est elle qui les porte, et
+// non l'écriture sur laquelle elles se répètent.
+const PROV_COLS=['Assiette de provision de la créance','Provision de la créance'];
 const nbColsDetail=()=>D.cols.indexOf(COUPE)<0?D.cols.length:D.cols.indexOf(COUPE);
 const NUMERIQUES=new Set([...MONNAIE,'Taux d’attribution TVA','Taux de change',
   'Jours de retard','Délai appliqué (jours)']);
@@ -1172,18 +1184,25 @@ function feuilleDetail(wb,idx,nom){
   // de la créance, dont la page a besoin pour calculer mais qui n'ont rien à
   // faire dans un document qu'on relit.
   const COLS=D.cols.slice(0,D.cols.indexOf(COUPE)<0?D.cols.length:D.cols.indexOf(COUPE));
+  // Les deux colonnes de la provision ferment le tableau. Elles ne viennent
+  // pas du grand livre : la page les calcule, et elles portent la valeur DE LA
+  // CRÉANCE, répétée sur chacune de ses écritures — voir provLigne().
   ws.columns=[{header:'Compte - Client',width:46},
-    ...COLS.map(c=>({header:c,width:Math.min(42,Math.max(13,c.length+3))}))];
+    ...COLS.map(c=>({header:c,width:Math.min(42,Math.max(13,c.length+3))})),
+    ...PROV_COLS.map(c=>({header:c,width:30}))];
   poserEntete(ws,ws.getRow(1));
   // 16 080 lignes : on écrit les valeurs d'un bloc et on ne pose la mise en
   // forme que sur les colonnes, pas sur chaque cellule — sans quoi le
   // navigateur passerait une minute à fabriquer 884 000 objets de style.
-  ws.addRows(idx.map(i=>[
+  ws.addRows(idx.map(i=>{ const p=provLigne(i); return [
     V(i,'N° de compte')+' - '+(V(i,'Libellé de compte')||V(i,'Tiers')),
     ...COLS.map(c=>{ const v=V(i,c);
-      return (NUMERIQUES.has(c)&&NOMBRE.test(v))?Number(v):v; })]));
+      return (NUMERIQUES.has(c)&&NOMBRE.test(v))?Number(v):v; }),
+    p.base, p.prov]; }));
   COLS.forEach((c,j)=>{ if(MONNAIE.has(c)) ws.getColumn(j+2).numFmt=EUROS; });
-  ws.autoFilter={from:{row:1,column:1},to:{row:1,column:COLS.length+1}};
+  PROV_COLS.forEach((c,j)=>{ ws.getColumn(COLS.length+2+j).numFmt=EUROS; });
+  ws.autoFilter={from:{row:1,column:1},
+                 to:{row:1,column:COLS.length+1+PROV_COLS.length}};
 }
 
 async function classeur(idx,nomDetail){
@@ -1352,6 +1371,38 @@ function provisionDe(rd, sc, tr, cle){
   if(j<0) return 0;
   const fam=familleDe(sc); if(!fam) return 0;
   return base*(((PROV.taux||{})[fam]||[])[j]||0);
+}
+
+// CE QUI ENTRE DANS LA PROVISION, ET CE QU'ELLE VAUT, POUR UNE ÉCRITURE.
+//
+// Sa demande du 31/10/2026 : « une avec calcul pour provision, l'autre avec le
+// montant effectivement provisionné », et, au dépliage d'un montant à
+// provisionner, « tt les lignes associés au montant avec le montant provisionné
+// par ligne ».
+//
+// LES DEUX NOMBRES SONT PORTÉS PAR LA CRÉANCE, PAS PAR L'ÉCRITURE. Une créance
+// est faite de plusieurs écritures — la facture, ses règlements partiels — et
+// la provision se calcule une fois sur la créance entière. Les deux colonnes
+// répètent donc la même valeur sur chacune de ses écritures, exactement comme
+// « Reste dû de la créance » le fait déjà, et leur nom le dit : les additionner
+// écriture par écriture compterait la même provision plusieurs fois. Le total
+// juste est celui que la vue « À provisionner » affiche.
+//
+//   assiette  = reste dû de la créance, DIMINUÉ des règlements non rattachés
+//               du même compte client, de la créance la plus ancienne à la
+//               plus récente (l'imputation de droit commun, décision du 20/10).
+//   provision = assiette × le taux de la famille pour sa fenêtre d'ancienneté.
+//
+// Une créance déjà éteinte par les crédits de son compte garde une assiette
+// nulle : il n'y a plus rien à couvrir, et la provision suit.
+function provLigne(i){
+  const k=V(i,'Clé de la créance');
+  if(!k) return {base:0, prov:0};
+  const rd=N(i,'Reste dû de la créance');
+  const a=assiettes();
+  const base=a.has(k)?a.get(k):rd;
+  const tr=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
+  return {base: base>0?base:0, prov: provisionDe(rd, sousVraie(i), tr, k)};
 }
 
 // La provision par ligne de synthèse, au niveau de lecture courant. Elle suit
