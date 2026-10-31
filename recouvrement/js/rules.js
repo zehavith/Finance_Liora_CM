@@ -46,7 +46,7 @@
             // de septembre y met le début de formation, sans délai. Les deux
             // suivis ne mesurent pas la même chose — l'un le travail de relance,
             // l'autre le solde du compte — et gardent chacun sa règle.
-            gl: { base: 'dateFinFormation', jours: 30 },
+            gl: { base: 'dateFinFormation', jours: 60 },
             // Le texte imprimé disait encore « date de facture » et « au grand
             // livre : début de formation » : deux états antérieurs de la règle,
             // abandonnés l'un après l'autre. Il dit maintenant ce que le calcul
@@ -70,7 +70,7 @@
             base: 'dateFacture', jours: 30,
             fallback: 'dateDebutFormation', fallbackJours: 30,
             plafondDebutFormation: true,
-            gl: { base: 'dateFinFormation', jours: 30 },
+            gl: { base: 'dateFinFormation', jours: 60 },
             note: "Date de facture +30 jours, sans dépasser début de formation +30 jours",
             categorie: 'Corporate', perimetre: 'Corporate',
             match: ['corporate alternance', 'corporate-alternance'],
@@ -78,8 +78,8 @@
         {
             key: 'B2B', label: 'B2B',
             base: 'dateFinFormation', jours: 60,
-            gl: { base: 'dateFinFormation', jours: 30 },
-            note: "Fin de formation +60 jours — au grand livre : fin de formation +30 jours",
+            gl: { base: 'dateFinFormation', jours: 60 },
+            note: "Fin de formation +60 jours",
             categorie: 'Corporate', perimetre: 'Corporate',
             match: ['b2b', 'btob', 'entreprise', 'corporate'],
         },
@@ -88,7 +88,7 @@
             base: 'dateFinFormation', jours: 60,
             note: "Fin de formation +60 jours", categorie: 'Alternance', perimetre: 'Corporate',
             match: ['alternance', 'apprentissage', 'contrat pro'],
-            gl: { base: 'dateFinFormation', jours: 30 },
+            gl: { base: 'dateFinFormation', jours: 60 },
         },
         {
             key: 'TRANSITION', label: 'Transition Pro',
@@ -140,7 +140,7 @@
             note: "Fin de formation +60 jours",
             categorie: 'Étatique',            perimetre: 'Corporate',
             match: ['etat', 'public etat', 'ministere', 'prefecture'],
-            gl: { base: 'dateFinFormation', jours: 30 },
+            gl: { base: 'dateFinFormation', jours: 60 },
         },
         {
             // « Interne », « Interne - UE » : le vocabulaire de Zoho pour les
@@ -166,7 +166,7 @@
             note: "Fin de formation +60 jours — pas de recouvrement OPCO, suivi du retard uniquement",
             categorie: 'Étatique',            perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco', 'akto', 'atlas', 'uniformation', 'ocapiat', 'constructys', 'afdas', 'opcommerce', 'l opcommerce', 'opco ep', 'opco 2i', 'opco mobilites', 'opco sante'],
-            gl: { base: 'dateFinFormation', jours: 30 },
+            gl: { base: 'dateFinFormation', jours: 60 },
         },
         {
             // Un OPCO qui finance une alternance : même payeur, autre dispositif.
@@ -179,7 +179,7 @@
             note: "Fin de formation +60 jours — pas de recouvrement OPCO, suivi du retard uniquement",
             categorie: 'Étatique', perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco alternance', 'opco-alternance'],
-            gl: { base: 'dateFinFormation', jours: 30 },
+            gl: { base: 'dateFinFormation', jours: 60 },
         },
         {
             key: 'BTC_PERSO', label: 'Financement personnel',
@@ -220,7 +220,7 @@
             // était resté aux soixante d'un barème qu'elle avait écarté.
             note: "Fin de formation +60 jours", categorie: 'Étatique', perimetre: 'B2C',
             match: ['cpf', 'compte personnel de formation', 'edof', 'caisse des depots', 'cdc'],
-            gl: { base: 'dateFinFormation', jours: 45 },
+            gl: { base: 'dateFinFormation', jours: 60 },
         },
     ];
 
