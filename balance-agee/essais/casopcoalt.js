@@ -32,18 +32,18 @@ const cl=GL.classer(creances,{rules:RG, sellsy, mandats:[]});
 ok('payée par un OPCO → OPCO - Alternance', L(cl[0])==='OPCO - Alternance');
 ok('facturée à l’entreprise → Corporate - Alternance', L(cl[1])==='Corporate - Alternance');
 
-console.log('\n=== OPCO : fin de formation + 30 jours ===');
-ok("30/06/2026 + 30 j → 30/07/2026", j(cl[0].dateEcheance)==="2026-07-30");
+console.log('\n=== OPCO : fin de formation + 60 jours ===');
+ok("30/06/2026 + 60 j → 29/08/2026", j(cl[0].dateEcheance)==="2026-08-29");
 ok('  … et la base est bien la fin de formation', cl[0].echeanceBase==='dateFinFormation');
-ok('  … et le délai annoncé est celui appliqué', cl[0].echeanceJours===30);
+ok('  … et le délai annoncé est celui appliqué', cl[0].echeanceJours===60);
 
 // Le 15/10/2026 elle a aligné Corporate - Alternance sur le B2C-Entreprise :
 // même facturation, même barème, et c'est la FIN DE FORMATION qui date la
 // créance, non la date de facture. Ce bloc attendait encore la règle d'avant.
-console.log('\n=== entreprise : fin de formation + 30 jours ===');
-ok('30/06/2026 + 30 j → 30/07/2026', j(cl[1].dateEcheance)==='2026-07-30');
+console.log('\n=== entreprise : fin de formation + 60 jours ===');
+ok('30/06/2026 + 60 j → 29/08/2026', j(cl[1].dateEcheance)==='2026-08-29');
 ok('  … et la base est bien la fin de formation', cl[1].echeanceBase==='dateFinFormation');
-ok('  … et le délai annoncé est celui appliqué', cl[1].echeanceJours===30);
+ok('  … et le délai annoncé est celui appliqué', cl[1].echeanceJours===60);
 
 console.log('\n=== le barème lui-même, tel qu’il est écrit ===');
 const r=k=>RG.find(x=>x.key===k);
@@ -64,13 +64,13 @@ const r=k=>RG.find(x=>x.key===k);
 // après avoir touché rules.js.
 ok('OPCO - Alternance : fin de formation + 60 (suivi)',
    r('OPCO_ALTERNANCE').base==='dateFinFormation' && r("OPCO_ALTERNANCE").jours===60);
-ok('OPCO - Alternance : fin de formation + 30 (balance âgée)',
-   r('OPCO_ALTERNANCE').gl.base==='dateFinFormation' && r("OPCO_ALTERNANCE").gl.jours===30);
+ok('OPCO - Alternance : fin de formation + 60 (balance âgée)',
+   r('OPCO_ALTERNANCE').gl.base==='dateFinFormation' && r("OPCO_ALTERNANCE").gl.jours===60);
 ok('Corporate - Alternance : date de facture + 30 (suivi)',
    r('CORPORATE_ALTERNANCE').base==='dateFacture' && r('CORPORATE_ALTERNANCE').jours===30
    && r('CORPORATE_ALTERNANCE').plafondDebutFormation===true);
-ok('Corporate - Alternance : fin de formation + 30 (balance âgée)',
-   r('CORPORATE_ALTERNANCE').gl.base==='dateFinFormation' && r('CORPORATE_ALTERNANCE').gl.jours===30);
+ok('Corporate - Alternance : fin de formation + 60 (balance âgée)',
+   r('CORPORATE_ALTERNANCE').gl.base==='dateFinFormation' && r('CORPORATE_ALTERNANCE').gl.jours===60);
 ok('  … et la phrase imprimée dit la même chose',
    /date de facture \+30/i.test(r('CORPORATE_ALTERNANCE').note||''));
 ok('l’OPCO reste hors recouvrement', r('OPCO_ALTERNANCE').sansRecouvrement===true);

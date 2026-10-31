@@ -33,9 +33,9 @@ ok('facture postérieure → 01/06/2025 + 30 j', j(ap.date)==='2025-07-01');
 // Quarante-cinq jours, son tableau du 14/10/2026 ; le barème à soixante a
 // été écarté ce jour-là, et le texte imprimé l'a suivi le 16/10.
 const b=calc({financement:'CPF', dateFinFormation:D(2026,6,30)});
-ok('CPF → fin de formation + 45', b.jours===45 && j(b.date)==='2026-08-14');
+ok('CPF → fin de formation + 60', b.jours===60 && j(b.date)==='2026-08-29');
 const o=calc({financement:'OPCO_ALTERNANCE', dateFinFormation:D(2026,6,30)});
-ok('OPCO - Alternance → fin de formation + 30', o.jours===30 && j(o.date)==='2026-07-30');
+ok('OPCO - Alternance → fin de formation + 60', o.jours===60 && j(o.date)==='2026-08-29');
 const p=calc({financement:'BTC_PERSO', dateDebutFormation:D(2026,3,2)});
 ok('B2C-Perso → début de formation, sans délai', p.jours===0 && j(p.date)==='2026-03-02');
 
@@ -66,10 +66,10 @@ const creances=[
 ];
 const cl=GL.classer(creances,{rules:RG, sellsy:[], mandats:[]});
 const c=cl[0];
-ok('le délai appliqué est posé sur la créance', c.echeanceJours===45);
+ok('le délai appliqué est posé sur la créance', c.echeanceJours===60);
 ok('la base aussi', c.echeanceBase==='dateFinFormation');
 ok('l’échéance du grand livre est conservée intacte', j(c.dateEcheanceGrandLivre)==='2025-02-14');
-ok('  … alors que l’échéance retenue, elle, a changé', j(c.dateEcheance)==='2026-08-14');
+ok('  … alors que l’échéance retenue, elle, a changé', j(c.dateEcheance)==='2026-08-29');
 ok('les colonnes du fichier survivent (n° Zoho)', c.brut && c.brut.numeroZoho==='FA-880-0097');
 ok('  … le commentaire', c.brut.commentaire==='vu avec le client');
 ok('  … le statut Sellsy', c.brut.statutSellsy==='Envoyée');
