@@ -34,6 +34,32 @@ const LIVRE = path.resolve(__dirname, '..', '..', 'balance-agee', 'depot-nouvell
 // — nommément, une par une, car une suite muette se lirait comme une suite
 // verte — et tout le reste est éprouvé.
 const SANS_LIVRE = !fs.existsSync(LIVRE);
+
+// LE TOTAL DE RÉFÉRENCE N'EST PLUS UN NOMBRE ÉCRIT EN DUR.
+//
+// Il l'a été jusqu'au 01/11/2026, à 14 268 635,41 €, posé le 23/10. Le dépôt a
+// changé de nature le 27/10 — grand livre Pennylane COMPLET, 38 288 écritures
+// au lieu de 16 151 — et la constante est devenue fausse de 135 893 € sans que
+// rien ne soit cassé dans le calcul. Le contrôle est resté rouge quatre jours
+// et a gelé la page sur son arrêté du 28/10, pendant que les deux moteurs
+// tombaient d'accord à huit centimes. Sa décision du 01/11 : « le contrôle se
+// cale sur le total du grand livre déposé ».
+//
+// La référence est donc le total que LA BALANCE ÂGÉE publie sur le MÊME grand
+// livre. Les deux chaînes partent du même fichier et doivent dire la même
+// chose ; c'est précisément ce que ce contrôle vérifie, et il reste vrai quel
+// que soit le dépôt du jour.
+//
+// Tolérance : un euro, celle du contrôle comptable de la balance âgée. Le
+// résidu d'arrondi connu vaut huit centimes.
+const BALANCE_AGEE = path.resolve(__dirname, '..', '..', 'balance-agee', 'art', 'balance.json');
+const TOTAL_REFERENCE = (() => {
+  try {
+    const d = JSON.parse(fs.readFileSync(BALANCE_AGEE, 'utf8'));
+    const t = (d.syntheseCat || []).find(r => r.cat === 'TOTAL');
+    return t && Number.isFinite(t.total) ? { total: t.total, arrete: d.arrete } : null;
+  } catch (e) { return null; }
+})();
 const saute = t => console.log('IGNORÉ  ' + t);
 const PORT = 8791;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
@@ -144,7 +170,7 @@ const serveur = http.createServer((q, r) => {
   // ── 2 à 4. le grand livre de référence ──
   if (SANS_LIVRE) {
     saute('la balance âgée se construit dans le paquet');
-    saute('le total est celui de la balance publiée');
+    saute('le total est celui de la balance âgée');
     saute('un grand livre seul se reprend');
     saute('elle ouvre directement sur la balance âgée');
     saute('la vue du grand livre s’affiche');
@@ -180,8 +206,16 @@ const serveur = http.createServer((q, r) => {
     console.log('  balance : ' + eur(bal.total) + ' · échu ' + eur(bal.echu)
       + ' · non échu ' + eur(bal.nonEchu) + ' · arrêté au ' + bal.arrete);
     ok('la balance âgée se construit dans le paquet — ' + bal.lignes + ' dispositifs', bal.lignes > 0);
-    ok('le total est celui de la balance publiée',
-       Math.abs(bal.total - 14268635.41) < 0.01);
+    if (!TOTAL_REFERENCE) {
+      saute('le total est celui de la balance âgée');
+    } else {
+      const ecart = bal.total - TOTAL_REFERENCE.total;
+      console.log('  référence : ' + eur(TOTAL_REFERENCE.total)
+        + ' — la balance âgée arrêtée au ' + TOTAL_REFERENCE.arrete
+        + ' · écart ' + eur(ecart));
+      ok('le total est celui de la balance âgée, au même grand livre',
+         Math.abs(ecart) <= 1);
+    }
 
     // ── 3. l'application s'ouvre sur sa balance ──
     //
