@@ -756,9 +756,27 @@ function poserEntete(ws,l,figer){
     c.border={bottom:{style:'thin',color:{argb:TRAIT}}}; });
   if(figer!==false) ws.views=[{state:'frozen',ySplit:l.number}];
 }
-function poserTotal(l){
+// PEINDRE UNE LIGNE ENTIÈRE, ET NON SES SEULES CELLULES REMPLIES.
+//
+// « les cellules ne st pas coloré de manière uniforme », 02/11/2026. La
+// bibliothèque n'itère que sur les cellules QUI PORTENT UNE VALEUR : une
+// ligne dont deux tranches étaient vides perdait sa couleur en plein
+// milieu, et le rayage alternait par morceaux. On parcourt donc les
+// colonnes de la feuille, pas les cellules de la ligne. Le nom « peindre »
+// est déjà pris par l'attente d'un rendu du navigateur : celui-ci dit ce
+// qu'il fait, remplir une ligne du classeur.
+function remplirLigne(ws,l,couleur){
+  const n=(ws.columns&&ws.columns.length)||ws.columnCount||1;
+  for(let c=1;c<=n;c++)
+    l.getCell(c).fill={type:'pattern',pattern:'solid',fgColor:{argb:couleur}};
+}
+function poserTotal(l,ws){
   l.font={bold:true};
-  l.eachCell(c=>{ c.fill={type:'pattern',pattern:'solid',fgColor:{argb:DOUX}};
+  if(ws) remplirLigne(ws,l,DOUX);
+  const n=ws?((ws.columns&&ws.columns.length)||ws.columnCount||1):0;
+  if(n){ for(let c=1;c<=n;c++){ const x=l.getCell(c);
+      x.border={top:{style:'thin',color:{argb:BLEU}}}; } }
+  else l.eachCell(c=>{ c.fill={type:'pattern',pattern:'solid',fgColor:{argb:DOUX}};
     c.border={top:{style:'thin',color:{argb:BLEU}}}; });
 }
 
@@ -900,7 +918,7 @@ function feuilleRegles(wb){
       l.alignment={vertical:'top',wrapText:true};
       l.getCell(8).alignment={horizontal:'right',vertical:'top'};
       l.height=52;
-      if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
+      if(y++%2) remplirLigne(ws,l,PALE);
     }
     // LE TOTAL SE COMPTE SUR CE QUE LA PAGE A, PAS SUR CE QUE LA CHAÎNE AVAIT.
     //
@@ -926,7 +944,7 @@ function feuilleRegles(wb){
     const l=ws.addRow([r.dispositif,r.type,r.perimetre,r.base,r.jours,r.repli,r.note,r.mots]);
     l.getCell(1).font={bold:true};
     l.alignment={vertical:'top',wrapText:true};
-    if(z++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
+    if(z++%2) remplirLigne(ws,l,PALE);
   }
   prorataRegles(ws);
   provisionRegles(ws);
@@ -967,7 +985,7 @@ function prorataRegles(ws){
     l.getCell(1).font={bold:true}; l.getCell(2).font={bold:true};
     l.alignment={vertical:'top',wrapText:true};
     l.height=Math.max(16,Math.ceil(String(x.dit||'').length/130)*15+4);
-    if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
+    if(y++%2) remplirLigne(ws,l,PALE);
   }
   if(P.regle){
     const l=ws.addRow(['','Ce que la règle fait',P.regle]);
@@ -1005,9 +1023,9 @@ function provisionRegles(ws){
   for(const f of Object.keys(taux)){
     const l=ws.addRow([f,...(taux[f]||[]),pv.parFam.get(f)||0]);
     l.getCell(1).font={bold:true};
-    for(let c=2;c<=1+fen.length;c++) l.getCell(c).numFmt='0,0 %';
+    for(let c=2;c<=1+fen.length;c++) l.getCell(c).numFmt='0 %';
     l.getCell(2+fen.length).numFmt=EUROS;
-    if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
+    if(y++%2) remplirLigne(ws,l,PALE);
   }
   const tot=ws.addRow(['TOTAL',...fen.map(()=>null),pv.total]);
   tot.getCell(1).font={bold:true}; tot.getCell(2+fen.length).font={bold:true};
@@ -1025,7 +1043,7 @@ function provisionRegles(ws){
     l.getCell(1).font={bold:true};
     l.getCell(4).numFmt=EUROS; l.getCell(5).numFmt=EUROS;
     if(!familleDe(sc)) l.getCell(2).font={color:{argb:CORAIL},bold:true};
-    if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
+    if(y++%2) remplirLigne(ws,l,PALE);
   }
 
   // ── LES RÈGLES DE PROVISION, À LA SUITE DES TAUX ──
@@ -1105,7 +1123,7 @@ function provisionRegles(ws){
     l.getCell(1).alignment={vertical:'top',wrapText:true};
     l.getCell(2).alignment={vertical:'top',wrapText:true};
     l.height=texte.length>120?30:16;
-    if(z++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
+    if(z++%2) remplirLigne(ws,l,PALE);
   }
 }
 
@@ -1161,7 +1179,7 @@ function feuilleBalance(wb,niv,idx){
   ws.getColumn(P.nb+1).numFmt=ENTIER; ws.getColumn(P.ecart+1).numFmt=EUROS;
   // La part du NOMBRE de créances que porte la ligne, en fraction de 1 pour
   // qu'Excel la calcule et la somme. Sa règle, le 16/10/2026.
-  ws.getColumn(P.part+1).numFmt='0,0 %';
+  ws.getColumn(P.part+1).numFmt='0.0 %';
   ws.getColumn(P.prov+1).numFmt=EUROS;
   const lignesSynth=synthRows(niv);
   // La provision par ligne de synthèse : la somme de celles de ses créances.
@@ -1211,8 +1229,8 @@ function feuilleBalance(wb,niv,idx){
       part(s.cat==='TOTAL'?totalNb:s.nb), ar2(provCat.get(s.cat)||0),
       ar2(s.total-(s.echu+s.nonEchu)),'']);
     l.getCell(1).font={bold:true};
-    if(s.cat==='TOTAL'){ poserTotal(l); continue; }
-    if(z++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
+    if(s.cat==='TOTAL'){ poserTotal(l,ws); continue; }
+    if(z++%2) remplirLigne(ws,l,PALE);
     for(const g of [...(par.get(s.cat)||new Map()).values()].sort((a,b)=>a.cpt<b.cpt?-1:1)){
       const lr=ws.addRow(['    '+g.cpt+' - '+g.client, ar2(g.total), ar2(g.echu),
         ...g.buckets.map(ar2), ar2(g.nonEchu), g.nb, part(g.nb), ar2(g.prov),
@@ -1302,7 +1320,7 @@ function feuilleProvision(wb,idx){
     ...D.tranches,'Non échu','Créances']));
   ws.getColumn(2).numFmt=EUROS;
   ws.getColumn(3).numFmt=EUROS;
-  ws.getColumn(4).numFmt='0,0 %';
+  ws.getColumn(4).numFmt='0.0 %';
   for(let c=5;c<=4+nT;c++) ws.getColumn(c).numFmt=EUROS;
   ws.getColumn(5+nT).numFmt=EUROS;
   ws.getColumn(6+nT).numFmt=ENTIER;
@@ -1378,17 +1396,22 @@ function feuilleProvision(wb,idx){
   }
   const liste=[...parSc.values()].sort((a,b)=>b.prov-a.prov||(a.sc<b.sc?-1:1));
   const total=liste.reduce((s,x)=>s+x.prov,0);
-  const pt=v=>(total&&v)?v/total:null;
+  // UN TOTAL VIDE NE SE DISTINGUE PAS D'UN OUBLI. « il n'y a rien ds les
+  // totaux de 0 - 3 mois », 02/11/2026 : ces deux tranches ne portent jamais
+  // de provision — en deçà de 121 jours de retard le taux est nul — et leur
+  // colonne restait blanche de haut en bas, TOTAL compris. Un zéro dit « rien
+  // dans cette tranche » ; un blanc ne dit rien du tout. Sa règle du 16/10.
+  const pt=v=>total?v/total:0;
   let y=0;
   for(const g of liste){
-    const l=ws.addRow([g.sc, g.rd, g.prov||null, pt(g.prov),
-      ...D.tranches.map(x=>g.tr.get(x)||null), null, g.nb]);
+    const l=ws.addRow([g.sc, ar2(g.rd), ar2(g.prov), pt(g.prov),
+      ...D.tranches.map(x=>ar2(g.tr.get(x)||0)), 0, g.nb]);
     l.getCell(1).font={bold:true};
     if(g.prov) l.getCell(3).font={bold:true,color:{argb:CORAIL}};
-    if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
+    if(y++%2) remplirLigne(ws,l,PALE);
     for(const cp of [...g.cpt.values()].sort((a,b)=>a.cpt<b.cpt?-1:1)){
       const lr=ws.addRow(['    '+cp.cpt+' - '+cp.client, ar2(cp.rd), ar2(cp.prov),
-        pt(cp.prov), ...D.tranches.map(x=>ar2(cp.tr.get(x)||0)), null, cp.nb]);
+        pt(cp.prov), ...D.tranches.map(x=>ar2(cp.tr.get(x)||0)), 0, cp.nb]);
       lr.outlineLevel=1; lr.hidden=true; lr.getCell(1).font={bold:true};
       // Les créances de la plus ancienne échéance à la plus récente : c'est
       // l'ordre dans lequel une balance âgée se lit. Une case vide se lirait
@@ -1400,6 +1423,7 @@ function feuilleProvision(wb,idx){
         r[0]='          '+q.fac+'   '+(q.ech||'sans échéance');
         r[1]=ar2(q.rd); r[2]=ar2(q.prov);
         for(let j=0;j<nT;j++) r[4+j]=0;
+        r[4+nT]=0;
         const jt=D.tranches.indexOf(q.tr);
         if(jt>=0) r[4+jt]=ar2(q.prov);
         const le=ws.addRow(r); le.outlineLevel=2; le.hidden=true;
@@ -1408,10 +1432,10 @@ function feuilleProvision(wb,idx){
   }
   const trTot=new Map();
   for(const x of liste) for(const [tr,v] of x.tr) trTot.set(tr,(trTot.get(tr)||0)+v);
-  const tot=ws.addRow(['TOTAL', liste.reduce((s,x)=>s+x.rd,0), total||null,
-    total?1:null, ...D.tranches.map(x=>trTot.get(x)||null), null,
+  const tot=ws.addRow(['TOTAL', ar2(liste.reduce((s,x)=>s+x.rd,0)), ar2(total),
+    total?1:0, ...D.tranches.map(x=>ar2(trTot.get(x)||0)), 0,
     liste.reduce((s,x)=>s+x.nb,0)]);
-  poserTotal(tot);
+  poserTotal(tot,ws);
   if(total) tot.getCell(3).font={bold:true,color:{argb:CORAIL}};
 
   // CE QUE LA COMPENSATION N'A PAS PU EMPLOYER, en une cellule et non en une
