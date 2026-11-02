@@ -1171,8 +1171,18 @@ const COUPE='N° de rapprochement';
 // Les deux colonnes de provision ajoutées au détail, à sa demande du
 // 31/10/2026. Leur nom dit « de la créance » : c'est elle qui les porte, et
 // non l'écriture sur laquelle elles se répètent.
-const PROV_COLS=['Assiette de provision de la créance','Provision de la créance'];
-const nbColsDetail=()=>D.cols.indexOf(COUPE)<0?D.cols.length:D.cols.indexOf(COUPE);
+const PROV_COLS=['Assiette de provision de la créance',
+  'Détail du calcul de la provision','Provision de la créance'];
+// Celles des trois qui portent des euros. Le détail est du texte : lui poser
+// un format monétaire en ferait « 0 € » sur toute la colonne.
+const PROV_EUROS=new Set(['Assiette de provision de la créance','Provision de la créance']);
+// LE NOMBRE DE COLONNES ANNONCÉ DOIT ÊTRE CELUI DE LA FEUILLE.
+// Il ne comptait que les colonnes du grand livre : ni « Compte - Client », qui
+// ouvre le tableau, ni les colonnes de provision, qui le ferment. Le sommaire
+// en annonçait donc trois de moins qu'il n'y en avait — quatre depuis que le
+// détail du calcul s'y ajoute.
+const nbColsGL=()=>D.cols.indexOf(COUPE)<0?D.cols.length:D.cols.indexOf(COUPE);
+const nbColsDetail=()=>1+nbColsGL()+PROV_COLS.length;
 const NUMERIQUES=new Set([...MONNAIE,'Taux d’attribution TVA','Taux de change',
   'Jours de retard','Délai appliqué (jours)']);
 
@@ -1266,13 +1276,13 @@ function feuilleDetail(wb,idx,nom){
   // colonne AW ». Ce sont les propositions de rapprochement et les attributs
   // de la créance, dont la page a besoin pour calculer mais qui n'ont rien à
   // faire dans un document qu'on relit.
-  const COLS=D.cols.slice(0,D.cols.indexOf(COUPE)<0?D.cols.length:D.cols.indexOf(COUPE));
+  const COLS=D.cols.slice(0,nbColsGL());
   // Les deux colonnes de la provision ferment le tableau. Elles ne viennent
   // pas du grand livre : la page les calcule, et elles portent la valeur DE LA
   // CRÉANCE, répétée sur chacune de ses écritures — voir provLigne().
   ws.columns=[{header:'Compte - Client',width:46},
     ...COLS.map(c=>({header:c,width:Math.min(42,Math.max(13,c.length+3))})),
-    ...PROV_COLS.map(c=>({header:c,width:30}))];
+    ...PROV_COLS.map(c=>({header:c,width:PROV_EUROS.has(c)?30:86}))];
   poserEntete(ws,ws.getRow(1));
   // 16 080 lignes : on écrit les valeurs d'un bloc et on ne pose la mise en
   // forme que sur les colonnes, pas sur chaque cellule — sans quoi le
@@ -1281,9 +1291,9 @@ function feuilleDetail(wb,idx,nom){
     V(i,'N° de compte')+' - '+(V(i,'Libellé de compte')||V(i,'Tiers')),
     ...COLS.map(c=>{ const v=V(i,c);
       return (NUMERIQUES.has(c)&&NOMBRE.test(v))?Number(v):v; }),
-    p.base, p.prov]; }));
+    p.base, detailProvision(i), p.prov]; }));
   COLS.forEach((c,j)=>{ if(MONNAIE.has(c)) ws.getColumn(j+2).numFmt=EUROS; });
-  PROV_COLS.forEach((c,j)=>{ ws.getColumn(COLS.length+2+j).numFmt=EUROS; });
+  PROV_COLS.forEach((c,j)=>{ if(PROV_EUROS.has(c)) ws.getColumn(COLS.length+2+j).numFmt=EUROS; });
   ws.autoFilter={from:{row:1,column:1},
                  to:{row:1,column:COLS.length+1+PROV_COLS.length}};
 }
@@ -1410,10 +1420,16 @@ const familleDe=sc=>{
 // plus ancienne à la plus récente — l'imputation de droit commun, et ce que le
 // moteur faisait de lui-même avant la découpe, puisque le lot ne faisait
 // qu'une créance. L'ANCIENNETÉ, elle, reste celle de chaque ligne.
-let ASSIETTE=null, CREDIT_SANS_EMPLOI=0;
+let ASSIETTE=null, CREDIT_SANS_EMPLOI=0, IMPUTE=null;
 function assiettes(){
   if(ASSIETTE) return ASSIETTE;
   ASSIETTE=new Map();
+  // CE QUI A MANGÉ LE CRÉDIT, CRÉANCE PAR CRÉANCE ET TEMPS PAR TEMPS.
+  // La colonne « Détail du calcul de la provision » s'en sert pour écrire la
+  // phrase : sans cette trace, on saurait que l'assiette est plus basse que le
+  // reste dû, mais pas par quelle règle. C'est la question que pose un
+  // commissaire aux comptes.
+  IMPUTE=new Map();
   // L'imputation se lit PAR COMPTE CLIENT, sa décision du 20/10/2026. C'est le
   // même périmètre que la tuile « trop-perçu », et c'est ce qui rend la page
   // cohérente avec elle-même : un client déclaré globalement créditeur d'un
@@ -1443,6 +1459,11 @@ function assiettes(){
   // ce départage, la page et le contrôle annonçaient 4 048 692,24 € et
   // 4 047 124,73 € — 1 567,51 € d'écart sur rien d'autre que l'ordre.
   const ancien=(a,b)=>b.j-a.j||(a.k<b.k?-1:a.k>b.k?1:0);
+  const noter=(k,quoi,montant)=>{
+    let o=IMPUTE.get(k);
+    if(!o){ o={compte:0, tranche:0, ancien:0, jeune:0}; IMPUTE.set(k,o); }
+    o[quoi]+=montant;
+  };
 
   // ─── premier temps : PAR COMPTE CLIENT ───
   const reliquat=[];
@@ -1460,6 +1481,7 @@ function assiettes(){
         if(reste<=0.005) break;
         const a=ASSIETTE.get(dt.k); if(!(a>0.005)) continue;
         const pris=Math.min(reste,a); ASSIETTE.set(dt.k, a-pris); reste-=pris;
+        noter(dt.k,'compte',pris);
       }
       if(reste>0.005) reliquat.push({sc:cr.sc, tr:cr.tr, reste});
     }
@@ -1497,11 +1519,12 @@ function assiettes(){
   }
   for(const [,v] of parCT) v.sort(ancien);
   // Vider un crédit sur les dettes d'une tranche de son financement.
-  const vider=(r,tr)=>{
+  const vider=(r,tr,quoi)=>{
     for(const c of (parCT.get(cle(r.sc,tr))||[])){
       if(r.reste<=0.005) return;
       const a=ASSIETTE.get(c.k); if(!(a>0.005)) continue;
       const pris=Math.min(r.reste,a); ASSIETTE.set(c.k, a-pris); r.reste-=pris;
+      noter(c.k,quoi,pris);
     }
   };
   // L'ÉCHELLE DES TRANCHES, du plus jeune au plus ancien. Elle vient des
@@ -1523,7 +1546,7 @@ function assiettes(){
   // prendrait une dette à laquelle le second avait un droit plus fort — et le
   // résultat dépendrait de l'ordre de lecture. Chaque temps est donc purgé
   // en entier avant le suivant.
-  for(const r of reliquat) vider(r, r.tr);                      // temps 3 : sa tranche
+  for(const r of reliquat) vider(r, r.tr, 'tranche');           // temps 3 : sa tranche
 
   // ─── temps 4 : vers le PLUS ANCIEN, cran par cran ───
   // Sa décision du 02/11 : « lorsqu'il reste des montants à provisionner même
@@ -1534,7 +1557,7 @@ function assiettes(){
   for(const r of reliquat){
     if(r.reste<=0.005) continue;
     const dep=ECH.indexOf(r.tr); if(dep<0) continue;
-    for(let i=dep+1;i<ECH.length && r.reste>0.005;i++) vider(r, ECH[i]);
+    for(let i=dep+1;i<ECH.length && r.reste>0.005;i++) vider(r, ECH[i], 'ancien');
   }
 
   // ─── temps 5 : puis vers le PLUS JEUNE, cran par cran ───
@@ -1554,7 +1577,7 @@ function assiettes(){
   for(const r of reliquat){
     if(r.reste<=0.005) continue;
     const dep=ECH.indexOf(r.tr); if(dep<0) continue;
-    for(let i=dep-1;i>=0 && r.reste>0.005;i--) vider(r, ECH[i]);
+    for(let i=dep-1;i>=0 && r.reste>0.005;i--) vider(r, ECH[i], 'jeune');
   }
 
   CREDIT_SANS_EMPLOI=reliquat.reduce((s,r)=>s+(r.reste>0.005?r.reste:0),0);
@@ -1563,6 +1586,53 @@ function assiettes(){
 // Ce que la compensation n'a pas pu employer. Calculé par assiettes(), affiché
 // sous l'exposé des règles : le chiffre doit se lire là où la règle se lit.
 function creditSansEmploi(){ assiettes(); return CREDIT_SANS_EMPLOI; }
+// LE CALCUL DE LA PROVISION, EN TOUTES LETTRES.
+//
+// Sa demande du 02/11/2026 : « n'oublie pas d'ajouter dans le détail ligne à
+// ligne les 2 colonnes supplémentaires avec le détail du calcul de la
+// provision + le montant de la prov », puis, entre remplacer l'assiette ou
+// ajouter la phrase : « 2 » — la phrase s'ajoute, et les deux nombres
+// restent. L'échéance fonctionne déjà ainsi : elle donne la base, le délai ET
+// la phrase.
+//
+// La phrase dit le chemin complet — le reste dû, ce que chaque temps lui a
+// retiré, l'assiette obtenue, le taux et sa justification, le montant. Quand
+// rien n'est provisionné, elle dit POURQUOI plutôt que de laisser une cellule
+// vide : une cellule vide ne se distingue pas d'un oubli.
+function detailProvision(i){
+  paramsPrets();
+  const k=V(i,'Clé de la créance');
+  if(!k) return '';
+  const rd=N(i,'Reste dû de la créance');
+  if(rd<0) return 'créance au crédit : rien à provisionner';
+  if(!(rd>0)) return 'créance soldée : rien à provisionner';
+  const a=assiettes();
+  const base=a.has(k)?a.get(k):rd;
+  const im=IMPUTE?IMPUTE.get(k):null;
+  const parts=[];
+  if(im){
+    if(im.compte>0.005)  parts.push('− '+eurC(im.compte)+' imputés sur le compte');
+    if(im.tranche>0.005) parts.push('− '+eurC(im.tranche)+' compensés dans sa tranche');
+    if(im.ancien>0.005)  parts.push('− '+eurC(im.ancien)+' compensés depuis une tranche plus ancienne');
+    if(im.jeune>0.005)   parts.push('− '+eurC(im.jeune)+' compensés depuis une tranche plus jeune');
+  }
+  let chemin='reste dû '+eurC(rd);
+  if(parts.length) chemin+=' '+parts.join(' ')+' = assiette '+eurC(base>0?base:0);
+  if(!(base>0)) return chemin+' : assiette nulle, rien à provisionner';
+  const sc=sousVraie(i);
+  const tr=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
+  const fen=PROV.fenetres||[];
+  const j=fen.findIndex(f=>(f.tranches||[]).indexOf(tr)>=0);
+  if(j<0) return chemin+' · '+(tr||'sans tranche')
+    +' : hors des quatre fenêtres — en deçà de 121 jours de retard ou non échu, rien à provisionner';
+  const fam=familleDe(sc);
+  if(!fam) return chemin+' · '+(sc||'sans type de financement')
+    +' : aucune famille de provision rattachée, rien à provisionner';
+  const t=((PROV.taux||{})[fam]||[])[j]||0;
+  if(!t) return chemin+' · '+fam+', '+fen[j].label+' : taux nul, rien à provisionner';
+  return chemin+' × '+pc(t)+' ('+fam+', '+fen[j].label+') = '+eurC(base*t);
+}
+
 // Le barème s'applique à ce qui reste vraiment dû sur la créance.
 function provisionDe(rd, sc, tr, cle){
   paramsPrets();
