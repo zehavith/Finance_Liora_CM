@@ -1020,6 +1020,65 @@ function provisionRegles(ws){
     if(!familleDe(sc)) l.getCell(2).font={color:{argb:CORAIL},bold:true};
     if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
   }
+
+  // ── LES RÈGLES DE PROVISION, À LA SUITE DES TAUX ──
+  //
+  // Sa demande du 02/11/2026 : « ajoute dans les règles, à la suite des
+  // provisions, les règles de celle-ci en succinct ».
+  //
+  // SUCCINCT VEUT DIRE EN CELLULES. L'exposé en paragraphes avait quitté le
+  // classeur les 21 et 22/10 — « retire ça de l'export », « enlève-moi ce type
+  // de phrase de l'export » : un fait se dit dans une cellule, pas dans une
+  // phrase. Une règle par ligne, son énoncé en regard, et rien à lire avant.
+  ws.addRow([]);
+  bande(ws,'RÈGLES DE PROVISION',{bold:true,size:12,color:{argb:BLEU}});
+  ws.addRow([]);
+  const eR=ws.addRow(['Règle','Ce qu’elle dit']);
+  ws.mergeCells(eR.number,2,eR.number,8);
+  poserEntete(ws,eR,false);
+  const fen2=(PROV.fenetres||[]).map(f=>f.label).join(' · ');
+  const sansEmploi=creditSansEmploi();
+  const dit=[
+    ['Montant à provisionner',
+     'Somme, créance par créance, de l’assiette multipliée par le taux de sa famille dans la fenêtre où tombe son ancienneté.'],
+    ['Assiette',
+     'Reste dû de la créance, diminué des crédits qui lui ont été imputés. Une assiette nulle ou négative ne se provisionne pas.'],
+    ['Sur quoi porte le crédit',
+     'Sur le reste dû, jamais sur le montant provisionné : cent euros de crédit dans une tranche à 25 % allègent la provision de vingt-cinq euros.'],
+    ['1. Imputation du règlement',
+     'Un encaissement nommant des factures leur est imputé — par montant exact d’abord, puis de la plus ancienne à la plus récente, avoirs déduits.'],
+    ['2. Imputation par compte client',
+     'Les crédits qu’aucune facture ne porte s’imputent sur les dettes du même compte, de la plus ancienne à la plus récente.'],
+    ['3. Compensation dans sa tranche',
+     'Le crédit restant compense les créances du même type de financement et de la même tranche d’ancienneté, la plus ancienne d’abord.'],
+    ['4. Cascade vers le plus ancien',
+     'S’il reste du crédit, il passe à la tranche immédiatement plus ancienne, puis à la suivante, cran par cran.'],
+    ['5. Redescente vers le plus jeune',
+     'Faute de cran plus ancien, il redescend cran par cran vers les tranches plus jeunes, jusqu’à être employé.'],
+    ['Périmètre de la compensation',
+     'Elle ne quitte jamais le type de financement, et porte sur toutes ses créances, y compris celles qu’aucun barème ne provisionne.'],
+    ['Ordre des temps',
+     'Chaque temps est épuisé pour tous les crédits avant que le suivant ne commence : la tranche propre prime le cran voisin, et le plus ancien le plus jeune.'],
+    ['Ancienneté',
+     'L’imputation modifie le montant exposé, jamais la date qui le classe : chaque créance garde sa tranche.'],
+    ['Fenêtres', fen2+'. En deçà de 121 jours de retard, et sur tout ce qui n’est pas échu, la provision est nulle.'],
+    ['Familles',
+     'Chaque type de financement relève d’une famille, et le taux s’applique au niveau de la famille. Un type non rattaché n’est pas provisionné.'],
+    ['Crédit sans emploi',
+     sansEmploi>0.005
+       ? eurC(sansEmploi)+' — crédit qu’aucune dette ouverte de son financement n’a pu absorber, dans aucune tranche.'
+       : 'Aucun : tout le crédit a trouvé preneur.'],
+  ];
+  let z=0;
+  for(const [quoi,texte] of dit){
+    const l=ws.addRow([quoi,texte]);
+    ws.mergeCells(l.number,2,l.number,8);
+    l.getCell(1).font={bold:true,color:{argb:BLEU}};
+    l.getCell(1).alignment={vertical:'top',wrapText:true};
+    l.getCell(2).alignment={vertical:'top',wrapText:true};
+    l.height=texte.length>120?30:16;
+    if(z++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
+  }
 }
 
 // Le vocabulaire des colonnes d'audit, en clair. Ces expressions disent par
