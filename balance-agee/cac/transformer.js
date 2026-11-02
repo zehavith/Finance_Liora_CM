@@ -143,23 +143,59 @@ function transformer(){
     for(const [b,n] of BORNES) if(j<=b) return n; return '> 48 mois'; };
 
   // ── l'échéance de chaque créance, portée par sa facture ──
+  // ON GROUPE PAR PIÈCE, PAS PAR CRÉANCE.
+  //
+  // Toutes les lignes d'une même pièce prennent l'échéance de cette pièce :
+  // c'est ce que fait son fichier, et c'est la seule lecture qui tienne pour
+  // les trois cas observés. FA-771-000664 : la facture est au 05/07/2022, son
+  // règlement du 11/08 appartient à une AUTRE créance (non lettrée) et prenait
+  // donc sa propre date. FA-550-0958 : huit règlements mensuels, aucune
+  // facture, huit créances distinctes, qu'elle date toutes au 01/03/2022 — la
+  // ligne la plus ancienne de la pièce. Grouper par créance manquait les deux.
+  //
+  // Une ligne sans pièce se date elle-même : « une ligne sans facture se date
+  // elle-même », son onglet Règles CAC.
   const groupes=new Map();
   for(const l of d.lignes){
-    const k=txt(l,'Clé de la créance'); if(!k) continue;
-    if(!groupes.has(k)) groupes.set(k,[]);
-    groupes.get(k).push(l);
+    const p=txt(l,'N° de facture'); if(!p) continue;
+    if(!groupes.has(p)) groupes.set(p,[]);
+    groupes.get(p).push(l);
   }
   const ech=new Map();
-  for(const [k,g] of groupes){
-    const f=g.find(x=>/facture/i.test(txt(x,'Nature de l’écriture')))||g[0];
-    ech.set(k, echeance(f));
+  for(const [p,g] of groupes){
+    // La facture de la pièce si elle en a une ; sinon la ligne la plus
+    // ancienne, qui tient lieu d'origine. L'ordre de lecture du fichier ne
+    // doit pas décider : on trie sur la date.
+    const f=g.find(x=>/facture/i.test(txt(x,'Nature de l’écriture')))
+      || g.slice().sort((x,y)=>{
+           const a=lire(txt(x,'Date')), b=lire(txt(y,'Date'));
+           if(a==null) return 1; if(b==null) return -1; return a-b; })[0];
+    ech.set(p, echeance(f));
   }
+  // LE RANG 4 SE RÉSOUT LIGNE PAR LIGNE, PAS PAR CRÉANCE.
+  //
+  // Les rangs 1 à 3 viennent de la facture : un règlement est daté à
+  // l'échéance de la facture qu'il solde, c'est la règle de son fichier. Mais
+  // quand la facture elle-même n'offre aucune base — ni formation, ni date de
+  // facture — le rang 4 dit « échéance Pennylane, à défaut la date de la
+  // ligne », et son fichier ajoute : « une ligne sans facture se date
+  // elle-même ». Une créance qui regroupe plusieurs pièces prenait alors la
+  // date d'une autre pièce que la sienne : douze créances dataient de travers,
+  // et la provision manquait 1 943 € au 30/06/2026.
+  const rang4=l=>{
+    const penn=lire(txt(l,'Date d’échéance'));
+    if(penn!=null) return {t:penn, base:'échéance Pennylane', dateBase:penn, jours:0,
+      regle:'Rang 4 · base manquante, échéance Pennylane'};
+    const own=lire(txt(l,'Date'));
+    return {t:own, base:'date de la ligne', dateBase:own, jours:0,
+      regle:'Rang 4 · base manquante, la ligne se date elle-même'};
+  };
 
   // ── réécrire les colonnes de datation, ligne par ligne ──
   let refaites=0;
   for(const l of d.lignes){
-    const k=txt(l,'Clé de la créance');
-    const e=k?ech.get(k):echeance(l);
+    const p=txt(l,'N° de facture');
+    const e=p?ech.get(p):rang4(l);
     const j=e.t==null?null:Math.round((REF-e.t)/J);
     const tr=tranche(j);
     const detail=(e.jours?(e.base+' '+ecrire(e.dateBase)+' + '+e.jours+' j'):(e.base+' '+ecrire(e.dateBase)))
