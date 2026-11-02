@@ -1461,7 +1461,12 @@ function assiettes(){
   const ancien=(a,b)=>b.j-a.j||(a.k<b.k?-1:a.k>b.k?1:0);
   const noter=(k,quoi,montant)=>{
     let o=IMPUTE.get(k);
-    if(!o){ o={compte:0, tranche:0, ancien:0, jeune:0}; IMPUTE.set(k,o); }
+    // LES COMPTEURS SE NOMMENT PAR L'ORIGINE DU CRÉDIT, PAS PAR SON TRAJET.
+    // Au temps 4 le crédit MONTE vers une tranche plus ancienne : la créance
+    // qui le reçoit le reçoit donc d'une tranche plus JEUNE. Au temps 5 il
+    // descend, et la créance le reçoit d'une tranche plus ANCIENNE. Nommés par
+    // le trajet, les deux libellés sortaient inversés du classeur.
+    if(!o){ o={compte:0, tranche:0, depuisJeune:0, depuisAncien:0}; IMPUTE.set(k,o); }
     o[quoi]+=montant;
   };
 
@@ -1557,7 +1562,7 @@ function assiettes(){
   for(const r of reliquat){
     if(r.reste<=0.005) continue;
     const dep=ECH.indexOf(r.tr); if(dep<0) continue;
-    for(let i=dep+1;i<ECH.length && r.reste>0.005;i++) vider(r, ECH[i], 'ancien');
+    for(let i=dep+1;i<ECH.length && r.reste>0.005;i++) vider(r, ECH[i], 'depuisJeune');
   }
 
   // ─── temps 5 : puis vers le PLUS JEUNE, cran par cran ───
@@ -1577,7 +1582,7 @@ function assiettes(){
   for(const r of reliquat){
     if(r.reste<=0.005) continue;
     const dep=ECH.indexOf(r.tr); if(dep<0) continue;
-    for(let i=dep-1;i>=0 && r.reste>0.005;i--) vider(r, ECH[i], 'jeune');
+    for(let i=dep-1;i>=0 && r.reste>0.005;i--) vider(r, ECH[i], 'depuisAncien');
   }
 
   CREDIT_SANS_EMPLOI=reliquat.reduce((s,r)=>s+(r.reste>0.005?r.reste:0),0);
@@ -1613,8 +1618,8 @@ function detailProvision(i){
   if(im){
     if(im.compte>0.005)  parts.push('− '+eurC(im.compte)+' imputés sur le compte');
     if(im.tranche>0.005) parts.push('− '+eurC(im.tranche)+' compensés dans sa tranche');
-    if(im.ancien>0.005)  parts.push('− '+eurC(im.ancien)+' compensés depuis une tranche plus ancienne');
-    if(im.jeune>0.005)   parts.push('− '+eurC(im.jeune)+' compensés depuis une tranche plus jeune');
+    if(im.depuisJeune>0.005)  parts.push('− '+eurC(im.depuisJeune)+' compensés par un crédit d’une tranche plus jeune');
+    if(im.depuisAncien>0.005) parts.push('− '+eurC(im.depuisAncien)+' compensés par un crédit d’une tranche plus ancienne');
   }
   let chemin='reste dû '+eurC(rd);
   if(parts.length) chemin+=' '+parts.join(' ')+' = assiette '+eurC(base>0?base:0);
