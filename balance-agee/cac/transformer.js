@@ -116,28 +116,28 @@ function transformer(){
     const mandat=/mandat de prélèvement GoCardless/.test(txt(l,'Règle de datation appliquée'));
     if(fac!=null && (fin==null || fac>fin))
       return {t:plus(fac,60), base:'date de facture', dateBase:fac, jours:60,
-        regle:'Rang 1 · facture postérieure à la fin de formation'};
+        rang:1, regle:'Rang 1 · facture postérieure à la fin de formation'};
     if(mandat && fin!=null)
       return {t:plus(fin,30), base:'fin de formation', dateBase:fin, jours:30,
-        regle:'Rang 2 · mandat de prélèvement GoCardless'};
+        rang:2, regle:'Rang 2 · mandat de prélèvement GoCardless'};
     if(PLUS60.has(sc) && fin!=null)
       return {t:plus(fin,60), base:'fin de formation', dateBase:fin, jours:60,
-        regle:'Rang 3 · barème du dispositif'};
+        rang:3, regle:'Rang 3 · barème du dispositif'};
     if(PLUS30.has(sc) && fin!=null)
       return {t:plus(fin,30), base:'fin de formation', dateBase:fin, jours:30,
-        regle:'Rang 3 · barème du dispositif'};
+        rang:3, regle:'Rang 3 · barème du dispositif'};
     if(DEBUT.has(sc) && deb!=null)
       return {t:deb, base:'début de formation', dateBase:deb, jours:0,
-        regle:'Rang 3 · barème du dispositif'};
+        rang:3, regle:'Rang 3 · barème du dispositif'};
     if(FACT30.has(sc) && fac!=null)
       return {t:plus(fac,30), base:'date de facture', dateBase:fac, jours:30,
-        regle:'Rang 3 · barème du dispositif'};
+        rang:3, regle:'Rang 3 · barème du dispositif'};
     if(penn!=null)
       return {t:penn, base:'échéance Pennylane', dateBase:penn, jours:0,
-        regle:'Rang 4 · base manquante, échéance Pennylane'};
+        rang:4, regle:'Rang 4 · base manquante, échéance Pennylane'};
     const own=lire(txt(l,'Date'));
     return {t:own, base:'date de l’écriture', dateBase:own, jours:0,
-      regle:'Rang 4 · base manquante, aucune échéance Pennylane'};
+      rang:4, regle:'Rang 4 · base manquante, aucune échéance Pennylane'};
   }
   const tranche=j=>{ if(j==null||j<=0) return '';
     for(const [b,n] of BORNES) if(j<=b) return n; return '> 48 mois'; };
@@ -185,14 +185,14 @@ function transformer(){
   const rang4=l=>{
     const penn=lire(txt(l,'Date d’échéance'));
     if(penn!=null) return {t:penn, base:'échéance Pennylane', dateBase:penn, jours:0,
-      regle:'Rang 4 · base manquante, échéance Pennylane'};
+      rang:4, regle:'Rang 4 · base manquante, échéance Pennylane'};
     const own=lire(txt(l,'Date'));
     return {t:own, base:'date de la ligne', dateBase:own, jours:0,
-      regle:'Rang 4 · base manquante, la ligne se date elle-même'};
+      rang:4, regle:'Rang 4 · base manquante, la ligne se date elle-même'};
   };
 
   // ── réécrire les colonnes de datation, ligne par ligne ──
-  let refaites=0;
+  let refaites=0; const parRang={};
   for(const l of d.lignes){
     const p=txt(l,'N° de facture');
     const e=p?ech.get(p):rang4(l);
@@ -210,6 +210,7 @@ function transformer(){
     l[C['Détail du calcul']]=dic.index(detail);
     l[C['Jours de retard de la créance']]=dic.index(j==null?'':String(j));
     l[C['Tranche de la créance']]=dic.index(tr);
+    parRang[e.rang]=(parRang[e.rang]||0)+1;
     refaites++;
   }
 
@@ -272,6 +273,58 @@ function transformer(){
   d.provisionCac={ assiette, provision, total,
     provisionEnCompta:COMPTA.provisionEnCompta, compte511:COMPTA.compte511,
     aPasser: total+COMPTA.provisionEnCompta+COMPTA.compte511 };
+  // ───── LES RÈGLES QUE LA PAGE AFFICHE ─────
+  //
+  // « dans la balance âgée Liora, en bas, dans les paramètres, j'aimerais que
+  // tu me mettes clairement les règles de classement que tu as utilisées et
+  // les règles de provision », 02/11/2026. La page affichait encore l'ordre
+  // d'échéance de l'autre balance : six rangs qui ne sont pas les siens.
+  // Elle doit se lire seule.
+  d.ordreEcheance=[
+    {rang:1, nature:'Règle exception',
+     quand:'La facture est postérieure à la fin de formation, ou la facture n’a pas de fin de formation',
+     alors:'date de facture + 60 jours',
+     note:'Une prestation facturée après sa fin, ou sans fin connue, se compte depuis sa facture.',
+     n:parRang[1]||0},
+    {rang:2, nature:'Règle exception',
+     quand:'Le client a un mandat de prélèvement GoCardless',
+     alors:'fin de formation + 30 jours',
+     note:'Le prélèvement raccourcit le délai : trente jours au lieu du barème du dispositif.',
+     n:parRang[2]||0},
+    {rang:3, nature:'Règle barème',
+     quand:'Sinon — le barème du dispositif',
+     alors:'voir le tableau ci-dessous',
+     note:'Fin de formation + 60 j, sauf ETAT et OPCO à + 30 j, le financement personnel au début de formation, et Corporate - Alternance à la facture + 30 j.',
+     n:parRang[3]||0},
+    {rang:4, nature:'Règle repli',
+     quand:'Sinon — aucune base de calcul',
+     alors:'échéance Pennylane, à défaut la date de la ligne',
+     note:'L’échéance se porte par pièce : toutes les lignes d’une même pièce prennent la sienne, calculée sur sa facture si elle en a une, sinon sur sa ligne la plus ancienne.',
+     n:parRang[4]||0},
+  ];
+  // Le barème, dispositif par dispositif, tel qu'il a servi.
+  const BAREME=[
+    ['Agefiph','fin de formation',60],['AIF','fin de formation',60],
+    ['B2B','fin de formation',60],['B2C-Entreprise','fin de formation',60],
+    ['CPF','fin de formation',60],['POEI','fin de formation',60],
+    ['Region','fin de formation',60],['Transition Pro','fin de formation',60],
+    ['Interco','fin de formation',60],['Interne - DST Allemagne','fin de formation',60],
+    ['ETAT','fin de formation',30],['OPCO','fin de formation',30],
+    ['OPCO - Alternance','fin de formation',30],['Alternance','fin de formation',30],
+    ['Financement personnel','début de formation',0],['Perso-Alternance','début de formation',0],
+    ['Corporate - Alternance','date de facture',30],
+  ];
+  const ancien=new Map((d.regles||[]).map(r=>[r.dispositif,r]));
+  d.regles=BAREME.map(([disp,base,jours])=>{
+    const a=ancien.get(disp)||{};
+    const exclu=(disp==='Interco'||disp==='Interne - DST Allemagne');
+    return {dispositif:disp, type:a.type||'', perimetre:a.perimetre||'',
+      base, jours, repli:'échéance Pennylane, à défaut la date de la ligne',
+      note:exclu?'Exclu des familles de provision : son reste dû n’est pas provisionné.'
+                :(base==='début de formation'?'La formation est payée d’avance : l’échéance court du début.'
+                 :(jours===30?'Trente jours à compter de la base.':'Soixante jours à compter de la base.')),
+      mots:a.mots||''};
+  });
   d.source=d.source+' · règles du commissaire aux comptes';
   d.doctrine='CAC';
 

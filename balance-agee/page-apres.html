@@ -1045,18 +1045,26 @@ function provisionRegles(ws){
   poserEntete(ws,eR,false);
   const fen2=(PROV.fenetres||[]).map(f=>f.label).join(' · ');
   const sansEmploi=creditSansEmploi();
+  // CETTE BALANCE SE LIT SEULE.
+  //
+  // « rien à voir avec la balance âgée client, on n'est pas en comparaison »,
+  // 02/11/2026. L'exposé renvoyait à l'autre balance — « elle ne la remplace
+  // pas », « ce sont les règles de la balance Liora, pas celles du CAC ». Un
+  // lecteur de cette page-ci n'a pas l'autre sous les yeux et n'a pas à la
+  // connaître : ce qui est écrit ici est ce qui a servi ici, et rien d'autre.
   const dit=CAC()?[
-    ['Doctrine','Règles du commissaire aux comptes. Cette balance ne remplace pas la balance Liora : elle dit ce que le CAC provisionnerait sur le même grand livre.'],
     ['Montant à provisionner','Somme, famille par famille, du solde net de la fenêtre multiplié par le taux de la famille.'],
-    ['Assiette','Le SOLDE NET, sans aucune imputation : chaque créance porte son reste dû dans sa tranche, débiteur ou créditeur. Une tranche négative allège la provision.'],
-    ['Échéance · rang 1','Facture postérieure à la fin de formation, ou facture sans fin de formation : date de facture + 60 j.'],
-    ['Échéance · rang 2','Client sous mandat de prélèvement GoCardless : fin de formation + 30 j.'],
-    ['Échéance · rang 3','Agefiph, AIF, B2B, B2C-Entreprise, CPF, POEI, Région, Transition Pro, Interco, DST Allemagne : fin de formation + 60 j. ETAT, OPCO, OPCO - Alternance, Alternance : fin de formation + 30 j. Financement personnel, Perso-Alternance : début de formation. Corporate - Alternance : date de facture + 30 j.'],
-    ['Échéance · rang 4','Base manquante : échéance Pennylane, à défaut la date de la ligne.'],
-    ['Tranches','Jours de retard depuis l’échéance, bornes 90 / 120 / 180 / 360 / 540 / 720 / 1080 / 1440 j, le mois valant trente jours.'],
+    ['Assiette','Le SOLDE NET, sans aucune imputation : chaque créance porte son reste dû dans sa tranche, débiteur ou créditeur, et le taux s’applique au solde net de la famille dans la fenêtre.'],
+    ['Un solde créditeur','Il provisionne négativement et allège sa famille dans sa fenêtre. Une tranche dont le solde net est négatif diminue donc la provision.'],
+    ['Échéance · rang 1','La facture est postérieure à la fin de formation, ou n’a pas de fin de formation : date de facture + 60 jours.'],
+    ['Échéance · rang 2','Le client a un mandat de prélèvement GoCardless : fin de formation + 30 jours.'],
+    ['Échéance · rang 3','Le barème du dispositif. Agefiph, AIF, B2B, B2C-Entreprise, CPF, POEI, Région, Transition Pro, Interco et DST Allemagne : fin de formation + 60 jours. ETAT, OPCO, OPCO - Alternance et Alternance : fin de formation + 30 jours. Financement personnel et Perso-Alternance : début de formation. Corporate - Alternance : date de facture + 30 jours.'],
+    ['Échéance · rang 4','Aucune base de calcul : échéance Pennylane, à défaut la date de la ligne.'],
+    ['L’échéance se porte par pièce','Toutes les lignes d’une même pièce prennent l’échéance de cette pièce, calculée sur sa facture si elle en a une, sinon sur sa ligne la plus ancienne. Une ligne sans pièce se date elle-même.'],
+    ['Tranches','Jours de retard depuis l’échéance jusqu’à la date d’arrêté, bornes 90 / 120 / 180 / 360 / 540 / 720 / 1080 / 1440 jours, le mois valant trente jours. Aucune tranche n’est scindée, aucun prorata n’est appliqué.'],
     ['Fenêtres', fen2+'. En deçà de 121 jours de retard, et sur tout ce qui n’est pas échu, la provision est nulle.'],
-    ['Familles','B2C, ETATIQUE et B2B. Interco et Interne - DST Allemagne sont EXCLUS : leur reste dû n’est pas provisionné.'],
-    ['Ce qui n’a pas cours ici','Ni imputation du crédit, ni compensation par tranche, ni cascade, ni crédit sans emploi : ce sont les règles de la balance Liora, pas celles du CAC.'],
+    ['Familles','Chaque type de financement relève d’une famille, et le taux s’applique au niveau de la famille. Interco et Interne - DST Allemagne ne relèvent d’aucune famille : leur reste dû n’est pas provisionné.'],
+    ['Ancienneté','Elle est celle de chaque créance, et ne dépend ni du montant ni du compte : la date qui classe la créance est son échéance.'],
   ]:[
     ['Montant à provisionner',
      'Somme, créance par créance, de l’assiette multipliée par le taux de sa famille dans la fenêtre où tombe son ancienneté.'],
