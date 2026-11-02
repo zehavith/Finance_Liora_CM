@@ -121,9 +121,20 @@ function empreinte() {
         if (nom === 'donnees/du-jour.json') {
             // L'heure du relevé change à chaque passage : elle ne dit rien du
             // contenu. Tout le reste du manifeste compte.
+            //
+            // LA PHRASE « source » NON PLUS. Elle décrit COMMENT le relevé a été
+            // fait, pas ce qu'il a trouvé : un tour complet écrit « groupes
+            // techniques écartés », un tour incrémental y ajoute « relevé des
+            // modifications ». Le premier passage de chaque journée est complet,
+            // les suivants incrémentaux — l'étiquette changeait donc une fois par
+            // jour et déclenchait une publication dont pas une facture ne
+            // différait. Constaté le 02/11/2026 : les neuf tableaux étaient
+            // identiques une fois normalisés, et cette seule phrase séparait le
+            // paquet de celui en ligne.
             try {
                 const m = JSON.parse(fs.readFileSync(p, 'utf8'));
                 delete m.arreteA;
+                delete m.source;
                 h.update(JSON.stringify(m), 'utf8');
                 continue;
             } catch { /* illisible : on le prend tel quel */ }
