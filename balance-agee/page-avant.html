@@ -514,6 +514,20 @@ input[type=search]{flex:1 1 220px}
         conformément à l’ordre d’imputation de droit commun. À défaut, une facture réglée
         par un virement non lettré serait provisionnée intégralement alors que le client ne
         doit plus rien.</p>
+      <p class="param-note">Le <strong>troisième temps</strong> est la
+        <strong>compensation par tranche</strong>. Le crédit qu’aucune créance du compte
+        n’a absorbé ne disparaît pas : il vient en déduction du reste dû des créances
+        <strong>du même type de financement</strong> et de la <strong>même tranche
+        d’ancienneté</strong> que lui, de la plus ancienne à la plus récente. Il réduit
+        donc l’assiette, et la provision baisse du taux de la tranche appliqué à ce
+        montant — et non du montant lui-même : cent euros de crédit dans une tranche
+        provisionnée à 25 % allègent la provision de vingt-cinq euros.</p>
+      <p class="param-note">La compensation ne franchit ni la tranche ni le financement.
+        Elle porte sur toutes les créances du couple, y compris celles qu’aucun barème ne
+        provisionne : le crédit y est consommé sans effet sur la provision, et ne peut
+        plus servir ailleurs. Un crédit dont le couple n’offre plus rien à compenser
+        <strong>reste sans emploi</strong> et n’est reporté sur aucune autre tranche.
+        Crédit sans emploi à cette date : <strong id="prov-reste">—</strong>.</p>
       <p class="param-note">Une créance dont l’assiette est nulle ou négative, le compte
         étant créditeur, n’est pas provisionnée : aucune perte n’est à couvrir.
         L’ancienneté demeure celle de chaque créance : l’imputation modifie le montant

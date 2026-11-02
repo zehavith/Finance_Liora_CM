@@ -71,12 +71,47 @@ for(const r of L){
   lots.get(lot).push({k, rd:cts(N(r,'Reste dû de la créance')), j:jr===''?-1:Number(jr),
     sc:V(r,'Type de financement de la créance'), tr:V(r,'Tranche de la créance')});
 }
+// L'imputation pour provision se fait en DEUX TEMPS depuis sa décision du
+// 02/11/2026. Premier temps : par compte client. Second temps : le crédit
+// qu'aucune créance du compte n'a absorbé compense les créances du même type
+// de financement et de la même tranche d'ancienneté, sur l'ASSIETTE et non sur
+// la provision. Refait ici à la main, sans rien emprunter à la page.
+const ancien=(a,b)=>b.j-a.j||(a.k<b.k?-1:a.k>b.k?1:0);
 const ASS=new Map();
+const reliquat=[];
 for(const [,g] of lots){
-  let credit=-g.filter(c=>c.rd<0).reduce((s,c)=>s+c.rd,0);
-  for(const c of g.filter(c=>c.rd>0).sort((a,b)=>b.j-a.j||(a.k<b.k?-1:a.k>b.k?1:0))){
-    const pris=Math.min(credit,c.rd); credit-=pris; ASS.set(c.k,c.rd-pris);
+  const dettes=g.filter(c=>c.rd>0).sort(ancien);
+  for(const dt of dettes) ASS.set(dt.k, dt.rd);
+  for(const cr of g.filter(c=>c.rd<0).sort(ancien)){
+    let reste=-cr.rd;
+    for(const dt of dettes){
+      if(reste<=0) break;
+      const a=ASS.get(dt.k); if(!(a>0)) continue;
+      const pris=Math.min(reste,a); ASS.set(dt.k, a-pris); reste-=pris;
+    }
+    if(reste>0) reliquat.push({sc:cr.sc, tr:cr.tr, reste});
   }
+}
+const cleCT=c=>(c.sc||'')+'\u0001'+(c.tr||'');
+const poolsCT=new Map();
+for(const r of reliquat) poolsCT.set(cleCT(r), (poolsCT.get(cleCT(r))||0)+r.reste);
+const ciblesCT=new Map();
+for(const [,g] of lots) for(const c of g){
+  if(!(c.rd>0)) continue;
+  const u=cleCT(c); if(!poolsCT.has(u)) continue;
+  if(!ciblesCT.has(u)) ciblesCT.set(u,[]);
+  ciblesCT.get(u).push(c);
+}
+let sansEmploi=0, employe=0, couplesRestants=0;
+for(const [u,montant] of poolsCT){
+  let m=montant;
+  for(const c of (ciblesCT.get(u)||[]).sort(ancien)){
+    if(m<=0) break;
+    const a=ASS.get(c.k); if(!(a>0)) continue;
+    const pris=Math.min(m,a); ASS.set(c.k, a-pris); m-=pris;
+  }
+  employe+=montant-m;
+  if(m>0){ sansEmploi+=m; couplesRestants++; }
 }
 let prov=0, parFam=new Map(), sansFamille=new Map(), horsFenetre=0;
 for(const [,g] of lots) for(const c of g){
@@ -93,6 +128,8 @@ console.log('\nH · provision = assiette × taux de la famille dans sa fenêtre 
 for(const [f,v] of [...parFam].sort()) console.log('    '+f.padEnd(24)+eur(v).padStart(16));
 console.log('    '+'TOTAL'.padEnd(24)+eur(prov).padStart(16));
 console.log('    reste dû hors des quatre fenêtres (moins de 121 j, non échu) : '+eur(horsFenetre));
+console.log('    compensation par financement × tranche : '+eur(employe)+' employés sur '
+  +poolsCT.size+' couple(s), '+eur(sansEmploi)+' sans emploi dans '+couplesRestants);
 console.log('    dispositif sans famille de provision : '+(sansFamille.size?[...sansFamille].map(([k,v])=>k+' '+eur(v)).join(' · '):'aucun'));
 
 // ── I. échu + non échu = total, et les 9 tranches font l'échu ──

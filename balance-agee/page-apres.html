@@ -1326,7 +1326,7 @@ const familleDe=sc=>{
 // plus ancienne à la plus récente — l'imputation de droit commun, et ce que le
 // moteur faisait de lui-même avant la découpe, puisque le lot ne faisait
 // qu'une créance. L'ANCIENNETÉ, elle, reste celle de chaque ligne.
-let ASSIETTE=null;
+let ASSIETTE=null, CREDIT_SANS_EMPLOI=0;
 function assiettes(){
   if(ASSIETTE) return ASSIETTE;
   ASSIETTE=new Map();
@@ -1346,21 +1346,86 @@ function assiettes(){
     const j=jc!==''?jc:V(i,'Jours de retard');
     const lot=V(i,'N° de compte');
     if(!lots.has(lot)) lots.set(lot,[]);
-    lots.get(lot).push({k, rd:N(i,'Reste dû de la créance'), j:j===''?-1:Number(j)});
+    lots.get(lot).push({k, rd:N(i,'Reste dû de la créance'), j:j===''?-1:Number(j),
+      // Le financement et la tranche DE LA CRÉANCE : ils ne servent pas au
+      // premier temps, qui ne regarde que le compte, mais au second, qui ne
+      // regarde qu'eux. sousVraie() et non le champ brut : les compléments
+      // qu'elle a posés dans la page déplacent un dispositif d'une famille à
+      // l'autre, et la compensation doit suivre le classement qu'elle voit.
+      sc:sousVraie(i), tr:V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté')});
   }
+  // L'ordre d'imputation doit être TOTAL, sinon le chiffre dépend de l'ordre
+  // de lecture : deux créances du même âge se départagent par leur clé. Sans
+  // ce départage, la page et le contrôle annonçaient 4 048 692,24 € et
+  // 4 047 124,73 € — 1 567,51 € d'écart sur rien d'autre que l'ordre.
+  const ancien=(a,b)=>b.j-a.j||(a.k<b.k?-1:a.k>b.k?1:0);
+
+  // ─── premier temps : PAR COMPTE CLIENT ───
+  const reliquat=[];
   for(const [,g] of lots){
-    let credit=-g.filter(c=>c.rd<0).reduce((s,c)=>s+c.rd,0);
-    // L'ordre d'imputation doit être TOTAL, sinon le chiffre dépend de
-    // l'ordre de lecture : deux créances du même âge se départagent par leur
-    // clé. Sans ce départage, la page et le contrôle annonçaient 4 048 692,24 €
-    // et 4 047 124,73 € — 1 567,51 € d'écart sur rien d'autre que l'ordre.
-    for(const c of g.filter(c=>c.rd>0).sort((a,b)=>b.j-a.j||(a.k<b.k?-1:a.k>b.k?1:0))){
-      const pris=Math.min(credit,c.rd); credit-=pris;
-      ASSIETTE.set(c.k, c.rd-pris);
+    const dettes=g.filter(c=>c.rd>0).sort(ancien);
+    for(const dt of dettes) ASSIETTE.set(dt.k, dt.rd);
+    // LE CRÉDIT S'IMPUTE CRÉANCE PAR CRÉANCE, ET NON EN BLOC.
+    // Le total consommé est rigoureusement le même — les dettes sont prises
+    // dans le même ordre, pour le même montant — mais on sait alors QUEL
+    // crédit n'a pas trouvé preneur, et de quel financement et de quelle
+    // tranche il relève. Le second temps en a besoin ; un bloc ne le dit pas.
+    for(const cr of g.filter(c=>c.rd<0).sort(ancien)){
+      let reste=-cr.rd;
+      for(const dt of dettes){
+        if(reste<=0.005) break;
+        const a=ASSIETTE.get(dt.k); if(!(a>0.005)) continue;
+        const pris=Math.min(reste,a); ASSIETTE.set(dt.k, a-pris); reste-=pris;
+      }
+      if(reste>0.005) reliquat.push({sc:cr.sc, tr:cr.tr, reste});
     }
+  }
+
+  // ─── second temps : MÊME TYPE DE FINANCEMENT, MÊME TRANCHE ───
+  //
+  // Sa décision du 02/11/2026, dictée en deux réponses : « tous les crédits
+  // que l'on n'a pas réussi à imputer suivront la règle suivante :
+  // compensation des créances de la même tranche d'aging », puis, sur la
+  // question de savoir d'où le crédit se retranche : « soit de ce que le
+  // client doit » — donc de l'ASSIETTE, et non du montant provisionné. Un
+  // crédit de 100 € dans une tranche à 25 % fait baisser la provision de 25 €,
+  // pas de 100 €. Et sur le périmètre : « essaye de faire que le montant
+  // compense le même type de financement ».
+  //
+  // La compensation ne franchit NI la tranche NI le financement. Un crédit
+  // dont le couple n'offre plus rien à compenser reste sans emploi : il n'est
+  // reporté sur aucune autre tranche, et il est compté, parce qu'une balance
+  // qui absorbe 200 000 € en silence n'est plus auditable.
+  //
+  // Elle s'applique à TOUTES les créances du couple, y compris celles qu'aucun
+  // barème ne provisionne — moins de 121 jours, non échu. Le crédit y est
+  // consommé sans effet sur la provision : c'est le sens littéral de sa règle,
+  // et c'est le plus prudent, puisqu'il ne peut plus servir ailleurs.
+  const cle=c=>(c.sc||'')+'\u0001'+(c.tr||'');
+  const pools=new Map();
+  for(const r of reliquat) pools.set(cle(r), (pools.get(cle(r))||0)+r.reste);
+  const cibles=new Map();
+  for(const [,g] of lots) for(const c of g){
+    if(!(c.rd>0)) continue;
+    const u=cle(c); if(!pools.has(u)) continue;
+    if(!cibles.has(u)) cibles.set(u,[]);
+    cibles.get(u).push(c);
+  }
+  CREDIT_SANS_EMPLOI=0;
+  for(const [u,montant] of pools){
+    let m=montant;
+    for(const c of (cibles.get(u)||[]).sort(ancien)){
+      if(m<=0.005) break;
+      const a=ASSIETTE.get(c.k); if(!(a>0.005)) continue;
+      const pris=Math.min(m,a); ASSIETTE.set(c.k, a-pris); m-=pris;
+    }
+    if(m>0.005) CREDIT_SANS_EMPLOI+=m;
   }
   return ASSIETTE;
 }
+// Ce que la compensation n'a pas pu employer. Calculé par assiettes(), affiché
+// sous l'exposé des règles : le chiffre doit se lire là où la règle se lit.
+function creditSansEmploi(){ assiettes(); return CREDIT_SANS_EMPLOI; }
 // Le barème s'applique à ce qui reste vraiment dû sur la créance.
 function provisionDe(rd, sc, tr, cle){
   paramsPrets();
@@ -2089,6 +2154,9 @@ function tableProvision(){
   h+='<tr><td class="fam">TOTAL</td>'+fen.map(()=>'<td></td>').join('')
     +'<td class="n">'+eur(pv.total)+'</td></tr></tbody></table>';
   E('prov-taux').innerHTML=h;
+  const sr=E('prov-reste');
+  if(sr){ const r=creditSansEmploi();
+    sr.textContent=r>0.005?eur(r):'aucun'; }
 
   // Le rattachement : un type de financement par ligne, sa famille en face.
   // Il se lit dans ce sens-là parce que c'est la question qu'on se pose —
