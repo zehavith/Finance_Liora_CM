@@ -23,3 +23,6 @@ recouvrement/artefact/paquet/
 recouvrement/artefact/.empreinte
 # Donnees reelles du portefeuille : elles ne vont pas au depot.
 recouvrement/artefact/donnees-du-jour/
+
+# La balance âgée selon les règles du CAC : données réelles, comme art/.
+balance-agee/art-cac/
