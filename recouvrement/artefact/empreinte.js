@@ -135,6 +135,25 @@ function empreinte() {
                 const m = JSON.parse(fs.readFileSync(p, 'utf8'));
                 delete m.arreteA;
                 delete m.source;
+                // L'ORDRE DU TABLEAU « tableaux » NON PLUS.
+                //
+                // Le relevé y inscrit un compte par tableau dans l'ordre où les
+                // lectures Monday se terminent, qui varie d'un passage à l'autre.
+                // Constaté le 02/11/2026 à 11 h 48 : les neuf entrées étaient les
+                // mêmes, à un total et à un nombre de lignes retenues près, et
+                // seules 2.2, 2.3 et 2.4 avaient permuté. L'empreinte annonçait
+                // « le paquet a changé » et une version de plus serait partie
+                // sans qu'une facture diffère. La preuve a été faite : en
+                // substituant le manifeste de l'heure précédente, l'ancienne
+                // formule redonnait exactement l'empreinte publiée.
+                //
+                // La page, elle, ne lit jamais ce champ : elle n'y prend que
+                // « fichiers », « arreteLe » et « arreteA » (app.js, chargement
+                // des données). Son ordre ne se voit nulle part. On le trie.
+                if (Array.isArray(m.tableaux)) {
+                    m.tableaux = m.tableaux.slice()
+                        .sort((a, b) => String(a && a.fichier).localeCompare(String(b && b.fichier)));
+                }
                 h.update(JSON.stringify(m), 'utf8');
                 continue;
             } catch { /* illisible : on le prend tel quel */ }
