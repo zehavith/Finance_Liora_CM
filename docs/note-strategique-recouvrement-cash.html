@@ -58,10 +58,10 @@ td:first-child,th:first-child{padding-left:4px}
   h2.s{font-size:13pt;margin-bottom:7pt;break-after:avoid}
   h3.s{font-size:10.5pt;margin:7pt 0 3pt;break-after:avoid}
   h4.s{font-size:9.6pt;margin:7pt 0 3pt;break-after:avoid}
-  p{margin-bottom:7pt;orphans:3;widows:3}
-  ul{padding-left:22pt;margin-bottom:7pt}
-  ul li{font-size:8.9pt;margin-bottom:1pt}
-  table{font-size:8.8pt;margin:3pt 0 9pt}
+  p{margin-bottom:6pt;orphans:3;widows:3}
+  ul{padding-left:20pt;margin-bottom:6pt}
+  ul li{font-size:8.9pt;margin-bottom:0.5pt}
+  table{font-size:8.8pt;margin:3pt 0 8pt}
   th{font-size:8.3pt;padding:4pt 6pt 4pt 0}
   td{padding:4pt 6pt 4pt 0}
   thead{display:table-header-group}
@@ -143,7 +143,7 @@ td:first-child,th:first-child{padding-left:4px}
 <tr><td>OPCO, dont alternance</td><td>Fin de formation + 60 jours</td><td>Processus de paiement enclenché après l'échéance, pièce manquante</td></tr>
 <tr><td>CPF</td><td>Délai de la Caisse des Dépôts</td><td>Dossier en anomalie sur EDOF</td></tr>
 <tr><td>Public, Région, Transitions Pro, France Travail</td><td>Fin de formation + 60 jours</td><td>Processus non structuré, délai de mandatement (ordre de paiement émis par le comptable public), pièces de marché</td></tr>
-<tr><td>B2B — 181 comptes</td><td>Début de formation + 30 jours</td><td>Accès au portail du client indisponible, bon de commande manquant, entité erronée</td></tr>
+<tr><td>B2B — 181 comptes</td><td>Début de formation + 30 jours</td><td>Formulaire fournisseur du client non rempli, accès au portail indisponible, bon de commande manquant, entité erronée</td></tr>
 <tr><td>Financement personnel</td><td>Au démarrage de la formation</td><td>Échec de prélèvement, dossier non soldé</td></tr>
 </tbody>
 </table>
@@ -196,6 +196,7 @@ td:first-child,th:first-child{padding-left:4px}
 <li>Accès manquants aux portails fournisseurs de plusieurs clients : factures non déposables et bons de commande non récupérables.</li>
 <li>Tableau des impayés classés par ancienneté : les données s'alimentent automatiquement, mais nous ne les relisons pas assez souvent.</li>
 <li>Fiches fournisseurs incomplètes.</li>
+<li>Les formalités d'ouverture de compte exigées par le client — formulaire fournisseur, référencement, pièces administratives — sont engagées après la vente : à l'échéance, le client n'a pas encore ce qu'il lui faut pour payer.</li>
 <li>À l'échéance la facture bascule en zone tampon, mais n'en sort vers le recouvrement que si le dossier est complet en amont : une facture échue dont une pièce manque n'est pas prise en charge.</li>
 <li>Une facture renvoyée de la zone tampon vers l'administration des ventes ne passe au recouvrement que trente jours après le traitement de la pièce, alors qu'elle est déjà échue.</li>
 <li>Une facture sans adresse de relance au dossier rejoint un groupe « incomplet » : tant qu'elle y attend, aucune relance ne part.</li>
@@ -247,6 +248,8 @@ td:first-child,th:first-child{padding-left:4px}
 <tr><td>Portails clients inaccessibles</td><td>Recensement des portails, comptes au nom de l'entreprise avec un titulaire et un suppléant, identifiants centralisés</td></tr>
 <tr><td>Balance âgée alimentée automatiquement mais non revue</td><td>Revue hebdomadaire formalisée, avec responsable désigné</td></tr>
 <tr><td>Fiches fournisseurs incomplètes</td><td>Référentiel fournisseur complété et contrôle des coordonnées bancaires</td></tr>
+<tr><td>Formalités d'ouverture de compte engagées après la vente</td><td>Formulaire fournisseur du client renseigné et clôturé <strong>avant la signature</strong>, sous la responsabilité du commercial, qui sollicite l'administration des ventes lorsqu'un élément lui manque</td></tr>
+<tr><td>Éléments de facturation réunis trop tard</td><td>Formulaire interne unique, renseigné à la signature, rassemblant les données nécessaires à une facture payable du premier coup</td></tr>
 <tr><td>Rejets de dossiers par les financeurs</td><td>Liste des pièces obligatoires, contraignante pour tous, partagée avec l'administration des ventes et les opérations</td></tr>
 <tr><td>Virements rattachés aux factures à la main, en lisant leur libellé</td><td>Demande automatique, à chaque envoi de facture, de porter le numéro de facture en référence du virement — puis rapprochement automatisé</td></tr>
 <tr><td>Visibilité insuffisante sur la trésorerie</td><td>Point de trésorerie quotidien et prévision à 13 semaines construite à partir des factures réellement en attente</td></tr>
@@ -261,19 +264,19 @@ td:first-child,th:first-child{padding-left:4px}
 
 <section>
 <h2 class="s">5. Recouvrement : du curatif au préventif</h2>
-<p>Passer d'une logique <strong>échéance → bascule en zone tampon → attente</strong> à une logique <strong>facturation → anticipation → échéance déclenchée → encaissement</strong>. Sur les financeurs institutionnels, l'échéance court à compter de la fin de formation : elle doit être anticipée et provoquer une action, au lieu d'être constatée après coup.</p>
+<p>Passer d'une logique <strong>échéance → bascule en zone tampon → attente</strong> à une logique <strong>anticipation → facturation → échéance déclenchée → encaissement</strong>, et, à défaut d'encaissement, <strong>passage direct au recouvrement, sans délai supplémentaire</strong>. Sur les financeurs institutionnels, l'échéance court à compter de la fin de formation : elle doit être anticipée et provoquer une action, au lieu d'être constatée après coup.</p>
 
 <div class="tw">
 <table>
 <thead><tr><th style="width:22%">Étape</th><th>Ce qui doit être fait</th></tr></thead>
 <tbody>
-<tr><td>Avant l'échéance</td><td>Obtenir l'accord de financement et la subrogation avant le démarrage. Sécuriser émargements et certificat de réalisation dès la fin de formation. Fixer dès le démarrage la date à laquelle le dossier doit être complet — début de formation plus trente jours — et alerter à son approche. Contrôler les données de facturation et le bon de commande côté B2B. S'assurer que l'adresse de relance a bien été saisie au formulaire. Obtenir l'accès au portail du client dès la signature. Vérifier l'encaissement préalable sur le financement personnel.</td></tr>
+<tr><td>Avant l'échéance</td><td>Obtenir l'accord de financement et la subrogation avant le démarrage. Sécuriser émargements et certificat de réalisation dès la fin de formation. Fixer dès le démarrage la date à laquelle le dossier doit être complet — début de formation plus trente jours — et alerter à son approche. Contrôler les données de facturation et le bon de commande côté B2B. S'assurer que l'adresse de relance a bien été saisie au formulaire. Côté entreprise, avoir clôturé avant la signature le formulaire fournisseur du client et le formulaire interne de facturation. Obtenir l'accès au portail du client dès la signature. Vérifier l'encaissement préalable sur le financement personnel.</td></tr>
 <tr><td>À l'échéance</td><td>Prendre en charge toute facture dès sa bascule en zone tampon, quel que soit l'état du dossier : le recouvrement agit sur ce qui ne dépend pas du blocage — réception de la facture, interlocuteur de paiement, date de règlement — pendant que l'administration des ventes lève la pièce manquante. Identifier les blocages. Confirmer l'interlocuteur de paiement. Repérer sans délai les paiements non reçus et prioriser les montants significatifs.</td></tr>
 <tr><td>Après l'échéance</td><td>Segmenter les retards et identifier le motif. Obtenir une date de paiement et suivre les promesses. Escalader vers les commerciaux sur les comptes stratégiques. Réclamer les intérêts moratoires et indemnités dus de plein droit.</td></tr>
 </tbody>
 </table>
 </div>
-<p>La segmentation se fait d'abord par canal — on agit sur les pièces du dossier pour les financeurs publics, sur le contrat pour les entreprises, et automatiquement pour les particuliers — puis, au sein du B2B, par niveau de risque et d'exposition. L'administration des ventes sécurise le dossier, la Finance pilote le recouvrement, les commerciaux débloquent les situations commerciales.</p>
+<p>La segmentation se fait d'abord par canal — on agit sur les pièces du dossier pour les financeurs publics, sur le contrat pour les entreprises, et automatiquement pour les particuliers — puis, au sein du B2B, par niveau de risque et d'exposition. L'administration des ventes sécurise le dossier, la Finance pilote le recouvrement, les commerciaux réunissent avant la signature ce dont le client aura besoin pour payer, et débloquent ensuite les situations commerciales.</p>
 </section>
 
 <hr>
@@ -355,6 +358,7 @@ td:first-child,th:first-child{padding-left:4px}
 <li>supprimer les trente jours ajoutés lorsqu'une facture revient de la zone tampon vers l'administration des ventes ;</li>
 <li>rendre l'adresse de relance obligatoire dans le formulaire, et suivre chaque semaine l'effectif et l'ancienneté du groupe « incomplet » ;</li>
 <li>instaurer la règle « pas d'accord de financement, pas de démarrage », les pièces de réalisation restant à compléter dans les trente jours suivant le début de la formation ;</li>
+<li>instaurer la règle « pas de formulaire client clôturé, pas de signature » sur le B2B, et créer le formulaire interne de facturation renseigné au même moment ;</li>
 <li>mesurer le délai entre l'échéance et la prise en charge effective ;</li>
 <li>structurer les circuits POEI, Région, Transitions Pro et AGEFIPH ;</li>
 <li>mettre à jour la balance âgée chaque semaine et instaurer une revue mensuelle des factures à établir ;</li>
@@ -400,7 +404,7 @@ td:first-child,th:first-child{padding-left:4px}
 </ul>
 <p>Le délai constaté est mesuré et décomposé : 259 jours, dont 134 structurels et 125 récupérables, soit 7,5 M€.</p>
 <p>Nos conditions de paiement sont favorables et nos factures partent sans délai anormal. <strong>Le retard vient de ce que la sortie de la zone tampon est conditionnée à l'achèvement du dossier et non à l'échéance, des trente jours ajoutés au retour, des factures sans adresse de relance qui n'en reçoivent aucune, et de processus non structurés sur plusieurs dispositifs.</strong> C'est la première source de gain, et elle ne demande aucun budget.</p>
-<p>La transformation tient en trois corrections de circuit — <strong>rendre l'adresse de relance obligatoire dans le formulaire, libérer la sortie de la zone tampon, supprimer les trente jours du retour</strong> — et en un principe : ancrer les dates sur des événements non déplaçables. Leur finalité commune est que l'encaissement se produise de lui-même. <strong>Le meilleur service de recouvrement est celui qui n'a presque rien à recouvrer.</strong></p>
+<p>La transformation tient en trois corrections de circuit — <strong>rendre l'adresse de relance obligatoire dans le formulaire, libérer la sortie de la zone tampon, supprimer les trente jours du retour</strong> — et en deux principes : ancrer les dates sur des événements non déplaçables, et réunir avant la signature tout ce dont le client a besoin pour payer. Leur finalité commune est que l'encaissement se produise de lui-même. <strong>Le meilleur service de recouvrement est celui qui n'a presque rien à recouvrer.</strong></p>
 </section>
 
 </div>
