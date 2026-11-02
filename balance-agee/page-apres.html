@@ -850,8 +850,8 @@ function feuilleSommaire(wb,idx,nomDetail){
    ['Règles','Ordre de détermination des échéances et barème de chaque dispositif'],
    ['Balance âgée','Reste dû par type de client et par tranche d’ancienneté'],
    ['Balance âgée par financement','Même ventilation, dispositif par dispositif'],
-   ['À provisionner','Montant à provisionner par dispositif et par tranche d’ancienneté, '
-     +'et le crédit resté sans emploi'],
+   ['À provisionner','Montant à provisionner par dispositif et par tranche d’ancienneté'
+     +(CAC()?'':', et le crédit resté sans emploi')],
    // Le nombre de colonnes ANNONCÉ doit être celui de la feuille. Le détail
    // s'arrête à « N° de rapprochement », à sa demande du 16/10/2026 ; le
    // sommaire, lui, continuait d'annoncer les 56 colonnes des données.
@@ -1055,7 +1055,7 @@ function provisionRegles(ws){
   const dit=CAC()?[
     ['Montant à provisionner','Somme, famille par famille, du solde net de la fenêtre multiplié par le taux de la famille.'],
     ['Assiette','Le SOLDE NET, sans aucune imputation : chaque créance porte son reste dû dans sa tranche, débiteur ou créditeur, et le taux s’applique au solde net de la famille dans la fenêtre.'],
-    ['Un solde créditeur','Il provisionne négativement et allège sa famille dans sa fenêtre. Une tranche dont le solde net est négatif diminue donc la provision.'],
+    ['Un solde créditeur','Il se solde dans sa propre tranche d’ancienneté, quoi qu’il arrive : il provisionne négativement, allège sa famille dans sa fenêtre, et ne se déplace vers aucune autre tranche. Aucun compte client, aucune facture et aucun règlement n’entrent dans ce calcul.'],
     ['Échéance · rang 1','La facture est postérieure à la fin de formation, ou n’a pas de fin de formation : date de facture + 60 jours.'],
     ['Échéance · rang 2','Le client a un mandat de prélèvement GoCardless : fin de formation + 30 jours.'],
     ['Échéance · rang 3','Le barème du dispositif. Agefiph, AIF, B2B, B2C-Entreprise, CPF, POEI, Région, Transition Pro, Interco et DST Allemagne : fin de formation + 60 jours. ETAT, OPCO, OPCO - Alternance et Alternance : fin de formation + 30 jours. Financement personnel et Perso-Alternance : début de formation. Corporate - Alternance : date de facture + 30 jours.'],
@@ -1346,13 +1346,19 @@ function feuilleProvision(wb,idx){
   // phrase — « enlève-moi ce type de phrase de l'export », 22/10/2026. Une
   // provision qu'on lit sans savoir qu'un crédit est resté sans preneur n'est
   // pas auditable.
-  ws.addRow([]);
-  const r=creditSansEmploi();
-  const sc2=ws.addRow(['Crédit sans emploi', r||null, '',
-    r>0.005?('financement '+creditSansEmploiDit()):'']);
-  sc2.getCell(1).font={bold:true,color:{argb:ENCRE3}};
-  sc2.getCell(2).numFmt=EUROS;
-  sc2.getCell(4).font={color:{argb:ENCRE3}};
+  //
+  // EN DOCTRINE CAC IL N'Y EN A PAS, et une cellule vide ne se distingue
+  // pas d'un oubli : aucun crédit n'y est imputé, donc aucun ne peut rester
+  // sans preneur. La ligne n'est pas écrite du tout.
+  if(!CAC()){
+    ws.addRow([]);
+    const r=creditSansEmploi();
+    const sc2=ws.addRow(['Crédit sans emploi', r||null, '',
+      r>0.005?('financement '+creditSansEmploiDit()):'']);
+    sc2.getCell(1).font={bold:true,color:{argb:ENCRE3}};
+    sc2.getCell(2).numFmt=EUROS;
+    sc2.getCell(4).font={color:{argb:ENCRE3}};
+  }
 }
 
 function feuilleDetail(wb,idx,nom){
@@ -2504,7 +2510,30 @@ function parametres(){
     : 'Lecture seule : vous pouvez consulter, filtrer et exporter. Les règles et les '
       +'compléments sont tenus par le responsable recouvrement.';
   for(const id of ['prov-modif','ech-modif']){ const b=E(id); if(b) b.hidden=!admin; }
+  methodeProvision();
   tableProvision(); tableClassement(); tableEcheance();
+}
+
+// ───── comment la provision se calcule, selon la doctrine ─────
+//
+// Sa question du 02/11/2026 : « les règles ds balance agé liora st les mm que
+// celle ds la balance agé client, comment cela se fait ? pourtant ce ne sont
+// pas du tt les mm regles pour les provisions ». L'exposé de la méthode était
+// écrit une fois pour toutes dans le gabarit : les deux pages affichaient donc
+// la même, celle de l'imputation en cinq temps, alors que cette balance-ci ne
+// fait aucune imputation — « ds le fichier on clôture par aging les montant
+// créditeur quoi qu'il arrive sans regarder le type de client ».
+//
+// Les deux exposés vivent maintenant dans le gabarit, et celui qui n'a pas
+// servi est RETIRÉ DU DOCUMENT, pas seulement masqué : un bloc caché reste
+// dans l'impression, dans une recherche de page et dans ce qu'un lecteur
+// trouve en lisant la source. Une page ne doit porter que les règles qui ont
+// produit ses chiffres.
+function methodeProvision(){
+  const garde=CAC()?'prov-methode-cac':'prov-methode';
+  const jette=CAC()?'prov-methode':'prov-methode-cac';
+  const g=E(garde); if(g) g.hidden=false;
+  const j=E(jette); if(j) j.remove();
 }
 
 // ───── le barème de provision ─────

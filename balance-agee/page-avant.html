@@ -488,7 +488,7 @@ input[type=search]{flex:1 1 220px}
       </div>
     </div>
 
-    <div class="param-bloc">
+    <div class="param-bloc" id="prov-methode">
       <div class="param-tete">
         <h3>Comment la provision se calcule</h3>
       </div>
@@ -558,6 +558,51 @@ input[type=search]{flex:1 1 220px}
         s’applique au niveau de la famille. Le rattachement complet figure sous le tableau.
         Un type de financement non rattaché n’est pas provisionné ; il est signalé comme
         tel.</p>
+    </div>
+
+    <div class="param-bloc" id="prov-methode-cac" hidden>
+      <div class="param-tete">
+        <h3>Comment la provision se calcule</h3>
+      </div>
+      <p class="param-note">Le montant à provisionner est la somme, famille par famille
+        et fenêtre par fenêtre, du <strong>solde net</strong> multiplié par le taux de la
+        famille dans cette fenêtre.</p>
+
+      <h4>Sur quoi porte le taux — le solde net</h4>
+      <p class="param-note">Chaque créance porte son <strong>reste dû</strong> tel quel dans
+        sa tranche d’ancienneté, débiteur ou créditeur, et le taux s’applique au solde net
+        de la famille dans la fenêtre. Il n’y a <strong>aucune imputation</strong> : aucun
+        crédit n’est rattaché à une facture, à un compte client ni à un règlement, et aucun
+        reste dû n’est corrigé avant que le taux ne s’applique.</p>
+      <p class="param-note">Un <strong>solde créditeur</strong> se solde dans sa propre
+        <strong>tranche d’ancienneté</strong>, quoi qu’il arrive : il provisionne
+        négativement, allège sa famille dans sa fenêtre, et ne se déplace vers aucune autre
+        tranche. Une fenêtre dont le solde net est négatif porte donc une provision
+        négative, et diminue d’autant le montant à provisionner.</p>
+      <p class="param-note">La provision varie du <strong>taux</strong> appliqué au montant,
+        et non du montant lui-même : cent euros de crédit dans une fenêtre provisionnée
+        à 25 % allègent la provision de vingt-cinq euros.</p>
+      <p class="param-note">L’ancienneté est celle de chaque créance, et ne dépend ni du
+        montant ni du compte : la date qui la classe est son échéance. Toutes les lignes
+        d’une même pièce prennent l’échéance de cette pièce, calculée sur sa facture si elle
+        en a une, sinon sur sa ligne la plus ancienne ; une ligne sans pièce se date
+        elle-même.</p>
+
+      <h4>À partir de quand — les quatre fenêtres</h4>
+      <p class="param-note">Les fenêtres se comptent en <strong>jours de retard</strong>
+        depuis l’échéance, et coïncident exactement avec les tranches de la balance âgée,
+        un mois valant trente jours : 121-180 j, c’est « 4 à 6 mois » ; 181-360 j, « 6 à
+        12 mois » ; 361-720 j, « 12 à 18 » et « 18 à 24 mois » réunies ; au-delà de 720 j,
+        « 24 à 36 », « 36 à 48 » et « &gt; 48 mois ». Aucune tranche n’est scindée et aucun
+        prorata n’est appliqué. <strong>En deçà de 121 jours de retard, et sur tout ce qui
+        n’est pas échu, la provision est nulle.</strong></p>
+
+      <h4>Quel taux — les trois familles</h4>
+      <p class="param-note">Chaque type de financement relève d’une famille, et le taux
+        s’applique au niveau de la famille. Le rattachement complet figure sous le tableau.
+        <strong>Interco</strong> et <strong>Interne - DST Allemagne</strong> ne relèvent
+        d’aucune famille : leur reste dû n’est pas provisionné, à son débit comme à son
+        crédit.</p>
     </div>
 
     <div class="param-bloc" id="depot-bloc" hidden>
