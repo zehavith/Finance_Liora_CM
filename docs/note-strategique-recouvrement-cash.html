@@ -41,7 +41,6 @@ td:first-child,th:first-child{padding-left:4px}
 .tw{overflow-x:auto}
 
 .tbd{font-weight:700;color:var(--ink);border-bottom:1px dashed var(--ink-3);padding:0 2px}
-.tbdnote{font-size:14px;color:var(--ink-3)}
 
 @media (max-width:640px){.wrap{padding:32px 18px 60px}h1.doc{font-size:25px}h2.s{font-size:21px}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -115,28 +114,28 @@ td:first-child,th:first-child{padding-left:4px}
 </table>
 </div>
 <p><strong>Le partage est fait, et il désigne précisément l'enjeu.</strong> Sur l'essentiel des créances, l'échéance part de la fin de formation et court en moyenne 134 jours après l'émission de la facture : cette part est structurelle, aucune relance ne l'abrégera. Les 125 jours restants sont du retard pur. À 60 223 € par jour, ils représentent <strong>7,5 M€ de trésorerie immobilisée sans contrepartie contractuelle</strong>.</p>
-<p class="tbdnote">Réserve de méthode : la part structurelle est pondérée par les créances débitrices, la durée totale calculée sur l'encours net. Les deux assiettes ne coïncident donc pas exactement — l'ordre de grandeur est établi, la décimale reste à consolider sur une assiette unique avant toute présentation en comité.</p>
-<p>Les mécanismes décrits ci-après expliquent ces 125 jours récupérables.</p>
+<p>Deux séries de mécanismes expliquent ces 125 jours : notre circuit interne, décrit ci-dessous, et le processus de paiement propre à chaque financeur, repris au tableau des canaux.</p>
 
-<h3 class="s">Le circuit de la facture, et les trois endroits où il perd du temps</h3>
-<p>La facture est émise sans délai anormal : il n'existe pas d'écart significatif entre l'inscription et la facturation. Le retard se forme ensuite, dans un circuit dont chaque étape est identifiée.</p>
+<h3 class="s">Le circuit interne de la facture, et les trois endroits où il perd du temps</h3>
+<p>La facture est émise sans délai anormal : il n'existe pas d'écart significatif entre l'inscription et la facturation. Le retard se forme ensuite. Le circuit ci-dessous est celui qui se déroule chez nous, avant toute intervention du financeur ; chacune de ses étapes est identifiée.</p>
 <div class="tw">
 <table>
 <thead><tr><th style="width:17%">Étape</th><th style="width:40%">Ce qui se passe</th><th>Ce qu'il faut y corriger</th></tr></thead>
 <tbody>
 <tr><td>Import</td><td>La facture entre et passe à l'administration des ventes.</td><td>&#8212;</td></tr>
-<tr><td>Aiguillage</td><td>Si une adresse de relance figure au dossier, les relances partent. Sinon la facture rejoint un groupe &#171; incomplet &#187; et y attend d'être complétée.</td><td><strong>Tant qu'elle y attend, aucune relance ne part.</strong> Exiger l'adresse à l'import, et suivre ce groupe comme une file : effectif et ancienneté.</td></tr>
+<tr><td>Aiguillage</td><td>Si une adresse de relance figure au dossier, les relances partent. Sinon la facture rejoint un groupe &#171; incomplet &#187; et y attend d'être complétée.</td><td><strong>Tant qu'elle y attend, aucune relance ne part.</strong> Rendre l'adresse de relance obligatoire dans le formulaire, et suivre ce groupe comme une file : effectif et ancienneté.</td></tr>
 <tr><td>Échéance</td><td>La facture bascule dans une zone tampon.</td><td>La bascule à l'échéance existe déjà : c'est l'acquis sur lequel bâtir.</td></tr>
 <tr><td>Arbitrage</td><td>Dossier complet côté administration des ventes : la facture passe au recouvrement. Dossier incomplet : elle retourne à l'administration des ventes.</td><td>Rendre la sortie inconditionnelle : la facture part au recouvrement avec son motif de blocage.</td></tr>
 <tr><td>Retour</td><td>L'administration des ventes traite la pièce, puis la facture passe au recouvrement <strong>trente jours plus tard</strong>.</td><td>Ces trente jours s'ajoutent à une facture déjà échue. Le passage doit être immédiat.</td></tr>
 </tbody>
 </table>
 </div>
-<p><strong>L'échéance déclenche donc bien une bascule, mais pas une prise en charge.</strong> La zone tampon est une porte dont la condition d'ouverture n'est pas l'échéance, mais l'achèvement du dossier en amont : une facture échue dont une pièce manque reste hors du champ de la personne chargée de relancer. Les trois corrections s'appuient sur ce qui existe déjà et ne demandent aucun outil nouveau : exiger l'adresse de relance à l'import, rendre la sortie de la zone tampon inconditionnelle &#8212; l'administration des ventes poursuivant son travail en parallèle &#8212; et supprimer les trente jours du retour.</p>
+<p><strong>L'échéance déclenche donc bien une bascule, mais pas une prise en charge.</strong> La zone tampon est une porte dont la condition d'ouverture n'est pas l'échéance, mais l'achèvement du dossier en amont : une facture échue dont une pièce manque reste hors du champ de la personne chargée de relancer. Les trois corrections s'appuient sur ce qui existe déjà et ne demandent aucun outil nouveau : rendre l'adresse de relance obligatoire dans le formulaire, rendre la sortie de la zone tampon inconditionnelle &#8212; l'administration des ventes poursuivant son travail en parallèle &#8212; et supprimer les trente jours du retour.</p>
 <p>Reste le recalcul de l'échéance elle-même. <strong>Chaque pièce réclamée repousse la date à laquelle le dossier est réputé complet, et l'échéance recule d'autant</strong> : elle n'est jamais connue d'avance, ni pour déclencher une relance, ni pour alimenter la prévision de trésorerie. Il faut l'ancrer sur un événement non déplaçable &#8212; étant entendu que ce qui doit être ancré est la <strong>date de complétude du dossier</strong>, interne et maîtrisable, et non l'échéance de paiement, qui reste celle du financeur. <strong>Le régime général applique déjà ce principe.</strong> Transposé aux financements institutionnels : le dossier doit être complet trente jours après le début de la formation, et la facture part au recouvrement dès son échéance contractuelle, quel que soit l'état d'avancement du dossier.</p>
-<p class="tbdnote">Trois mesures conditionnent le pilotage et restent à établir : l'effectif et l'ancienneté du groupe &#171; incomplet &#187;, le nombre de factures renvoyées de la zone tampon vers l'administration des ventes, et le délai moyen entre l'échéance et la prise en charge effective <span class="tbd">[à compléter]</span>.</p>
+<p>Trois mesures conditionnent le pilotage et doivent être mises en place : l'effectif et l'ancienneté du groupe &#171; incomplet &#187;, le nombre de factures renvoyées de la zone tampon vers l'administration des ventes, et le délai moyen entre l'échéance et la prise en charge effective.</p>
 
 <h3 class="s">Cinq canaux, cinq recouvrements distincts</h3>
+<p>Au circuit interne s'ajoute le processus propre à chaque financeur. Pour les structures étatiques et paritaires — <strong>OPCO, Transitions Pro, Régions, France Travail</strong> — le paiement suit leur calendrier de mandatement, que nos relances n'accélèrent qu'à la marge. Ce qui se joue chez nous, c'est la <strong>date à laquelle leur processus est déclenché</strong>, et la complétude du dossier qui conditionne ce déclenchement.</p>
 <div class="tw">
 <table>
 <thead><tr><th style="width:22%">Canal</th><th style="width:26%">Délai applicable</th><th>Cause principale de retard</th></tr></thead>
@@ -185,7 +184,7 @@ td:first-child,th:first-child{padding-left:4px}
 <li>Outils internes documentés, ce qui rend leur reprise possible par une autre personne.</li>
 <li>Portefeuille solide : financeurs institutionnels et 181 comptes B2B, sans dépendance à un client unique.</li>
 <li>Risque d'impayé structurellement faible sur les canaux institutionnels.</li>
-<li>Conditions de paiement favorables, et moyens d'encaissement en production : paiement par carte en ligne, prélèvement automatique, virements en devises étrangères. Part des encaissements passant aujourd'hui par le prélèvement : [à compléter] %.</li>
+<li>Conditions de paiement favorables, et moyens d'encaissement en production : paiement par carte en ligne, prélèvement automatique, virements en devises étrangères.</li>
 <li>Activité permettant une forte industrialisation des processus et une automatisation significative du recouvrement et de la trésorerie.</li>
 </ul>
 
@@ -240,7 +239,7 @@ td:first-child,th:first-child{padding-left:4px}
 <tbody>
 <tr><td>Facture échue retenue en zone tampon faute de dossier complet</td><td>Sortie inconditionnelle de la zone tampon : passage au recouvrement avec le motif de blocage, l'administration des ventes poursuivant en parallèle. Mesure du délai échéance — prise en charge</td></tr>
 <tr><td>Trente jours ajoutés au retour de zone tampon</td><td>Passage immédiat au recouvrement dès la pièce traitée : la facture est déjà échue</td></tr>
-<tr><td>Facture sans adresse de relance, placée en groupe « incomplet »</td><td>Adresse de relance exigée à l'import ; effectif et ancienneté du groupe suivis chaque semaine</td></tr>
+<tr><td>Facture sans adresse de relance, placée en groupe « incomplet »</td><td>Adresse de relance en champ obligatoire du formulaire ; effectif et ancienneté du groupe suivis chaque semaine</td></tr>
 <tr><td>Échéance mobile, repoussée à chaque pièce demandée</td><td>Extension aux financeurs institutionnels de l'ancrage déjà appliqué au régime général : dossier complet à début de formation + 30 jours, bascule au recouvrement au-delà</td></tr>
 <tr><td>Processus non structurés — POEI, Région, Transitions Pro, AGEFIPH</td><td>Formalisation d'un circuit par dispositif, avec pièces requises et responsable</td></tr>
 <tr><td>Contrôle irrégulier des factures à établir</td><td>Revue mensuelle systématique, rattachée à la clôture</td></tr>
@@ -268,7 +267,7 @@ td:first-child,th:first-child{padding-left:4px}
 <table>
 <thead><tr><th style="width:22%">Étape</th><th>Ce qui doit être fait</th></tr></thead>
 <tbody>
-<tr><td>Avant l'échéance</td><td>Obtenir l'accord de financement et la subrogation avant le démarrage. Sécuriser émargements et certificat de réalisation dès la fin de formation. Fixer dès le démarrage la date à laquelle le dossier doit être complet — début de formation plus trente jours — et alerter à son approche. Contrôler les données de facturation et le bon de commande côté B2B. Vérifier dès l'import qu'une adresse de relance figure au dossier. Obtenir l'accès au portail du client dès la signature. Vérifier l'encaissement préalable sur le financement personnel.</td></tr>
+<tr><td>Avant l'échéance</td><td>Obtenir l'accord de financement et la subrogation avant le démarrage. Sécuriser émargements et certificat de réalisation dès la fin de formation. Fixer dès le démarrage la date à laquelle le dossier doit être complet — début de formation plus trente jours — et alerter à son approche. Contrôler les données de facturation et le bon de commande côté B2B. S'assurer que l'adresse de relance a bien été saisie au formulaire. Obtenir l'accès au portail du client dès la signature. Vérifier l'encaissement préalable sur le financement personnel.</td></tr>
 <tr><td>À l'échéance</td><td>Prendre en charge toute facture dès sa bascule en zone tampon, quel que soit l'état du dossier, avec son motif de blocage. Vérifier la réception de la facture et identifier les blocages. Confirmer l'interlocuteur de paiement. Repérer sans délai les paiements non reçus et prioriser les montants significatifs.</td></tr>
 <tr><td>Après l'échéance</td><td>Segmenter les retards et identifier le motif. Obtenir une date de paiement et suivre les promesses. Escalader vers les commerciaux sur les comptes stratégiques. Réclamer les intérêts moratoires et indemnités dus de plein droit.</td></tr>
 </tbody>
@@ -354,7 +353,7 @@ td:first-child,th:first-child{padding-left:4px}
 <li>étendre aux financements institutionnels l'ancrage déjà en vigueur sur le régime général : échéance fixée au début de formation plus trente jours, au lieu d'un recalcul à chaque nouvelle pièce demandée ;</li>
 <li>rendre inconditionnelle la sortie de la zone tampon : toute facture échue part au recouvrement avec son motif de blocage, sans attendre l'achèvement du dossier ;</li>
 <li>supprimer les trente jours ajoutés lorsqu'une facture revient de la zone tampon vers l'administration des ventes ;</li>
-<li>exiger une adresse de relance à l'import, et suivre chaque semaine l'effectif et l'ancienneté du groupe « incomplet » ;</li>
+<li>rendre l'adresse de relance obligatoire dans le formulaire, et suivre chaque semaine l'effectif et l'ancienneté du groupe « incomplet » ;</li>
 <li>instaurer la règle « pas d'accord de financement, pas de démarrage », les pièces de réalisation restant à compléter dans les trente jours suivant le début de la formation ;</li>
 <li>mesurer le délai entre l'échéance et la prise en charge effective ;</li>
 <li>structurer les circuits POEI, Région, Transitions Pro et AGEFIPH ;</li>
@@ -399,9 +398,9 @@ td:first-child,th:first-child{padding-left:4px}
 <li>plus de 90 % des encaissements obtenus sans intervention, le recouvrement ne traitant plus que l'exception véritable ;</li>
 <li>un effectif stable malgré la multiplication par 3,2 du chiffre d'affaires.</li>
 </ul>
-<p>Le délai constaté est mesuré et décomposé : 259 jours, dont 134 structurels et 125 récupérables, soit 7,5 M€. Reste à consolider ce partage sur une assiette unique avant toute présentation en comité.</p>
+<p>Le délai constaté est mesuré et décomposé : 259 jours, dont 134 structurels et 125 récupérables, soit 7,5 M€.</p>
 <p>Nos conditions de paiement sont favorables et nos factures partent sans délai anormal. <strong>Le retard vient de ce que la sortie de la zone tampon est conditionnée à l'achèvement du dossier et non à l'échéance, des trente jours ajoutés au retour, des factures sans adresse de relance qui n'en reçoivent aucune, et de processus non structurés sur plusieurs dispositifs.</strong> C'est la première source de gain, et elle ne demande aucun budget.</p>
-<p>La transformation tient en trois corrections de circuit — <strong>exiger l'adresse de relance à l'import, libérer la sortie de la zone tampon, supprimer les trente jours du retour</strong> — et en un principe : ancrer les dates sur des événements non déplaçables. Leur finalité commune est que l'encaissement se produise de lui-même. <strong>Le meilleur service de recouvrement est celui qui n'a presque rien à recouvrer.</strong></p>
+<p>La transformation tient en trois corrections de circuit — <strong>rendre l'adresse de relance obligatoire dans le formulaire, libérer la sortie de la zone tampon, supprimer les trente jours du retour</strong> — et en un principe : ancrer les dates sur des événements non déplaçables. Leur finalité commune est que l'encaissement se produise de lui-même. <strong>Le meilleur service de recouvrement est celui qui n'a presque rien à recouvrer.</strong></p>
 </section>
 
 </div>
