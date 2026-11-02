@@ -555,9 +555,16 @@ function appliquer(garderPlace){
       if(zoom.tr==='(échu)'){ if(trc==='Non échu'||!trc) return false; }
       else if(zoom.tr==='(non échu)'){ if(trc!=='Non échu') return false; }
       else if(zoom.tr && trc!==zoom.tr) return false;
-      if(zoom.prov && !(provisionDe(N(i,'Reste dû de la créance'),sousVraie(i),trc,
-                                    V(i,'Clé de la créance'))>0))
-        return false;
+      if(zoom.prov){
+        const q=provisionDe(N(i,'Reste dû de la créance'),sousVraie(i),trc,
+                            V(i,'Clé de la créance'));
+        // EN DOCTRINE CAC, UNE CRÉANCE CRÉDITRICE COMPOSE LE MONTANT.
+        // Elle y provisionne négativement : l'écarter du dépliage donnait
+        // 6 259 861 € déplié sous une case de 1 168 570 €, parce que les
+        // 3 005 créances négatives du financement manquaient. Ailleurs, une
+        // créance créditrice ne provisionne rien et n'a rien à y faire.
+        if(CAC()? !q : !(q>0)) return false;
+      }
     }
     if(c && V(i,'Type de financement')!==c) return false;
     if(t && V(i,'Tranche d’ancienneté')!==t) return false;
