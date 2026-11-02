@@ -865,10 +865,10 @@ function feuilleSommaire(wb,idx,nomDetail){
   // laisse plus de trou dans la numérotation, comme le « 5 » manquant qu'elle
   // a vu le 14/10.
   [['Sommaire','Chiffres clés et composition du classeur'],
-   ['Règles','Ordre de détermination des échéances et barème de chaque dispositif'],
+   ['Règles','Ordre de détermination des échéances et barème de chaque type de financement'],
    ['Balance âgée','Reste dû par type de client et par tranche d’ancienneté'],
-   ['Balance âgée par financement','Même ventilation, dispositif par dispositif'],
-   ['À provisionner','Montant à provisionner par dispositif et par tranche d’ancienneté'
+   ['Balance âgée par financement','Même ventilation, type de financement par type de financement'],
+   ['À provisionner','Montant à provisionner par type de financement et par tranche d’ancienneté'
      +(CAC()?'':', et le crédit resté sans emploi')],
    // Le nombre de colonnes ANNONCÉ doit être celui de la feuille. Le détail
    // s'arrête à « N° de rapprochement », à sa demande du 16/10/2026 ; le
@@ -1005,7 +1005,7 @@ function prorataRegles(ws){
 }
 
 // Le barème de provision du groupe, tel qu'il est appliqué, suivi du
-// rattachement de chaque type de financement à sa famille. Les deux se lisent
+// rattachement de chaque type de financement à son type de client. Les deux se lisent
 // ensemble : un taux sans son périmètre ne dit pas quel montant il couvre.
 function provisionRegles(ws){
   paramsPrets();
@@ -1018,7 +1018,7 @@ function provisionRegles(ws){
   // de sa colonne. Le classeur garde les taux et le rattachement — des
   // chiffres, pas un cours.
   const pv=provisions();
-  poserEntete(ws,ws.addRow(['Famille',...fen.map(f=>f.label),'À provisionner']));
+  poserEntete(ws,ws.addRow(['Type de client',...fen.map(f=>f.label),'À provisionner']));
   let y=0;
   for(const f of Object.keys(taux)){
     const l=ws.addRow([f,...(taux[f]||[]),pv.parFam.get(f)||0]);
@@ -1032,17 +1032,18 @@ function provisionRegles(ws){
   tot.getCell(2+fen.length).numFmt=EUROS;
   ws.addRow([]);
   poserEntete(ws,ws.addRow(['Type de financement',
-    'Famille de provision'+(PROV.confirme?'':' (proposition, à confirmer)'),'',
+    'Type de client'+(PROV.confirme?'':' (proposition, à confirmer)'),'',
     'Reste dû','À provisionner']));
   const rd=new Map(), vues=new Set();
   for(const i of I){ const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
     const sc=sousVraie(i); if(sc) rd.set(sc,(rd.get(sc)||0)+N(i,'Reste dû de la créance')); }
   y=0;
   for(const sc of [...rd.keys()].sort()){
-    const l=ws.addRow([sc, familleDe(sc)||'(à rattacher)', '', rd.get(sc)||0, pv.parSc.get(sc)||0]);
+    const l=ws.addRow([sc, familleDe(sc)||sansType(sc), '', rd.get(sc)||0, pv.parSc.get(sc)||0]);
     l.getCell(1).font={bold:true};
     l.getCell(4).numFmt=EUROS; l.getCell(5).numFmt=EUROS;
-    if(!familleDe(sc)) l.getCell(2).font={color:{argb:CORAIL},bold:true};
+    if(!familleDe(sc)) l.getCell(2).font=EXCLU(sc)
+      ?{color:{argb:ENCRE3},italic:true}:{color:{argb:CORAIL},bold:true};
     if(y++%2) remplirLigne(ws,l,PALE);
   }
 
@@ -1063,56 +1064,110 @@ function provisionRegles(ws){
   poserEntete(ws,eR,false);
   const fen2=(PROV.fenetres||[]).map(f=>f.label).join(' · ');
   const sansEmploi=creditSansEmploi();
+
+  // LE REGROUPEMENT DU BARÈME EST LE TYPE DE CLIENT, ET RIEN D'AUTRE.
+  //
+  // « c pas une famille alors, c un type de client », 02/11/2026. Elle a raison,
+  // et la donnée le dit : type de financement par type de financement, le
+  // regroupement du barème coïncide EXACTEMENT avec le type de client porté par
+  // chaque ligne, dans les deux balances. « Famille » était un synonyme inventé
+  // par-dessus une colonne qui existait déjà — et il se lisait d'autant plus mal
+  // qu'un même nom désignait les deux niveaux : « Financement personnel » est un
+  // type de client ET un type de financement. Un seul mot pour une seule chose.
+  //
+  // LA LISTE SE CONSTRUIT SUR LES PARAMÈTRES, jamais à la main : une règle qui
+  // énumère de mémoire ment dès le premier rattachement modifié.
+  const grp=PROV.familles||{};
+  const grpNoms=Object.keys(PROV.taux||{});
+  const rattaches=new Set([].concat(...grpNoms.map(f=>grp[f]||[])));
+  const grpDit='Le taux s’applique au type de client, et non au type de financement '
+    +'pris isolément : le barème compte une ligne par type de client, et chaque type '
+    +'de financement est rattaché à l’un d’eux. '
+    +grpNoms.map(f=>f+' : '+((grp[f]||[]).join(', ')
+      ||'aucun type de financement rattaché')).join(' — ')+'.';
+  // CE QUI N'EST RATTACHÉ À RIEN SE NOMME, au lieu de se deviner. Les types de
+  // financement sont relevés SUR LES ÉCRITURES de l'arrêté : un type absent du
+  // grand livre n'a pas à figurer dans une règle, et un type présent mais oublié
+  // du barème ne doit pas pouvoir s'y cacher.
+  const tousTypes=[...new Set(I.map(i=>sousVraie(i)).filter(Boolean))].sort();
+  const orphelins=tousTypes.filter(x=>!rattaches.has(x));
+  const exclus=orphelins.filter(x=>(PROV.exclus||[]).indexOf(x)>=0);
+  const oublis=orphelins.filter(x=>(PROV.exclus||[]).indexOf(x)<0);
+  const orphDit=orphelins.length
+    ? [exclus.length?exclus.join(', ')+' : exclus du barème par la doctrine.':'',
+       oublis.length?oublis.join(', ')+' : aucun type de client du barème ne les '
+         +'couvre.':''].filter(Boolean).join(' ')
+      +' Leur reste dû n’est pas provisionné, à son débit comme à son crédit.'
+    : 'Aucun : tous les types de financement présents à cet arrêté relèvent d’un '
+      +'type de client du barème.';
+  const cacNoms=PROV.nomsCac||null;
+  const cacDit=cacNoms
+    ? Object.keys(cacNoms).filter(k=>grpNoms.indexOf(k)>=0)
+        .map(k=>cacNoms[k]+' se lit ici '+k).join(' — ')+'.'
+    : '';
+
   // CETTE BALANCE SE LIT SEULE.
   //
   // « rien à voir avec la balance âgée client, on n'est pas en comparaison »,
-  // 02/11/2026. L'exposé renvoyait à l'autre balance — « elle ne la remplace
-  // pas », « ce sont les règles de la balance Liora, pas celles du CAC ». Un
-  // lecteur de cette page-ci n'a pas l'autre sous les yeux et n'a pas à la
-  // connaître : ce qui est écrit ici est ce qui a servi ici, et rien d'autre.
+  // 02/11/2026. Un lecteur de cette page-ci n'a pas l'autre sous les yeux et n'a
+  // pas à la connaître : ce qui est écrit ici est ce qui a servi ici.
   const dit=CAC()?[
-    ['Montant à provisionner','Somme, famille par famille, du solde net de la fenêtre multiplié par le taux de la famille.'],
-    ['Assiette','Le SOLDE NET, sans aucune imputation : chaque créance porte son reste dû dans sa tranche, débiteur ou créditeur, et le taux s’applique au solde net de la famille dans la fenêtre.'],
-    ['Un solde créditeur','Il se solde dans sa propre tranche d’ancienneté, quoi qu’il arrive : il provisionne négativement, allège sa famille dans sa fenêtre, et ne se déplace vers aucune autre tranche. Aucun compte client, aucune facture et aucun règlement n’entrent dans ce calcul.'],
-    ['Échéance · rang 1','La facture est postérieure à la fin de formation, ou n’a pas de fin de formation : date de facture + 60 jours.'],
-    ['Échéance · rang 2','Le client a un mandat de prélèvement GoCardless : fin de formation + 30 jours.'],
-    ['Échéance · rang 3','Le barème du dispositif. Agefiph, AIF, B2B, B2C-Entreprise, CPF, POEI, Région, Transition Pro, Interco et DST Allemagne : fin de formation + 60 jours. ETAT, OPCO, OPCO - Alternance et Alternance : fin de formation + 30 jours. Financement personnel et Perso-Alternance : début de formation. Corporate - Alternance : date de facture + 30 jours.'],
-    ['Échéance · rang 4','Aucune base de calcul : échéance Pennylane, à défaut la date de la ligne.'],
-    ['L’échéance se porte par pièce','Toutes les lignes d’une même pièce prennent l’échéance de cette pièce, calculée sur sa facture si elle en a une, sinon sur sa ligne la plus ancienne. Une ligne sans pièce se date elle-même.'],
-    ['Tranches','Jours de retard depuis l’échéance jusqu’à la date d’arrêté, bornes 90 / 120 / 180 / 360 / 540 / 720 / 1080 / 1440 jours, le mois valant trente jours. Aucune tranche n’est scindée, aucun prorata n’est appliqué.'],
-    ['Fenêtres', fen2+'. En deçà de 121 jours de retard, et sur tout ce qui n’est pas échu, la provision est nulle.'],
-    ['Familles','Chaque type de financement relève d’une famille, et le taux s’applique au niveau de la famille. Interco et Interne - DST Allemagne ne relèvent d’aucune famille : leur reste dû n’est pas provisionné.'],
-    ['Ancienneté','Elle est celle de chaque créance, et ne dépend ni du montant ni du compte : la date qui classe la créance est son échéance.'],
+    ['Montant à provisionner',
+     'Somme, type de client par type de client et fenêtre par fenêtre, du solde net multiplié par le taux applicable.'],
+    ['Assiette',
+     'Le solde net, sans aucune imputation : chaque créance porte son reste dû dans sa tranche d’ancienneté, au débit comme au crédit, et le taux s’applique au solde net du type de client dans la fenêtre.'],
+    ['Solde créditeur',
+     'Il se solde dans sa propre tranche d’ancienneté : il provisionne négativement, allège son type de client dans sa fenêtre, et ne se déplace vers aucune autre tranche. Aucun compte client, aucune facture et aucun règlement n’entrent dans ce calcul.'],
+    ['Échéance — rang 1',
+     'Facture postérieure à la fin de formation, ou facture sans fin de formation : date de facture + 60 jours.'],
+    ['Échéance — rang 2',
+     'Client titulaire d’un mandat de prélèvement GoCardless : fin de formation + 30 jours.'],
+    ['Échéance — rang 3',
+     'Barème du type de financement. Agefiph, AIF, B2B, B2C-Entreprise, CPF, POEI, Région, Transition Pro, Interco et DST Allemagne : fin de formation + 60 jours. ETAT, OPCO, OPCO - Alternance et Alternance : fin de formation + 30 jours. Financement personnel et Perso-Alternance : début de formation. Corporate - Alternance : date de facture + 30 jours.'],
+    ['Échéance — rang 4',
+     'Aucune base de calcul disponible : échéance Pennylane, à défaut date de la ligne.'],
+    ['Portée de l’échéance',
+     'Elle se détermine par pièce : toutes les lignes d’une même pièce prennent l’échéance de cette pièce, calculée sur sa facture si elle en comporte une, sinon sur sa ligne la plus ancienne. Une ligne sans pièce se date elle-même.'],
+    ['Tranches d’ancienneté',
+     'Jours de retard entre l’échéance et la date d’arrêté. Bornes : 90 / 120 / 180 / 360 / 540 / 720 / 1080 / 1440 jours, le mois valant trente jours. Aucune tranche n’est scindée, aucun prorata n’est appliqué.'],
+    ['Fenêtres de provision',
+     fen2+'. En deçà de 121 jours de retard, et sur tout ce qui n’est pas échu, la provision est nulle.'],
+    ['Types de client du barème', grpDit],
+    ['Noms du fichier CAC', cacDit||'Sans objet.'],
+    ['Types de financement non provisionnés', orphDit],
+    ['Ancienneté',
+     'Celle de chaque créance. Elle ne dépend ni du montant ni du compte : la date qui classe la créance est son échéance.'],
   ]:[
     ['Montant à provisionner',
-     'Somme, créance par créance, de l’assiette multipliée par le taux de sa famille dans la fenêtre où tombe son ancienneté.'],
+     'Somme, créance par créance, de l’assiette multipliée par le taux de son type de client dans la fenêtre où tombe son ancienneté.'],
     ['Assiette',
-     'Reste dû de la créance, diminué des crédits qui lui ont été imputés. Une assiette nulle ou négative ne se provisionne pas.'],
-    ['Sur quoi porte le crédit',
-     'Sur le reste dû, jamais sur le montant provisionné : cent euros de crédit dans une tranche à 25 % allègent la provision de vingt-cinq euros.'],
-    ['1. Imputation du règlement',
-     'Un encaissement nommant des factures leur est imputé — par montant exact d’abord, puis de la plus ancienne à la plus récente, avoirs déduits.'],
-    ['2. Imputation par compte client',
+     'Reste dû de la créance, diminué des crédits qui lui ont été imputés. Une assiette nulle ou négative n’est pas provisionnée.'],
+    ['Portée du crédit',
+     'Le crédit s’impute sur le reste dû, jamais sur le montant provisionné : cent euros de crédit dans une tranche provisionnée à 25 % allègent la provision de vingt-cinq euros.'],
+    ['Imputation — temps 1 : le règlement',
+     'Un encaissement désignant des factures leur est imputé : par montant exact d’abord, puis de la plus ancienne à la plus récente, avoirs déduits.'],
+    ['Imputation — temps 2 : le compte client',
      'Les crédits qu’aucune facture ne porte s’imputent sur les dettes du même compte, de la plus ancienne à la plus récente.'],
-    ['3. Compensation dans sa tranche',
+    ['Imputation — temps 3 : la tranche',
      'Le crédit restant compense les créances du même type de financement et de la même tranche d’ancienneté, la plus ancienne d’abord.'],
-    ['4. Cascade vers le plus ancien',
+    ['Imputation — temps 4 : la cascade',
      'S’il reste du crédit, il passe à la tranche immédiatement plus ancienne, puis à la suivante, cran par cran.'],
-    ['5. Redescente vers le plus jeune',
-     'Faute de cran plus ancien, il redescend cran par cran vers les tranches plus jeunes, jusqu’à être employé.'],
+    ['Imputation — temps 5 : la redescente',
+     'Faute de cran plus ancien, le crédit redescend cran par cran vers les tranches plus jeunes, jusqu’à être employé.'],
     ['Périmètre de la compensation',
      'Elle ne quitte jamais le type de financement, et porte sur toutes ses créances, y compris celles qu’aucun barème ne provisionne.'],
-    ['Ordre des temps',
+    ['Ordre d’application',
      'Chaque temps est épuisé pour tous les crédits avant que le suivant ne commence : la tranche propre prime le cran voisin, et le plus ancien le plus jeune.'],
     ['Ancienneté',
-     'L’imputation modifie le montant exposé, jamais la date qui le classe : chaque créance garde sa tranche.'],
-    ['Fenêtres', fen2+'. En deçà de 121 jours de retard, et sur tout ce qui n’est pas échu, la provision est nulle.'],
-    ['Familles',
-     'Chaque type de financement relève d’une famille, et le taux s’applique au niveau de la famille. Un type non rattaché n’est pas provisionné.'],
+     'L’imputation modifie le montant exposé, jamais la date qui le classe : chaque créance conserve sa tranche.'],
+    ['Fenêtres de provision',
+     fen2+'. En deçà de 121 jours de retard, et sur tout ce qui n’est pas échu, la provision est nulle.'],
+    ['Types de client du barème', grpDit],
+    ['Types de financement non provisionnés', orphDit],
     ['Crédit sans emploi',
      sansEmploi>0.005
-       ? eurC(sansEmploi)+' en financement '+creditSansEmploiDit()
-         +' — crédit qu’aucune dette ouverte de ce financement n’a pu absorber, dans aucune tranche.'
+       ? eurC(sansEmploi)+' sur le type de financement '+creditSansEmploiDit()
+         +' : aucune dette ouverte de ce type de financement n’a pu l’absorber, dans aucune tranche.'
        : 'Aucun : tout le crédit a trouvé preneur.'],
   ];
   let z=0;
@@ -1166,7 +1221,7 @@ function feuilleBalance(wb,niv,idx){
   ws.columns=[{width:48},{width:15},{width:15},...D.tranches.map(()=>({width:14})),
     {width:15},{width:10},{width:9},{width:16},{width:10},{width:30}];
   const t=ws.addRow([niv==='cat'?'RESTE DÛ PAR TYPE DE CLIENT ET PAR ANCIENNETÉ'
-    :'RESTE DÛ PAR DISPOSITIF ET PAR ANCIENNETÉ']);
+    :'RESTE DÛ PAR TYPE DE FINANCEMENT ET PAR ANCIENNETÉ']);
   t.font={bold:true,size:14,color:{argb:BLEU}}; t.height=24;
   ws.addRow([]);
   const ent=new Array(LARGE).fill('');
@@ -1313,7 +1368,7 @@ function feuilleProvision(wb,idx){
   const ws=wb.addWorksheet('À provisionner');
   ws.columns=[{width:34},{width:15},{width:16},{width:9},
     ...D.tranches.map(()=>({width:14})),{width:13},{width:10}];
-  const t=ws.addRow(['MONTANT À PROVISIONNER PAR DISPOSITIF ET PAR ANCIENNETÉ']);
+  const t=ws.addRow(['MONTANT À PROVISIONNER PAR TYPE DE FINANCEMENT ET PAR ANCIENNETÉ']);
   t.font={bold:true,size:14,color:{argb:BLEU}}; t.height=24;
   ws.addRow([]);
   poserEntete(ws,ws.addRow(['Type de financement','Reste dû','À provisionner','Part',
@@ -1602,6 +1657,13 @@ function paramsPrets(){
 const CAC=()=>!!(D&&D.doctrine==='CAC');
 
 // À quelle famille de provision appartient un type de financement.
+// UN TYPE DE FINANCEMENT QUE LE BARÈME NE COUVRE PAS : ou bien il attend son
+// rattachement, ou bien la doctrine l'exclut — et les deux ne se disent pas de
+// la même façon. « à rattacher » en rouge sur un exclu se lit comme un oubli,
+// alors que c'est une règle : Interco et Interne - DST Allemagne ne sont pas
+// provisionnés, et c'est voulu.
+const EXCLU=sc=>((PROV.exclus||[]).indexOf(sc)>=0);
+const sansType=sc=>EXCLU(sc)?'exclu du barème':'à rattacher';
 const familleDe=sc=>{
   paramsPrets();
   for(const [f,liste] of Object.entries(PROV.familles||{}))
@@ -1858,7 +1920,7 @@ function detailProvision(i){
       +' : hors des quatre fenêtres, rien à provisionner';
     const fam0=familleDe(sousVraie(i));
     if(!fam0) return 'solde net '+eurC(rd)+' · '+(sousVraie(i)||'sans type de financement')
-      +' : hors des familles du barème CAC, rien à provisionner';
+      +' : hors des types de client du barème, rien à provisionner';
     const t0=((PROV.taux||{})[fam0]||[])[j0]||0;
     if(!t0) return 'solde net '+eurC(rd)+' · '+fam0+', '+fen0[j0].label
       +' : taux nul, rien à provisionner';
@@ -1887,7 +1949,7 @@ function detailProvision(i){
     +' : hors des quatre fenêtres — en deçà de 121 jours de retard ou non échu, rien à provisionner';
   const fam=familleDe(sc);
   if(!fam) return chemin+' · '+(sc||'sans type de financement')
-    +' : aucune famille de provision rattachée, rien à provisionner';
+    +' : aucun type de client du barème ne le couvre, rien à provisionner';
   const t=((PROV.taux||{})[fam]||[])[j]||0;
   if(!t) return chemin+' · '+fam+', '+fen[j].label+' : taux nul, rien à provisionner';
   return chemin+' × '+pc(t)+' ('+fam+', '+fen[j].label+') = '+eurC(base*t);
@@ -2549,7 +2611,7 @@ function fiche(i){
         +(m&&m.rd?' · '+eur(m.rd)+' déplacés de « '+(m.sc||'À classer')+' » vers « '+c.dispositif+' »':'')
         +'</span><button type="button" class="plat" id="c-annul">Revenir en arrière</button>';
     } else if(peutEcrire){
-      h+='<label for="c-disp">Dispositif</label>'
+      h+='<label for="c-disp">Type de financement</label>'
         +'<select id="c-disp"><option value="">Choisir…</option>'
         +DISPOS.map(d=>'<option>'+d+'</option>').join('')+'</select>'
         +'<button type="button" id="c-ok" disabled>Enregistrer</button>'
@@ -2636,7 +2698,7 @@ function methodeProvision(){
 function tableProvision(){
   paramsPrets();
   const fen=PROV.fenetres||[], taux=PROV.taux||{}, fams=Object.keys(taux);
-  let h='<table><thead><tr><th>Famille</th>'
+  let h='<table><thead><tr><th>Type de client</th>'
     +fen.map(f=>'<th class="n">'+esc(f.label)+'</th>').join('')
     +'<th class="n">À provisionner</th></tr></thead><tbody>';
   const pv=provisions();
@@ -2652,14 +2714,15 @@ function tableProvision(){
   E('prov-taux').innerHTML=h;
   const sr=E('prov-reste');
   if(sr){ const r=creditSansEmploi();
-    sr.textContent=r>0.005?(eur(r)+' en financement '+creditSansEmploiDit()):'aucun'; }
+    sr.textContent=r>0.005
+      ?(eur(r)+' sur le type de financement '+creditSansEmploiDit()):'aucun'; }
 
-  // Le rattachement : un type de financement par ligne, sa famille en face.
-  // Il se lit dans ce sens-là parce que c'est la question qu'on se pose —
-  // « ce dispositif, je le provisionne comment ? » — et parce qu'ainsi aucun
-  // dispositif ne peut être oublié en silence.
+  // Le rattachement : un type de financement par ligne, son type de client en
+  // face. Il se lit dans ce sens-là parce que c'est la question qu'on se pose —
+  // « ce type de financement, je le provisionne comment ? » — et parce qu'ainsi
+  // aucun d'eux ne peut être oublié en silence.
   const tous=[...new Set(I.map(i=>sousVraie(i)).filter(Boolean))].sort();
-  let g='<table><thead><tr><th>Type de financement</th><th>Famille</th>'
+  let g='<table><thead><tr><th>Type de financement</th><th>Type de client</th>'
     +'<th class="n">Reste dû</th><th class="n">À provisionner</th></tr></thead><tbody>';
   const rd=new Map(), vues=new Set();
   for(const i of I){ const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
@@ -2672,15 +2735,28 @@ function tableProvision(){
           +((x==='(aucune)'?null:x)===f?' selected':'')+'>'+esc(x)+'</option>').join('')
         +'</select>'
       : (f?'<span class="fam">'+esc(f)+'</span>'
-          :'<span style="color:var(--alerte)">à rattacher</span>'))
+          :(EXCLU(sc)
+            ?'<span style="color:var(--encre-3)">exclu du barème</span>'
+            :'<span style="color:var(--alerte)">à rattacher</span>')))
       +'</td><td class="n">'+eur(rd.get(sc)||0)+'</td>'
       +'<td class="n">'+eur(pv.parSc.get(sc)||0)+'</td></tr>';
   }
   g+='</tbody></table>';
-  if(pv.horsFamille.size) g+='<p class="param-avertir">'
-    +pv.horsFamille.size+' type'+(pv.horsFamille.size>1?'s':'')+' de financement '
-    +(pv.horsFamille.size>1?'ne sont rattachés':"n'est rattaché")+' à aucune famille : '
-    +[...pv.horsFamille.keys()].map(esc).join(' · ')
+  // L'EXCLUSION SE LIT SUR LA DOCTRINE, PAS SUR LE SOLDE DU JOUR. Un type
+  // exclu dont le reste dû est nul à cet arrêté n'apparaît pas dans
+  // pv.horsFamille : la note en aurait oublié la moitié alors que le tableau,
+  // lui, les montre tous les deux.
+  const typesVus=new Set(tous);
+  const horsExclus=(PROV.exclus||[]).filter(x=>typesVus.has(x));
+  const horsOublis=[...pv.horsFamille.keys()].filter(x=>!EXCLU(x));
+  if(horsExclus.length) g+='<p class="param-note">'
+    +horsExclus.map(esc).join(' · ')+' : exclu'+(horsExclus.length>1?'s':'')
+    +' du barème par la doctrine. Leur reste dû n’est pas provisionné, à son '
+    +'débit comme à son crédit.</p>';
+  if(horsOublis.length) g+='<p class="param-avertir">'
+    +horsOublis.length+' type'+(horsOublis.length>1?'s':'')+' de financement '
+    +(horsOublis.length>1?'ne sont rattachés':"n'est rattaché")
+    +' à aucun type de client du barème : '+horsOublis.map(esc).join(' · ')
     +'. Leur reste dû n’est pas provisionné.</p>';
   if(!PROV.confirme) g+='<p class="param-avertir">Ce rattachement est une proposition : '
     +'il n’a pas encore été confirmé. Modifiez-le ici, et il le sera.</p>';
@@ -2737,7 +2813,7 @@ function tableEcheance(){
     +'</td></tr></tbody></table>';
   E('ech-ordre').innerHTML=o;
 
-  let h='<table><thead><tr><th>Dispositif</th><th>Type de client</th>'
+  let h='<table><thead><tr><th>Type de financement</th><th>Type de client</th>'
     +'<th>Base de l’échéance</th><th class="n">Délai (jours)</th><th>Repli</th>'
     +'</tr></thead><tbody>';
   ECH.forEach((r,k)=>{

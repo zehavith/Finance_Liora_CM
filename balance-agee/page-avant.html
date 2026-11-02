@@ -416,7 +416,7 @@ input[type=search]{flex:1 1 220px}
   </div>
   <div class="lot" id="lot" hidden>
     <span class="lot-n" id="lot-n"></span>
-    <label for="lot-disp">Dispositif</label>
+    <label for="lot-disp">Type de financement</label>
     <select id="lot-disp"><option value="">Choisir…</option></select>
     <button type="button" id="lot-ok" disabled>Compléter la sélection</button>
     <button type="button" class="plat" id="lot-non">Tout désélectionner</button>
@@ -449,9 +449,9 @@ input[type=search]{flex:1 1 220px}
         <span class="etat" id="ech-etat"></span>
       </div>
       <p class="param-note">L’ordre de priorité prévaut sur le barème : une créance sous
-        mandat de prélèvement n’est pas soumise au barème de son dispositif.</p>
+        mandat de prélèvement n’est pas soumise au barème de son type de financement.</p>
       <div class="param-table" id="ech-ordre"></div>
-      <h4>Le barème, dispositif par dispositif</h4>
+      <h4>Le barème, type de financement par type de financement</h4>
       <p class="param-note">Un barème modifié ici est enregistré aussitôt, mais les échéances
         déjà calculées ne bougent pas : elles sont refaites à la prochaine reconstruction de
         la balance. Les taux de provision, eux, s’appliquent immédiatement à l’écran.</p>
@@ -480,7 +480,7 @@ input[type=search]{flex:1 1 220px}
         <span class="etat" id="prov-etat"></span>
       </div>
       <div class="param-table" id="prov-taux"></div>
-      <h4>Quel type de financement dans quelle famille</h4>
+      <h4>Rattachement de chaque type de financement à son type de client</h4>
       <div class="param-table" id="prov-familles"></div>
       <div class="param-actions" id="prov-actions" hidden>
         <button type="button" id="prov-ok">Enregistrer</button>
@@ -492,9 +492,10 @@ input[type=search]{flex:1 1 220px}
       <div class="param-tete">
         <h3>Comment la provision se calcule</h3>
       </div>
-      <p class="param-note">Barème de provision Groupe, appliqué créance par créance.
+      <p class="param-note">Barème de provision du Groupe, appliqué créance par créance.
         Le montant à provisionner est la somme, sur toutes les créances, de leur assiette
-        multipliée par le taux de leur famille dans la fenêtre où tombe leur ancienneté.</p>
+        multipliée par le taux de leur <strong>type de client</strong> dans la fenêtre où
+        tombe leur ancienneté.</p>
 
       <h4>Sur quoi porte le taux — l’assiette</h4>
       <p class="param-note">Les règlements s’imputent sur les factures en
@@ -544,7 +545,7 @@ input[type=search]{flex:1 1 220px}
         L’ancienneté demeure celle de chaque créance : l’imputation modifie le montant
         exposé, jamais la date qui le classe.</p>
 
-      <h4>À partir de quand — les quatre fenêtres</h4>
+      <h4>À partir de quand — les fenêtres de provision</h4>
       <p class="param-note">Les fenêtres se comptent en <strong>jours de retard</strong>
         depuis l’échéance, et coïncident exactement avec les tranches de la balance âgée,
         un mois valant trente jours : 121-180 j, c’est « 4 à 6 mois » ; 181-360 j, « 6 à
@@ -553,30 +554,31 @@ input[type=search]{flex:1 1 220px}
         prorata n’est appliqué. <strong>En deçà de 121 jours de retard, et sur tout ce qui n’est
         pas échu, la provision est nulle.</strong></p>
 
-      <h4>Quel taux — les trois familles</h4>
-      <p class="param-note">Chaque type de financement relève d’une famille, et le taux
-        s’applique au niveau de la famille. Le rattachement complet figure sous le tableau.
-        Un type de financement non rattaché n’est pas provisionné ; il est signalé comme
-        tel.</p>
+      <h4>Quel taux — le type de client</h4>
+      <p class="param-note">Le taux s’applique au <strong>type de client</strong>, et non
+        au type de financement pris isolément : le barème compte une ligne par type de
+        client, et chaque type de financement est rattaché à l’un d’eux. Le rattachement
+        complet figure dans le tableau ci-dessus. Un type de financement rattaché à aucun
+        type de client n’est pas provisionné ; il est signalé comme tel.</p>
     </div>
 
     <div class="param-bloc" id="prov-methode-cac" hidden>
       <div class="param-tete">
         <h3>Comment la provision se calcule</h3>
       </div>
-      <p class="param-note">Le montant à provisionner est la somme, famille par famille
-        et fenêtre par fenêtre, du <strong>solde net</strong> multiplié par le taux de la
-        famille dans cette fenêtre.</p>
+      <p class="param-note">Le montant à provisionner est la somme, type de client par
+        type de client et fenêtre par fenêtre, du <strong>solde net</strong> multiplié par
+        le taux applicable.</p>
 
       <h4>Sur quoi porte le taux — le solde net</h4>
       <p class="param-note">Chaque créance porte son <strong>reste dû</strong> tel quel dans
         sa tranche d’ancienneté, débiteur ou créditeur, et le taux s’applique au solde net
-        de la famille dans la fenêtre. Il n’y a <strong>aucune imputation</strong> : aucun
+        du type de client dans la fenêtre. Il n’y a <strong>aucune imputation</strong> : aucun
         crédit n’est rattaché à une facture, à un compte client ni à un règlement, et aucun
         reste dû n’est corrigé avant que le taux ne s’applique.</p>
       <p class="param-note">Un <strong>solde créditeur</strong> se solde dans sa propre
         <strong>tranche d’ancienneté</strong>, quoi qu’il arrive : il provisionne
-        négativement, allège sa famille dans sa fenêtre, et ne se déplace vers aucune autre
+        négativement, allège son type de client dans sa fenêtre, et ne se déplace vers aucune
         tranche. Une fenêtre dont le solde net est négatif porte donc une provision
         négative, et diminue d’autant le montant à provisionner.</p>
       <p class="param-note">La provision varie du <strong>taux</strong> appliqué au montant,
@@ -588,7 +590,7 @@ input[type=search]{flex:1 1 220px}
         en a une, sinon sur sa ligne la plus ancienne ; une ligne sans pièce se date
         elle-même.</p>
 
-      <h4>À partir de quand — les quatre fenêtres</h4>
+      <h4>À partir de quand — les fenêtres de provision</h4>
       <p class="param-note">Les fenêtres se comptent en <strong>jours de retard</strong>
         depuis l’échéance, et coïncident exactement avec les tranches de la balance âgée,
         un mois valant trente jours : 121-180 j, c’est « 4 à 6 mois » ; 181-360 j, « 6 à
@@ -597,12 +599,13 @@ input[type=search]{flex:1 1 220px}
         prorata n’est appliqué. <strong>En deçà de 121 jours de retard, et sur tout ce qui
         n’est pas échu, la provision est nulle.</strong></p>
 
-      <h4>Quel taux — les trois familles</h4>
-      <p class="param-note">Chaque type de financement relève d’une famille, et le taux
-        s’applique au niveau de la famille. Le rattachement complet figure sous le tableau.
-        <strong>Interco</strong> et <strong>Interne - DST Allemagne</strong> ne relèvent
-        d’aucune famille : leur reste dû n’est pas provisionné, à son débit comme à son
-        crédit.</p>
+      <h4>Quel taux — le type de client</h4>
+      <p class="param-note">Le taux s’applique au <strong>type de client</strong>, et non
+        au type de financement pris isolément : le barème compte une ligne par type de
+        client, et chaque type de financement est rattaché à l’un d’eux. Le rattachement
+        complet figure dans le tableau ci-dessus. <strong>Interco</strong> et
+        <strong>Interne - DST Allemagne</strong> en sont exclus : leur reste dû n’est pas
+        provisionné, à son débit comme à son crédit.</p>
     </div>
 
     <div class="param-bloc" id="depot-bloc" hidden>

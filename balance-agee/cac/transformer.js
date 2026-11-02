@@ -42,14 +42,23 @@ const FACT30=new Set(['Corporate - Alternance']);
 const BORNES=[[90,'0 à 3 mois'],[120,'3 à 4 mois'],[180,'4 à 6 mois'],[360,'6 à 12 mois'],
   [540,'12 à 18 mois'],[720,'18 à 24 mois'],[1080,'24 à 36 mois'],[1440,'36 à 48 mois']];
 
-// Les familles du CAC. INTERCO EST EXCLU, et « Interne - DST Allemagne » ne
+// Les types de client du barème CAC. Le regroupement du barème EST le type
+// de client : vérification faite type de financement par type de financement,
+// il coïncide exactement avec celui que porte la donnée. Le fichier CAC les
+// nomme B2C, ETATIQUE et B2B ; la maison dit Financement personnel, Étatique
+// et Corporate. Un seul mot pour une seule chose, et la correspondance est
+// écrite dans les règles. INTERCO EST EXCLU, et « Interne - DST Allemagne » ne
 // figure dans aucune famille : ni l'un ni l'autre n'est provisionné.
 const FAMILLES={
-  'B2C':['Financement personnel','B2C-Perso','Perso-Alternance'],
-  'ETATIQUE':['CPF','Transition Pro','AIF','POEI','Region','Agefiph','ETAT','OPCO','OPCO - Alternance'],
-  'B2B':['B2C-Entreprise','B2B','Corporate - Alternance'],
+  'Financement personnel':['Financement personnel','B2C-Perso','Perso-Alternance'],
+  'Étatique':['CPF','Transition Pro','AIF','POEI','Region','Agefiph','ETAT','OPCO','OPCO - Alternance'],
+  'Corporate':['B2C-Entreprise','B2B','Corporate - Alternance'],
 };
-const TAUX={'B2C':[0.2,0.4,0.9,1],'ETATIQUE':[0,0,0.5,1],'B2B':[0.4,0.4,0.9,1]};
+const TAUX={'Financement personnel':[0.2,0.4,0.9,1],'Étatique':[0,0,0.5,1],
+  'Corporate':[0.4,0.4,0.9,1]};
+// Les noms du fichier CAC, pour que le commissaire aux comptes retrouve les
+// siens en face des nôtres.
+const NOMS_CAC={'Financement personnel':'B2C','Étatique':'ETATIQUE','Corporate':'B2B'};
 const FENETRES=[
   {label:'121 - 180 j',tranches:['4 à 6 mois']},
   {label:'181 - 360 j',tranches:['6 à 12 mois']},
@@ -296,7 +305,7 @@ function transformer(){
   }
   d.provision={
     confirme:true, methode:'CAC',
-    fenetres:FENETRES, taux:TAUX, familles:FAMILLES,
+    fenetres:FENETRES, taux:TAUX, familles:FAMILLES, nomsCac:NOMS_CAC,
     quand:d.arrete,
     // Ce que la doctrine CAC fait de l'assiette, dit une fois pour toutes.
     assiette:'solde net de la sous-catégorie dans la tranche, négatifs compris, sans imputation',
@@ -352,7 +361,7 @@ function transformer(){
     const exclu=(disp==='Interco'||disp==='Interne - DST Allemagne');
     return {dispositif:disp, type:a.type||'', perimetre:a.perimetre||'',
       base, jours, repli:'échéance Pennylane, à défaut la date de la ligne',
-      note:exclu?'Exclu des familles de provision : son reste dû n’est pas provisionné.'
+      note:exclu?'Exclu du barème : son reste dû n’est pas provisionné.'
                 :(base==='début de formation'?'La formation est payée d’avance : l’échéance court du début.'
                  :(jours===30?'Trente jours à compter de la base.':'Soixante jours à compter de la base.')),
       mots:a.mots||''};
