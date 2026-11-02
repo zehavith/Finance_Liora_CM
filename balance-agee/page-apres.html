@@ -1038,7 +1038,19 @@ function provisionRegles(ws){
   poserEntete(ws,eR,false);
   const fen2=(PROV.fenetres||[]).map(f=>f.label).join(' · ');
   const sansEmploi=creditSansEmploi();
-  const dit=[
+  const dit=CAC()?[
+    ['Doctrine','Règles du commissaire aux comptes. Cette balance ne remplace pas la balance Liora : elle dit ce que le CAC provisionnerait sur le même grand livre.'],
+    ['Montant à provisionner','Somme, famille par famille, du solde net de la fenêtre multiplié par le taux de la famille.'],
+    ['Assiette','Le SOLDE NET, sans aucune imputation : chaque créance porte son reste dû dans sa tranche, débiteur ou créditeur. Une tranche négative allège la provision.'],
+    ['Échéance · rang 1','Facture postérieure à la fin de formation, ou facture sans fin de formation : date de facture + 60 j.'],
+    ['Échéance · rang 2','Client sous mandat de prélèvement GoCardless : fin de formation + 30 j.'],
+    ['Échéance · rang 3','Agefiph, AIF, B2B, B2C-Entreprise, CPF, POEI, Région, Transition Pro, Interco, DST Allemagne : fin de formation + 60 j. ETAT, OPCO, OPCO - Alternance, Alternance : fin de formation + 30 j. Financement personnel, Perso-Alternance : début de formation. Corporate - Alternance : date de facture + 30 j.'],
+    ['Échéance · rang 4','Base manquante : échéance Pennylane, à défaut la date de la ligne.'],
+    ['Tranches','Jours de retard depuis l’échéance, bornes 90 / 120 / 180 / 360 / 540 / 720 / 1080 / 1440 j, le mois valant trente jours.'],
+    ['Fenêtres', fen2+'. En deçà de 121 jours de retard, et sur tout ce qui n’est pas échu, la provision est nulle.'],
+    ['Familles','B2C, ETATIQUE et B2B. Interco et Interne - DST Allemagne sont EXCLUS : leur reste dû n’est pas provisionné.'],
+    ['Ce qui n’a pas cours ici','Ni imputation du crédit, ni compensation par tranche, ni cascade, ni crédit sans emploi : ce sont les règles de la balance Liora, pas celles du CAC.'],
+  ]:[
     ['Montant à provisionner',
      'Somme, créance par créance, de l’assiette multipliée par le taux de sa famille dans la fenêtre où tombe son ancienneté.'],
     ['Assiette',
@@ -1461,6 +1473,17 @@ function paramsPrets(){
   if(!ECH) ECH=((D&&D.regles)||[]).map(r=>({...r}));
 }
 
+// LA DOCTRINE QUE CETTE PAGE SERT.
+//
+// Deux balances âgées vivent côte à côte depuis le 02/11/2026 : la sienne,
+// avec ses cinq temps d'imputation, et celle du commissaire aux comptes, qui
+// n'impute rien. « Les 2 balances âgées se basent sur des règles différentes,
+// c'est normal qu'elles ne soient pas identiques. »
+//
+// La page est la MÊME des deux côtés : c'est la donnée qui dit laquelle elle
+// est. Un second gabarit aurait divergé du premier au premier correctif.
+const CAC=()=>!!(D&&D.doctrine==='CAC');
+
 // À quelle famille de provision appartient un type de financement.
 const familleDe=sc=>{
   paramsPrets();
@@ -1486,6 +1509,21 @@ let ASSIETTE=null, CREDIT_SANS_EMPLOI=0, IMPUTE=null, SANS_EMPLOI_SC=null;
 function assiettes(){
   if(ASSIETTE) return ASSIETTE;
   ASSIETTE=new Map();
+  // ─── DOCTRINE CAC : AUCUNE IMPUTATION ───
+  // « Sommes nettes par sous-catégorie, montants négatifs compris », son
+  // onglet Règles CAC. Chaque créance porte son reste dû tel quel dans sa
+  // tranche, débiteur ou créditeur ; le taux s'applique au solde net de la
+  // famille dans la fenêtre, et une tranche négative allège la provision.
+  // Il n'y a donc ni compensation, ni cascade, ni crédit sans emploi.
+  if(CAC()){
+    const vues=new Set();
+    for(const i of I){
+      const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
+      ASSIETTE.set(k, N(i,'Reste dû de la créance'));
+    }
+    CREDIT_SANS_EMPLOI=0; SANS_EMPLOI_SC=new Map(); IMPUTE=new Map();
+    return ASSIETTE;
+  }
   // CE QUI A MANGÉ LE CRÉDIT, CRÉANCE PAR CRÉANCE ET TEMPS PAR TEMPS.
   // La colonne « Détail du calcul de la provision » s'en sert pour écrire la
   // phrase : sans cette trace, on saurait que l'assiette est plus basse que le
@@ -1693,6 +1731,22 @@ function detailProvision(i){
   const k=V(i,'Clé de la créance');
   if(!k) return '';
   const rd=N(i,'Reste dû de la créance');
+  if(CAC()){
+    // Pas d'imputation : la phrase n'a qu'un chemin à dire.
+    if(!rd) return 'créance soldée : rien à provisionner';
+    const tr0=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
+    const fen0=PROV.fenetres||[];
+    const j0=fen0.findIndex(f=>(f.tranches||[]).indexOf(tr0)>=0);
+    if(j0<0) return 'solde net '+eurC(rd)+' · '+(tr0||'sans tranche')
+      +' : hors des quatre fenêtres, rien à provisionner';
+    const fam0=familleDe(sousVraie(i));
+    if(!fam0) return 'solde net '+eurC(rd)+' · '+(sousVraie(i)||'sans type de financement')
+      +' : hors des familles du barème CAC, rien à provisionner';
+    const t0=((PROV.taux||{})[fam0]||[])[j0]||0;
+    if(!t0) return 'solde net '+eurC(rd)+' · '+fam0+', '+fen0[j0].label
+      +' : taux nul, rien à provisionner';
+    return 'solde net '+eurC(rd)+' × '+pc(t0)+' ('+fam0+', '+fen0[j0].label+') = '+eurC(rd*t0);
+  }
   if(rd<0) return 'créance au crédit : rien à provisionner';
   if(!(rd>0)) return 'créance soldée : rien à provisionner';
   const a=assiettes();
@@ -1727,7 +1781,11 @@ function provisionDe(rd, sc, tr, cle){
   paramsPrets();
   const a=assiettes();
   const base=(cle!=null&&a.has(cle))?a.get(cle):rd;
-  if(!(base>0)) return 0;
+  // En doctrine CAC un solde créditeur n'est pas ignoré : il provisionne
+  // NÉGATIVEMENT, et c'est ainsi que les tranches négatives de son fichier
+  // allègent la famille. Ailleurs, une assiette nulle ou négative ne couvre
+  // aucune perte et ne se provisionne pas.
+  if(CAC()){ if(!base) return 0; } else if(!(base>0)) return 0;
   const j=(PROV.fenetres||[]).findIndex(f=>(f.tranches||[]).indexOf(tr)>=0);
   if(j<0) return 0;
   const fam=familleDe(sc); if(!fam) return 0;
@@ -1763,7 +1821,7 @@ function provLigne(i){
   const a=assiettes();
   const base=a.has(k)?a.get(k):rd;
   const tr=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
-  return {base: base>0?base:0, prov: provisionDe(rd, sousVraie(i), tr, k)};
+  return {base: CAC()?base:(base>0?base:0), prov: provisionDe(rd, sousVraie(i), tr, k)};
 }
 
 // La provision par ligne de synthèse, au niveau de lecture courant. Elle suit
@@ -1797,8 +1855,10 @@ function provisions(){
   const vues=new Set();
   for(const i of I){
     const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
-    const rd=N(i,'Reste dû de la créance'); if(!(rd>0)) continue;
-    const base=a.has(k)?a.get(k):rd; if(!(base>0)) continue;
+    const rd=N(i,'Reste dû de la créance');
+    if(CAC()? !rd : !(rd>0)) continue;
+    const base=a.has(k)?a.get(k):rd;
+    if(CAC()? !base : !(base>0)) continue;
     const sc=sousVraie(i);
     const tr=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
     const j=fen.findIndex(f=>(f.tranches||[]).indexOf(tr)>=0);
