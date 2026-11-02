@@ -719,8 +719,9 @@ function dessiner(){
 
 // ── Le classeur téléchargé ──
 //
-// Cinq onglets, dans l'ordre où on les lit : le sommaire, les règles, la
-// balance par type de client, la même par dispositif, puis le détail. Les deux
+// Six onglets, dans l'ordre où on les lit : le sommaire, les règles, la
+// balance par type de client, la même par dispositif, le montant à
+// provisionner, puis le détail. Les deux
 // synthèses sont celles de l'écran — vos compléments compris, et sans la ligne
 // « À classer » quand elle est vide : un classeur qui contredirait la page
 // qu'on vient de lire ne servirait à rien.
@@ -842,6 +843,8 @@ function feuilleSommaire(wb,idx,nomDetail){
    ['Règles','Ordre de détermination des échéances et barème de chaque dispositif'],
    ['Balance âgée','Reste dû par type de client et par tranche d’ancienneté'],
    ['Balance âgée par financement','Même ventilation, dispositif par dispositif'],
+   ['À provisionner','Montant à provisionner par dispositif et par tranche d’ancienneté, '
+     +'et le crédit resté sans emploi'],
    // Le nombre de colonnes ANNONCÉ doit être celui de la feuille. Le détail
    // s'arrête à « N° de rapprochement », à sa demande du 16/10/2026 ; le
    // sommaire, lui, continuait d'annoncer les 56 colonnes des données.
@@ -1173,6 +1176,86 @@ const nbColsDetail=()=>D.cols.indexOf(COUPE)<0?D.cols.length:D.cols.indexOf(COUP
 const NUMERIQUES=new Set([...MONNAIE,'Taux d’attribution TVA','Taux de change',
   'Jours de retard','Délai appliqué (jours)']);
 
+// ── L'ONGLET « À PROVISIONNER » ──
+//
+// Sa demande du 02/11/2026 : « j'aimerais que lorsque je fais un export j'ai
+// un onglet avec le tableau à provisionner, de la même manière qu'il y a les
+// tableaux par type de financement. »
+//
+// C'est LE TABLEAU DE L'ÉCRAN, colonne pour colonne : sa règle du 16/10,
+// « je ne veux pas que tu changes la mise en forme dans à provisionner »,
+// vaut ici aussi. Même ordre — la plus grosse provision en tête —, mêmes
+// colonnes d'ancienneté, même colonne « Non échu » qui reste vide puisque
+// rien de non échu ne se provisionne, même décompte de créances.
+//
+// Il porte sur idx, comme les autres feuilles : un export de la sélection à
+// l'écran donne la provision de cette sélection, pas celle de toute la
+// balance. Un classeur qui contredirait la page qu'on vient de lire ne
+// servirait à rien.
+function feuilleProvision(wb,idx){
+  paramsPrets();
+  const nT=D.tranches.length;
+  const ws=wb.addWorksheet('À provisionner');
+  ws.columns=[{width:34},{width:15},{width:16},{width:9},
+    ...D.tranches.map(()=>({width:14})),{width:13},{width:10}];
+  const t=ws.addRow(['MONTANT À PROVISIONNER PAR DISPOSITIF ET PAR ANCIENNETÉ']);
+  t.font={bold:true,size:14,color:{argb:BLEU}}; t.height=24;
+  ws.addRow([]);
+  poserEntete(ws,ws.addRow(['Type de financement','Reste dû','À provisionner','Part',
+    ...D.tranches,'Non échu','Créances']));
+  ws.getColumn(2).numFmt=EUROS;
+  ws.getColumn(3).numFmt=EUROS;
+  ws.getColumn(4).numFmt='0,0 %';
+  for(let c=5;c<=4+nT;c++) ws.getColumn(c).numFmt=EUROS;
+  ws.getColumn(5+nT).numFmt=EUROS;
+  ws.getColumn(6+nT).numFmt=ENTIER;
+
+  // Une créance intégralement réglée à l'intérieur de son lot garde sa clé
+  // dans le détail mais ne doit plus rien : elle ne se compte pas ici, pas
+  // plus qu'à l'écran. C'est le même filtre que vueProvision().
+  const parSc=new Map(), vues=new Set();
+  for(const i of idx){
+    const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
+    const sc=sousVraie(i); if(!sc) continue;
+    const rd=N(i,'Reste dû de la créance');
+    if(Math.abs(rd)<0.005) continue;
+    const tr=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
+    const p=provisionDe(rd, sc, tr, k);
+    let g=parSc.get(sc);
+    if(!g){ g={sc, rd:0, prov:0, nb:0, tr:new Map()}; parSc.set(sc,g); }
+    g.rd+=rd; g.prov+=p; g.nb++;
+    if(p) g.tr.set(tr,(g.tr.get(tr)||0)+p);
+  }
+  const liste=[...parSc.values()].sort((a,b)=>b.prov-a.prov||(a.sc<b.sc?-1:1));
+  const total=liste.reduce((s,x)=>s+x.prov,0);
+  let y=0;
+  for(const g of liste){
+    const l=ws.addRow([g.sc, g.rd, g.prov||null,
+      (total&&g.prov)?g.prov/total:null,
+      ...D.tranches.map(x=>g.tr.get(x)||null), null, g.nb]);
+    l.getCell(1).font={bold:true};
+    if(g.prov) l.getCell(3).font={bold:true,color:{argb:CORAIL}};
+    if(y++%2) l.eachCell(c=>{c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}};});
+  }
+  const trTot=new Map();
+  for(const x of liste) for(const [tr,v] of x.tr) trTot.set(tr,(trTot.get(tr)||0)+v);
+  const tot=ws.addRow(['TOTAL', liste.reduce((s,x)=>s+x.rd,0), total||null,
+    total?1:null, ...D.tranches.map(x=>trTot.get(x)||null), null,
+    liste.reduce((s,x)=>s+x.nb,0)]);
+  poserTotal(tot);
+  if(total) tot.getCell(3).font={bold:true,color:{argb:CORAIL}};
+
+  // CE QUE LA COMPENSATION N'A PAS PU EMPLOYER, en une cellule et non en une
+  // phrase — « enlève-moi ce type de phrase de l'export », 22/10/2026. Une
+  // provision qu'on lit sans savoir qu'un crédit est resté sans preneur n'est
+  // pas auditable.
+  ws.addRow([]);
+  const r=creditSansEmploi();
+  const sc2=ws.addRow(['Crédit sans emploi', r||null]);
+  sc2.getCell(1).font={bold:true,color:{argb:ENCRE3}};
+  sc2.getCell(2).numFmt=EUROS;
+}
+
 function feuilleDetail(wb,idx,nom){
   const ws=wb.addWorksheet(nom);
   // La première colonne reprend mot pour mot l'étiquette de la balance :
@@ -1215,6 +1298,7 @@ async function classeur(idx,nomDetail){
   feuilleRegles(wb);
   feuilleBalance(wb,'cat',idx);
   feuilleBalance(wb,'sous',idx);
+  feuilleProvision(wb,idx);
   feuilleDetail(wb,idx,nom);
   return new Uint8Array(await wb.xlsx.writeBuffer());
 }
@@ -1253,7 +1337,7 @@ const envoyer=async(bouton,nom,idx,quoi,nomDetail)=>{
   try{
     await remettre(nom, await classeur(idx,nomDetail));
     E('dl-note').textContent=idx.length.toLocaleString('fr-FR')+' écritures · '+quoi
-      +' · 5 onglets, sommaire en tête';
+      +' · 6 onglets, sommaire en tête';
     setTimeout(fermerPop,1600);
   }catch(e){ E('dl-note').textContent='Le classeur n’a pas pu être écrit.'; }
   b.disabled=false; if(autre) autre.disabled=false;
