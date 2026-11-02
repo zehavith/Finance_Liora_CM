@@ -1066,7 +1066,8 @@ function provisionRegles(ws){
      'Chaque type de financement relève d’une famille, et le taux s’applique au niveau de la famille. Un type non rattaché n’est pas provisionné.'],
     ['Crédit sans emploi',
      sansEmploi>0.005
-       ? eurC(sansEmploi)+' — crédit qu’aucune dette ouverte de son financement n’a pu absorber, dans aucune tranche.'
+       ? eurC(sansEmploi)+' en financement '+creditSansEmploiDit()
+         +' — crédit qu’aucune dette ouverte de ce financement n’a pu absorber, dans aucune tranche.'
        : 'Aucun : tout le crédit a trouvé preneur.'],
   ];
   let z=0;
@@ -1320,9 +1321,11 @@ function feuilleProvision(wb,idx){
   // pas auditable.
   ws.addRow([]);
   const r=creditSansEmploi();
-  const sc2=ws.addRow(['Crédit sans emploi', r||null]);
+  const sc2=ws.addRow(['Crédit sans emploi', r||null, '',
+    r>0.005?('financement '+creditSansEmploiDit()):'']);
   sc2.getCell(1).font={bold:true,color:{argb:ENCRE3}};
   sc2.getCell(2).numFmt=EUROS;
+  sc2.getCell(4).font={color:{argb:ENCRE3}};
 }
 
 function feuilleDetail(wb,idx,nom){
@@ -1479,7 +1482,7 @@ const familleDe=sc=>{
 // plus ancienne à la plus récente — l'imputation de droit commun, et ce que le
 // moteur faisait de lui-même avant la découpe, puisque le lot ne faisait
 // qu'une créance. L'ANCIENNETÉ, elle, reste celle de chaque ligne.
-let ASSIETTE=null, CREDIT_SANS_EMPLOI=0, IMPUTE=null;
+let ASSIETTE=null, CREDIT_SANS_EMPLOI=0, IMPUTE=null, SANS_EMPLOI_SC=null;
 function assiettes(){
   if(ASSIETTE) return ASSIETTE;
   ASSIETTE=new Map();
@@ -1645,11 +1648,33 @@ function assiettes(){
   }
 
   CREDIT_SANS_EMPLOI=reliquat.reduce((s,r)=>s+(r.reste>0.005?r.reste:0),0);
+  // DE QUEL FINANCEMENT RELÈVE CE QUI RESTE.
+  // « ici précise que c'est un financement interco », 02/11/2026. Un montant
+  // sans son financement ne dit pas où chercher : c'est le même principe que
+  // pour les factures, qu'elle veut toujours nommées.
+  SANS_EMPLOI_SC=new Map();
+  for(const r of reliquat){
+    if(!(r.reste>0.005)) continue;
+    const u=r.sc||'(sans type de financement)';
+    SANS_EMPLOI_SC.set(u,(SANS_EMPLOI_SC.get(u)||0)+r.reste);
+  }
   return ASSIETTE;
 }
 // Ce que la compensation n'a pas pu employer. Calculé par assiettes(), affiché
 // sous l'exposé des règles : le chiffre doit se lire là où la règle se lit.
 function creditSansEmploi(){ assiettes(); return CREDIT_SANS_EMPLOI; }
+// Les financements qui le portent, du plus gros au plus petit. Un seul la
+// plupart du temps — il se nomme alors sans qu'on répète son montant.
+function creditSansEmploiSc(){
+  assiettes();
+  return [...(SANS_EMPLOI_SC||new Map())].sort((a,b)=>b[1]-a[1]);
+}
+function creditSansEmploiDit(){
+  const l=creditSansEmploiSc();
+  if(!l.length) return '';
+  if(l.length===1) return l[0][0];
+  return l.map(([sc,v])=>sc+' '+eurC(v)).join(' · ');
+}
 // LE CALCUL DE LA PROVISION, EN TOUTES LETTRES.
 //
 // Sa demande du 02/11/2026 : « n'oublie pas d'ajouter dans le détail ligne à
@@ -2427,7 +2452,7 @@ function tableProvision(){
   E('prov-taux').innerHTML=h;
   const sr=E('prov-reste');
   if(sr){ const r=creditSansEmploi();
-    sr.textContent=r>0.005?eur(r):'aucun'; }
+    sr.textContent=r>0.005?(eur(r)+' en financement '+creditSansEmploiDit()):'aucun'; }
 
   // Le rattachement : un type de financement par ligne, sa famille en face.
   // Il se lit dans ce sens-là parce que c'est la question qu'on se pose —
