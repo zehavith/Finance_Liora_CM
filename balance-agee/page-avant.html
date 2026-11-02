@@ -522,11 +522,22 @@ input[type=search]{flex:1 1 220px}
         donc l’assiette, et la provision baisse du taux de la tranche appliqué à ce
         montant — et non du montant lui-même : cent euros de crédit dans une tranche
         provisionnée à 25 % allègent la provision de vingt-cinq euros.</p>
-      <p class="param-note">La compensation ne franchit ni la tranche ni le financement.
-        Elle porte sur toutes les créances du couple, y compris celles qu’aucun barème ne
-        provisionne : le crédit y est consommé sans effet sur la provision, et ne peut
-        plus servir ailleurs. Un crédit dont le couple n’offre plus rien à compenser
-        <strong>reste sans emploi</strong> et n’est reporté sur aucune autre tranche.
+      <p class="param-note">Le <strong>quatrième temps</strong> est la
+        <strong>cascade</strong>. Le crédit que sa propre tranche n’a pas absorbé cherche
+        les dettes de la tranche <strong>immédiatement plus ancienne</strong> du même
+        financement ; si elle ne le solde pas, il passe à la suivante, encore plus
+        ancienne, et ainsi de suite jusqu’au bout de l’échelle. S’il reste encore quelque
+        chose — un crédit déjà dans la tranche la plus ancienne n’a aucun cran au-delà —
+        il <strong>redescend</strong> de la même façon, cran par cran, vers les tranches
+        plus jeunes. L’échelle va de « Non échu » à « plus de 48 mois ».</p>
+      <p class="param-note">La cascade ne quitte <strong>jamais le type de
+        financement</strong>, et chaque temps est épuisé pour tous les crédits avant que
+        le suivant ne commence : la tranche propre a priorité sur le cran voisin, et le
+        plus ancien sur le plus jeune. Elle porte sur toutes les créances du financement,
+        y compris celles qu’aucun barème ne provisionne : le crédit y est consommé sans
+        effet sur la provision, et ne peut plus servir ailleurs.</p>
+      <p class="param-note">Un crédit dont le financement n’offre plus aucune dette
+        ouverte, dans aucune tranche, <strong>reste sans emploi</strong>.
         Crédit sans emploi à cette date : <strong id="prov-reste">—</strong>.</p>
       <p class="param-note">Une créance dont l’assiette est nulle ou négative, le compte
         étant créditeur, n’est pas provisionnée : aucune perte n’est à couvrir.

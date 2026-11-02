@@ -92,27 +92,42 @@ for(const [,g] of lots){
     if(reste>0) reliquat.push({sc:cr.sc, tr:cr.tr, reste});
   }
 }
-const cleCT=c=>(c.sc||'')+'\u0001'+(c.tr||'');
-const poolsCT=new Map();
-for(const r of reliquat) poolsCT.set(cleCT(r), (poolsCT.get(cleCT(r))||0)+r.reste);
-const ciblesCT=new Map();
+// Temps 3, 4 et 5 : la tranche propre, puis la cascade vers le plus ancien,
+// puis la redescente vers le plus jeune — toujours dans le même type de
+// financement. Chaque temps est purgé pour TOUS les crédits avant le suivant.
+const cleCT=(sc,tr)=>(sc||'')+'\u0001'+(tr||'');
+const parCT=new Map();
 for(const [,g] of lots) for(const c of g){
   if(!(c.rd>0)) continue;
-  const u=cleCT(c); if(!poolsCT.has(u)) continue;
-  if(!ciblesCT.has(u)) ciblesCT.set(u,[]);
-  ciblesCT.get(u).push(c);
+  const u=cleCT(c.sc,c.tr);
+  if(!parCT.has(u)) parCT.set(u,[]);
+  parCT.get(u).push(c);
 }
-let sansEmploi=0, employe=0, couplesRestants=0;
-for(const [u,montant] of poolsCT){
-  let m=montant;
-  for(const c of (ciblesCT.get(u)||[]).sort(ancien)){
-    if(m<=0) break;
+for(const [,v] of parCT) v.sort(ancien);
+const viderCT=(r,tr)=>{
+  for(const c of (parCT.get(cleCT(r.sc,tr))||[])){
+    if(r.reste<=0) return;
     const a=ASS.get(c.k); if(!(a>0)) continue;
-    const pris=Math.min(m,a); ASS.set(c.k, a-pris); m-=pris;
+    const pris=Math.min(r.reste,a); ASS.set(c.k, a-pris); r.reste-=pris;
   }
-  employe+=montant-m;
-  if(m>0){ sansEmploi+=m; couplesRestants++; }
-}
+};
+const ECH=(d.tranches||[]).slice();
+const inconnuesCT=new Set();
+for(const [,g] of lots) for(const c of g)
+  if(c.tr && ECH.indexOf(c.tr)<0) inconnuesCT.add(c.tr);
+for(const t of [...inconnuesCT].sort().reverse()) ECH.unshift(t);
+const credit0=reliquat.reduce((s,r)=>s+r.reste,0);
+for(const r of reliquat) viderCT(r, r.tr);
+const apres3=reliquat.reduce((s,r)=>s+r.reste,0);
+for(const r of reliquat){ if(r.reste<=0) continue;
+  const dep=ECH.indexOf(r.tr); if(dep<0) continue;
+  for(let i=dep+1;i<ECH.length && r.reste>0;i++) viderCT(r, ECH[i]); }
+const apres4=reliquat.reduce((s,r)=>s+r.reste,0);
+for(const r of reliquat){ if(r.reste<=0) continue;
+  const dep=ECH.indexOf(r.tr); if(dep<0) continue;
+  for(let i=dep-1;i>=0 && r.reste>0;i--) viderCT(r, ECH[i]); }
+const sansEmploi=reliquat.reduce((s,r)=>s+(r.reste>0?r.reste:0),0);
+const employe=credit0-sansEmploi;
 let prov=0, parFam=new Map(), sansFamille=new Map(), horsFenetre=0;
 for(const [,g] of lots) for(const c of g){
   if(c.rd<=0) continue;
@@ -128,8 +143,11 @@ console.log('\nH · provision = assiette × taux de la famille dans sa fenêtre 
 for(const [f,v] of [...parFam].sort()) console.log('    '+f.padEnd(24)+eur(v).padStart(16));
 console.log('    '+'TOTAL'.padEnd(24)+eur(prov).padStart(16));
 console.log('    reste dû hors des quatre fenêtres (moins de 121 j, non échu) : '+eur(horsFenetre));
-console.log('    compensation par financement × tranche : '+eur(employe)+' employés sur '
-  +poolsCT.size+' couple(s), '+eur(sansEmploi)+' sans emploi dans '+couplesRestants);
+console.log('    compensation dans le financement : '+eur(credit0)+' à employer → '
+  +eur(credit0-apres3)+' par sa tranche, '+eur(apres3-apres4)+' vers le plus ancien, '
+  +eur(apres4-sansEmploi)+' vers le plus jeune');
+console.log('    crédit resté SANS EMPLOI : '+eur(sansEmploi)
+  +' — financement sans aucune dette ouverte');
 console.log('    dispositif sans famille de provision : '+(sansFamille.size?[...sansFamille].map(([k,v])=>k+' '+eur(v)).join(' · '):'aucun'));
 
 // ── I. échu + non échu = total, et les 9 tranches font l'échu ──

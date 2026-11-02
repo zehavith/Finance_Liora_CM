@@ -1401,26 +1401,79 @@ function assiettes(){
   // barème ne provisionne — moins de 121 jours, non échu. Le crédit y est
   // consommé sans effet sur la provision : c'est le sens littéral de sa règle,
   // et c'est le plus prudent, puisqu'il ne peut plus servir ailleurs.
-  const cle=c=>(c.sc||'')+'\u0001'+(c.tr||'');
-  const pools=new Map();
-  for(const r of reliquat) pools.set(cle(r), (pools.get(cle(r))||0)+r.reste);
-  const cibles=new Map();
+  // Les dettes encore ouvertes, indexées par financement et par tranche, et
+  // triées une fois pour toutes : la cascade les parcourt jusqu'à dix fois.
+  const cle=(sc,tr)=>(sc||'')+'\u0001'+(tr||'');
+  const parCT=new Map();
   for(const [,g] of lots) for(const c of g){
     if(!(c.rd>0)) continue;
-    const u=cle(c); if(!pools.has(u)) continue;
-    if(!cibles.has(u)) cibles.set(u,[]);
-    cibles.get(u).push(c);
+    const u=cle(c.sc,c.tr);
+    if(!parCT.has(u)) parCT.set(u,[]);
+    parCT.get(u).push(c);
   }
-  CREDIT_SANS_EMPLOI=0;
-  for(const [u,montant] of pools){
-    let m=montant;
-    for(const c of (cibles.get(u)||[]).sort(ancien)){
-      if(m<=0.005) break;
+  for(const [,v] of parCT) v.sort(ancien);
+  // Vider un crédit sur les dettes d'une tranche de son financement.
+  const vider=(r,tr)=>{
+    for(const c of (parCT.get(cle(r.sc,tr))||[])){
+      if(r.reste<=0.005) return;
       const a=ASSIETTE.get(c.k); if(!(a>0.005)) continue;
-      const pris=Math.min(m,a); ASSIETTE.set(c.k, a-pris); m-=pris;
+      const pris=Math.min(r.reste,a); ASSIETTE.set(c.k, a-pris); r.reste-=pris;
     }
-    if(m>0.005) CREDIT_SANS_EMPLOI+=m;
+  };
+  // L'ÉCHELLE DES TRANCHES, du plus jeune au plus ancien. Elle vient des
+  // données — les neuf tranches de la balance — et tout ce que les créances
+  // portent en plus, « Non échu » en pratique, se pose devant : c'est le plus
+  // jeune de tous. Trié, pour que l'échelle ne dépende pas de l'ordre de
+  // lecture du fichier.
+  const ECH=((D&&D.tranches)||[]).slice();
+  const inconnues=new Set();
+  for(const [,g] of lots) for(const c of g)
+    if(c.tr && ECH.indexOf(c.tr)<0) inconnues.add(c.tr);
+  for(const t of [...inconnues].sort().reverse()) ECH.unshift(t);
+
+  // LES TROIS TEMPS SE JOUENT L'UN APRÈS L'AUTRE, POUR TOUS LES CRÉDITS.
+  //
+  // Et non crédit par crédit : sa tranche a priorité sur le cran suivant, et
+  // le plus ancien a priorité sur le plus jeune. Si un crédit déroulait toute
+  // sa cascade avant qu'un autre ait servi dans sa propre tranche, il lui
+  // prendrait une dette à laquelle le second avait un droit plus fort — et le
+  // résultat dépendrait de l'ordre de lecture. Chaque temps est donc purgé
+  // en entier avant le suivant.
+  for(const r of reliquat) vider(r, r.tr);                      // temps 3 : sa tranche
+
+  // ─── temps 4 : vers le PLUS ANCIEN, cran par cran ───
+  // Sa décision du 02/11 : « lorsqu'il reste des montants à provisionner même
+  // suite à la règle 3, on continue d'affecter les montants créditeurs sur les
+  // montants débiteurs sur la tranche 1 cran plus ancienne du même type de
+  // financement ; si tout est affecté on va un cran plus ancien aussi, ainsi
+  // de suite. »
+  for(const r of reliquat){
+    if(r.reste<=0.005) continue;
+    const dep=ECH.indexOf(r.tr); if(dep<0) continue;
+    for(let i=dep+1;i<ECH.length && r.reste>0.005;i++) vider(r, ECH[i]);
   }
+
+  // ─── temps 5 : puis vers le PLUS JEUNE, cran par cran ───
+  // Son amendement du même jour. Posé d'abord pour les crédits déjà dans la
+  // tranche la plus ancienne, qui n'ont aucun cran au-delà — « alors tu vas
+  // dans la tranche juste avant pour ce cas-là » — puis généralisé : « si UN
+  // cran ne clôture pas tout on descend de encore 1 cran etc. » Un crédit qui
+  // n'a rien trouvé de plus ancien redescend donc, cran par cran, sans jamais
+  // quitter son financement.
+  //
+  // CE TEMPS FAIT PASSER LA BALANCE SOUS SON CLASSEUR MANUEL : 2 863 873 € au
+  // 30/06/2026 contre 2 942 758 € au classeur, soit 78 885 € de moins. Je lui
+  // ai dit, en montrant qu'un crédit de cinq ans d'âge posé sur un compte
+  // d'archive vient alors réduire une dette de quatre mois ; elle a tranché
+  // deux fois. La règle est la sienne, le chiffre est écrit ici pour qui
+  // relira.
+  for(const r of reliquat){
+    if(r.reste<=0.005) continue;
+    const dep=ECH.indexOf(r.tr); if(dep<0) continue;
+    for(let i=dep-1;i>=0 && r.reste>0.005;i--) vider(r, ECH[i]);
+  }
+
+  CREDIT_SANS_EMPLOI=reliquat.reduce((s,r)=>s+(r.reste>0.005?r.reste:0),0);
   return ASSIETTE;
 }
 // Ce que la compensation n'a pas pu employer. Calculé par assiettes(), affiché
