@@ -191,10 +191,27 @@ function transformer(){
       rang:4, regle:'Rang 4 · base manquante, la ligne se date elle-même'};
   };
 
+  // L'ÉCHÉANCE DE CHAQUE CRÉANCE : celle de la pièce de SA FACTURE.
+  // Une créance sans facture prend la pièce de sa première ligne.
+  const echCreance=new Map();
+  {
+    const parCle=new Map();
+    for(const l of d.lignes){
+      const k=txt(l,'Clé de la créance'); if(!k) continue;
+      if(!parCle.has(k)) parCle.set(k,[]); parCle.get(k).push(l);
+    }
+    for(const [k,g] of parCle){
+      const f=g.find(x=>/facture/i.test(txt(x,'Nature de l’écriture')))||g[0];
+      const p=txt(f,'N° de facture');
+      echCreance.set(k, p?ech.get(p):rang4(f));
+    }
+  }
+
   // ── réécrire les colonnes de datation, ligne par ligne ──
   let refaites=0; const parRang={};
   for(const l of d.lignes){
     const p=txt(l,'N° de facture');
+    const k=txt(l,'Clé de la créance');
     const e=p?ech.get(p):rang4(l);
     const j=e.t==null?null:Math.round((REF-e.t)/J);
     const tr=tranche(j);
@@ -208,8 +225,23 @@ function transformer(){
     l[C['Délai appliqué (jours)']]=dic.index(String(e.jours));
     l[C['Règle de datation appliquée']]=dic.index(e.regle);
     l[C['Détail du calcul']]=dic.index(detail);
-    l[C['Jours de retard de la créance']]=dic.index(j==null?'':String(j));
-    l[C['Tranche de la créance']]=dic.index(tr);
+    // LA TRANCHE DE LA CRÉANCE EST UNIFORME SUR TOUTES SES LIGNES.
+    //
+    // L'échéance se porte par PIÈCE, mais la provision se calcule par
+    // CRÉANCE — et une créance rassemble parfois plusieurs pièces : une
+    // facture et un règlement qui porte un autre numéro. Ses lignes
+    // recevaient alors deux tranches, donc deux fenêtres, donc deux taux :
+    // la créance 4110FARA00100|a|FACT-2505-09670 valait 0 € lue depuis sa
+    // synthèse et 1 800 € lue depuis son dépliage. Un montant qui ne
+    // s'additionne pas avec son détail ne se défend pas.
+    //
+    // La tranche DE LA LIGNE reste celle de sa pièce — c'est ce qui se lit
+    // dans le détail. La tranche DE LA CRÉANCE est celle de la pièce de sa
+    // facture, et elle seule décide de la provision.
+    const ec=k?echCreance.get(k):null;
+    const jc=ec&&ec.t!=null?Math.round((REF-ec.t)/J):j;
+    l[C['Jours de retard de la créance']]=dic.index(jc==null?'':String(jc));
+    l[C['Tranche de la créance']]=dic.index(ec?tranche(jc):tr);
     parRang[e.rang]=(parRang[e.rang]||0)+1;
     refaites++;
   }
