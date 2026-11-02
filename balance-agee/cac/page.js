@@ -13,7 +13,7 @@ const src=fs.readFileSync(ICI('art/balance-agee.html'),'utf8');
 const avant=[
   ['<title>05.01. Balance âgée clients</title>','<title>Balance âgée - Liora</title>'],
   ['<h1>Balance âgée · Grand livre Clients</h1>',
-   '<h1>Balance âgée - Liora · règles du commissaire aux comptes</h1>'],
+   '<h1>Balance âgée - Liora</h1>'],
 ];
 let out=src, faits=0;
 for(const [a,b] of avant){
