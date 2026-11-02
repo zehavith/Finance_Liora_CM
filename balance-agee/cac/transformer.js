@@ -103,7 +103,14 @@ function transformer(){
   function echeance(l){
     const fin=lire(txt(l,'Date de fin de formation'));
     const deb=lire(txt(l,'Date de début de formation'));
-    const fac=lire(txt(l,'Date de facture (facturation)'))||lire(txt(l,'Date'));
+    // PAS DE REPLI SUR LA DATE DE L'ÉCRITURE.
+    // Le rang 1 exige une VRAIE date de facture. En repliant sur la date de
+    // la ligne, on en fabriquait une là où il n'y en a pas, et 1 038 créances
+    // prenaient « facture + 60 j » quand son fichier leur donne l'échéance
+    // Pennylane du rang 4 — soixante jours plus tard, donc une tranche trop
+    // jeune. Constaté le 02/11/2026 en joignant sa feuille « Détail créances »
+    // créance par créance.
+    const fac=lire(txt(l,'Date de facture (facturation)'));
     const penn=lire(txt(l,'Date d’échéance'));
     const sc=txt(l,'Type de financement de la créance')||txt(l,'Type de financement');
     const mandat=/mandat de prélèvement GoCardless/.test(txt(l,'Règle de datation appliquée'));
