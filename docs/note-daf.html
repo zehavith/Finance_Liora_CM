@@ -215,6 +215,7 @@ td strong{color:var(--ink)}
 <h2>10. Paiement automatisé — B2B et financement personnel</h2>
 <h3>10.1. Financements entreprise</h3>
 <p>Le prélèvement automatique via GoCardless pourrait être développé sur les financements entreprise, notamment lorsque les contrats prévoient des échéances mensuelles récurrentes.</p>
+<p>L’étude doit trancher cinq points. Le <strong>périmètre éligible</strong> d’abord : combien de contrats prévoient des échéances récurrentes, et quel volume ils représentent. Le <strong>schéma de mandat</strong> ensuite : le mandat SEPA interentreprises est irrévocable une fois le prélèvement exécuté, mais il suppose un débiteur non-consommateur et un enregistrement auprès de sa banque, là où le mandat standard laisse au client huit semaines pour se faire rembourser sans motif — ce choix décide du niveau de sécurité réellement obtenu. Le <strong>moment de signature</strong> du mandat, qui doit intervenir à la signature du contrat et non à la première échéance. Le <strong>raccordement à Pennylane</strong>, pour déclencher le prélèvement à l’échéance et rapprocher automatiquement l’encaissement de la facture. Le <strong>traitement des échecs</strong> enfin : nouvelle présentation, notification au client, puis bascule au recouvrement. S’y ajoutent le coût par transaction, à comparer au coût du délai actuel, et le préavis dû au client avant chaque prélèvement, dont le délai se fixe contractuellement.</p>
 <div class="callout flow"><strong>Contrat signé → mandat de prélèvement → facturation → prélèvement automatique</strong></div>
 <h3>10.2. Financements personnels</h3>
 <p>Pour les financements personnels, GoCardless ne doit pas être présenté comme le mode de paiement par défaut. Il constitue plutôt un levier de sécurisation de dernier recours lorsque les modalités habituelles ne permettent pas d’obtenir un niveau de sécurité suffisant.</p>
@@ -402,7 +403,7 @@ td strong{color:var(--ink)}
 <li>rendre l’adresse de relance obligatoire à la création du dossier ;</li>
 <li>faire remonter immédiatement au recouvrement les factures déjà échues dès régularisation de la pièce, sans redémarrer un délai de trente jours ;</li>
 <li>définir les règles de relance ;</li>
-<li>lancer l’étude GoCardless sur les financements entreprise ;</li>
+<li>lancer l’étude GoCardless sur les financements entreprise : périmètre éligible, schéma de mandat, moment de signature, raccordement à Pennylane et traitement des échecs ;</li>
 <li>définir le principe d’avance / dépôt de garantie ;</li>
 <li>cadrer le lien entre commission Sales et encaissement ;</li>
 <li>construire la visibilité cash J+1 / J+7 / J+30 ;</li>
