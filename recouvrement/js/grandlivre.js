@@ -831,10 +831,12 @@
                 // date de l'écriture, puis — pour l'écriture qui n'a ni l'une
                 // ni l'autre — sa date d'enregistrement.
                 //
-                // SAUF SOUS « repliPennylane », 03/11/2026 : « Repli sans base
-                // de calcul → échéance Pennylane, à défaut date de la ligne ».
-                // Le passage par le libellé disparaît alors, et le délai de
-                // trente jours accordé à une facture avec lui.
+                // SOUS « repliPennylane », 03/11/2026, LE REPLI A DEUX RANGS :
+                // la dernière date du libellé de ligne d'abord — « il manque
+                // cette regle en avant dernier choix » —, puis l'échéance
+                // Pennylane, à défaut la date de la ligne. Le délai de trente
+                // jours accordé à une facture disparaît : sa règle dit « à
+                // défaut date de la ligne », sans rien ajouter.
                 //
                 // LE DRAPEAU EST EXPLICITE, ET POSÉ PAR LA SEULE BALANCE ÂGÉE
                 // (balance-agee/construire.js). Ce fichier sert aussi l'onglet
@@ -842,7 +844,7 @@
                 // le drapeau « gl » de rules.js n'existe pas à cet étage, et sans
                 // lui le changement sortirait de la balance.
                 dateEcheanceRepli: (o.repliPennylane
-                    ? (R.parseDate(utile(col(r, 'dateEcheance'))) || date || null)
+                    ? (dateTexte || R.parseDate(utile(col(r, 'dateEcheance'))) || date || null)
                     : (dateTexte || date || null)),
                 // Les trois branches ne se valent pas, et la phrase publiée
                 // doit dire laquelle a servi : la date LUE DANS LE LIBELLÉ est
@@ -851,9 +853,10 @@
                 // jour de la saisie. Sans les distinguer, on ne peut pas dire
                 // laquelle des lignes reste à confirmer.
                 echeance1Source: o.repliPennylane
-                    ? (R.parseDate(utile(col(r, 'dateEcheance'))) ? 'Pennylane'
-                       : (!date ? null
-                          : (R.parseDate(col(r, 'date')) ? 'écriture' : 'enregistrement')))
+                    ? (dateTexte ? 'libellé'
+                       : (R.parseDate(utile(col(r, 'dateEcheance'))) ? 'Pennylane'
+                          : (!date ? null
+                             : (R.parseDate(col(r, 'date')) ? 'écriture' : 'enregistrement'))))
                     : (dateTexte ? 'libellé'
                        : (!date ? null
                           : (R.parseDate(col(r, 'date')) ? 'écriture' : 'enregistrement'))),

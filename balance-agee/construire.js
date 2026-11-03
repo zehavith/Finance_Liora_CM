@@ -467,14 +467,12 @@ if(complements.length){
 const BASES={dateFacture:'date de facture', dateDebutFormation:'début de formation',
   dateFinFormation:'fin de formation', dateFactureFacturation:'date de facture de la facturation',
   dateEcheanceComptable:'échéance portée par le grand livre',
-  echeance1:'dernière date du libellé, sinon la date de l’écriture, sinon l’enregistrement',
-  dateReglement:'date de l’encaissement',
+  echeance1:'dernière date du libellé, sinon l’échéance Pennylane, sinon la date de la ligne',
   saisieManuelle:'échéance posée à la main'};
 const valeurBase=c=>({dateFacture:c.dateFacture, dateDebutFormation:c.dateDebutFormation,
   dateFinFormation:c.dateFinFormation, dateFactureFacturation:c.dateFactureFacturation,
   dateEcheanceComptable:c.dateEcheanceGrandLivre||c.dateEcheance,
   echeance1:c.dateEcheanceRepli||c.dateEcheance,
-  dateReglement:c.dateEcheance,
   saisieManuelle:c.dateEcheance}[c.echeanceBase]||null);
 // « Repli appliqué » doit dire le repli QUI A SERVI, pas celui qui aurait
 // servi. La source du repli est posée sur chaque facture dès la lecture, même
@@ -527,8 +525,6 @@ const NATURE_MOTIF=[
   // « Ça ne veut rien dire, formule ça de manière pro », 21/10/2026 — et la
   // phrase doit dire LAQUELLE des trois dates a servi. Le motif la nomme déjà ;
   // l'étiquette le reprend tel quel au lieu d'une formule unique et vague.
-  [/^encaissement dat[ée] /i, c=>'Encaissement · '
-    +String(c.echeanceMotif||'').replace(/^encaissement /i,'')],
   // DEUX EN-TÊTES QUI MENTAIENT, 21/10/2026.
   //
   // « Prk tu as pris une date dite exceptionnelle alors qu'on a des dates de
@@ -1055,15 +1051,20 @@ const autreCote=(l,quoi)=>{
 // la base retenue et la source du repli — et non sur une phrase ; et il se
 // décide une seule fois, pour le classeur comme pour la page.
 const parRang=new Map(), parOrigine=new Map();
-// LE RANG SUIT L'ORDRE DU CALCUL, 03/11/2026 : la facture tardive est passée
-// devant le mandat, et les deux replis n'en font plus qu'un.
+// LE RANG SUIT L'ORDRE DU CALCUL, 03/11/2026 : la règle de l'encaissement a
+// été retirée, la facture tardive ouvre la liste, et le repli a de nouveau
+// deux rangs — la dernière date du libellé, puis l'échéance Pennylane.
+//
+// Le rang du repli se lit sur la SOURCE du repli, un champ structuré, et non
+// sur la phrase française du motif : c'est cette lecture-là qui rangeait
+// autrefois 2 782 encaissements sous un repli de libellé.
 const rangDeLaLigne=src=>{
   const m=String(src.echeanceMotif||'');
-  if(src.echeanceBase==='dateReglement') return '1';
-  if(/apr[èe]s la fin de formation|post[ée]rieure/i.test(m)) return '2';
-  if(/mandat de pr/i.test(m)) return '3';
-  if(src.echeanceBase==='echeance1') return '5';
-  return '4';
+  if(/apr[èe]s la fin de formation|post[ée]rieure/i.test(m)) return '1';
+  if(/mandat de pr/i.test(m)) return '2';
+  if(src.echeanceBase==='echeance1')
+    return src.echeance1Source==='libellé' ? '4' : '5';
+  return '3';
 };
 
 const principale=[];
@@ -1129,41 +1130,17 @@ for(let i=0;i<plat.length;i++){
       ||(src0.dateEcheance?null:(e.dateFactureFacturationSource||null)),
     echeanceOrigine: src0.dateEcheance?src0.echeanceOrigine:(e.echeanceOrigine||''),
     echeanceMotif: src0.dateEcheance?src0.echeanceMotif:(e.echeanceMotif||'')};
-  // UN ENCAISSEMENT PORTE SA PROPRE DATE, et pas celle de la facture qu'il
-  // solde : « oui il faut régler un paiement de sa propre date », 20/10/2026.
-  // Le détail affichait l'échéance de la créance — un virement SEPA de la
-  // Caisse des Dépôts paraissait en retard de 432 jours alors que l'argent
-  // était rentré. L'avoir n'est pas concerné : il prend les dates de la
-  // facture qu'il annule.
+  // L'ENCAISSEMENT NE SE DATE PLUS LUI-MÊME, 03/11/2026 : « j'aimerais que tu
+  // enlève la règle numero 1 : Encaissement → sa date d'encaissement ». La
+  // règle a été retirée du calcul, et avec elle la base « date de
+  // l'encaissement ». Un encaissement suit désormais le chemin commun : la
+  // facture qu'il nomme le date, à défaut sa propre créance, et à défaut
+  // encore le repli de la ligne — dernière date du libellé, puis échéance
+  // Pennylane, puis date de la ligne.
   //
-  // La ventilation de la balance, elle, se fait sur les créances : ce que
-  // cette règle change, c'est ce que la LIGNE dit d'elle-même.
-  // … SAUF QUAND ELLE NOMME SA FACTURE.
-  //
-  // « Si il y a un num de facture sur la ligne, dans le libellé, je veux que
-  // tu date en fonction de celle-ci, mais facture de la ligne, pas d'une
-  // autre ligne » (21/10/2026). Un encaissement qui nomme la facture qu'il
-  // règle prend donc l'échéance de CETTE facture — c'est elle qui porte le
-  // barème, les dates de formation et le dispositif. Celui qui ne nomme rien
-  // n'a que lui-même pour se dater, et garde sa propre date.
-  //
-  // « Facture de la ligne » : jamais celle d'une voisine. Le document nommé
-  // n'a pas besoin d'avoir sa facture au grand livre pour dater la ligne —
-  // l'encaissement de 5 690 € de Pôle Emploi nomme FA-AIF-0000211, qui n'a
-  // aucune écriture au débit, mais dont sa balance de septembre porte les
-  // dates de formation. L'écriture a SA créance, bâtie sur ce document-là :
-  // c'est elle qui la date. Et si même cette créance manque, `datesEmpruntees`
-  // interdit déjà d'aller chercher la facture du lettrage.
-  if(l.nature==='reglement' && l.date && !l.numero){
-    src.dateEcheance=l.date; src.echeanceBase='dateReglement'; src.echeanceJours=0;
-    src.echeanceOrigine='Règle';
-    // La phrase NOMME la date qui a servi : « si tu as pris la date
-    // d'enregistrement, cite celle-ci », 21/10/2026. Sur 7 949 encaissements,
-    // 6 470 sont des reports à nouveau datés par la dernière date de leur
-    // libellé, et 1 479 seulement par leur colonne « Date » — annoncer « sa
-    // propre date d'écriture » était faux pour quatre sur cinq.
-    src.echeanceMotif='encaissement daté '+GL.nomDeLaDate(l.dateSource);
-  }
+  // Ce que la ligne NOMME continue de la dater : « facture de la ligne, pas
+  // d'une autre ligne » (21/10/2026), et `datesEmpruntees` interdit toujours
+  // d'aller chercher la facture du lettrage.
 
   // ── UN AVOIR VIEILLIT AVEC LA FACTURE QU'IL ANNULE ──
   //
@@ -1207,14 +1184,17 @@ for(let i=0;i<plat.length;i++){
     // facturation » avec une case vide à côté — une base sans date, pire que
     // la date d'une voisine. Le repli est donc entier : l'échéance 1 de la
     // ligne, et rien d'autre.
-    if(l.nature!=='reglement'){
-      src.dateEcheance=GL.echeanceDuRepli(l);
-      src.echeanceBase=l.dateEcheanceRepli?'echeance1':'';
-      src.echeanceJours=l.dateEcheanceRepli?(l.echeance1Jours||0):0;
-      src.echeanceOrigine=l.dateEcheanceRepli?'Règle':'';
-      src.echeanceMotif=l.dateEcheanceRepli
-        ? R.motifEcheance1(l.echeance1Source,l.echeance1Jours||0) : '';
-    }
+    // La garde « sauf un règlement » est tombée avec la règle de
+    // l'encaissement, 03/11/2026 : elle n'existait que parce que l'encaissement
+    // était déjà daté plus haut. Sans elle, un règlement qui n'a que la facture
+    // du lettrage retombe comme les autres sur SON échéance 1, au lieu de
+    // garder les dates d'une voisine.
+    src.dateEcheance=GL.echeanceDuRepli(l);
+    src.echeanceBase=l.dateEcheanceRepli?'echeance1':'';
+    src.echeanceJours=l.dateEcheanceRepli?(l.echeance1Jours||0):0;
+    src.echeanceOrigine=l.dateEcheanceRepli?'Règle':'';
+    src.echeanceMotif=l.dateEcheanceRepli
+      ? R.motifEcheance1(l.echeance1Source,l.echeance1Jours||0) : '';
   }
 
   // ── CE QUE LA LIGNE ANNONCE, LA LIGNE DOIT LE PORTER ──
@@ -1894,34 +1874,34 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
      n:parOrigine.get('')||0},
   ],
   ordreEcheance:[
-    {rang:'1', nature:'Règle de la ligne',
-     quand:'L’écriture est un encaissement',
-     alors:'sa date d’encaissement, sans délai',
-     note:'Un encaissement est daté du jour où il est intervenu, et non de l’échéance de '
-         +'la facture qu’il solde. Cette règle s’applique avant toutes les autres et ne '
-         +'concerne que les encaissements.'},
-    {rang:'2', nature:'Règle exception',
+    {rang:'1', nature:'Règle exception',
      quand:'La date de facture est postérieure à la fin de formation',
      alors:'date de facture + 60 jours',
      note:'Régularisation : le délai court à compter de l’émission de la facture et non '
          +'d’une formation déjà achevée. La date retenue est celle de la facture de '
          +'facturation, non celle de l’écriture comptable. Cette règle passe avant le '
          +'mandat de prélèvement.'},
-    {rang:'3', nature:'Règle exception',
+    {rang:'2', nature:'Règle exception',
      quand:'Le client a un mandat de prélèvement GoCardless',
      alors:'fin de formation + 30 jours',
      note:'Le rapprochement s’effectue par numéro de facture, puis par adresse '
          +'électronique, puis par nom et prénom.'},
-    {rang:'4', nature:'Règle barème',
-     quand:'Sinon — le barème du dispositif',
+    {rang:'3', nature:'Règle barème',
+     quand:'Sinon — le barème du type de financement',
      alors:'voir le tableau ci-dessous',
-     note:'Chaque dispositif dispose de sa base de calcul et de son délai. Cas général.'},
-    {rang:'5', nature:'Règle repli',
+     note:'Chaque type de financement dispose de sa base de calcul et de son délai. '
+         +'Cas général.'},
+    {rang:'4', nature:'Règle repli',
      quand:'Sinon — la base du barème manque',
+     alors:'dernière date du libellé de ligne',
+     note:'La date se lit dans le libellé de la ligne elle-même, et nulle part ailleurs : '
+         +'l’auditeur la retrouve en relisant la ligne. Quand le libellé en porte '
+         +'plusieurs, c’est la dernière qui vaut. Aucun délai n’est ajouté.'},
+    {rang:'5', nature:'Règle repli',
+     quand:'Sinon — le libellé ne porte aucune date',
      alors:'échéance Pennylane, à défaut date de la ligne',
-     note:'En l’absence de date de formation et de date de facture, la date retenue est '
-         +'l’échéance portée par Pennylane. À défaut, la date de la ligne elle-même, sans '
-         +'délai ajouté, facture comprise.'},
+     note:'La date retenue est l’échéance portée par Pennylane. À défaut, la date de la '
+         +'ligne elle-même, sans délai ajouté, facture comprise.'},
   // Le décompte voyage avec la règle. La page le refaisait de son côté, à
   // coups d'expressions régulières sur le texte français du motif, et donnait
   // d'autres chiffres que le classeur. Il n'y a plus qu'un décompte.
