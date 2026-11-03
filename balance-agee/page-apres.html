@@ -1510,6 +1510,124 @@ function feuilleProvision(wb,idx){
     sc2.getCell(2).numFmt=EUROS;
     sc2.getCell(4).font={color:{argb:ENCRE3}};
   }
+
+  // ── LE RÉCAP PAR TYPE DE CLIENT, AU BAS DE LA FEUILLE ──
+  //
+  // Sa demande du 03/11/2026 : « ajoute en bas du tableau déjà existant les
+  // provisions par type de client [...] + le tableau avec le % de provision ».
+  //
+  // Trois tableaux qui se lisent ensemble, et qui SONT la démonstration :
+  // l'assiette exposée dans chaque fenêtre, le taux qui s'y applique, et leur
+  // produit. Le total du troisième est, au centime, le TOTAL de la feuille :
+  // une provision qu'on ne peut pas refaire de tête n'est pas auditable.
+  //
+  // Le tableau du haut ne bouge pas — « je ne veux pas que tu changes la mise
+  // en forme dans à provisionner », 16/10/2026. Ces blocs viennent à la suite.
+  recapParTypeDeClient(ws);
+}
+
+// L'assiette et la provision, famille par famille ET fenêtre par fenêtre.
+// provisions() les additionne déjà, mais sans garder la fenêtre : c'est elle
+// qu'il faut ici, puisque c'est elle qui porte le taux.
+function provisionParFenetre(){
+  paramsPrets();
+  const fen=PROV.fenetres||[], taux=PROV.taux||{};
+  const a=assiettes();
+  const vide=()=>fen.map(()=>0);
+  const base=new Map(), prov=new Map();
+  const vues=new Set();
+  // Le même parcours, le même filtre et le même ordre que provisions() : deux
+  // chemins de calcul qui divergeraient donneraient deux totaux, et le lecteur
+  // n'aurait aucun moyen de savoir lequel croire.
+  for(const i of I){
+    const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
+    const rd=N(i,'Reste dû de la créance');
+    if(CAC()? !rd : !(rd>0)) continue;
+    const b=a.has(k)?a.get(k):rd;
+    if(CAC()? !b : !(b>0)) continue;
+    const sc=sousVraie(i);
+    const tr=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
+    const j=fen.findIndex(f=>(f.tranches||[]).indexOf(tr)>=0);
+    if(j<0) continue;
+    const fam=familleDe(sc); if(!fam) continue;
+    if(!base.has(fam)){ base.set(fam,vide()); prov.set(fam,vide()); }
+    base.get(fam)[j]+=b;
+    prov.get(fam)[j]+=b*((taux[fam]||[])[j]||0);
+  }
+  return {fen, taux, base, prov};
+}
+
+function recapParTypeDeClient(ws){
+  const {fen,taux,base,prov}=provisionParFenetre();
+  if(!fen.length) return;
+  const ar2=x=>Math.round(x*100)/100;
+  // L'ordre des types de client est celui du tableau de la balance, pas celui
+  // d'un objet : les deux lectures doivent se superposer.
+  const fams=(D.ordreTypeClient||[]).filter(f=>taux[f])
+    .concat(Object.keys(taux).filter(f=>(D.ordreTypeClient||[]).indexOf(f)<0));
+  const lab=fen.map(f=>f.label);
+  // Le nom que le commissaire aux comptes emploie, quand la page le connaît :
+  // une colonne de correspondance vaut mieux qu'un second tableau.
+  const nomsCac=(PROV&&PROV.nomsCac)||{};
+
+  const bloc=(titre, lire, fmt, avecTotal)=>{
+    ws.addRow([]);
+    bande(ws,titre,{bold:true,size:12,color:{argb:BLEU}});
+    poserEntete(ws,ws.addRow(['Type de client',...lab,...(avecTotal?['Total']:[])]));
+    const somme=fen.map(()=>0);
+    let y=0;
+    for(const f of fams){
+      const v=lire(f)||fen.map(()=>0);
+      const cells=[f,...v.map(x=>fmt==='euros'?ar2(x):x)];
+      if(avecTotal) cells.push(ar2(v.reduce((a,b)=>a+b,0)));
+      const l=ws.addRow(cells);
+      l.getCell(1).font={bold:true};
+      for(let c=2;c<=1+lab.length+(avecTotal?1:0);c++)
+        l.getCell(c).numFmt=(fmt==='euros'?EUROS:'0 %');
+      v.forEach((x,j)=>somme[j]+=x);
+      if(y++%2) remplirLigne(ws,l,PALE);
+    }
+    if(fmt==='euros'){
+      const cells=['TOTAL',...somme.map(ar2)];
+      if(avecTotal) cells.push(ar2(somme.reduce((a,b)=>a+b,0)));
+      const t=ws.addRow(cells);
+      poserTotal(t,ws);
+      for(let c=2;c<=1+lab.length+(avecTotal?1:0);c++) t.getCell(c).numFmt=EUROS;
+    }
+    return somme;
+  };
+
+  ws.addRow([]);
+  const tt=bande(ws,'RÉCAP PAR TYPE DE CLIENT',{bold:true,size:14,color:{argb:BLEU}});
+  tt.height=24;
+
+  bloc('Assiette exposée, par fenêtre de provision', f=>base.get(f), 'euros', true);
+  bloc('Barème appliqué', f=>taux[f], 'taux', false);
+  const somme=bloc('Montant à provisionner', f=>prov.get(f), 'euros', true);
+
+  // LE RAPPROCHEMENT SE LIT, IL NE SE SUPPOSE PAS. Le total de ce dernier
+  // tableau doit être celui de la feuille ; s'il ne l'est pas, la ligne le dit
+  // plutôt que de laisser deux chiffres se contredire en silence.
+  const attendu=provisions().total, obtenu=somme.reduce((a,b)=>a+b,0);
+  if(Math.abs(attendu-obtenu)>0.005){
+    const e=ws.addRow(['Écart avec le total de la feuille', ar2(attendu-obtenu)]);
+    e.getCell(1).font={bold:true,color:{argb:CORAIL}};
+    e.getCell(2).numFmt=EUROS; e.getCell(2).font={bold:true,color:{argb:CORAIL}};
+  }
+
+  // La correspondance des noms, pour qui lit le dossier du commissaire aux
+  // comptes à côté de la balance.
+  if(Object.keys(nomsCac).length){
+    ws.addRow([]);
+    poserEntete(ws,ws.addRow(['Type de client','Nom employé par le commissaire aux comptes']));
+    let y=0;
+    for(const f of fams){
+      const l=ws.addRow([f, nomsCac[f]||'']);
+      l.getCell(1).font={bold:true};
+      l.getCell(2).numFmt='General';
+      if(y++%2) remplirLigne(ws,l,PALE);
+    }
+  }
 }
 
 function feuilleDetail(wb,idx,nom){
