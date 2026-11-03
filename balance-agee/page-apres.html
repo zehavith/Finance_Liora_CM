@@ -1210,16 +1210,23 @@ function feuilleBalance(wb,niv,idx){
   // écriture ventile son montant dans les MÊMES colonnes d'ancienneté que la
   // balance : c'est ce qui permet de lire, tranche par tranche, ce qui compose
   // un montant.
+  // L'ASSIETTE SE LIT À CÔTÉ DU RESTE DÛ, 03/11/2026 : « normalement si
+  // j'impute les % provisionné je suis sencé avoir le bon montant
+  // provisionné ». Une balance âgée dont on ne peut pas refaire la provision
+  // à la main est incomplète. Les colonnes d'ancienneté portent le RESTE DÛ ;
+  // la provision, elle, se calcule sur l'ASSIETTE — le reste dû diminué des
+  // encaissements et avoirs non rattachés. Deux grandeurs différentes : sans
+  // la seconde, le taux appliqué à la première ne retombe sur rien.
   const P={lib:0, total:1, echu:2, tranche:3, nonEchu:3+nT, nb:4+nT, part:5+nT,
-           prov:6+nT, ecart:7+nT, autre:8+nT};
-  const LARGE=9+nT;
+           assiette:6+nT, prov:7+nT, ecart:8+nT, autre:9+nT};
+  const LARGE=10+nT;
   const ws=wb.addWorksheet(nom);
   // Le niveau visible à l'ouverture : 1. Les comptes sont donc repliés, et
   // déplier une catégorie ne déplie PAS les écritures qu'elle contient.
   ws.properties.outlineLevelRow=1;
   ws.properties.outlineProperties={summaryBelow:false,summaryRight:false};
   ws.columns=[{width:48},{width:15},{width:15},...D.tranches.map(()=>({width:14})),
-    {width:15},{width:10},{width:9},{width:16},{width:10},{width:30}];
+    {width:15},{width:10},{width:9},{width:18},{width:16},{width:10},{width:30}];
   const t=ws.addRow([niv==='cat'?'RESTE DÛ PAR TYPE DE CLIENT ET PAR ANCIENNETÉ'
     :'RESTE DÛ PAR TYPE DE FINANCEMENT ET PAR ANCIENNETÉ']);
   t.font={bold:true,size:14,color:{argb:BLEU}}; t.height=24;
@@ -1228,7 +1235,8 @@ function feuilleBalance(wb,niv,idx){
   ent[P.lib]=tete; ent[P.total]='Restant dû'; ent[P.echu]='Échu';
   D.tranches.forEach((x,j)=>{ ent[P.tranche+j]=x; });
   ent[P.nonEchu]='Non échu'; ent[P.nb]='Créances'; ent[P.part]='Part';
-  ent[P.prov]='À provisionner'; ent[P.ecart]='Écart'; ent[P.autre]=autre;
+  ent[P.assiette]='Assiette de provision'; ent[P.prov]='À provisionner';
+  ent[P.ecart]='Écart'; ent[P.autre]=autre;
   poserEntete(ws,ws.addRow(ent));
   for(let c=P.total+1;c<=P.nonEchu+1;c++) ws.getColumn(c).numFmt=EUROS;
   ws.getColumn(P.nb+1).numFmt=ENTIER; ws.getColumn(P.ecart+1).numFmt=EUROS;
@@ -1236,9 +1244,10 @@ function feuilleBalance(wb,niv,idx){
   // qu'Excel la calcule et la somme. Sa règle, le 16/10/2026.
   ws.getColumn(P.part+1).numFmt='0.0 %';
   ws.getColumn(P.prov+1).numFmt=EUROS;
+  ws.getColumn(P.assiette+1).numFmt=EUROS;
   const lignesSynth=synthRows(niv);
   // La provision par ligne de synthèse : la somme de celles de ses créances.
-  const provCat=new Map();
+  const provCat=new Map(), assCat=new Map();
   const totalNb=lignesSynth.reduce((n,x)=>x.cat==='TOTAL'?n:n+x.nb,0)||0;
   const part=n=>totalNb?n/totalNb:null;
 
@@ -1247,7 +1256,26 @@ function feuilleBalance(wb,niv,idx){
   for(const i of idx){
     const k=V(i,'Clé de la créance'); if(!k||info.has(k)) continue;
     const rd=N(i,'Reste dû de la créance'); if(Math.abs(rd)<0.005) continue;
-    info.set(k,{cat:categorieDe(i,niv), cpt:V(i,'N° de compte'), rd:rd,
+    // L'ASSIETTE DE CETTE CRÉANCE, telle que la provision l'emploie : le reste
+    // dû après imputation des crédits du compte, compensation de tranche et
+    // cascade.
+    //
+    // ET SEULEMENT CE QUE LE BARÈME VOIT. Une créance non échue, ou en deçà de
+    // 121 jours de retard, ne tombe dans aucune fenêtre : son assiette est
+    // nulle ici, sinon la colonne annoncerait une base dont le taux ne ferait
+    // rien — et le lecteur retomberait, en multipliant, sur un nombre qui n'est
+    // pas la provision. Même filtre, mot pour mot, que provisionDe().
+    const base=(()=>{
+      const a=assiettes(); const b=a.has(k)?a.get(k):rd;
+      const net=CAC()? b : (b>0?b:0);
+      if(!net) return 0;
+      paramsPrets();
+      const tr=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
+      const j=(PROV.fenetres||[]).findIndex(f=>(f.tranches||[]).indexOf(tr)>=0);
+      if(j<0) return 0;
+      return familleDe(sousVraie(i)) ? net : 0;
+    })();
+    info.set(k,{cat:categorieDe(i,niv), cpt:V(i,'N° de compte'), rd:rd, ass:base,
       // La provision de CETTE créance : son reste dû au débit multiplié par le
       // taux de sa famille dans la fenêtre où tombe son ancienneté.
       prov:provisionDe(rd, sousVraie(i),
@@ -1257,18 +1285,20 @@ function feuilleBalance(wb,niv,idx){
       autre:(niv==='cat'?sousVraie(i):categorieDe(i,'cat'))||'',
       tr:V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté')});
   }
-  for(const [,e] of info) provCat.set(e.cat,(provCat.get(e.cat)||0)+e.prov);
+  for(const [,e] of info){ provCat.set(e.cat,(provCat.get(e.cat)||0)+e.prov);
+    assCat.set(e.cat,(assCat.get(e.cat)||0)+e.ass); }
   provCat.set('TOTAL',[...provCat.values()].reduce((a,b)=>a+b,0));
+  assCat.set('TOTAL',[...assCat.values()].reduce((a,b)=>a+b,0));
   for(const i of idx){
     const k=V(i,'Clé de la créance'); const e=k&&info.get(k); if(!e) continue;
     if(!par.has(e.cat)) par.set(e.cat,new Map());
     const m=par.get(e.cat);
     let g=m.get(e.cpt);
     if(!g){ g={cpt:e.cpt, client:V(i,'Libellé de compte')||V(i,'Tiers'), total:0, echu:0,
-      nonEchu:0, nb:0, prov:0, buckets:D.tranches.map(()=>0), lignes:[], vues:new Set(),
+      nonEchu:0, nb:0, prov:0, ass:0, buckets:D.tranches.map(()=>0), lignes:[], vues:new Set(),
       autres:new Set()}; m.set(e.cpt,g); }
     g.lignes.push(i);
-    if(!g.vues.has(k)){ g.vues.add(k); g.nb++; g.total+=e.rd; g.prov+=e.prov;
+    if(!g.vues.has(k)){ g.vues.add(k); g.nb++; g.total+=e.rd; g.prov+=e.prov; g.ass+=e.ass;
       // Un compte peut porter deux dispositifs : on les nomme tous les deux
       // plutôt que d'en élire un.
       if(e.autre) g.autres.add(e.autre);
@@ -1281,14 +1311,15 @@ function feuilleBalance(wb,niv,idx){
   let z=0;
   for(const s of lignesSynth){
     const l=ws.addRow([s.cat,s.total,s.echu,...s.buckets,s.nonEchu,s.nb,
-      part(s.cat==='TOTAL'?totalNb:s.nb), ar2(provCat.get(s.cat)||0),
+      part(s.cat==='TOTAL'?totalNb:s.nb), ar2(assCat.get(s.cat)||0),
+      ar2(provCat.get(s.cat)||0),
       ar2(s.total-(s.echu+s.nonEchu)),'']);
     l.getCell(1).font={bold:true};
     if(s.cat==='TOTAL'){ poserTotal(l,ws); continue; }
     if(z++%2) remplirLigne(ws,l,PALE);
     for(const g of [...(par.get(s.cat)||new Map()).values()].sort((a,b)=>a.cpt<b.cpt?-1:1)){
       const lr=ws.addRow(['    '+g.cpt+' - '+g.client, ar2(g.total), ar2(g.echu),
-        ...g.buckets.map(ar2), ar2(g.nonEchu), g.nb, part(g.nb), ar2(g.prov),
+        ...g.buckets.map(ar2), ar2(g.nonEchu), g.nb, part(g.nb), ar2(g.ass), ar2(g.prov),
         ar2(g.total-(g.echu+g.nonEchu)),
         [...g.autres].sort().join(' · ')]);
       lr.outlineLevel=1; lr.hidden=true; lr.getCell(1).font={bold:true};
@@ -1321,6 +1352,13 @@ function feuilleBalance(wb,niv,idx){
       }
     }
   }
+
+  // LE CALCUL SE REFAIT SUR LA FEUILLE QU'ON LIT, 03/11/2026. Le récap par
+  // type de client — assiette, barème, produit — était au bas de « À
+  // provisionner » ; il manquait ici, où le tableau par type de client se lit.
+  // Il ne s'écrit que dans cette feuille-là : par type de financement, les
+  // taux ne s'appliquent pas, puisque le barème se lit par type de client.
+  if(niv==='cat') recapParTypeDeClient(ws);
 }
 
 // Ce qui doit arriver dans Excel comme un NOMBRE, et rien d'autre. Un numéro
