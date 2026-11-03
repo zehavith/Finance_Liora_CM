@@ -20,7 +20,8 @@ const ok = (t, c) => { console.log((c ? '  OK  ' : 'ÉCHEC ') + t); if (!c) proc
 const eur = n => Math.round(n).toLocaleString('fr-FR') + ' €';
 
 const nouv = feuille(path.resolve(__dirname, '..', NOUV), 'Grand livre - Clients', 0);
-const lu = GL.lire(nouv.rows, {});
+// Le drapeau du repli Pennylane appartient à la chaîne de la balance, 03/11/2026.
+const lu = GL.lire(nouv.rows, {repliPennylane:true});
 const REF = (() => {
   let d = null;
   for (const r of nouv.rows) { const v = R.parseDate(r['Date']); if (v && (!d || v > d)) d = v; }

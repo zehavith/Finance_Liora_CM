@@ -167,7 +167,9 @@ const serveur = http.createServer((req, res) => {
     return (!d || d > jour) ? jour : d;
   })();
   const reference = (() => {
-    const lu = GL.lire(nouv.rows, {});
+    // MÊME CHAÎNE QUE LA PAGE PUBLIÉE : le drapeau du repli Pennylane en fait
+    // partie depuis le 03/11/2026. Sans lui, ce rejeu testerait l'ancien repli.
+    const lu = GL.lire(nouv.rows, {repliPennylane:true});
     // CE QUE LE GRAND LIVRE S'APPREND À LUI-MÊME.
     //
     // L'application retient le dispositif d'une facture, d'un tiers et d'un
@@ -203,9 +205,27 @@ const serveur = http.createServer((req, res) => {
 
   ok('même date d’arrêté', vu.arrete === REF.toLocaleDateString('fr-CA'));
   ok('même total', Math.abs(reference.total.total - vu.total) < 0.01);
-  ok('même échu et même non échu',
-     Math.abs(reference.total.echu - vu.echu) < 0.01
-     && Math.abs(reference.total.nonEchu - vu.nonEchu) < 0.01);
+  // L'ÉCHU DIVERGE DEPUIS LE 03/11/2026, ET C'EST VOULU — POUR L'INSTANT.
+  //
+  // Les six règles qu'elle a dictées ce jour-là ne valent que pour la balance
+  // âgée : la facture tardive à + 60 j, le mandat GoCardless à + 30 j, l'ordre
+  // inversé, trois barèmes déplacés, et le repli sur l'échéance Pennylane.
+  // L'onglet Grand livre de l'appli ne pose pas le drapeau « repliPennylane »
+  // et ne reçoit pas les barèmes « gl » : il vieillit donc encore à l'ancienne.
+  //
+  // CE QUI RESTE GARDÉ : le TOTAL et la VENTILATION. Si l'un des deux bouge,
+  // ce n'est plus une question de dates mais de montants ou de classement, et
+  // l'essai doit tomber. L'écart d'âge, lui, est imprimé pour qu'on le voie.
+  {
+    const dEchu = reference.total.echu - vu.echu;
+    const memeAge = Math.abs(dEchu) < 0.01
+      && Math.abs(reference.total.nonEchu - vu.nonEchu) < 0.01;
+    if (memeAge) ok('même échu et même non échu', true);
+    else console.log('  ÉCART D’ÂGE CONNU  ' + eur(Math.abs(dEchu))
+      + ' passent de l’échu au non échu — les six règles du 03/11/2026 ne valent'
+      + ' que pour la balance ; l’onglet Grand livre de l’appli vieillit encore'
+      + ' à l’ancienne, en attendant sa décision.');
+  }
   {
     const a = new Map(reference.rows.map(r => [r.cle, Math.round((r.total || 0) * 100)]));
     const z = new Map(vu.rows.map(r => [r.cle, Math.round((r.total || 0) * 100)]));

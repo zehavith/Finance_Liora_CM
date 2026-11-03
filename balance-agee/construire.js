@@ -350,7 +350,11 @@ const REPARATIONS=new Map();
   console.log('numéros abîmés réparés : '+REPARATIONS.size+' · ambigus laissés tels quels : '+ambigus);
   for(const [k,v] of REPARATIONS) console.log('   '+vus.get(k)+' → '+v); }
 
-const lu=GL.lire(nouv.rows,{reparations:REPARATIONS});
+// LE REPLI PENNYLANE EST PROPRE À LA BALANCE ÂGÉE, 03/11/2026.
+// « Repli sans base de calcul → échéance Pennylane, à défaut date de la ligne ».
+// grandlivre.js sert aussi l'onglet Grand livre de l'appli, qui ne pose pas ce
+// drapeau : sans lui, le changement sortirait de la balance.
+const lu=GL.lire(nouv.rows,{reparations:REPARATIONS, repliPennylane:true});
 const cl=GL.classer(GL.creancesOuvertes(lu),
   {rules:RG, sellsy, factures:DATES, mandats:MANDATS, referentiel:{}, regles:[], appris});
 
@@ -513,6 +517,9 @@ const NATURE_MOTIF=[
    'Repli · aucune facture au débit parmi les écritures non pointées de ce compte,'
    +' la ligne se date elle-même'],
   [/dispositif [àa] qualifier/i,  'Repli · dispositif non qualifié au moment du calcul'],   // précisé ci-dessous
+  // Le repli de la balance depuis le 03/11/2026 : « échéance Pennylane, à défaut
+  // date de la ligne ». Sans cette entrée, le motif sortirait brut.
+  [/[ée]ch[ée]ance Pennylane/i,   'Repli · échéance Pennylane'],
   [/derni[èe]re date du libell/i, 'Repli · dernière date lue dans le libellé'],
   [/date de l[’\'][ée]criture/i,  c=>'Repli · date de l’écriture, aucune date dans le libellé'
     +((c.echeanceJours||0)?' · + '+c.echeanceJours+' jours (facture)':'')],
@@ -570,7 +577,9 @@ const motifExplicite=c=>{
 
 // La BRANCHE qui a servi, pas l'énumération des trois. L'étiquette de la base
 // les nomme toutes ; la phrase du calcul doit nommer celle qui a daté la ligne.
-const brancheEcheance1=c=>c.echeance1Source==='libellé'||!c.echeance1Source
+const brancheEcheance1=c=>c.echeance1Source==='Pennylane'
+  ? 'échéance Pennylane'
+  : c.echeance1Source==='libellé'||!c.echeance1Source
   ? 'dernière date du libellé'
   : c.echeance1Source==='écriture' ? 'date de l’écriture'
   : c.echeance1Source==='date comptable' ? 'échéance portée par le grand livre'
@@ -1046,13 +1055,14 @@ const autreCote=(l,quoi)=>{
 // la base retenue et la source du repli — et non sur une phrase ; et il se
 // décide une seule fois, pour le classeur comme pour la page.
 const parRang=new Map(), parOrigine=new Map();
+// LE RANG SUIT L'ORDRE DU CALCUL, 03/11/2026 : la facture tardive est passée
+// devant le mandat, et les deux replis n'en font plus qu'un.
 const rangDeLaLigne=src=>{
   const m=String(src.echeanceMotif||'');
   if(src.echeanceBase==='dateReglement') return '1';
-  if(/mandat de pr/i.test(m)) return '2';
-  if(/apr[èe]s la fin de formation|post[ée]rieure/i.test(m)) return '3';
-  if(src.echeanceBase==='echeance1')
-    return (src.echeance1Source==='libellé'||!src.echeance1Source) ? '5' : '6';
+  if(/apr[èe]s la fin de formation|post[ée]rieure/i.test(m)) return '2';
+  if(/mandat de pr/i.test(m)) return '3';
+  if(src.echeanceBase==='echeance1') return '5';
   return '4';
 };
 
@@ -1764,8 +1774,19 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
     perimetre:r.perimetre||'',
     base:(BASES[g.base]||g.base||''),
     jours:(g.jours==null?'':g.jours),
-    repli:(BASES[r.fallback]||r.fallback||'')+(r.fallbackJours!=null?' + '+r.fallbackJours+' j':''),
-    note:r.note||'',
+    // LE REPLI ET L'ÉNONCÉ SONT CEUX DE LA BALANCE, PAS CEUX DE L'APPLI.
+    //
+    // « base » et « jours » se lisent déjà sur g = r.gl ; ces deux-là se lisaient
+    // encore sur r, le barème du suivi de relance. La page annonçait donc un repli
+    // et une note qui ne décrivent pas le calcul qu'elle publie — pour
+    // Corporate - Alternance, « début de formation + 30 j » et « date de facture
+    // +30 jours, sans dépasser début de formation +30 jours », alors que la balance
+    // date à la facture de facturation + 30 j, sans plafond.
+    repli:(g===r
+      ? (BASES[r.fallback]||r.fallback||'')+(r.fallbackJours!=null?' + '+r.fallbackJours+' j':'')
+      : ''),
+    note:(g===r?(r.note||''):((BASES[g.base]||g.base||'')
+      +(g.jours?' + '+g.jours+' jours':', sans délai'))),
     mots:(r.match||[]).join(' · '),
   };}),
   // L'ordre de préférence, tel qu'elle l'a dicté le 14/10/2026. Il passe
@@ -1880,32 +1901,27 @@ fs.writeFileSync('page-donnees.json',JSON.stringify({
          +'la facture qu’il solde. Cette règle s’applique avant toutes les autres et ne '
          +'concerne que les encaissements.'},
     {rang:'2', nature:'Règle exception',
-     quand:'Le client a un mandat de prélèvement GoCardless',
-     alors:'fin de formation, sans délai',
-     note:'Le rapprochement s’effectue par numéro de facture, puis par adresse '
-         +'électronique, puis par nom et prénom. Aucun délai de paiement n’est accordé à '
-         +'un client prélevé.'},
-    {rang:'3', nature:'Règle exception',
      quand:'La date de facture est postérieure à la fin de formation',
-     alors:'date de facture + 30 jours',
+     alors:'date de facture + 60 jours',
      note:'Régularisation : le délai court à compter de l’émission de la facture et non '
-         +'d’une formation déjà achevée.'},
+         +'d’une formation déjà achevée. La date retenue est celle de la facture de '
+         +'facturation, non celle de l’écriture comptable. Cette règle passe avant le '
+         +'mandat de prélèvement.'},
+    {rang:'3', nature:'Règle exception',
+     quand:'Le client a un mandat de prélèvement GoCardless',
+     alors:'fin de formation + 30 jours',
+     note:'Le rapprochement s’effectue par numéro de facture, puis par adresse '
+         +'électronique, puis par nom et prénom.'},
     {rang:'4', nature:'Règle barème',
      quand:'Sinon — le barème du dispositif',
      alors:'voir le tableau ci-dessous',
      note:'Chaque dispositif dispose de sa base de calcul et de son délai. Cas général.'},
     {rang:'5', nature:'Règle repli',
      quand:'Sinon — la base du barème manque',
-     alors:'dernière date lue dans le libellé',
+     alors:'échéance Pennylane, à défaut date de la ligne',
      note:'En l’absence de date de formation et de date de facture, la date retenue est '
-         +'celle figurant dans le libellé de l’écriture, sans délai.'},
-    {rang:'6', nature:'Règle repli',
-     quand:'Sinon — aucune date dans le libellé',
-     alors:'date de l’écriture · une facture, + 30 jours',
-     note:'Date de l’écriture au grand livre. Une facture est exigible trente jours '
-         +'après cette date ; un encaissement et un avoir le jour même. À défaut de date '
-         +'d’écriture comme de date dans le libellé, la date d’enregistrement est retenue '
-         +'en dernier lieu, sans délai.'},
+         +'l’échéance portée par Pennylane. À défaut, la date de la ligne elle-même, sans '
+         +'délai ajouté, facture comprise.'},
   // Le décompte voyage avec la règle. La page le refaisait de son côté, à
   // coups d'expressions régulières sur le texte français du motif, et donnait
   // d'autres chiffres que le classeur. Il n'y a plus qu'un décompte.

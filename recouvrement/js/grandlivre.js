@@ -831,20 +831,32 @@
                 // date de l'écriture, puis — pour l'écriture qui n'a ni l'une
                 // ni l'autre — sa date d'enregistrement.
                 //
-                // La première branche ne bouge pas : c'est sa formule AA, et
-                // elle l'a confirmée le 14/10/2026 (« comme repli il faut voir
-                // dans les libellés »). C'est la seconde qui change le
-                // 22/10/2026.
-                dateEcheanceRepli: dateTexte || date || null,
+                // SAUF SOUS « repliPennylane », 03/11/2026 : « Repli sans base
+                // de calcul → échéance Pennylane, à défaut date de la ligne ».
+                // Le passage par le libellé disparaît alors, et le délai de
+                // trente jours accordé à une facture avec lui.
+                //
+                // LE DRAPEAU EST EXPLICITE, ET POSÉ PAR LA SEULE BALANCE ÂGÉE
+                // (balance-agee/construire.js). Ce fichier sert aussi l'onglet
+                // Grand livre de l'appli suivi recouvrement, qui ne le pose pas :
+                // le drapeau « gl » de rules.js n'existe pas à cet étage, et sans
+                // lui le changement sortirait de la balance.
+                dateEcheanceRepli: (o.repliPennylane
+                    ? (R.parseDate(utile(col(r, 'dateEcheance'))) || date || null)
+                    : (dateTexte || date || null)),
                 // Les trois branches ne se valent pas, et la phrase publiée
                 // doit dire laquelle a servi : la date LUE DANS LE LIBELLÉ est
                 // l'opération elle-même, la DATE DE L'ÉCRITURE est celle que la
                 // comptabilité lui donne, la date d'enregistrement n'est que le
                 // jour de la saisie. Sans les distinguer, on ne peut pas dire
                 // laquelle des lignes reste à confirmer.
-                echeance1Source: dateTexte ? 'libellé'
-                    : (!date ? null
-                       : (R.parseDate(col(r, 'date')) ? 'écriture' : 'enregistrement')),
+                echeance1Source: o.repliPennylane
+                    ? (R.parseDate(utile(col(r, 'dateEcheance'))) ? 'Pennylane'
+                       : (!date ? null
+                          : (R.parseDate(col(r, 'date')) ? 'écriture' : 'enregistrement')))
+                    : (dateTexte ? 'libellé'
+                       : (!date ? null
+                          : (R.parseDate(col(r, 'date')) ? 'écriture' : 'enregistrement'))),
                 // « Pour les paiements et avoir colonne D, pour les factures
                 // colonne D + 30 jours », 22/10/2026. Le délai ne s'ajoute
                 // qu'au repli — une date lue dans le libellé n'en a jamais eu —
@@ -857,7 +869,9 @@
                 // « une date a servi » et ajoutait les trente jours au dernier
                 // recours aussi — ce que le tableau des règles publié dans la
                 // page dément expressément.
-                echeance1Jours: (!dateTexte && R.parseDate(col(r, 'date'))
+                // Sous « repliPennylane » le délai est TOUJOURS NUL : sa règle
+                // dit « à défaut date de la ligne », sans rien ajouter.
+                echeance1Jours: (!o.repliPennylane && !dateTexte && R.parseDate(col(r, 'date'))
                                  && debit > 0 && facture)
                     ? REPLI_FACTURE_JOURS : 0,
                 // Les dates de la facturation, telles que l'extrait les porte.

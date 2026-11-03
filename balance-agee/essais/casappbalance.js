@@ -86,7 +86,10 @@ const OPT = () => ({ rules: RG, sellsy: [], factures: [], mandats: [],
 
 // La suite d'appels, paramétrée par les écarts qu'on veut mesurer.
 function suite({ reparations = true, prorata = true, date = REF, niveau = 'financement' } = {}) {
-  const lu = GL.lire(nouv.rows, reparations ? { reparations: REPARATIONS } : {});
+  // Le drapeau du repli Pennylane appartient à la chaîne de la balance, 03/11/2026.
+  const lu = GL.lire(nouv.rows, reparations
+    ? { reparations: REPARATIONS, repliPennylane: true }
+    : { repliPennylane: true });
   const classees = GL.classer(GL.creancesOuvertes(lu), OPT());
   const soldees = GL.classer(GL.facturesToutes(lu)
     .filter(c => c.statut && c.statut !== 'Ouverte' && c.statut !== 'Partiellement réglée'), OPT());

@@ -70,7 +70,10 @@
             base: 'dateFacture', jours: 30,
             fallback: 'dateDebutFormation', fallbackJours: 30,
             plafondDebutFormation: true,
-            gl: { base: 'dateFinFormation', jours: 60 },
+            // R4, 03/11/2026 : « Barème Corporate - Alternance → date de facture + 30 j ».
+            // La date de facture DE LA FACTURATION, comme le transformateur CAC
+            // (cac/transformer.js, FACT30) ; « dateFacture » est l'écriture comptable.
+            gl: { base: 'dateFactureFacturation', jours: 30 },
             note: "Date de facture +30 jours, sans dépasser début de formation +30 jours",
             categorie: 'Corporate', perimetre: 'Corporate',
             match: ['corporate alternance', 'corporate-alternance'],
@@ -140,7 +143,8 @@
             note: "Fin de formation +60 jours",
             categorie: 'Étatique',            perimetre: 'Corporate',
             match: ['etat', 'public etat', 'ministere', 'prefecture'],
-            gl: { base: 'dateFinFormation', jours: 60 },
+            // R5, 03/11/2026 : « Barème OPCO, ETAT, OPCO - Alternance → fin de formation + 30 j ».
+            gl: { base: 'dateFinFormation', jours: 30 },
         },
         {
             // « Interne », « Interne - UE » : le vocabulaire de Zoho pour les
@@ -166,7 +170,8 @@
             note: "Fin de formation +60 jours — pas de recouvrement OPCO, suivi du retard uniquement",
             categorie: 'Étatique',            perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco', 'akto', 'atlas', 'uniformation', 'ocapiat', 'constructys', 'afdas', 'opcommerce', 'l opcommerce', 'opco ep', 'opco 2i', 'opco mobilites', 'opco sante'],
-            gl: { base: 'dateFinFormation', jours: 60 },
+            // R5, 03/11/2026 : fin de formation + 30 j.
+            gl: { base: 'dateFinFormation', jours: 30 },
         },
         {
             // Un OPCO qui finance une alternance : même payeur, autre dispositif.
@@ -179,7 +184,8 @@
             note: "Fin de formation +60 jours — pas de recouvrement OPCO, suivi du retard uniquement",
             categorie: 'Étatique', perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco alternance', 'opco-alternance'],
-            gl: { base: 'dateFinFormation', jours: 60 },
+            // R5, 03/11/2026 : fin de formation + 30 j.
+            gl: { base: 'dateFinFormation', jours: 30 },
         },
         {
             key: 'BTC_PERSO', label: 'Financement personnel',
@@ -654,6 +660,7 @@
     function motifEcheance1(source, jours) {
         if (!source || source === 'libellé') return 'dernière date du libellé';
         if (source === 'date comptable') return 'échéance portée par le grand livre';
+        if (source === 'Pennylane') return 'échéance Pennylane';
         // Chaque source est nommée, aucune n'est rangée par défaut avec une
         // autre : un ternaire à deux branches publiait « date d'enregistrement »
         // pour toute valeur inattendue, y compris « date comptable ».
@@ -713,11 +720,6 @@
         // formation ». Une facture de régularisation émise après la formation
         // ne change rien au fait que le client est prélevé — le prélèvement,
         // lui, ne s'arrête pas pour attendre soixante jours.
-        if (gl && inv.mandatGocardless && inv.dateFinFormation) {
-            return { date: stripTime(inv.dateFinFormation), origine: 'Règle', regle: rule,
-                     baseUtilisee: 'dateFinFormation', jours: 0,
-                     motif: 'Mandat de prélèvement en place' };
-        }
         // Une facture émise APRÈS la fin de la formation n'est pas une facture
         // d'avance : c'est une régularisation, et le délai court depuis son
         // émission. Sans cela, une formation terminée en 2024 refacturée en
@@ -733,11 +735,32 @@
         // postérieure à fin de formation, on prend date de facture + 30 ». La
         // formule du classeur dit soixante ; c'est elle qui décide, pas le
         // classeur.
+        // LA FACTURE TARDIVE PASSE LA PREMIÈRE, 03/11/2026.
+        //
+        // L'ordre du 14/10/2026 — « les GoCardless sont prioritaires » — est
+        // défait à sa demande : « ordre des exceptions : la facture tardive
+        // passe avant GoCardless ». Une régularisation émise après la
+        // formation se date sur son émission, que le client soit prélevé ou
+        // non. C'est l'ordre du classeur (AR avant AT) et celui que le
+        // transformateur CAC applique déjà — rang 1 la facture, rang 2 le mandat.
+        //
+        // LE DÉLAI EST DE SOIXANTE JOURS, 03/11/2026, et non plus trente.
+        // C'est la première ligne de la formule du classeur : SI(AR="oui" ;
+        // AQ+60 ; …). La base reste la date de facture DE LA FACTURATION, pas
+        // celle de l'écriture comptable : les confondre décalait mille lignes.
         if (gl && inv.dateFactureFacturation && inv.dateFinFormation
             && inv.dateFactureFacturation > inv.dateFinFormation) {
-            return { date: addDays(inv.dateFactureFacturation, 30), origine: 'Règle', regle: rule,
-                     baseUtilisee: 'dateFactureFacturation', jours: 30,
+            return { date: addDays(inv.dateFactureFacturation, 60), origine: 'Règle', regle: rule,
+                     baseUtilisee: 'dateFactureFacturation', jours: 60,
                      motif: 'Facture postérieure à la fin de formation' };
+        }
+        // Chez un client prélevé, l'argent est appelé automatiquement — mais
+        // TRENTE JOURS après la fin de la formation, 03/11/2026, et non le
+        // jour même : le « sans délai » de la colonne AT est remplacé.
+        if (gl && inv.mandatGocardless && inv.dateFinFormation) {
+            return { date: addDays(inv.dateFinFormation, 30), origine: 'Règle', regle: rule,
+                     baseUtilisee: 'dateFinFormation', jours: 30,
+                     motif: 'Mandat de prélèvement en place' };
         }
 
         // La base de la règle d'abord. Puis, s'il y en a une, l'échéance que
