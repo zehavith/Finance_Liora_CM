@@ -1,0 +1,446 @@
+<title>Recouvrement & Trésorerie Liora</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;0,900;1,400&display=swap">
+<style>
+/* Document institutionnel : colonne unique, hierarchie par le bleu du document source,
+   orange Liora reserve a l'identite. Tokens : fond, encre, bleus, bande, regle. */
+:root{
+  --ground:#FBFBFC; --surface:#FFFFFF;
+  --ink:#1C2430; --ink-2:#44505F; --ink-3:#73808F;
+  --navy:#17365D; --blue:#2F75B5; --band:#E8F0F8; --band-ink:#17365D;
+  --accent:#E0613C;
+  --rule:#D8DEE6; --rule-2:#EAEEF3;
+  --f-body:"Lato",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#11161D; --surface:#171E27;
+  --ink:#E7ECF2; --ink-2:#B3BECB; --ink-3:#8795A5;
+  --navy:#8FB6E0; --blue:#7FAEDF; --band:#1C2836; --band-ink:#CFE0F2;
+  --accent:#F2805C;
+  --rule:#2A3542; --rule-2:#222C38;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --ground:#11161D; --surface:#171E27;
+  --ink:#E7ECF2; --ink-2:#B3BECB; --ink-3:#8795A5;
+  --navy:#8FB6E0; --blue:#7FAEDF; --band:#1C2836; --band-ink:#CFE0F2;
+  --accent:#F2805C;
+  --rule:#2A3542; --rule-2:#222C38;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--f-body);
+  font-size:15px;line-height:1.62;-webkit-text-size-adjust:100%}
+.wrap{max-width:52rem;margin:0 auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:2.2rem 4rem}
+.mast{display:flex;align-items:flex-start;justify-content:space-between;gap:1.5rem;
+  flex-wrap:wrap;padding-bottom:1.1rem;border-bottom:2px solid var(--navy)}
+.mast h1{margin:0;font-size:1.65rem;line-height:1.2;font-weight:900;letter-spacing:-.015em;
+  color:var(--navy);text-wrap:balance}
+.mast .sub{margin:.3rem 0 0;font-size:1.02rem;font-weight:700;color:var(--blue)}
+.mast .meta{margin:.5rem 0 0;font-size:.8rem;color:var(--ink-3);letter-spacing:.03em;text-transform:uppercase}
+.mast img{height:34px;width:auto;flex:0 0 auto}
+h2{margin:2.6rem 0 .7rem;font-size:1.22rem;font-weight:900;color:var(--navy);
+  letter-spacing:-.01em;text-wrap:balance;padding-top:.9rem;border-top:1px solid var(--rule)}
+h3{margin:1.7rem 0 .45rem;font-size:1rem;font-weight:700;color:var(--blue);text-wrap:balance}
+p{margin:0 0 .75rem}
+ul,ol{margin:0 0 .9rem;padding-left:1.25rem}
+li{margin-bottom:.22rem}
+li::marker{color:var(--blue)}
+strong{font-weight:700;color:var(--ink)}
+.callout{margin:1rem 0 1.2rem;padding:.8rem 1rem;background:var(--band);
+  border-left:3px solid var(--blue);border-radius:2px;color:var(--band-ink);font-size:.95rem}
+.callout strong{color:var(--band-ink)}
+.callout.flow{font-size:.9rem;line-height:1.75;border-left-color:var(--accent)}
+.tw{overflow-x:auto;margin:.9rem 0 1.4rem;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;min-width:30rem;font-size:.87rem;background:var(--surface)}
+th,td{text-align:left;vertical-align:top;padding:.5rem .7rem;border:1px solid var(--rule-2)}
+tr.hdr th{background:var(--navy);color:#fff;font-weight:700;font-size:.8rem;
+  letter-spacing:.02em;border-color:var(--navy)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) tr.hdr th{color:#0F1620}}
+:root[data-theme="dark"] tr.hdr th{color:#0F1620}
+tr.band td{background:var(--band);color:var(--band-ink);font-weight:700;font-size:.8rem;letter-spacing:.02em}
+tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--surface) 94%,var(--ink) 6%)}
+tr.band td,tr.hdr th{background-clip:padding-box}
+td{color:var(--ink-2)}
+td strong{color:var(--ink)}
+@media (max-width:460px){
+  body{font-size:14px}
+  .mast h1{font-size:1.35rem}
+  .mast img{height:28px}
+  table{min-width:26rem;font-size:.82rem}
+}
+</style>
+<div class="wrap">
+<header class="mast">
+  <div>
+    <h1>Note stratégique</h1>
+    <p class="sub">Recouvrement &amp; Trésorerie — Trajectoire 100 M€</p>
+    <p class="meta">Document stratégique · version de transmission</p>
+  </div>
+  <img src="liora-logo.png" alt="Liora">
+</header>
+<div class="callout"><strong>AMBITION  |  Construire un modèle de Recouvrement &amp; Trésorerie préventif, automatisé, prévisible et scalable, capable d’accompagner la trajectoire vers 100 M€.</strong></div>
+<h2>1. Ambition</h2>
+<p>L’objectif de cette note est de définir une trajectoire Recouvrement &amp; Trésorerie capable d’accompagner le développement de l’entreprise vers 100 M€ de chiffre d’affaires à horizon 5 ans, tout en sécurisant la croissance et en préparant l’internationalisation.</p>
+<p>À cette échelle, le sujet n’est plus uniquement de « mieux recouvrer ». Il s’agit de construire un modèle dans lequel :</p>
+<ul>
+<li>les conditions de paiement sont sécurisées dès la vente ;</li>
+<li>le niveau de risque est évalué avant engagement ;</li>
+<li>la facturation intervient au plus près du fait générateur ;</li>
+<li>les paiements sont automatisés lorsque cela est pertinent ;</li>
+<li>les impayés deviennent des exceptions plutôt qu’un flux courant ;</li>
+<li>la trésorerie est pilotée de manière prévisionnelle ;</li>
+<li>les créances peuvent être mobilisées ponctuellement lorsque la situation de trésorerie le justifie.</li>
+</ul>
+<div class="callout"><strong>CIBLE : faire évoluer le modèle d’un recouvrement principalement curatif vers un modèle de prévention, d’automatisation et de gestion des exceptions.</strong></div>
+<h2>2. Enjeux stratégiques à 100 M€</h2>
+<p>La croissance du chiffre d’affaires entraînera mécaniquement une augmentation du nombre de clients, des factures, des créances clients, des flux bancaires, de la complexité du recouvrement, des cas nécessitant une intervention et de l’exposition au risque client.</p>
+<p>À 100 M€ de chiffre d’affaires, une journée de délai d’encaissement représente environ 274 K€ de créances supplémentaires à financer.</p>
+<div class="tw"><table><tr class="hdr"><th><strong>Délai d’encaissement</strong></th><th><strong>Créances correspondantes à 100 M€</strong></th></tr><tr><td><strong>10 jours</strong></td><td><strong>~2,7 M€</strong></td></tr><tr><td><strong>30 jours</strong></td><td><strong>~8,2 M€</strong></td></tr><tr><td><strong>60 jours</strong></td><td><strong>~16,4 M€</strong></td></tr><tr><td><strong>90 jours</strong></td><td><strong>~24,7 M€</strong></td></tr></table></div>
+<p>Plus l’entreprise grandit, plus un processus reposant sur de nombreuses interventions manuelles devient coûteux, fragile et difficilement scalable. La priorité stratégique doit donc être de réduire le besoin même de recouvrement.</p>
+<h2>3. Diagnostic</h2>
+<h3>3.1. Conditions de paiement</h3>
+<div class="tw"><table><tr class="hdr"><th><strong>Canal</strong></th><th><strong>Déclencheur du paiement</strong></th><th><strong>Délai / modalité</strong></th><th><strong>Points de vigilance</strong></th></tr><tr><td><strong>OPCO</strong></td><td><strong>Dossier complet</strong></td><td><strong>Fin de formation + 60 jours</strong></td><td><strong>Document manquant, dépôt tardif</strong></td></tr><tr><td><strong>CPF</strong></td><td><strong>Fin de prestation + validation bénéficiaire</strong></td><td><strong>Délai administratif Caisse des Dépôts</strong></td><td><strong>Anomalie EDOF, validation administrative</strong></td></tr><tr><td>Financement Région / Transition Pro / Pôle emploi</td><td>Validation de la dépense et émission de l’ordre de paiement par l’organisme public</td><td>Fin de formation + 60 jours</td><td>Suivi du mandatement et transmission des pièces de marché</td></tr><tr><td>Entreprises</td><td>Facture émise</td><td>30 jours date de facture</td><td>Point de vigilance : vérifier que les documents demandés ont bien été transmis</td></tr><tr><td><strong>Grands comptes — B2B, 181 comptes référencés</strong></td><td><strong>Facture conforme, PO, portail client</strong></td><td><strong>30 jours date de facture</strong></td><td><strong>PO manquant, mauvaise entité de facturation</strong></td></tr><tr><td><strong>Particuliers</strong></td><td><strong>Paiement en ligne ou échéancier</strong></td><td><strong>Au démarrage</strong></td><td><strong>Échec de prélèvement, impayé au démarrage</strong></td></tr></table></div>
+<h3>3.2. Un délai d’encaissement peut être créé après l’échéance</h3>
+<p>Problématique : à l’échéance de la facture, l’entreprise cliente ne dispose pas toujours de l’ensemble des éléments administratifs nécessaires à son traitement et à son règlement. Des formulaires spécifiques, des informations de facturation ou un bon de commande peuvent être demandés ou transmis trop tardivement. Le traitement administratif côté ADV intervient alors après l’échéance et retarde l’encaissement.</p>
+<div class="tw"><table><tr class="hdr"><th><strong>Étape</strong></th><th><strong>Durée</strong></th><th><strong>Situation</strong></th></tr><tr><td><strong>Fin de session</strong></td><td><strong>12 juin</strong></td><td><strong>Fin de formation</strong></td></tr><tr><td><strong>J0 → J+26</strong></td><td><strong>26 jours</strong></td><td><strong>Feuilles de présence, certificat de réalisation, constitution et dépôt du dossier</strong></td></tr><tr><td><strong>J+26 → J+48</strong></td><td><strong>22 jours</strong></td><td><strong>Examen OPCO et rejet pour document manquant</strong></td></tr><tr><td><strong>J+48 → J+61</strong></td><td><strong>13 jours</strong></td><td><strong>Correction et redépôt</strong></td></tr><tr><td><strong>J+61 → J+119</strong></td><td><strong>58 jours</strong></td><td><strong>Traitement et paiement après réception du dossier complet</strong></td></tr><tr><td><strong>Résultat</strong></td><td><strong>119 jours</strong></td><td><strong>Encaissement le 9 octobre ; échéance contractuelle le 11 août</strong></td></tr></table></div>
+<div class="callout"><strong>POINT CLÉ  |  Aucune action de recouvrement ne peut agir tant que le dossier complet n’existe pas.</strong></div>
+<p>L’exemple OPCO de 48 000 € illustre l’importance de cette anticipation : le dossier complet n’a été soumis qu’au jour 61, soit un jour après la date d’échéance contractuelle. Les délais de collecte et de mise en conformité des pièces ont donc consommé la marge disponible avant même que le financeur puisse traiter le dossier.</p>
+<p>Point de vigilance complémentaire – factures OPCO non déposées : certaines factures peuvent ne pas être déposées sur les plateformes ou auprès de l’OPCO dans les délais attendus. Tant que le dépôt n’est pas effectué, le traitement du dossier et le déclenchement du paiement peuvent être retardés.</p>
+<p>Financement Région, Transition Pro et Pôle emploi – problématique : les documents demandés par l’organisme financeur ne sont pas toujours signés ou transmis dans les délais, ce qui peut retarder la finalisation administrative du dossier et le traitement du paiement.</p>
+<h3>3.3. Le recouvrement est d’abord un métier de processus</h3>
+<p>L’analyse des six canaux montre que trois d’entre eux — OPCO, CPF et sphère publique — dépendent principalement de la conformité documentaire. Le problème n’est donc pas uniquement « comment relancer plus vite ? », mais aussi « comment faire en sorte que la facture et le dossier soient exploitables le plus rapidement possible ? »</p>
+<div class="callout"><strong>Le recouvrement chez Liora est d’abord un métier de processus, ensuite un métier de relance.</strong></div>
+<h3>3.4. Outils et automatisation existants</h3>
+<p>L’environnement actuel repose sur plusieurs applications. Certaines permettent déjà le suivi de la balance âgée et du DSO, l’organisation des relances, le suivi des litiges et promesses de paiement, la lecture et la catégorisation des flux bancaires ainsi que la prévision de trésorerie.</p>
+<ul>
+<li>Les outils existants sont alimentés automatiquement.</li>
+<li>Monday est utilisé pour organiser et suivre certaines actions.</li>
+<li>Make permet notamment d’automatiser les workflows de relance.</li>
+<li>Les outils actuels ne sont pas conçus nativement pour un fonctionnement multi-pays / multi-devises.</li>
+</ul>
+<div class="callout"><strong>L’enjeu n’est pas de repartir de zéro, mais de structurer, fiabiliser et faire évoluer l’existant pour accompagner le changement d’échelle.</strong></div>
+<h2>4. SWOT</h2>
+<div class="tw"><table><tr class="hdr"><th>FORCES 💪</th><th>FAIBLESSES ⚠️</th></tr><tr><td>Cohésion de l&#x27;équipe et partage des compétences, permettant d&#x27;absorber les pics d&#x27;activité.</td><td>Processus non structurés sur les dispositifs POEI, financement Région, Transitions Pro et AGEFIPH.</td></tr><tr><td>Montée en compétences sur l&#x27;intelligence artificielle, déjà engagée.</td><td>Les prestations déjà réalisées mais pas encore facturées ne sont pas contrôlées assez régulièrement.</td></tr><tr><td>Automatisation de nos propres tâches, développée en interne.</td><td>Anomalies de facturation récurrentes.</td></tr><tr><td>Poste client déjà piloté : balance âgée, DSO, relances, litiges et promesses de paiement suivis, avec une alimentation automatique depuis Pennylane.</td><td>Accès manquants aux portails fournisseurs de plusieurs clients : factures non déposables et bons de commande non récupérables.</td></tr><tr><td>Outils internes documentés, ce qui rend leur reprise possible par une autre personne.</td><td>Tableau des impayés classés par ancienneté : les données s&#x27;alimentent automatiquement, mais nous ne les relisons pas assez souvent.</td></tr><tr><td>Portefeuille solide : financeurs institutionnels et 181 comptes B2B, sans dépendance à un client unique.</td><td>Fiches fournisseurs incomplètes.</td></tr><tr><td>Risque d&#x27;impayé structurellement faible sur les canaux institutionnels.</td><td>Les formalités d&#x27;ouverture de compte exigées par le client — formulaire fournisseur, référencement, pièces administratives — sont engagées après la vente : à l&#x27;échéance, le client n&#x27;a pas encore ce qu&#x27;il lui faut pour payer.</td></tr><tr><td>Conditions de paiement favorables, et moyens d&#x27;encaissement en production : paiement par carte en ligne, prélèvement automatique, virements en devises étrangères.</td><td>À l&#x27;échéance la facture bascule en zone tampon, mais n&#x27;en sort vers le recouvrement que si le dossier est complet en amont : une facture échue dont une pièce manque n&#x27;est pas prise en charge.</td></tr><tr><td>Activité permettant une forte industrialisation des processus et une automatisation significative du recouvrement et de la trésorerie.</td><td>Une facture renvoyée de la zone tampon vers l&#x27;administration des ventes ne passe au recouvrement que trente jours après le traitement de la pièce, alors qu&#x27;elle est déjà échue.</td></tr><tr><td></td><td>Une facture sans adresse de relance au dossier rejoint un groupe « incomplet » : tant qu&#x27;elle y attend, aucune relance ne part.</td></tr><tr><td></td><td>La date à laquelle le dossier est réputé complet se recalcule à chaque nouvelle pièce demandée, et l&#x27;échéance recule d&#x27;autant : elle n&#x27;est jamais connue d&#x27;avance.</td></tr><tr><td></td><td>Les virements reçus sont rattachés aux factures en lisant le libellé du virement, et non une référence de facture : ce rapprochement reste manuel et ne passera pas l&#x27;échelle.</td></tr><tr><td></td><td>Outils conçus pour un périmètre national et un usage interne : ni multi-pays, ni multi-devises.</td></tr><tr><td></td><td>Dépendance à la qualité et à la rapidité de la constitution des dossiers de financement.</td></tr><tr><td></td><td>Sensibilité de la trésorerie à l&#x27;allongement des délais de paiement et aux factures restées impayées.</td></tr></table></div>
+<div class="tw"><table><tr class="hdr"><th>OPPORTUNITÉS 🚀</th><th>MENACES 🔎</th></tr><tr><td>Structuration des dispositifs aujourd&#x27;hui non outillés : POEI, Région, Transitions Pro, AGEFIPH.</td><td>Nous payons salaires et formateurs avant d&#x27;être payés par les financeurs : plus nous croissons, plus cette avance de trésorerie s&#x27;alourdit.</td></tr><tr><td>Déclencher les démarches de paiement avant l&#x27;échéance plutôt qu&#x27;après, sans outil supplémentaire.</td><td>Instabilité du financement de la formation : un changement de règle décale tout le portefeuille.</td></tr><tr><td>Facturation électronique : les statuts de facture indiqueront le motif de non-paiement en temps réel.</td><td>Concentration des financeurs : un blocage administratif chez un seul immobilise plusieurs millions.</td></tr><tr><td>Avance sur factures : une banque peut nous avancer le montant des factures OPCO et publiques en attente de paiement, pour un coût de 4 % par an calculé sur les seules sommes avancées.</td><td>Perte ou suspension de la certification Qualiopi : elle conditionne l&#x27;accès aux fonds publics et mutualisés — OPCO, CPF, France Travail, Régions, Transitions Pro, AGEFIPH. Une suspension ne décale pas un encaissement, elle ferme le canal. L&#x27;audit porte en outre sur les preuves de réalisation, c&#x27;est-à-dire sur les pièces qui conditionnent le paiement : la rigueur documentaire nous expose donc deux fois.</td></tr><tr><td>Généralisation du prélèvement, seul levier agissant sur le délai sans négociation.</td><td>Hypercroissance générant une augmentation des créances et des litiges.</td></tr><tr><td>Industrialisation du recouvrement et automatisation des tâches à faible valeur ajoutée, avec l&#x27;appui de l&#x27;IA.</td><td>Multiplication des devises, des comptes bancaires et des obligations locales de facturation.</td></tr><tr><td>Structuration d&#x27;une approche Groupe pour l&#x27;international, à construire sur le périmètre franco-allemand existant.</td><td></td></tr></table></div>
+<h2>5. Problématiques prioritaires</h2>
+<ol>
+<li>Comment éviter les impayés plutôt que simplement les recouvrer ?</li>
+<li>Comment rendre le recouvrement scalable ?</li>
+<li>Comment fiabiliser les délais de paiement ?</li>
+<li>Comment sécuriser les financements ?</li>
+<li>Comment aligner les conditions commerciales avec l’encaissement ?</li>
+<li>Comment donner davantage de visibilité à la trésorerie ?</li>
+</ol>
+<h2>6. Axe stratégique n°1 — Objectif zéro recouvrement manuel</h2>
+<div class="callout"><strong>OBJECTIF CIBLE : zéro recouvrement manuel sur les flux standards.</strong></div>
+<p>Cela ne signifie pas supprimer la fonction Recouvrement. Le Recouvrement doit se concentrer sur les exceptions à forte valeur ajoutée plutôt que sur les tâches répétitives.</p>
+<p>Le modèle cible devient :</p>
+<div class="callout flow">Scoring client → conditions de paiement adaptées → sécurisation contractuelle → facturation selon les règles applicables → paiement automatisé lorsque pertinent → accès aux contenus éventuellement ouvert sprint par sprint selon le calendrier pédagogique et contractuel → gestion humaine des exceptions.</div>
+<p>L’existant Monday + Make + applications internes doit permettre de construire progressivement ce modèle. L’humain intervient lorsque le processus automatique n’a pas permis d’obtenir le paiement ou lorsque la situation nécessite une analyse particulière.</p>
+<h2>7. Fiabiliser et adapter les délais de paiement grâce au scoring client</h2>
+<p>Le scoring client doit permettre d’évaluer le risque avant de définir les conditions de paiement.</p>
+<ul>
+<li>historique de paiement ;</li>
+<li>retards constatés ;</li>
+<li>incidents et impayés ;</li>
+<li>montant de l’engagement ;</li>
+<li>typologie du client ;</li>
+<li>ancienneté de la relation ;</li>
+<li>pays ;</li>
+<li>mode de financement ;</li>
+<li>niveau d’exposition ;</li>
+<li>comportement historique du client.</li>
+</ul>
+<div class="tw"><table><tr class="hdr"><th><strong>Niveau de risque</strong></th><th><strong>Logique possible</strong></th></tr><tr><td><strong>Bon score</strong></td><td><strong>Conditions potentiellement plus souples ; délais plus longs lorsque pertinent ; automatisation du paiement.</strong></td></tr><tr><td><strong>Risque intermédiaire</strong></td><td><strong>Échéances plus courtes ; prélèvement automatique privilégié lorsque pertinent ; sécurisation complémentaire.</strong></td></tr><tr><td><strong>Risque élevé</strong></td><td><strong>Acompte ou avance ; dépôt de garantie lorsque nécessaire ; paiement automatisé ; conditions renforcées ; limitation de l’exposition.</strong></td></tr></table></div>
+<div class="callout"><strong>Le scoring devient un outil de prévention permettant de fiabiliser les délais de paiement avant l’apparition de l’impayé.</strong></div>
+<h2>8. Facturation selon les modalités contractuelles</h2>
+<p>La facturation est normalement émise au démarrage selon les modalités prévues. L’enjeu est donc de fiabiliser les échéances contractuelles et de suivre leur règlement, et non de décaler ou de multiplier systématiquement les factures.</p>
+<p>La logique cible est : contrat → facture émise selon les règles applicables → échéance clairement définie → suivi du paiement → relance automatisée en cas de retard. Une échéance respectée ne constitue pas un problème, même si l’encaissement intervient plusieurs semaines après l’émission de la facture.</p>
+<p>Créer une fiche entreprise complète en interne afin de centraliser les informations administratives et de facturation nécessaires, et de disposer des bons éléments dès l’émission de la facture. Demander également le bon de commande en amont du début de la formation et vérifier sa réception ainsi que sa conformité avant le démarrage.</p>
+<h2>9. Avance ou dépôt de garantie</h2>
+<p>Lorsque GoCardless est utilisé sur certains financements personnels et que le niveau de sécurité reste insuffisant, une avance ou un dépôt de garantie équivalent à 2 à 3 mois pourrait être étudié.</p>
+<p>Cette possibilité doit être adaptée au type de financement, au profil du client, au niveau de risque et au cadre contractuel applicable.</p>
+<p>Le cadre diffère toutefois selon le statut de l’apprenant, et cette distinction conditionne la faisabilité du dispositif. Lorsqu’une personne physique signe un contrat de formation professionnelle à titre individuel, l’article L.6353-6 du Code du travail interdit d’exiger une somme avant l’expiration du délai de rétractation de dix jours, plafonne à 30 % du prix ce qui peut être encaissé à cette expiration, et impose d’échelonner le solde au fur et à mesure du déroulement de la formation : un dépôt de deux à trois mois y est difficilement praticable.</p>
+<p>Lorsque l’apprenant dispose d’un numéro SIREN et achète la formation pour son activité, la relation relève en revanche d’une convention de formation, à laquelle ces plafonds ne s’appliquent pas. Le dispositif doit donc être construit en deux parcours distincts selon ce critère, et le point validé en interne avant déploiement.</p>
+<h2>10. Paiement automatisé — B2B et financement personnel</h2>
+<h3>10.1. Financements entreprise</h3>
+<p>Le prélèvement automatique via GoCardless pourrait être développé sur les financements entreprise, notamment lorsque les contrats prévoient des échéances mensuelles récurrentes.</p>
+<div class="callout flow"><strong>Contrat signé → mandat de prélèvement → facturation → prélèvement automatique</strong></div>
+<h3>10.2. Financements personnels</h3>
+<p>Pour les financements personnels, GoCardless ne doit pas être présenté comme le mode de paiement par défaut. Il constitue plutôt un levier de sécurisation de dernier recours lorsque les modalités habituelles ne permettent pas d’obtenir un niveau de sécurité suffisant.</p>
+<h2>11. Faire évoluer l’accès aux formations</h2>
+<p>Aujourd’hui, l’accès immédiat à l’ensemble des contenus peut créer une exposition importante : le client peut bénéficier d’une part significative de la prestation avant que l’entreprise ait encaissé l’intégralité des montants dus.</p>
+<p>Une évolution pourrait consister à libérer les contenus progressivement, sprint par sprint, chaque sprint étant associé à une période définie.</p>
+<div class="callout flow"><strong>Sprint 1 → Sprint 2 → Sprint 3 → Sprint 4</strong></div>
+<p>L’accès pourrait être aligné avec la progression pédagogique, le calendrier contractuel et, lorsque cela est prévu contractuellement, la régularité des paiements. Cette évolution devra être validée avec les équipes pédagogiques et juridiquement sécurisée.</p>
+<h2>12. Suspension des accès en cas d’impayé</h2>
+<div class="callout flow"><strong>Échéance → échec de paiement → notification → relance automatique → délai de régularisation → intervention Recouvrement → escalade si nécessaire</strong></div>
+<p>Prévoir, lorsque le cadre contractuel le permet, une suspension des accès en cas d’impayé, y compris pour les formations financées par une entreprise.</p>
+<p>Automatiser le blocage des diplômes selon le principe « diplôme bloqué par défaut ». Mettre en place une liaison entre la plateforme de formation et Pennylane afin de vérifier le statut du paiement. Tant que le paiement n’est pas confirmé comme reçu, le diplôme reste bloqué. Dès que le paiement est identifié comme effectué dans Pennylane, une automatisation ajoute le badge « Déblocage de diplôme » dans la plateforme de formation, ce qui autorise la délivrance du diplôme. L’objectif est de supprimer les vérifications et actions manuelles répétitives. Les règles doivent être vérifiées au regard des obligations contractuelles et réglementaires applicables aux différents dispositifs de financement.</p>
+<h2>13. Passer d’une logique curative à une logique d’exception</h2>
+<p>Le processus cible devient : anticipation des formulaires, des informations de facturation et du bon de commande → facturation avec un dossier administratif complet → arrivée de l’échéance contractuelle → encaissement attendu. Si le règlement n’est pas reçu à l’échéance, le recouvrement est déclenché immédiatement, sans délai supplémentaire accordé par défaut, dans le respect des conditions contractuelles.</p>
+<h3>Niveau 1 — Prévention</h3>
+<ul>
+<li>scoring</li>
+<li>conditions de paiement adaptées</li>
+<li>sécurisation contractuelle</li>
+<li>avance / dépôt lorsque nécessaire</li>
+<li>prélèvement automatique lorsque pertinent</li>
+<li>facturation selon les modalités contractuelles</li>
+<li>accès progressif</li>
+</ul>
+<h3>Niveau 2 — Automatisation</h3>
+<ul>
+<li>rappels d’échéance</li>
+<li>relances automatiques</li>
+<li>notifications</li>
+<li>suivi des paiements</li>
+<li>traitement automatisé des échecs de prélèvement</li>
+<li>workflows Monday / Make</li>
+</ul>
+<h3>Niveau 3 — Intervention humaine</h3>
+<ul>
+<li>impayés significatifs</li>
+<li>comptes à risque</li>
+<li>litiges</li>
+<li>promesses de paiement non tenues</li>
+<li>dossiers complexes</li>
+<li>grands comptes</li>
+<li>exceptions nécessitant une négociation</li>
+</ul>
+<div class="callout"><strong>Le temps de l’équipe doit progressivement être déplacé du volume de relances vers le traitement des situations à enjeu.</strong></div>
+<h2>14. Rôle du Sales dans la sécurisation du cash</h2>
+<p>Le Sales ne devient pas responsable du recouvrement. En revanche, la performance commerciale peut intégrer davantage la qualité de l’encaissement.</p>
+<p>Anticiper les exigences administratives de l’entreprise cliente. Dès la phase commerciale, le Sales identifie les formulaires que l’entreprise demande. Il les complète lui-même ou sollicite le service ADV, mais veille dans les deux cas à ce que le dossier soit finalisé avant la closance, c’est-à-dire avant la finalisation de l’inscription par le commercial.</p>
+<ul>
+<li>conditions de paiement définies dès la vente ;</li>
+<li>informations nécessaires à la facturation complètes avant signature ;</li>
+<li>validation des modalités de financement ;</li>
+<li>intervention du Sales sur certains comptes stratégiques en retard ;</li>
+<li>partage des informations sur les engagements clients.</li>
+</ul>
+<div class="callout"><strong>Étudier un système permettant de lier une partie de la commission Sales à l’encaissement effectif.</strong></div>
+<h2>15. Gestion des litiges</h2>
+<p>Une partie du retard d’encaissement peut provenir non pas d’un problème de solvabilité mais d’un problème de facturation ou de contestation.</p>
+<ul>
+<li>identifier rapidement la cause ;</li>
+<li>attribuer clairement le traitement ;</li>
+<li>suivre les échéances de résolution ;</li>
+<li>éviter qu’une facture contestée reste bloquée sans visibilité ;</li>
+<li>distinguer les risques clients des problèmes administratifs.</li>
+</ul>
+<p>Le pilotage doit notamment suivre le montant des créances en litige, leur ancienneté, leur évolution et leur délai de résolution.</p>
+<h2>16. Axe stratégique n°2 — Trésorerie prédictive</h2>
+<p>La Trésorerie doit accompagner la croissance en améliorant la visibilité sur les entrées et sorties de cash.</p>
+<h3>Cash à court terme</h3>
+<div class="callout"><strong>Mettre en place une visibilité cash à J+1, J+7 et J+30.</strong></div>
+<ul>
+<li>solde bancaire</li>
+<li>encaissements réalisés</li>
+<li>encaissements attendus</li>
+<li>décaissements prévus</li>
+<li>écarts par rapport aux prévisions</li>
+</ul>
+<h3>Prévision de trésorerie à 13 semaines</h3>
+<p>La prévision glissante à 13 semaines constitue un outil central pour anticiper les tensions, identifier les semaines sensibles, suivre les encaissements majeurs, mesurer les écarts entre prévision et réalisé et préparer les besoins de financement.</p>
+<h3>Vision 12–24 mois</h3>
+<ul>
+<li>besoins de financement</li>
+<li>variations saisonnières</li>
+<li>projets de développement</li>
+<li>internationalisation</li>
+<li>besoins éventuels de mobilisation de créances</li>
+</ul>
+<h2>17. Affacturage / cession Dailly en cas de besoin de trésorerie</h2>
+<p>L’affacturage ou une solution de cession / financement Dailly des créances peut être envisagée lorsque la trésorerie nécessite ponctuellement de mobiliser plus rapidement les créances clients.</p>
+<p>Il s’agit d’un levier de financement, et non d’un substitut au recouvrement.</p>
+<div class="callout flow"><strong>Sécuriser la vente → facturer → automatiser le paiement → recouvrer les exceptions → prévoir le cash → mobiliser ponctuellement les créances si nécessaire.</strong></div>
+<h2>18. Internationalisation</h2>
+<ul>
+<li>devises ;</li>
+<li>moyens de paiement locaux ;</li>
+<li>réglementations ;</li>
+<li>délais de paiement ;</li>
+<li>fiscalité ;</li>
+<li>risques pays ;</li>
+<li>risque de change ;</li>
+<li>différences de pratiques commerciales.</li>
+</ul>
+<p>Le scoring devra progressivement intégrer une dimension géographique. Les conditions de paiement devront également pouvoir être adaptées au marché.</p>
+<p>L’objectif est de construire dès maintenant un modèle suffisamment standardisé pour être déployé à l’international sans multiplier les processus manuels. Les processus devront également prévoir une communication opérationnelle en anglais avec les clients, partenaires et interlocuteurs locaux.</p>
+<h2>19. Automatisation</h2>
+<p>L’automatisation doit être considérée comme un axe transversal. L’environnement existant constitue déjà une première base avec plusieurs applications, Monday, Make et les applications de suivi du recouvrement et de la trésorerie.</p>
+<p>Le parcours cible doit progressivement permettre :</p>
+<div class="callout flow"><strong>Création client → scoring → conditions de paiement → contrat → facturation → paiement → relances → suspension éventuelle → reporting</strong></div>
+<p>Les principales automatisations à développer ou renforcer sont :</p>
+<ul>
+<li>calcul et mise à jour du scoring ;</li>
+<li>génération des échéanciers ;</li>
+<li>facturation ;</li>
+<li>prélèvements ;</li>
+<li>relances ;</li>
+<li>notifications ;</li>
+<li>suivi des promesses de paiement ;</li>
+<li>alertes sur les échéances importantes ;</li>
+<li>reporting ;</li>
+<li>rapprochement des encaissements.</li>
+</ul>
+<div class="callout"><strong>L’automatisation existe déjà : l’enjeu est maintenant de la structurer et de la rendre scalable.</strong></div>
+<h2>20. KPIs Recouvrement</h2>
+<h3>Performance d’encaissement</h3>
+<ul>
+<li>DSO</li>
+<li>taux d’encaissement à échéance</li>
+<li>taux de recouvrement</li>
+<li>montant des créances échues</li>
+<li>délai entre l’échéance et la prise en charge par le recouvrement</li>
+<li>montant des créances &gt; 30 / 60 / 90 jours</li>
+<li>taux de promesses de paiement respectées</li>
+</ul>
+<h3>Qualité du portefeuille</h3>
+<ul>
+<li>exposition par client</li>
+<li>exposition par segment</li>
+<li>encours par niveau de risque</li>
+<li>montant des litiges</li>
+<li>ancienneté des créances</li>
+<li>taux d’impayés</li>
+</ul>
+<h3>Automatisation</h3>
+<ul>
+<li>part des paiements automatisés</li>
+<li>part des dossiers traités sans intervention manuelle</li>
+<li>taux d’échec des prélèvements</li>
+<li>nombre d’actions manuelles par facture</li>
+<li>part des créances entrant directement dans un scénario automatisé</li>
+</ul>
+<div class="callout"><strong>KPI stratégique : % des encaissements réalisés sans intervention manuelle.</strong></div>
+<h2>21. KPIs Trésorerie</h2>
+<ul>
+<li>cash disponible quotidien ;</li>
+<li>cash à J+1 / J+7 / J+30 ;</li>
+<li>encaissements réalisés vs prévus ;</li>
+<li>décaissements réalisés vs prévus ;</li>
+<li>précision de la prévision 13 semaines ;</li>
+<li>variation de trésorerie ;</li>
+<li>besoins de financement anticipés ;</li>
+<li>concentration des encaissements ;</li>
+<li>montant des créances potentiellement mobilisables.</li>
+</ul>
+<h2>22. Organisation cible</h2>
+<p>La fonction Recouvrement &amp; Trésorerie doit évoluer vers un rôle davantage analytique et préventif.</p>
+<div class="tw"><table><tr class="hdr"><th><strong>Responsabilité</strong></th><th><strong>Rôle cible</strong></th></tr><tr><td><strong>Prévention</strong></td><td><strong>Sécuriser les conditions de paiement et identifier les risques avant l’apparition de l’impayé.</strong></td></tr><tr><td><strong>Recouvrement</strong></td><td><strong>Traiter les exceptions et les dossiers nécessitant une intervention humaine.</strong></td></tr><tr><td><strong>Pilotage</strong></td><td><strong>Analyser les indicateurs, identifier les dérives et mettre en place les plans d’action.</strong></td></tr><tr><td><strong>Trésorerie</strong></td><td><strong>Anticiper les encaissements, les décaissements et les besoins de liquidité.</strong></td></tr></table></div>
+<p>L’objectif n’est pas de construire une équipe de recouvrement proportionnelle au chiffre d’affaires. La croissance doit être absorbée principalement par l’automatisation et la standardisation des processus.</p>
+<p>Restructurer les activités du service ADV autour des échéances qui conditionnent l’encaissement. Le contrôle et le dépôt des factures auprès des financeurs, le suivi des rejets et la régularisation des pièces manquantes doivent constituer une activité planifiée et suivie — responsable identifié, fréquence définie, indicateur du nombre de dossiers en attente de dépôt — et non une tâche traitée au fil de l’eau.</p>
+<h2>23. Roadmap</h2>
+<h3>0–6 mois — Sécuriser les fondamentaux</h3>
+<ul>
+<li>cartographier les parcours de paiement ;</li>
+<li>segmenter les clients ;</li>
+<li>définir les règles de scoring ;</li>
+<li>identifier les principaux motifs d’impayés ;</li>
+<li>fiabiliser la facturation ;</li>
+<li>mettre à jour régulièrement la balance âgée ;</li>
+<li>renforcer le contrôle des FAE ;</li>
+<li>structurer les processus POEI, Région, Transition Pro et AGEFIPH ;</li>
+<li>compléter les fiches fournisseurs ;</li>
+<li>clôturer le formulaire fournisseur du client avant la signature, sous la responsabilité du Sales ;</li>
+<li>créer la fiche entreprise interne et exiger le bon de commande avant le démarrage de la formation ;</li>
+<li>restructurer le contrôle et le dépôt des factures auprès des financeurs, avec responsable et fréquence définis ;</li>
+<li>rendre l’adresse de relance obligatoire à la création du dossier ;</li>
+<li>faire remonter immédiatement au recouvrement les factures déjà échues dès régularisation de la pièce, sans redémarrer un délai de trente jours ;</li>
+<li>définir les règles de relance ;</li>
+<li>lancer l’étude GoCardless sur les financements entreprise ;</li>
+<li>définir le principe d’avance / dépôt de garantie ;</li>
+<li>cadrer le lien entre commission Sales et encaissement ;</li>
+<li>construire la visibilité cash J+1 / J+7 / J+30 ;</li>
+<li>construire la prévision 13 semaines ;</li>
+<li>mettre en place les KPIs clés.</li>
+</ul>
+<h3>6–18 mois — Automatiser</h3>
+<ul>
+<li>automatisation des relances ;</li>
+<li>automatisation des paiements ;</li>
+<li>déploiement du scoring ;</li>
+<li>différenciation des conditions de paiement ;</li>
+<li>facturation selon les modalités contractuelles ;</li>
+<li>mise en place progressive des accès par sprint ;</li>
+<li>mécanisme de suspension contractuellement sécurisé ;</li>
+<li>automatisation du reporting ;</li>
+<li>amélioration du rapprochement des encaissements ;</li>
+<li>structuration des workflows Monday / Make.</li>
+</ul>
+<h3>18–36 mois — Industrialiser</h3>
+<ul>
+<li>réduction forte des actions manuelles ;</li>
+<li>déploiement du modèle sur l’ensemble des segments ;</li>
+<li>optimisation des conditions de paiement ;</li>
+<li>développement du prélèvement entreprise ;</li>
+<li>amélioration de la prévision de trésorerie ;</li>
+<li>étude structurée des solutions d’affacturage / cession Dailly ;</li>
+<li>adaptation aux premiers marchés internationaux ;</li>
+<li>évolution progressive des outils pour répondre aux enjeux multi-pays et multi-devises.</li>
+</ul>
+<h3>36–60 mois — Accompagner les 100 M€</h3>
+<ul>
+<li>modèle largement automatisé ;</li>
+<li>recouvrement centré sur les exceptions ;</li>
+<li>scoring intégré au parcours commercial ;</li>
+<li>conditions de paiement adaptées au risque ;</li>
+<li>paiements automatisés sur les flux pertinents ;</li>
+<li>pilotage international ;</li>
+<li>prévision de trésorerie renforcée ;</li>
+<li>capacité de financement des créances disponible en cas de besoin.</li>
+</ul>
+<h2>24. Trajectoire cible à 100 M€</h2>
+<h3>Recouvrement</h3>
+<ul>
+<li>réduction significative du DSO</li>
+<li>réduction des créances &gt; 60 et &gt; 90 jours</li>
+<li>forte augmentation du taux d’encaissement à échéance</li>
+<li>réduction du volume de relances manuelles</li>
+<li>traitement des impayés principalement en mode exception</li>
+</ul>
+<h3>Automatisation</h3>
+<ul>
+<li>majorité des paiements standards automatisés</li>
+<li>majorité des relances standards automatisées</li>
+<li>facturation intégrée au parcours</li>
+<li>suivi centralisé des échéances</li>
+<li>accès aux contenus progressivement aligné avec le parcours contractuel</li>
+</ul>
+<h3>Trésorerie</h3>
+<ul>
+<li>visibilité cash à J+1 / J+7 / J+30</li>
+<li>vision quotidienne fiable</li>
+<li>prévision 13 semaines robuste</li>
+<li>visibilité 12–24 mois</li>
+<li>capacité à anticiper les besoins de liquidité</li>
+<li>possibilité de mobiliser ponctuellement les créances si nécessaire</li>
+</ul>
+<h2>25. Modèle cible</h2>
+<h3>Avant la vente</h3>
+<div class="callout flow"><strong>Scoring client → Conditions de paiement adaptées → Sécurisation contractuelle</strong></div>
+<h3>Au démarrage</h3>
+<div class="callout flow"><strong>Avance / dépôt de garantie selon le risque → Mandat de prélèvement lorsque pertinent → Échéancier clair</strong></div>
+<h3>Pendant la formation</h3>
+<div class="callout flow">Facturation selon les modalités du financement → Accès progressif sprint par sprint → Paiement automatisé</div>
+<h3>En cas d’incident</h3>
+<div class="callout flow"><strong>Échec de paiement → Notification → Relance automatique (Monday / Make) → Délai de régularisation → Recouvrement humain si nécessaire → Suspension éventuelle selon contrat et cadre applicable</strong></div>
+<h3>En cas de besoin de trésorerie</h3>
+<div class="callout flow"><strong>Prévision de cash → Identification du besoin → Mobilisation ponctuelle des créances → Affacturage / cession Dailly si pertinent</strong></div>
+<h2>26. Synthèse finale — Problématique | Solution</h2>
+<p>Cette synthèse reprend l’ensemble des points de blocage identifiés dans la note et les actions proposées, ordonnés selon le cycle de vie du dossier, de la vente à l’encaissement. L’objectif est de sécuriser les dossiers avant l’échéance, de déclencher les démarches de paiement en amont et de réserver l’intervention humaine aux véritables exceptions.</p>
+<div class="tw"><table><tr class="hdr"><th><strong>PROBLÉMATIQUE</strong></th><th><strong>SOLUTION À METTRE EN PLACE</strong></th></tr><tr class="band"><td colspan="2"><strong>1. AVANT LA VENTE — SÉCURISER LES CONDITIONS</strong></td></tr><tr><td>Difficulté à fiabiliser les délais de paiement.</td><td>Mettre en place un scoring client pour adapter les conditions et les délais de paiement au niveau de risque.</td></tr><tr><td>Conditions de paiement identiques quel que soit le risque porté par le client.</td><td>Différencier les conditions de paiement selon le scoring et le profil du client.</td></tr><tr><td>Formalités d’ouverture de compte engagées après la vente : à l’échéance, le client ne dispose pas de tous les éléments nécessaires au paiement.</td><td>Dès la phase commerciale, identifier les formulaires demandés par l’entreprise. Le Sales les complète ou sollicite l’ADV. Finaliser le dossier avant la closance, c’est-à-dire avant la finalisation de l’inscription par le commercial.</td></tr><tr><td>Bon de commande absent au démarrage de la formation.</td><td>Demander le bon de commande avant le début de la formation et vérifier sa réception et sa conformité en amont.</td></tr><tr><td>Informations administratives et de facturation dispersées ou incomplètes.</td><td>Créer et tenir à jour une fiche entreprise interne complète, regroupant les informations administratives et les éléments nécessaires à la facturation.</td></tr><tr><td>Commission Sales déconnectée de l’encaissement.</td><td>Étudier un système permettant de lier une partie de la commission Sales à l’encaissement effectif.</td></tr><tr class="band"><td colspan="2"><strong>2. CONSTITUTION ET CONFORMITÉ DU DOSSIER</strong></td></tr><tr><td>Retard créé avant même l’émission de la facture.</td><td>Réduire les délais de constitution et de dépôt des dossiers, avec un objectif de dossier complet transmis rapidement.</td></tr><tr><td>Processus insuffisamment structurés sur les dispositifs POEI, Région, Transitions Pro, France Travail et AGEFIPH.</td><td>Formaliser les étapes, les pièces attendues, les responsables, les délais de transmission et les points de contrôle propres à chaque dispositif.</td></tr><tr><td>Factures OPCO non déposées, ou dépôts effectués tardivement.</td><td>Restructurer les activités du service ADV : faire du contrôle et du dépôt des factures une activité planifiée et suivie, avec responsable identifié, fréquence définie, suivi des rejets et indicateur des dossiers en attente de dépôt.</td></tr><tr><td>Documents demandés par les financeurs Région, Transitions Pro et France Travail pas toujours signés ni transmis.</td><td>Bloquer la délivrance du diplôme tant que le document requis n’est pas signé et enregistré, sous réserve des règles contractuelles et réglementaires applicables.</td></tr><tr><td>Accès manquants à certains portails fournisseurs : factures non déposables et bons de commande non récupérables.</td><td>Identifier les portails requis pour chaque client et obtenir les accès ainsi que les éléments nécessaires avant l’échéance.</td></tr><tr><td>Contrôle des prestations réalisées et non encore facturées (FAE) insuffisant.</td><td>Mettre en place un contrôle régulier des FAE afin de les identifier et de les traiter rapidement.</td></tr><tr class="band"><td colspan="2"><strong>3. FACTURATION</strong></td></tr><tr><td>Anomalies de facturation récurrentes.</td><td>Renforcer les contrôles des données de facturation avant émission et corriger les anomalies identifiées.</td></tr><tr><td>Fiches fournisseurs incomplètes.</td><td>Compléter et maintenir à jour les fiches fournisseurs et les informations administratives nécessaires.</td></tr><tr><td>Date de complétude du dossier recalculée à chaque nouvelle pièce, rendant l’échéance difficile à connaître à l’avance.</td><td>Distinguer la date d’échéance contractuelle de la date de réception des pièces complémentaires. Conserver une échéance de paiement identifiable et suivre séparément les blocages documentaires.</td></tr><tr><td>Conditions de paiement des clients entreprises insuffisamment suivies.</td><td>Suivre l’échéance à 30 jours date de facture et vérifier que les bons de commande et documents demandés ont bien été transmis.</td></tr><tr class="band"><td colspan="2"><strong>4. ENCAISSEMENT ET AUTOMATISATION</strong></td></tr><tr><td>Financements entreprise à sécuriser.</td><td>Étudier et développer le prélèvement automatique via GoCardless lorsque cela est pertinent, notamment pour les échéances mensuelles récurrentes.</td></tr><tr><td>Financements personnels nécessitant davantage de sécurité.</td><td>En cas de risque ou de difficulté de paiement, étudier un prélèvement GoCardless en complément et, selon le dossier, une avance ou un dépôt de garantie de 2 à 3 mois.</td></tr><tr><td>Paiements concentrés en fin de formation.</td><td>Pour les financements personnels, demander à la Team Finance d’étudier un échéancier répartissant mieux les paiements sur la durée de la formation.</td></tr><tr><td>Prélèvement automatique pas encore généralisé à l’ensemble des flux pertinents.</td><td>Étendre progressivement le prélèvement lorsque le type de client et le dispositif le permettent, afin de réduire le délai d’encaissement sans renégociation à chaque échéance.</td></tr><tr><td>Rapprochement des virements aux factures effectué manuellement à partir du libellé du virement.</td><td>Mettre en place une référence de paiement structurée et systématique permettant d’automatiser le rapprochement entre virements et factures.</td></tr><tr><td>Relances récurrentes traitées manuellement.</td><td>Automatiser davantage les workflows de relance via Monday et Make.</td></tr><tr class="band"><td colspan="2"><strong>5. ACCÈS AUX CONTENUS ET DÉLIVRANCE DU DIPLÔME</strong></td></tr><tr><td>Accès immédiat à l’ensemble des contenus, même lorsque la formation n’est pas intégralement payée.</td><td>Étudier une libération des contenus sprint par sprint, selon un calendrier défini et dans le respect du cadre pédagogique et contractuel.</td></tr><tr><td>Diplôme délivré alors que le paiement n’est pas confirmé.</td><td>Appliquer le principe « diplôme bloqué par défaut ». Relier la plateforme de formation à Pennylane : dès que le paiement est confirmé, une automatisation ajoute le badge de déblocage. Règles à valider en interne.</td></tr><tr><td>Impayés persistants.</td><td>Prévoir, lorsque le cadre contractuel le permet, une suspension temporaire des accès, y compris pour les formations financées par une entreprise.</td></tr><tr class="band"><td colspan="2"><strong>6. RECOUVREMENT</strong></td></tr><tr><td>Factures échues bloquées en zone tampon lorsque le dossier est incomplet, puis délai supplémentaire de 30 jours après traitement de la pièce.</td><td>Faire remonter immédiatement les factures déjà échues dès que la pièce manquante est régularisée. Ne pas redémarrer un délai de 30 jours sur une facture dont l’échéance est déjà passée.</td></tr><tr><td>Factures sans adresse de relance classées « incomplètes » et exclues des relances.</td><td>Rendre l’adresse de relance obligatoire dès la création du dossier et prévoir un traitement spécifique des factures échues dont le contact manque, afin qu’elles ne restent pas sans suivi.</td></tr><tr><td>Tableau des impayés alimenté automatiquement mais pas assez souvent relu.</td><td>Instaurer une revue régulière de la balance âgée et des factures échues, avec traitement des dossiers bloqués et déclenchement du recouvrement dès l’échéance impayée.</td></tr><tr><td>Recouvrement manuel sur les flux standards.</td><td>Tendre vers zéro recouvrement manuel sur les flux standards et réserver l’intervention humaine aux exceptions.</td></tr><tr><td>Temps de l’équipe mobilisé sur des tâches répétitives.</td><td>Concentrer l’équipe sur les exceptions et les dossiers à enjeu.</td></tr><tr><td>Litiges peu visibles.</td><td>Suivre le montant, l’ancienneté et le délai de résolution des créances en litige, et distinguer les risques clients des problèmes administratifs.</td></tr><tr class="band"><td colspan="2"><strong>7. TRÉSORERIE</strong></td></tr><tr><td>Visualisation du cash insuffisante.</td><td>Mettre en place une visibilité cash à J+1, J+7 et J+30.</td></tr><tr><td>Manque de visibilité sur les encaissements à venir.</td><td>Suivre les encaissements prévus par rapport aux encaissements réellement reçus, et mesurer l’écart.</td></tr><tr><td>Besoin d’une vision structurée de la trésorerie à moyen terme.</td><td>Mettre en place une prévision glissante de trésorerie à 13 semaines.</td></tr><tr><td>Délais d’encaissement sensibles aux délais des financeurs, avec une avance de trésorerie nécessaire pour payer salaires et formateurs.</td><td>Suivre les encaissements attendus et les écarts de paiement ; étudier l’avance ponctuelle sur factures OPCO et publiques, au coût indicatif communiqué de 4 % par an sur les seules sommes avancées.</td></tr><tr><td>Besoin ponctuel de trésorerie.</td><td>Étudier, lorsque nécessaire, le recours à l’affacturage ou à une cession de créances de type Dailly.</td></tr><tr class="band"><td colspan="2"><strong>8. PILOTAGE, ORGANISATION ET INTERNATIONALISATION</strong></td></tr><tr><td>Taux d’encaissement obtenu sans intervention humaine non mesuré.</td><td>Instaurer ce taux comme indicateur stratégique de la fonction et le suivre mensuellement : c’est lui qui mesure la disparition progressive du besoin de recouvrement.</td></tr><tr><td>Délai entre l’échéance et la prise en charge par le recouvrement non mesuré.</td><td>Mesurer ce délai canal par canal : il traduit directement l’effet des mesures de prévention.</td></tr><tr><td>Certification Qualiopi conditionnant l’accès aux fonds publics et mutualisés.</td><td>Sécuriser la conformité documentaire : l’audit porte sur les preuves de réalisation, qui conditionnent aussi le paiement. Une suspension fermerait le canal, et pas seulement un encaissement.</td></tr><tr><td>Processus et rapprochement conçus pour un périmètre national, alors que le développement implique plusieurs pays et devises.</td><td>Construire une approche Groupe sur le périmètre franco-allemand existant et faire évoluer les processus, les moyens d’encaissement et les obligations de facturation vers le multi-pays et le multi-devises.</td></tr><tr><td>Internationalisation à préparer.</td><td>Standardiser les processus, adapter les modalités de paiement aux marchés et mettre en place une communication opérationnelle en anglais.</td></tr></table></div>
+<h2>27. Conclusion</h2>
+<p>La trajectoire vers 100 M€ nécessite de faire évoluer le Recouvrement &amp; la Trésorerie d’une fonction principalement opérationnelle vers une fonction de sécurisation et de pilotage de la croissance.</p>
+<p>Le principal enjeu n’est pas de recouvrer davantage avec davantage de ressources. Il est de construire un système dans lequel le paiement est sécurisé avant même que le recouvrement soit nécessaire.</p>
+<div class="callout"><strong>MOINS D’IMPAYÉS  •  MOINS DE TÂCHES MANUELLES  •  PLUS D’AUTOMATISATION  •  PLUS DE PRÉVISIBILITÉ  •  DAVANTAGE DE CASH SÉCURISÉ</strong></div>
+<p>Le modèle repose sur quelques principes structurants :</p>
+<div class="callout flow"><strong>Scorer avant de vendre → sécuriser avant de former → fiabiliser les dossiers → facturer au fil de l’eau → automatiser le paiement et les relances → aligner progressivement l’accès à la formation et le paiement → traiter les exceptions → anticiper la trésorerie → mobiliser les créances uniquement lorsque nécessaire.</strong></div>
+<p>Cette transformation permettra à la fonction Recouvrement &amp; Trésorerie de soutenir la croissance vers 100 M€ tout en restant scalable, pilotable et adaptée à l’internationalisation.</p>
+</div>
