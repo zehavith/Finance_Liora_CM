@@ -1147,7 +1147,7 @@ function provisionRegles(ws){
     ['Imputation — temps 1 : le règlement',
      'Un encaissement désignant des factures leur est imputé : par montant exact d’abord, puis de la plus ancienne à la plus récente, avoirs déduits.'],
     ['Imputation — temps 2 : le compte client',
-     'Les crédits qu’aucune facture ne porte s’imputent sur les dettes du même compte, de la plus ancienne à la plus récente.'],
+     'Les crédits qu’aucune facture ne porte s’imputent sur les créances à solde débiteur du même compte, de la plus ancienne à la plus récente.'],
     ['Imputation — temps 3 : la tranche',
      'Le crédit restant compense les créances du même type de financement et de la même tranche d’ancienneté, la plus ancienne d’abord.'],
     ['Imputation — temps 4 : la cascade',
@@ -1167,7 +1167,7 @@ function provisionRegles(ws){
     ['Crédit sans emploi',
      sansEmploi>0.005
        ? eurC(sansEmploi)+' sur le type de financement '+creditSansEmploiDit()
-         +' : aucune dette ouverte de ce type de financement n’a pu l’absorber, dans aucune tranche.'
+         +' : aucune créance à solde débiteur de ce type de financement n’a pu l’absorber, dans aucune tranche.'
        : 'Aucun : tout le crédit a trouvé preneur.'],
   ];
   let z=0;
@@ -1665,12 +1665,12 @@ function pontDuResteDu(ws){
   })();
   if(trancheBalance!==null){
     pose('Somme des tranches soumises au barème', trancheBalance, null,
-      'Les colonnes « 4 à 6 mois » et au-delà de la ligne TOTAL, telles que la balance les publie : des montants NETS, dettes moins créances à solde créditeur.', true);
+      'Les colonnes « 4 à 6 mois » et au-delà de la ligne TOTAL, telles que la balance les publie : des montants NETS, créances à solde débiteur moins créances à solde créditeur.', true);
     pose('+ créances à solde créditeur, que l’assiette ne déduit pas', -crediteur, nCrediteur,
       'Une créance dont les encaissements et les avoirs dépassent la facture ne couvre aucune perte : elle minore la tranche, mais ne se provisionne pas. On la remet pour revenir au seul côté débiteur.');
   }
-  pose('= Reste dû des créances débitrices soumises au barème', brut, nb,
-    'Les créances débitrices dont l’ancienneté tombe dans une fenêtre de provision, à leur reste dû.', true);
+  pose('= Reste dû des créances à solde débiteur soumises au barème', brut, nb,
+    'Les créances dont le solde reste débiteur et dont l’ancienneté tombe dans une fenêtre de provision, à leur reste dû.', true);
   // L'ÉGALITÉ SE VÉRIFIE ICI AUSSI : la somme des tranches, augmentée des
   // créances créditrices, doit redonner le brut, sinon les deux lectures ne
   // portent pas sur les mêmes créances.
@@ -1708,7 +1708,7 @@ function pontDuResteDu(ws){
       .getCell(1).font={bold:true,color:{argb:CORAIL}};
   ws.addRow([]);
   pose('Pour mémoire — crédit resté sans emploi', -creditSansEmploi(), null,
-    'Le crédit qu’aucune dette du même financement n’a pu absorber, dans aucune tranche. Il ne réduit la provision de personne.');
+    'Le crédit qu’aucune créance à solde débiteur du même financement n’a pu absorber, dans aucune tranche. Il ne réduit la provision de personne.');
 }
 
 function recapParTypeDeClient(ws){
@@ -2022,15 +2022,39 @@ function assiettes(){
   // ce départage, la page et le contrôle annonçaient 4 048 692,24 € et
   // 4 047 124,73 € — 1 567,51 € d'écart sur rien d'autre que l'ordre.
   const ancien=(a,b)=>b.j-a.j||(a.k<b.k?-1:a.k>b.k?1:0);
-  const noter=(k,quoi,montant)=>{
+  // LA CONTREPARTIE SE NOMME, 04/11/2026 : « comment je vais pv sav quel
+  // montant / ligne ont été imputé ailleurs ? ds une autre plage de retard ? »
+  // Le montant et la règle étaient dits ; la ligne d'en face, non. Sa règle du
+  // 14/10 vaut ici comme ailleurs : « à chaque fois qu'il y a un nb de facture,
+  // je dois pv savoir de quelle facture il s'agit ».
+  //
+  // On note donc les DEUX SENS : ce que la créance a reçu, et où le crédit est
+  // parti. Le numéro de facture se lit dans la clé — compte|lettrage|facture.
+  // Le numéro quand il y en a un ; sinon le COMPTE, qui désigne tout de même
+  // la ligne — un encaissement non rattaché n'a pas de facture, mais il a un
+  // client, et c'est par là qu'on le retrouve dans le détail.
+  const facDe=k=>{ const t=String(k||'').split('|');
+    const f=(t[2]||'').trim();
+    if(f) return f;
+    return t[0] ? 'un crédit du compte '+t[0] : 'un crédit sans compte';
+  };
+  const noter=(k,quoi,montant,src)=>{
     let o=IMPUTE.get(k);
     // LES COMPTEURS SE NOMMENT PAR L'ORIGINE DU CRÉDIT, PAS PAR SON TRAJET.
     // Au temps 4 le crédit MONTE vers une tranche plus ancienne : la créance
     // qui le reçoit le reçoit donc d'une tranche plus JEUNE. Au temps 5 il
     // descend, et la créance le reçoit d'une tranche plus ANCIENNE. Nommés par
     // le trajet, les deux libellés sortaient inversés du classeur.
-    if(!o){ o={compte:0, tranche:0, depuisJeune:0, depuisAncien:0}; IMPUTE.set(k,o); }
+    if(!o){ o={compte:0, tranche:0, depuisJeune:0, depuisAncien:0, venus:[]}; IMPUTE.set(k,o); }
     o[quoi]+=montant;
+    if(src && src.k){
+      o.venus.push({fac:facDe(src.k), tr:src.tr||'', m:montant, quoi});
+      // Et l'autre sens, sur le crédit lui-même : où il est allé.
+      let c=IMPUTE.get(src.k);
+      if(!c){ c={compte:0, tranche:0, depuisJeune:0, depuisAncien:0, venus:[]}; IMPUTE.set(src.k,c); }
+      if(!c.partis) c.partis=[];
+      c.partis.push({fac:facDe(k), tr:src.vers||'', m:montant, quoi});
+    }
   };
 
   // ─── premier temps : PAR COMPTE CLIENT ───
@@ -2049,9 +2073,9 @@ function assiettes(){
         if(reste<=0.005) break;
         const a=ASSIETTE.get(dt.k); if(!(a>0.005)) continue;
         const pris=Math.min(reste,a); ASSIETTE.set(dt.k, a-pris); reste-=pris;
-        noter(dt.k,'compte',pris);
+        noter(dt.k,'compte',pris,{k:cr.k, tr:cr.tr, vers:dt.tr});
       }
-      if(reste>0.005) reliquat.push({sc:cr.sc, tr:cr.tr, reste});
+      if(reste>0.005) reliquat.push({k:cr.k, sc:cr.sc, tr:cr.tr, reste});
     }
   }
 
@@ -2092,7 +2116,7 @@ function assiettes(){
       if(r.reste<=0.005) return;
       const a=ASSIETTE.get(c.k); if(!(a>0.005)) continue;
       const pris=Math.min(r.reste,a); ASSIETTE.set(c.k, a-pris); r.reste-=pris;
-      noter(c.k,quoi,pris);
+      noter(c.k,quoi,pris,{k:r.k, tr:r.tr, vers:tr});
     }
   };
   // L'ÉCHELLE DES TRANCHES, du plus jeune au plus ancien. Elle vient des
@@ -2214,7 +2238,19 @@ function detailProvision(i){
   // rien dire », 04/11/2026. Ce qu'on désigne ici, c'est une créance dont le
   // SOLDE est créditeur — les encaissements et les avoirs y dépassent la
   // facture. Le montant est dit, pour qu'on sache de combien.
-  if(rd<0) return 'solde créditeur de '+eurC(-rd)+' : rien à provisionner';
+  if(rd<0){
+    // OÙ EST ALLÉ CE CRÉDIT. Sa question du 04/11/2026 : « comment je vais pv
+    // sav quel montant / ligne ont été imputé ailleurs ? ds une autre plage de
+    // retard ? » Les trois plus gros preneurs sont nommés, et le reste compté.
+    const im0=IMPUTE?IMPUTE.get(k):null;
+    const p=(im0&&im0.partis)?im0.partis.slice().sort((a,b)=>b.m-a.m):[];
+    if(!p.length) return 'solde créditeur de '+eurC(-rd)
+      +' : resté sans emploi, aucune créance à solde débiteur à absorber';
+    const dit=p.slice(0,3).map(x=>x.fac+(x.tr?' ('+x.tr+')':'')+' '+eurC(x.m));
+    const reste=p.length-3;
+    return 'solde créditeur de '+eurC(-rd)+' — imputé sur '+dit.join(', ')
+      +(reste>0?' et '+reste+' autre'+(reste>1?'s':''):'');
+  }
   if(!(rd>0)) return 'créance soldée : rien à provisionner';
   const a=assiettes();
   const base=a.has(k)?a.get(k):rd;
@@ -2228,6 +2264,16 @@ function detailProvision(i){
   }
   let chemin='reste dû '+eurC(rd);
   if(parts.length) chemin+=' '+parts.join(' ')+' = assiette '+eurC(base>0?base:0);
+  // ET D'OÙ CES CRÉDITS VIENNENT. Un montant retranché sans contrepartie
+  // nommée n'est pas vérifiable : on nomme les trois plus gros, on compte le
+  // reste, et la tranche d'origine se lit — c'est elle qui dit si le crédit
+  // a changé de plage de retard.
+  if(im&&im.venus&&im.venus.length){
+    const v=im.venus.slice().sort((a,b)=>b.m-a.m);
+    const dit=v.slice(0,3).map(x=>x.fac+(x.tr?' ('+x.tr+')':'')+' '+eurC(x.m));
+    const reste=v.length-3;
+    chemin+=' · venus de '+dit.join(', ')+(reste>0?' et '+reste+' autre'+(reste>1?'s':''):'');
+  }
   if(!(base>0)) return chemin+' : assiette nulle, rien à provisionner';
   const sc=sousVraie(i);
   const tr=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
