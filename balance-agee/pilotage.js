@@ -138,8 +138,35 @@ const GL_COMPLET = path.join(ICI, 'depot-provision', 'grand-livre-complet.xlsx')
 // stock, et les additionner au solde les compterait deux fois.
 const COMPTE_PROVISION = /^491/;
 
+// UN RELEVÉ DÉPOSÉ À LA MAIN, QUAND PENNYLANE NE REND QU'UN PDF, 04/11/2026.
+// Elle a transmis le grand livre des comptes 49 en PDF : le lecteur de
+// classeur ne sait pas l'ouvrir. Un petit fichier porte donc les soldes
+// relevés, avec leur date et leur provenance, et le même filtre s'y applique —
+// seuls les comptes 491 comptent, de sorte que « 4951 COMPTES DU GROUPE »
+// reste dehors, comme il doit l'être : l'intragroupe se provisionne à 0 %.
+const RELEVE_PROVISION = path.join(ICI, 'depot-provision', 'provision-comptabilisee.json');
+
+function provisionRelevee() {
+  if (!fs.existsSync(RELEVE_PROVISION)) return null;
+  let r;
+  try { r = JSON.parse(fs.readFileSync(RELEVE_PROVISION, 'utf8')); }
+  catch (e) { return { montant: null, motif: 'le relevé de provision est illisible' }; }
+  const lignes = (r && r.lignes) || [];
+  const garde = lignes.filter(l => COMPTE_PROVISION.test(String(l.compte || '').trim()));
+  if (!garde.length) return { montant: null,
+    motif: 'le relevé de provision ne porte aucun compte 491' };
+  const solde = garde.reduce((s, l) => s + (num(l.credit) - num(l.debit)), 0);
+  return { montant: ar(solde), lignes: garde.length,
+    comptes: garde.map(l => String(l.compte).trim()).sort(),
+    feuille: 'relevé déposé', au: r.au || '', source: r.source || '', motif: '' };
+}
+
 function provisionComptabilisee(jusquA) {
-  if (!fs.existsSync(GL_COMPLET)) return { montant: null, motif: 'le grand livre complet n’est pas déposé' };
+  if (!fs.existsSync(GL_COMPLET)) {
+    const r = provisionRelevee();
+    if (r) return r;
+    return { montant: null, motif: 'le grand livre complet n’est pas déposé' };
+  }
   let X;
   try {
     const ctx = { self: {}, window: {}, console, Buffer, process, TextDecoder, TextEncoder,
@@ -363,7 +390,8 @@ const releve = {
     // plutôt qu'un chiffre faux.
     comptabilisee: prov.montant,
     provisionLue: prov.montant === null ? null
-      : { lignes: prov.lignes, comptes: prov.comptes, feuille: prov.feuille },
+      : { lignes: prov.lignes, comptes: prov.comptes, feuille: prov.feuille,
+          au: prov.au || '', source: prov.source || '' },
     provisionMotif: prov.motif || '',
   },
 };

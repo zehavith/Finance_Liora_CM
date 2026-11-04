@@ -341,9 +341,15 @@
                 : (filtre && prov !== null && prov !== undefined)
                   ? 'le compte 491 n’est pas ventilé par financeur : décochez les filtres pour la lire'
                   : (P.provisionMotif || 'le montant comptablement provisionné n’est pas déposé'),
+            // UN RELEVÉ N'A PAS D'ÉCRITURES, IL A UNE DATE. Annoncer « 1 écriture »
+            // pour un solde relevé à la main laisserait croire à un grand livre
+            // dépouillé ligne à ligne. La date, elle, dit ce qu'il faut savoir :
+            // à quand remonte le chiffre comparé à l'encours du jour.
             couv !== null && lue
                 ? '<span class="pil-ref">compte ' + U().escapeHtml((lue.comptes || []).join(', '))
-                  + ' · ' + (lue.lignes || 0).toLocaleString('fr-FR') + ' écritures</span>'
+                  + ' · ' + (lue.au ? 'relevé au ' + U().escapeHtml(lue.au)
+                                    : (lue.lignes || 0).toLocaleString('fr-FR') + ' écritures')
+                  + '</span>'
                 : ''));
         document.getElementById('pil-kpis').innerHTML = v.join('');
     }
