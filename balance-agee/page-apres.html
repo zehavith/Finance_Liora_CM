@@ -1366,14 +1366,28 @@ function feuilleBalance(wb,niv,idx){
 // illisible et impossible à rapprocher de la balance.
 // La première colonne retirée du classeur. Tout ce qui la suit l'est aussi.
 const COUPE='N° de rapprochement';
-// Les deux colonnes de provision ajoutées au détail, à sa demande du
-// 31/10/2026. Leur nom dit « de la créance » : c'est elle qui les porte, et
-// non l'écriture sur laquelle elles se répètent.
-const PROV_COLS=['Assiette de provision de la créance',
+// Les colonnes de provision ajoutées au détail, à sa demande du 31/10/2026.
+// Leur nom dit « de la créance » : c'est elle qui les porte, et non l'écriture
+// sur laquelle elles se répètent.
+//
+// ── ET LA CLÉ DE LA CRÉANCE AVEC ELLES, 04/11/2026 ──
+//
+// Elle était partie le 16/10 avec les colonnes de rapprochement — « retire les
+// colonnes de l'export à partir de la colonne AW ». Mais sans elle, la
+// provision ne se resomme pas : deux créances du même client sur la même
+// facture, sous deux lettrages différents, sont indiscernables dans l'export,
+// et les additionner compte deux fois ou pas du tout. Mesuré : 2 818 916 €
+// retrouvés au lieu de 3 325 190 €. Une colonne qu'on ne peut pas resommer
+// n'est pas auditable ; elle revient donc, et en tête des trois qu'elle
+// identifie.
+const PROV_COLS=['Clé de la créance','Assiette de provision de la créance',
   'Détail du calcul de la provision','Provision de la créance'];
-// Celles des trois qui portent des euros. Le détail est du texte : lui poser
-// un format monétaire en ferait « 0 € » sur toute la colonne.
+// Celles qui portent des euros. Le détail est du texte, la clé aussi : leur
+// poser un format monétaire en ferait « 0 € » sur toute la colonne.
 const PROV_EUROS=new Set(['Assiette de provision de la créance','Provision de la créance']);
+// La largeur de chacune : une clé tient en 34, un montant en 30, la phrase du
+// calcul demande 86.
+const PROV_LARGE={'Clé de la créance':34};
 // LE NOMBRE DE COLONNES ANNONCÉ DOIT ÊTRE CELUI DE LA FEUILLE.
 // Il ne comptait que les colonnes du grand livre : ni « Compte - Client », qui
 // ouvre le tableau, ni les colonnes de provision, qui le ferment. Le sommaire
@@ -1684,7 +1698,8 @@ function feuilleDetail(wb,idx,nom){
   // CRÉANCE, répétée sur chacune de ses écritures — voir provLigne().
   ws.columns=[{header:'Compte - Client',width:46},
     ...COLS.map(c=>({header:c,width:Math.min(42,Math.max(13,c.length+3))})),
-    ...PROV_COLS.map(c=>({header:c,width:PROV_EUROS.has(c)?30:86}))];
+    ...PROV_COLS.map(c=>({header:c,
+      width:PROV_LARGE[c]||(PROV_EUROS.has(c)?30:86)}))];
   poserEntete(ws,ws.getRow(1));
   // 16 080 lignes : on écrit les valeurs d'un bloc et on ne pose la mise en
   // forme que sur les colonnes, pas sur chaque cellule — sans quoi le
@@ -1693,7 +1708,9 @@ function feuilleDetail(wb,idx,nom){
     V(i,'N° de compte')+' - '+(V(i,'Libellé de compte')||V(i,'Tiers')),
     ...COLS.map(c=>{ const v=V(i,c);
       return (NUMERIQUES.has(c)&&NOMBRE.test(v))?Number(v):v; }),
-    p.base, detailProvision(i), p.prov]; }));
+    // La clé telle que la page la porte : « compte | lettrage | facture ».
+    // C'est elle, et elle seule, qui désigne une créance.
+    V(i,'Clé de la créance')||'', p.base, detailProvision(i), p.prov]; }));
   COLS.forEach((c,j)=>{ if(MONNAIE.has(c)) ws.getColumn(j+2).numFmt=EUROS; });
   PROV_COLS.forEach((c,j)=>{ if(PROV_EUROS.has(c)) ws.getColumn(COLS.length+2+j).numFmt=EUROS; });
   ws.autoFilter={from:{row:1,column:1},
