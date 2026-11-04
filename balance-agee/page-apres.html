@@ -748,13 +748,16 @@ function synthRows(niv){
   return avecComplements((niv==='cat'?D.syntheseCat:D.synthese)||D.synthese,niv)
     .filter(s=>!(s.cat==='À classer' && !s.nb && Math.abs(s.total)<0.005));
 }
-function poserEntete(ws,l,figer){
+// AUCUN VOLET FIGÉ, 04/11/2026 : « tu peux faire en sorte que tt les onglet
+// défigé stp ? ». L'entête restait figée en haut de chaque feuille ; elle ne
+// l'est plus nulle part. La feuille s'ouvre entière, et le lecteur fige ce
+// qu'il veut, quand il le veut.
+function poserEntete(ws,l){
   l.font={bold:true,color:{argb:'FFFFFFFF'},size:11};
   l.alignment={vertical:'middle',wrapText:true};
   l.height=26;
   l.eachCell(c=>{ c.fill={type:'pattern',pattern:'solid',fgColor:{argb:BLEU}};
     c.border={bottom:{style:'thin',color:{argb:TRAIT}}}; });
-  if(figer!==false) ws.views=[{state:'frozen',ySplit:l.number}];
 }
 // PEINDRE UNE LIGNE ENTIÈRE, ET NON SES SEULES CELLULES REMPLIES.
 //
@@ -1061,7 +1064,7 @@ function provisionRegles(ws){
   ws.addRow([]);
   const eR=ws.addRow(['Règle','Ce qu’elle dit']);
   ws.mergeCells(eR.number,2,eR.number,8);
-  poserEntete(ws,eR,false);
+  poserEntete(ws,eR);
   const fen2=(PROV.fenetres||[]).map(f=>f.label).join(' · ');
   const sansEmploi=creditSansEmploi();
 
