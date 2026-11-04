@@ -633,7 +633,8 @@
                 + '.' : '')
             + ' Chaque point est un encours recalculé à sa date : tout ce qui a éteint une'
             + ' facture y est compté, paiements comme avoirs, et le dernier point cadre avec'
-            + ' l’encours publié. L’horizon s’arrête à un an.';
+            + ' l’encours publié. L’âge se compte depuis le 15 du mois de facturation —'
+            + ' le jour moyen d’une facturation étalée sur le mois. L’horizon s’arrête à un an.';
     }
 
     // ── 5. la variation du DSO ──
