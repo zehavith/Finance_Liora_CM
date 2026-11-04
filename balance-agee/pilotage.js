@@ -92,7 +92,7 @@ function cube(bal, date) {
         iD = col('Date'),
         iFin = col('Type de financement de la créance') >= 0
              ? col('Type de financement de la créance') : col('Type de financement');
-  // LA COHORTE EST CELLE DE LA FACTURE, et la créance ne se compte qu'une fois :
+  // LE MOIS RETENU EST CELUI DE LA FACTURE, et la créance ne se compte qu'une fois :
   // le détail répète son reste dû sur chacune de ses écritures.
   const coh = new Map(), vues = new Set();
   for (const l of bal.lignes) {
@@ -223,6 +223,18 @@ function provisionComptabilisee(jusquA) {
 // qui sautait de 90 à 120 jours : le jour cherché tombait dans le trou. Ils ne
 // coûtent qu'un compteur de plus chacun.
 const PALIERS = [15, 30, 45, 60, 75, 90, 120, 150, 180, 240, 300, 360, 540, 720];
+
+// LE JOURNAL DIT CE QU'EST UNE ÉCRITURE QUI N'EST PAS UNE FACTURE. Pennylane
+// nomme ses journaux : OD, ODL, ODREG sont les opérations diverses
+// (réaffectations d'un compte client à un autre, régularisations) ; BQ1 à BQ4
+// sont les banques, et ce qui y figure sans être un règlement est un rejet ou
+// un mouvement repris sur le compte du client. Le reste garde son journal.
+const GROUPES_JOURNAL = [
+  { cle: 'od', test: /^od/i },
+  { cle: 'banque', test: /^bq/i },
+];
+const groupeJournal = j => (GROUPES_JOURNAL.find(g => g.test.test(String(j || ''))) || { cle: 'autre' }).cle;
+
 function flux(bal) {
   const V = (l, i) => { const x = l[i]; return typeof x === 'number' ? bal.dico[x] : x; };
   const col = n => bal.cols.indexOf(n);
@@ -230,7 +242,9 @@ function flux(bal) {
         iDeb = col('Débit'), iCre = col('Crédit'), iFac = col('N° de facture'),
         iFR = col('Facture rattachée'), iDf = col('Date de facture (facturation)'),
         iFin = col('Type de financement de la créance') >= 0
-             ? col('Type de financement de la créance') : col('Type de financement');
+             ? col('Type de financement de la créance') : col('Type de financement'),
+        iCpt = col('N° de compte'), iTie = col('Tiers'),
+        iLigne = col('Libellé de ligne'), iPiece = col('Libellé de pièce');
   const AN = /^an/i;
   // La date d'émission de chaque facture : la plus ancienne qu'on lui connaisse.
   const dateFacture = new Map();
@@ -242,6 +256,13 @@ function flux(bal) {
   }
   const F = new Map(), DSO = new Map(), VINT = new Map();
   let sansFacture = 0, mSansFacture = 0, sansDate = 0, mSansDate = 0;
+  // CE QUI N'EST NI UNE FACTURE, NI UN RÈGLEMENT, NI UN AVOIR, 04/11/2026 :
+  // « mets à quoi correspondent les autres mouvements ». La cascade bouchait
+  // le trou par une différence — un poste tampon, qu'elle ne veut pas. Ces
+  // écritures-là se comptent donc pour ce qu'elles sont, et le journal dit
+  // leur nature : OD les opérations diverses, BQ la banque. Elles sont aussi
+  // listées une par une, pour qu'on puisse ouvrir le poste et les lire.
+  const MOUV = [];
   const pose = (M, k, vide) => { let o = M.get(k); if (!o) { o = vide(); M.set(k, o); } return o; };
   for (const l of bal.lignes) {
     // LES REPORTS À NOUVEAU NE SONT NI UNE FACTURATION NI UN ENCAISSEMENT.
@@ -252,14 +273,32 @@ function flux(bal) {
     const m = mois(V(l, iDate)); if (!m) continue;
     const fin = String(V(l, iFin) || '(à compléter)');
     const k = m + '\u0001' + fin;
-    const o = pose(F, k, () => ({ fac: 0, enc: 0, avo: 0, nFac: 0, nEnc: 0 }));
+    const o = pose(F, k, () => ({ fac: 0, enc: 0, avo: 0, nFac: 0, nEnc: 0, nAvo: 0,
+                                  aut: 0, nAut: 0, autG: {}, nAutG: {} }));
+    if (nat !== 'facture' && nat !== 'avoir' && nat !== 'reglement') {
+      const mt = num(V(l, iDeb)) - num(V(l, iCre));
+      const jrn = String(V(l, iJrn) || '');
+      const g = groupeJournal(jrn);
+      o.aut += mt; o.nAut++;
+      o.autG[g] = (o.autG[g] || 0) + mt;
+      o.nAutG[g] = (o.nAutG[g] || 0) + 1;
+      // « donc j'ai un numéro de facture avec des infos normalement », 04/11/2026 :
+      // 1 482 de ces écritures portent un numéro de facture, 1 549 une facture
+      // rattachée. Le détail le porte, pour qu'on sache de quelle facture il s'agit.
+      MOUV.push({ m, fin, g, d: String(V(l, iDate) || ''), j: jrn,
+                  c: String(V(l, iCpt) || ''), t: String(V(l, iTie) || ''),
+                  n: String(V(l, iFac) || V(l, iFR) || '').trim(),
+                  l: String(V(l, iLigne) || V(l, iPiece) || '').trim().slice(0, 70),
+                  v: ar(mt) });
+      continue;
+    }
     if (nat === 'facture') {
       o.fac += num(V(l, iDeb)); o.nFac++;
       const c = pose(VINT, (mois(V(l, iDf)) || m) + '\u0001' + fin,
         () => ({ fac: 0, nFac: 0, p: PALIERS.map(() => 0) }));
       c.fac += num(V(l, iDeb)); c.nFac++;
     }
-    if (nat === 'avoir') o.avo += num(V(l, iCre)) - num(V(l, iDeb));
+    if (nat === 'avoir') { o.avo += num(V(l, iCre)) - num(V(l, iDeb)); o.nAvo++; }
     if (nat !== 'reglement') continue;
     const montant = num(V(l, iCre)) - num(V(l, iDeb));
     o.enc += montant; o.nEnc++;
@@ -278,8 +317,12 @@ function flux(bal) {
   const plat = (M, f) => [...M].map(([k, o]) => { const [m, fin] = k.split('\u0001');
     return Object.assign({ m, fin }, f(o)); })
     .sort((a, b) => a.m < b.m ? -1 : a.m > b.m ? 1 : (a.fin < b.fin ? -1 : 1));
+  const arrondis = x => { const r = {}; for (const k of Object.keys(x)) r[k] = ar(x[k]); return r; };
   return {
-    flux: plat(F, o => ({ fac: ar(o.fac), enc: ar(o.enc), avo: ar(o.avo), nFac: o.nFac, nEnc: o.nEnc })),
+    flux: plat(F, o => ({ fac: ar(o.fac), enc: ar(o.enc), avo: ar(o.avo),
+                          nFac: o.nFac, nEnc: o.nEnc, nAvo: o.nAvo,
+                          aut: ar(o.aut), nAut: o.nAut, autG: arrondis(o.autG), nAutG: o.nAutG })),
+    mouvements: MOUV,
     dso: plat(DSO, o => ({ mt: ar(o.mt), mj: ar(o.mj), n: o.n })),
     vintage: plat(VINT, o => ({ fac: ar(o.fac), nFac: o.nFac, p: o.p.map(ar) })),
     ecartes: { sansFacture, montantSansFacture: ar(mSansFacture),
@@ -379,8 +422,12 @@ const releve = {
   // L'encours de chaque arrêté, par type de financement et par tranche.
   encours: cubes.map(c => ({ d: c.date, total: c.total,
     parFinancement: c.parFinancement, parTypeClient: c.parTypeClient })),
-  cohortes: cubes.map(c => ({ d: c.date, lignes: c.cohortes })),
+  // Par mois de facturation : ce qui a été facturé ce mois-là et ce qu'il en
+  // reste dû à chaque arrêté. Le mot « cohorte » a été retiré de la page : il
+  // ne disait rien de plus que « mois de facturation ».
+  ages: cubes.map(c => ({ d: c.date, lignes: c.cohortes })),
   flux: f.flux, dso: f.dso, vintage: f.vintage, ecartes: f.ecartes,
+  mouvements: f.mouvements,
   provision: {
     fenetres: (bal.provision || {}).fenetres || [],
     taux: (bal.provision || {}).taux || {},
@@ -406,7 +453,8 @@ console.log('\nart/pilotage.json : ' + ko + ' ko'
     + Math.round(f.ecartes.montantSansFacture).toLocaleString('fr-FR') + ' €) · '
     + f.ecartes.sansDate + ' dont la facture n’a pas de date connue ('
     + Math.round(f.ecartes.montantSansDate).toLocaleString('fr-FR') + ' €)'
-  + '\n  vintages  : ' + f.vintage.length + ' cohortes × financement'
+  + '\n  vintages  : ' + f.vintage.length + ' mois de facturation × financement'
+  + '\n  mouvements: ' + f.mouvements.length + ' écritures qui ne sont ni facture, ni règlement, ni avoir'
   + '\n  provision : ' + (prov.montant === null
       ? 'à compléter — ' + prov.motif
       : Math.round(prov.montant).toLocaleString('fr-FR') + ' € · ' + prov.lignes

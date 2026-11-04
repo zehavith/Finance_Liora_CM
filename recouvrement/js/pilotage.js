@@ -18,7 +18,7 @@
        est la balance publiée : les deux se recollent au centime.
      · les flux du mois : facturé, encaissé, avoirs, hors reports à nouveau.
      · le délai de règlement, mesuré facture par facture.
-     · les vintages : ce qui reste dû d'une cohorte de facturation.
+     · l'encours par financeur, jour après jour depuis la facture.
 
    AUCUN CHIFFRE N'EST INVENTÉ ICI. Quand le relevé manque, l'onglet le dit et
    n'affiche rien — « ma balance agé doit etre auditable, il faut mettre à
@@ -277,7 +277,6 @@
         graphHeatmap(e);
         graphRetard(keep);
         graphDecroissance(keep);
-        graphVintage(keep);
         graphDso(keep);
         graphBridge(keep, b);
     }
@@ -508,64 +507,31 @@
         }
     }
 
-    // ── 4. les vintages, mois de facturation par mois de facturation ──
+    // ═════════ 4. l'encours par financeur, jour après jour depuis la facture ═════════
     //
-    // « Des vintage par mois de facturation (abscisse — met d jours) », puis
-    // « les vintages ne doivent pas être en fonction de cohorte », 04/11/2026.
-    // L'AXE EST EN JOURS, PAS EN MOIS. Il portait l'âge en mois — la maille des
-    // arrêtés — et c'était une maille, pas une demande : elle a demandé des
-    // jours. Chaque point garde donc l'âge RÉEL du mois de facturation à la
-    // date de l'arrêté, compté depuis le 15 du mois — le jour moyen d'une
-    // facturation étalée sur le mois ; la dater du 1er la vieillirait de
-    // quinze jours. Les points d'une même courbe ne tombent plus à intervalle
-    // régulier : ils tombent là où sont les arrêtés, et c'est juste.
+    // UN SEUL GRAPHIQUE, ET C'EST CELUI-CI, 04/11/2026 : « je t'ai demandé un
+    // seul graphique avec des courbes, une courbe par financement, en abscisse
+    // il y a des jours, en ordonnée les encours ; ça doit répondre à la
+    // question : 80 % de mon encours B2C-Entreprise est payé sous 80 j après
+    // date de facture ». Une seconde carte montrait la même décroissance mois
+    // de facturation par mois de facturation : elle a été retirée, elle ne
+    // répondait pas à cette question-là.
     //
-    // CE QUI RENTRE SE LIT SUR LES ARRÊTÉS, PAS SUR LES RÈGLEMENTS. Bâtie sur
-    // les seuls encaissements rattachables à une facture datée, la courbe
-    // laissait dehors 330 règlements sans facture et 1 909 dont la facture n'a
-    // pas de date connue, et annonçait moins encaissé qu'il n'en rentre. Le
-    // reste dû d'un arrêté, lui, tient compte de tout ce qui éteint une
-    // facture — paiement, avoir, lettrage — et se recolle à la balance par
-    // construction.
-    function cohortesJours(keep) {
-        const parMois = new Map();   // mois de facturation -> Map(âge en jours -> {f, r})
-        for (const e of (D.cohortes || [])) {
-            const da = parseFR(e.d); if (!da) continue;
-            for (const l of (e.lignes || [])) {
-                if (!keep.has(l.fin)) continue;
-                const dm = new Date(+l.m.slice(0, 4), +l.m.slice(5, 7) - 1, 15);
-                const j = Math.round((da - dm) / 86400000);
-                if (j < 0) continue;
-                const t = parMois.get(l.m) || new Map();
-                const o = t.get(j) || { f: 0, r: 0 };
-                o.f += l.f; o.r += l.r;
-                t.set(j, o); parMois.set(l.m, t);
-            }
-        }
-        return parMois;
-    }
-
-    // ═════════ ce qui reste dû, jour après jour depuis la facturation ═════════
-    //
-    // « Des vintage par mois de facturation (abscisse — met d jours) / encours
-    // client (ordonné) par financeur — évolution de l'encours client — on doit
-    // pv voir 80% de mon encours et payé av X j », 04/11/2026.
-    //
-    // ELLE SE LIT SUR LES ARRÊTÉS, PAS SUR LES RÈGLEMENTS. Bâtie sur les seuls
-    // encaissements datables, la courbe plafonnait à 59 % de reste dû quand la
-    // balance en publie 30 : elle ignorait les 18 293 726 € d'avoirs — dont
+    // LA COURBE SE LIT SUR LES ARRÊTÉS, PAS SUR LES RÈGLEMENTS. Bâtie sur les
+    // seuls encaissements datables, elle plafonnait à 59 % de reste dû quand
+    // la balance en publie 30 : elle ignorait les 18 293 726 € d'avoirs — dont
     // AUCUN ne porte de facture rattachée datée — et les 7 103 219 € de
     // règlements qu'aucune facture ne réclame. Un arrêté, lui, tient compte de
     // tout ce qui éteint une facture : paiement, avoir, lettrage. Chaque point
     // vient donc d'une balance refaite à cette date, et la courbe cadre avec
     // l'encours publié.
     //
-    // L'ÂGE SE COMPTE DEPUIS LE 15 DU MOIS DE FACTURATION — le jour moyen d'une
-    // facturation étalée sur le mois. Dater toute une cohorte du 1er la
+    // L'ÂGE SE COMPTE DEPUIS LE 15 DU MOIS DE FACTURATION — le jour moyen
+    // d'une facturation étalée sur le mois. Dater toute une facture du 1er la
     // vieillirait de quinze jours.
     //
     // DEUX BORNES, SANS QUOI RIEN NE SE LIT. Sans elles la courbe courait
-    // jusqu'à 2 400 jours — l'âge d'une cohorte de 2020 vue au dernier arrêté,
+    // jusqu'à 2 400 jours — l'âge d'une facture de 2020 vue au dernier arrêté,
     // quelques milliers d'euros qui font sauter le tracé — et quatorze
     // financeurs se croisaient en pelote. L'horizon s'arrête donc à un AN, où
     // se prend une décision de recouvrement, et le dessin garde les financeurs
@@ -575,7 +541,7 @@
     function graphDecroissance(keep) {
         const dit = document.getElementById('pil-decroissance-dit');
         const parFin = new Map();
-        for (const e of (D.cohortes || [])) {
+        for (const e of (D.ages || [])) {
             const da = parseFR(e.d); if (!da) continue;
             for (const l of (e.lignes || [])) {
                 if (!keep.has(l.fin) || !(l.f > 0)) continue;
@@ -593,7 +559,7 @@
             U().chart('pil-chart-decroissance', { type: 'line', data: { labels: [], datasets: [] },
                 options: { responsive: true, maintainAspectRatio: false,
                            plugins: { legend: { display: false } } } });
-            if (dit) dit.textContent = 'Aucune cohorte de facturation sur le périmètre retenu.';
+            if (dit) dit.textContent = 'Aucune facture sur le périmètre retenu.';
             return;
         }
         const ages = [...new Set([].concat(...[...parFin.values()].map(t => [...t.keys()])))]
@@ -610,8 +576,8 @@
             .concat(assez.slice(DECROISSANCE_COURBES));
         const val = (f, a) => { const o = (parFin.get(f) || new Map()).get(a);
             return (o && o.f > 0) ? Math.max(0, Math.round((o.r / o.f) * 1000) / 10) : null; };
-        // Le jour où la courbe passe sous 20 % de reste dû, interpolé entre les
-        // deux âges qui l'encadrent.
+        // Le jour où 80 % est payé, c'est-à-dire où l'encours passe sous 20 %
+        // de ce qui a été facturé. Interpolé entre les deux âges qui l'encadrent.
         const croisement = f => {
             let avant = null, vAvant = null;
             for (const a of ages) { const v = val(f, a); if (v == null) continue;
@@ -626,7 +592,7 @@
             borderWidth: 2, tension: 0.25, pointRadius: 2, spanGaps: true,
             data: ages.map(a => val(f, a)),
         }));
-        series.push({ label: '20 % — quatre cinquièmes encaissés', borderColor: '#8b92a5',
+        series.push({ label: '20 % encore dû — 80 % payé', borderColor: '#8b92a5',
             borderDash: [5, 4], borderWidth: 1, pointRadius: 0, backgroundColor: 'transparent',
             data: ages.map(() => 20) });
         U().chart('pil-chart-decroissance', {
@@ -634,14 +600,17 @@
             data: { labels: ages.map(a => a + ' j'), datasets: series },
             options: {
                 responsive: true, maintainAspectRatio: false,
-                scales: { x: { grid: { display: false } },
+                scales: { x: { grid: { display: false },
+                               title: { display: true, text: 'jours depuis la facture' } },
                           y: { grid: U().grille, min: 0, max: 100,
+                               title: { display: true, text: 'part de l’encours encore due' },
                                ticks: { callback: v => v + ' %' } } },
                 plugins: {
                     legend: { display: true, position: 'bottom',
                               labels: { boxWidth: 12, font: { size: 11 } } },
                     tooltip: { callbacks: { label: c => c.dataset.label + ' : '
-                        + (c.parsed.y == null ? '·' : c.parsed.y + ' % encore dû') } },
+                        + (c.parsed.y == null ? '·' : c.parsed.y + ' % encore dû, soit '
+                           + (100 - c.parsed.y).toFixed(1) + ' % payé') } },
                 },
             },
         });
@@ -653,104 +622,18 @@
         const jours = croisement('\u0000tous');
         parFin.delete('\u0000tous');
         const parNom = gardes.map(f => { const j = croisement(f);
-            return f + ' ' + (j == null ? '— jamais sous 20 %' : j + ' j'); });
+            return f + ' ' + (j == null ? '— 80 % non atteint en un an' : j + ' j'); });
         if (dit) dit.textContent =
             (jours == null
-              ? 'Sur le périmètre retenu, le reste dû d’une cohorte ne descend sous 20 % à aucun âge observé.'
-              : 'Sur le périmètre retenu, 80 % de ce qui est facturé est éteint en ' + jours + ' jours.')
-            + ' Par financeur, ce même seuil : ' + parNom.join(' · ') + '.'
+              ? 'Sur le périmètre retenu, 80 % de l’encours n’est pas payé dans l’année qui suit la facture.'
+              : '80 % de l’encours est payé en ' + jours + ' jours après la facture,'
+                + ' tous financeurs confondus.')
+            + ' Par financeur : ' + parNom.join(' · ') + '.'
             + (ecartes.length ? ' Hors du dessin, pour qu’il se lise : ' + ecartes.join(', ')
                 + '.' : '')
-            + ' Chaque point vient d’un arrêté refait à sa date : paiements, avoirs et lettrage'
-            + ' y sont tous comptés, et le dernier point cadre avec l’encours publié.'
-            + ' L’horizon s’arrête à un an — au-delà, une seule vieille cohorte suffit à'
-            + ' faire sauter le tracé.';
-    }
-
-    function graphVintage(keep) {
-        const parMois = cohortesJours(keep);
-        // Les douze derniers mois de facturation qui ont de quoi se juger.
-        const mois = [...parMois.keys()]
-            .filter(m => [...parMois.get(m).values()].some(o => o.f > 0))
-            .sort().slice(-12);
-        const pal = U().palette;
-        const courbe = m => [...parMois.get(m)]
-            .filter(([, o]) => o.f > 0)
-            .sort((a, b) => a[0] - b[0])
-            .map(([j, o]) => ({ x: j, y: Math.round((1 - o.r / o.f) * 1000) / 10 }));
-        const series = mois.map((m, k) => ({
-            label: U().moisLabel ? U().moisLabel(m, true) : m,
-            borderColor: pal[k % pal.length], backgroundColor: 'transparent',
-            borderWidth: 2, tension: 0.25, pointRadius: 2, data: courbe(m),
-        }));
-        // LE SEUIL SE LIT SUR L'AXE, DONC IL SE TRACE DESSUS : la ligne des
-        // 80 % encaissés dit d'un coup d'œil quelle courbe l'a franchie.
-        const bornes = series.reduce((b, s2) => s2.data.reduce(
-            (c, p) => [Math.min(c[0], p.x), Math.max(c[1], p.x)], b), [0, 0]);
-        series.push({ label: '80 % encaissés', borderColor: '#8b92a5',
-            borderDash: [5, 4], borderWidth: 1, pointRadius: 0,
-            backgroundColor: 'transparent',
-            data: [{ x: bornes[0], y: 80 }, { x: bornes[1], y: 80 }] });
-        U().chart('pil-chart-vintage', {
-            type: 'line',
-            data: { datasets: series },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                parsing: false, normalized: true,
-                scales: {
-                    x: { type: 'linear', grid: { display: false },
-                         title: { display: true, text: 'jours depuis la facturation' },
-                         ticks: { callback: v => v + ' j' } },
-                    y: { grid: U().grille, min: 0, max: 100,
-                         ticks: { callback: v => v + ' %' } },
-                },
-                plugins: {
-                    legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
-                    tooltip: { callbacks: {
-                        title: c => 'facturé en ' + c[0].dataset.label,
-                        label: c => c.parsed.y + ' % encaissé au bout de '
-                            + c.parsed.x + ' jours' } },
-                },
-            },
-        });
-        // La lecture en une phrase : au bout de combien de JOURS 80 % rentre.
-        // Le jour exact est interpolé entre les deux arrêtés qui l'encadrent —
-        // un arrêté tombe fin de mois, le franchissement, lui, tombe un jour.
-        const el = document.getElementById('pil-vintage-dit');
-        if (!el) return;
-        const jour80 = m => {
-            const pts = courbe(m); let av = null;
-            for (const p of pts) {
-                if (p.y >= 80) return av && av.y < 80
-                    ? Math.round(av.x + (80 - av.y) * (p.x - av.x) / (p.y - av.y))
-                    : p.x;
-                av = p;
-            }
-            return null;
-        };
-        const atteints = mois.map(jour80).filter(j => j !== null).sort((a, b) => a - b);
-        const encore = mois.filter(m => jour80(m) === null);
-        const med = atteints.length
-            ? (atteints.length % 2 ? atteints[(atteints.length - 1) / 2]
-               : Math.round((atteints[atteints.length / 2 - 1] + atteints[atteints.length / 2]) / 2))
-            : null;
-        el.textContent = !mois.length
-            ? 'Pas assez de mois de facturation pour se prononcer.'
-            : 'Une courbe par mois de facturation, l’âge en jours depuis le 15 du mois —'
-              + ' le jour moyen d’une facturation étalée. '
-              + (med === null
-                 ? 'Aucun de ces ' + mois.length + ' mois n’a encore encaissé 80 % de son facturé.'
-                 : 'Sur ' + atteints.length + ' des ' + mois.length + ' mois retenus,'
-                   + ' 80 % du facturé est encaissé en ' + med + ' jours en médiane'
-                   + (atteints.length > 1
-                      ? ' — de ' + atteints[0] + ' à ' + atteints[atteints.length - 1] + ' jours'
-                      : '') + '.')
-            + (encore.length
-               ? ' Pas encore à 80 % : ' + encore.map(m => U().moisLabel ? U().moisLabel(m, true) : m)
-                   .join(', ') + '.'
-               : '')
-            + ' Chaque point vient d’un arrêté refait à sa date : paiements, avoirs et'
-            + ' lettrage y sont tous comptés.';
+            + ' Chaque point est un encours recalculé à sa date : tout ce qui a éteint une'
+            + ' facture y est compté, paiements comme avoirs, et le dernier point cadre avec'
+            + ' l’encours publié. L’horizon s’arrête à un an.';
     }
 
     // ── 5. la variation du DSO ──
@@ -790,6 +673,29 @@
     // expliquer — payé, annulé, facturé par exemple ». Les trois postes sont
     // lus dans les flux du mois ; ce qui reste est nommé « autres mouvements »
     // et n'est pas dissimulé : lettrage, reclassements, écarts d'arrondi.
+    // LES « AUTRES MOUVEMENTS » N'EN SONT PLUS UN, 04/11/2026 : « mets à quoi
+    // correspondent les autres mouvements ». Le poste était une DIFFÉRENCE —
+    // l'encours d'arrivée moins celui de départ, moins le facturé, plus
+    // l'encaissé et les avoirs. Un tampon, donc, qui ramassait tout ce que la
+    // cascade ne savait pas nommer, et qu'on ne pouvait ni ouvrir ni
+    // justifier. Ces écritures sont maintenant comptées pour ce qu'elles
+    // sont : celles dont la nature n'est ni facture, ni règlement, ni avoir.
+    // Leur JOURNAL dit ce qu'elles font — OD les opérations diverses
+    // (réaffectations d'un compte client à un autre, régularisations), BQ la
+    // banque (ce qui revient sur le compte du client sans être un règlement).
+    // Chaque poste s'ouvre au clic sur la liste de ses écritures.
+    //
+    // CE QUI RESTE S'APPELLE UN ÉCART INEXPLIQUÉ, et il ne paraît que s'il
+    // existe. Sur les douze passages d'un arrêté au suivant, il vaut zéro au
+    // centime : facturé − encaissé − avoirs + autres mouvements rend très
+    // exactement la variation de l'encours.
+    const NOM_GROUPE = { od: 'Opérations diverses', banque: 'Banque hors règlement',
+                         autre: 'Autres journaux' };
+    const DIT_GROUPE = { od: 'd’opérations diverses',
+                         banque: 'de mouvements bancaires hors règlement',
+                         autre: 'd’écritures sur d’autres journaux' };
+    const ORDRE_GROUPE = ['od', 'banque', 'autre'];
+
     function graphBridge(keep, b) {
         const pts = (D.encours || []);
         if (pts.length < 2) return;
@@ -807,19 +713,36 @@
         const a = encours(dep, keep), z = encours(fin, keep);
         const m = moisDe(fin.d);
         let fac = 0, enc = 0, avo = 0;
+        const autG = {}, nAutG = {};
         for (const r of (D.flux || [])) {
             if (!keep.has(r.fin) || r.m !== m) continue;
             fac += r.fac; enc += r.enc; avo += r.avo;
+            for (const g of Object.keys(r.autG || {})) autG[g] = (autG[g] || 0) + r.autG[g];
+            for (const g of Object.keys(r.nAutG || {})) nAutG[g] = (nAutG[g] || 0) + r.nAutG[g];
         }
-        const autres = z.total - a.total - fac + enc + avo;
+        const totalAutres = ORDRE_GROUPE.reduce((t, g) => t + (autG[g] || 0), 0);
+        const ecart = z.total - a.total - fac + enc + avo - totalAutres;
+
         const postes = [
             { nom: 'Encours au ' + parseFR(dep.d).toLocaleDateString('fr-FR'), v: a.total, type: 'socle' },
             { nom: 'Facturé', v: fac, type: 'plus' },
             { nom: 'Encaissé', v: -enc, type: 'moins' },
             { nom: 'Avoirs', v: -avo, type: 'moins' },
-            { nom: 'Autres mouvements', v: autres, type: autres >= 0 ? 'plus' : 'moins' },
-            { nom: 'Encours au ' + parseFR(fin.d).toLocaleDateString('fr-FR'), v: z.total, type: 'socle' },
         ];
+        for (const g of ORDRE_GROUPE) {
+            const v = autG[g] || 0;
+            if (Math.abs(v) <= 0.5) continue;
+            postes.push({ nom: NOM_GROUPE[g], v, type: v >= 0 ? 'plus' : 'moins',
+                          groupe: g, n: nAutG[g] || 0 });
+        }
+        // UN ÉCART QUI N'EXISTE PAS NE SE DESSINE PAS. S'il existe, il porte
+        // son nom : on ne le range pas sous un poste qui ferait croire qu'il
+        // est compris.
+        if (Math.abs(ecart) > 0.5)
+            postes.push({ nom: 'Écart inexpliqué', v: ecart, type: ecart >= 0 ? 'plus' : 'moins' });
+        postes.push({ nom: 'Encours au ' + parseFR(fin.d).toLocaleDateString('fr-FR'),
+                      v: z.total, type: 'socle' });
+
         // Une cascade se dessine en barres flottantes : chaque poste porte son
         // point de départ et son point d'arrivée. Le curseur part du socle de
         // gauche et marche de poste en poste jusqu'à celui de droite.
@@ -828,6 +751,36 @@
             if (p.type === 'socle') return [0, p.v];
             const de = curseur, vers = curseur + p.v; curseur = vers; return [de, vers];
         });
+
+        // Le détail d'un poste : ses écritures, une par ligne.
+        const ouvrirDetail = g => {
+            const lignes = (D.mouvements || [])
+                .filter(x => x.m === m && keep.has(x.fin) && x.g === g)
+                .sort((x, y) => Math.abs(y.v) - Math.abs(x.v));
+            const cols = [
+                { key: 'd', label: 'Date', width: '92px' },
+                { key: 'j', label: 'Journal', width: '72px' },
+                { key: 'c', label: 'Compte', width: '130px' },
+                { key: 't', label: 'Tiers' },
+                { key: 'n', label: 'Facture', width: '150px',
+                  format: v => v ? U().escapeHtml(v)
+                    : '<span class="pil-acompleter">aucune</span>' },
+                { key: 'l', label: 'Libellé' },
+                { key: 'fin', label: 'Financeur', width: '150px' },
+                { key: 'v', label: 'Montant', align: 'right', width: '110px',
+                  format: v => (v >= 0 ? '+' : '−') + eur(Math.abs(v)) },
+            ];
+            const somme = lignes.reduce((t, x) => t + x.v, 0);
+            U().modal(NOM_GROUPE[g] + ' — ' + U().moisLabel(m),
+                '<p class="pil-note">' + lignes.length.toLocaleString('fr-FR')
+                + ' écriture' + (lignes.length > 1 ? 's' : '') + ' · '
+                + (somme >= 0 ? '+' : '−') + eur(Math.abs(somme))
+                + ' sur l’encours. Ni facture, ni règlement, ni avoir.</p>'
+                + '<div class="table-wrap-tall">'
+                + U().table(cols, lignes, { vide: 'Aucune écriture.' }) + '</div>',
+                [{ label: 'Fermer' }], { large: true });
+        };
+
         U().chart('pil-chart-bridge', {
             type: 'bar',
             data: {
@@ -850,15 +803,71 @@
                 responsive: true, maintainAspectRatio: false,
                 scales: { x: { grid: { display: false } },
                           y: { grid: U().grille, ticks: { callback: v => U().eurosCourt(v) } } },
+                onClick: (ev, els) => {
+                    if (!els || !els.length) return;
+                    const p = postes[els[0].index];
+                    if (p && p.groupe) ouvrirDetail(p.groupe);
+                },
+                onHover: (ev, els) => {
+                    const c = ev && ev.native && ev.native.target;
+                    if (c) c.style.cursor = (els && els.length && postes[els[0].index].groupe)
+                        ? 'pointer' : 'default';
+                },
                 plugins: {
                     legend: { display: false },
                     tooltip: { callbacks: { label: c2 => {
                         const p = postes[c2.dataIndex];
-                        return p.type === 'socle' ? eur(p.v)
-                            : (p.v >= 0 ? '+' : '') + eur(p.v); } } },
+                        if (p.type === 'socle') return eur(p.v);
+                        return (p.v >= 0 ? '+' : '') + eur(p.v)
+                            + (p.groupe ? ' · ' + p.n + ' écriture' + (p.n > 1 ? 's' : '')
+                                          + ' · cliquez pour les lire' : ''); } } },
                 },
             },
         });
+        // LE TABLEAU DES POSTES, PARCE QUE LA BARRE NE SE VOIT PAS. Un poste de
+        // 15 690 € sur une échelle de 14 M€ mesure un cinquième de pixel : il
+        // ne se voit pas et il ne se clique pas. Chaque poste se lit donc aussi
+        // en toutes lettres, avec son montant et son nombre d'écritures — un
+        // fait dans une cellule, pas dans une phrase — et ceux qui ne sont ni
+        // facture, ni règlement, ni avoir s'ouvrent sur leur détail.
+        const bloc = document.getElementById('pil-bridge-postes');
+        if (bloc) {
+            let nFac = 0, nEnc = 0, nAvo = 0;
+            for (const r of (D.flux || [])) {
+                if (!keep.has(r.fin) || r.m !== m) continue;
+                nFac += r.nFac || 0; nEnc += r.nEnc || 0; nAvo += r.nAvo || 0;
+            }
+            const nb = { 'Facturé': nFac, 'Encaissé': nEnc, 'Avoirs': nAvo };
+            const lignes = [];
+            lignes.push({ nom: postes[0].nom, v: a.total, n: null, socle: true });
+            for (const p of postes.slice(1, -1))
+                lignes.push({ nom: p.nom, v: p.v, n: p.groupe ? p.n : (nb[p.nom] || null),
+                              groupe: p.groupe || '' });
+            // UN POSTE À ZÉRO EST UN POSTE : deux écritures qui se compensent
+            // ne dessinent aucune barre, et le compte ne tomberait plus juste.
+            for (const g of ORDRE_GROUPE)
+                if (Math.abs(autG[g] || 0) <= 0.5 && (nAutG[g] || 0) > 0)
+                    lignes.push({ nom: NOM_GROUPE[g], v: 0, n: nAutG[g], groupe: g });
+            lignes.push({ nom: postes[postes.length - 1].nom, v: z.total, n: null, socle: true });
+            bloc.innerHTML = '<table class="data-table pil-postes-table"><thead><tr>'
+                + '<th>Poste</th><th class="ta-r">Montant</th><th class="ta-r">Écritures</th>'
+                + '</tr></thead><tbody>'
+                + lignes.map(r => '<tr' + (r.socle ? ' class="total"' : '') + '>'
+                    + '<td>' + U().escapeHtml(r.nom) + '</td>'
+                    + '<td class="ta-r">' + (r.socle || Math.abs(r.v) <= 0.5 ? eur(r.v)
+                        : (r.v > 0 ? '+' : '−') + eur(Math.abs(r.v))) + '</td>'
+                    + '<td class="ta-r">' + (r.n == null ? '—'
+                        : r.groupe
+                          ? '<button type="button" class="lien-cellule" data-groupe="'
+                            + U().escapeHtml(r.groupe) + '">'
+                            + r.n.toLocaleString('fr-FR') + '</button>'
+                          : r.n.toLocaleString('fr-FR')) + '</td></tr>').join('')
+                + '</tbody></table>';
+            bloc.onclick = ev => {
+                const b = ev.target.closest('button[data-groupe]');
+                if (b) ouvrirDetail(b.dataset.groupe);
+            };
+        }
         // LA PHRASE DISAIT « DONT », ET C'ÉTAIT FAUX. « −248 035 € à expliquer,
         // dont 1 899 548 € facturés » laissait croire que les 1,9 M€ étaient une
         // PART des 248 k€, alors qu'ils en sont un terme de sens contraire. Les
@@ -868,8 +877,14 @@
         (fac > 0 ? monte : baisse).push(eur(Math.abs(fac)) + ' facturés');
         if (Math.abs(enc) > 0.5) baisse.push(eur(Math.abs(enc)) + ' encaissés');
         if (Math.abs(avo) > 0.5) baisse.push(eur(Math.abs(avo)) + ' d’avoirs');
-        if (Math.abs(autres) > 0.5)
-            (autres > 0 ? monte : baisse).push(eur(Math.abs(autres)) + ' d’autres mouvements');
+        for (const g of ORDRE_GROUPE) {
+            const v = autG[g] || 0, n = nAutG[g] || 0;
+            if (Math.abs(v) <= 0.5) continue;
+            (v > 0 ? monte : baisse).push(eur(Math.abs(v)) + ' ' + DIT_GROUPE[g]
+                + ' (' + n.toLocaleString('fr-FR') + ' écriture' + (n > 1 ? 's' : '') + ')');
+        }
+        if (Math.abs(ecart) > 0.5)
+            (ecart > 0 ? monte : baisse).push(eur(Math.abs(ecart)) + ' d’écart inexpliqué');
         const et = l => l.length > 1
             ? l.slice(0, -1).join(', ') + ' et ' + l[l.length - 1] : (l[0] || '');
         const delta = z.total - a.total;
@@ -878,7 +893,9 @@
             + ', soit ' + (delta >= 0 ? '+' : '−') + eur(Math.abs(delta)) + '. '
             + (monte.length ? 'Il monte de ' + et(monte) + '. ' : '')
             + (baisse.length ? 'Il baisse de ' + et(baisse) + '. ' : '')
-            + 'En rouge ce qui le fait monter, en vert ce qui le fait baisser.';
+            + 'En rouge ce qui le fait monter, en vert ce qui le fait baisser. '
+            + 'Le tableau ci-dessous reprend chaque poste ; les écritures qui ne sont ni'
+            + ' facture, ni règlement, ni avoir s’ouvrent sur leur détail.';
     }
 
     // ═════════ les filtres, à l'écran ═════════

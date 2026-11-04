@@ -2146,6 +2146,17 @@ html {
 .pil-heat td.fam { font-weight: 600; }
 .pil-heat tr.total td { border-top: 2px solid rgba(99,102,241,.3); font-weight: 700; }
 
+/* LE TABLEAU DES POSTES DE LA CASCADE. Il dit en toutes lettres ce que les
+   barres ne peuvent pas montrer : un poste de quinze mille euros sur une
+   échelle de quatorze millions mesure un cinquième de pixel. */
+.pil-postes { margin-top: 1rem; overflow-x: auto; }
+.pil-postes-table { font-size: .82rem; }
+.pil-postes-table tr.total td {
+    border-top: 2px solid rgba(99,102,241,.3); font-weight: 700;
+}
+.pil-postes-table td, .pil-postes-table th { padding: .4rem .6rem; }
+.pil-postes-table td.ta-r { font-variant-numeric: tabular-nums; }
+
 @media (max-width: 760px) {
     /* Pliée en quatre lignes sur un écran étroit, collée elle mangerait la
        moitié de la hauteur : elle y reste simplement en haut de page. */

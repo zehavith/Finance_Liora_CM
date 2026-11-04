@@ -873,9 +873,16 @@
 
             <div class="charts-grid"><div class="chart-card chart-wide">
                 <div class="chart-header"><h3>Encours par ancienneté — treize arrêtés mensuels</h3></div>
-                <p class="pil-note">Chaque barre est un arrêté complet : lettrage, rapprochement,
-                   imputation au prorata et ancienneté refaits à la date. Le dernier point est la
-                   balance publiée.</p>
+                <!-- LA NOTE PARLE DU GRAPHIQUE, PAS DE LA CUISINE, 04/11/2026 : « on
+                     parle de l'encours par ancienneté, pourquoi tu parles de lettrage du
+                     coup ? ». Lettrage, rapprochement et imputation au prorata sont la
+                     mécanique de l'arrêté, pas ce que la barre montre. Ce qu'il faut
+                     savoir, c'est qu'une barre ancienne n'est pas la balance d'aujourd'hui
+                     filtrée à une date : c'est l'encours tel qu'il était ce jour-là. -->
+                <p class="pil-note">Chaque barre est l’encours à la fin d’un mois, réparti par
+                   tranche d’ancienneté. Elle est recalculée à sa date : une facture soldée
+                   depuis y figure encore si elle était ouverte ce jour-là. La dernière barre
+                   est la balance publiée.</p>
                 <div class="chart-container"><canvas id="pil-chart-ancienneté"></canvas></div>
             </div></div>
 
@@ -893,15 +900,9 @@
             </div></div>
 
             <div class="charts-grid"><div class="chart-card chart-wide">
-                <div class="chart-header"><h3>Ce qui reste dû, jour après jour depuis la facturation</h3></div>
+                <div class="chart-header"><h3>Évolution de l’encours par financeur, jour après jour depuis la facture</h3></div>
                 <p class="pil-note" id="pil-decroissance-dit"></p>
                 <div class="chart-container"><canvas id="pil-chart-decroissance"></canvas></div>
-            </div></div>
-
-            <div class="charts-grid"><div class="chart-card chart-wide">
-                <div class="chart-header"><h3>Vintages par mois de facturation — ce qui rentre, jour après jour</h3></div>
-                <p class="pil-note" id="pil-vintage-dit"></p>
-                <div class="chart-container"><canvas id="pil-chart-vintage"></canvas></div>
             </div></div>
 
             <div class="charts-grid"><div class="chart-card chart-wide">
@@ -915,6 +916,12 @@
                 <div class="chart-header"><h3>Bridge encours M / M+1</h3></div>
                 <p class="pil-note" id="pil-bridge-dit"></p>
                 <div class="chart-container"><canvas id="pil-chart-bridge"></canvas></div>
+                <!-- UN POSTE DE 15 690 € SUR UNE ÉCHELLE DE 14 M€ MESURE UN
+                     CINQUIÈME DE PIXEL : il ne se voit pas, et il ne se clique
+                     pas. Les postes se lisent donc aussi en toutes lettres,
+                     avec leur montant et leur nombre d'écritures, et ceux qui
+                     ne sont ni facture, ni règlement, ni avoir s'ouvrent. -->
+                <div class="pil-postes" id="pil-bridge-postes"></div>
             </div></div>
         </div>
     </div>
