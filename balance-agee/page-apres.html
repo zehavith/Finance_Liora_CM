@@ -739,6 +739,17 @@ const LOGO_XLSX='{{LOGO_B64}}';
 const BLEU='FF373771', DOUX='FFE9E9F7', PALE='FFF5F4F0', ENCRE3='FF8A8AA6', TRAIT='FFE2E1EC';
 const CORAIL='FFD4472A';
 const EUROS='#,##0 "€";[Red]-#,##0 "€"';
+// LE MÊME FORMAT, SANS LE ROUGE SUR LES NÉGATIFS, 04/11/2026 : « dans la
+// balance agé liora il faut juste retirer la mise en forme conditionnelle sur
+// les 3 onglets qui font que les chiffres négatifs sont en rouge ».
+//
+// En doctrine CAC un solde créditeur est une ligne de la balance comme une
+// autre — il vieillit à sa date et provisionne négativement. Le peindre en
+// rouge le donnait à lire comme une anomalie alors que c'est la doctrine. Les
+// trois onglets de tableaux s'en passent donc ; le reste du classeur garde le
+// rouge, qui y signale encore ce qui sort de l'ordinaire.
+const EUROS_NOIR='#,##0 "€";-#,##0 "€"';
+const EURO=()=>CAC()?EUROS_NOIR:EUROS;
 const ENTIER='#,##0';
 const MONNAIE=new Set(['Débit','Crédit','Solde','Reste dû de la créance','Montant facture',
   'Débit en devise d’origine','Crédit en devise d’origine']);
@@ -1299,13 +1310,13 @@ function feuilleBalance(wb,niv,idx,opt){
   if(avecProv){ ent[P.assiette]='Assiette de provision'; ent[P.prov]='À provisionner'; }
   ent[P.ecart]='Écart'; ent[P.autre]=autre;
   poserEntete(ws,ws.addRow(ent));
-  for(let c=P.total+1;c<=P.nonEchu+1;c++) ws.getColumn(c).numFmt=EUROS;
-  ws.getColumn(P.nb+1).numFmt=ENTIER; ws.getColumn(P.ecart+1).numFmt=EUROS;
+  for(let c=P.total+1;c<=P.nonEchu+1;c++) ws.getColumn(c).numFmt=EURO();
+  ws.getColumn(P.nb+1).numFmt=ENTIER; ws.getColumn(P.ecart+1).numFmt=EURO();
   // La part du NOMBRE de créances que porte la ligne, en fraction de 1 pour
   // qu'Excel la calcule et la somme. Sa règle, le 16/10/2026.
   ws.getColumn(P.part+1).numFmt='0.0 %';
-  if(avecProv){ ws.getColumn(P.prov+1).numFmt=EUROS;
-                ws.getColumn(P.assiette+1).numFmt=EUROS; }
+  if(avecProv){ ws.getColumn(P.prov+1).numFmt=EURO();
+                ws.getColumn(P.assiette+1).numFmt=EURO(); }
   const lignesSynth=synthRows(niv);
   // La provision par ligne de synthèse : la somme de celles de ses créances.
   const provCat=new Map(), assCat=new Map();
@@ -1728,7 +1739,7 @@ function recapParTypeDeClient(ws,ancre){
       if(sortieLignes) sortieLignes.push(l.number);
       l.getCell(1).font={bold:true};
       for(let c=2;c<=1+lab.length+(avecTotal?1:0);c++)
-        l.getCell(c).numFmt=(fmt==='euros'?EUROS:'0 %');
+        l.getCell(c).numFmt=(fmt==='euros'?EURO():'0 %');
       v.forEach((x,j)=>somme[j]+=x);
       if(y++%2) remplirLigne(ws,l,PALE);
     }
@@ -1737,7 +1748,7 @@ function recapParTypeDeClient(ws,ancre){
       if(avecTotal) cells.push(ar2(somme.reduce((a,b)=>a+b,0)));
       const t=ws.addRow(cells);
       poserTotal(t,ws);
-      for(let c=2;c<=1+lab.length+(avecTotal?1:0);c++) t.getCell(c).numFmt=EUROS;
+      for(let c=2;c<=1+lab.length+(avecTotal?1:0);c++) t.getCell(c).numFmt=EURO();
     }
     return somme;
   };
@@ -1784,7 +1795,7 @@ function recapParTypeDeClient(ws,ancre){
       const l=ws.addRow(cells);
       l.getCell(1).font={bold:true};
       l.getCell(2+nC).value={formula:'SUM('+colLettre(2)+l.number+':'+colLettre(1+nC)+l.number+')'};
-      for(let c=2;c<=2+nC;c++) l.getCell(c).numFmt=EUROS;
+      for(let c=2;c<=2+nC;c++) l.getCell(c).numFmt=EURO();
       if(y++%2) remplirLigne(ws,l,PALE);
       v.forEach((x,j)=>somme[j]+=x);
     }
@@ -1792,7 +1803,7 @@ function recapParTypeDeClient(ws,ancre){
     const t=ws.addRow(['TOTAL']);
     for(let c=2;c<=2+nC;c++){
       t.getCell(c).value={formula:'SUM('+colLettre(c)+premiere+':'+colLettre(c)+derniere+')'};
-      t.getCell(c).numFmt=EUROS;
+      t.getCell(c).numFmt=EURO();
     }
     poserTotal(t,ws);
   }
@@ -1819,7 +1830,7 @@ function recapParTypeDeClient(ws,ancre){
       ? 'Écart avec le moteur — financements hors barème compris dans les tranches'
       : 'Écart avec le total de la feuille', ar2(obtenu-attendu)]);
     e.getCell(1).font={bold:true,color:{argb:CORAIL}};
-    e.getCell(2).numFmt=EUROS; e.getCell(2).font={bold:true,color:{argb:CORAIL}};
+    e.getCell(2).numFmt=EURO(); e.getCell(2).font={bold:true,color:{argb:CORAIL}};
   }
 
   // LA CORRESPONDANCE DES NOMS A QUITTÉ LA FEUILLE, 04/11/2026 : « enlève ce
