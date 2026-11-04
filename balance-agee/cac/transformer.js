@@ -47,18 +47,34 @@ const BORNES=[[90,'0 à 3 mois'],[120,'3 à 4 mois'],[180,'4 à 6 mois'],[360,'6
 // il coïncide exactement avec celui que porte la donnée. Le fichier CAC les
 // nomme B2C, ETATIQUE et B2B ; la maison dit Financement personnel, Étatique
 // et Corporate. Un seul mot pour une seule chose, et la correspondance est
-// écrite dans les règles. INTERCO EST EXCLU, et « Interne - DST Allemagne » ne
-// figure dans aucune famille : ni l'un ni l'autre n'est provisionné.
+// écrite dans les règles.
+//
+// L'INTRAGROUPE EST UNE FAMILLE À 0 %, 04/11/2026 : « tu ajoute ds les regles
+// de provisionnement un provisionnement à 0% de l'interco ».
+//
+// Il était jusque-là ABSENT de toute famille. Le résultat était juste — rien
+// n'était provisionné — mais invisible : son reste dû figurait dans les
+// tranches du type de client Corporate, et pas dans l'assiette du barème. Les
+// deux lectures s'écartaient de 6 960 € sans qu'aucune ligne ne le dise, et la
+// question s'est posée le 04/11 sur l'arrêté au 30/06. Une famille à 0 %
+// répond aux deux : elle se montre dans le barème, et la multiplication tombe
+// juste parce que l'intragroupe a sa propre ligne partout.
 const FAMILLES={
   'Financement personnel':['Financement personnel','B2C-Perso','Perso-Alternance'],
   'Étatique':['CPF','Transition Pro','AIF','POEI','Region','Agefiph','ETAT','OPCO','OPCO - Alternance'],
   'Corporate':['B2C-Entreprise','B2B','Corporate - Alternance'],
+  'Interco':['Interco','Interne - DST Allemagne'],
 };
 const TAUX={'Financement personnel':[0.2,0.4,0.9,1],'Étatique':[0,0,0.5,1],
-  'Corporate':[0.4,0.4,0.9,1]};
+  'Corporate':[0.4,0.4,0.9,1],'Interco':[0,0,0,0]};
 // Les noms du fichier CAC, pour que le commissaire aux comptes retrouve les
 // siens en face des nôtres.
-const NOMS_CAC={'Financement personnel':'B2C','Étatique':'ETATIQUE','Corporate':'B2B'};
+const NOMS_CAC={'Financement personnel':'B2C','Étatique':'ETATIQUE','Corporate':'B2B',
+  'Interco':'INTERCO'};
+// Les financements que la famille Interco rassemble, pour reclasser leurs
+// créances : l'intragroupe se lit sur sa propre ligne, et non noyé dans
+// Corporate, sinon le barème et la balance ne se superposent plus.
+const INTRAGROUPE=new Set(FAMILLES['Interco']);
 const FENETRES=[
   {label:'121 - 180 j',tranches:['4 à 6 mois']},
   {label:'181 - 360 j',tranches:['6 à 12 mois']},
@@ -234,6 +250,17 @@ function transformer(){
     l[C['Délai appliqué (jours)']]=dic.index(String(e.jours));
     l[C['Règle de datation appliquée']]=dic.index(e.regle);
     l[C['Détail du calcul']]=dic.index(detail);
+    // L'INTRAGROUPE PORTE SON PROPRE TYPE DE CLIENT. Sans cela, la balance le
+    // range sous Corporate tandis que le barème lui applique 0 % : la somme
+    // des tranches de Corporate, multipliée par son taux, ne retombe plus sur
+    // le montant provisionné. Avec, chaque ligne du barème a sa ligne dans la
+    // balance, et la multiplication se refait à la main.
+    const scL=txt(l,'Type de financement de la créance')||txt(l,'Type de financement');
+    if(INTRAGROUPE.has(scL)){
+      if(C['Type de client de la créance']!==undefined)
+        l[C['Type de client de la créance']]=dic.index('Interco');
+      if(C['Type de client']!==undefined) l[C['Type de client']]=dic.index('Interco');
+    }
     // LA TRANCHE DE LA CRÉANCE EST UNIFORME SUR TOUTES SES LIGNES.
     //
     // L'échéance se porte par PIÈCE, mais la provision se calcule par
@@ -309,7 +336,9 @@ function transformer(){
     quand:d.arrete,
     // Ce que la doctrine CAC fait de l'assiette, dit une fois pour toutes.
     assiette:'solde net de la sous-catégorie dans la tranche, négatifs compris, sans imputation',
-    exclus:['Interco','Interne - DST Allemagne'],
+    // Plus d'exclusion : l'intragroupe est une famille du barème, provisionnée
+    // à 0 %. Il se lit, au lieu de manquer.
+    exclus:[],
   };
   d.provisionCac={ assiette, provision, total,
     provisionEnCompta:COMPTA.provisionEnCompta, compte511:COMPTA.compte511,
@@ -361,11 +390,15 @@ function transformer(){
     const exclu=(disp==='Interco'||disp==='Interne - DST Allemagne');
     return {dispositif:disp, type:a.type||'', perimetre:a.perimetre||'',
       base, jours, repli:'échéance Pennylane, à défaut la date de la ligne',
-      note:exclu?'Exclu du barème : son reste dû n’est pas provisionné.'
+      note:exclu?'Créance intragroupe : provisionnée à 0 % dans toutes les fenêtres.'
                 :(base==='début de formation'?'La formation est payée d’avance : l’échéance court du début.'
                  :(jours===30?'Trente jours à compter de la base.':'Soixante jours à compter de la base.')),
       mots:a.mots||''};
   });
+  // L'ordre d'affichage des types de client : l'intragroupe en dernier, après
+  // les trois familles du barème.
+  d.ordreTypeClient=['Étatique','Corporate','Financement personnel','Interco']
+    .filter(x=>Object.keys(TAUX).includes(x));
   d.source=d.source+' · règles du commissaire aux comptes';
   d.doctrine='CAC';
 
