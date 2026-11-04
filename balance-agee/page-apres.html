@@ -1114,13 +1114,28 @@ function provisionRegles(ws){
   const orphelins=tousTypes.filter(x=>!rattaches.has(x));
   const exclus=orphelins.filter(x=>(PROV.exclus||[]).indexOf(x)>=0);
   const oublis=orphelins.filter(x=>(PROV.exclus||[]).indexOf(x)<0);
-  const orphDit=orphelins.length
-    ? [exclus.length?exclus.join(', ')+' : exclus du barème par la doctrine.':'',
-       oublis.length?oublis.join(', ')+' : aucun type de client du barème ne les '
-         +'couvre.':''].filter(Boolean).join(' ')
-      +' Leur reste dû n’est pas provisionné, à son débit comme à son crédit.'
-    : 'Aucun : tous les types de financement présents à cet arrêté relèvent d’un '
-      +'type de client du barème.';
+  // UN TAUX NUL N'EST PAS UNE ABSENCE, ET SE DIT. Un type de client dont le
+  // barème porte zéro dans toutes les fenêtres est rattaché — il figure dans
+  // les tableaux — mais rien n'en est provisionné. Sans cette phrase, la règle
+  // annonçait « Aucun » alors que l'intragroupe ne l'est pas.
+  const zeroFams=grpNoms.filter(f=>((PROV.taux||{})[f]||[]).length
+    && ((PROV.taux||{})[f]||[]).every(t=>!t));
+  const zeroDit=zeroFams.map(f=>f+' ('+((grp[f]||[]).join(', ')
+    ||'aucun type de financement rattaché')+') : rattaché au barème, et '
+    +'provisionné à 0 % dans toutes les fenêtres.').join(' ');
+  const orphDit=[
+    orphelins.length
+      ? [exclus.length?exclus.join(', ')+' : exclus du barème par la doctrine.':'',
+         oublis.length?oublis.join(', ')+' : aucun type de client du barème ne les '
+           +'couvre.':''].filter(Boolean).join(' ')
+        +' Leur reste dû n’est pas provisionné, à son débit comme à son crédit.'
+      : '',
+    zeroDit,
+    (!orphelins.length && !zeroFams.length)
+      ? 'Aucun : tous les types de financement présents à cet arrêté relèvent d’un '
+        +'type de client du barème, à un taux non nul.'
+      : ''
+  ].filter(Boolean).join(' ');
   const cacNoms=PROV.nomsCac||null;
   const cacDit=cacNoms
     ? Object.keys(cacNoms).filter(k=>grpNoms.indexOf(k)>=0)
@@ -3286,14 +3301,21 @@ function brancherParametres(){
 function vueProvision(){
   paramsPrets();
   const cible=E('bloc-prov'); if(!cible) return;
-  // Le même tableau que les deux autres lectures : une ligne par type de
-  // financement, les mêmes colonnes d'ancienneté. Seuls les montants changent
-  // — ce sont les provisions, et non le reste dû. Sa règle, le 16/10/2026 :
-  // « je ne veux pas que tu changes la mise en forme dans à provisionner ».
+  // Le même tableau que les deux autres lectures : une ligne par groupe, les
+  // mêmes colonnes d'ancienneté. Seuls les montants changent — ce sont les
+  // provisions, et non le reste dû. Sa règle, le 16/10/2026 : « je ne veux pas
+  // que tu changes la mise en forme dans à provisionner ».
+  //
+  // PAR TYPE DE CLIENT EN DOCTRINE CAC, 04/11/2026 : « ds l'artefcat, ici, je
+  // ne veux pas que cela soit trié en type de financement mais en type de
+  // client ». Le barème du commissaire aux comptes SE LIT par type de client :
+  // une ligne par financement obligeait à les rassembler de tête pour retrouver
+  // le taux qui s'y applique.
+  const parClient=CAC();
   const parSc=new Map(), vues=new Set();
   for(const i of I){
     const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
-    const sc=sousVraie(i); if(!sc) continue;
+    const sc=parClient?categorieDe(i,'cat'):sousVraie(i); if(!sc) continue;
     const rd=N(i,'Reste dû de la créance');
     // Une créance intégralement réglée à l'intérieur de son lot garde sa clé
     // dans le détail mais ne doit plus rien : elle ne se compte pas ici, pas
@@ -3301,7 +3323,10 @@ function vueProvision(){
     // annonçait 6 141 quand le reste de la page en publie 6 031.
     if(Math.abs(rd)<0.005) continue;
     const t=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
-    const p=provisionDe(rd, sc, t, k);
+    // Le taux se prend TOUJOURS sur le type de financement de la créance, quel
+    // que soit le regroupement affiché : c'est lui qui désigne la famille du
+    // barème. Prendre la clé d'affichage aurait changé la provision.
+    const p=provisionDe(rd, sousVraie(i), t, k);
     let g=parSc.get(sc);
     if(!g){ g={sc, cat:categorieDe(i,'cat'), rd:0, prov:0, nb:0, tr:new Map()}; parSc.set(sc,g); }
     g.rd+=rd; g.prov+=p; g.nb++;
@@ -3321,7 +3346,7 @@ function vueProvision(){
   const pct=v=>!total?'·':(v/total*100).toLocaleString('fr-FR',
     {minimumFractionDigits:1,maximumFractionDigits:1})+' %';
   let h='<table id="prov-table"><thead><tr>'
-    +'<th>Type de financement</th>'
+    +'<th>'+(parClient?'Type de client':'Type de financement')+'</th>'
     +'<th class="n">Reste dû</th><th class="n">À provisionner</th><th class="n">Part</th>'
     +D.tranches.map(x=>'<th class="n">'+esc(x)+'</th>').join('')
     +'<th class="n">Non échu</th><th class="n">Créances</th></tr></thead><tbody>';
@@ -3343,7 +3368,8 @@ function vueProvision(){
   cible.innerHTML=h;
   // Un clic sur un montant à provisionner rend les lignes qui le composent.
   for(const td of cible.querySelectorAll('td.ouvrable'))
-    td.addEventListener('click',()=>ouvrir(td.dataset.sc,td.dataset.tr,'sous',true));
+    td.addEventListener('click',()=>ouvrir(td.dataset.sc,td.dataset.tr,
+      parClient?'cat':'sous',true));
 }
 
 </script>

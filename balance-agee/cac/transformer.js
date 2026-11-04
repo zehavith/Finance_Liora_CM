@@ -388,7 +388,12 @@ function transformer(){
   d.regles=BAREME.map(([disp,base,jours])=>{
     const a=ancien.get(disp)||{};
     const exclu=(disp==='Interco'||disp==='Interne - DST Allemagne');
-    return {dispositif:disp, type:a.type||'', perimetre:a.perimetre||'',
+    // LE TYPE DE CLIENT DE LA RÈGLE EST CELUI DU BARÈME CAC, pas celui que
+    // portait la balance de la maison. Repris tel quel, il annonçait « Interco
+    // → Corporate » deux lignes au-dessus d'un tableau qui en fait son propre
+    // type de client : une feuille de règles qui se contredit ne vaut rien.
+    const famille=Object.keys(FAMILLES).find(f=>(FAMILLES[f]||[]).includes(disp))||'';
+    return {dispositif:disp, type:famille||a.type||'', perimetre:a.perimetre||'',
       base, jours, repli:'échéance Pennylane, à défaut la date de la ligne',
       note:exclu?'Créance intragroupe : provisionnée à 0 % dans toutes les fenêtres.'
                 :(base==='début de formation'?'La formation est payée d’avance : l’échéance court du début.'
