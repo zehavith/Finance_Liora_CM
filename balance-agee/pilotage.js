@@ -43,14 +43,32 @@ const NB_MOIS = 13;
 // l'entreprise derrière est B2B ou B2C-Entreprise. Tant qu'elle ne tranche
 // pas, OPCO reste donc À RATTACHER — visible, et jamais fondu dans une équipe.
 // Sa règle du 14/10 : « si tu n'es pas sûr ne classe pas ».
+// OPCO SUIT LA NATURE DE SA CRÉANCE, 04/11/2026 : « opco si c un B2B tu met ds
+// B2B, si c un B2C entreprise tu met ds B2C, si c alternance tu met en
+// alternance ».
+//
+// La règle a trois branches ; les données n'en remplissent qu'une. Mesuré sur
+// l'arrêté au 30/10/2026 : les 76 créances OPCO — 129 643,54 € — tiennent sur
+// SEIZE comptes, et ces seize comptes ne portent, à part elles, que de
+// l'OPCO - Alternance : 1 183 créances, et rien d'autre. Aucune n'est B2B,
+// aucune n'est B2C-Entreprise ; leur type de client est uniformément Étatique.
+//
+// OPCO rejoint donc Alternance, qui est ce que sa troisième branche dicte pour
+// chacune des créances qui existent aujourd'hui. Si une créance OPCO B2B ou
+// B2C-Entreprise apparaît, rien dans le grand livre ne la distinguera : il
+// faudra dire QUELLE COLONNE porte cette nature-là.
+//
+// « à rattacher » disparaît de la table, mais pas de la page : uniteDe() y
+// range encore tout type de financement qu'aucune unité ne réclame, et il se
+// lit alors dans le filtre. Un oubli doit se voir.
 const UNITES = {
-  'Alternance': ['Corporate - Alternance', 'OPCO - Alternance', 'Perso-Alternance', 'Alternance'],
+  'Alternance': ['Corporate - Alternance', 'OPCO - Alternance', 'Perso-Alternance',
+                 'Alternance', 'OPCO'],
   'Allemagne': ['Interne - DST Allemagne', 'Interco'],
   'B2B': ['B2B'],
   'B2C': ['Financement personnel', 'CPF', 'AIF', 'Region', 'Transition Pro',
           'B2C-Entreprise', 'ETAT', 'Agefiph'],
   'POEI': ['POEI'],
-  'à rattacher': ['OPCO'],
 };
 
 const lire = f => JSON.parse(fs.readFileSync(f, 'utf8'));
