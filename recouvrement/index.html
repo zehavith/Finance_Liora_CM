@@ -808,6 +808,11 @@
         <div class="pil-barre">
             <div class="pil-filtre">
                 <label for="pil-periode">Période</label>
+                <!-- « 7 derniers jours » figure dans sa capture Pennylane et n'est pas
+                     repris ici : le relevé comptable est bâti sur des arrêtés MENSUELS
+                     et sur des flux par mois. Une fenêtre de sept jours ne pourrait
+                     répondre qu'en renvoyant le mois entier — un chiffre faux sous un
+                     libellé juste. La maille est dite sous le filtre plutôt que cachée. -->
                 <select id="pil-periode">
                     <option value="exercice">Exercice courant</option>
                     <option value="exercice-1">Exercice précédent</option>
@@ -819,6 +824,7 @@
                     <option value="douze">Douze derniers mois</option>
                     <option value="libre">Date personnalisée</option>
                 </select>
+                <span class="pil-maille">maille du relevé : le mois</span>
                 <span id="pil-dates" hidden>
                     <input type="date" id="pil-du" aria-label="Du"> 
                     <input type="date" id="pil-au" aria-label="Au">

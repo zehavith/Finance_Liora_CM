@@ -2102,3 +2102,6 @@ html {
     .pil-heat { font-size: .74rem; }
     .pil-heat th, .pil-heat td { padding: .35rem .4rem; }
 }
+/* La maille du relevé, sous le filtre de période : il est bâti sur des arrêtés
+   mensuels, et une fenêtre plus courte ne pourrait répondre qu'en mentant. */
+.pil-maille { font-size: .72rem; color: var(--encre-3, #8b92a5); font-style: italic; }
