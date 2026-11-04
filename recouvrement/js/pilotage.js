@@ -110,15 +110,30 @@
         return new Date();
     }
 
-    // Le décalage demandé par le filtre de comparaison, appliqué aux bornes.
+    // LA PÉRIODE S'ARRÊTE OÙ S'ARRÊTENT LES ÉCRITURES.
+    //
+    // L'exercice court jusqu'au 30 juin, mais le grand livre s'arrête à la
+    // date d'arrêté : « du 01/07/2026 au 30/06/2027 » ne porte en réalité que
+    // quatre mois de facturation. Comparer cela à douze mois pleins annonçait
+    // « −33 749 684 € » — vrai au centime, et illisible.
+    function finObservee(b) {
+        const arrete = D && D.arrete ? D.arrete : '';
+        if (!arrete) return b.au;
+        return (!b.au || arrete < b.au) ? arrete : b.au;
+    }
+
+    // Le décalage demandé par le filtre de comparaison, appliqué aux bornes —
+    // et à la DURÉE ÉCOULÉE, pas à la durée annoncée : on compare quatre mois
+    // à quatre mois.
     function bornesComparaison() {
         const c = F.comparaison; if (!c) return null;
         const b = bornes(); if (!b.du || !b.au) return null;
         const m = /^M-(\d)$/.exec(c), a = /^A-(\d)$/.exec(c);
         const recule = (s, mois, ans) => { const d = parseFR(s);
             return iso(new Date(d.getFullYear() - (ans || 0), d.getMonth() - (mois || 0), d.getDate())); };
-        if (m) return { du: recule(b.du, +m[1], 0), au: recule(b.au, +m[1], 0), quoi: 'M-' + m[1] };
-        if (a) return { du: recule(b.du, 0, +a[1]), au: recule(b.au, 0, +a[1]), quoi: 'A-' + a[1] };
+        const fin = finObservee(b);
+        if (m) return { du: recule(b.du, +m[1], 0), au: recule(fin, +m[1], 0), quoi: 'M-' + m[1] };
+        if (a) return { du: recule(b.du, 0, +a[1]), au: recule(fin, 0, +a[1]), quoi: 'A-' + a[1] };
         return null;
     }
 
@@ -168,9 +183,16 @@
     }
 
     // L'arrêté retenu : le dernier qui ne dépasse pas la fin de la période.
-    function arreteRetenu(b) {
+    //
+    // ET RIEN, S'IL N'Y EN A PAS. Les treize arrêtés ne remontent pas au-delà
+    // d'octobre 2025 : pour une comparaison à l'année N-1, il n'existe pas
+    // d'encours à montrer. Retomber sur le dernier arrêté connu donnait un
+    // écart calculé entre deux dates qui n'étaient pas celles annoncées — un
+    // chiffre faux, et faux en silence.
+    function arreteRetenu(b, strict) {
         const l = (D.encours || []).filter(e => !b.au || e.d <= b.au);
-        return l.length ? l[l.length - 1] : (D.encours || [])[(D.encours || []).length - 1] || null;
+        if (l.length) return l[l.length - 1];
+        return strict ? null : ((D.encours || [])[(D.encours || []).length - 1] || null);
     }
 
     function encours(e, keep) {
@@ -241,7 +263,7 @@
         const b = bornes();
         const bc = bornesComparaison();
         const e = encours(arreteRetenu(b), keep);
-        const ec = bc ? encours(arreteRetenu(bc), keep) : null;
+        const ec = bc ? encours(arreteRetenu(bc, true), keep) : null;
         const f = flux(b, keep), fc = bc ? flux(bc, keep) : null;
         const d = delai(b, keep), dc = bc ? delai(bc, keep) : null;
 
@@ -259,7 +281,9 @@
         const el = document.getElementById('pilotage-badge');
         if (!el) return;
         const d = x => x ? parseFR(x).toLocaleDateString('fr-FR') : '—';
+        const fin = finObservee(b);
         el.textContent = 'du ' + d(b.du) + ' au ' + d(b.au)
+            + (fin && fin !== b.au ? ' — écritures jusqu’au ' + d(fin) : '')
             + ' · encours arrêté au ' + (e && e.date ? parseFR(e.date).toLocaleDateString('fr-FR') : '—')
             + ' · source : grand livre Pennylane';
     }
@@ -273,6 +297,11 @@
         const prov = (D.provision || {}).comptabilisee;
         const couv = (prov !== null && prov !== undefined && e && e.total) ? prov / e.total : null;
         const quoi = bc ? ' <span class="pil-ref">vs ' + bc.quoi + '</span>' : '';
+        // Quand l'encours de la période de comparaison n'existe pas, on ne
+        // montre pas d'écart : on dit qu'il n'y en a pas.
+        const sansArrete = bc && !ec
+            ? ' <span class="pil-ref">pas d’arrêté au ' + parseFR(bc.au).toLocaleDateString('fr-FR') + '</span>'
+            : '';
 
         const v = [];
         v.push(vignette('Total facturé', eur(f.fac),
@@ -280,10 +309,10 @@
             fc ? ecart(f.fac, fc.fac, 'eur', 'haut') + quoi : ''));
         v.push(vignette('Total encours', e ? eur(e.total) : '—',
             e ? 'échu ' + eur(e.echu) + ' · non échu ' + eur(e.nonEchu) : '',
-            ec ? ecart(e.total, ec.total, 'eur', 'bas') + quoi : ''));
+            ec ? ecart(e.total, ec.total, 'eur', 'bas') + quoi : sansArrete));
         v.push(vignette('Échu de plus de 120 jours', pct(taux),
             e ? eur(audela) + ' sur ' + eur(e.total) : '',
-            tauxC !== null ? ecart(taux, tauxC, 'pct', 'bas') + quoi : ''));
+            tauxC !== null ? ecart(taux, tauxC, 'pct', 'bas') + quoi : sansArrete));
         v.push(vignette('DSO', jrs(d.jours),
             d.n ? d.n.toLocaleString('fr-FR') + ' règlements · ' + eur(d.montant) : 'aucun règlement daté',
             dc && dc.jours !== null ? ecart(d.jours, dc.jours, 'j', 'bas') + quoi : ''));

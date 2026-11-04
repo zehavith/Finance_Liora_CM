@@ -1626,9 +1626,9 @@ function pontDuResteDu(ws){
     if((fen.findIndex(f=>(f.tranches||[]).indexOf(tr)>=0))<0) continue;
     if(!taux[familleDe(sousVraie(i))]) continue;
     const rd=N(i,'Reste dû de la créance');
-    // Une créance créditrice ne se provisionne pas : elle sort de l'assiette,
-    // alors qu'elle minore bien la tranche de la balance. C'est l'un des deux
-    // postes de l'écart, et il se lit.
+    // Une créance à solde créditeur ne se provisionne pas : elle sort de
+    // l'assiette, alors qu'elle minore bien la tranche de la balance. C'est
+    // l'un des deux postes de l'écart, et il se lit.
     if(rd<0){ crediteur+=rd; nCrediteur++; continue; }
     if(!(rd>0)) continue;
     brut+=rd; nb++;
@@ -1665,9 +1665,9 @@ function pontDuResteDu(ws){
   })();
   if(trancheBalance!==null){
     pose('Somme des tranches soumises au barème', trancheBalance, null,
-      'Les colonnes « 4 à 6 mois » et au-delà de la ligne TOTAL, telles que la balance les publie : des montants NETS, dettes moins créances créditrices.', true);
-    pose('+ créances créditrices, que l’assiette ne déduit pas', -crediteur, nCrediteur,
-      'Une créance que le client ne doit plus ne couvre aucune perte : elle minore la tranche, mais ne se provisionne pas. On la remet pour revenir au seul côté débiteur.');
+      'Les colonnes « 4 à 6 mois » et au-delà de la ligne TOTAL, telles que la balance les publie : des montants NETS, dettes moins créances à solde créditeur.', true);
+    pose('+ créances à solde créditeur, que l’assiette ne déduit pas', -crediteur, nCrediteur,
+      'Une créance dont les encaissements et les avoirs dépassent la facture ne couvre aucune perte : elle minore la tranche, mais ne se provisionne pas. On la remet pour revenir au seul côté débiteur.');
   }
   pose('= Reste dû des créances débitrices soumises au barème', brut, nb,
     'Les créances débitrices dont l’ancienneté tombe dans une fenêtre de provision, à leur reste dû.', true);
@@ -1959,7 +1959,7 @@ const familleDe=sc=>{
 //
 // On ne provisionne pas une dette qu'un paiement du même lot a déjà éteinte.
 // Depuis qu'une écriture sans facture fait SA créance, un règlement non
-// rattaché est devenu une créance au crédit à côté des dettes du même lot, et
+// rattaché est devenu une créance à solde créditeur à côté des dettes du même lot, et
 // la provision portait sur le BRUT de ces dettes : 16 983 311 € au lieu des
 // 14 635 123 € réellement dus, soit 5 670 753 € provisionnés au lieu de
 // 4 654 820 €. Un million de trop.
@@ -2210,7 +2210,11 @@ function detailProvision(i){
       +' : taux nul, rien à provisionner';
     return 'solde net '+eurC(rd)+' × '+pc(t0)+' ('+fam0+', '+fen0[j0].label+') = '+eurC(rd*t0);
   }
-  if(rd<0) return 'créance au crédit : rien à provisionner';
+  // UNE CRÉANCE EST AU DÉBIT, PAR DÉFINITION : « créance au crédit ne veut
+  // rien dire », 04/11/2026. Ce qu'on désigne ici, c'est une créance dont le
+  // SOLDE est créditeur — les encaissements et les avoirs y dépassent la
+  // facture. Le montant est dit, pour qu'on sache de combien.
+  if(rd<0) return 'solde créditeur de '+eurC(-rd)+' : rien à provisionner';
   if(!(rd>0)) return 'créance soldée : rien à provisionner';
   const a=assiettes();
   const base=a.has(k)?a.get(k):rd;
