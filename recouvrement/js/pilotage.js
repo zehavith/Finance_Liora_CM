@@ -189,10 +189,14 @@
     // d'encours à montrer. Retomber sur le dernier arrêté connu donnait un
     // écart calculé entre deux dates qui n'étaient pas celles annoncées — un
     // chiffre faux, et faux en silence.
-    function arreteRetenu(b, strict) {
+    // ET RIEN VEUT DIRE RIEN, 04/11/2026. Une période entièrement antérieure
+    // au premier arrêté — « du 01/01/2024 au 31/12/2024 » — affichait l'encours
+    // du jour, 14 132 742 €, sous une étiquette 2024 : un chiffre juste à la
+    // mauvaise date est un chiffre faux. On ne retombe plus sur le dernier
+    // arrêté connu ; l'absence se dit.
+    function arreteRetenu(b) {
         const l = (D.encours || []).filter(e => !b.au || e.d <= b.au);
-        if (l.length) return l[l.length - 1];
-        return strict ? null : ((D.encours || [])[(D.encours || []).length - 1] || null);
+        return l.length ? l[l.length - 1] : null;
     }
 
     function encours(e, keep) {
@@ -263,7 +267,7 @@
         const b = bornes();
         const bc = bornesComparaison();
         const e = encours(arreteRetenu(b), keep);
-        const ec = bc ? encours(arreteRetenu(bc, true), keep) : null;
+        const ec = bc ? encours(arreteRetenu(bc), keep) : null;
         const f = flux(b, keep), fc = bc ? flux(bc, keep) : null;
         const d = delai(b, keep), dc = bc ? delai(bc, keep) : null;
 
@@ -317,12 +321,14 @@
         v.push(vignette('Total facturé', eur(f.fac),
             f.nFac.toLocaleString('fr-FR') + ' factures',
             fc ? ecart(f.fac, fc.fac, 'eur', 'haut') + quoi : ''));
+        // L'ABSENCE D'ARRÊTÉ SE DIT, elle ne se remplace pas par le dernier connu.
+        const rien = '<span class="pil-acompleter">aucun arrêté dans cette période</span>';
         v.push(vignette('Total encours', e ? eur(e.total) : '—',
-            e ? 'échu ' + eur(e.echu) + ' · non échu ' + eur(e.nonEchu) : '',
-            ec ? ecart(e.total, ec.total, 'eur', 'bas') + quoi : sansArrete));
-        v.push(vignette('Échu de plus de 120 jours', pct(taux),
-            e ? eur(audela) + ' sur ' + eur(e.total) : '',
-            tauxC !== null ? ecart(taux, tauxC, 'pct', 'bas') + quoi : sansArrete));
+            e ? 'échu ' + eur(e.echu) + ' · non échu ' + eur(e.nonEchu) : rien,
+            (e && ec) ? ecart(e.total, ec.total, 'eur', 'bas') + quoi : (e ? sansArrete : '')));
+        v.push(vignette('Échu de plus de 120 jours', e ? pct(taux) : '—',
+            e ? eur(audela) + ' sur ' + eur(e.total) : rien,
+            (e && tauxC !== null) ? ecart(taux, tauxC, 'pct', 'bas') + quoi : (e ? sansArrete : '')));
         v.push(vignette('DSO', jrs(d.jours),
             d.n ? d.n.toLocaleString('fr-FR') + ' règlements · ' + eur(d.montant) : 'aucun règlement daté',
             dc && dc.jours !== null ? ecart(d.jours, dc.jours, 'j', 'bas') + quoi : ''));
@@ -399,9 +405,12 @@
         const el = document.getElementById('pil-heatmap');
         if (!el) return;
         const arrete = arreteRetenu(bornes());
+        if (!arrete) { el.innerHTML = '<p class="pil-vide">Aucun arrêté dans cette période :'
+            + ' le relevé commence au ' + parseFR((D.encours || [{}])[0].d || '').toLocaleDateString('fr-FR')
+            + '.</p>'; return; }
         const keep = retenus();
         const t = D.tranches || [];
-        const lignes = (arrete ? arrete.parFinancement : []).filter(r => keep.has(r.cat))
+        const lignes = (arrete.parFinancement || []).filter(r => keep.has(r.cat))
             .map(r => ({ fin: r.cat, unite: uniteDe(r.cat), total: r.total || 0,
                 cases: COLONNES.map(c => c.nonEchu ? (r.nonEchu || 0)
                     : c.tr.reduce((s, nom) => s + ((r.buckets || [])[t.indexOf(nom)] || 0), 0)) }))
@@ -612,7 +621,15 @@
     function graphBridge(keep, b) {
         const pts = (D.encours || []);
         if (pts.length < 2) return;
-        const fin = arreteRetenu(b) || pts[pts.length - 1];
+        const el0 = document.getElementById('pil-bridge-dit');
+        const fin = arreteRetenu(b);
+        if (!fin) {
+            U().chart('pil-chart-bridge', { type: 'bar', data: { labels: [], datasets: [] },
+                options: { responsive: true, maintainAspectRatio: false,
+                           plugins: { legend: { display: false } } } });
+            if (el0) el0.textContent = 'Aucun arrêté dans cette période : rien à expliquer.';
+            return;
+        }
         const k = pts.indexOf(fin);
         const dep = pts[Math.max(0, k - 1)];
         const a = encours(dep, keep), z = encours(fin, keep);
