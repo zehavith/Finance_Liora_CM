@@ -238,6 +238,9 @@
         : (Math.round(v * 1000) / 10).toLocaleString('fr-FR') + ' %';
     const jrs = v => (v === null || v === undefined || !isFinite(v)) ? '—'
         : Math.round(v).toLocaleString('fr-FR') + ' j';
+    // Un nombre à une décimale, à la française : 23,7 et non 23.7.
+    const nb1 = v => (Math.round(v * 10) / 10).toLocaleString('fr-FR',
+        { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
     function ecart(maintenant, avant, format, sens) {
         if (avant === null || avant === undefined || !isFinite(avant) || !isFinite(maintenant)) return '';
@@ -608,9 +611,13 @@
                 plugins: {
                     legend: { display: true, position: 'bottom',
                               labels: { boxWidth: 12, font: { size: 11 } } },
+                    // LE POINT DÉCIMAL ANGLAIS N'A RIEN À FAIRE ICI : toFixed rendait
+                    // « 23.7 % payé » au milieu d'une page où tout le reste s'écrit
+                    // à la française. Les deux nombres passent par le format français.
                     tooltip: { callbacks: { label: c => c.dataset.label + ' : '
-                        + (c.parsed.y == null ? '·' : c.parsed.y + ' % encore dû, soit '
-                           + (100 - c.parsed.y).toFixed(1) + ' % payé') } },
+                        + (c.parsed.y == null ? '·'
+                           : nb1(c.parsed.y) + ' % encore dû, soit '
+                             + nb1(100 - c.parsed.y) + ' % payé') } },
                 },
             },
         });
