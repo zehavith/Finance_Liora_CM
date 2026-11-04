@@ -2039,10 +2039,18 @@ html {
    chart-card, chart-header, chart-container, kpi-grid — pour qu'il ne
    paraisse pas rapporté d'ailleurs.                                       */
 
+/* LES FILTRES RESTENT SOUS LES YEUX, 04/11/2026 : « je veux que ces propriétés
+   soient figées ». Huit graphiques défilent sous cette barre ; arrivé en bas de
+   l'onglet, plus rien ne disait sur quel périmètre on lisait — ici le seul
+   financeur B2C-Entreprise. Elle se colle donc sous la navbar, comme la barre
+   de filtres du reste de l'application, et son fond devient opaque pour que les
+   graphiques ne transparaissent pas dessous. */
 .pil-barre {
     display: flex; flex-wrap: wrap; gap: 1.25rem 2rem; align-items: flex-start;
     padding: 1rem 1.25rem; margin-bottom: 1.5rem;
-    background: var(--surface-1, rgba(255,255,255,0.03));
+    position: sticky; top: var(--nav-h, 66px); z-index: 40;
+    background: rgba(11, 14, 26, 0.94);
+    backdrop-filter: blur(12px);
     border: 1px solid rgba(99, 102, 241, 0.14); border-radius: 12px;
 }
 .pil-filtre { display: flex; flex-direction: column; gap: .4rem; min-width: 11rem; }
@@ -2082,7 +2090,7 @@ html {
 .pil-deroule-bouton[aria-expanded="true"] { border-color: var(--accent, #F47458); }
 .pil-deroule-panneau {
     position: absolute; z-index: 60; top: calc(100% + .3rem); left: 0;
-    min-width: 100%; max-height: 17rem; overflow-y: auto;
+    min-width: 100%; max-height: min(60vh, 24rem); overflow-y: auto;
     flex-direction: column; flex-wrap: nowrap; gap: .1rem;
     padding: .5rem; border-radius: 10px;
     background: var(--bg-secondary); color: var(--text-primary);
@@ -2091,6 +2099,12 @@ html {
 .pil-deroule-panneau[hidden] { display: none; }
 .pil-deroule-panneau .pil-coche { padding: .25rem .3rem; border-radius: 6px; }
 .pil-deroule-panneau .pil-coche:hover { background: rgba(99,102,241,.12); }
+/* « Tous » ouvre la liste, détaché du reste : c'est la remise à zéro du
+   filtre, pas un choix de plus. */
+.pil-deroule-panneau .pil-coche-tout {
+    font-weight: 600; margin-bottom: .3rem; padding-bottom: .45rem;
+    border-bottom: 1px solid rgba(99,102,241,.2);
+}
 
 .pil-coches { display: flex; flex-wrap: wrap; gap: .35rem .75rem; }
 /* Aucune case cochée veut dire TOUTES : un filtre vide ne cache rien, et la
@@ -2133,7 +2147,9 @@ html {
 .pil-heat tr.total td { border-top: 2px solid rgba(99,102,241,.3); font-weight: 700; }
 
 @media (max-width: 760px) {
-    .pil-barre { gap: 1rem; padding: .85rem; }
+    /* Pliée en quatre lignes sur un écran étroit, collée elle mangerait la
+       moitié de la hauteur : elle y reste simplement en haut de page. */
+    .pil-barre { gap: 1rem; padding: .85rem; position: static; }
     .pil-filtre, .pil-filtre-large { min-width: 100%; flex: 1 1 100%; }
     .pil-heat { font-size: .74rem; }
     .pil-heat th, .pil-heat td { padding: .35rem .4rem; }

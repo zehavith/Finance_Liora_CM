@@ -508,36 +508,41 @@
         }
     }
 
-    // ── 4. les vintages ──
+    // ── 4. les vintages, mois de facturation par mois de facturation ──
     //
-    // POUR CHAQUE MOIS DE FACTURATION, CE QUI RESTE DÛ AU FIL DES ARRÊTÉS.
+    // « Des vintage par mois de facturation (abscisse — met d jours) », puis
+    // « les vintages ne doivent pas être en fonction de cohorte », 04/11/2026.
+    // L'AXE EST EN JOURS, PAS EN MOIS. Il portait l'âge en mois — la maille des
+    // arrêtés — et c'était une maille, pas une demande : elle a demandé des
+    // jours. Chaque point garde donc l'âge RÉEL du mois de facturation à la
+    // date de l'arrêté, compté depuis le 15 du mois — le jour moyen d'une
+    // facturation étalée sur le mois ; la dater du 1er la vieillirait de
+    // quinze jours. Les points d'une même courbe ne tombent plus à intervalle
+    // régulier : ils tombent là où sont les arrêtés, et c'est juste.
     //
-    // La première version lisait les règlements rattachables à une facture
-    // datée : elle laissait dehors 330 règlements sans facture et 1 909 dont
-    // la facture n'a pas de date connue, et annonçait donc moins encaissé
-    // qu'il n'en rentre vraiment. Celle-ci lit le RESTE DÛ de la cohorte à
-    // chaque arrêté mensuel — ce qui n'est plus dû a été encaissé, avoiré ou
-    // annulé — et se recolle donc à la balance par construction.
-    //
-    // L'axe est l'âge de la cohorte en mois, et non une échelle de jours :
-    // c'est la maille des arrêtés, et promettre le jour près serait promettre
-    // une précision qu'on n'a pas.
-    function cohortes(keep) {
-        const parCohorte = new Map();   // mois de facturation -> [{age, facture, resteDu}]
+    // CE QUI RENTRE SE LIT SUR LES ARRÊTÉS, PAS SUR LES RÈGLEMENTS. Bâtie sur
+    // les seuls encaissements rattachables à une facture datée, la courbe
+    // laissait dehors 330 règlements sans facture et 1 909 dont la facture n'a
+    // pas de date connue, et annonçait moins encaissé qu'il n'en rentre. Le
+    // reste dû d'un arrêté, lui, tient compte de tout ce qui éteint une
+    // facture — paiement, avoir, lettrage — et se recolle à la balance par
+    // construction.
+    function cohortesJours(keep) {
+        const parMois = new Map();   // mois de facturation -> Map(âge en jours -> {f, r})
         for (const e of (D.cohortes || [])) {
-            const da = parseFR(e.d);
+            const da = parseFR(e.d); if (!da) continue;
             for (const l of (e.lignes || [])) {
                 if (!keep.has(l.fin)) continue;
-                const dm = new Date(+l.m.slice(0, 4), +l.m.slice(5, 7) - 1, 1);
-                const age = (da.getFullYear() - dm.getFullYear()) * 12 + (da.getMonth() - dm.getMonth());
-                if (age < 0) continue;
-                const t = parCohorte.get(l.m) || new Map();
-                const o = t.get(age) || { f: 0, r: 0 };
+                const dm = new Date(+l.m.slice(0, 4), +l.m.slice(5, 7) - 1, 15);
+                const j = Math.round((da - dm) / 86400000);
+                if (j < 0) continue;
+                const t = parMois.get(l.m) || new Map();
+                const o = t.get(j) || { f: 0, r: 0 };
                 o.f += l.f; o.r += l.r;
-                t.set(age, o); parCohorte.set(l.m, t);
+                t.set(j, o); parMois.set(l.m, t);
             }
         }
-        return parCohorte;
+        return parMois;
     }
 
     // ═════════ ce qui reste dû, jour après jour depuis la facturation ═════════
@@ -663,51 +668,89 @@
     }
 
     function graphVintage(keep) {
-        const parCohorte = cohortes(keep);
-        // Les douze dernières cohortes qui ont de quoi se juger.
-        const mois = [...parCohorte.keys()]
-            .filter(m => [...parCohorte.get(m).values()].some(o => o.f > 0))
+        const parMois = cohortesJours(keep);
+        // Les douze derniers mois de facturation qui ont de quoi se juger.
+        const mois = [...parMois.keys()]
+            .filter(m => [...parMois.get(m).values()].some(o => o.f > 0))
             .sort().slice(-12);
-        const ages = [];
-        for (const m of mois) for (const a of parCohorte.get(m).keys())
-            if (ages.indexOf(a) < 0) ages.push(a);
-        ages.sort((x, y) => x - y);
         const pal = U().palette;
+        const courbe = m => [...parMois.get(m)]
+            .filter(([, o]) => o.f > 0)
+            .sort((a, b) => a[0] - b[0])
+            .map(([j, o]) => ({ x: j, y: Math.round((1 - o.r / o.f) * 1000) / 10 }));
         const series = mois.map((m, k) => ({
-            label: m, borderColor: pal[k % pal.length], backgroundColor: 'transparent',
-            borderWidth: 2, tension: 0.25, pointRadius: 2, spanGaps: true,
-            data: ages.map(a => { const o = parCohorte.get(m).get(a);
-                return (o && o.f > 0) ? Math.round((1 - o.r / o.f) * 1000) / 10 : null; }),
+            label: U().moisLabel ? U().moisLabel(m, true) : m,
+            borderColor: pal[k % pal.length], backgroundColor: 'transparent',
+            borderWidth: 2, tension: 0.25, pointRadius: 2, data: courbe(m),
         }));
+        // LE SEUIL SE LIT SUR L'AXE, DONC IL SE TRACE DESSUS : la ligne des
+        // 80 % encaissés dit d'un coup d'œil quelle courbe l'a franchie.
+        const bornes = series.reduce((b, s2) => s2.data.reduce(
+            (c, p) => [Math.min(c[0], p.x), Math.max(c[1], p.x)], b), [0, 0]);
+        series.push({ label: '80 % encaissés', borderColor: '#8b92a5',
+            borderDash: [5, 4], borderWidth: 1, pointRadius: 0,
+            backgroundColor: 'transparent',
+            data: [{ x: bornes[0], y: 80 }, { x: bornes[1], y: 80 }] });
         U().chart('pil-chart-vintage', {
             type: 'line',
-            data: { labels: ages.map(a => a === 0 ? 'le mois même' : a + ' mois'), datasets: series },
+            data: { datasets: series },
             options: {
                 responsive: true, maintainAspectRatio: false,
-                scales: { x: { grid: { display: false } },
-                          y: { grid: U().grille, min: 0, max: 100,
-                               ticks: { callback: v => v + ' %' } } },
+                parsing: false, normalized: true,
+                scales: {
+                    x: { type: 'linear', grid: { display: false },
+                         title: { display: true, text: 'jours depuis la facturation' },
+                         ticks: { callback: v => v + ' j' } },
+                    y: { grid: U().grille, min: 0, max: 100,
+                         ticks: { callback: v => v + ' %' } },
+                },
                 plugins: {
-                    legend: { position: 'bottom' },
+                    legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
                     tooltip: { callbacks: {
                         title: c => 'facturé en ' + c[0].dataset.label,
-                        label: c => c.raw + ' % encaissé au bout de ' + c.label } },
+                        label: c => c.parsed.y + ' % encaissé au bout de '
+                            + c.parsed.x + ' jours' } },
                 },
             },
         });
-        // La lecture en une phrase : au bout de combien de mois 80 % rentre.
+        // La lecture en une phrase : au bout de combien de JOURS 80 % rentre.
+        // Le jour exact est interpolé entre les deux arrêtés qui l'encadrent —
+        // un arrêté tombe fin de mois, le franchissement, lui, tombe un jour.
         const el = document.getElementById('pil-vintage-dit');
         if (!el) return;
-        const cumul = ages.map(a => { let f = 0, r = 0;
-            for (const m of mois) { const o = parCohorte.get(m).get(a); if (o) { f += o.f; r += o.r; } }
-            return f > 0 ? 1 - r / f : null; });
-        const j = cumul.findIndex(v => v !== null && v >= 0.8);
-        el.textContent = !mois.length ? 'Pas assez de cohortes pour se prononcer.'
-            : j >= 0
-              ? 'Sur ces ' + mois.length + ' cohortes, 80 % du facturé est encaissé au bout de '
-                + (ages[j] === 0 ? 'moins d’un mois' : ages[j] + ' mois') + '.'
-              : 'Sur ces ' + mois.length + ' cohortes, 80 % du facturé n’est pas atteint sur la profondeur'
-                + ' observée — ' + pct(cumul.filter(v => v !== null).pop()) + ' encaissés au dernier point.';
+        const jour80 = m => {
+            const pts = courbe(m); let av = null;
+            for (const p of pts) {
+                if (p.y >= 80) return av && av.y < 80
+                    ? Math.round(av.x + (80 - av.y) * (p.x - av.x) / (p.y - av.y))
+                    : p.x;
+                av = p;
+            }
+            return null;
+        };
+        const atteints = mois.map(jour80).filter(j => j !== null).sort((a, b) => a - b);
+        const encore = mois.filter(m => jour80(m) === null);
+        const med = atteints.length
+            ? (atteints.length % 2 ? atteints[(atteints.length - 1) / 2]
+               : Math.round((atteints[atteints.length / 2 - 1] + atteints[atteints.length / 2]) / 2))
+            : null;
+        el.textContent = !mois.length
+            ? 'Pas assez de mois de facturation pour se prononcer.'
+            : 'Une courbe par mois de facturation, l’âge en jours depuis le 15 du mois —'
+              + ' le jour moyen d’une facturation étalée. '
+              + (med === null
+                 ? 'Aucun de ces ' + mois.length + ' mois n’a encore encaissé 80 % de son facturé.'
+                 : 'Sur ' + atteints.length + ' des ' + mois.length + ' mois retenus,'
+                   + ' 80 % du facturé est encaissé en ' + med + ' jours en médiane'
+                   + (atteints.length > 1
+                      ? ' — de ' + atteints[0] + ' à ' + atteints[atteints.length - 1] + ' jours'
+                      : '') + '.')
+            + (encore.length
+               ? ' Pas encore à 80 % : ' + encore.map(m => U().moisLabel ? U().moisLabel(m, true) : m)
+                   .join(', ') + '.'
+               : '')
+            + ' Chaque point vient d’un arrêté refait à sa date : paiements, avoirs et'
+            + ' lettrage y sont tous comptés.';
     }
 
     // ── 5. la variation du DSO ──
@@ -873,28 +916,53 @@
         etiquette();
     }
 
+    // UNE CASE « TOUS » EN TÊTE DE LISTE, 04/11/2026 : « j'ai pas tous ».
+    // Aucune case cochée vaut bien TOUTES, mais rien ne le disait : un
+    // financeur coché, il fallait deviner qu'il suffisait de le décocher pour
+    // revoir le portefeuille entier. La case le dit et le fait. Elle n'est pas
+    // un financeur de plus : elle EST l'absence de filtre, donc elle se coche
+    // seule quand l'ensemble est vide, et on ne peut pas la décocher dans le
+    // vide — décocher « tous » ne voudrait rien dire.
+    const enTete = t => '<label class="pil-coche pil-coche-tout">'
+        + '<input type="checkbox" data-tout="1" checked> ' + U().escapeHtml(t) + '</label>';
+    function toutCocher(panneau, ens, source) {
+        ens.clear();
+        panneau.querySelectorAll('input[type="checkbox"]').forEach(i => {
+            if (!i.dataset.tout) i.checked = false;
+        });
+        if (source) source.checked = true;
+    }
+    function majTout(panneau, ens) {
+        const t = panneau.querySelector('input[data-tout]');
+        if (t) t.checked = ens.size === 0;
+    }
+
     function peuplerFiltres() {
         if (!D) return;
         const us = document.getElementById('pil-unites');
         const fs = document.getElementById('pil-financeurs');
+        const ligne = n => '<label class="pil-coche"><input type="checkbox" value="'
+            + U().escapeHtml(n) + '"> ' + U().escapeHtml(n) + '</label>';
         if (us && !us.dataset.pret) {
             const noms = Object.keys((D && D.unites) || {});
-            us.innerHTML = noms.map(n => '<label class="pil-coche"><input type="checkbox" value="'
-                + U().escapeHtml(n) + '"> ' + U().escapeHtml(n) + '</label>').join('');
+            us.innerHTML = enTete('Toutes les business units') + noms.map(ligne).join('');
             us.dataset.pret = '1';
             us.addEventListener('change', e => {
+                if (e.target.dataset.tout) { toutCocher(us, F.unites, e.target); rendre(); return; }
                 const v = e.target.value;
                 if (e.target.checked) F.unites.add(v); else F.unites.delete(v);
+                majTout(us, F.unites);
                 rendre();
             });
         }
         if (fs && !fs.dataset.pret) {
-            fs.innerHTML = tousFinanceurs().map(n => '<label class="pil-coche"><input type="checkbox" value="'
-                + U().escapeHtml(n) + '"> ' + U().escapeHtml(n) + '</label>').join('');
+            fs.innerHTML = enTete('Tous les financeurs') + tousFinanceurs().map(ligne).join('');
             fs.dataset.pret = '1';
             fs.addEventListener('change', e => {
+                if (e.target.dataset.tout) { toutCocher(fs, F.financeurs, e.target); rendre(); return; }
                 const v = e.target.value;
                 if (e.target.checked) F.financeurs.add(v); else F.financeurs.delete(v);
+                majTout(fs, F.financeurs);
                 rendre();
             });
         }
