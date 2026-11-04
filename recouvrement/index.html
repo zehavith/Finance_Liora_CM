@@ -124,6 +124,7 @@
         </div>
         <div class="nav-tabs">
             <button class="nav-tab active" data-tab="dashboard">Tableau de bord</button>
+            <button class="nav-tab" data-tab="pilotage">Pilotage</button>
             <button class="nav-tab" data-tab="aging">Balance âgée</button>
             <button class="nav-tab" data-tab="financements">Financements</button>
             <button class="nav-tab" data-tab="factures">Factures</button>
@@ -797,6 +798,103 @@
     </div>
 
     <!-- ══════════ ONGLET : BALANCE ÂGÉE ══════════ -->
+    <!-- ══════════════════════ PILOTAGE ══════════════════════
+         Cet onglet ne lit PAS les tableaux Monday : il lit la comptabilité,
+         par le relevé donnees/pilotage.json que la construction recopie
+         depuis la balance âgée. Il porte donc SA PROPRE barre de filtres —
+         période, comparaison, équipe commerciale, financeur — et la barre
+         commune, qui filtre les factures Monday, est masquée sur lui.        -->
+    <div class="tab-content" id="tab-pilotage">
+        <div class="pil-barre">
+            <div class="pil-filtre">
+                <label for="pil-periode">Période</label>
+                <select id="pil-periode">
+                    <option value="exercice">Exercice courant</option>
+                    <option value="exercice-1">Exercice précédent</option>
+                    <option value="mois">Mois en cours</option>
+                    <option value="mois-1">Mois dernier</option>
+                    <option value="trimestre">Trimestre en cours</option>
+                    <option value="annee">Année en cours</option>
+                    <option value="annee-1">Année dernière</option>
+                    <option value="douze">Douze derniers mois</option>
+                    <option value="libre">Date personnalisée</option>
+                </select>
+                <span id="pil-dates" hidden>
+                    <input type="date" id="pil-du" aria-label="Du"> 
+                    <input type="date" id="pil-au" aria-label="Au">
+                </span>
+            </div>
+            <div class="pil-filtre">
+                <label for="pil-comparaison">Comparaison</label>
+                <select id="pil-comparaison">
+                    <option value="">Aucune</option>
+                    <option value="M-1">Mois N-1</option>
+                    <option value="M-2">Mois N-2</option>
+                    <option value="M-3">Mois N-3</option>
+                    <option value="A-1">Année N-1</option>
+                    <option value="A-2">Année N-2</option>
+                    <option value="A-3">Année N-3</option>
+                </select>
+            </div>
+            <div class="pil-filtre pil-filtre-large">
+                <label>Business unit</label>
+                <div class="pil-coches" id="pil-unites"></div>
+            </div>
+            <div class="pil-filtre pil-filtre-large">
+                <label>Financeur</label>
+                <div class="pil-coches" id="pil-financeurs"></div>
+            </div>
+        </div>
+
+        <p class="pil-vide" id="pil-vide" hidden></p>
+
+        <div id="pil-corps" hidden>
+            <div class="period-badge" id="pilotage-badge"></div>
+
+            <div class="kpi-grid" id="pil-kpis"></div>
+
+            <div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>Encours par ancienneté — treize arrêtés mensuels</h3></div>
+                <p class="pil-note">Chaque barre est un arrêté complet : lettrage, rapprochement,
+                   imputation au prorata et ancienneté refaits à la date. Le dernier point est la
+                   balance publiée.</p>
+                <div class="chart-container"><canvas id="pil-chart-ancienneté"></canvas></div>
+            </div></div>
+
+            <div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>Encours par financeur et par ancienneté</h3></div>
+                <p class="pil-note">Les colonnes de votre balance âgée. Plus la case est chaude,
+                   plus la part de ce financeur dort dans cette tranche.</p>
+                <div id="pil-heatmap"></div>
+            </div></div>
+
+            <div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>Taux de retard par financeur</h3></div>
+                <p class="pil-note">La part échue de l’encours de chaque financeur, arrêté après arrêté.</p>
+                <div class="chart-container"><canvas id="pil-chart-retard"></canvas></div>
+            </div></div>
+
+            <div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>Vintages — ce qui rentre, cohorte par cohorte</h3></div>
+                <p class="pil-note" id="pil-vintage-dit"></p>
+                <div class="chart-container"><canvas id="pil-chart-vintage"></canvas></div>
+            </div></div>
+
+            <div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>Variation du DSO</h3></div>
+                <p class="pil-note">Délai moyen entre la date de facture et l’encaissement,
+                   pondéré par les montants.</p>
+                <div class="chart-container"><canvas id="pil-chart-dso"></canvas></div>
+            </div></div>
+
+            <div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>D’un arrêté à l’autre — ce qui explique l’encours</h3></div>
+                <p class="pil-note" id="pil-bridge-dit"></p>
+                <div class="chart-container"><canvas id="pil-chart-bridge"></canvas></div>
+            </div></div>
+        </div>
+    </div>
+
     <div class="tab-content" id="tab-aging">
         <div class="dashboard-content">
             <div class="section-header">
@@ -1751,6 +1849,7 @@
     <script src="js/zoho.js?v=4.0.0"></script>
 <script src="js/api.js?v=4.0.0"></script>
 <script src="js/ui.js?v=4.0.0"></script>
+<script src="js/pilotage.js?v=4.0.0"></script>
 <script src="app.js?v=4.0.0"></script>
 </body>
 </html>

@@ -59,9 +59,9 @@ const num = x => { const n = Number(String(x == null ? '' : x).replace(/\s/g, ''
 const mois = d => { const s = String(d || ''); return s.length >= 10 ? s.slice(6, 10) + '-' + s.slice(3, 5) : ''; };
 const jour = d => { const s = String(d || ''); if (s.length < 10) return null;
   return new Date(+s.slice(6, 10), +s.slice(3, 5) - 1, +s.slice(0, 2)); };
-const finDeMois = (a, m) => { const d = new Date(a, m + 1, 0);
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
-    + '-' + String(d.getDate()).padStart(2, '0'); };
+const isoDe = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+  + '-' + String(d.getDate()).padStart(2, '0');
+const finDeMois = (a, m) => isoDe(new Date(a, m + 1, 0));
 
 // ───────── le cube d'un arrêté ─────────
 function cube(bal, date) {
@@ -193,17 +193,47 @@ for (let k = NB_MOIS - 1; k >= 0; k--) {
 }
 // Le dernier point est la balance du jour, pas la fin du mois en cours : c'est
 // elle qui est publiée, et les deux doivent se recoller au centime.
-dates[dates.length - 1] = bal.arrete;
+//
+// ET EN ISO COMME LES DOUZE AUTRES. La balance date son arrêté en français —
+// « 30/10/2026 » — et le poser tel quel dans une liste de dates ISO rendait la
+// dernière incomparable aux précédentes : tout filtre de période la perdait.
+const ARRETE = isoDe(dArrete);
+dates[dates.length - 1] = ARRETE;
 
 console.log('relevé du pilotage — ' + NB_MOIS + ' arrêtés, du ' + dates[0] + ' au ' + dates[dates.length - 1]);
+// LE CUBE D'UN ARRÊTÉ SE GARDE. Chacun coûte quatre minutes de calcul pour
+// quelques dizaines de kilo-octets : les refaire à chaque relevé — ou après la
+// moindre interruption — serait une demi-heure perdue à chaque fois. Le cache
+// est daté par l'arrêté : un nouveau grand livre change les arrêtés passés
+// (une facture soldée depuis redevient due), donc il est vidé dès que la
+// balance du jour change de date.
+const CACHE = path.join(ICI, 'art', 'pilotage-cubes');
+fs.mkdirSync(CACHE, { recursive: true });
+{
+  const marque = path.join(CACHE, 'arrete.txt');
+  const vu = fs.existsSync(marque) ? fs.readFileSync(marque, 'utf8').trim() : '';
+  if (vu !== ARRETE) {
+    for (const f of fs.readdirSync(CACHE)) fs.rmSync(path.join(CACHE, f), { force: true });
+    fs.writeFileSync(marque, ARRETE);
+    if (vu) console.log('  (le grand livre a changé : les cubes gardés sont effacés)');
+  }
+}
 const cubes = [];
 for (const d of dates) {
+  const garde = path.join(CACHE, d + '.json');
+  if (fs.existsSync(garde)) {
+    const c = lire(garde); cubes.push(c);
+    console.log('  ' + d + ' — cube déjà calculé   encours '
+      + Math.round((c.total || {}).total || 0).toLocaleString('fr-FR') + ' €');
+    continue;
+  }
   const deja = path.join(ICI, 'art', 'arretes', 'balance-' + d + '.json');
   let b;
-  if (d === bal.arrete) { b = bal; process.stdout.write('  ' + d + ' — la balance du jour'); }
+  if (d === ARRETE) { b = bal; process.stdout.write('  ' + d + ' — la balance du jour'); }
   else if (fs.existsSync(deja)) { b = lire(deja); process.stdout.write('  ' + d + ' — arrêté déjà construit'); }
   else { process.stdout.write('  ' + d + ' — construction…'); b = arreterAilleurs(d); }
   const c = cube(b, d);
+  fs.writeFileSync(garde, JSON.stringify(c));
   cubes.push(c);
   console.log('   encours ' + Math.round(c.total.total || 0).toLocaleString('fr-FR')
     + ' € · ' + (c.total.nb || 0) + ' créances');
@@ -213,7 +243,8 @@ const f = flux(bal);
 const tm = f.dso.reduce((a, r) => a + r.mt, 0), tj = f.dso.reduce((a, r) => a + r.mj, 0);
 
 const releve = {
-  arrete: bal.arrete,
+  arrete: ARRETE,
+  arreteFR: bal.arrete,
   // PAS D'HORODATAGE. Le relevé est recopié dans le paquet du suivi
   // recouvrement, dont l'empreinte décide s'il y a lieu de republier : une
   // heure de génération y changerait à chaque passage et ferait republier une

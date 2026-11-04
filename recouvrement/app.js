@@ -1436,6 +1436,9 @@
 
         switch (state.ui.onglet) {
             case 'dashboard':    rendreDashboard(data); break;
+        // Le pilotage lit la COMPTABILITÉ, pas les factures Monday : il ne
+        // reçoit donc pas `data`, et il se rend depuis son propre relevé.
+        case 'pilotage':     if (window.LioraPilotage) window.LioraPilotage.rendre(); break;
             case 'aging':        rendreAging(data); rendreAgingSource(); rendreBoutonsPrecision(); break;
             case 'financements': rendreFinancements(data); break;
             case 'factures':     rendreFactures(data); break;
@@ -13538,8 +13541,16 @@
         // La barre de filtres n'a pas de sens sur l'onglet Données
         // Le contrôle Sellsy porte sur la totalité des factures : un filtre y
         // ferait passer pour manquantes celles qu'il vient d'écarter.
+        // Le pilotage, lui, lit la comptabilité et porte SA PROPRE barre : la
+        // barre commune filtre des factures Monday qui ne le concernent pas,
+        // et la laisser visible ferait croire qu'elle agit sur ses chiffres.
         $('#filters-wrap').classList.toggle('hidden',
-            nom === 'donnees' || nom === 'prelevements' || nom === 'sellsy');
+            nom === 'donnees' || nom === 'prelevements' || nom === 'sellsy'
+            || nom === 'pilotage');
+        // Le relevé comptable se lit à la première ouverture, et une seule
+        // fois : il pèse quelques centaines de kilo-octets et ne change qu'au
+        // dépôt d'un nouveau grand livre.
+        if (nom === 'pilotage' && window.LioraPilotage) window.LioraPilotage.ouvrir();
         rendreTout();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }

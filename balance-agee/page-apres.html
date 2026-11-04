@@ -1650,8 +1650,44 @@ function pontDuResteDu(ws){
     if(gras){ l.getCell(1).font={bold:true}; l.getCell(2).font={bold:true}; }
     return l;
   };
-  pose('Reste dû des créances soumises au barème', brut, nb,
+  // LE PONT PART D'UN CHIFFRE QU'ELLE A SOUS LES YEUX, 04/11/2026 :
+  // « 15 279 908,52 € à quoi correspond ce montant, il est pas sur la balance
+  // agé ». Il n'y était pas, en effet : la balance publie des montants NETS
+  // par tranche — dettes moins créances créditrices — et le pont partait du
+  // seul côté débiteur. Un pont dont le point de départ ne figure pas dans le
+  // document ne s'audite pas. Il part donc de la somme des tranches, et
+  // remonte au brut en une ligne nommée.
+  const trancheBalance=(()=>{
+    const t=(D.syntheseCat||[]).find(r=>r.cat==='TOTAL'); if(!t) return null;
+    let s=0; fen.forEach(f=>(f.tranches||[]).forEach(nom=>{
+      const j=(D.tranches||[]).indexOf(nom); if(j>=0) s+=(t.buckets||[])[j]||0; }));
+    return s;
+  })();
+  if(trancheBalance!==null){
+    pose('Somme des tranches soumises au barème', trancheBalance, null,
+      'Les colonnes « 4 à 6 mois » et au-delà de la ligne TOTAL, telles que la balance les publie : des montants NETS, dettes moins créances créditrices.', true);
+    pose('+ créances créditrices, que l’assiette ne déduit pas', -crediteur, nCrediteur,
+      'Une créance que le client ne doit plus ne couvre aucune perte : elle minore la tranche, mais ne se provisionne pas. On la remet pour revenir au seul côté débiteur.');
+  }
+  pose('= Reste dû des créances débitrices soumises au barème', brut, nb,
     'Les créances débitrices dont l’ancienneté tombe dans une fenêtre de provision, à leur reste dû.', true);
+  // L'ÉGALITÉ SE VÉRIFIE ICI AUSSI : la somme des tranches, augmentée des
+  // créances créditrices, doit redonner le brut, sinon les deux lectures ne
+  // portent pas sur les mêmes créances.
+  //
+  // QUELQUES CENTIMES NE SONT PAS UNE ANOMALIE. La balance arrondit au centime
+  // créance par créance ; sur près de dix mille créances, le cumul peut porter
+  // une dizaine de centimes. Les crier en rouge apprendrait à ne plus lire le
+  // rouge. Au-delà du dixième d'euro, en revanche, ce n'est plus un arrondi.
+  if(trancheBalance!==null && Math.abs(trancheBalance-crediteur-brut)>0.005){
+    const e=trancheBalance-crediteur-brut, arrondi=Math.abs(e)<=0.10;
+    const l=pose(arrondi?'dont arrondi au centime':'Écart entre la balance et le détail', e, null,
+      arrondi
+        ? 'La balance arrondit créance par créance : le cumul porte quelques centimes, sans effet sur la provision.'
+        : 'À corriger : les deux lectures ne portent pas sur les mêmes créances.', !arrondi);
+    l.getCell(1).font=arrondi?{color:{argb:ENCRE3},italic:true}
+                             :{bold:true,color:{argb:CORAIL}};
+  }
   pose('− imputé sur les créances du même compte', -compte, null,
     'Les encaissements et avoirs non rattachés, portés sur les créances du compte de la plus ancienne à la plus récente.');
   pose('− compensation dans la même tranche', -tranche, null,
@@ -1671,8 +1707,6 @@ function pontDuResteDu(ws){
       'À corriger : les postes ci-dessus doivent expliquer tout l’écart.', true)
       .getCell(1).font={bold:true,color:{argb:CORAIL}};
   ws.addRow([]);
-  pose('Pour mémoire — créances créditrices', crediteur, nCrediteur,
-    'Elles minorent les tranches de la balance, mais ne se provisionnent pas : une créance que le client ne doit plus ne couvre aucune perte. C’est la seconde moitié de l’écart entre la somme des tranches et l’assiette.');
   pose('Pour mémoire — crédit resté sans emploi', -creditSansEmploi(), null,
     'Le crédit qu’aucune dette du même financement n’a pu absorber, dans aucune tranche. Il ne réduit la provision de personne.');
 }

@@ -2032,3 +2032,73 @@ html {
     border-radius: 999px;
     white-space: nowrap;
 }
+
+/* ══════════════════════ L'ONGLET PILOTAGE ══════════════════════
+   Il porte sa propre barre de filtres, parce qu'il lit la comptabilité et
+   non les factures Monday. Le reste réemploie les classes de la maison —
+   chart-card, chart-header, chart-container, kpi-grid — pour qu'il ne
+   paraisse pas rapporté d'ailleurs.                                       */
+
+.pil-barre {
+    display: flex; flex-wrap: wrap; gap: 1.25rem 2rem; align-items: flex-start;
+    padding: 1rem 1.25rem; margin-bottom: 1.5rem;
+    background: var(--surface-1, rgba(255,255,255,0.03));
+    border: 1px solid rgba(99, 102, 241, 0.14); border-radius: 12px;
+}
+.pil-filtre { display: flex; flex-direction: column; gap: .4rem; min-width: 11rem; }
+.pil-filtre-large { min-width: 18rem; flex: 1 1 18rem; }
+.pil-filtre > label {
+    font-size: .72rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--encre-3, #8b92a5);
+}
+.pil-filtre select, .pil-filtre input[type="date"] {
+    padding: .45rem .6rem; border-radius: 8px; font-size: .85rem;
+    border: 1px solid rgba(99,102,241,.22);
+    background: var(--surface-2, rgba(255,255,255,.04)); color: inherit;
+}
+.pil-coches { display: flex; flex-wrap: wrap; gap: .35rem .75rem; }
+/* Aucune case cochée veut dire TOUTES : un filtre vide ne cache rien, et la
+   page n'a pas à deviner ce qu'on voulait dire en ne cochant rien. */
+.pil-coche {
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-size: .82rem; cursor: pointer; white-space: nowrap;
+}
+.pil-coche input { accent-color: var(--accent, #F47458); }
+
+.pil-vide {
+    padding: 2.5rem 1rem; text-align: center; font-size: .95rem;
+    color: var(--encre-3, #8b92a5);
+}
+.pil-note {
+    margin: .1rem 1.25rem .75rem; font-size: .82rem; line-height: 1.45;
+    color: var(--encre-3, #8b92a5);
+}
+
+/* La comparaison se lit SOUS la valeur, en petit : elle commente, elle ne
+   remplace pas. Sa demande du 03/11/2026. */
+.pil-comparaison { font-size: .75rem; margin-top: .15rem; }
+.pil-ref { color: var(--encre-3, #8b92a5); }
+.pil-mieux { color: #84cc16; font-weight: 600; }
+.pil-moins { color: #ef4444; font-weight: 600; }
+.pil-acompleter { color: #f59e0b; font-size: .9em; }
+
+/* La carte de chaleur : la valeur se lit DANS la case. Une couleur seule ne
+   se recopie pas dans un dossier d'arrêté. */
+.pil-heat { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.pil-heat th, .pil-heat td { padding: .45rem .6rem; border-bottom: 1px solid rgba(99,102,241,.08); }
+.pil-heat thead th {
+    position: sticky; top: 0; text-align: left; font-weight: 600;
+    background: var(--surface-2, rgba(255,255,255,.04));
+    color: var(--encre-3, #8b92a5); font-size: .74rem;
+    letter-spacing: .03em; text-transform: uppercase;
+}
+.pil-heat th.n, .pil-heat td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.pil-heat td.fam { font-weight: 600; }
+.pil-heat tr.total td { border-top: 2px solid rgba(99,102,241,.3); font-weight: 700; }
+
+@media (max-width: 760px) {
+    .pil-barre { gap: 1rem; padding: .85rem; }
+    .pil-filtre, .pil-filtre-large { min-width: 100%; flex: 1 1 100%; }
+    .pil-heat { font-size: .74rem; }
+    .pil-heat th, .pil-heat td { padding: .35rem .4rem; }
+}
