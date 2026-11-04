@@ -26,7 +26,7 @@
 //
 // Compter trois à quatre minutes par arrêté manquant.
 
-const fs = require('fs'), path = require('path'), os = require('os');
+const fs = require('fs'), path = require('path'), os = require('os'), vm = require('vm');
 const { execFileSync } = require('child_process');
 
 const ICI = __dirname;
@@ -102,6 +102,74 @@ function cube(bal, date) {
       return { fin, m, f: ar(o.f), r: ar(o.r), n: o.n }; })
       .sort((a, b) => a.m < b.m ? -1 : a.m > b.m ? 1 : (a.fin < b.fin ? -1 : 1)),
   };
+}
+
+// ───────── LA PROVISION COMPTABILISÉE, SI ELLE EST DÉPOSÉE ─────────
+//
+// « je prends le montant comptablement provisionné », 03/11/2026. Il n'est pas
+// dans le grand livre clients : celui-ci ne porte que les comptes 411, et
+// aucun 491. Elle dépose donc, à part, le grand livre COMPLET — cinquième case
+// du bloc de dépôt — et ce fichier n'est lu QUE d'ici, et QUE pour les comptes
+// de dépréciation des créances clients.
+//
+// S'IL N'EST PAS LÀ, ON NE DEVINE PAS. La vignette dira « à compléter » : sa
+// règle du 15/10/2026, « il faut mettre à completer ».
+const GL_COMPLET = path.join(ICI, 'depot-provision', 'grand-livre-complet.xlsx');
+// Le 491 est la dépréciation des comptes de clients. On ne prend que lui :
+// le 68174 et le 78174 sont la dotation et la reprise de l'exercice, pas le
+// stock, et les additionner au solde les compterait deux fois.
+const COMPTE_PROVISION = /^491/;
+
+function provisionComptabilisee(jusquA) {
+  if (!fs.existsSync(GL_COMPLET)) return { montant: null, motif: 'le grand livre complet n’est pas déposé' };
+  let X;
+  try {
+    const ctx = { self: {}, window: {}, console, Buffer, process, TextDecoder, TextEncoder,
+                  Date, Math, JSON, setTimeout, clearTimeout };
+    ctx.self = ctx; ctx.window = ctx; ctx.globalThis = ctx; ctx.global = ctx;
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(ICI, '..', 'vendor', 'xlsx.full.min.js'), 'utf8'), ctx);
+    X = ctx.XLSX;
+  } catch (e) { return { montant: null, motif: 'la bibliothèque de lecture n’a pas pu être chargée' }; }
+
+  let wb;
+  try {
+    wb = X.read(new Uint8Array(fs.readFileSync(GL_COMPLET)),
+      { type: 'array', raw: true, cellDates: false, cellStyles: false, cellFormula: false });
+  } catch (e) { return { montant: null, motif: 'le classeur n’a pas pu être ouvert' }; }
+
+  // LA FEUILLE SE RECONNAÎT À SES COLONNES, PAS À SON NOM. Un export Pennylane
+  // change d'intitulé d'un mois à l'autre ; ses colonnes, non.
+  const norm = x => String(x == null ? '' : x).replace(/[\r\n]+/g, ' ').trim().toLowerCase();
+  const num = x => { const n = Number(String(x == null ? '' : x).replace(/\s/g, '').replace(',', '.'));
+    return isNaN(n) ? 0 : n; };
+  const limite = jusquA ? jour(jusquA) : null;
+  for (const nom of wb.SheetNames) {
+    const m = X.utils.sheet_to_json(wb.Sheets[nom], { header: 1, defval: '', raw: true, blankrows: false });
+    for (let t = 0; t < Math.min(12, m.length); t++) {
+      const e = (m[t] || []).map(norm);
+      const iC = e.findIndex(x => /^(n°\s*)?(de\s*)?compte|num[ée]ro de compte/.test(x));
+      const iD = e.findIndex(x => /^d[ée]bit$/.test(x));
+      const iR = e.findIndex(x => /^cr[ée]dit$/.test(x));
+      if (iC < 0 || iD < 0 || iR < 0) continue;
+      const iDate = e.findIndex(x => /^date$/.test(x));
+      let solde = 0, lignes = 0, comptes = new Set();
+      for (let k = t + 1; k < m.length; k++) {
+        const r = m[k] || [];
+        const c = String(r[iC] == null ? '' : r[iC]).trim();
+        if (!COMPTE_PROVISION.test(c)) continue;
+        if (limite && iDate >= 0) { const d = jour(r[iDate]); if (d && d > limite) continue; }
+        // Un compte de dépréciation est créditeur : le stock est crédit − débit.
+        solde += num(r[iR]) - num(r[iD]);
+        lignes++; comptes.add(c);
+      }
+      if (!lignes) return { montant: null,
+        motif: 'le grand livre complet est déposé, mais ne porte aucun compte 491' };
+      return { montant: ar(solde), lignes, comptes: [...comptes].sort(),
+        feuille: nom, motif: '' };
+    }
+  }
+  return { montant: null, motif: 'aucune feuille du classeur ne ressemble à un grand livre' };
 }
 
 // ───────── les flux, le délai de règlement, les vintages ─────────
@@ -244,6 +312,7 @@ for (const d of dates) {
 }
 
 const f = flux(bal);
+const prov = provisionComptabilisee(bal.arrete);
 const tm = f.dso.reduce((a, r) => a + r.mt, 0), tj = f.dso.reduce((a, r) => a + r.mj, 0);
 
 const releve = {
@@ -266,11 +335,14 @@ const releve = {
   provision: {
     fenetres: (bal.provision || {}).fenetres || [],
     taux: (bal.provision || {}).taux || {},
-    // Ce que le barème produit. Le montant COMPTABLEMENT provisionné, lui,
-    // n'est pas dans ce grand livre : il ne porte que les comptes 411, et
-    // aucun 491. Tant qu'il n'est pas déposé, la vignette dit « à compléter »
+    // Ce que le barème produit vit dans la balance. Ici on ne porte que le
+    // montant COMPTABLEMENT provisionné, lu dans le grand livre complet quand
+    // il est déposé — et null sinon, pour que la vignette dise « à compléter »
     // plutôt qu'un chiffre faux.
-    comptabilisee: null,
+    comptabilisee: prov.montant,
+    provisionLue: prov.montant === null ? null
+      : { lignes: prov.lignes, comptes: prov.comptes, feuille: prov.feuille },
+    provisionMotif: prov.motif || '',
   },
 };
 fs.mkdirSync(path.dirname(SORTIE), { recursive: true });
@@ -284,4 +356,9 @@ console.log('\nart/pilotage.json : ' + ko + ' ko'
     + Math.round(f.ecartes.montantSansFacture).toLocaleString('fr-FR') + ' €) · '
     + f.ecartes.sansDate + ' dont la facture n’a pas de date connue ('
     + Math.round(f.ecartes.montantSansDate).toLocaleString('fr-FR') + ' €)'
-  + '\n  vintages  : ' + f.vintage.length + ' cohortes × financement');
+  + '\n  vintages  : ' + f.vintage.length + ' cohortes × financement'
+  + '\n  provision : ' + (prov.montant === null
+      ? 'à compléter — ' + prov.motif
+      : Math.round(prov.montant).toLocaleString('fr-FR') + ' € · ' + prov.lignes
+        + ' écritures sur ' + prov.comptes.length + ' compte(s) '
+        + prov.comptes.join(', ') + ' · feuille « ' + prov.feuille + ' »'));

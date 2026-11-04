@@ -2352,16 +2352,17 @@ let DISPOS=[];
 // « J'aimerais avoir l'option sur l'artefact de déposer directement les docs
 // nécessaires à l'actualisation de la balance âgée », 22/10/2026.
 //
-// Ce que la page peut faire : RECEVOIR les quatre fichiers, les ranger avec
+// Ce que la page peut faire : RECEVOIR les fichiers, les ranger avec
 // elle, les horodater et dire qui les a déposés. Ce qu'elle ne peut pas :
 // refaire la balance. La reconstruction lit six fichiers, croise trois
 // facturations et tourne deux minutes hors du navigateur. Le dépôt est donc
 // une boîte aux lettres, et le bloc le dit au lieu de le laisser croire.
 //
-// Les quatre cases sont exactement les quatre fichiers que la construction
-// ouvre chaque mois — même nom de feuille, même séparateur. Un cinquième
-// fichier, l'ancienne balance de référence, ne bouge pas d'un mois sur
-// l'autre et ne se dépose pas.
+// LES QUATRE PREMIÈRES CASES sont exactement les quatre fichiers que la
+// construction ouvre chaque mois — même nom de feuille, même séparateur. La
+// CINQUIÈME, le grand livre complet, n'entre pas dans la balance : elle sert
+// au seul relevé du pilotage, pour y lire les comptes 491. L'ancienne balance
+// de référence, elle, ne bouge pas d'un mois sur l'autre et ne se dépose pas.
 const DEPOTS=[
   {cle:'grand-livre', nom:'Grand livre clients',
    quoi:'Export Pennylane · .xlsx · onglet « Grand livre - Clients »',
@@ -2375,6 +2376,23 @@ const DEPOTS=[
   {cle:'filiz', nom:'Dossiers Filiz — échéances',
    quoi:'Export du financeur · .xlsx · onglet « Échéances »',
    ext:['.xlsx'], va:'depot-ech/echeances.xlsx'},
+  // ── LA CINQUIÈME CASE, ET POURQUOI ELLE EST À PART ──
+  //
+  // « je dois ds ce cas te donner le gd en entier, je pourrais le déposer dds
+  // l'export gd livre ? », 03/11/2026. Non, et c'est important : la
+  // construction de la balance âgée ne filtre pas sur le 411, elle prend tout
+  // ce que la feuille contient. Un grand livre entier déposé dans la première
+  // case ferait entrer les 6xx et les 7xx dans la balance, et son total
+  // cesserait d'être celui des clients.
+  //
+  // Il a donc sa case, et son dossier. La balance ne le lit jamais ; seul le
+  // relevé du pilotage y va, et seulement pour les comptes de dépréciation
+  // des créances clients — le 491. Tant qu'il n'est pas déposé, la vignette
+  // « couverture des provisions » affiche « à compléter » plutôt qu'un
+  // chiffre faux.
+  {cle:'grand-livre-complet', nom:'Grand livre complet — tous comptes',
+   quoi:'Export Pennylane · .xlsx · lu seulement pour les comptes 491, et par le pilotage seul',
+   ext:['.xlsx'], va:'depot-provision/grand-livre-complet.xlsx'},
 ];
 // LE MAGASIN DE LA PAGE N'ACCEPTE PAS UN CLASSEUR.
 //
@@ -2386,15 +2404,16 @@ const DEPOTS=[
 // l'était dès que le système annonçait son type autrement (Windows présente
 // volontiers un .csv comme un fichier Excel) ou qu'il n'était pas en UTF-8.
 //
-// Les quatre fichiers montent donc dans une enveloppe JSON, qui est un type
+// Les fichiers montent donc dans une enveloppe JSON, qui est un type
 // accepté : le fichier y voyage en base64, octet pour octet, avec son nom et
 // sa taille. Rien n'est converti, rien n'est perdu — l'enveloppe est ouverte
 // à la reconstruction et le fichier d'origine en ressort tel quel.
 const ENVELOPPE='json/base64';
 // Le plafond du magasin est de 20 Mio, et la base64 pèse un tiers de plus que
 // le fichier : 14 Mio de fichier font 19 Mio d'enveloppe. C'est donc 14 Mio
-// qu'on annonce. Les quatre fichiers du mois tiennent largement dessous — le
-// plus gros, l'export Sellsy, pèse 4,5 Mo.
+// qu'on annonce. Les fichiers du mois tiennent largement dessous — le plus
+// gros des quatre, l'export Sellsy, pèse 4,5 Mo. Le grand livre complet, lui,
+// peut approcher le plafond : c'est le seul à surveiller.
 const DEPOT_MAX=14*1024*1024;
 // Une pile d'appel ne supporte pas 4 millions d'arguments : la conversion se
 // fait par tranches de 32 ko.

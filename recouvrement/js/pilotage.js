@@ -294,8 +294,18 @@
         const audelaC = ec ? ec.buckets.slice(i120).reduce((a, x) => a + x, 0) : 0;
         const taux = e && e.total ? audela / e.total : null;
         const tauxC = ec && ec.total ? audelaC / ec.total : null;
-        const prov = (D.provision || {}).comptabilisee;
-        const couv = (prov !== null && prov !== undefined && e && e.total) ? prov / e.total : null;
+        // LA COUVERTURE NE SE CALCULE QUE SUR LE PÉRIMÈTRE ENTIER.
+        //
+        // Le compte 491 porte un stock global : la comptabilité ne le ventile
+        // pas par financeur ni par équipe. Le rapporter à un encours filtré
+        // comparerait une provision de tout le portefeuille à une fraction des
+        // créances, et annoncerait une couverture de 300 % sur un périmètre
+        // étroit. Dès qu'un filtre est posé, la vignette le dit et se tait.
+        const P = D.provision || {};
+        const prov = P.comptabilisee;
+        const filtre = F.unites.size > 0 || F.financeurs.size > 0;
+        const couv = (!filtre && prov !== null && prov !== undefined && e && e.total)
+            ? prov / e.total : null;
         const quoi = bc ? ' <span class="pil-ref">vs ' + bc.quoi + '</span>' : '';
         // Quand l'encours de la période de comparaison n'existe pas, on ne
         // montre pas d'écart : on dit qu'il n'y en a pas.
@@ -316,12 +326,18 @@
         v.push(vignette('DSO', jrs(d.jours),
             d.n ? d.n.toLocaleString('fr-FR') + ' règlements · ' + eur(d.montant) : 'aucun règlement daté',
             dc && dc.jours !== null ? ecart(d.jours, dc.jours, 'j', 'bas') + quoi : ''));
+        const lue = P.provisionLue || null;
         v.push(vignette('Couverture des provisions',
             couv === null ? '<span class="pil-acompleter">à compléter</span>' : pct(couv),
-            couv === null
-                ? 'le montant comptablement provisionné n’est pas déposé'
-                : eur(prov) + ' sur ' + eur(e.total),
-            ''));
+            couv !== null
+                ? eur(prov) + ' provisionnés sur ' + eur(e.total) + ' de créances'
+                : (filtre && prov !== null && prov !== undefined)
+                  ? 'le compte 491 n’est pas ventilé par financeur : décochez les filtres pour la lire'
+                  : (P.provisionMotif || 'le montant comptablement provisionné n’est pas déposé'),
+            couv !== null && lue
+                ? '<span class="pil-ref">compte ' + U().escapeHtml((lue.comptes || []).join(', '))
+                  + ' · ' + (lue.lignes || 0).toLocaleString('fr-FR') + ' écritures</span>'
+                : ''));
         document.getElementById('pil-kpis').innerHTML = v.join('');
     }
 
