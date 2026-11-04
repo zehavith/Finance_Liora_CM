@@ -363,13 +363,19 @@
             .filter(r => Math.abs(r.total) > 0.005)
             .sort((a, b) => b.total - a.total);
         if (!lignes.length) { el.innerHTML = '<p class="pil-vide">Aucun encours sur ce périmètre.</p>'; return; }
-        // L'intensité se mesure sur la part de la ligne, et non sur le montant
-        // absolu : sinon un gros financeur écraserait tous les autres et la
-        // carte ne dirait plus rien du risque de chacun.
-        const chaleur = (v, tot) => {
-            if (!tot || v <= 0) return 'background:transparent';
-            const p = Math.max(0, Math.min(1, v / tot));
-            return 'background:rgba(239,68,68,' + (0.06 + p * 0.62).toFixed(3) + ')';
+        // LA CHALEUR DIT LE RISQUE, PAS LE VOLUME.
+        //
+        // Colorée sur la seule part de la ligne, la colonne « Non échu »
+        // ressortait en rouge vif chez les financeurs qui payent bien — soit
+        // exactement l'inverse de ce qu'on veut lire. L'intensité est donc le
+        // produit de deux choses : la part que cette tranche pèse dans la
+        // ligne, et le poids de risque de la tranche elle-même. Une créance
+        // non échue ne porte aucun risque : sa case reste neutre.
+        const RISQUE = [0, 0.18, 0.45, 0.75, 1];
+        const chaleur = (v, tot, j) => {
+            if (!tot || v <= 0 || !RISQUE[j]) return 'background:transparent';
+            const p = Math.max(0, Math.min(1, v / tot)) * RISQUE[j];
+            return 'background:rgba(239,68,68,' + (0.05 + p * 0.68).toFixed(3) + ')';
         };
         const tot = COLONNES.map((_, j) => lignes.reduce((s, r) => s + r.cases[j], 0));
         let h = '<table class="pil-heat"><thead><tr><th>Financeur</th><th>Équipe</th>'
@@ -378,7 +384,7 @@
         for (const r of lignes) {
             h += '<tr><td class="fam">' + U().escapeHtml(r.fin) + '</td>'
                 + '<td>' + U().escapeHtml(r.unite) + '</td>'
-                + r.cases.map((v, j) => '<td class="n" style="' + chaleur(v, r.total) + '">'
+                + r.cases.map((v, j) => '<td class="n" style="' + chaleur(v, r.total, j) + '">'
                     + eur(v) + '</td>').join('')
                 + '<td class="n"><strong>' + eur(r.total) + '</strong></td></tr>';
         }
@@ -390,19 +396,26 @@
     }
 
     // ── 3. le taux de retard par financeur, mois après mois ──
+    //
+    // UN RATIO NE SE TRACE PAS SUR UN DÉNOMINATEUR QUI FRÔLE ZÉRO. Interco
+    // ferme à −6 960 € et OPCO passe par un solde quasi nul : leur part échue
+    // montait alors à 1 000 % et écrasait l'échelle, où tous les autres se
+    // lisent entre 20 et 80 %. On ne retient donc que les financeurs qui
+    // pèsent, et on ne pose un point que là où le dénominateur tient debout.
+    const PLANCHER = 50000;
     function graphRetard(keep) {
-        const i120 = indexAuDela120();
         const fins = [...keep].filter(f => (D.encours || []).some(e =>
-            (e.parFinancement || []).some(r => r.cat === f && Math.abs(r.total || 0) > 0.005)));
+            (e.parFinancement || []).some(r => r.cat === f && (r.total || 0) >= PLANCHER)));
         const labels = (D.encours || []).map(e =>
             parseFR(e.d).toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }));
         const pal = U().palette;
         const series = fins.map((f, k) => ({
             label: f, borderColor: pal[k % pal.length], backgroundColor: 'transparent',
             borderWidth: 2, tension: 0.3, pointRadius: 2,
+            spanGaps: true,
             data: (D.encours || []).map(e => {
                 const r = (e.parFinancement || []).find(x => x.cat === f);
-                if (!r || !r.total) return null;
+                if (!r || (r.total || 0) < PLANCHER) return null;
                 return Math.round(r.echu / r.total * 1000) / 10;
             }),
         }));
@@ -412,41 +425,80 @@
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { x: { grid: { display: false } },
-                          y: { grid: U().grille, ticks: { callback: v => v + ' %' } } },
+                          y: { grid: U().grille, min: 0, max: 100,
+                               ticks: { callback: v => v + ' %' } } },
                 plugins: { legend: { position: 'bottom' },
                            tooltip: { callbacks: { label: c => c.dataset.label + ' : ' + c.raw + ' %' } } },
             },
         });
+        // CE QUI N'EST PAS TRACÉ SE DIT. Un financeur écarté parce qu'il pèse
+        // moins de 50 000 € ne doit pas disparaître en silence.
+        const el = document.getElementById('pil-retard-dit');
+        if (el) {
+            const dernier = (D.encours || [])[(D.encours || []).length - 1] || { parFinancement: [] };
+            const ecartes = [...keep].filter(f => fins.indexOf(f) < 0)
+                .filter(f => (dernier.parFinancement || []).some(r => r.cat === f
+                    && Math.abs(r.total || 0) > 0.005));
+            el.textContent = 'La part échue de l’encours de chaque financeur, arrêté après arrêté.'
+                + (ecartes.length
+                   ? ' Écartés, parce qu’ils pèsent moins de ' + eur(PLANCHER)
+                     + ' et que leur ratio n’aurait aucun sens : ' + ecartes.join(', ') + '.'
+                   : '');
+        }
     }
 
     // ── 4. les vintages ──
     //
-    // Pour chaque mois de facturation, la part encaissée au bout de 30, 60,
-    // 90, 120, 180 et 360 jours. La question qu'elle pose — « 80 % de mon
-    // encours payé avant X jours » — se lit sur la ligne des 80 %.
-    function graphVintage(keep) {
-        const paliers = D.paliers || [30, 60, 90, 120, 180, 360];
-        const parMois = new Map();
-        for (const r of (D.vintage || [])) {
-            if (!keep.has(r.fin)) continue;
-            const o = parMois.get(r.m) || { fac: 0, p: paliers.map(() => 0) };
-            o.fac += r.fac; (r.p || []).forEach((v, j) => { o.p[j] += v; });
-            parMois.set(r.m, o);
+    // POUR CHAQUE MOIS DE FACTURATION, CE QUI RESTE DÛ AU FIL DES ARRÊTÉS.
+    //
+    // La première version lisait les règlements rattachables à une facture
+    // datée : elle laissait dehors 330 règlements sans facture et 1 909 dont
+    // la facture n'a pas de date connue, et annonçait donc moins encaissé
+    // qu'il n'en rentre vraiment. Celle-ci lit le RESTE DÛ de la cohorte à
+    // chaque arrêté mensuel — ce qui n'est plus dû a été encaissé, avoiré ou
+    // annulé — et se recolle donc à la balance par construction.
+    //
+    // L'axe est l'âge de la cohorte en mois, et non une échelle de jours :
+    // c'est la maille des arrêtés, et promettre le jour près serait promettre
+    // une précision qu'on n'a pas.
+    function cohortes(keep) {
+        const parCohorte = new Map();   // mois de facturation -> [{age, facture, resteDu}]
+        for (const e of (D.cohortes || [])) {
+            const da = parseFR(e.d);
+            for (const l of (e.lignes || [])) {
+                if (!keep.has(l.fin)) continue;
+                const dm = new Date(+l.m.slice(0, 4), +l.m.slice(5, 7) - 1, 1);
+                const age = (da.getFullYear() - dm.getFullYear()) * 12 + (da.getMonth() - dm.getMonth());
+                if (age < 0) continue;
+                const t = parCohorte.get(l.m) || new Map();
+                const o = t.get(age) || { f: 0, r: 0 };
+                o.f += l.f; o.r += l.r;
+                t.set(age, o); parCohorte.set(l.m, t);
+            }
         }
+        return parCohorte;
+    }
+
+    function graphVintage(keep) {
+        const parCohorte = cohortes(keep);
         // Les douze dernières cohortes qui ont de quoi se juger.
-        const mois = [...parMois.keys()].filter(m => parMois.get(m).fac > 0).sort().slice(-12);
+        const mois = [...parCohorte.keys()]
+            .filter(m => [...parCohorte.get(m).values()].some(o => o.f > 0))
+            .sort().slice(-12);
+        const ages = [];
+        for (const m of mois) for (const a of parCohorte.get(m).keys())
+            if (ages.indexOf(a) < 0) ages.push(a);
+        ages.sort((x, y) => x - y);
         const pal = U().palette;
         const series = mois.map((m, k) => ({
             label: m, borderColor: pal[k % pal.length], backgroundColor: 'transparent',
-            borderWidth: 2, tension: 0.25, pointRadius: 2,
-            data: paliers.map((_, j) => {
-                const o = parMois.get(m);
-                return o.fac ? Math.round(o.p[j] / o.fac * 1000) / 10 : null;
-            }),
+            borderWidth: 2, tension: 0.25, pointRadius: 2, spanGaps: true,
+            data: ages.map(a => { const o = parCohorte.get(m).get(a);
+                return (o && o.f > 0) ? Math.round((1 - o.r / o.f) * 1000) / 10 : null; }),
         }));
         U().chart('pil-chart-vintage', {
             type: 'line',
-            data: { labels: paliers.map(p => p + ' j'), datasets: series },
+            data: { labels: ages.map(a => a === 0 ? 'le mois même' : a + ' mois'), datasets: series },
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { x: { grid: { display: false } },
@@ -454,28 +506,25 @@
                                ticks: { callback: v => v + ' %' } } },
                 plugins: {
                     legend: { position: 'bottom' },
-                    tooltip: { callbacks: { label: c => 'facturé en ' + c.dataset.label + ' : ' + c.raw + ' % encaissé' } },
+                    tooltip: { callbacks: {
+                        title: c => 'facturé en ' + c[0].dataset.label,
+                        label: c => c.raw + ' % encaissé au bout de ' + c.label } },
                 },
             },
         });
-        // La lecture en une phrase : au bout de combien de jours 80 % rentre.
+        // La lecture en une phrase : au bout de combien de mois 80 % rentre.
         const el = document.getElementById('pil-vintage-dit');
-        if (el) {
-            const tot = { fac: 0, p: paliers.map(() => 0) };
-            for (const m of mois) { const o = parMois.get(m); tot.fac += o.fac;
-                o.p.forEach((v, j) => { tot.p[j] += v; }); }
-            let dit = 'Pas assez de cohortes pour se prononcer.';
-            if (tot.fac) {
-                const j = paliers.findIndex((_, k) => tot.p[k] / tot.fac >= 0.8);
-                dit = j >= 0
-                    ? 'Sur ces ' + mois.length + ' cohortes, 80 % du facturé est encaissé au bout de '
-                      + paliers[j] + ' jours.'
-                    : 'Sur ces ' + mois.length + ' cohortes, 80 % du facturé n’est pas encore atteint à '
-                      + paliers[paliers.length - 1] + ' jours — '
-                      + pct(tot.p[paliers.length - 1] / tot.fac) + ' encaissés.';
-            }
-            el.textContent = dit;
-        }
+        if (!el) return;
+        const cumul = ages.map(a => { let f = 0, r = 0;
+            for (const m of mois) { const o = parCohorte.get(m).get(a); if (o) { f += o.f; r += o.r; } }
+            return f > 0 ? 1 - r / f : null; });
+        const j = cumul.findIndex(v => v !== null && v >= 0.8);
+        el.textContent = !mois.length ? 'Pas assez de cohortes pour se prononcer.'
+            : j >= 0
+              ? 'Sur ces ' + mois.length + ' cohortes, 80 % du facturé est encaissé au bout de '
+                + (ages[j] === 0 ? 'moins d’un mois' : ages[j] + ' mois') + '.'
+              : 'Sur ces ' + mois.length + ' cohortes, 80 % du facturé n’est pas atteint sur la profondeur'
+                + ' observée — ' + pct(cumul.filter(v => v !== null).pop()) + ' encaissés au dernier point.';
     }
 
     // ── 5. la variation du DSO ──
