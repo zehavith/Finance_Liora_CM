@@ -508,11 +508,9 @@ input[type=search]{flex:1 1 220px}
         solde restant dû de chacune, avoirs déduits. Le solde non imputé — facture
         rapprochée par ailleurs, ou soldée — demeure une écriture distincte et n’est
         affecté à aucune facture.</p>
-      <p class="param-note">Le second est <strong>l’imputation pour provision</strong>, et
-        c’est elle que la <strong>balance âgée publie</strong> : il n’y a qu’un seul reste
-        dû, celui-là, et c’est celui que le barème multiplie. Elle ne modifie ni les
-        échéances ni les tranches d’ancienneté — chaque créance demeure dans la tranche de
-        son échéance —, mais seulement le montant que chacune porte.
+      <p class="param-note">Le second est <strong>l’imputation pour provision</strong>,
+        propre à ce calcul : elle ne modifie ni les restes dus publiés, ni les échéances,
+        ni les tranches d’ancienneté, mais seulement le montant exposé au risque.
         L’assiette d’une créance correspond à son <strong>reste dû</strong>, diminué des
         encaissements et avoirs du même compte non rattachés à une facture. Ces crédits
         s’imputent sur les créances <strong>de la plus ancienne à la plus récente</strong>,
@@ -543,11 +541,8 @@ input[type=search]{flex:1 1 220px}
         y compris celles qu’aucun barème ne provisionne : le crédit y est consommé sans
         effet sur la provision, et ne peut plus servir ailleurs.</p>
       <p class="param-note">Un crédit dont le financement n’offre plus aucune créance à
-        solde débiteur, dans aucune tranche, <strong>reste sans emploi</strong>. Il sort
-        alors des tranches, et se reprend en <strong>pied de la balance âgée</strong> : la
-        somme des tranches, diminuée de ce crédit, est le <strong>solde des comptes
-        clients</strong> au grand livre. Crédit sans emploi à cette date :
-        <strong id="prov-reste">—</strong>.</p>
+        solde débiteur, dans aucune tranche, <strong>reste sans emploi</strong>.
+        Crédit sans emploi à cette date : <strong id="prov-reste">—</strong>.</p>
       <p class="param-note">Une créance dont l’assiette est nulle ou négative, le compte
         étant créditeur, n’est pas provisionnée : aucune perte n’est à couvrir.
         L’ancienneté demeure celle de chaque créance : l’imputation modifie le montant

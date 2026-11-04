@@ -214,9 +214,7 @@ function demarrer(){
   }
   ruban();
   E('sous').textContent=D.source+' · arrêté au '+D.arrete+' · '
-    +D.lignes.length.toLocaleString('fr-FR')+' écritures, '
-    +((synthRows(D.syntheseCat?'cat':'sous').find(s=>s.cat==='TOTAL')||{nb:0}).nb)
-      .toLocaleString('fr-FR')+' créances';
+    +D.lignes.length.toLocaleString('fr-FR')+' écritures, '+(D.synthese.find(s=>s.cat==='TOTAL')||{nb:0}).nb.toLocaleString('fr-FR')+' créances';
   E('pied-src').textContent='Source : '+D.source+'. Document généré le '+D.genere+'.';
 
   synthese();
@@ -251,19 +249,10 @@ function demarrer(){
 // financement à compléter »
 // bouge, et c'est bien le seul chiffre qu'un complément change au total.
 function ruban(){
-  // LE MÊME TOTAL QUE LE TABLEAU, 04/11/2026. Le ruban lisait la synthèse
-  // publiée, le tableau la synthèse imputée : deux reste dû sur un même écran.
-  const t=(synthRows(D.syntheseCat?'cat':'sous').find(s=>s.cat==='TOTAL'))
-    ||{total:0,echu:0,nonEchu:0,nb:0};
+  const t=D.synthese.find(s=>s.cat==='TOTAL')||{total:0,echu:0,nonEchu:0,nb:0,crediteur:0};
   const aC=I.filter(i=>V(i,'Type de financement : à compléter')&&!compl.has(cleLigne(i))).length;
   const tuiles=[
-    // CE N'EST PLUS LE SOLDE DES COMPTES CLIENTS, 04/11/2026 : il en diffère
-    // du crédit resté sans emploi, et la tuile l'annonçait quand même. Elle dit
-    // maintenant ce que le nombre est, et le pied de la balance âgée donne le
-    // rapprochement au grand livre.
-    ['Reste dû',eur(t.total),
-      CAC()?'solde des comptes clients'
-           :'après imputation des crédits du compte'],
+    ['Reste dû',eur(t.total),'solde des comptes clients'],
     ['Échu',eur(t.echu),Math.round(t.echu/t.total*100)+' % du reste dû'],
     ['Non échu',eur(t.nonEchu),'pas encore exigible'],
     // Le trop-perçu n'est plus une tuile : elle l'a retirée du tableau de bord
@@ -298,12 +287,40 @@ function ruban(){
     +(bas?'<div class="sous-note">'+bas+'</div>':'')+'</div>').join('');
 }
 
-// LES COMPLÉMENTS NE SE REJOUENT PLUS SUR UN TOTAL PUBLIÉ, 04/11/2026.
-// avecComplements() déplaçait le reste dû d'un type de client à l'autre APRÈS
-// coup, sur la synthèse livrée avec les données. balanceImputee() refait la
-// synthèse créance par créance, et categorieDe() lit déjà la classification
-// manuelle : il n'y a plus qu'un décompte, donc plus de correctif à appliquer
-// dessus — ni de risque qu'un chemin oublie ce que l'autre sait.
+// Un complément ne recalcule pas la balance : il déplace exactement le reste
+// dû de SA créance d'une ligne de synthèse à l'autre. Le total est conservé
+// par construction — ce qui sort de « À classer » entre ailleurs.
+function avecComplements(rows, niveau){
+  if(!compl.size) return rows;
+  const out=rows.map(r=>({...r, buckets:r.buckets.slice()}));
+  const par=new Map(out.map(r=>[r.cat,r]));
+  const ligneNeuve=cat=>{const r={cat, total:0, echu:0, nonEchu:0, nb:0,
+    buckets:D.tranches.map(()=>0)}; out.splice(out.length-1,0,r); par.set(cat,r); return r;};
+  const faites=new Set();
+  for(const [k,v] of compl){
+    const m=metaCreance.get(k); if(!m||!m.rd||faites.has(k)) continue;
+    faites.add(k);
+    // Un complément se déplace au niveau où l'on lit : d'un type de client à
+    // l'autre quand on lit par type de client, d'un type de financement à
+    // l'autre quand on lit par financement.
+    const cible=niveau==='cat'
+      ? (catDuDispositif(v.dispositif)||typeDe.get(v.dispositif)||v.dispositif)
+      : v.dispositif;
+    const depart=niveau==='cat'
+      ? (catDuDispositif(m.sc)||typeDe.get(m.sc)||m.sc)
+      : m.sc;
+    if(cible===depart) continue;
+    const de=par.get(depart), vers=par.get(cible)||ligneNeuve(cible);
+    const j=D.tranches.indexOf(m.tr);
+    const bouger=(r,s)=>{ r.total+=s*m.rd; if(m.fac) r.nb+=s;
+      if(m.tr==='Non échu') r.nonEchu+=s*m.rd; else r.echu+=s*m.rd;
+      if(j>=0) r.buckets[j]+=s*m.rd; };
+    if(de) bouger(de,-1);
+    bouger(vers,1);
+  }
+  return out;
+}
+
 // Deux lectures du même reste dû : par type de client — B2C, Entreprise, OPCO,
 // POEI, ETAT, Alternance, Interco — ou par type de financement, qui les
 // détaille. Le total est le même des deux côtés ; seul le niveau de lecture
@@ -325,7 +342,8 @@ function synthese(){
   // classer, elle sort du tableau — et elle revient d'elle-même si un
   // complément est retiré. Les six types de client, eux, restent affichés à
   // zéro : leur absence se lirait comme un oubli, pas comme un fait.
-  const rows=synthRows(niveau);
+  const rows=avecComplements((niveau==='cat'?D.syntheseCat:D.synthese)||D.synthese, niveau)
+    .filter(s=>!(s.cat==='À classer' && !s.nb && Math.abs(s.total)<0.005));
   let h='<thead><tr><th>'+(niveau==='cat'?'Type de client':'Type de financement')
     +'</th><th class="n">Reste dû</th><th class="n">Échu</th>'
     +'<th class="n">À provisionner</th>'
@@ -726,105 +744,8 @@ const MONNAIE=new Set(['Débit','Crédit','Solde','Reste dû de la créance','Mo
   'Débit en devise d’origine','Crédit en devise d’origine']);
 const NOMBRE=/^-?\d+(?:[.]\d+)?$/;
 
-// ───────── UNE SEULE BALANCE ÂGÉE ─────────
-//
-// Sa règle, le 04/11/2026 : « on veut une balance agée unique qui sert ensuite
-// à faire les provisions / pas de tableau de bascule entre les deux / on
-// aligne soit la balance agée sur l'assiette soit l'inverse ».
-//
-// DEUX CONVENTIONS DE COMPENSATION COEXISTAIENT. La balance déduisait les
-// créances à solde créditeur DANS LEUR PROPRE TRANCHE ; la provision imputait
-// ces mêmes crédits sur les créances à solde débiteur DU COMPTE, de la plus
-// ancienne à la plus récente. Même total à 6 960 € près, deux ventilations —
-// d'où un pont entre les deux, qu'elle refuse.
-//
-// C'EST LA SECONDE QUI L'EMPORTE, parce que c'est la sienne : elle l'a dictée
-// le 20/10 puis le 02/11, et elle dit ce qu'un client doit réellement, par
-// ancienneté. Un crédit récent cessait de soulager la créance ancienne qu'il
-// éteint pour alléger une tranche où le client ne devait rien.
-//
-// CE QUE CELA CHANGE, AU 04/11/2026 : le total passe de 14 132 743 € à
-// 14 139 703 €, l'écart étant le seul crédit qu'aucune créance à solde
-// débiteur de son compte n'absorbe — repris en pied de tableau pour retomber
-// sur le solde des comptes clients. Les tranches soumises au barème passent de
-// 6 284 225 € à 5 485 406 €, qui est l'assiette au centime : les tranches
-// publiées, multipliées par le barème, donnent dès lors la provision sans
-// intermédiaire.
-//
-// LES COMPLÉMENTS N'ONT PLUS À ÊTRE REJOUÉS. La synthèse se refait créance par
-// créance, et categorieDe() lit déjà la classification manuelle : il n'y a
-// plus un total publié qu'on corrige après coup, mais un seul décompte.
-function balanceImputee(niv){
-  paramsPrets();
-  const a=assiettes();
-  const rang=new Map(D.tranches.map((x,j)=>[x,j]));
-  const vide=cat=>({cat, total:0, echu:0, nonEchu:0, nb:0,
-    buckets:D.tranches.map(()=>0)});
-  const par=new Map(), vues=new Set();
-  for(const i of I){
-    const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue;
-    const rd=N(i,'Reste dû de la créance'); if(Math.abs(rd)<0.005) continue;
-    vues.add(k);
-    const cat=categorieDe(i,niv)||'À classer';
-    if(!par.has(cat)) par.set(cat,vide(cat));
-    const g=par.get(cat);
-    const b=a.has(k)?a.get(k):rd;
-    // En doctrine CAC aucune imputation n'a lieu : assiettes() rend le reste dû
-    // tel quel, créditeur compris, et la balance est celle d'hier au centime.
-    const mt=CAC()? b : (b>0?b:0);
-    const tr=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
-    g.total+=mt;
-    if(tr==='Non échu') g.nonEchu+=mt;
-    else { g.echu+=mt; if(rang.has(tr)) g.buckets[rang.get(tr)]+=mt; }
-  }
-  // L'ordre du tableau reste celui de la balance publiée : ses types de client
-  // s'affichent même à zéro, leur absence se lirait comme un oubli.
-  const livree=((niv==='cat'?D.syntheseCat:D.synthese)||D.synthese||[])
-    .filter(x=>x.cat!=='TOTAL');
-  const ordre=livree.map(x=>x.cat);
-  const out=[];
-  for(const c of ordre) out.push(par.get(c)||vide(c));
-  for(const [c,g] of par) if(ordre.indexOf(c)<0) out.push(g);
-
-  // ─── LE DÉCOMPTE NE CHANGE PAS ───
-  //
-  // Sa règle du 04/11 porte sur la COMPENSATION, pas sur le nombre de
-  // créances : « ne fais pas de modif dds balance agé client si je ne te l'ai
-  // pas dit ». Le noyau compte sur son propre modèle de créance — facture
-  // numérotée, avoir exclu — que les lignes de l'export ne reproduisent pas
-  // exactement : le recompter ici annonçait 4 750 créances au lieu de 4 946.
-  // Le nombre publié est donc repris tel quel, et seuls les compléments le
-  // déplacent, d'un type de client à l'autre et seulement sur une facture —
-  // sans quoi une ligne de synthèse affichait « −4 créances ».
-  const nbLivre=new Map(livree.map(x=>[x.cat,x.nb||0]));
-  for(const g of out) g.nb=nbLivre.get(g.cat)||0;
-  const parCat=new Map(out.map(g=>[g.cat,g]));
-  const faites=new Set();
-  for(const [k,v] of compl){
-    const mc=metaCreance.get(k); if(!mc||!mc.rd||!mc.fac||faites.has(k)) continue;
-    faites.add(k);
-    const cible=niv==='cat'
-      ? (catDuDispositif(v.dispositif)||typeDe.get(v.dispositif)||v.dispositif)
-      : v.dispositif;
-    const depart=niv==='cat'
-      ? (catDuDispositif(mc.sc)||typeDe.get(mc.sc)||mc.sc)
-      : mc.sc;
-    if(cible===depart) continue;
-    const de=parCat.get(depart), vers=parCat.get(cible);
-    if(de) de.nb--;
-    if(vers) vers.nb++;
-  }
-  const t=vide('TOTAL');
-  for(const g of out){ t.total+=g.total; t.echu+=g.echu; t.nonEchu+=g.nonEchu;
-    t.nb+=g.nb; g.buckets.forEach((v,j)=>{ t.buckets[j]+=v; }); }
-  const ar=x=>Math.round(x*100)/100;
-  const net=g=>({...g, total:ar(g.total), echu:ar(g.echu), nonEchu:ar(g.nonEchu),
-    buckets:g.buckets.map(ar)});
-  return [...out.map(net), net(t)];
-}
-
 function synthRows(niv){
-  return balanceImputee(niv)
+  return avecComplements((niv==='cat'?D.syntheseCat:D.synthese)||D.synthese,niv)
     .filter(s=>!(s.cat==='À classer' && !s.nb && Math.abs(s.total)<0.005));
 }
 function poserEntete(ws,l,figer){
@@ -916,7 +837,7 @@ function feuilleSommaire(wb,idx,nomDetail){
   const h1=ws.addRow(['','CHIFFRES CLÉS']);
   h1.getCell(2).font={bold:true,size:11,color:{argb:BLEU}};
   for(const c of [2,3,4]) h1.getCell(c).border={bottom:{style:'thin',color:{argb:BLEU}}};
-  const T=synthRows(D.syntheseCat?'cat':'sous').find(s=>s.cat==='TOTAL')||{};
+  const T=(D.syntheseCat||D.synthese).find(s=>s.cat==='TOTAL')||{};
   const X=D.excedent||{};
   for(const [k,v,fmt,n] of [
     ['Reste dû',T.total,EUROS,'Solde des comptes clients à la date d’arrêté'],
@@ -1289,37 +1210,32 @@ function feuilleBalance(wb,niv,idx){
   // écriture ventile son montant dans les MÊMES colonnes d'ancienneté que la
   // balance : c'est ce qui permet de lire, tranche par tranche, ce qui compose
   // un montant.
-  // PLUS DE COLONNE « ASSIETTE », 04/11/2026 : « on aligne soit la balance
-  // agée sur l'assiette soit l'inverse ». La colonne d'ancienneté EST
-  // l'assiette — elle porte le reste dû après imputation des crédits du compte
-  // —, et la juxtaposer à elle-même remettrait les deux grandeurs qu'elle a
-  // refusées. « À provisionner » reste : c'est le produit de la tranche par le
-  // barème, et le récap en pied de feuille le refait fenêtre par fenêtre.
+  // L'ASSIETTE SE LIT À CÔTÉ DU RESTE DÛ, 03/11/2026 : « normalement si
+  // j'impute les % provisionné je suis sencé avoir le bon montant
+  // provisionné ». Une balance âgée dont on ne peut pas refaire la provision
+  // à la main est incomplète. Les colonnes d'ancienneté portent le RESTE DÛ ;
+  // la provision, elle, se calcule sur l'ASSIETTE — le reste dû diminué des
+  // encaissements et avoirs non rattachés. Deux grandeurs différentes : sans
+  // la seconde, le taux appliqué à la première ne retombe sur rien.
   const P={lib:0, total:1, echu:2, tranche:3, nonEchu:3+nT, nb:4+nT, part:5+nT,
-           prov:6+nT, ecart:7+nT, autre:8+nT};
-  const LARGE=9+nT;
+           assiette:6+nT, prov:7+nT, ecart:8+nT, autre:9+nT};
+  const LARGE=10+nT;
   const ws=wb.addWorksheet(nom);
   // Le niveau visible à l'ouverture : 1. Les comptes sont donc repliés, et
   // déplier une catégorie ne déplie PAS les écritures qu'elle contient.
   ws.properties.outlineLevelRow=1;
   ws.properties.outlineProperties={summaryBelow:false,summaryRight:false};
   ws.columns=[{width:48},{width:15},{width:15},...D.tranches.map(()=>({width:14})),
-    {width:15},{width:10},{width:9},{width:16},{width:10},{width:30}];
+    {width:15},{width:10},{width:9},{width:18},{width:16},{width:10},{width:30}];
   const t=ws.addRow([niv==='cat'?'RESTE DÛ PAR TYPE DE CLIENT ET PAR ANCIENNETÉ'
     :'RESTE DÛ PAR TYPE DE FINANCEMENT ET PAR ANCIENNETÉ']);
   t.font={bold:true,size:14,color:{argb:BLEU}}; t.height=24;
-  // LA CONVENTION SE DIT UNE FOIS, SOUS LE TITRE. Sans elle, un lecteur qui
-  // rapproche la feuille du grand livre croit à une erreur de 6 960 €.
-  const st=ws.addRow([CAC()
-    ? 'Sommes nettes par tranche, montants créditeurs compris — doctrine du commissaire aux comptes.'
-    : 'Créances à solde débiteur, après imputation des crédits du compte, de la plus ancienne à la plus récente.']);
-  st.getCell(1).font={size:10,italic:true,color:{argb:ENCRE3}};
   ws.addRow([]);
   const ent=new Array(LARGE).fill('');
   ent[P.lib]=tete; ent[P.total]='Restant dû'; ent[P.echu]='Échu';
   D.tranches.forEach((x,j)=>{ ent[P.tranche+j]=x; });
   ent[P.nonEchu]='Non échu'; ent[P.nb]='Créances'; ent[P.part]='Part';
-  ent[P.prov]='À provisionner';
+  ent[P.assiette]='Assiette de provision'; ent[P.prov]='À provisionner';
   ent[P.ecart]='Écart'; ent[P.autre]=autre;
   poserEntete(ws,ws.addRow(ent));
   for(let c=P.total+1;c<=P.nonEchu+1;c++) ws.getColumn(c).numFmt=EUROS;
@@ -1328,9 +1244,10 @@ function feuilleBalance(wb,niv,idx){
   // qu'Excel la calcule et la somme. Sa règle, le 16/10/2026.
   ws.getColumn(P.part+1).numFmt='0.0 %';
   ws.getColumn(P.prov+1).numFmt=EUROS;
+  ws.getColumn(P.assiette+1).numFmt=EUROS;
   const lignesSynth=synthRows(niv);
   // La provision par ligne de synthèse : la somme de celles de ses créances.
-  const provCat=new Map();
+  const provCat=new Map(), assCat=new Map();
   const totalNb=lignesSynth.reduce((n,x)=>x.cat==='TOTAL'?n:n+x.nb,0)||0;
   const part=n=>totalNb?n/totalNb:null;
 
@@ -1339,14 +1256,26 @@ function feuilleBalance(wb,niv,idx){
   for(const i of idx){
     const k=V(i,'Clé de la créance'); if(!k||info.has(k)) continue;
     const rd=N(i,'Reste dû de la créance'); if(Math.abs(rd)<0.005) continue;
-    // LE MONTANT QUE LA BALANCE PUBLIE, et il n'y en a qu'un : le reste dû de
-    // la créance APRÈS imputation des crédits du compte, compensation de
-    // tranche et cascade. C'est aussi, mot pour mot, la base que provisionDe()
-    // multiplie — « une balance agée unique qui sert ensuite à faire les
-    // provisions », 04/11/2026.
-    const mt=(()=>{ const a=assiettes(); const b=a.has(k)?a.get(k):rd;
-      return CAC()? b : (b>0?b:0); })();
-    info.set(k,{cat:categorieDe(i,niv), cpt:V(i,'N° de compte'), rd:rd, mt:mt,
+    // L'ASSIETTE DE CETTE CRÉANCE, telle que la provision l'emploie : le reste
+    // dû après imputation des crédits du compte, compensation de tranche et
+    // cascade.
+    //
+    // ET SEULEMENT CE QUE LE BARÈME VOIT. Une créance non échue, ou en deçà de
+    // 121 jours de retard, ne tombe dans aucune fenêtre : son assiette est
+    // nulle ici, sinon la colonne annoncerait une base dont le taux ne ferait
+    // rien — et le lecteur retomberait, en multipliant, sur un nombre qui n'est
+    // pas la provision. Même filtre, mot pour mot, que provisionDe().
+    const base=(()=>{
+      const a=assiettes(); const b=a.has(k)?a.get(k):rd;
+      const net=CAC()? b : (b>0?b:0);
+      if(!net) return 0;
+      paramsPrets();
+      const tr=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
+      const j=(PROV.fenetres||[]).findIndex(f=>(f.tranches||[]).indexOf(tr)>=0);
+      if(j<0) return 0;
+      return familleDe(sousVraie(i)) ? net : 0;
+    })();
+    info.set(k,{cat:categorieDe(i,niv), cpt:V(i,'N° de compte'), rd:rd, ass:base,
       // La provision de CETTE créance : son reste dû au débit multiplié par le
       // taux de sa famille dans la fenêtre où tombe son ancienneté.
       prov:provisionDe(rd, sousVraie(i),
@@ -1356,23 +1285,25 @@ function feuilleBalance(wb,niv,idx){
       autre:(niv==='cat'?sousVraie(i):categorieDe(i,'cat'))||'',
       tr:V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté')});
   }
-  for(const [,e] of info) provCat.set(e.cat,(provCat.get(e.cat)||0)+e.prov);
+  for(const [,e] of info){ provCat.set(e.cat,(provCat.get(e.cat)||0)+e.prov);
+    assCat.set(e.cat,(assCat.get(e.cat)||0)+e.ass); }
   provCat.set('TOTAL',[...provCat.values()].reduce((a,b)=>a+b,0));
+  assCat.set('TOTAL',[...assCat.values()].reduce((a,b)=>a+b,0));
   for(const i of idx){
     const k=V(i,'Clé de la créance'); const e=k&&info.get(k); if(!e) continue;
     if(!par.has(e.cat)) par.set(e.cat,new Map());
     const m=par.get(e.cat);
     let g=m.get(e.cpt);
     if(!g){ g={cpt:e.cpt, client:V(i,'Libellé de compte')||V(i,'Tiers'), total:0, echu:0,
-      nonEchu:0, nb:0, prov:0, buckets:D.tranches.map(()=>0), lignes:[], vues:new Set(),
+      nonEchu:0, nb:0, prov:0, ass:0, buckets:D.tranches.map(()=>0), lignes:[], vues:new Set(),
       autres:new Set()}; m.set(e.cpt,g); }
     g.lignes.push(i);
-    if(!g.vues.has(k)){ g.vues.add(k); g.nb++; g.total+=e.mt; g.prov+=e.prov;
+    if(!g.vues.has(k)){ g.vues.add(k); g.nb++; g.total+=e.rd; g.prov+=e.prov; g.ass+=e.ass;
       // Un compte peut porter deux dispositifs : on les nomme tous les deux
       // plutôt que d'en élire un.
       if(e.autre) g.autres.add(e.autre);
-      if(e.tr==='Non échu') g.nonEchu+=e.mt;
-      else { g.echu+=e.mt; if(rang.has(e.tr)) g.buckets[rang.get(e.tr)]+=e.mt; } }
+      if(e.tr==='Non échu') g.nonEchu+=e.rd;
+      else { g.echu+=e.rd; if(rang.has(e.tr)) g.buckets[rang.get(e.tr)]+=e.rd; } }
   }
   const ar2=x=>Math.round(x*100)/100;
   const tri=i=>V(i,'Clé de la créance')+'|'+V(i,'Date');
@@ -1380,7 +1311,7 @@ function feuilleBalance(wb,niv,idx){
   let z=0;
   for(const s of lignesSynth){
     const l=ws.addRow([s.cat,s.total,s.echu,...s.buckets,s.nonEchu,s.nb,
-      part(s.cat==='TOTAL'?totalNb:s.nb),
+      part(s.cat==='TOTAL'?totalNb:s.nb), ar2(assCat.get(s.cat)||0),
       ar2(provCat.get(s.cat)||0),
       ar2(s.total-(s.echu+s.nonEchu)),'']);
     l.getCell(1).font={bold:true};
@@ -1388,22 +1319,17 @@ function feuilleBalance(wb,niv,idx){
     if(z++%2) remplirLigne(ws,l,PALE);
     for(const g of [...(par.get(s.cat)||new Map()).values()].sort((a,b)=>a.cpt<b.cpt?-1:1)){
       const lr=ws.addRow(['    '+g.cpt+' - '+g.client, ar2(g.total), ar2(g.echu),
-        ...g.buckets.map(ar2), ar2(g.nonEchu), g.nb, part(g.nb), ar2(g.prov),
+        ...g.buckets.map(ar2), ar2(g.nonEchu), g.nb, part(g.nb), ar2(g.ass), ar2(g.prov),
         ar2(g.total-(g.echu+g.nonEchu)),
         [...g.autres].sort().join(' · ')]);
       lr.outlineLevel=1; lr.hidden=true; lr.getCell(1).font={bold:true};
       // Une ligne par ÉCRITURE du compte : son montant au débit ou au crédit,
       // posé dans la colonne d'ancienneté qui lui correspond.
       //
-      // Ces lignes ne totalisent PAS la ligne du compte, tranche par tranche,
-      // et c'est voulu : elles portent le GRAND LIVRE — le débit ou le crédit
-      // tel qu'il est écrit —, tandis que la ligne du compte porte la balance,
-      // c'est-à-dire ces mêmes montants APRÈS imputation des crédits sur les
-      // créances les plus anciennes du compte. S'y ajoute, sur un lettrage, la
-      // répartition au prorata entre ses factures, là où un règlement s'impute
-      // sur une seule d'entre elles. La ligne du compte reste la référence ; le
-      // chemin de l'une à l'autre se lit créance par créance dans « Détail »,
-      // colonne « Détail du calcul de la provision ».
+      // Ces lignes ne totalisent PAS toujours la ligne du compte, tranche par
+      // tranche, et c'est normal : la balance répartit le solde d'un lettrage
+      // entre ses factures au prorata, tandis qu'un règlement s'impute sur une
+      // seule d'entre elles. La ligne du compte, au-dessus, reste la référence.
       for(const i of g.lignes.sort((a,b)=>tri(a)<tri(b)?-1:1)){
         const e=info.get(V(i,'Clé de la créance'));
         const m=ar2(N(i,'Débit')-N(i,'Crédit'));
@@ -1425,37 +1351,6 @@ function feuilleBalance(wb,niv,idx){
         const le=ws.addRow(r); le.outlineLevel=2; le.hidden=true;
       }
     }
-  }
-
-  // LE RAPPROCHEMENT AU GRAND LIVRE, EN DEUX CELLULES.
-  //
-  // La balance s'aligne sur l'assiette : un crédit qu'aucune créance à solde
-  // débiteur de son compte n'absorbe sort donc des tranches, au lieu d'y rester
-  // en négatif. Sans cette reprise, le lecteur qui rapproche la feuille du
-  // solde des comptes clients croit à une erreur. Deux cellules et une
-  // vérification — pas un tableau de bascule : « pas de tableau de bascule
-  // entre les deux », 04/11/2026.
-  if(!CAC()){
-    const tot=(lignesSynth.find(x=>x.cat==='TOTAL')||{total:0}).total;
-    const sansEmploi=creditSansEmploi();
-    let soldeGL=0; for(const [,e] of info) soldeGL+=e.rd;
-    const pose=(lib,montant,gras)=>{
-      const r=new Array(LARGE).fill(null);
-      r[P.lib]=lib; r[P.total]=ar2(montant);
-      const l=ws.addRow(r);
-      l.getCell(P.lib+1).font=gras?{bold:true}:{color:{argb:ENCRE3}};
-      l.getCell(P.total+1).numFmt=EUROS;
-      if(gras) l.getCell(P.total+1).font={bold:true};
-      return l;
-    };
-    ws.addRow([]);
-    pose('Crédit resté sans emploi — aucune créance à solde débiteur sur son compte',
-      -sansEmploi, false);
-    pose('= Solde des comptes clients au grand livre', tot-sansEmploi, true);
-    // L'ÉGALITÉ SE VÉRIFIE, ELLE NE SE PROMET PAS.
-    if(Math.abs((tot-sansEmploi)-soldeGL)>0.005)
-      pose('Écart non expliqué — à corriger', (tot-sansEmploi)-soldeGL, true)
-        .getCell(P.lib+1).font={bold:true,color:{argb:CORAIL}};
   }
 
   // LE CALCUL SE REFAIT SUR LA FEUILLE QU'ON LIT, 03/11/2026. Le récap par
@@ -1485,18 +1380,11 @@ const COUPE='N° de rapprochement';
 // retrouvés au lieu de 3 325 190 €. Une colonne qu'on ne peut pas resommer
 // n'est pas auditable ; elle revient donc, et en tête des trois qu'elle
 // identifie.
-// LE MÊME NOM POUR LE MÊME NOMBRE, 04/11/2026. Cette colonne porte, créance
-// par créance, exactement ce que la balance âgée publie dans sa tranche : le
-// reste dû après imputation des crédits du compte. L'appeler « assiette » d'un
-// côté et « reste dû » de l'autre remettait deux grandeurs là où il n'y en a
-// qu'une. « Reste dû de la créance », juste avant, reste le chiffre du GRAND
-// LIVRE : c'est le départ, celle-ci est l'arrivée, et « Détail du calcul »
-// donne le chemin.
-const PROV_COLS=['Clé de la créance','Reste dû après imputation — assiette de la provision',
+const PROV_COLS=['Clé de la créance','Assiette de provision de la créance',
   'Détail du calcul de la provision','Provision de la créance'];
 // Celles qui portent des euros. Le détail est du texte, la clé aussi : leur
 // poser un format monétaire en ferait « 0 € » sur toute la colonne.
-const PROV_EUROS=new Set(['Reste dû après imputation — assiette de la provision','Provision de la créance']);
+const PROV_EUROS=new Set(['Assiette de provision de la créance','Provision de la créance']);
 // La largeur de chacune : une clé tient en 34, un montant en 30, la phrase du
 // calcul demande 86.
 const PROV_LARGE={'Clé de la créance':34};
@@ -1592,25 +1480,16 @@ function feuilleProvision(wb,idx){
     const sc=sousVraie(i); if(!sc) continue;
     const rd=N(i,'Reste dû de la créance');
     if(Math.abs(rd)<0.005) continue;
-    // LA MÊME COLONNE « RESTE DÛ » QUE LA BALANCE ÂGÉE, 04/11/2026. Elle
-    // portait le reste dû du GRAND LIVRE — 14 132 743 € — tandis que la
-    // balance publie désormais le reste dû APRÈS imputation — 14 139 703 €.
-    // Deux totaux pour un même intitulé, dans un même classeur : c'est ce
-    // qu'elle refuse. Seuls les MONTANTS changent ici ; les colonnes, les
-    // couleurs et l'ordre ne bougent pas — « je ne veux pas que tu changes la
-    // mise en forme dans à provisionner », 16/10/2026.
-    const mt=(()=>{ const a=assiettes(); const b=a.has(k)?a.get(k):rd;
-      return CAC()? b : (b>0?b:0); })();
     const tr=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
     const p=provisionDe(rd, sc, tr, k);
     let g=parSc.get(sc);
     if(!g){ g={sc, rd:0, prov:0, nb:0, tr:new Map(), cpt:new Map()}; parSc.set(sc,g); }
-    g.rd+=mt; g.prov+=p; g.nb++;
+    g.rd+=rd; g.prov+=p; g.nb++;
     if(p) g.tr.set(tr,(g.tr.get(tr)||0)+p);
     const nc=V(i,'N° de compte'), cl=V(i,'Libellé de compte')||V(i,'Tiers');
     let cp=g.cpt.get(nc);
     if(!cp){ cp={cpt:nc, client:cl, rd:0, prov:0, nb:0, tr:new Map(), cr:[]}; g.cpt.set(nc,cp); }
-    cp.rd+=mt; cp.prov+=p; cp.nb++;
+    cp.rd+=rd; cp.prov+=p; cp.nb++;
     if(p) cp.tr.set(tr,(cp.tr.get(tr)||0)+p);
     // UNE CRÉANCE SANS FACTURE SE NOMME POUR CE QU'ELLE EST. Le troisième
     // segment de la clé vaut alors « #2 », « #3 » — un rang interne, qui ne
@@ -1620,7 +1499,7 @@ function feuilleProvision(wb,idx){
     const nat=V(i,'Nature de la créance')||V(i,'Nature de l’écriture')||'écriture';
     const seg=k.split('|')[2]||'';
     cp.cr.push({fac:e.fac||(nat+(seg?' '+seg:'')),
-      ech:e.ech||'', rd:mt, prov:p, tr:tr});
+      ech:e.ech||'', rd:rd, prov:p, tr:tr});
   }
   const liste=[...parSc.values()].sort((a,b)=>b.prov-a.prov||(a.sc<b.sc?-1:1));
   const total=liste.reduce((s,x)=>s+x.prov,0);
@@ -1730,6 +1609,108 @@ function provisionParFenetre(){
   return {fen, taux, base, prov};
 }
 
+// Le chemin du reste dû à l'assiette, poste par poste. Chaque poste est un
+// temps de l'imputation, et chacun est déjà compté créance par créance dans
+// IMPUTE : on ne recalcule rien, on additionne ce qui a servi.
+function pontDuResteDu(ws){
+  if(CAC()) return;   // en doctrine CAC il n'y a aucune imputation : rien à ponter
+  paramsPrets();
+  const fen=PROV.fenetres||[], taux=PROV.taux||{};
+  const a=assiettes();
+  const vues=new Set();
+  let brut=0, nb=0, compte=0, tranche=0, jeune=0, ancien=0, ass=0;
+  let crediteur=0, nCrediteur=0;
+  for(const i of I){
+    const k=V(i,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
+    const tr=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
+    if((fen.findIndex(f=>(f.tranches||[]).indexOf(tr)>=0))<0) continue;
+    if(!taux[familleDe(sousVraie(i))]) continue;
+    const rd=N(i,'Reste dû de la créance');
+    // Une créance à solde créditeur ne se provisionne pas : elle sort de
+    // l'assiette, alors qu'elle minore bien la tranche de la balance. C'est
+    // l'un des deux postes de l'écart, et il se lit.
+    if(rd<0){ crediteur+=rd; nCrediteur++; continue; }
+    if(!(rd>0)) continue;
+    brut+=rd; nb++;
+    const b=a.has(k)?a.get(k):rd; ass+=(b>0?b:0);
+    const o=IMPUTE.get(k);
+    if(o){ compte+=o.compte||0; tranche+=o.tranche||0;
+           jeune+=o.depuisJeune||0; ancien+=o.depuisAncien||0; }
+  }
+  const ar2=x=>Math.round(x*100)/100;
+  ws.addRow([]);
+  bande(ws,'Du reste dû à l’assiette',{bold:true,size:12,color:{argb:BLEU}});
+  poserEntete(ws,ws.addRow(['','Montant','Créances','Ce que c’est']));
+  const pose=(lib,montant,n,quoi,gras)=>{
+    const l=ws.addRow([lib, ar2(montant), n===null?null:n, quoi]);
+    l.getCell(2).numFmt=EUROS;
+    if(n!==null) l.getCell(3).numFmt=ENTIER;
+    l.getCell(4).font={size:10,color:{argb:ENCRE3}};
+    l.getCell(4).alignment={wrapText:true,vertical:'top'};
+    if(gras){ l.getCell(1).font={bold:true}; l.getCell(2).font={bold:true}; }
+    return l;
+  };
+  // LE PONT PART D'UN CHIFFRE QU'ELLE A SOUS LES YEUX, 04/11/2026 :
+  // « 15 279 908,52 € à quoi correspond ce montant, il est pas sur la balance
+  // agé ». Il n'y était pas, en effet : la balance publie des montants NETS
+  // par tranche — dettes moins créances créditrices — et le pont partait du
+  // seul côté débiteur. Un pont dont le point de départ ne figure pas dans le
+  // document ne s'audite pas. Il part donc de la somme des tranches, et
+  // remonte au brut en une ligne nommée.
+  const trancheBalance=(()=>{
+    const t=(D.syntheseCat||[]).find(r=>r.cat==='TOTAL'); if(!t) return null;
+    let s=0; fen.forEach(f=>(f.tranches||[]).forEach(nom=>{
+      const j=(D.tranches||[]).indexOf(nom); if(j>=0) s+=(t.buckets||[])[j]||0; }));
+    return s;
+  })();
+  if(trancheBalance!==null){
+    pose('Somme des tranches soumises au barème', trancheBalance, null,
+      'Les colonnes « 4 à 6 mois » et au-delà de la ligne TOTAL, telles que la balance les publie : des montants NETS, créances à solde débiteur moins créances à solde créditeur.', true);
+    pose('+ créances à solde créditeur, que l’assiette ne déduit pas', -crediteur, nCrediteur,
+      'Une créance dont les encaissements et les avoirs dépassent la facture ne couvre aucune perte : elle minore la tranche, mais ne se provisionne pas. On la remet pour revenir au seul côté débiteur.');
+  }
+  pose('= Reste dû des créances à solde débiteur soumises au barème', brut, nb,
+    'Les créances dont le solde reste débiteur et dont l’ancienneté tombe dans une fenêtre de provision, à leur reste dû.', true);
+  // L'ÉGALITÉ SE VÉRIFIE ICI AUSSI : la somme des tranches, augmentée des
+  // créances créditrices, doit redonner le brut, sinon les deux lectures ne
+  // portent pas sur les mêmes créances.
+  //
+  // QUELQUES CENTIMES NE SONT PAS UNE ANOMALIE. La balance arrondit au centime
+  // créance par créance ; sur près de dix mille créances, le cumul peut porter
+  // une dizaine de centimes. Les crier en rouge apprendrait à ne plus lire le
+  // rouge. Au-delà du dixième d'euro, en revanche, ce n'est plus un arrondi.
+  if(trancheBalance!==null && Math.abs(trancheBalance-crediteur-brut)>0.005){
+    const e=trancheBalance-crediteur-brut, arrondi=Math.abs(e)<=0.10;
+    const l=pose(arrondi?'dont arrondi au centime':'Écart entre la balance et le détail', e, null,
+      arrondi
+        ? 'La balance arrondit créance par créance : le cumul porte quelques centimes, sans effet sur la provision.'
+        : 'À corriger : les deux lectures ne portent pas sur les mêmes créances.', !arrondi);
+    l.getCell(1).font=arrondi?{color:{argb:ENCRE3},italic:true}
+                             :{bold:true,color:{argb:CORAIL}};
+  }
+  pose('− imputé sur les créances du même compte', -compte, null,
+    'Les encaissements et avoirs non rattachés, portés sur les créances du compte de la plus ancienne à la plus récente.');
+  pose('− compensation dans la même tranche', -tranche, null,
+    'Le crédit qu’aucune créance du compte n’a absorbé, déduit des créances du même type de financement et de la même tranche.');
+  pose('− cascade vers une tranche plus ancienne', -ancien, null,
+    'Ce qui restait, porté cran par cran sur les tranches plus anciennes du même financement.');
+  pose('− cascade vers une tranche plus jeune', -jeune, null,
+    'Et, pour un crédit déjà dans la tranche la plus ancienne, le chemin inverse, vers les tranches plus jeunes.');
+  const t=pose('= Assiette exposée', ass, null,
+    'C’est elle que le barème multiplie. Le tableau ci-dessus la donne fenêtre par fenêtre.', true);
+  poserTotal(t,ws);
+  t.getCell(2).numFmt=EUROS;
+  // L'ÉGALITÉ SE VÉRIFIE, ELLE NE SE PROMET PAS.
+  const reste=brut-compte-tranche-ancien-jeune-ass;
+  if(Math.abs(reste)>0.005)
+    pose('Écart non expliqué', reste, null,
+      'À corriger : les postes ci-dessus doivent expliquer tout l’écart.', true)
+      .getCell(1).font={bold:true,color:{argb:CORAIL}};
+  ws.addRow([]);
+  pose('Pour mémoire — crédit resté sans emploi', -creditSansEmploi(), null,
+    'Le crédit qu’aucune créance à solde débiteur du même financement n’a pu absorber, dans aucune tranche. Il ne réduit la provision de personne.');
+}
+
 function recapParTypeDeClient(ws){
   const {fen,taux,base,prov}=provisionParFenetre();
   if(!fen.length) return;
@@ -1777,6 +1758,15 @@ function recapParTypeDeClient(ws){
   bloc('Assiette exposée, par fenêtre de provision', f=>base.get(f), 'euros', true);
   bloc('Barème appliqué', f=>taux[f], 'taux', false);
   const somme=bloc('Montant à provisionner', f=>prov.get(f), 'euros', true);
+
+  // ── DU RESTE DÛ À L'ASSIETTE ──
+  //
+  // « qd j'additionne j'ai 4 million 8 env, alors que là j'ai 4 million 6 »,
+  // 04/11/2026. Les deux nombres ne mesurent pas la même chose : la somme des
+  // tranches est le reste dû, l'assiette est ce que le barème voit APRÈS
+  // imputation des crédits. Le classeur doit porter le chemin de l'un à
+  // l'autre, sinon la question se repose à chaque arrêté.
+  pontDuResteDu(ws);
 
   // LE RAPPROCHEMENT SE LIT, IL NE SE SUPPOSE PAS. Le total de ce dernier
   // tableau doit être celui de la feuille ; s'il ne l'est pas, la ligne le dit
@@ -3280,12 +3270,9 @@ function vueProvision(){
     if(Math.abs(rd)<0.005) continue;
     const t=V(i,'Tranche de la créance')||V(i,'Tranche d’ancienneté');
     const p=provisionDe(rd, sc, t, k);
-    // LE MÊME RESTE DÛ QU'À CÔTÉ : celui de la balance âgée, après imputation.
-    const mt=(()=>{ const a=assiettes(); const b=a.has(k)?a.get(k):rd;
-      return CAC()? b : (b>0?b:0); })();
     let g=parSc.get(sc);
     if(!g){ g={sc, cat:categorieDe(i,'cat'), rd:0, prov:0, nb:0, tr:new Map()}; parSc.set(sc,g); }
-    g.rd+=mt; g.prov+=p; g.nb++;
+    g.rd+=rd; g.prov+=p; g.nb++;
     if(p) g.tr.set(t,(g.tr.get(t)||0)+p);
   }
   const liste=[...parSc.values()].sort((a,b)=>b.prov-a.prov||(a.sc<b.sc?-1:1));
