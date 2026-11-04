@@ -965,13 +965,27 @@ function feuilleRegles(wb){
 // qui expliquaient comment lire une feuille ou comment la méthode fonctionne
 // sont partis. Il ne reste que des titres, des en-têtes et des tableaux — un
 // fait se dit dans une cellule, pas dans une phrase.
-function bande(ws,texte,police,deCol){
+// UNE BANDE DE TITRE AUSSI LARGE QUE SON TABLEAU, ET ASSEZ HAUTE POUR SON
+// TEXTE, 04/11/2026 : « les cellules st mal cadré, regarde la ligne Barème
+// appliqué ».
+//
+// Deux défauts d'un coup. La fusion s'arrêtait à la colonne 8 quelle que soit
+// la largeur du tableau au-dessous : sous un récap de six colonnes, la bande
+// en débordait de deux. Et la hauteur ne tenait compte que de la LONGUEUR du
+// texte, jamais de sa TAILLE : « Barème appliqué » en 12 points tenait dans
+// 19 points de hauteur, et ses jambages étaient coupés.
+//
+// La hauteur se calcule donc sur la police, et aCol dit où la bande s'arrête.
+function bande(ws,texte,police,deCol,aCol){
   const d=deCol||1;
+  const f=Math.max(d, aCol||8);
   const r=ws.addRow(Array(d-1).fill('').concat([texte]));
-  ws.mergeCells(r.number,d,r.number,8);
-  r.getCell(d).alignment={vertical:'top',wrapText:true};
+  if(f>d) ws.mergeCells(r.number,d,r.number,f);
+  r.getCell(d).alignment={vertical:'middle',wrapText:true};
   if(police) r.getCell(d).font=police;
-  r.height=Math.max(16,Math.ceil(String(texte||'').length/150)*15+4);
+  const taille=(police&&police.size)||11;
+  r.height=Math.max(22, Math.ceil(String(texte||'').length/150)*15+4,
+                    Math.round(taille*1.8));
   return r;
 }
 
@@ -1677,17 +1691,17 @@ function recapParTypeDeClient(ws,ancre){
   const fams=(D.ordreTypeClient||[]).filter(f=>taux[f])
     .concat(Object.keys(taux).filter(f=>(D.ordreTypeClient||[]).indexOf(f)<0));
   const lab=fen.map(f=>f.label);
-  // Le nom que le commissaire aux comptes emploie, quand la page le connaît :
-  // une colonne de correspondance vaut mieux qu'un second tableau.
-  const nomsCac=(PROV&&PROV.nomsCac)||{};
 
   // UN NUMÉRO DE LIGNE SE RELÈVE, IL NE SE CALCULE PAS. Déduit de rowCount et
   // d'un décalage, il pointait sur l'entête du barème au lieu du taux : la
   // formule multipliait par du texte. Le bloc rend donc les lignes qu'il a
   // réellement écrites.
+  // La largeur du récap : l'intitulé, les fenêtres, et le total quand il y en
+  // a un. Les bandes s'y arrêtent, au lieu de déborder jusqu'à la colonne 8.
+  const LARGEUR=2+fen.length;
   const bloc=(titre, lire, fmt, avecTotal, sortieLignes)=>{
     ws.addRow([]);
-    bande(ws,titre,{bold:true,size:12,color:{argb:BLEU}});
+    bande(ws,titre,{bold:true,size:12,color:{argb:BLEU}},1,LARGEUR);
     poserEntete(ws,ws.addRow(['Type de client',...lab,...(avecTotal?['Total']:[])]));
     const somme=fen.map(()=>0);
     let y=0;
@@ -1714,8 +1728,9 @@ function recapParTypeDeClient(ws,ancre){
   };
 
   ws.addRow([]);
-  const tt=bande(ws,'RÉCAP PAR TYPE DE CLIENT',{bold:true,size:14,color:{argb:BLEU}});
-  tt.height=24;
+  const tt=bande(ws,'RÉCAP PAR TYPE DE CLIENT',
+    {bold:true,size:14,color:{argb:BLEU}},1,LARGEUR);
+  tt.height=26;
 
   // Sans ancre, les trois blocs d'hier, en valeurs. Avec, deux blocs et des
   // formules : le tableau d'assiette s'efface, puisque la formule va chercher
@@ -1731,7 +1746,7 @@ function recapParTypeDeClient(ws,ancre){
     somme=bloc('Montant à provisionner', f=>prov.get(f), 'euros', true);
   } else {
     ws.addRow([]);
-    bande(ws,'Montant à provisionner',{bold:true,size:12,color:{argb:BLEU}});
+    bande(ws,'Montant à provisionner',{bold:true,size:12,color:{argb:BLEU}},1,LARGEUR);
     poserEntete(ws,ws.addRow(['Type de client',...lab,'Total']));
     const nC=lab.length;
     const premiere=ws.rowCount+1;
@@ -1792,19 +1807,9 @@ function recapParTypeDeClient(ws,ancre){
     e.getCell(2).numFmt=EUROS; e.getCell(2).font={bold:true,color:{argb:CORAIL}};
   }
 
-  // La correspondance des noms, pour qui lit le dossier du commissaire aux
-  // comptes à côté de la balance.
-  if(Object.keys(nomsCac).length){
-    ws.addRow([]);
-    poserEntete(ws,ws.addRow(['Type de client','Nom employé par le commissaire aux comptes']));
-    let y=0;
-    for(const f of fams){
-      const l=ws.addRow([f, nomsCac[f]||'']);
-      l.getCell(1).font={bold:true};
-      l.getCell(2).numFmt='General';
-      if(y++%2) remplirLigne(ws,l,PALE);
-    }
-  }
+  // LA CORRESPONDANCE DES NOMS A QUITTÉ LA FEUILLE, 04/11/2026 : « enlève ce
+  // tableau ». Elle redisait en quatre lignes ce que les règles portent déjà,
+  // et elle venait s'ajouter sous un récap qui doit se lire d'un coup.
 }
 
 function feuilleDetail(wb,idx,nom){
