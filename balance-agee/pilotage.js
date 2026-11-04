@@ -88,10 +88,14 @@ function cube(bal, date) {
     coh.set(c, o);
   }
   const t = (bal.syntheseCat || []).find(r => r.cat === 'TOTAL') || {};
+  // LA LIGNE TOTAL N'EST PAS UN FINANCEMENT. Les deux ventilations publiées
+  // par la balance la portent en dernière ligne : l'additionner avec les
+  // autres double l'encours — 28,3 M€ au lieu de 14,1 M€, mesuré le 04/11.
+  const sansTotal = l => (l || []).filter(r => r.cat !== 'TOTAL');
   return {
     date,
-    parFinancement: bal.synthese || [],
-    parTypeClient: (bal.syntheseCat || []).filter(r => r.cat !== 'TOTAL'),
+    parFinancement: sansTotal(bal.synthese),
+    parTypeClient: sansTotal(bal.syntheseCat),
     total: { total: t.total, echu: t.echu, nonEchu: t.nonEchu, crediteur: t.crediteur,
              nb: t.nb, buckets: t.buckets || [] },
     cohortes: [...coh].map(([c, o]) => { const [fin, m] = c.split('\u0001');
