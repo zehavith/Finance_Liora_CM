@@ -2039,6 +2039,29 @@ html {
    chart-card, chart-header, chart-container, kpi-grid — pour qu'il ne
    paraisse pas rapporté d'ailleurs.                                       */
 
+/* CINQ VIGNETTES SUR UNE SEULE LIGNE, 04/11/2026 : « j'aimerais que les
+   vignettes soient sur une ligne, tu peux les rapetisser ? ». La grille
+   commune se remplit d'elle-même, par colonnes de 240 px au moins : à cette
+   largeur elle en posait quatre, et la cinquième — la couverture des
+   provisions — occupait seule une deuxième ligne. Ici les cinq colonnes sont
+   imposées et la vignette se resserre pour tenir : moins de rembourrage, un
+   chiffre un peu plus petit, et la valeur qui peut se couper plutôt que
+   déborder. */
+#pil-kpis {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: .7rem;
+    margin-bottom: 1.5rem;
+}
+#pil-kpis .kpi-card { padding: .85rem .9rem; gap: .5rem; align-items: flex-start; }
+#pil-kpis .kpi-data { min-width: 0; }
+#pil-kpis .kpi-label { font-size: .72rem; margin-bottom: .1rem; }
+#pil-kpis .kpi-value { font-size: 1.3rem; overflow-wrap: anywhere; }
+#pil-kpis .kpi-sub { font-size: .66rem; }
+/* Sous mille deux cents pixels, cinq colonnes deviendraient illisibles : trois,
+   puis deux. Mieux vaut deux lignes qu'un chiffre coupé en trois. */
+@media (max-width: 1200px) { #pil-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px)  { #pil-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 /* LES FILTRES RESTENT SOUS LES YEUX, 04/11/2026 : « je veux que ces propriétés
    soient figées ». Huit graphiques défilent sous cette barre ; arrivé en bas de
    l'onglet, plus rien ne disait sur quel périmètre on lisait — ici le seul
