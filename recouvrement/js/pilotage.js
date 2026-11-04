@@ -659,7 +659,14 @@
         U().chart('pil-chart-bridge', {
             type: 'bar',
             data: {
-                labels: postes.map(p => p.nom),
+                // CHAQUE BARRE PORTE SON MONTANT, ET SON SIGNE, 04/11/2026 :
+                // « j'ai pas compris ». Une cascade dont les barres n'ont que
+                // leur nom oblige à survoler chacune pour savoir si elle ajoute
+                // ou retranche — et la couleur seule ne le dit pas, puisqu'ici
+                // elle dit l'effet sur le recouvrement, pas le sens du pas.
+                labels: postes.map(p => p.type === 'socle'
+                    ? [p.nom, eur(p.v)]
+                    : [p.nom, (p.v >= 0 ? '+' : '−') + eur(Math.abs(p.v))]),
                 datasets: [{
                     data,
                     backgroundColor: postes.map(p => p.type === 'socle' ? '#6366f1'
@@ -680,14 +687,62 @@
                 },
             },
         });
+        // LA PHRASE DISAIT « DONT », ET C'ÉTAIT FAUX. « −248 035 € à expliquer,
+        // dont 1 899 548 € facturés » laissait croire que les 1,9 M€ étaient une
+        // PART des 248 k€, alors qu'ils en sont un terme de sens contraire. Les
+        // postes se rangent donc par sens : ce qui fait monter l'encours d'un
+        // côté, ce qui le fait baisser de l'autre, et le solde entre les deux.
+        const monte = [], baisse = [];
+        (fac > 0 ? monte : baisse).push(eur(Math.abs(fac)) + ' facturés');
+        if (Math.abs(enc) > 0.5) baisse.push(eur(Math.abs(enc)) + ' encaissés');
+        if (Math.abs(avo) > 0.5) baisse.push(eur(Math.abs(avo)) + ' d’avoirs');
+        if (Math.abs(autres) > 0.5)
+            (autres > 0 ? monte : baisse).push(eur(Math.abs(autres)) + ' d’autres mouvements');
+        const et = l => l.length > 1
+            ? l.slice(0, -1).join(', ') + ' et ' + l[l.length - 1] : (l[0] || '');
+        const delta = z.total - a.total;
         const el = document.getElementById('pil-bridge-dit');
-        if (el) el.textContent = 'D’un arrêté à l’autre, l’encours passe de ' + eur(a.total)
-            + ' à ' + eur(z.total) + ' : ' + eur(z.total - a.total) + ' à expliquer, dont '
-            + eur(fac) + ' facturés, ' + eur(enc) + ' encaissés, ' + eur(avo) + ' d’avoirs et '
-            + eur(autres) + ' d’autres mouvements.';
+        if (el) el.textContent = 'L’encours passe de ' + eur(a.total) + ' à ' + eur(z.total)
+            + ', soit ' + (delta >= 0 ? '+' : '−') + eur(Math.abs(delta)) + '. '
+            + (monte.length ? 'Il monte de ' + et(monte) + '. ' : '')
+            + (baisse.length ? 'Il baisse de ' + et(baisse) + '. ' : '')
+            + 'En rouge ce qui le fait monter, en vert ce qui le fait baisser.';
     }
 
     // ═════════ les filtres, à l'écran ═════════
+
+    // UN FILTRE À CHOIX MULTIPLE QUI S'OUVRE. Le bouton dit ce qui est retenu —
+    // rien de coché veut dire TOUT, et c'est ce que le bouton annonce. Un clic
+    // ailleurs ou la touche Échap referme : un panneau ouvert qui recouvre un
+    // graphique est pire qu'un filtre encombrant.
+    function brancherDeroule(idB, idP, tout, ens) {
+        const b = document.getElementById(idB), p = document.getElementById(idP);
+        if (!b || !p || b.dataset.pret) return;
+        b.dataset.pret = '1';
+        const etiquette = () => {
+            const n = ens.size, l = [...ens];
+            b.textContent = !n ? tout : (n <= 2 ? l.join(', ') : n + ' sélectionnés');
+            b.title = !n ? tout : l.join(', ');
+        };
+        const fermer = () => {
+            document.querySelectorAll('.pil-deroule-panneau').forEach(x => { x.hidden = true; });
+            document.querySelectorAll('.pil-deroule-bouton')
+                .forEach(x => x.setAttribute('aria-expanded', 'false'));
+        };
+        b.addEventListener('click', e => {
+            e.stopPropagation();
+            const ouvert = !p.hidden;
+            fermer();
+            if (ouvert) return;
+            p.hidden = false; b.setAttribute('aria-expanded', 'true');
+        });
+        p.addEventListener('click', e => e.stopPropagation());
+        document.addEventListener('click', fermer);
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') fermer(); });
+        // Après le gestionnaire qui met F à jour : l'étiquette lit l'ensemble.
+        p.addEventListener('change', etiquette);
+        etiquette();
+    }
 
     function peuplerFiltres() {
         if (!D) return;
@@ -714,6 +769,8 @@
                 rendre();
             });
         }
+        brancherDeroule('pil-unites-bouton', 'pil-unites', 'Toutes', F.unites);
+        brancherDeroule('pil-financeurs-bouton', 'pil-financeurs', 'Tous', F.financeurs);
     }
 
     function brancher() {

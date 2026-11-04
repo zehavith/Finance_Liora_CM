@@ -2056,6 +2056,42 @@ html {
     border: 1px solid rgba(99,102,241,.22);
     background: var(--surface-2, rgba(255,255,255,.04)); color: inherit;
 }
+/* LE DÉROULÉ NATIF DOIT SE LIRE, 04/11/2026 : « lorsque je clique sur exercice
+   courant, le déroulé n'est pas bien visible, même chose pour comparaison ».
+   Le reste de l'application peint ses options par `select.input option` ; ces
+   deux listes-ci n'ont pas la classe `input`, et leurs options héritaient donc
+   d'un fond transparent sur un thème sombre. */
+.pil-filtre select option, .pil-filtre input[type="date"] { color: var(--text-primary); }
+.pil-filtre select option { background: var(--bg-secondary); }
+
+/* ── LES FILTRES À CHOIX MULTIPLE S'OUVRENT ──
+   Le bouton porte ce qui est retenu, le panneau garde les cases : le choix
+   reste multiple, et la barre tient sur une ligne. */
+.pil-deroule { position: relative; }
+.pil-deroule-bouton {
+    width: 100%; text-align: left; cursor: pointer; position: relative;
+    padding: .45rem 1.9rem .45rem .6rem; border-radius: 8px; font-size: .85rem;
+    border: 1px solid rgba(99,102,241,.22);
+    background: var(--surface-2, rgba(255,255,255,.04)); color: var(--text-primary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pil-deroule-bouton::after {
+    content: '▾'; position: absolute; right: .6rem; top: 50%;
+    transform: translateY(-50%); pointer-events: none; opacity: .65;
+}
+.pil-deroule-bouton[aria-expanded="true"] { border-color: var(--accent, #F47458); }
+.pil-deroule-panneau {
+    position: absolute; z-index: 60; top: calc(100% + .3rem); left: 0;
+    min-width: 100%; max-height: 17rem; overflow-y: auto;
+    flex-direction: column; flex-wrap: nowrap; gap: .1rem;
+    padding: .5rem; border-radius: 10px;
+    background: var(--bg-secondary); color: var(--text-primary);
+    border: 1px solid rgba(99,102,241,.28); box-shadow: 0 14px 30px rgba(0,0,0,.38);
+}
+.pil-deroule-panneau[hidden] { display: none; }
+.pil-deroule-panneau .pil-coche { padding: .25rem .3rem; border-radius: 6px; }
+.pil-deroule-panneau .pil-coche:hover { background: rgba(99,102,241,.12); }
+
 .pil-coches { display: flex; flex-wrap: wrap; gap: .35rem .75rem; }
 /* Aucune case cochée veut dire TOUTES : un filtre vide ne cache rien, et la
    page n'a pas à deviner ce qu'on voulait dire en ne cochant rien. */

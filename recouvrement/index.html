@@ -842,13 +842,26 @@
                     <option value="A-3">Année N-3</option>
                 </select>
             </div>
-            <div class="pil-filtre pil-filtre-large">
+            <!-- DEUX FILTRES QUI S'OUVRENT, 04/11/2026 : « business unit je veux
+                 que cela soit un déroulé, même chose pour financeur ». Dix-huit
+                 financeurs étalés en cases à cocher poussaient les graphiques hors
+                 de l'écran. Le bouton dit ce qui est retenu ; le panneau garde les
+                 cases, parce que le choix reste multiple. -->
+            <div class="pil-filtre">
                 <label>Business unit</label>
-                <div class="pil-coches" id="pil-unites"></div>
+                <div class="pil-deroule">
+                    <button type="button" class="pil-deroule-bouton" id="pil-unites-bouton"
+                            aria-expanded="false" aria-haspopup="true">Toutes</button>
+                    <div class="pil-deroule-panneau pil-coches" id="pil-unites" hidden></div>
+                </div>
             </div>
-            <div class="pil-filtre pil-filtre-large">
+            <div class="pil-filtre">
                 <label>Financeur</label>
-                <div class="pil-coches" id="pil-financeurs"></div>
+                <div class="pil-deroule">
+                    <button type="button" class="pil-deroule-bouton" id="pil-financeurs-bouton"
+                            aria-expanded="false" aria-haspopup="true">Tous</button>
+                    <div class="pil-deroule-panneau pil-coches" id="pil-financeurs" hidden></div>
+                </div>
             </div>
         </div>
 
