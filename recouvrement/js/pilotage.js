@@ -276,6 +276,7 @@
         graphAncienneté(keep);
         graphHeatmap(e);
         graphRetard(keep);
+        graphDecroissance(keep);
         graphVintage(keep);
         graphDso(keep);
         graphBridge(keep, b);
@@ -531,6 +532,128 @@
             }
         }
         return parCohorte;
+    }
+
+    // ═════════ ce qui reste dû, jour après jour depuis la facturation ═════════
+    //
+    // « Des vintage par mois de facturation (abscisse — met d jours) / encours
+    // client (ordonné) par financeur — évolution de l'encours client — on doit
+    // pv voir 80% de mon encours et payé av X j », 04/11/2026.
+    //
+    // ELLE SE LIT SUR LES ARRÊTÉS, PAS SUR LES RÈGLEMENTS. Bâtie sur les seuls
+    // encaissements datables, la courbe plafonnait à 59 % de reste dû quand la
+    // balance en publie 30 : elle ignorait les 18 293 726 € d'avoirs — dont
+    // AUCUN ne porte de facture rattachée datée — et les 7 103 219 € de
+    // règlements qu'aucune facture ne réclame. Un arrêté, lui, tient compte de
+    // tout ce qui éteint une facture : paiement, avoir, lettrage. Chaque point
+    // vient donc d'une balance refaite à cette date, et la courbe cadre avec
+    // l'encours publié.
+    //
+    // L'ÂGE SE COMPTE DEPUIS LE 15 DU MOIS DE FACTURATION — le jour moyen d'une
+    // facturation étalée sur le mois. Dater toute une cohorte du 1er la
+    // vieillirait de quinze jours.
+    //
+    // DEUX BORNES, SANS QUOI RIEN NE SE LIT. Sans elles la courbe courait
+    // jusqu'à 2 400 jours — l'âge d'une cohorte de 2020 vue au dernier arrêté,
+    // quelques milliers d'euros qui font sauter le tracé — et quatorze
+    // financeurs se croisaient en pelote. L'horizon s'arrête donc à un AN, où
+    // se prend une décision de recouvrement, et le dessin garde les financeurs
+    // qui pèsent. Ce qui est écarté est nommé sous le graphique.
+    const DECROISSANCE_JOURS = 360;
+    const DECROISSANCE_COURBES = 7;
+    function graphDecroissance(keep) {
+        const dit = document.getElementById('pil-decroissance-dit');
+        const parFin = new Map();
+        for (const e of (D.cohortes || [])) {
+            const da = parseFR(e.d); if (!da) continue;
+            for (const l of (e.lignes || [])) {
+                if (!keep.has(l.fin) || !(l.f > 0)) continue;
+                const dm = new Date(+l.m.slice(0, 4), +l.m.slice(5, 7) - 1, 15);
+                const j = Math.round((da - dm) / 86400000);
+                if (j < 0 || j > DECROISSANCE_JOURS + 15) continue;
+                const pas = Math.round(j / 30) * 30;
+                const t = parFin.get(l.fin) || new Map();
+                const o = t.get(pas) || { f: 0, r: 0 };
+                o.f += l.f; o.r += l.r;
+                t.set(pas, o); parFin.set(l.fin, t);
+            }
+        }
+        if (!parFin.size) {
+            U().chart('pil-chart-decroissance', { type: 'line', data: { labels: [], datasets: [] },
+                options: { responsive: true, maintainAspectRatio: false,
+                           plugins: { legend: { display: false } } } });
+            if (dit) dit.textContent = 'Aucune cohorte de facturation sur le périmètre retenu.';
+            return;
+        }
+        const ages = [...new Set([].concat(...[...parFin.values()].map(t => [...t.keys()])))]
+            .sort((a, b) => a - b);
+        // UNE COURBE TIRÉE DE TROIS MILLE EUROS NE DIT RIEN : elle saute au gré
+        // d'une facture. Le plancher les écarte du dessin, et la note les nomme.
+        const PLANCHER = 100000;
+        const poids = f => [...(parFin.get(f) || new Map()).values()]
+            .reduce((s, o) => Math.max(s, o.f), 0);
+        const assez = [...parFin.keys()].filter(f => poids(f) >= PLANCHER)
+            .sort((a, b) => poids(b) - poids(a));
+        const gardes = assez.slice(0, DECROISSANCE_COURBES);
+        const ecartes = [...parFin.keys()].filter(f => poids(f) > 0 && assez.indexOf(f) < 0)
+            .concat(assez.slice(DECROISSANCE_COURBES));
+        const val = (f, a) => { const o = (parFin.get(f) || new Map()).get(a);
+            return (o && o.f > 0) ? Math.max(0, Math.round((o.r / o.f) * 1000) / 10) : null; };
+        // Le jour où la courbe passe sous 20 % de reste dû, interpolé entre les
+        // deux âges qui l'encadrent.
+        const croisement = f => {
+            let avant = null, vAvant = null;
+            for (const a of ages) { const v = val(f, a); if (v == null) continue;
+                if (v <= 20) { if (avant == null || vAvant === v) return a;
+                    return Math.round(avant + (vAvant - 20) * (a - avant) / (vAvant - v)); }
+                avant = a; vAvant = v; }
+            return null;
+        };
+        const palette = U().palette;
+        const series = gardes.map((f, k) => ({
+            label: f, borderColor: palette[k % palette.length], backgroundColor: 'transparent',
+            borderWidth: 2, tension: 0.25, pointRadius: 2, spanGaps: true,
+            data: ages.map(a => val(f, a)),
+        }));
+        series.push({ label: '20 % — quatre cinquièmes encaissés', borderColor: '#8b92a5',
+            borderDash: [5, 4], borderWidth: 1, pointRadius: 0, backgroundColor: 'transparent',
+            data: ages.map(() => 20) });
+        U().chart('pil-chart-decroissance', {
+            type: 'line',
+            data: { labels: ages.map(a => a + ' j'), datasets: series },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { x: { grid: { display: false } },
+                          y: { grid: U().grille, min: 0, max: 100,
+                               ticks: { callback: v => v + ' %' } } },
+                plugins: {
+                    legend: { display: true, position: 'bottom',
+                              labels: { boxWidth: 12, font: { size: 11 } } },
+                    tooltip: { callbacks: { label: c => c.dataset.label + ' : '
+                        + (c.parsed.y == null ? '·' : c.parsed.y + ' % encore dû') } },
+                },
+            },
+        });
+        // Toutes natures confondues, sur le même périmètre.
+        const tous = new Map();
+        for (const [, t] of parFin) for (const [a, o] of t) {
+            const x = tous.get(a) || { f: 0, r: 0 }; x.f += o.f; x.r += o.r; tous.set(a, x); }
+        parFin.set('\u0000tous', tous);
+        const jours = croisement('\u0000tous');
+        parFin.delete('\u0000tous');
+        const parNom = gardes.map(f => { const j = croisement(f);
+            return f + ' ' + (j == null ? '— jamais sous 20 %' : j + ' j'); });
+        if (dit) dit.textContent =
+            (jours == null
+              ? 'Sur le périmètre retenu, le reste dû d’une cohorte ne descend sous 20 % à aucun âge observé.'
+              : 'Sur le périmètre retenu, 80 % de ce qui est facturé est éteint en ' + jours + ' jours.')
+            + ' Par financeur, ce même seuil : ' + parNom.join(' · ') + '.'
+            + (ecartes.length ? ' Hors du dessin, pour qu’il se lise : ' + ecartes.join(', ')
+                + '.' : '')
+            + ' Chaque point vient d’un arrêté refait à sa date : paiements, avoirs et lettrage'
+            + ' y sont tous comptés, et le dernier point cadre avec l’encours publié.'
+            + ' L’horizon s’arrête à un an — au-delà, une seule vieille cohorte suffit à'
+            + ' faire sauter le tracé.';
     }
 
     function graphVintage(keep) {

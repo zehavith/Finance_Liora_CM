@@ -824,7 +824,6 @@
                     <option value="douze">Douze derniers mois</option>
                     <option value="libre">Date personnalisée</option>
                 </select>
-                <span class="pil-maille">maille du relevé : le mois</span>
                 <span id="pil-dates" hidden>
                     <input type="date" id="pil-du" aria-label="Du"> 
                     <input type="date" id="pil-au" aria-label="Au">
@@ -891,6 +890,12 @@
                 <div class="chart-header"><h3>Taux de retard par financeur</h3></div>
                 <p class="pil-note" id="pil-retard-dit">La part échue de l’encours de chaque financeur, arrêté après arrêté.</p>
                 <div class="chart-container"><canvas id="pil-chart-retard"></canvas></div>
+            </div></div>
+
+            <div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>Ce qui reste dû, jour après jour depuis la facturation</h3></div>
+                <p class="pil-note" id="pil-decroissance-dit"></p>
+                <div class="chart-container"><canvas id="pil-chart-decroissance"></canvas></div>
             </div></div>
 
             <div class="charts-grid"><div class="chart-card chart-wide">

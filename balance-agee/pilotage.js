@@ -191,7 +191,11 @@ function provisionComptabilisee(jusquA) {
 }
 
 // ───────── les flux, le délai de règlement, les vintages ─────────
-const PALIERS = [30, 60, 90, 120, 180, 360];
+// DES PALIERS ASSEZ FINS POUR LIRE UN CROISEMENT, 04/11/2026 : « on doit pv
+// voir 80% de mon encours et payé av X j ». Six paliers donnaient une courbe
+// qui sautait de 90 à 120 jours : le jour cherché tombait dans le trou. Ils ne
+// coûtent qu'un compteur de plus chacun.
+const PALIERS = [15, 30, 45, 60, 75, 90, 120, 150, 180, 240, 300, 360, 540, 720];
 function flux(bal) {
   const V = (l, i) => { const x = l[i]; return typeof x === 'number' ? bal.dico[x] : x; };
   const col = n => bal.cols.indexOf(n);
