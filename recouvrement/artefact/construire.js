@@ -560,6 +560,34 @@ fs.writeFileSync(path.join(DIST, 'essai.html'), ENVELOPPE);
   }
 }
 
+// ═══════════ LE RELEVÉ DU PILOTAGE ═══════════
+//
+// L'onglet « Pilotage » prend ses chiffres dans la COMPTABILITÉ, et le paquet
+// n'en porte aucune : les neuf tableaux Monday sont tout ce qu'il contient, et
+// l'API Pennylane est hors d'atteinte depuis un artefact. Le relevé est donc
+// précalculé à côté de la balance âgée — balance-agee/pilotage.js — et
+// recopié ici. Il ne se régénère qu'au dépôt d'un nouveau grand livre : les
+// treize arrêtés mensuels qu'il contient demandent une demi-heure de calcul.
+//
+// S'IL MANQUE, LA CONSTRUCTION NE S'ARRÊTE PAS. L'onglet s'ouvrira sur « à
+// compléter » plutôt que sur des chiffres qui n'existent pas — c'est la même
+// règle que les données du jour, et la même que la sienne du 15/10/2026 :
+// « ma balance agé doit etre auditable, il faut mettre à completer ».
+{
+  const RELEVE = path.join(__dirname, '..', '..', 'balance-agee', 'art', 'pilotage.json');
+  if (fs.existsSync(RELEVE)) {
+    const cible = path.join(DIST, 'donnees');
+    fs.mkdirSync(cible, { recursive: true });
+    fs.copyFileSync(RELEVE, path.join(cible, 'pilotage.json'));
+    const m = JSON.parse(fs.readFileSync(RELEVE, 'utf8'));
+    console.log('relev\u00e9 du pilotage \u00b7 ' + Math.round(fs.statSync(RELEVE).size / 1024)
+      + ' Ko \u00b7 ' + (m.dates || []).length + ' arr\u00eat\u00e9s mensuels \u00b7 arr\u00eat\u00e9 au '
+      + (m.arrete || '?'));
+  } else {
+    console.log('relev\u00e9 du pilotage \u00b7 absent \u00b7 l\u2019onglet s\u2019ouvrira sur \u00ab \u00e0 compl\u00e9ter \u00bb');
+  }
+}
+
 const tous = [];
 (function parcourir(d, prefixe) {
   for (const e of fs.readdirSync(d, { withFileTypes: true })) {
