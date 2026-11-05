@@ -6635,6 +6635,7 @@
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
             toutes.map(c => ({
                 'N° de facture': c.numero || '', 'Client': c.tiers, 'N° de compte': c.compte,
+                'Financement': c.financement ? R.getRule(c.financement, state.rules).label : 'À classer',
                 'Identifiant du tiers': c.identifiantTiers || '',
                 'Libellé': c.libelle || '',
                 'Reste dû': Math.round((c.resteDu || 0) * 100) / 100,
@@ -7824,6 +7825,7 @@
         } else if (vue === 'creances') {
             XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(creances.map(c => ({
                 'Facture': c.numero || '', 'Client': c.tiers, 'N° de compte': c.compte,
+                'Financement': c.financement ? R.getRule(c.financement, state.rules).label : 'À classer',
                 'Reste dû': arrondi(c.resteDu), 'Retard (jours)': c.retardJours == null ? '' : c.retardJours,
                 'Tranche': ((R.bucketFor(c.retardJours) || {}).label) || '',
                 'Échéance': c.dateEcheance ? U.dateFR(c.dateEcheance) : '',
@@ -10280,6 +10282,8 @@
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(n.lot.map(r => ({
             'Facture': r.sellsy.numero,
             'Client': r.sellsy.client || r.facture.client,
+            'Type de financement': r.facture.financement
+                ? R.getRule(r.facture.financement, state.rules).label : 'À qualifier',
             'Nature de l’écart': n.label,
             'Montant Sellsy': arrondi(r.sellsy.montant || 0),
             'Montant Monday': arrondi(r.facture.montant || 0),
@@ -10726,8 +10730,24 @@
             { Indicateur: 'Version de l\'application', Valeur: VERSION + ' — ' + VERSION_DATE },
         ]), 'Synthèse');
 
+        // LE TYPE DE FINANCEMENT SUR CHAQUE LIGNE, 05/11/2026 : « j'aimerais que
+        // lorsque je fais un export des factures, j'aie aussi le type de
+        // financement par facture sur la ligne ». Le classeur du Contrôle Sellsy
+        // ne le portait que sur « Absentes à relancer ». Il le porte maintenant
+        // sur toutes ses feuilles de factures. Pour une facture que Monday ne
+        // connaît pas, il n'y a pas d'autre source que Sellsy : on lit le champ
+        // le plus explicite — le champ personnalisé qui nomme le financement
+        // quand il y en a un, puis le « Type de client », puis la mention
+        // d'alternance — et l'on dit « À qualifier » quand aucun ne tranche.
+        const financementSellsy = l => {
+            const k = R.detectFinancement(l.financementPersonnalise, state.rules)
+                || R.detectFinancement(l.typeClient, state.rules)
+                || R.detectFinancement(l.alternanceTexte, state.rules);
+            return k ? R.getRule(k, state.rules).label : 'À qualifier';
+        };
         const ligneSellsy = l => ({
             'Numéro': l.numero, 'Client': l.client,
+            'Type de financement': financementSellsy(l),
             'Montant TTC': l.montant, 'Reste dû': l.resteDu,
             'Statut Sellsy': l.statutLabel, 'Statut brut': l.statutBrut,
             'Date de facture': l.dateFacture ? U.dateFR(l.dateFacture) : '',
@@ -10755,23 +10775,17 @@
         // n'y a pas d'autre source — et c'est précisément pourquoi la colonne
         // est utile : elle dit à qui adresser la relance.
         const A_RELANCER = new Set(['impayee', 'partielle']);
-        const financementSellsy = l => {
-            const k = R.detectFinancement(l.financementPersonnalise, state.rules)
-                || R.detectFinancement(l.typeClient, state.rules)
-                || R.detectFinancement(l.alternanceTexte, state.rules);
-            return k ? R.getRule(k, state.rules).label : 'À qualifier';
-        };
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
             res.absentes
                 .filter(l => A_RELANCER.has(l.statut) && !SE.absenceJustifiee(l))
                 .sort((a, b) => (b.resteDu || 0) - (a.resteDu || 0))
-                .map(l => Object.assign(ligneSellsy(l), {
-                    'Type de financement': financementSellsy(l),
-                }))), 'Absentes à relancer');
+                .map(ligneSellsy)), 'Absentes à relancer');
 
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
             res.rapprochees.filter(r => r.ecartMontant != null || r.ecartStatut).map(r => ({
                 'Numéro': r.sellsy.numero, 'Client': r.sellsy.client || r.facture.client,
+                'Type de financement': r.facture.financement
+                    ? R.getRule(r.facture.financement, state.rules).label : 'À qualifier',
                 'Montant Sellsy': r.sellsy.montant, 'Montant Monday': r.facture.montant,
                 'Écart': r.ecartMontant,
                 'Statut Sellsy': r.sellsy.statutLabel, 'État Monday': r.facture.etat,
@@ -10785,6 +10799,8 @@
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
             res.surnumeraires.map(f => ({
                 'Numéro': f.numero, 'Client': f.client, 'Montant': f.montant,
+                'Type de financement': f.financement
+                    ? R.getRule(f.financement, state.rules).label : 'À qualifier',
                 'État Monday': f.etat, 'Tableau Monday': f.board, 'Groupe': f.groupe,
                 'Date de facture': f.dateFacture ? U.dateFR(f.dateFacture) : '',
             }))), 'Inconnues de Sellsy');
