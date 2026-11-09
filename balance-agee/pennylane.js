@@ -31,6 +31,23 @@
 //   node pennylane.js --depuis-zero oublie le cache et recommence
 //   node pennylane.js --limite 20  s'arrête après 20 tiers (pour éprouver)
 
+// LE PROXY, AVANT TOUT LE RESTE.
+// Le conteneur ne résout pas app.pennylane.com dans son DNS : c'est le proxy
+// de l'environnement qui joint le service, et `fetch` de Node ne l'emprunte
+// pas de lui-même. Node sait le faire, mais seulement si la variable est
+// posée AVANT son démarrage — la poser ici, dans le script, arrive trop tard
+// (éprouvé : getaddrinfo ENOTFOUND). On se relance donc une fois, avec elle.
+// Sans ce détour, l'appel échoue en « hôte inconnu », ce qui ressemble à un
+// réseau fermé alors qu'il est ouvert.
+if (!process.env.NODE_USE_ENV_PROXY && (process.env.HTTPS_PROXY || process.env.https_proxy)) {
+  const { spawnSync } = require('child_process');
+  const r = spawnSync(process.execPath, process.argv.slice(1), {
+    stdio: 'inherit',
+    env: { ...process.env, NODE_USE_ENV_PROXY: '1', NODE_NO_WARNINGS: '1' },
+  });
+  process.exit(r.status == null ? 1 : r.status);
+}
+
 const fs = require('fs');
 const path = require('path');
 const { feuille, NOUV } = require('./socle.js');
