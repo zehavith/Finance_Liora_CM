@@ -18,7 +18,12 @@ DATE="$1"
 SRC=/home/user/Finance_Liora_CM/balance-agee
 TRAVAIL=$(mktemp -d /tmp/arrete-XXXXXX)
 cd "$TRAVAIL"
-for d in depot-ancienne depot-nouvelle depot-sellsy depot-ech; do ln -s "$SRC/$d" .; done
+# depot-pennylane porte l'instantané des liens de facture. Sans lui dans le
+# dossier de travail, chaque arrêté se referait sans aucun lien — en silence,
+# puisqu'une colonne vide ne lève rien.
+for d in depot-ancienne depot-nouvelle depot-sellsy depot-ech depot-pennylane; do
+  [ -e "$SRC/$d" ] && ln -s "$SRC/$d" . || true
+done
 for f in Reference-septembre.xlsx complements.json mandats.json parametres.json principale.json; do
   [ -e "$SRC/$f" ] && ln -s "$SRC/$f" . || true
 done

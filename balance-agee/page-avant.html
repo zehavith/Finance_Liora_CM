@@ -114,6 +114,11 @@ td.n,th.n{text-align:right;font-family:var(--chiffre);font-variant-numeric:tabul
 tbody tr:last-child td{border-bottom:none}
 tr.total td{font-weight:600;background:var(--accent-doux);border-top:1px solid var(--trait-fort)}
 .mono{font-family:var(--chiffre);font-size:12px}
+/* Le numéro de facture mène à la facture dans Pennylane. Souligné seulement
+   au survol : dans une colonne où chaque ligne en porte un, un soulignement
+   permanent ferait un peigne. */
+.lien-fact{color:var(--accent);text-decoration:none}
+.lien-fact:hover,.lien-fact:focus-visible{text-decoration:underline}
 .coupe{max-width:210px;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:bottom}
 .puce{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;
   border:1px solid var(--trait-fort);color:var(--encre-2);white-space:nowrap}

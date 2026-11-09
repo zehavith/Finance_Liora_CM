@@ -692,6 +692,20 @@ function appliquer(garderPlace){
   barre();
 }
 
+// Le numéro de facture, et son lien vers Pennylane quand on l'a.
+//
+// Le lien ne se pose QUE si la colonne porte une adresse. Les arrêtés
+// construits avant elle n'ont que 55 colonnes : V() y rend la chaîne vide, et
+// un <a href=""> rechargerait la page courante au lieu d'ouvrir Pennylane —
+// une panne silencieuse, de celles qui ressemblent à un clic raté.
+// rel="noopener" parce que target="_blank" laisse sinon la page ouverte
+// atteindre window.opener.
+const numFacture=i=>{
+  const n=V(i,'N° de facture'); if(!n) return '·';
+  const u=V(i,'Lien Pennylane');
+  return u?'<a class="lien-fact" href="'+esc(u)+'" target="_blank" rel="noopener">'+esc(n)+'</a>':esc(n);
+};
+
 function dessiner(){
   const vp=E('viewport'), H=30, haut=vp.scrollTop, n=Math.ceil(vp.clientHeight/H)+6;
   const d=Math.max(0,Math.floor(haut/H)-3), f=Math.min(filtre.length,d+n);
@@ -702,7 +716,7 @@ function dessiner(){
       +'" style="top:'+(k*H)+'px;height:'+H+'px" data-i="'+i+'" data-k="'+k+'">'
       +'<div class="mono">'+(cochable(i)
           ?'<input type="checkbox" class="coche" data-i="'+i+'"'+(selection.has(i)?' checked':'')+'>':'')
-        +(V(i,'N° de facture')||'·')+'</div>'
+        +numFacture(i)+'</div>'
       +'<div class="mono">'+V(i,'N° de compte')+'</div>'
       +'<div>'+V(i,'Tiers')
         +(ac?' <span class="puce sig">type de financement : à compléter</span>':'')
@@ -716,6 +730,15 @@ function dessiner(){
   E('cale').innerHTML=h;
   E('cale').querySelectorAll('.lig').forEach(el=>
     el.addEventListener('click',()=>{sel=+el.dataset.i;dessiner();fiche(sel);}));
+  // Le lien vers Pennylane non plus. Sans cela le clic remonte jusqu'à la
+  // ligne, dont le gestionnaire rappelle dessiner() : l'ancre est détruite au
+  // milieu de sa propre navigation, et le symptôme n'est pas « la fiche s'ouvre
+  // en trop » mais « le lien ne marche pas ». stopPropagation SEULEMENT — un
+  // preventDefault tuerait le lien. Ici, et pas ailleurs : le tableau est
+  // virtualisé, innerHTML est réécrit à chaque défilement, et tout écouteur
+  // posé hors de dessiner() disparaîtrait au premier scroll.
+  E('cale').querySelectorAll('.lien-fact').forEach(a=>
+    a.addEventListener('click',e=>e.stopPropagation()));
   // La case ne doit pas ouvrir la fiche : on arrête le clic avant la ligne.
   E('cale').querySelectorAll('.coche').forEach(c=>{
     c.addEventListener('click',e=>e.stopPropagation());
@@ -3044,7 +3067,10 @@ function fiche(i){
     // Tout ce qui parle de rapprochement se lit une proposition par ligne :
     // la facture, sa fiabilité et sa raison, des deux côtés du couple.
     h+='<div class="champ"><dt>'+nom+'</dt><dd>'
-      +(/rapprochement$/.test(nom)?enLignes(v):v)+'</dd></div>';
+      +(/rapprochement$/.test(nom)?enLignes(v)
+       :nom==='Lien Pennylane'
+         ?'<a class="lien-fact" href="'+esc(v)+'" target="_blank" rel="noopener">ouvrir dans Pennylane</a>'
+       :v)+'</dd></div>';
   }
   E('fiche').innerHTML=h+'</div>';
   const sl=E('c-disp'), bt=E('c-ok');

@@ -28,6 +28,20 @@ let MANDATS=[];
 try{ MANDATS=JSON.parse(fs.readFileSync('mandats.json','utf8')); }catch(e){}
 console.log('mandats GoCardless : '+MANDATS.length+' client'+(MANDATS.length>1?'s':'')
   +' · '+new Set(MANDATS.flatMap(m=>m.factures||[])).size+' numéros de facture');
+
+// LE LIEN PENNYLANE DE CHAQUE FACTURE.
+//
+// Relevé hors de cette chaîne, par `node pennylane.js`, et gardé dans
+// depot-pennylane/urls.json. On le lit ici comme les mandats : un instantané
+// sur disque, jamais un appel. La page publiée, elle, n'appelle pas Pennylane —
+// quelqu'un d'un autre espace comptable n'y aurait pas accès, et la page lui
+// serait inutilisable. Le fichier absent n'est pas une erreur : la colonne
+// sort vide et le tableau garde ses numéros sans lien.
+let LIENS={};
+try{ LIENS=(JSON.parse(fs.readFileSync('depot-pennylane/urls.json','utf8'))||{}).factures||{}; }catch(e){}
+const lienPennylane=num=>{ const f=num&&LIENS[num]; return (f&&f.url)||''; };
+console.log('liens Pennylane : '+Object.keys(LIENS).length+' facture'
+  +(Object.keys(LIENS).length>1?'s':'')+' dans l’instantané');
 const fr=d=>{ if(!d) return ''; const x=new Date(d);
   return String(x.getUTCDate()).padStart(2,'0')+'/'+String(x.getUTCMonth()+1).padStart(2,'0')+'/'+x.getUTCFullYear(); };
 const ar=n=>n==null?'':Math.round(n*100)/100;
@@ -1389,6 +1403,12 @@ for(let i=0;i<plat.length;i++){
     // gonflait le total. Avec elle, la page refait la balance à partir des
     // lignes, et une ligne complétée déplace son montant sous les yeux.
     'Clé de la créance':propre?(cleDe.get(propre)||grp(propre)+'|'+(propre.numero||'')):'',
+    // Le lien vers la facture dans Pennylane. TOUJOURS posée, même vide : les
+    // colonnes du JSON sortent des clés de la PREMIÈRE ligne seulement, et une
+    // clé qui n'apparaîtrait qu'à la quarantième disparaîtrait pour tout le
+    // monde. Elle vient en dernier, donc après la coupe de l'export — le
+    // classeur ne gagne pas une colonne d'adresses que personne n'y lirait.
+    'Lien Pennylane':lienPennylane(l.numero),
   };
   principale.push(o);
   if(src.dateEcheance){ const g=rangDeLaLigne(src); parRang.set(g,(parRang.get(g)||0)+1); }

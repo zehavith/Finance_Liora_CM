@@ -26,6 +26,7 @@ noms et des adresses de vos clients. Avant de lancer la construction :
 | `Reference-septembre.xlsx` | votre arrêté de septembre : il sert de référence en cas de désaccord, et porte les onglets « BdD Zoho - Toutes les factures », « BdD Zoho -Avoir Zoho » et « BdD Filiz - Facture Alternance » |
 | `complements.json` | vos décisions de classement, voir ci-dessous |
 | `mandats.json` | les mandats GoCardless, voir ci-dessous |
+| `depot-pennylane/urls.json` | le lien de chaque facture dans Pennylane, relevé par `node pennylane.js`, voir ci-dessous — facultatif : sans lui, les numéros de facture s'affichent sans lien |
 
 Cette liste a été établie en lançant la chaîne depuis un dossier vide : elle
 est complète parce qu'elle a été vérifiée, pas parce qu'elle a été écrite de
@@ -68,13 +69,30 @@ Les fichiers que la chaîne ouvre vraiment, et eux seuls, se relisent dans
 `construire.js` : `depot-ancienne/balance-ancienne.xlsx`,
 `depot-nouvelle/balance-nouvelle.xlsx`, `depot-sellsy/sellsy.csv`,
 `depot-sellsy/avoirs.csv`, `depot-ech/echeances.xlsx`,
-`Reference-septembre.xlsx`, `complements.json`, `mandats.json`.
+`Reference-septembre.xlsx`, `complements.json`, `mandats.json`,
+`depot-pennylane/urls.json`.
 
 Puis `node construire.js`, et la page republiée.
 
-Il n'y a pas de connexion directe à Pennylane ni à Sellsy : ce sont les
-exports qui font foi, et c'est voulu — la balance doit pouvoir être refaite
-à l'identique à partir des fichiers d'un arrêté donné.
+Aucun chiffre ne vient d'une connexion directe à Pennylane ni à Sellsy : ce
+sont les exports qui font foi, et c'est voulu — la balance doit pouvoir être
+refaite à l'identique à partir des fichiers d'un arrêté donné.
+
+Une seule chose est demandée au réseau, et elle ne touche à aucun montant :
+le lien de chaque facture dans Pennylane. `node pennylane.js` le relève une
+fois, le garde dans `depot-pennylane/urls.json`, et la construction lit ce
+fichier comme elle lit les mandats. La reproductibilité est donc intacte :
+c'est encore un fichier posé à côté, pas un service interrogé pendant le
+calcul. La page publiée, elle, n'appelle jamais Pennylane — quelqu'un d'un
+autre espace comptable n'y aurait pas accès, et la page lui serait
+inutilisable.
+
+Le relevé demande un jeton Pennylane de portée `customer_invoices:readonly`,
+posé dans l'environnement sous `PENNYLANE_TOKEN` — jamais dans un fichier du
+dépôt. Il dure un quart d'heure la première fois (3 683 tiers à cinq
+requêtes par seconde, la limite que Pennylane impose) et quelques secondes
+ensuite, puisqu'il reprend son cache. `node pennylane.js --recomposer` refait
+les liens sans un seul appel, si la forme de l'adresse doit changer.
 
 ## Vos décisions de classement
 
