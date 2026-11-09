@@ -1453,8 +1453,16 @@ for(let i=0;i<plat.length;i++){
     // Le lien vers la facture dans Pennylane. TOUJOURS posée, même vide : les
     // colonnes du JSON sortent des clés de la PREMIÈRE ligne seulement, et une
     // clé qui n'apparaîtrait qu'à la quarantième disparaîtrait pour tout le
-    // monde. Elle vient en dernier, donc après la coupe de l'export — le
-    // classeur ne gagne pas une colonne d'adresses que personne n'y lirait.
+    // monde.
+    //
+    // Deux exports, deux comportements, et il faut les distinguer. Celui que
+    // la PAGE propose coupe les colonnes à « N° de rapprochement » : la
+    // nouvelle, placée en dernier, n'y entre pas. Le CLASSEUR que cette
+    // construction écrit, lui, balaie toutes les clés de toutes les lignes :
+    // il la reçoit, en 58e colonne de l'onglet « Balance âgée ligne à ligne ».
+    // C'est voulu — une adresse cliquable depuis le tableur sert — mais ce
+    // n'est pas ce qu'un premier commentaire affirmait ici, et la vérification
+    // a tranché : 58 colonnes, « Lien Pennylane » à l'index 57.
     'Lien Pennylane':lienPennylane(l.numero),
   };
   principale.push(o);

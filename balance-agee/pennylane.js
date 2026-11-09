@@ -260,12 +260,47 @@ function tiersDuGrandLivre() {
       return ctx.Papa.parse(fs.readFileSync(f, 'utf8'), { header: true, skipEmptyLines: true }).data;
     } catch (e) { return []; } };
     const rows = lire('depot-sellsy/sellsy.csv').concat(lire('depot-sellsy/avoirs.csv'));
-    let pose = 0, deja = 0, sansLien = 0;
+
+    // UN NUMÉRO ZOHO NE MÈNE PAS TOUJOURS À UNE SEULE FACTURE, et prendre la
+    // première rencontrée dans l'ordre du fichier serait tirer au sort.
+    // Deux cent quatre-vingt-cinq numéros sont dans ce cas, et ils touchaient
+    // 226 lignes de la balance publiée.
+    //
+    //   · une facture et ses AVOIRS (123 cas) : le numéro Zoho que porte le
+    //     grand livre désigne la FACTURE — l'avoir, lui, a son propre numéro
+    //     dans le grand livre. On tranche donc, et ce n'est pas deviner.
+    //   · plusieurs FACTURES (161 cas, refacturations) : on ne sait pas
+    //     laquelle. On ne pose rien. Le numéro reste nu, ce qui se voit —
+    //     un lien faux, lui, ne se voit pas.
+    const parZoho = new Map();
     for (const r of rows) {
       const zoho = String(r['Numéro de facture Zoho'] || '').trim();
       const sellsy = String(r['Numéro'] || '').trim();
       if (!zoho || !sellsy) continue;
+      if (!parZoho.has(zoho)) parZoho.set(zoho, new Set());
+      parZoho.get(zoho).add(sellsy);
+    }
+    // LE PONT SE REFAIT ENTIER À CHAQUE FOIS. Les alias posés au passage
+    // précédent sont retirés d'abord : sans cela, un alias devenu faux — parce
+    // que l'export Sellsy a changé, ou parce que la règle ci-dessus s'est
+    // affinée — resterait en place pour toujours, puisqu'on saute les numéros
+    // déjà connus. Les liens rendus par l'API, eux, ne sont jamais touchés.
+    let retires = 0;
+    for (const k of Object.keys(c.factures))
+      if (c.factures[k] && c.factures[k].via === 'sellsy') { delete c.factures[k]; retires++; }
+    if (retires) console.log('  ' + retires + ' alias du passage précédent retirés avant de refaire le pont');
+
+    const estAvoir = n => /^(AVR|AV)-/i.test(n);
+    let pose = 0, deja = 0, sansLien = 0, tranches = 0, ecartes = 0;
+    for (const [zoho, set] of parZoho) {
       if (c.factures[zoho]) { deja++; continue; }
+      let sellsy;
+      if (set.size === 1) sellsy = [...set][0];
+      else {
+        const factures = [...set].filter(n => !estAvoir(n));
+        if (factures.length !== 1) { ecartes++; continue; }
+        sellsy = factures[0]; tranches++;
+      }
       const cible = c.factures[sellsy];
       if (!cible) { sansLien++; continue; }
       // On garde la trace du chemin : un lien posé par le pont n'est pas un
@@ -277,6 +312,8 @@ function tiersDuGrandLivre() {
     ecrireCache(c);
     console.log('pont Zoho→Sellsy→Pennylane : ' + pose + ' alias posés · ' + deja +
                 ' déjà connus de Pennylane · ' + sansLien + ' sans lien côté Pennylane');
+    console.log('  dont ' + tranches + ' tranchés entre une facture et ses avoirs · ' +
+                ecartes + ' écartés faute de savoir laquelle');
     console.log('total : ' + Object.keys(c.factures).length + ' numéros avec un lien');
     return;
   }
@@ -303,16 +340,6 @@ function tiersDuGrandLivre() {
     console.log('société : ' + qui + ' (' + c.societe + ')');
   }
 
-  const tiers = tiersDuGrandLivre();
-  const reste = tiers.filter(t => !c.tiersFaits[t]);
-  console.log(tiers.length + ' tiers dans le grand livre · ' + reste.length + ' à relever');
-  if (!reste.length) { console.log('rien à faire.'); return; }
-
-  // ── ÉPROUVER LE FILTRE AVANT DE LANCER TROIS MILLE REQUÊTES ──
-  // La documentation nomme ce paramètre « filter » ici et « filters » là. Un
-  // mauvais nom ne rend pas d'erreur : il rend la liste NON filtrée, donc
-  // toutes les factures de la société, et on croirait avoir réussi. On vérifie
-  // donc que les factures rendues portent bien le client demandé.
   // LE BALAYAGE COMPLET, QUAND ON LE DEMANDE.
   //
   // Lister les factures d'un tiers coûte un appel par tiers : 3 683 appels, un
@@ -320,6 +347,12 @@ function tiersDuGrandLivre() {
   // quelques centaines d'appels — la même matière, dix fois plus vite, et sans
   // dépendre du nom du paramètre de filtre. On s'en sert d'abord, et le mode
   // par tiers reste là pour compléter ce qui manquerait.
+  //
+  // IL VIENT AVANT LE DÉCOMPTE DES TIERS, et ce n'est pas de la mise en page.
+  // Le relevé par tiers s'arrête sur « rien à faire » quand tous les tiers
+  // sont marqués ; le balayage, placé après, serait devenu injoignable le jour
+  // où ce marquage se remplit — et la tâche planifiée aurait tourné sans rien
+  // relever, en annonçant qu'il n'y avait rien à faire.
   if (arg('--balayage')) {
     const avant = Object.keys(c.factures).length;
     let n = 0, lues = 0;
@@ -348,6 +381,18 @@ function tiersDuGrandLivre() {
     return;
   }
 
+  const tiers = tiersDuGrandLivre();
+  const reste = tiers.filter(t => !c.tiersFaits[t]);
+  console.log(tiers.length + ' tiers dans le grand livre · ' + reste.length + ' à relever');
+  if (!reste.length) { console.log('rien à faire.'); return; }
+
+  // ── ÉPROUVER LE FILTRE AVANT DE LANCER TROIS MILLE REQUÊTES ──
+  // La documentation nomme ce paramètre « filter » ici et « filters » là. Un
+  // mauvais nom ne rend pas d'erreur : il rend la liste NON filtrée, donc
+  // toutes les factures de la société, et on croirait avoir réussi. On vérifie
+  // donc que les factures rendues portent bien le client demandé.
+  // (Éprouvé le 09/11/2026 : c'est « filter », au singulier. « filters » est
+  // ignoré en silence et rend la liste entière.)
   if (!c.filtre) {
     const sonde = reste[0];
     const clause = JSON.stringify([{ field: 'customer_id', operator: 'eq', value: sonde }]);
