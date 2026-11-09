@@ -70,6 +70,29 @@ const fr=d=>{ if(!d) return ''; const x=new Date(d);
   return String(x.getUTCDate()).padStart(2,'0')+'/'+String(x.getUTCMonth()+1).padStart(2,'0')+'/'+x.getUTCFullYear(); };
 const ar=n=>n==null?'':Math.round(n*100)/100;
 
+// L'INSTANTANÉ DES LIENS DOIT ÊTRE PLUS JEUNE QUE LE GRAND LIVRE.
+//
+// Le relevé Pennylane se fait hors de cette chaîne. Rien n'empêche donc de
+// déposer un grand livre neuf et de reconstruire avec le cache de la veille :
+// les factures émises entre-temps sortiraient sans lien, et RIEN ne le dirait
+// — une colonne vide ne lève pas d'erreur, elle s'affiche. C'est exactement
+// la panne muette que les contrôles d'âge des compléments et des paramètres
+// existent pour empêcher, et celui-ci est le troisième de la même famille.
+{
+  const quand=f=>{ try{ return fs.statSync(f).mtime; }catch(e){ return null; } };
+  const hms=d=>fr(d)+' à '+String(d.getHours()).padStart(2,'0')+'h'
+    +String(d.getMinutes()).padStart(2,'0');
+  const tL=quand('depot-pennylane/urls.json'), tG=quand(NOUV);
+  const refaire='le relever : node pennylane.js --balayage puis node pennylane.js --alias';
+  if(!tL)
+    console.log('  ATTENTION · aucun instantané de liens Pennylane — les numéros de '
+      +'facture s’afficheront nus. ' + refaire);
+  else if(tG && tL<tG)
+    console.log('  ATTENTION · l’instantané des liens ('+hms(tL)+') est ANTÉRIEUR au grand '
+      +'livre déposé ('+hms(tG)+'). Les factures arrivées depuis n’auront aucun lien, et '
+      +'rien d’autre ne le dira. ' + refaire);
+}
+
 // CE QU'ELLE RÈGLE DANS LA PAGE DOIT ARRIVER JUSQU'ICI.
 //
 // « Lorsque je modifie le barème, dispositif par dispositif, cela s'actualise
