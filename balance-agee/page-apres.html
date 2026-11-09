@@ -235,7 +235,24 @@ function demarrer(){
     if(e.target.checked) for(const i of dispo) selection.add(i);
     else for(const i of dispo) selection.delete(i);
     dessiner(); barre(); });
-  E('viewport').addEventListener('scroll',dessiner);
+  // NE PAS REDESSINER CE QUI N'A PAS CHANGÉ.
+  //
+  // Le défilement rappelait dessiner() à chaque événement, même quand la
+  // fenêtre affichée n'avait pas bougé d'une ligne — et dessiner() réécrit
+  // tout l'innerHTML. Tant que le tableau ne contenait aucun élément pouvant
+  // recevoir le focus, cela ne se voyait pas. Depuis que le N° de facture est
+  // une ancre, l'élément focalisé est détruit en plein vol : le focus retombe
+  // sur le corps de la page, Entrée n'ouvre plus rien, et la tabulation ne
+  // sort plus du tableau. Mesuré : un scroll de ZÉRO pixel suffisait.
+  //
+  // On ne redessine donc que lorsque la première ligne visible change. Les
+  // autres appels à dessiner() — filtre, tri, sélection, fiche — passent par
+  // la fonction directement et ne sont pas concernés.
+  { let derniereFenetre=-1;
+    E('viewport').addEventListener('scroll',()=>{
+      const d=Math.max(0,Math.floor(E('viewport').scrollTop/30)-3);
+      if(d===derniereFenetre) return;
+      derniereFenetre=d; dessiner(); }); }
   brancherTri();
   appliquer();
   E("arrete-ok").hidden=false;
@@ -727,6 +744,14 @@ function dessiner(){
       +'<div class="mono">'+V(i,'Date d’échéance recalculée')+'</div>'
       +'<div>'+(c?c.dispositif:V(i,'Type de financement'))+'</div></div>';
   }
+  // RENDRE LE FOCUS À L'ÉLÉMENT QUI L'AVAIT. Quand la fenêtre change pour de
+  // bon, la réécriture détruit l'ancre focalisée : on note sur quelle ligne
+  // elle était, et on le lui rend si elle est encore dessinée. Sans cela, un
+  // défilement au clavier éjecte le focus hors du tableau à chaque fois.
+  const avait=document.activeElement;
+  const rendreA=(avait && avait.classList && avait.classList.contains('lien-fact')
+    && avait.closest('.lig')) ? avait.closest('.lig').dataset.i : null;
+
   E('cale').innerHTML=h;
   E('cale').querySelectorAll('.lig').forEach(el=>
     el.addEventListener('click',()=>{sel=+el.dataset.i;dessiner();fiche(sel);}));
@@ -739,6 +764,10 @@ function dessiner(){
   // posé hors de dessiner() disparaîtrait au premier scroll.
   E('cale').querySelectorAll('.lien-fact').forEach(a=>
     a.addEventListener('click',e=>e.stopPropagation()));
+  if(rendreA!=null){
+    const a=E('cale').querySelector('.lig[data-i="'+rendreA+'"] .lien-fact');
+    if(a) a.focus({preventScroll:true});
+  }
   // La case ne doit pas ouvrir la fiche : on arrête le clic avant la ligne.
   E('cale').querySelectorAll('.coche').forEach(c=>{
     c.addEventListener('click',e=>e.stopPropagation());
