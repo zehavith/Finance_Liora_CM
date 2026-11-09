@@ -769,7 +769,7 @@
       { k: 'paid', t: 'Ouvertes dans Monday mais déjà dans « Factures payées »', d: 'La facture figure à la fois dans une file et dans le tableau des factures payées : à sortir de la file, ou paiement à vérifier.', rows: tracked.filter(function (o) { return paid[o.n]; }), sev: 'c-bad' },
       { k: 'advDue', t: 'Échues encore dans « Rendre payable »', d: 'L’échéance est passée alors que la facture n’a pas encore été rendue payable.', rows: all.filter(function (o) { return fileOfItem(o) === 'adv' && o.de && o.de < REF; }), sev: 'c-bad' },
       { k: 'prom', t: 'Promesses de paiement dépassées de plus de 7 jours', d: 'La date promise est passée sans encaissement : relancer ou requalifier.', rows: all.filter(function (o) { return FILE[fileOfItem(o)] && o.dpr && days(o.dpr, REF) > 7; }), sev: 'c-warn' },
-      { k: 'dup', t: 'Numéros de facture en double', d: 'Le même numéro apparaît dans plusieurs groupes ou tableaux ouverts.', rows: dup, sev: 'c-warn' },
+      { k: 'dup', t: 'Numéros de facture en double', d: 'Le même numéro apparaît deux fois : deux lignes dans le même groupe, ou la facture suivie dans deux étapes à la fois (par exemple ADV et Recouvrement). Une fiche du tableau Tampon liée à sa copie de travail n’est pas un doublon et n’est pas comptée.', rows: dup, sev: 'c-warn' },
       { k: 'due', t: 'Échéance manquante', d: 'Sans date d’échéance, la facture n’entre ni dans les âges ni dans les retards.', rows: tracked.filter(function (o) { return !o.de; }), sev: 'c-warn' },
       { k: 'amt', t: 'Montant manquant', d: 'Ni reste dû ni total TTC lisible.', rows: tracked.filter(function (o) { return o.mt == null; }), sev: 'c-warn' },
       { k: 'own', t: 'Sans propriétaire', d: 'Personne n’est désigné dans la colonne « Propriétaire ».', rows: all.filter(function (o) { return FILE[fileOfItem(o)] && !o.ow; }), sev: 'c-info' },
@@ -904,7 +904,18 @@
       L.state = 'error'; log('Arrêt : ' + mondayErr(e)); render(); toast(mondayErr(e));
     });
   }
+  // Le tableau Tampon porte la fiche d’origine de la facture ; les tableaux
+  // ADV, Recouvrement, OPCO… en sont des copies liées (« Espace tampon »).
+  // Quand les deux existent, c’est une seule facture : on garde la copie de travail.
+  function dedupeTampon(mo) {
+    var other = {}; mo.open.forEach(function (o) { if (o.b !== 'tampon') other[o.n] = 1; });
+    var before = mo.open.length;
+    mo.open = mo.open.filter(function (o) { return o.b !== 'tampon' || !other[o.n]; });
+    mo.tamponLies = before - mo.open.length;
+    return mo;
+  }
   function setMonday(mo, src) {
+    dedupeTampon(mo);
     S.mo = mo; S.moSource = src; S._paidSet = null; S._fx = null;
     var d = mo.at.slice(0, 10);
     REF = d;
