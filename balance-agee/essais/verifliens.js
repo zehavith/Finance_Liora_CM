@@ -129,6 +129,35 @@ const ok = (quoi, bon, dit) => {
   }, numeros);
   ok('aucune ancre vide (href="")', nus.href_vide === 0, JSON.stringify(nus));
 
+  // ── 5. AU CLAVIER, ET PAS SEULEMENT À LA SOURIS ──
+  //
+  // Les quatre contrôles ci-dessus cliquent. C'est précisément pour cela
+  // qu'ils n'ont rien vu quand, le 09/11/2026, l'ajout des ancres a rendu la
+  // page impraticable au clavier : dessiner() réécrit tout l'innerHTML au
+  // moindre événement de défilement — un scroll de ZÉRO pixel suffisait — et
+  // l'ancre focalisée était détruite en plein vol. Entrée n'ouvrait alors
+  // rien : pas d'onglet, pas d'erreur de page, pas d'erreur de console. Une
+  // panne parfaitement muette, que seul un essai au clavier peut voir.
+  await p.focus('#q');
+  let essais = 0, ouvertes = 0, perdus = 0;
+  for (let i = 1; i <= 40 && essais < 12; i++) {
+    await p.keyboard.press('Tab');
+    const e = await p.evaluate(() => {
+      const a = document.activeElement;
+      return { ancre: !!(a.classList && a.classList.contains('lien-fact')), tag: a.tagName };
+    });
+    if (e.tag === 'BODY') { perdus++; continue; }
+    if (!e.ancre) continue;
+    essais++;
+    const att = ctx.waitForEvent('page', { timeout: 3000 }).catch(() => null);
+    await p.keyboard.press('Enter');
+    const o = await att;
+    if (o) { ouvertes++; await o.close().catch(() => {}); }
+  }
+  ok('le focus ne retombe jamais sur le corps de la page', perdus === 0, perdus + ' perte(s)');
+  ok('Entrée ouvre la facture sur chaque ancre atteinte au clavier',
+     essais > 0 && ouvertes === essais, ouvertes + ' / ' + essais);
+
   ok('aucune erreur de page', errs.length === 0, errs.join(' · ') || 'aucune');
 
   await b.close();
