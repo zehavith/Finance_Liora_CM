@@ -288,7 +288,20 @@ function transformer(){
     const m=new Map(), vues=new Set();
     for(const l of d.lignes){
       const k=txt(l,'Clé de la créance'); if(!k||vues.has(k)) continue; vues.add(k);
-      const c=txt(l,champ); if(!c) continue;
+      // UNE CRÉANCE SANS TYPE DE CLIENT VA DANS « À CLASSER », ELLE NE DISPARAÎT PAS.
+      //
+      // Le 09/11/2026, la page du jour annonçait 13 668 639 € là où la balance
+      // clients annonçait 13 906 633 €. Trente-six créances — les factures
+      // d'octobre et de novembre pas encore qualifiées — n'ont aucun type de
+      // client sur aucune de leurs lignes, et le « continue » les sortait de la
+      // synthèse après les avoir marquées vues : leur reste dû, 237 994 €,
+      // n'était compté nulle part. La balance clients, elle, les range dans
+      // « À classer » et les compte ; la synthèse par financement de cette
+      // page-ci aussi, puisque la colonne y porte déjà « À classer ». Seule la
+      // synthèse par type de client les perdait. Le défaut existait depuis le
+      // premier jour mais ne se voyait pas : avant ce grand livre, aucune
+      // créance n'était restée sans type.
+      const c=txt(l,champ)||'À classer';
       const rd=nb(l,'Reste dû de la créance');
       let o=m.get(c);
       if(!o){ o={cat:c,total:0,echu:0,nonEchu:0,crediteur:0,nb:0,buckets:TR.map(()=>0)}; m.set(c,o); }
