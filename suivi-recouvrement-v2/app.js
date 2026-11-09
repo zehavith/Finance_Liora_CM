@@ -57,7 +57,7 @@
   /* ───────── réglages ───────── */
   var DEFAULTS = {
     dsoCible: { 'Entreprise': 45, 'OPCO': 75, 'Financement personnel': 30, 'CPF': 60, 'France Travail': 90, 'Région / Transition / Agefiph': 90 },
-    cibleFile: { adv: 10, rec: 15, fin: 90, cpt: 15, cor: 30 },
+    cibleFile: { adv: 10, rec: 15, fin: 90, cor: 30 },
     gros: 10000, sansAction: 15, ceiCible: 85, dsoGlobal: 90, overrides: {}
   };
   var CFG = Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), lsGet('cfg', {}));
@@ -67,7 +67,7 @@
   var S = {
     view: 'pilotage', gl: null, mo: null, moSource: 'snapshot', history: [],
     fin: 'all', ent: 'all', idx: null, cohort: 'Entreprise',
-    opFile: 'adv', opOpen: { rec: true }, opTeam: 'all', opOwner: 'all', opFin: 'all', q: '',
+    opFile: 'adv', opOpen: {}, opFin: 'all', opEnt: 'all', opSvc: 'all', opMonth: null, q: '', flux: null, logs: { state: 'idle', msg: '' },
     live: { state: 'idle', log: [], done: 0, total: 0 }, mcp: null, downloads: null
   };
 
@@ -142,31 +142,31 @@
   /* ───────── Monday ───────── */
   var REF = '2026-11-09';
   var FILE = {}; N.FILES.forEach(function (f) { FILE[f.k] = f; });
-  var TEAMS = { adv: ['ADV'], rec: ['Recouvrement'], fin: ['Recouvrement', 'DAF'], cpt: ['Comptabilité'], cor: ['ADV', 'Comptabilité'] };
-  function fileOfItem(o) {
+    function fileOfItem(o) {
     var ov = CFG.overrides[N.prefix(o.g)];
-    return ov || o.f;
-  }
-  function ageItem(o) {
-    var f = fileOfItem(o), ref = (FILE[f] && FILE[f].ref === 'facture') ? (o.df || o.de) : (o.de || o.df);
-    return ref ? days(ref, REF) : null;
+    var f = ov || o.f;
+    return f === 'cpt' ? 'cor' : f;
   }
   function retard(o) { return o.de ? days(o.de, REF) : null; }
   function openItems(opts) {
     opts = opts || {};
-    var q = (S.q || '').toLowerCase().trim();
     return S.mo.open.filter(function (o) {
       var f = fileOfItem(o);
       if (!FILE[f]) return opts.withOthers ? true : false;
       if (opts.raw) return true;
-      if (S.opFin !== 'all' && o.fin !== S.opFin) return false;
-      if (S.opTeam !== 'all' && TEAMS[f].indexOf(S.opTeam) < 0) return false;
-      if (S.opOwner === '__none' && o.ow) return false;
-      if (S.opOwner !== 'all' && S.opOwner !== '__none' && o.ow !== S.opOwner) return false;
-      if (q && (o.n + ' ' + (o.cl || '') + ' ' + (o.ap || '')).toLowerCase().indexOf(q) < 0) return false;
-      return true;
+      return openItems.pass(o);
     });
   }
+  openItems.pass = function (o) {
+    var q = (S.q || '').toLowerCase().trim();
+    if (S.opFin !== 'all' && o.fin !== S.opFin) return false;
+    if (S.opSvc !== 'all' && fileOfItem(o) !== S.opSvc) return false;
+    var de = /allemagne|germany|gmbh|interco/i.test((o.tc || '') + ' ' + (o.cl || ''));
+    if (S.opEnt === 'de' && !de) return false;
+    if (S.opEnt === 'fr' && de) return false;
+    if (q && (o.n + ' ' + (o.cl || '') + ' ' + (o.ap || '') + ' ' + o.g).toLowerCase().indexOf(q) < 0) return false;
+    return true;
+  };
   function mondayLink(o) {
     var b = N.BOARDS.filter(function (x) { return x.key === o.b; })[0];
     if (!b) return '';
@@ -512,25 +512,110 @@
   }
 
   /* ═════════════════ OPÉRATIONNEL ═════════════════ */
-  var DEST = [['Encaissé', 'var(--c1)'], ['Transféré vers une autre file', 'var(--g2)'], ['Sorti du suivi (avoir, perte, archive)', 'var(--c5)']];
+  /* Historique Monday : déplacements de factures entre groupes et tableaux
+     (90 derniers jours, limite de Monday). Il donne les entrées et sorties
+     de chaque étape, la destination des sorties et le temps passé. */
+  var LOG_TYPES = ['move_pulse_from_group', 'move_pulse_from_board', 'move_pulse_into_board', 'create_pulse', 'archive_pulse', 'delete_pulse'];
+  var BOARD_BY_ID = {}; N.BOARDS.forEach(function (b) { BOARD_BY_ID[String(b.id)] = b; });
+  function stepOf(bkey, title) {
+    if (bkey === 'payees') return 'paid';
+    if (!bkey || !title) return null;
+    var p = N.prefix(title), ov = CFG.overrides[p];
+    if (ov) return ov === 'cpt' ? 'cor' : ov;
+    return N.fileOf(title);
+  }
+  function loadLogs(force) {
+    if (!S.mcp || S.logs.state === 'run') return;
+    if (!force && S.flux && Date.now() - S.flux.fetched < 6 * 3600e3) return;
+    var L = S.logs; L.state = 'run'; L.done = 0; L.msg = 'Lecture de l’historique Monday…'; L.total = N.BOARDS.length;
+    if (S.view === 'operationnel') render();
+    var from = new Date(Date.now() - 89 * 864e5).toISOString().slice(0, 10) + 'T00:00:00Z';
+    var ids = N.BOARDS.map(function (b) { return b.id; }), gt = {}, ev = [], seen = {};
+    return gql('query { boards(ids: [' + ids.join(',') + ']) { id groups { id title } } }').then(function (d) {
+      (d.boards || []).forEach(function (bd) { (bd.groups || []).forEach(function (g) { gt[bd.id + '|' + g.id] = g.title; }); });
+      var chain = Promise.resolve();
+      N.BOARDS.forEach(function (b) {
+        var types = b.paid ? ['move_pulse_into_board'] : LOG_TYPES;
+        chain = chain.then(function () {
+          var pages = 0;
+          function page(cursor) {
+            return gql('query { boards(ids: [' + b.id + ']) { activity_logs(limit: 500, from: ' + JSON.stringify(from) + ', event_types: ' + JSON.stringify(types) + (cursor ? ', cursor: ' + JSON.stringify(cursor) : '') + ') { cursor logs { event created_at data } } } }').then(function (r) {
+              var al = (((r.boards || [])[0] || {}).activity_logs) || {};
+              (al.logs || []).forEach(function (lg) {
+                var x; try { x = JSON.parse(lg.data); } catch (e) { return; }
+                var t = Math.round(+lg.created_at / 1e4), e = { t: t, n: (x.pulse && x.pulse.name) || x.pulse_name || '', id: String(x.pulse_id || '') };
+                if (lg.event === 'move_pulse_from_group') { e.sb = b.key; e.sg = x.source_group && x.source_group.title; e.db = b.key; e.dg = x.dest_group && x.dest_group.title; }
+                else if (lg.event === 'move_pulse_from_board' || lg.event === 'move_pulse_into_board') {
+                  var sb = BOARD_BY_ID[String(x.source_board && x.source_board.id)], db = BOARD_BY_ID[String(x.dest_board && x.dest_board.id)];
+                  e.sb = sb ? sb.key : 'x'; e.sg = x.source_group && x.source_group.title; e.db = db ? db.key : 'x'; e.dg = x.dest_group && x.dest_group.title;
+                } else if (lg.event === 'create_pulse') { e.db = b.key; e.dg = gt[b.id + '|' + x.group_id]; e.sb = null; }
+                else { e.sb = b.key; e.sg = gt[b.id + '|' + x.group_id]; e.db = null; e.del = 1; }
+                var key = x.action_record_uuid || (e.id + '|' + lg.event + '|' + t);
+                if (seen[key]) return; seen[key] = 1;
+                ev.push(e);
+              });
+              pages++;
+              if (al.cursor && pages < 60 && (al.logs || []).length) return page(al.cursor);
+            });
+          }
+          return page(null).then(function () { L.done++; L.msg = b.nom.split(' ')[0] + ' lu (' + ev.length + ' mouvements)'; var pg = $('#logs-msg'); if (pg) pg.textContent = L.msg; });
+        });
+      });
+      return chain;
+    }).then(function () {
+      ev.sort(function (a, b) { return a.t - b.t; });
+      S.flux = { fetched: Date.now(), from: from.slice(0, 10), ev: ev };
+      L.state = 'done'; S._fx = null;
+      idb.set('flux', S.flux);
+      if (S.view === 'operationnel') render();
+    }).catch(function (e) { L.state = 'error'; L.msg = mondayErr(e); if (S.view === 'operationnel') render(); });
+  }
+  // Index : dernière entrée dans chaque étape, sorties du mois, entrées du mois.
+  function fluxIndex(month) {
+    if (!S.flux) return null;
+    var key = month + '|' + JSON.stringify(CFG.overrides);
+    if (S._fx && S._fx.key === key) return S._fx;
+    var lastIn = {}, lastStep = {}, out = [], inn = [], paid = paidSet();
+    S.flux.ev.forEach(function (e) {
+      var sk = e.sb ? stepOf(e.sb, e.sg) : null, dk = e.db ? stepOf(e.db, e.dg) : null;
+      if (sk == null && e.del) sk = lastStep[e.n] || null;
+      if (sk === dk) return;
+      var m = new Date(e.t).toISOString().slice(0, 7);
+      if (FILE[sk]) {
+        var entered = lastIn[e.n + '|' + sk], dur = entered ? (e.t - entered) / 864e5 : null, cat, avoir = /annul|avoir/i.test(e.sg || '');
+        if (dk === 'paid' || paid[e.n] && !FILE[dk]) cat = 'enc';
+        else if (FILE[dk]) cat = 'trf';
+        else if (avoir) cat = 'avo';
+        else if (dk === 'cours') cat = 'trf';
+        else cat = 'aut';
+        if (m === month) out.push({ n: e.n, k: sk, dk: dk, cat: cat, dur: dur, t: e.t });
+      }
+      if (FILE[dk]) { lastIn[e.n + '|' + dk] = e.t; if (m === month) inn.push({ n: e.n, k: dk }); }
+      if (dk) lastStep[e.n] = dk;
+    });
+    S._fx = { key: key, lastIn: lastIn, out: out, inn: inn, from: S.flux.from };
+    return S._fx;
+  }
+  function opMonth() { return S.opMonth || REF.slice(0, 7); }
+  // Âge du traitement : depuis l’entrée dans l’étape (historique Monday),
+  // sinon la date d’étape de Monday, sinon facture / échéance.
+  function entryOf(o) {
+    var f = fileOfItem(o), fx = S.flux ? fluxIndex(opMonth()) : null;
+    var t = fx && fx.lastIn[o.n + '|' + f];
+    if (t) return { d: new Date(t).toISOString().slice(0, 10), src: 'hist' };
+    if (o.det) return { d: o.det, src: 'col' };
+    var r = (FILE[f] && FILE[f].ref === 'facture') ? (o.df || o.de) : (o.de || o.df);
+    return r ? { d: r, src: 'ref' } : null;
+  }
+  function ageItem(o) { var e = entryOf(o); return e ? Math.max(0, days(e.d, REF)) : null; }
   function fileStats(items, k) {
     var its = items.filter(function (o) { return fileOfItem(o) === k; }), cib = CFG.cibleFile[k];
     var ages = its.map(ageItem).filter(function (a) { return a != null; });
     var hors = ages.filter(function (a) { return a > cib; }).length;
     return { k: k, its: its, st: its.length, mt: sum(its, function (o) { return o.mt; }), a: median(ages), c: cib, h: ages.length ? hors / ages.length * 100 : null };
   }
-  function flowFor(k) {
-    var ref = refSnapshot(); if (!ref) return null;
-    var curSet = {}, curFile = {};
-    S.mo.open.forEach(function (o) { var f = fileOfItem(o); curFile[o.n] = f; if (f === k) curSet[o.n] = 1; });
-    var refList = ref.f[k] || [], refSet = {}; refList.forEach(function (x) { refSet[x] = 1; });
-    var e = Object.keys(curSet).filter(function (x) { return !refSet[x]; }).length;
-    var out = refList.filter(function (x) { return !curSet[x]; }), paid = paidSet();
-    var dest = [0, 0, 0];
-    out.forEach(function (x) { if (paid[x]) dest[0]++; else if (curFile[x]) dest[1]++; else dest[2]++; });
-    return { e: e, s: out.length, dest: dest, since: ref.at };
-  }
-  function histSeries(k) { return S.history.slice(-12).map(function (h) { return (h.f[k] || []).length; }); }
+  function hdChip(h) { return h == null ? '—' : chip(fmt(h, 0) + ' %', h >= 60 ? 'c-bad' : h >= 30 ? 'c-warn' : 'c-good'); }
+  function miniBar(p, color) { return '<span style="display:inline-block;width:46px;height:5px;border-radius:3px;background:var(--sunk);vertical-align:middle;margin-left:8px;overflow:hidden"><span style="display:block;height:100%;width:' + Math.max(0, Math.min(100, p || 0)).toFixed(0) + '%;background:' + color + '"></span></span>'; }
 
   function priorityRows(its, k) {
     var cib = CFG.cibleFile[k];
@@ -549,125 +634,129 @@
     }).sort(function (x, y) { return y.score - x.score; });
   }
 
+  var DEST = [['enc', 'Encaissé', 'var(--good)'], ['avo', 'Annulé par un avoir', 'var(--c4)'], ['trf', 'Passé dans une autre étape', 'var(--c1)'], ['aut', 'Sorti sans paiement identifié', 'var(--g3)']];
+
   function renderOperationnel() {
     var items = openItems(), stats = {}; N.FILES.forEach(function (f) { stats[f.k] = fileStats(items, f.k); });
-    var owners = {}; S.mo.open.forEach(function (o) { if (o.ow) owners[o.ow] = 1; });
-    var fl = {}; N.FILES.forEach(function (f) { fl[f.k] = flowFor(f.k); });
-    function fcard(k, arrow) {
-      var s = stats[k], f = FILE[k], flo = fl[k];
-      return '<button class="fcard" data-file="' + k + '"><span class="t">' + esc(f.n) + '<span>' + esc(f.t) + '</span></span><span class="big">' + fmt(s.st) + '</span>' +
-        '<span class="s">' + eurAuto(s.mt) + (flo ? ' · net ' + sgn(flo.e - flo.s, 0) + ' depuis le ' + dFR(flo.since) : '') + '</span>' +
-        '<span class="s">âge médian ' + fmt(s.a) + ' j · cible ' + s.c + ' j</span>' + (s.h == null ? '' : chip(fmt(s.h, 0) + ' % hors délai', s.h >= 60 ? 'c-bad' : s.h >= 30 ? 'c-warn' : 'c-good')) + '</button>' + (arrow ? '<div class="arrow" aria-hidden="true">→</div>' : '');
+    var month = opMonth(), fx = fluxIndex(month), inSet = {};
+    items.forEach(function (o) { inSet[o.n] = o; });
+    var allNames = {}; S.mo.open.forEach(function (o) { allNames[o.n] = o; });
+    // entrées / sorties filtrées comme le reste (financeur, entité, recherche) quand la facture est connue
+    function passes(n) { var o = allNames[n] || null; if (!o) return S.opFin === 'all' && S.opEnt === 'all' && !S.q; return openItems.pass(o); }
+    var flow = {}; N.FILES.forEach(function (f) { flow[f.k] = { e: 0, s: 0, d: { enc: [], avo: [], trf: [], aut: [] }, dur: [] }; });
+    if (fx) {
+      fx.inn.forEach(function (x) { if (flow[x.k] && passes(x.n)) flow[x.k].e++; });
+      fx.out.forEach(function (x) { if (!flow[x.k] || !passes(x.n)) return; flow[x.k].s++; flow[x.k].d[x.cat].push(x); if (x.dur != null) flow[x.k].dur.push(x.dur); });
     }
-    var detailRows = [];
+    var paid = paidSet();
+    function amt(x) { var p = paid[x.n]; if (x.cat === 'enc' && p) return p.mt || 0; var o = allNames[x.n]; return o ? (o.mt || 0) : 0; }
+    var monthLbl = MOIS_L[+month.slice(5, 7) - 1] + ' ' + month.slice(0, 4);
+    var partial = fx && fx.from > month + '-01';
+
+    function vign(k, arrow) {
+      var s = stats[k], f = FILE[k];
+      return '<button class="fcard" data-file="' + k + '"><span class="t">' + esc(f.n) + '<span>' + esc(f.svc) + '</span></span><span class="big">' + fmt(s.st) + ' <span style="font-size:13px;font-weight:500;color:var(--muted)">factures</span></span>' +
+        '<span class="s">' + eurAuto(s.mt) + '</span>' +
+        '<span class="s">âge médian du traitement <b class="num" style="color:var(--ink)">' + fmt(s.a) + ' j</b> · cible ' + s.c + ' j</span>' + (s.h == null ? '' : hdChip(s.h).replace('</span>', ' hors délai</span>')) + '</button>' + (arrow ? '<div class="arrow" aria-hidden="true">→</div>' : '');
+    }
+
+    // Tableau des étapes, dépliable par problématique pré-échéance
+    var mxMt = Math.max.apply(null, N.FILES.map(function (f) { return stats[f.k].mt; }).concat([1]));
+    var rows = [];
     N.FILES.forEach(function (f) {
-      var s = stats[f.k], flo = fl[f.k], open = !!S.opOpen[f.k], hs = histSeries(f.k);
-      detailRows.push('<tr>' + td('<button class="tog" data-toggle="' + f.k + '" aria-expanded="' + open + '"><span>' + (open ? '▾' : '▸') + '</span>' + esc(f.n) + '</button>') + td(fmt(s.st), 'r') + td(eurAuto(s.mt), 'r') +
-        td(flo ? fmt(flo.e) : '—', 'r') + td(flo ? fmt(flo.s) : '—', 'r') + td(fmt(s.a) + ' j', 'r') + td(s.c + ' j', 'r') + td(s.h == null ? '—' : chip(fmt(s.h, 0) + ' %', s.h >= 60 ? 'c-bad' : s.h >= 30 ? 'c-warn' : 'c-good'), 'r') + td(spark(hs, hs.length > 1 && hs[hs.length - 1] > hs[0] ? 'var(--bad)' : 'var(--good)') || '<span class="foot">—</span>') + '</tr>');
+      var s = stats[f.k], fl = flow[f.k], open = !!S.opOpen[f.k];
+      rows.push('<tr>' + td('<button class="tog" data-toggle="' + f.k + '" aria-expanded="' + open + '"><span>' + (open ? '▾' : '▸') + '</span>' + esc(f.n) + '</button><br><span class="foot">' + esc(f.d) + '</span>') +
+        td(fmt(s.st), 'r') + td(eur(s.mt) + miniBar(s.mt / mxMt * 100, 'var(--c1)'), 'r') + td(fx ? fmt(fl.e) : '—', 'r') + td(fx ? fmt(fl.s) : '—', 'r') +
+        td(fmt(s.a) + ' j', 'r') + td(s.c + ' j', 'r') + td(s.h == null ? '—' : fmt(s.h, 1) + ' %' + miniBar(s.h, s.h >= 60 ? 'var(--bad)' : s.h >= 30 ? 'var(--warn)' : 'var(--good)'), 'r') + '</tr>');
       if (open) {
-        var g = {}; s.its.forEach(function (o) { (g[o.g] || (g[o.g] = [])).push(o); });
-        Object.keys(g).sort().forEach(function (t) {
+        var g = {}; s.its.forEach(function (o) { var key = o.pb || 'Problématique non renseignée'; (g[key] || (g[key] = [])).push(o); });
+        Object.keys(g).sort(function (a, b) { return g[b].length - g[a].length; }).forEach(function (t) {
           var arr = g[t], ages = arr.map(ageItem).filter(function (a) { return a != null; }), h = ages.length ? ages.filter(function (a) { return a > s.c; }).length / ages.length * 100 : null;
-          detailRows.push('<tr class="subrow">' + td(esc(t)) + td(fmt(arr.length), 'r') + td(eurAuto(sum(arr, function (o) { return o.mt; })), 'r') + td('', 'r') + td('', 'r') + td(fmt(median(ages)) + ' j', 'r') + td(s.c + ' j', 'r') + td(h == null ? '—' : chip(fmt(h, 0) + ' %', h >= 60 ? 'c-bad' : h >= 30 ? 'c-warn' : 'c-good'), 'r') + td('') + '</tr>');
+          var m2 = sum(arr, function (o) { return o.mt; });
+          rows.push('<tr class="subrow">' + td(esc(t)) + td(fmt(arr.length), 'r') + td(eur(m2) + miniBar(m2 / mxMt * 100, 'var(--g2)'), 'r') + td('', 'r') + td('', 'r') + td(fmt(median(ages)) + ' j', 'r') + td(s.c + ' j', 'r') + td(h == null ? '—' : fmt(h, 1) + ' %' + miniBar(h, h >= 60 ? 'var(--bad)' : h >= 30 ? 'var(--warn)' : 'var(--good)'), 'r') + '</tr>');
         });
       }
     });
-    var anyFlow = N.FILES.some(function (f) { return fl[f.k]; });
-    var sortiesHtml = anyFlow ? legend(DEST.map(function (d) { return [d[0], d[1]]; })) + hbars(N.FILES.map(function (f) { return { l: f.n, v: fl[f.k] ? fl[f.k].dest : [0, 0, 0] }; }), DEST.map(function (d) { return d[1]; }))
-      : '<div class="empty">Les entrées et sorties se calculent entre deux relevés Monday. Le premier relevé est celui du ' + dFR(S.mo.at.slice(0, 10)) + ' ; actualisez depuis Monday (onglet Réglages) un autre jour pour les voir apparaître.</div>';
+    var tot = { st: sum(N.FILES, function (f) { return stats[f.k].st; }), mt: sum(N.FILES, function (f) { return stats[f.k].mt; }), e: sum(N.FILES, function (f) { return flow[f.k].e; }), s: sum(N.FILES, function (f) { return flow[f.k].s; }) };
+    rows.push('<tr class="tot">' + td('Total circuit') + td(fmt(tot.st), 'r') + td(eur(tot.mt), 'r') + td(fx ? fmt(tot.e) : '—', 'r') + td(fx ? fmt(tot.s) : '—', 'r') + td('', 'r') + td('', 'r') + td('', 'r') + '</tr>');
 
-    // file courante
-    var k = S.opFile, s = stats[k], f = FILE[k], cib = s.c;
+    // Où sont parties les factures sorties (barres 100 %)
+    var logsState = S.logs.state, sortiesHtml;
+    if (!fx) {
+      sortiesHtml = '<div class="empty">' + (logsState === 'run' ? '<span id="logs-msg">' + esc(S.logs.msg) + '</span>' : logsState === 'error' ? 'L’historique n’a pas pu être lu : ' + esc(S.logs.msg) + '<br><br><button class="btn" id="logs-go">Réessayer</button>'
+        : !S.mcp ? 'L’historique se lit dans Monday par le connecteur monday.com, qui n’est pas disponible dans cette vue.' : 'Les entrées, sorties et destinations se lisent dans l’historique Monday.<br><br><button class="btn primary" id="logs-go">Charger l’historique Monday</button>') + '</div>';
+    } else {
+      var totOut = { enc: [], avo: [], trf: [], aut: [] };
+      N.FILES.forEach(function (f) { DEST.forEach(function (d) { totOut[d[0]] = totOut[d[0]].concat(flow[f.k].d[d[0]]); }); });
+      var bars = N.FILES.map(function (f) { return { l: f.n, d: flow[f.k].d, s: flow[f.k].s }; });
+      bars.push({ l: 'Toutes étapes', d: totOut, s: tot.s, tot: true });
+      sortiesHtml = bars.map(function (b) {
+        if (!b.s) return '<div class="stk"><div class="stk-h"><b>' + esc(b.l) + '</b><span class="foot">aucune sortie en ' + esc(monthLbl) + '</span></div></div>';
+        var seg = DEST.map(function (d) { var n = b.d[d[0]].length, p = n / b.s * 100; return n ? '<div style="width:' + p.toFixed(2) + '%;background:' + d[2] + '" title="' + esc(d[1] + ' : ' + n + ' factures, ' + fmt(p, 1) + ' %') + '">' + (p >= 9 ? fmt(p, 0) + ' %' : '') + '</div>' : ''; }).join('');
+        var leg = DEST.map(function (d) { var arr = b.d[d[0]], n = arr.length; if (!n) return ''; var a = sum(arr, amt); return '<span><i class="sw" style="background:' + d[2] + '"></i>' + esc(d[1]) + ' — <b class="num">' + (a ? eur(a) : '') + '</b>' + (a ? ' · ' : '') + fmt(n) + ' factures · ' + fmt(n / b.s * 100, 1) + ' %</span>'; }).join('');
+        var dm = median(b.tot ? [].concat.apply([], N.FILES.map(function (f) { return flow[f.k].dur; })) : flow[N.FILES.filter(function (f) { return f.n === b.l; })[0].k].dur);
+        return '<div class="stk' + (b.tot ? ' stk-tot' : '') + '"><div class="stk-h"><b>' + esc(b.l) + '</b><span class="foot">' + fmt(b.s) + ' factures sorties' + (dm != null ? ' · restées ' + fmt(dm, 0) + ' j en médiane avant de sortir' : '') + '</span></div><div class="stk-bar">' + seg + '</div><div class="legend stk-l">' + leg + '</div></div>';
+      }).join('');
+    }
+
+    // Focus sur l’étape choisie
+    var k = S.opFile, s = stats[k], f = FILE[k], cib = s.c, fl = flow[k];
     var echues = s.its.filter(function (o) { var r = retard(o); return r != null && r > 0; });
     var prom = s.its.filter(function (o) { return o.dpr; }), promKO = prom.filter(function (o) { return o.dpr < REF; });
     var noRel = k === 'rec' ? s.its.filter(function (o) { return !o.drl || days(o.drl, REF) > CFG.sansAction; }) : [];
+    var dmed = median(fl.dur);
     var fk = [
-      ['Stock', fmt(s.st) + ' · ' + eurAuto(s.mt), fl[k] ? 'net ' + sgn(fl[k].e - fl[k].s, 0) + ' depuis le ' + dFR(fl[k].since) : 'premier relevé', 'var(--muted)', ICON.inbox, TONE.info],
-      [k === 'adv' ? 'Échues encore à l’ADV' : 'Échues', fmt(echues.length) + ' · ' + eurAuto(sum(echues, function (o) { return o.mt; })), k === 'adv' ? 'en retard sans avoir été rendues payables' : fmt(pct(echues.length, s.st), 0) + ' % du stock', 'var(--bad)', ICON.alert, TONE.bad],
-      ['Âge médian', fmt(s.a) + ' j', 'cible ' + cib + ' j · ' + (f.ref === 'facture' ? 'depuis la date de facture' : 'depuis l’échéance'), s.a > cib ? 'var(--warn)' : 'var(--good)', ICON.clock, TONE.acc],
-      k === 'rec' ? ['Sans relance depuis ' + CFG.sansAction + ' j', fmt(pct(noRel.length, s.st), 0) + ' %', fmt(noRel.length) + ' dossiers qui dorment', 'var(--bad)', ICON.check, TONE.good]
-        : ['Promesses de paiement', fmt(prom.length), promKO.length + ' dont la date est passée', promKO.length ? 'var(--warn)' : 'var(--muted)', ICON.check, TONE.good]
+      ['Dans l’étape', fmt(s.st) + ' · ' + eurAuto(s.mt), fx ? fmt(fl.e) + ' entrées, ' + fmt(fl.s) + ' sorties en ' + monthLbl : 'historique non chargé', 'var(--muted)', ICON.inbox, TONE.info],
+      ['Âge médian du traitement', fmt(s.a) + ' j', 'cible ' + cib + ' j · ' + (s.h == null ? '—' : fmt(s.h, 0) + ' % hors délai'), s.a > cib ? 'var(--warn)' : 'var(--good)', ICON.clock, TONE.acc],
+      ['Délai avant sortie', dmed == null ? '—' : fmt(dmed, 0) + ' j', fx ? 'médiane des factures sorties en ' + monthLbl : 'historique non chargé', 'var(--muted)', ICON.cal, TONE.good],
+      k === 'adv' ? ['Échues encore à l’ADV', fmt(echues.length) + ' · ' + eurAuto(sum(echues, function (o) { return o.mt; })), 'en retard sans avoir été rendues payables', 'var(--bad)', ICON.alert, TONE.bad]
+        : k === 'rec' ? ['Sans relance depuis ' + CFG.sansAction + ' j', fmt(pct(noRel.length, s.st), 0) + ' %', fmt(noRel.length) + ' dossiers qui dorment', 'var(--bad)', ICON.alert, TONE.bad]
+          : ['Promesses de paiement', fmt(prom.length), promKO.length + ' dont la date est passée', promKO.length ? 'var(--warn)' : 'var(--muted)', ICON.alert, TONE.warn]
     ];
     var byG = {}; s.its.forEach(function (o) { var g = o.g.replace(/^\s*[\d.]+\s*/, ''); byG[g] = (byG[g] || 0) + 1; });
     var gRows = Object.keys(byG).map(function (g) { return { l: g, v: [byG[g]] }; }).sort(function (a, b) { return b.v[0] - a.v[0]; });
-    var BK = { adv: [5, 10, 20, 30], rec: [15, 30, 90, 180], fin: [90, 180, 365, 730], cpt: [15, 30, 60, 120], cor: [30, 60, 120, 240] }[k];
+    var BK = { adv: [5, 10, 20, 30], rec: [15, 30, 90, 180], fin: [90, 180, 365, 730], cor: [15, 30, 60, 120] }[k];
     var bl = ['0-' + BK[0] + ' j', (BK[0] + 1) + '-' + BK[1] + ' j', (BK[1] + 1) + '-' + BK[2] + ' j', (BK[2] + 1) + '-' + BK[3] + ' j', '> ' + BK[3] + ' j'], bc = [0, 0, 0, 0, 0];
     s.its.forEach(function (o) { var a = ageItem(o); if (a == null) return; var j = a <= BK[0] ? 0 : a <= BK[1] ? 1 : a <= BK[2] ? 2 : a <= BK[3] ? 3 : 4; bc[j]++; });
     var ageCols = bl.map(function (l, j) { var lo = j === 0 ? 0 : BK[j - 1]; return { label: l, bars: [{ v: bc[j], c: lo >= cib ? 'var(--c5)' : 'var(--c1)', lab: fmt(bc[j]) }] }; });
+    var srcCount = { hist: 0, col: 0, ref: 0 }; s.its.forEach(function (o) { var e = entryOf(o); if (e) srcCount[e.src]++; });
     var pr = priorityRows(s.its, k), top = pr.slice(0, 30);
-    var head = ['Facture · client', 'Financement', 'Étape Monday', 'Restant dû', 'Échéance', 'Âge', 'Priorité'];
+    var head = ['Facture · client', 'Financement', 'Étape Monday', 'Restant dû', 'Échéance', 'Dans l’étape depuis', 'Priorité'];
     var rowsHtml = top.map(function (p) {
       var o = p.o, who = o.cl || o.ap || '';
-      var link = mondayLink(o);
-      return '<tr>' + td('<a href="' + esc(link) + '" target="_blank" rel="noopener">' + esc(o.n) + '</a>' + (who ? '<br><span class="foot">' + esc(who) + '</span>' : '')) + td(esc(o.fin)) +
-        td(esc(o.g.replace(/^\s*[\d.]+\s*/, '')) + (o.e ? '<br><span class="foot">' + esc(o.e) + '</span>' : '') + (o.q ? '<br><span class="foot">' + esc(o.q) + '</span>' : '')) +
+      return '<tr>' + td('<a href="' + esc(mondayLink(o)) + '" target="_blank" rel="noopener">' + esc(o.n) + '</a>' + (who ? '<br><span class="foot">' + esc(who) + '</span>' : '')) + td(esc(o.fin)) +
+        td(esc(o.g.replace(/^\s*[\d.]+\s*/, '')) + (o.pb ? '<br><span class="foot">' + esc(o.pb) + '</span>' : '') + (o.q ? '<br><span class="foot">' + esc(o.q) + '</span>' : '')) +
         td(eur(o.mt), 'r') + td(o.de ? dFR(o.de) + (p.r != null ? '<br><span class="foot">' + (p.r > 0 ? 'dépassée de ' + p.r + ' j' : p.r === 0 ? 'aujourd’hui' : 'dans ' + (-p.r) + ' j') + '</span>' : '') : '—', 'r') +
         td(p.a == null ? '—' : p.a + ' j', 'r') + td('<div class="tags">' + p.tags.map(function (t) { return chip(t[0], t[1]); }).join('') + '</div>') + '</tr>';
     });
 
-    // équipe
-    var people = {}; items.forEach(function (o) { var w = o.ow || '__none'; (people[w] || (people[w] = [])).push(o); });
-    var named = Object.keys(people).filter(function (w) { return w !== '__none'; });
-    var monthStart = REF.slice(0, 7);
-    var paidMonth = S.mo.paid.filter(function (p) { return p.dp && p.dp.slice(0, 7) === monthStart; });
-    var teamHtml;
-    if (named.length < 2) {
-      teamHtml = '<div class="empty">La colonne « Propriétaire » n’est renseignée que sur ' + fmt(items.length - (people.__none || []).length) + ' factures ouvertes de cette source. ' +
-        (S.moSource === 'snapshot' ? 'L’instantané embarqué ne la contient pas pour la plupart des tableaux : actualisez depuis Monday (onglet Réglages) pour charger les propriétaires.' : 'Renseignez-la dans Monday pour suivre la charge par personne.') + '</div>';
-    } else {
-      var P = named.map(function (w) {
-        var its = people[w], files = {}; its.forEach(function (o) { var f2 = fileOfItem(o); files[f2] = (files[f2] || 0) + 1; });
-        var mainF = Object.keys(files).sort(function (a, b) { return files[b] - files[a]; })[0];
-        var ages = its.map(ageItem).filter(function (a) { return a != null; }), hors = its.filter(function (o) { var a = ageItem(o); return a != null && a > CFG.cibleFile[fileOfItem(o)]; }).length;
-        var rel = its.filter(function (o) { return fileOfItem(o) === 'rec'; }), sa = rel.filter(function (o) { return !o.drl || days(o.drl, REF) > CFG.sansAction; }).length;
-        var pm = its.filter(function (o) { return o.dpr; }), pmOk = pm.filter(function (o) { return o.dpr >= REF; }).length;
-        var enc = sum(paidMonth.filter(function (p) { return p.ow === w; }), function (p) { return p.mt; });
-        return { n: w, team: FILE[mainF] ? FILE[mainF].t.split(' ')[0] : '—', st: its.length, m: sum(its, function (o) { return o.mt; }), a: median(ages), h: its.length ? hors / its.length * 100 : null, sa: rel.length ? sa / rel.length * 100 : null, pr: pm.length, prOk: pmOk, enc: enc };
-      }).sort(function (a, b) { return b.st - a.st; });
-      var TC = { 'ADV': 'var(--c1)', 'Recouvrement': 'var(--c2)', 'Rapprocher': 'var(--g1)', 'Comptabilité': 'var(--g1)' };
-      var mxSt = Math.max.apply(null, P.map(function (p) { return p.st; }));
-      var none = people.__none || [];
-      teamHtml = '<div class="kpis">' + [
-        kpiCard({ l: 'Charge par personne', v: fmt(median(P.map(function (p) { return p.st; }))) + ' dossiers', sub: 'de ' + fmt(Math.min.apply(null, P.map(function (p) { return p.st; }))) + ' à ' + fmt(mxSt) + ' selon la personne', icon: ICON.users, tone: TONE.info }),
-        kpiCard({ l: 'Hors délai, équipe', v: fmt(pct(sum(P, function (p) { return p.h * p.st / 100; }), sum(P, function (p) { return p.st; })), 0) + ' %', sub: 'dossiers attribués', icon: ICON.alert, tone: TONE.bad }),
-        kpiCard({ l: 'Dossiers sans propriétaire', v: fmt(none.length) + ' · ' + eurAuto(sum(none, function (o) { return o.mt; })), sub: 'personne ne les suit', icon: ICON.inbox, tone: TONE.bad }),
-        kpiCard({ l: 'Encaissé ce mois', v: eurAuto(sum(paidMonth, function (p) { return p.mt; })), sub: fmt(paidMonth.length) + ' factures payées en ' + MOIS_L[+monthStart.slice(5, 7) - 1], icon: ICON.check, tone: TONE.good })
-      ].join('') + '</div>' +
-        '<div class="grid2"><div class="sub"><b>Charge et tenue des délais</b><p class="note">Portefeuille en nombre de dossiers et part hors délai. En haut à droite : surcharge.</p>' +
-        '<div class="scatter">' + P.map(function (p) { return '<div class="pt" style="left:' + (p.st / mxSt * 92 + 4).toFixed(1) + '%;bottom:' + (Math.min(100, p.h || 0) * 0.86 + 4).toFixed(1) + '%" title="' + esc(p.n + ' : ' + p.st + ' dossiers, ' + fmt(p.h, 0) + ' % hors délai') + '"><i style="background:' + (TC[p.team] || 'var(--g1)') + '"></i><span>' + esc(p.n.split(' ')[0]) + '</span></div>'; }).join('') + '</div>' +
-        '<div class="legend"><span>↑ % hors délai · → dossiers en portefeuille (max ' + fmt(mxSt) + ')</span></div></div>' +
-        '<div class="sub"><b>Encaissé ce mois, par personne</b><p class="note">Factures du tableau « Factures payées » avec une date de paiement en ' + MOIS_L[+monthStart.slice(5, 7) - 1] + '.</p>' +
-        hbars(P.filter(function (p) { return p.enc > 0; }).map(function (p) { return { l: p.n, v: [p.enc] }; }), ['var(--c1)'], keur) + '</div></div>' +
-        table(['Personne', 'Équipe', 'Dossiers', 'Montant', 'Âge méd.', 'Hors délai', 'Sans relance', 'Promesses en cours'], P.map(function (p) {
-          return '<tr>' + td('<button class="tog" data-owner="' + esc(p.n) + '">' + esc(p.n) + '</button>') + td('<span class="legend"><span><i class="sw" style="background:' + (TC[p.team] || 'var(--g1)') + '"></i>' + esc(p.team) + '</span></span>') + td(fmt(p.st), 'r') + td(eurAuto(p.m), 'r') + td(fmt(p.a) + ' j', 'r') +
-            td(p.h == null ? '—' : chip(fmt(p.h, 0) + ' %', p.h >= 50 ? 'c-bad' : p.h >= 35 ? 'c-warn' : 'c-good'), 'r') + td(p.sa == null ? '—' : chip(fmt(p.sa, 0) + ' %', p.sa >= 30 ? 'c-bad' : p.sa >= 20 ? 'c-warn' : 'c-good'), 'r') + td(p.pr ? fmt(p.prOk) + ' / ' + fmt(p.pr) : '—', 'r') + '</tr>';
-        }).concat(['<tr class="tot">' + td('Non attribué') + td('—') + td(fmt(none.length), 'r') + td(eurAuto(sum(none, function (o) { return o.mt; })), 'r') + td(fmt(median(none.map(ageItem).filter(function (a) { return a != null; }))) + ' j', 'r') + td('—', 'r') + td('—', 'r') + td('—', 'r') + '</tr>']), { right: [2, 3, 4, 5, 6, 7] });
-    }
-
-    var ownerOpts = '<option value="all">Tous</option><option value="__none"' + (S.opOwner === '__none' ? ' selected' : '') + '>Non attribué</option>' + Object.keys(owners).sort().map(function (w) { return '<option' + (S.opOwner === w ? ' selected' : '') + '>' + esc(w) + '</option>'; }).join('');
+    var months = []; for (var i = 0; i < 4; i++) months.push(addM(REF.slice(0, 7), -i));
+    var dateOpts = months.map(function (m, i) { var d = i === 0 ? REF : m + '-' + String(dim(m)).padStart(2, '0'); return '<option value="' + m + '"' + (m === month ? ' selected' : '') + '>' + dFR(d) + (i === 0 ? ' (aujourd’hui)' : '') + '</option>'; }).join('');
     var tabs = N.FILES.map(function (ff) { return '<button role="tab" aria-selected="' + (ff.k === k) + '" data-file="' + ff.k + '">' + esc(ff.n) + '<span class="cnt">' + fmt(stats[ff.k].st) + '</span></button>'; }).join('');
+    var histLine = S.flux ? 'Historique Monday lu le ' + new Date(S.flux.fetched).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) + ', depuis le ' + dFR(S.flux.from) + '.' : '';
 
-    return '<div class="head"><div><h1>Recouvrement opérationnel</h1><p class="lede">Ce qu’il faut traiter aujourd’hui, file par file. Les actions se font dans Monday, via le lien de chaque ligne. Données Monday du ' + dFR(S.mo.at.slice(0, 10)) + '.</p></div>' +
-      '<div class="actions"><button class="btn" id="x-file">Exporter la file</button></div></div>' +
-      '<div class="filters"><label>Équipe<select id="o-team"><option value="all">Toutes</option>' + ['ADV', 'Recouvrement', 'Comptabilité', 'DAF'].map(function (t) { return '<option' + (S.opTeam === t ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></label>' +
-      '<label>Propriétaire<select id="o-owner">' + ownerOpts + '</select></label>' +
-      '<label>Financement<select id="o-fin"><option value="all">Tous les dispositifs</option>' + N.FINANCEURS.map(function (x) { return '<option' + (S.opFin === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></label>' +
-      '<label>Recherche<input type="search" id="o-q" placeholder="Client, n° de facture, apprenant" value="' + esc(S.q) + '"></label></div>' +
-      '<section class="card"><div class="sh"><div><h2><span class="n">1</span>Le circuit</h2><p>Où ça bloque, et est-ce que ça s’aggrave</p></div></div>' +
-      '<div class="flow">' + fcard('adv', true) + fcard('rec', true) + fcard('fin') + '</div><div class="sep"><span></span>en parallèle du circuit<span></span></div><div class="flow">' + fcard('cpt') + fcard('cor') + '</div>' +
-      '<div class="grid2"><div class="sub"><b>Détail par file et par étape Monday</b><span class="foot">Dépliez une file pour voir ses groupes. Entrées et sorties depuis le relevé précédent.</span>' +
-      table(['File / étape', 'Stock', 'Montant', 'Entrées', 'Sorties', 'Âge méd.', 'Cible', 'Hors délai', '12 relevés'], detailRows, { right: [1, 2, 3, 4, 5, 6, 7] }) + '</div>' +
-      '<div class="sub"><b>Où sont parties les sorties</b><p class="note">Factures sorties de chaque file depuis le relevé précédent, par destination.</p>' + sortiesHtml + '</div></div></section>' +
-      '<section class="card"><div class="sh"><div><h2><span class="n">2</span>Les files de travail</h2><p>Quoi traiter, pourquoi ça bloque, et est-ce que ça avance</p></div></div>' +
-      '<div class="seg" role="tablist" aria-label="Files de travail">' + tabs + '</div>' +
-      '<div class="sh"><b>' + esc(f.n) + '</b>' + chip(esc(f.t), 'c-info') + '</div>' +
+    return '<div class="head"><div><h1>Recouvrement opérationnel</h1><p class="lede">Ce qu’il faut traiter, étape par étape du circuit. Les actions se font dans Monday, via le lien de chaque ligne. Factures Monday au ' + dFR(S.mo.at.slice(0, 10)) + '.</p></div>' +
+      '<div class="actions">' + (S.flux && S.mcp ? '<button class="btn" id="logs-go">Recharger l’historique</button>' : '') + '<button class="btn" id="x-file">Exporter l’étape</button></div></div>' +
+      '<div class="filters"><label>Arrêté au<select id="o-month">' + dateOpts + '</select></label>' +
+      '<label>Financeur<select id="o-fin"><option value="all">Tous les financeurs</option>' + N.FINANCEURS.map(function (x) { return '<option' + (S.opFin === x ? ' selected' : '') + '>' + esc(x) + '</option>'; }).join('') + '</select></label>' +
+      '<label>Entité<select id="o-ent"><option value="all">Toutes</option><option value="fr"' + (S.opEnt === 'fr' ? ' selected' : '') + '>France</option><option value="de"' + (S.opEnt === 'de' ? ' selected' : '') + '>Allemagne</option></select></label>' +
+      '<label>Service concerné<select id="o-svc"><option value="all">Tous les services</option>' + N.FILES.map(function (x) { return '<option value="' + x.k + '"' + (S.opSvc === x.k ? ' selected' : '') + '>' + esc(x.svc) + '</option>'; }).join('') + '</select></label>' +
+      '<label>Recherche<input type="search" id="o-q" placeholder="Facture, client, groupe" value="' + esc(S.q) + '"></label>' +
+      '<div style="align-self:flex-end"><button class="btn" id="o-reset">Réinitialiser</button></div></div>' +
+      '<section class="card"><div class="sh"><div><h2><span class="n">1</span>Le circuit</h2><p>Combien de factures à chaque étape, depuis combien de temps elles y sont, face à la cible de traitement.</p></div></div>' +
+      '<div class="flow">' + vign('adv', true) + vign('rec', true) + vign('fin') + '</div><div class="sep"><span></span>en parallèle du circuit<span></span></div><div class="flow">' + vign('cor') + '</div>' +
+      '<div class="sub"><b>Les étapes du process</b><span class="foot">Entrées et sorties en ' + esc(monthLbl) + (partial ? ' (historique disponible à partir du ' + dFR(fx.from) + ')' : '') + '. Âge du traitement = jours depuis l’entrée dans l’étape. Dépliez une étape pour voir la problématique pré-échéance.</span>' +
+      table(['Étape du process', 'Factures', 'Montant', 'Entrées', 'Sorties', 'Âge médian du traitement', 'Cible', '% hors délai'], rows, { right: [1, 2, 3, 4, 5, 6, 7] }) + '</div>' +
+      '<div class="sub"><b>Où sont parties les factures sorties d’une étape</b><span class="foot">Sorties de ' + esc(monthLbl) + ', par destination. Les quatre parts s’excluent et totalisent 100 %. ' + histLine + '</span>' + sortiesHtml + '</div></section>' +
+      '<section class="card"><div class="sh"><div><h2><span class="n">2</span>Focus sur chaque étape</h2><p>Quoi traiter, pourquoi ça bloque, et est-ce que ça avance</p></div></div>' +
+      '<div class="seg" role="tablist" aria-label="Étapes du process">' + tabs + '</div>' +
+      '<div class="sh"><b>' + esc(f.n) + ' · ' + esc(f.d) + '</b>' + chip(esc(f.svc), 'c-info') + '</div>' +
       '<div class="kpis">' + fk.map(function (x) { return kpiCard({ l: x[0], v: x[1], sub: '<span style="color:' + x[3] + '">' + esc(x[2]) + '</span>', icon: x[4], tone: x[5] }); }).join('') + '</div>' +
       '<div class="grid2"><div class="sub"><b>Où sont les factures</b><p class="note">Nombre de factures par groupe Monday.</p>' + hbars(gRows, ['var(--c1)']) + '</div>' +
-      '<div class="sub"><b>Depuis combien de temps elles attendent</b><p class="note">' + (f.ref === 'facture' ? 'Âge depuis la date de facture' : 'Âge depuis l’échéance') + '. En foncé, au-delà de la cible de ' + cib + ' jours.</p>' +
+      '<div class="sub"><b>Depuis combien de temps elles sont dans l’étape</b><p class="note">En foncé, au-delà de la cible de ' + cib + ' jours. Date d’entrée : historique Monday pour ' + fmt(srcCount.hist) + ' factures, date d’étape Monday pour ' + fmt(srcCount.col) + ', à défaut ' + (f.ref === 'facture' ? 'date de facture' : 'échéance') + ' pour ' + fmt(srcCount.ref) + '.</p>' +
       legend([['Dans la cible', 'var(--c1)'], ['Hors délai', 'var(--c5)']]) + groupChart(ageCols, function (v) { return fmt(v); }, { labels: true }) + '</div></div>' +
-      '<div class="sub"><div class="sh"><b>Liste priorisée</b><span class="foot">' + fmt(Math.min(30, pr.length)) + ' premières lignes sur ' + fmt(pr.length) + ', classées par montant et ancienneté du retard. Le numéro ouvre la facture dans Monday ; « Exporter la file » donne toutes les lignes.</span></div>' +
-      (top.length ? table(head, rowsHtml, { right: [3, 4, 5] }) : '<div class="empty">Aucune facture dans cette file avec ces filtres.</div>') + '</div></section>' +
-      '<section class="card"><div class="sh"><div><h2><span class="n">3</span>L’équipe</h2><p>Charge, tenue des délais et encaissements, par personne</p></div></div>' + teamHtml + '</section>';
+      '<div class="sub"><div class="sh"><b>Liste priorisée</b><span class="foot">' + fmt(Math.min(30, pr.length)) + ' premières lignes sur ' + fmt(pr.length) + ', classées par montant et ancienneté du retard. Le numéro ouvre la facture dans Monday ; « Exporter l’étape » donne toutes les lignes.</span></div>' +
+      (top.length ? table(head, rowsHtml, { right: [3, 4, 5] }) : '<div class="empty">Aucune facture dans cette étape avec ces filtres.</div>') + '</div></section>';
   }
 
   /* ═════════════════ CONTRÔLES ═════════════════ */
@@ -711,7 +800,7 @@
   function renderReglages() {
     var L = S.live, groups = {};
     S.mo.open.forEach(function (o) { var key = o.b + '|' + o.g; groups[key] = groups[key] || { b: o.b, g: o.g, n: 0, f: o.f }; groups[key].n++; });
-    var opts = function (cur) { return N.FILES.map(function (f) { return [f.k, f.n]; }).concat([['cours', 'En cours (pas à traiter)'], ['autre', 'Non classé']]).map(function (x) { return '<option value="' + x[0] + '"' + (cur === x[0] ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join(''); };
+    var opts = function (cur) { return N.FILES.map(function (f) { return [f.k, f.n + ' (' + f.svc + ')']; }).concat([['cours', 'En cours (pas à traiter)'], ['autre', 'Non classé']]).map(function (x) { return '<option value="' + x[0] + '"' + (cur === x[0] ? ' selected' : '') + '>' + esc(x[1]) + '</option>'; }).join(''); };
     var gRows = Object.keys(groups).sort(function (a, b) { return groups[a].g.localeCompare(groups[b].g, 'fr', { numeric: true }); }).map(function (key) {
       var g = groups[key], p = N.prefix(g.g), cur = CFG.overrides[p] || g.f;
       return '<tr>' + td(esc(g.g)) + td(fmt(g.n), 'r') + td('<select class="field" data-group="' + esc(p) + '" aria-label="File du groupe ' + esc(g.g) + '">' + opts(cur) + '</select>') + '</tr>';
@@ -816,7 +905,7 @@
     });
   }
   function setMonday(mo, src) {
-    S.mo = mo; S.moSource = src; S._paidSet = null;
+    S.mo = mo; S.moSource = src; S._paidSet = null; S._fx = null;
     var d = mo.at.slice(0, 10);
     REF = d;
   }
@@ -844,6 +933,7 @@
     S.view = ['pilotage', 'operationnel', 'controles', 'reglages'].indexOf(h) >= 0 ? h : 'pilotage';
     lsSet('view', S.view);
     render();
+    if (S.view === 'operationnel') loadLogs(false);
     window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', route);
@@ -853,8 +943,9 @@
     if (t.id === 'f-idx') { S.idx = +t.value; render(); }
     else if (t.id === 'f-fin') { S.fin = t.value; render(); }
     else if (t.id === 'f-ent') { S.ent = t.value; render(); }
-    else if (t.id === 'o-team') { S.opTeam = t.value; render(); }
-    else if (t.id === 'o-owner') { S.opOwner = t.value; render(); }
+    else if (t.id === 'o-month') { S.opMonth = t.value; S._fx = null; render(); }
+    else if (t.id === 'o-ent') { S.opEnt = t.value; render(); }
+    else if (t.id === 'o-svc') { S.opSvc = t.value; if (t.value !== 'all') S.opFile = t.value; render(); }
     else if (t.id === 'o-fin') { S.opFin = t.value; render(); }
     else if (t.dataset.group != null) { var g = N.GROUP_FILE[t.dataset.group]; if (t.value === g) delete CFG.overrides[t.dataset.group]; else CFG.overrides[t.dataset.group] = t.value; saveCfg(); toast('Classement enregistré.'); }
     else if (t.dataset.dso) { CFG.dsoCible[t.dataset.dso] = +t.value || 0; saveCfg(); }
@@ -872,7 +963,8 @@
     if (t.dataset.cohort) { S.cohort = t.dataset.cohort; render(); }
     else if (t.dataset.file && (t.classList.contains('fcard') || t.getAttribute('role') === 'tab')) { S.opFile = t.dataset.file; render(); if (t.classList.contains('fcard')) { var tl = document.querySelector('[aria-label="Files de travail"]'); if (tl) tl.scrollIntoView({ block: 'start' }); } }
     else if (t.dataset.toggle) { S.opOpen[t.dataset.toggle] = !S.opOpen[t.dataset.toggle]; render(); }
-    else if (t.dataset.owner) { S.opOwner = t.dataset.owner; render(); }
+    else if (t.id === 'o-reset') { S.opFin = 'all'; S.opEnt = 'all'; S.opSvc = 'all'; S.opMonth = null; S.q = ''; S._fx = null; render(); }
+    else if (t.id === 'logs-go') { loadLogs(true); }
     else if (t.dataset.gotoFile) { S.opFile = t.dataset.gotoFile; }
     else if (t.id === 'comment-reset') { lsSet('comment:' + mOf(S.idx) + ':' + S.fin + ':' + S.ent, null); try { localStorage.removeItem('srv2:comment:' + mOf(S.idx) + ':' + S.fin + ':' + S.ent); } catch (e) { } render(); }
     else if (t.id === 'live-go') { if (!S.mcp) toast('Le connecteur monday.com n’est pas disponible dans cette vue.'); else liveRefresh(); }
@@ -894,7 +986,7 @@
   var ITEM_HEAD = ['Facture', 'Financement', 'Client', 'Apprenant', 'Groupe Monday', 'File', 'Restant dû', 'Échéance', 'Date facture', 'Jours de retard', 'Âge dans la file', 'Propriétaire', 'Étape process', 'Qualification', 'Promesse de paiement', 'Dernière relance', 'Lien Monday'];
   function exportFile() {
     var k = S.opFile, pr = priorityRows(openItems().filter(function (o) { return fileOfItem(o) === k; }), k);
-    exportXlsx('file-' + FILE[k].n.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + REF + '.xlsx', [{ name: FILE[k].n, rows: [ITEM_HEAD.concat(['Priorité'])].concat(pr.map(function (p) { return itemRow(p.o).concat([p.tags.map(function (t) { return t[0]; }).join(', ')]); })) }]);
+    exportXlsx('etape-' + FILE[k].n.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + REF + '.xlsx', [{ name: FILE[k].n, rows: [ITEM_HEAD.concat(['Priorité'])].concat(pr.map(function (p) { return itemRow(p.o).concat([p.tags.map(function (t) { return t[0]; }).join(', ')]); })) }]);
   }
   function exportControles() {
     exportXlsx('controles-recouvrement-' + REF + '.xlsx', controls().filter(function (c) { return c.rows.length; }).map(function (c) { return { name: c.t.replace(/[\\\/?*\[\]:]/g, ' ').slice(0, 31), rows: [ITEM_HEAD].concat(c.rows.map(itemRow)) }; }));
@@ -903,8 +995,8 @@
   /* ───────── chargement ───────── */
   function getJSON(u) { return fetch(u).then(function (r) { if (!r.ok) throw new Error(u + ' : HTTP ' + r.status); return r.json(); }); }
   function loadSnapshot() { return getJSON('data/monday.json').then(function (mo) { setMonday(mo, 'snapshot'); return mo; }); }
-  Promise.all([getJSON('data/pilotage.json'), idb.get('monday'), idb.get('history')]).then(function (r) {
-    S.gl = r[0]; S.idx = S.gl.dates.length - 1; S.history = r[2] || [];
+  Promise.all([getJSON('data/pilotage.json'), idb.get('monday'), idb.get('history'), idb.get('flux')]).then(function (r) {
+    S.gl = r[0]; S.idx = S.gl.dates.length - 1; S.history = r[2] || []; S.flux = r[3] || null;
     var first = r[1] ? Promise.resolve(setMonday(r[1], 'live')) : loadSnapshot();
     return first.then(function () {
       if (!S.history.length) return loadSnapshotForHistory();
@@ -921,7 +1013,7 @@
   }
 
   if (window.claude && typeof claude.use === 'function') {
-    claude.use('mcp').then(function (m) { S.mcp = m; if (S.view === 'reglages') render(); }, function () { S.mcp = null; });
+    claude.use('mcp').then(function (m) { S.mcp = m; if (S.view === 'reglages' || S.view === 'operationnel') render(); if (m && S.view === 'operationnel') loadLogs(false); }, function () { S.mcp = null; });
     claude.use('downloads').then(function (d) { S.downloads = d; }, function () { S.downloads = null; });
   } else { S.mcp = null; }
 })();

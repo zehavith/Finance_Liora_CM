@@ -22,11 +22,10 @@
   // Les cinq files de travail de la maquette, plus « en cours » (pas encore
   // à traiter) et « autre » (groupe que rien ne classe).
   var FILES = [
-    { k: 'adv', n: 'Rendre payable', t: 'ADV', cible: 10, ref: 'facture' },
-    { k: 'rec', n: 'Relancer', t: 'Recouvrement', cible: 15, ref: 'echeance' },
-    { k: 'fin', n: 'Clore le dossier', t: 'Recouvrement + DAF', cible: 90, ref: 'echeance' },
-    { k: 'cpt', n: 'Rapprocher', t: 'Comptabilité', cible: 15, ref: 'echeance' },
-    { k: 'cor', n: 'Corriger la facturation', t: 'ADV + comptabilité', cible: 30, ref: 'echeance' }
+    { k: 'adv', n: 'Rendre payable', t: 'ADV', svc: 'ADV', cible: 10, ref: 'facture', d: 'Factures non conformes ou incomplètes, à rendre payables' },
+    { k: 'rec', n: 'Relancer', t: 'Recouvrement', svc: 'Recouvrement', cible: 15, ref: 'echeance', d: 'Factures échues à relancer' },
+    { k: 'fin', n: 'Clôture', t: 'Contentieux', svc: 'Contentieux', cible: 90, ref: 'echeance', d: 'Contentieux, perdu, attente de décision de passage en perte' },
+    { k: 'cor', n: 'Corriger', t: 'Comptabilité', svc: 'Comptabilité', cible: 30, ref: 'echeance', d: 'Paiement reçu non lettré, facture à annuler, toute autre clôture' }
   ];
 
   // Numéro de groupe Monday → file. Les groupes « Technique » / « Archive »
@@ -34,12 +33,12 @@
   var GROUP_FILE = {
     '1.0.1': 'adv',
     '1.1.1': 'adv', '1.1.2': 'adv', '1.1.3': 'adv', '1.1.4': 'adv', '1.1.5': 'cours',
-    '1.2.1': 'rec', '1.2.2': 'adv', '1.2.3': 'rec', '1.2.4': 'fin', '1.2.5': 'fin', '1.2.6': 'rec', '1.2.7': 'rec', '1.2.8': 'cpt',
+    '1.2.1': 'rec', '1.2.2': 'adv', '1.2.3': 'rec', '1.2.4': 'fin', '1.2.5': 'fin', '1.2.6': 'rec', '1.2.7': 'rec', '1.2.8': 'cor',
     '1.3.1': 'adv', '1.3.5': 'cours',
-    '2.1.1': 'rec', '2.1.1.1': 'rec', '2.1.2': 'cor', '2.1.3': 'cor', '2.1.4': 'rec', '2.1.5': 'rec', '2.1.6': 'fin', '2.1.7': 'cours', '2.1.8': 'cpt',
-    '2.2.1': 'adv', '2.2.2': 'rec', '2.2.3': 'cor', '2.2.4': 'cor', '2.2.5': 'cours', '2.2.6': 'cpt', '2.2.9': 'cpt', '2.2.10': 'cpt',
-    '2.3.1': 'rec', '2.3.3': 'rec', '2.3.5': 'cours', '2.3.6': 'cours', '2.3.7': 'cours', '2.3.9': 'cpt', '2.3.10': 'cpt',
-    '2.4.2': 'rec', '2.4.3': 'rec', '2.4.7': 'cours', '2.4.9': 'cpt', '2.4.10': 'cpt'
+    '2.1.1': 'rec', '2.1.1.1': 'rec', '2.1.2': 'cor', '2.1.3': 'cor', '2.1.4': 'rec', '2.1.5': 'rec', '2.1.6': 'fin', '2.1.7': 'cours', '2.1.8': 'cor',
+    '2.2.1': 'adv', '2.2.2': 'rec', '2.2.3': 'cor', '2.2.4': 'cor', '2.2.5': 'cours', '2.2.6': 'cor', '2.2.9': 'cor', '2.2.10': 'cor',
+    '2.3.1': 'rec', '2.3.3': 'rec', '2.3.5': 'cours', '2.3.6': 'cours', '2.3.7': 'cours', '2.3.9': 'cor', '2.3.10': 'cor',
+    '2.4.2': 'rec', '2.4.3': 'rec', '2.4.7': 'cours', '2.4.9': 'cor', '2.4.10': 'cor'
   };
 
   var PAID_FIN = {
@@ -73,7 +72,9 @@
     bascule: ['date bascule en recouvrement', 'date basculement en recouvrement', 'date passage en recouvrement', 'date qualif recouvrement'],
     commentaire: ['commentaire post echeance', 'commentaire post-échéance', 'commentaire post-échéance / recouvrement ( service recouvrement )',
       'commentaire général', 'commentaires', 'commentaire', 'notes', 'commentaire pré-échance'],
-    groupePaye: ['groupe']
+    groupePaye: ['groupe'],
+    pb: ['problématique pré-échéance', 'problématique pré-échéance ( service recouvrement )'],
+    detape: ['date maj qualif adv', 'date qualif recouvrement', 'date bascule en recouvrement', 'date basculement en recouvrement', 'date passage en recouvrement', 'date bascule - facture déposée non payée']
   };
   var ALL_TITLES = {};
   Object.keys(ALIAS).forEach(function (k) { ALIAS[k].forEach(function (t) { ALL_TITLES[t] = 1; }); });
@@ -85,7 +86,7 @@
   function technique(title) { return /technique|archive/i.test(title || ''); }
   function fileOf(groupTitle, overrides) {
     var p = prefix(groupTitle);
-    if (overrides && overrides[p]) return overrides[p];
+    if (overrides && overrides[p]) return overrides[p] === 'cpt' ? 'cor' : overrides[p];
     if (GROUP_FILE[p]) return GROUP_FILE[p];
     return technique(groupTitle) ? null : 'autre';
   }
@@ -143,6 +144,7 @@
       de: date(pick(map, 'echeance')), df: date(pick(map, 'facture')),
       dpr: date(pick(map, 'promesse')), drl: date(pick(map, 'relance')), dba: date(pick(map, 'bascule')),
       cl: pick(map, 'client'), ap: pick(map, 'apprenant'), ow: pick(map, 'proprio'), tc: pick(map, 'typeClient'),
+      pb: pick(map, 'pb'), det: date(pick(map, 'detape')),
       st: pick(map, 'statut'), q: pick(map, 'qualif'), e: pick(map, 'etape'), c: pick(map, 'commentaire').slice(0, 240)
     };
   }
