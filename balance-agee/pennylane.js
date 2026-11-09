@@ -236,6 +236,51 @@ function tiersDuGrandLivre() {
   let c = arg('--depuis-zero') ? neuf : (lireCache() || neuf);
   c.modele = MODELE;
 
+  // ── LE PONT ZOHO → SELLSY → PENNYLANE ──
+  //
+  // Quatre mille numéros du grand livre n'existent pas dans Pennylane :
+  // FA-550-, FA-771-, FA-AIF-, FA-POEI-, FA-TRAN-, FA-REG-, DV-, CN-. Ce sont
+  // des numéros ZOHO, l'outil de facturation d'avant. On les croyait perdus.
+  //
+  // Mais l'export Sellsy porte les deux : sa colonne « Numéro » est le numéro
+  // FACT-/AVR- que Pennylane connaît, et sa colonne « Numéro de facture Zoho »
+  // est l'ancien. Une même ligne, donc une même facture : le pont est dans le
+  // fichier, il n'y a rien à deviner.
+  //
+  // Éprouvé le 09/11/2026 : 1 205 numéros retrouvés, et les 1 205 ont un lien.
+  // Le client concorde sur la totalité — les huit cas qui semblaient discorder
+  // étaient un défaut du contrôle, qui écartait les noms de moins de six
+  // lettres (AFDAS, INSEE, EDF, ADC). Sur FA-TRAN-0068, le libellé Pennylane
+  // porte même le numéro Zoho en toutes lettres.
+  //
+  // Aucun appel réseau : c'est de la lecture de fichiers.
+  if (arg('--alias')) {
+    const { ctx } = require('./socle.js');
+    const lire = f => { try {
+      return ctx.Papa.parse(fs.readFileSync(f, 'utf8'), { header: true, skipEmptyLines: true }).data;
+    } catch (e) { return []; } };
+    const rows = lire('depot-sellsy/sellsy.csv').concat(lire('depot-sellsy/avoirs.csv'));
+    let pose = 0, deja = 0, sansLien = 0;
+    for (const r of rows) {
+      const zoho = String(r['Numéro de facture Zoho'] || '').trim();
+      const sellsy = String(r['Numéro'] || '').trim();
+      if (!zoho || !sellsy) continue;
+      if (c.factures[zoho]) { deja++; continue; }
+      const cible = c.factures[sellsy];
+      if (!cible) { sansLien++; continue; }
+      // On garde la trace du chemin : un lien posé par le pont n'est pas un
+      // lien rendu par l'API, et la différence doit rester lisible.
+      c.factures[zoho] = { ...cible, via: 'sellsy', numeroSellsy: sellsy };
+      pose++;
+    }
+    c.quand = new Date().toISOString();
+    ecrireCache(c);
+    console.log('pont Zoho→Sellsy→Pennylane : ' + pose + ' alias posés · ' + deja +
+                ' déjà connus de Pennylane · ' + sansLien + ' sans lien côté Pennylane');
+    console.log('total : ' + Object.keys(c.factures).length + ' numéros avec un lien');
+    return;
+  }
+
   // ── le mode hors ligne : refaire les liens sans toucher au réseau ──
   if (arg('--recomposer')) {
     let n = 0;

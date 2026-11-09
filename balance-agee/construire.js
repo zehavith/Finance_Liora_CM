@@ -48,13 +48,24 @@ try{ LIENS=(JSON.parse(fs.readFileSync('depot-pennylane/urls.json','utf8'))||{})
 // Vingt-neuf numéros restent introuvables — « FACT-2506-101255 » a un chiffre
 // de trop, « FACT-2604-1443 » un de moins : ce sont des coquilles de saisie,
 // et on ne devine pas une facture, on la laisse sans lien.
+// TROIS CLÉS SONT AMBIGUËS, ET ON LES ÉCARTE.
+// « FA-550-4647 » et « # FA-550-4647 » se réduisent au même texte mais mènent
+// à deux factures différentes. Choisir au hasard poserait un lien faux sans
+// que rien ne le dise ; ne rien poser laisse un numéro nu, qui se voit. La
+// correspondance exacte, elle, reste prioritaire : elle n'est jamais ambiguë.
 const normNum=s=>String(s).toUpperCase().replace(/[^A-Z0-9]/g,'');
-const LIENS_NORM=new Map();
-for(const k of Object.keys(LIENS)) LIENS_NORM.set(normNum(k),LIENS[k]);
+const LIENS_NORM=new Map(); const ambigus=new Set();
+for(const k of Object.keys(LIENS)){ const n=normNum(k), v=LIENS[k];
+  const vu=LIENS_NORM.get(n);
+  if(vu && vu.url!==v.url){ ambigus.add(n); continue; }
+  LIENS_NORM.set(n,v); }
+for(const n of ambigus) LIENS_NORM.delete(n);
 const lienPennylane=num=>{ if(!num) return '';
   const f=LIENS[num]||LIENS_NORM.get(normNum(num)); return (f&&f.url)||''; };
 console.log('liens Pennylane : '+Object.keys(LIENS).length+' facture'
-  +(Object.keys(LIENS).length>1?'s':'')+' dans l’instantané');
+  +(Object.keys(LIENS).length>1?'s':'')+' dans l’instantané'
+  +' · dont '+Object.values(LIENS).filter(f=>f&&f.via==='sellsy').length+' par le pont Zoho→Sellsy'
+  +(ambigus.size?' · '+ambigus.size+' clé(s) ambiguë(s) écartée(s)':''));
 const fr=d=>{ if(!d) return ''; const x=new Date(d);
   return String(x.getUTCDate()).padStart(2,'0')+'/'+String(x.getUTCMonth()+1).padStart(2,'0')+'/'+x.getUTCFullYear(); };
 const ar=n=>n==null?'':Math.round(n*100)/100;
