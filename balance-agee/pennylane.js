@@ -55,12 +55,28 @@ const { feuille, NOUV } = require('./socle.js');
 const BASE = 'https://app.pennylane.com/api/external/v2';
 const CACHE = 'depot-pennylane/urls.json';
 
-// LE MODÈLE DU LIEN. L'API rend l'identifiant interne de la facture ; elle ne
-// documente nulle part l'adresse sur laquelle un humain clique. Ce modèle est
-// donc le seul endroit à corriger si la forme diffère — et « --recomposer »
-// refait les 17 884 liens sans retoucher au réseau. {societe} et {id} sont
-// remplacés.
-const MODELE = 'https://app.pennylane.com/companies/{societe}/clients/invoices/{id}';
+// LE MODÈLE DU LIEN.
+//
+// L'API rend l'identifiant interne de la facture, mais AUCUNE adresse
+// d'application : son seul champ d'adresse, public_file_url, est un PDF
+// temporaire qui expire en une demi-heure. L'adresse doit donc être composée,
+// et sa forme ne se trouve nulle part dans la documentation — elle vient de la
+// barre d'adresse de Zehavit, le 09/11/2026, facture ouverte à l'écran :
+//
+//   …/companies/22066300/clients/customer_invoices?filter=…&invoice_id=34403524235264
+//     &page=1&sort=-date,-id&subtab=all
+//
+// Deux choses qu'on n'aurait pas devinées : la section s'appelle
+// « customer_invoices » et non « invoices », et la facture s'ouvre par un
+// PARAMÈTRE invoice_id, pas par un segment de chemin. On ne garde que
+// l'essentiel — l'identifiant, et subtab=all pour que la facture soit dans la
+// liste quel que soit son état. Le filtre de dates de son adresse est l'état
+// de SON écran, pas une nécessité : le laisser enfermerait les liens dans une
+// fenêtre de douze mois.
+//
+// C'est le seul endroit à corriger si la forme change, et « --recomposer »
+// refait alors les vingt-deux mille liens sans un seul appel réseau.
+const MODELE = 'https://app.pennylane.com/companies/{societe}/clients/customer_invoices?invoice_id={id}&subtab=all';
 
 // Cinq requêtes par seconde : c'est la limite que Pennylane annonce. On
 // l'espace nous-mêmes au lieu d'attendre le 429, parce qu'un 429 coûte un
