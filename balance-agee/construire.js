@@ -53,15 +53,19 @@ try{ LIENS=(JSON.parse(fs.readFileSync('depot-pennylane/urls.json','utf8'))||{})
 // à deux factures différentes. Choisir au hasard poserait un lien faux sans
 // que rien ne le dise ; ne rien poser laisse un numéro nu, qui se voit. La
 // correspondance exacte, elle, reste prioritaire : elle n'est jamais ambiguë.
+// Et le relevé marque « ambigu » les numéros que PLUSIEURS factures Pennylane
+// vivantes portent — on ne pose rien sur ceux-là non plus.
 const normNum=s=>String(s).toUpperCase().replace(/[^A-Z0-9]/g,'');
 const LIENS_NORM=new Map(); const ambigus=new Set();
 for(const k of Object.keys(LIENS)){ const n=normNum(k), v=LIENS[k];
+  if(v&&v.ambigu) continue;
   const vu=LIENS_NORM.get(n);
   if(vu && vu.url!==v.url){ ambigus.add(n); continue; }
   LIENS_NORM.set(n,v); }
 for(const n of ambigus) LIENS_NORM.delete(n);
 const lienPennylane=num=>{ if(!num) return '';
-  const f=LIENS[num]||LIENS_NORM.get(normNum(num)); return (f&&f.url)||''; };
+  const f=LIENS[num]||LIENS_NORM.get(normNum(num));
+  return (f&&!f.ambigu&&f.url)||''; };
 console.log('liens Pennylane : '+Object.keys(LIENS).length+' facture'
   +(Object.keys(LIENS).length>1?'s':'')+' dans l’instantané'
   +' · dont '+Object.values(LIENS).filter(f=>f&&f.via==='sellsy').length+' par le pont Zoho→Sellsy'

@@ -198,13 +198,34 @@ const lien = (societe, f) => {
 };
 
 // ───────── poser un lien dans le cache ─────────
+//
+// DEUX FACTURES PEUVENT PORTER LE MÊME NUMÉRO. Vingt-deux numéros sont dans
+// ce cas chez Liora, relevés contre l'API : presque toujours une facture
+// vivante et une ou plusieurs ARCHIVÉES, l'archivée étant la version
+// remplacée. La première version de ce code gardait simplement la dernière
+// rencontrée dans la pagination — donc parfois l'archivée, et le lien menait
+// à un document périmé sans que rien ne le dise.
+//
+// La règle, et elle ne devine rien :
+//   · une archivée ne chasse jamais une vivante ;
+//   · une vivante remplace une archivée ;
+//   · deux vivantes, ou deux archivées, et on ne sait pas : le numéro est
+//     marqué ambigu et la construction ne lui posera aucun lien.
+//
 // Rend 1 quand quelque chose a changé, 0 sinon — de quoi compter sans mentir.
 function noterDans(c, f) {
   const num = numeroDe(f);
   const u = lien(c.societe, f);
   if (!num || !u) return 0;
-  if (c.factures[num] && c.factures[num].url === u) return 0;
-  c.factures[num] = { id: f.id ?? null, tiers: clientDe(f), url: u, libelle: libelleDe(f) };
+  const archive = String((f && f.status) || '') === 'archived' || !!(f && f.archived_at);
+  const vu = c.factures[num];
+  if (vu) {
+    if (vu.url === u) return 0;
+    if (archive && !vu.archive) return 0;
+    if (!(!archive && vu.archive)) { vu.ambigu = true; return 0; }
+  }
+  c.factures[num] = { id: f.id ?? null, tiers: clientDe(f), url: u,
+                      libelle: libelleDe(f), archive };
   return 1;
 }
 
