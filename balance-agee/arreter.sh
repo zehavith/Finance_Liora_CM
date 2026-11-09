@@ -28,7 +28,16 @@ for f in Reference-septembre.xlsx complements.json mandats.json parametres.json 
   [ -e "$SRC/$f" ] && ln -s "$SRC/$f" . || true
 done
 echo "=== arrêté au $DATE · $TRAVAIL"
-node "$SRC/construire.js" --arrete "$DATE" 2>&1 | tail -22
+# `tail -22` ne garde que la fin, et la construction en écrit quarante-quatre
+# lignes : tout ce qu'elle dit au début est coupé. L'avertissement « aucun
+# instantané de liens » sort en deuxième ligne — il disparaissait donc, et un
+# arrêté se serait construit sans un seul lien sans que rien ne le dise.
+# On garde la fin comme avant, mais on remonte d'abord ce qui alerte.
+JOURNAL="$TRAVAIL/construction.log"
+set -o pipefail
+node "$SRC/construire.js" --arrete "$DATE" > "$JOURNAL" 2>&1
+grep -E "ATTENTION|ÉCHEC|ERREUR" "$JOURNAL" || true
+tail -22 "$JOURNAL"
 mkdir -p "$SRC/art/arretes"
 cp art/balance.json "$SRC/art/arretes/balance-$DATE.json"
 echo "déposé : art/arretes/balance-$DATE.json  ($(du -h "$SRC/art/arretes/balance-$DATE.json" | cut -f1))"
