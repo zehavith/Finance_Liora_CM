@@ -36,8 +36,13 @@ const ok = (quoi, bon, dit) => {
   p.on('console', m => { if (m.type() === 'error') errs.push('CONS: ' + m.text().slice(0, 200)); });
 
   // Pennylane n'est pas joignable depuis le navigateur, et on n'a pas besoin
-  // qu'il le soit : on veut seulement l'adresse demandée.
-  await ctx.route('**://app.pennylane.com/**', r => r.abort());
+  // qu'il le soit : on veut seulement l'adresse demandée. On SERT une page
+  // bouchon au lieu de couper — une requête coupée fait atterrir l'onglet sur
+  // chrome-error://chromewebdata/, et l'adresse demandée est alors perdue.
+  await ctx.route('**://app.pennylane.com/**', r => r.fulfill({
+    status: 200, contentType: 'text/html; charset=utf-8',
+    body: '<!doctype html><meta charset=utf-8><title>facture</title>bouchon',
+  }));
 
   await p.goto('file://' + D + '/Balance-agee-Liora.html', { waitUntil: 'load' });
   await p.waitForTimeout(5000);
