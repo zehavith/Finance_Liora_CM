@@ -39,7 +39,20 @@ console.log('mandats GoCardless : '+MANDATS.length+' client'+(MANDATS.length>1?'
 // sort vide et le tableau garde ses numéros sans lien.
 let LIENS={};
 try{ LIENS=(JSON.parse(fs.readFileSync('depot-pennylane/urls.json','utf8'))||{}).factures||{}; }catch(e){}
-const lienPennylane=num=>{ const f=num&&LIENS[num]; return (f&&f.url)||''; };
+// Les libellés du grand livre écrivent parfois le numéro sans ses séparateurs
+// — « FACT260414447 » pour « FACT-2604-14447 » — ou avec des espaces à la
+// place des tirets. Cent quarante-six numéros sont dans ce cas. On rapproche
+// donc aussi sur les seuls caractères alphanumériques : mêmes chiffres, même
+// ordre, et c'est sans risque ici puisque les 22 866 numéros rendus par
+// Pennylane ne produisent AUCUNE collision sous cette normalisation.
+// Vingt-neuf numéros restent introuvables — « FACT-2506-101255 » a un chiffre
+// de trop, « FACT-2604-1443 » un de moins : ce sont des coquilles de saisie,
+// et on ne devine pas une facture, on la laisse sans lien.
+const normNum=s=>String(s).toUpperCase().replace(/[^A-Z0-9]/g,'');
+const LIENS_NORM=new Map();
+for(const k of Object.keys(LIENS)) LIENS_NORM.set(normNum(k),LIENS[k]);
+const lienPennylane=num=>{ if(!num) return '';
+  const f=LIENS[num]||LIENS_NORM.get(normNum(num)); return (f&&f.url)||''; };
 console.log('liens Pennylane : '+Object.keys(LIENS).length+' facture'
   +(Object.keys(LIENS).length>1?'s':'')+' dans l’instantané');
 const fr=d=>{ if(!d) return ''; const x=new Date(d);
