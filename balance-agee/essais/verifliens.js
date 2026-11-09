@@ -87,6 +87,34 @@ const ok = (quoi, bon, dit) => {
      ficheOuverte !== ficheAvant && ficheOuverte.length > 0);
 
   // ── 4. une facture SANS lien reste un numéro nu ──
+  //
+  // On va CHERCHER une facture sans lien plutôt que d'espérer en croiser une :
+  // la première page du tableau peut très bien n'en porter aucune, et la
+  // vérification ne mesurerait alors rien tout en se croyant faite.
+  const sansLien = (() => {
+    try {
+      const d = JSON.parse(fs.readFileSync(D + '/art/balance.json', 'utf8'));
+      const C = {}; d.cols.forEach((x, i) => C[x] = i);
+      const v = (l, n) => String(d.dico[l[C[n]]] ?? '');
+      for (const l of d.lignes) {
+        const f = v(l, 'N° de facture');
+        if (f && !v(l, 'Lien Pennylane')) return f;
+      }
+    } catch (e) { /* pas de balance sous la main */ }
+    return null;
+  })();
+  if (sansLien) {
+    await p.fill('#q', sansLien);
+    await p.waitForTimeout(1500);
+    const nu = await p.evaluate(() => {
+      const c = (document.querySelector('#cale .lig') || {}).children;
+      return c && c[0] ? { a: !!c[0].querySelector('a'), txt: c[0].textContent.trim() } : null;
+    });
+    ok('une facture sans lien reste un numéro nu', !!nu && !nu.a, nu ? sansLien + ' → « ' + nu.txt + ' »' : 'ligne introuvable');
+  } else {
+    console.log('  (aucune facture sans lien dans ces données : rien à éprouver ici)');
+  }
+
   await p.fill('#q', '');
   await p.waitForTimeout(1500);
   const nus = await p.evaluate(nums => {
@@ -100,7 +128,6 @@ const ok = (quoi, bon, dit) => {
     return out;
   }, numeros);
   ok('aucune ancre vide (href="")', nus.href_vide === 0, JSON.stringify(nus));
-  ok('les factures sans lien restent des numéros nus', nus.sansLien > 0, JSON.stringify(nus));
 
   ok('aucune erreur de page', errs.length === 0, errs.join(' · ') || 'aucune');
 
