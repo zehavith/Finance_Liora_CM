@@ -42,18 +42,24 @@ console.log('art-cac/tableur.min.js copié');
 // minute et il y en a sept.
 const {execFileSync}=require('child_process');
 const TRANSFORMER=path.join(__dirname,'transformer.js');
-// LES COLONNES FONT PARTIE DE L'EMPREINTE, et ce n'est pas du zèle.
+// L'EMPREINTE SE PREND SUR L'HORODATAGE, PAS SUR LA DATE. Deux fois le même
+// piège le même jour, et la seconde fois après une première correction.
 //
-// Le 09/11/2026, une 56e colonne — « Lien Pennylane » — est apparue dans
-// art/balance.json. Les sept fichiers CAC sont restés à 55, et ce script a
-// annoncé « empreintes en accord » : `genere` est une DATE, « 09/11/2026 »,
-// pas une heure, et la construction précédente était du même jour. L'empreinte
-// n'avait donc pas bougé alors que les données, si. La page CAC serait partie
-// sans aucun lien, sans que rien ne le dise — exactement la panne muette que
-// la vérification d'accord, quelques lignes plus bas, est censée empêcher.
+// `genere` est une DATE — « 09/11/2026 » — et deux constructions du même jour
+// la partagent. Une 56e colonne est d'abord apparue dans art/balance.json
+// sans que les sept fichiers CAC bougent ; ajouter les colonnes à l'empreinte
+// a réparé ce cas-là, et seulement celui-là. Quand les liens ont ensuite
+// changé de CONTENU sans changer de structure — même nombre de lignes, mêmes
+// colonnes, même jour — l'empreinte est restée identique et ce script a de
+// nouveau annoncé « empreintes en accord » sur des données périmées.
+//
+// Le JSON porte `genereISO`, horodaté à la milliseconde. C'est lui qui fait
+// foi : deux constructions distinctes ne peuvent pas le partager, quoi qu'il
+// arrive aux colonnes, aux lignes ou à la date. On garde les autres champs,
+// qui ne coûtent rien et disent ce qui a bougé.
 const empreinte=f=>{ try{ const d=JSON.parse(fs.readFileSync(f,'utf8'));
-  return JSON.stringify({n:(d.lignes||[]).length, a:d.arrete||'', g:d.genere||'',
-                         c:(d.cols||[]).join('|')});
+  return JSON.stringify({n:(d.lignes||[]).length, a:d.arrete||'',
+                         g:d.genereISO||d.genere||'', c:(d.cols||[]).join('|')});
 }catch(e){ return null; } };
 
 const paires=[[ICI('art/balance.json'), ICI('art-cac/balance.json')]];
