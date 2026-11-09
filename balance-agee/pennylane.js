@@ -181,6 +181,17 @@ const lien = (societe, f) => {
   return MODELE.replace('{societe}', String(societe)).replace('{id}', String(id));
 };
 
+// ───────── poser un lien dans le cache ─────────
+// Rend 1 quand quelque chose a changé, 0 sinon — de quoi compter sans mentir.
+function noterDans(c, f) {
+  const num = numeroDe(f);
+  const u = lien(c.societe, f);
+  if (!num || !u) return 0;
+  if (c.factures[num] && c.factures[num].url === u) return 0;
+  c.factures[num] = { id: f.id ?? null, tiers: clientDe(f), url: u, libelle: libelleDe(f) };
+  return 1;
+}
+
 // ───────── le cache ─────────
 function lireCache() {
   try { return JSON.parse(fs.readFileSync(CACHE, 'utf8')); } catch (e) { return null; }
@@ -241,6 +252,41 @@ function tiersDuGrandLivre() {
   // mauvais nom ne rend pas d'erreur : il rend la liste NON filtrée, donc
   // toutes les factures de la société, et on croirait avoir réussi. On vérifie
   // donc que les factures rendues portent bien le client demandé.
+  // LE BALAYAGE COMPLET, QUAND ON LE DEMANDE.
+  //
+  // Lister les factures d'un tiers coûte un appel par tiers : 3 683 appels, un
+  // quart d'heure. Lister TOUTES les factures coûte une page par centaine, soit
+  // quelques centaines d'appels — la même matière, dix fois plus vite, et sans
+  // dépendre du nom du paramètre de filtre. On s'en sert d'abord, et le mode
+  // par tiers reste là pour compléter ce qui manquerait.
+  if (arg('--balayage')) {
+    const avant = Object.keys(c.factures).length;
+    let n = 0, lues = 0;
+    const vus = new Set();
+    let curseur = null;
+    for (;;) {
+      const u = new URL(BASE + '/customer_invoices');
+      u.searchParams.set('limit', '100');
+      if (curseur) u.searchParams.set('cursor', curseur);
+      const r = await appeler(u.toString());
+      const items = (r && r.items) || [];
+      lues += items.length;
+      for (const f of items) n += noterDans(c, f);
+      const suite = r && r.next_cursor;
+      const encore = r && typeof r.has_more === 'boolean' ? r.has_more : !!suite;
+      if (!encore || !suite || !items.length || vus.has(String(suite))) break;
+      vus.add(String(suite));
+      curseur = suite;
+      if (vus.size % 20 === 0) { ecrireCache(c); console.log('  ' + lues + ' factures lues · ' + n + ' liens'); }
+    }
+    c.quand = new Date().toISOString();
+    c.methode = 'balayage complet';
+    ecrireCache(c);
+    console.log(lues + ' factures lues · ' + n + ' liens posés (' + avant + ' → ' +
+                Object.keys(c.factures).length + ') · déposé dans ' + CACHE);
+    return;
+  }
+
   if (!c.filtre) {
     const sonde = reste[0];
     const clause = JSON.stringify([{ field: 'customer_id', operator: 'eq', value: sonde }]);
@@ -273,14 +319,7 @@ function tiersDuGrandLivre() {
     ecrireCache(c);
   }
 
-  const noter = f => {
-    const num = numeroDe(f);
-    const u = lien(c.societe, f);
-    if (!num || !u) return 0;
-    if (c.factures[num] && c.factures[num].url === u) return 0;
-    c.factures[num] = { id: f.id ?? null, tiers: clientDe(f), url: u, libelle: libelleDe(f) };
-    return 1;
-  };
+  const noter = f => noterDans(c, f);
 
   let n = 0, fait = 0;
   const limite = Number(valeur('--limite') || 0);
