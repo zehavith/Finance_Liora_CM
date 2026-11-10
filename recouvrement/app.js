@@ -3880,17 +3880,46 @@
             });
     }
 
+    // UNE DATE ÉCRITE EN TEXTE SE TRIE COMME DU TEXTE, 10/11/2026 : « je n'arrive
+    // pas à trier comme il faut ds l'export ».
+    //
+    // La colonne Échéance sortait en chaînes « 04/11/2026 », et Excel les range
+    // par ordre alphabétique : le 03/12/2025 passait avant le 04/11/2026, parce
+    // que « 03 » vient avant « 04 ». Aucun tri chronologique n'était possible, et
+    // rien ne le disait — une colonne de dates mal triée ressemble à une colonne
+    // de dates.
+    //
+    // On pose donc la vraie date dans la cellule. SheetJS en fait un numéro de
+    // série, qu'Excel trie chronologiquement — mais il l'affiche à l'américaine
+    // (« 11/4/26 »), et c'est ce format-là qu'il faut corriger après coup :
+    // json_to_sheet ne prend pas de format. Une cellule sans date garde son
+    // « à compléter » et se range à part, ce qui est le bon comportement.
+    //
+    // Mesuré avant d'écrire : texte → type « s », non triable ; vraie date →
+    // type « n » à 46330, affichée 04/11/2026, et aucun jour ne se décale.
+    function datesTriables(feuille) {
+        for (const adr of Object.keys(feuille)) {
+            if (adr[0] === '!') continue;
+            const c = feuille[adr];
+            // Seule une date reçoit un format de json_to_sheet : un montant n'en
+            // a aucun. C'est donc à cela qu'on la reconnaît, sans se fier au nom
+            // de la colonne.
+            if (c && c.t === 'n' && typeof c.z === 'string' && /[dmy]/i.test(c.z)) c.z = 'dd/mm/yyyy';
+        }
+        return feuille;
+    }
+
     /** Une liste de factures en Excel, sans contexte particulier. */
     function exporterFacturesSimple(rows, nom) {
         const reste = f => (f.resteDu != null && f.resteDu > 0) ? f.resteDu : (f.montant || 0);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(f => ({
+        XLSX.utils.book_append_sheet(wb, datesTriables(XLSX.utils.json_to_sheet(rows.map(f => ({
             'Facture': f.numero, 'Client': f.client,
             'Tableau': f.board || '', 'Groupe': f.groupe || f.groupeOrigine || '',
             'Financement': f.financement ? R.getRule(f.financement, state.rules).label : '',
             'Montant': arrondi(f.montant || 0),
             'Reste dû': arrondi(reste(f)),
-            'Date de facture': f.dateFacture ? U.dateFR(f.dateFacture) : '',
+            'Date de facture': f.dateFacture || '',
             // LES DATES DE FORMATION, 10/11/2026 : « j'aimerais une colonne début
             // et fin de formation, échéance ds l'export ».
             //
@@ -3903,13 +3932,13 @@
             // Une date absente le dit : c'est précisément quand la formation
             // n'est pas datée que l'échéance se replie sur le libellé de la
             // ligne, et une cellule vide laisserait croire à un oubli de l'export.
-            'Début de formation': f.dateDebutFormation ? U.dateFR(f.dateDebutFormation) : 'à compléter',
-            'Fin de formation': f.dateFinFormation ? U.dateFR(f.dateFinFormation) : 'à compléter',
-            'Échéance': f.dateEcheance ? U.dateFR(f.dateEcheance) : 'à qualifier',
+            'Début de formation': f.dateDebutFormation || 'à compléter',
+            'Fin de formation': f.dateFinFormation || 'à compléter',
+            'Échéance': f.dateEcheance || 'à qualifier',
             'Jours de retard': f.retardJours == null ? '' : f.retardJours,
             'État': f.etat || '',
             'Pourquoi': f.motif || '',
-        }))), 'Factures');
+        })))), 'Factures');
         const fichier = String(nom).replace(/[^\w\u00C0-\u024F-]+/g, '_').slice(0, 50);
         XLSX.writeFile(wb, `${fichier}_${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
