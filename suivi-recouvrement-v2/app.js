@@ -261,7 +261,8 @@
         d += (pen ? 'L' : 'M') + x.toFixed(2) + ' ' + y.toFixed(2) + ' '; pen = true;
         if (i === s.vals.length - 1 || s.dots) dots += '<circle cx="' + x.toFixed(2) + '%" cy="' + y.toFixed(2) + '%" r="' + (s.w > 2 ? 4 : 2.6) + '" style="fill:' + s.c + '"><title>' + esc(s.n + ' · ' + labels[i] + ' : ' + f(v)) + '</title></circle>';
       });
-      return '<svg class="lines" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="' + d + '" vector-effect="non-scaling-stroke" style="fill:none;stroke:' + s.c + ';stroke-width:' + (s.w || 1.6) + ';stroke-dasharray:' + (s.dash || 'none') + '"/></svg><svg class="lines">' + dots + '</svg>';
+      var hit = s.fin ? '<path class="hit" data-fin="' + esc(s.fin) + '" d="' + d + '" vector-effect="non-scaling-stroke"><title>' + esc(s.n) + ' : cliquer pour filtrer la page</title></path>' : '';
+      return '<svg class="lines" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="' + d + '" vector-effect="non-scaling-stroke" style="fill:none;stroke:' + s.c + ';stroke-width:' + (s.w || 1.6) + ';stroke-dasharray:' + (s.dash || 'none') + '"/>' + hit + '</svg><svg class="lines">' + dots + '</svg>';
     }).join('');
     return '<div class="chart">' + yAxis(mx, f) + '<div class="plot">' + paths + '</div><div class="xax">' + labels.map(function (l) { return '<span>' + esc(l) + '</span>'; }).join('') + '</div></div>';
   }
@@ -299,7 +300,7 @@
   }
 
   /* ═════════════════ PILOTAGE ═════════════════ */
-  var FIN_COLORS = { 'Région / Transition / Agefiph': 'var(--c5)', 'Financement personnel': 'var(--c2)', 'France Travail': 'var(--g1)', 'OPCO': 'var(--c1)', 'Entreprise': 'var(--c4)', 'CPF': 'var(--g2)' };
+  var FIN_COLORS = { 'Entreprise': 'var(--f1)', 'OPCO': 'var(--f2)', 'Financement personnel': 'var(--f3)', 'CPF': 'var(--f4)', 'France Travail': 'var(--f5)', 'Région / Transition / Agefiph': 'var(--f6)' };
 
   function renderPilotage() {
     var G = S.gl, n = S.idx, dates = G.dates, m = mOf(n);
@@ -362,7 +363,7 @@
     }).filter(function (s) { return s.last != null && (S.fin === 'all' || s.n === S.fin); });
     degr.forEach(function (s) { s.dd = s.last - s.first; });
     degr.sort(function (a, b) { return (b.dd || 0) - (a.dd || 0); });
-    degr.forEach(function (s, i) { s.w = i < 2 && s.dd > 3 ? 2.6 : 1.5; if (!(i < 2 && s.dd > 3)) s.c = ['var(--g1)', 'var(--g2)', 'var(--g3)', 'var(--g4)', 'var(--g2)', 'var(--g3)'][i]; });
+    degr.forEach(function (s, i) { s.w = i < 2 && s.dd > 3 ? 3 : 1.8; s.fin = s.n; });
 
     // 3. Où se loge le retard
     var heatRows = N.FINANCEURS.concat(['Interne (Allemagne)', 'Non affecté']).map(function (f) {
@@ -464,7 +465,7 @@
       legend([['Non échu', 'var(--c6)'], ['Échu 0-90 j', 'var(--c4)'], ['Échu 91-180 j', 'var(--c2)'], ['Échu > 180 j', 'var(--c5)']]) + stackChart(encCols, function (v) { return v ? fmt(v / 1e6, 1) + ' M€' : '0'; }) + '<p class="note">' + encNote + '</p></section>' +
       '<section class="card"><div class="sh"><div><h2><span class="n">2</span>Qui se dégrade</h2><p>Part des factures arrivées à échéance dans le mois qui sont tombées en retard (réglées après l’échéance, ou toujours impayées), par financeur. Échéance calculée selon les règles de la v1 ; un point porte sur au moins cinq factures échues. Une courbe qui monte est un financeur qui se dégrade.</p></div></div>' +
       (degr.length ? lineChart(degr.slice().reverse(), cohMonths.map(function (mm, i) { return mLabel(mm, i === 0 || i === cohMonths.length - 1); }), function (v) { return fmt(v, 0) + ' %'; }, { max: 100 }) +
-        '<div class="series">' + degr.map(function (s) { return '<div class="r"><i class="sw" style="background:' + s.c + '"></i><span>' + esc(s.n) + '</span><span class="num">' + fmt(s.last, 0) + ' %</span><span class="num" style="color:' + (s.dd >= 5 ? 'var(--bad)' : s.dd <= -5 ? 'var(--good)' : 'var(--muted)') + '">' + sgn(s.dd, 0) + ' pts sur 12 mois</span></div>'; }).join('') + '</div>'
+        '<div class="series">' + degr.map(function (s) { return '<button class="r fin-pick" data-fin="' + esc(s.n) + '" aria-pressed="' + (S.fin === s.n) + '" title="Filtrer la page sur ' + esc(s.n) + '"><i class="sw" style="background:' + s.c + '"></i><span>' + esc(s.n) + '</span><span class="num">' + fmt(s.last, 0) + ' %</span><span class="num" style="color:' + (s.dd >= 5 ? 'var(--bad)' : s.dd <= -5 ? 'var(--good)' : 'var(--muted)') + '">' + sgn(s.dd, 0) + ' pts sur 12 mois</span></button>'; }).join('') + '</div><p class="note">' + (S.fin === 'all' ? 'Cliquez une courbe ou une ligne de la légende pour filtrer toute la page sur ce financeur.' : 'Page filtrée sur ' + esc(S.fin) + '. <button class="btn fin-pick" data-fin="' + esc(S.fin) + '">Retirer le filtre</button>') + '</p>'
         : '<div class="empty">Pas assez de facturation sur la période pour tracer ces courbes.</div>') + '</section>' +
       '</div>' +
       '<section class="card"><div class="sh"><div><h2><span class="n">3</span>Où se loge le retard</h2><p>En k€, au ' + dFR(dates[n]) + '. Plus la case est foncée, plus le montant pèse. Le DSO se lit contre le délai propre à chaque financeur (cibles dans Réglages).</p></div></div>' + heatHtml + '</section>' +
@@ -1034,12 +1035,12 @@
   document.addEventListener('change', function (ev) {
     var t = ev.target;
     if (t.id === 'f-idx') { S.idx = +t.value; render(); }
-    else if (t.id === 'f-fin') { S.fin = t.value; render(); }
+    else if (t.id === 'f-fin') { S.fin = t.value; if (N.FINANCEURS.indexOf(t.value) >= 0 || t.value === 'all') S.opFin = t.value; render(); }
     else if (t.id === 'f-ent') { S.ent = t.value; render(); }
     else if (t.id === 'o-month') { S.opMonth = t.value; S._fx = null; render(); }
     else if (t.id === 'o-ent') { S.opEnt = t.value; render(); }
     else if (t.id === 'o-svc') { S.opSvc = t.value; if (t.value !== 'all') S.opFile = t.value; render(); }
-    else if (t.id === 'o-fin') { S.opFin = t.value; render(); }
+    else if (t.id === 'o-fin') { S.opFin = t.value; S.fin = t.value; render(); }
     else if (t.dataset.group != null) { var g = N.GROUP_FILE[t.dataset.group]; if (t.value === g) delete CFG.overrides[t.dataset.group]; else CFG.overrides[t.dataset.group] = t.value; saveCfg(); toast('Classement enregistré.'); }
     else if (t.dataset.dso) { CFG.dsoCible[t.dataset.dso] = +t.value || 0; saveCfg(); }
     else if (t.dataset.fileCible) { CFG.cibleFile[t.dataset.fileCible] = +t.value || 0; saveCfg(); }
@@ -1052,6 +1053,8 @@
     else if (t.id === 'comment') { lsSet('comment:' + mOf(S.idx) + ':' + S.fin + ':' + S.ent, t.value); }
   });
   document.addEventListener('click', function (ev) {
+    var pf = ev.target.closest('[data-fin]');
+    if (pf) { var nf = S.fin === pf.getAttribute('data-fin') ? 'all' : pf.getAttribute('data-fin'); S.fin = nf; S.opFin = nf; S._fx = null; render(); toast(nf === 'all' ? 'Filtre financeur retiré.' : 'Page filtrée sur ' + nf + '.'); return; }
     var t = ev.target.closest('button,a'); if (!t) return;
     if (t.dataset.cohort) { S.cohort = t.dataset.cohort; render(); }
     else if (t.dataset.file && (t.classList.contains('fcard') || t.getAttribute('role') === 'tab')) { S.opFile = t.dataset.file; render(); if (t.classList.contains('fcard')) { var tl = document.querySelector('[aria-label="Files de travail"]'); if (tl) tl.scrollIntoView({ block: 'start' }); } }
