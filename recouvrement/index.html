@@ -836,13 +836,19 @@
                     <input type="date" id="pil-au" aria-label="Au">
                 </span>
             </div>
+            <!-- M POUR LES MOIS, 10/11/2026 : « Filtre comparaison, m et non m
+                 pour les mois » puis « oui M-1 pour les mois ». Les trois
+                 premières options comparaient des MOIS sous l'étiquette N-1,
+                 qui désigne un exercice ; la vignette, elle, annonçait déjà
+                 « vs M-1 ». Le libellé dit maintenant la même lettre que le
+                 calcul. Les trois suivantes comparent des ANNÉES et gardent N. -->
             <div class="pil-filtre">
                 <label for="pil-comparaison">Comparaison</label>
                 <select id="pil-comparaison">
                     <option value="">Aucune</option>
-                    <option value="M-1">Mois N-1</option>
-                    <option value="M-2">Mois N-2</option>
-                    <option value="M-3">Mois N-3</option>
+                    <option value="M-1">Mois M-1</option>
+                    <option value="M-2">Mois M-2</option>
+                    <option value="M-3">Mois M-3</option>
                     <option value="A-1">Année N-1</option>
                     <option value="A-2">Année N-2</option>
                     <option value="A-3">Année N-3</option>
