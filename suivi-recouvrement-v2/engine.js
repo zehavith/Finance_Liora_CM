@@ -31,7 +31,11 @@
         n: f.numero, de: iso(f.dateEcheance), eb: f.echeanceBase || '', rl: f.regleLabel || '', mt: f.montant,
         paid: paid, src: av ? 'avoir' : pm ? 'monday' : reg ? 'gl' : vir ? 'vir' : '',
         dp: paid || av ? ((g && g.dp) || iso(f.datePaiementEffective)) : undefined,
-        df: iso(f.dateFacture), op: f.role !== 'payees' || (f.nbLignesOperationnelles || 0) > 0
+        df: iso(f.dateFacture), op: f.role !== 'payees' || (f.nbLignesOperationnelles || 0) > 0,
+        // Preuve d'encaissement : gs = état au grand livre (r réglée, v virement,
+        // a avoir, o ouverte, '' absente) ; pe = date de règlement estimée
+        // (date de contrôle Monday) faute de date réelle.
+        gs: g ? g.s : '', pe: !(g && g.dp && g.s !== 'o') && !!f.paiementEstime
       };
     });
     return out;

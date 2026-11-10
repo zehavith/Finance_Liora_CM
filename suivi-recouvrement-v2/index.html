@@ -89,6 +89,8 @@ section.card{background:var(--surface);border:1px solid var(--line);border-radiu
 .col:hover{filter:brightness(1.08)}
 .xax{grid-column:2;display:flex;gap:6px;padding:4px 4px 0;font-size:11px;color:var(--muted)}
 .xax span{flex:1;text-align:center;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.xax.xpos{position:relative;height:20px;padding:0;margin:4px 4px 0}
+.xax.xpos span{position:absolute;transform:translateX(-50%);flex:none;overflow:visible}
 .grp{flex:1;display:flex;align-items:flex-end;gap:3px;height:100%;min-width:0}
 .bar{flex:1;position:relative;border-radius:3px 3px 0 0;min-height:1px}
 .bar span{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);font-size:10px;color:var(--muted);font-family:var(--mono);white-space:nowrap;padding-bottom:2px}
@@ -115,7 +117,7 @@ td.r,th.r{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-
 tr.tot td{font-weight:650;background:var(--sunk)}
 tr.subrow td{font-size:12.5px;color:var(--muted)}
 tr.subrow td:first-child{padding-left:30px}
-.tw td:first-child{min-width:190px}
+.tw td:first-child{min-width:150px}
 .tog{background:none;border:0;padding:0;cursor:pointer;font-weight:600;display:inline-flex;gap:6px;align-items:center;text-align:left}
 .heat td.h{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .empty{padding:22px;border:1px dashed var(--axis);border-radius:10px;color:var(--muted);text-align:center;background:var(--bg)}

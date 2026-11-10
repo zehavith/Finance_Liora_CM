@@ -264,7 +264,7 @@
       var hit = s.fin ? '<path class="hit" data-fin="' + esc(s.fin) + '" d="' + d + '" vector-effect="non-scaling-stroke"><title>' + esc(s.n) + ' : cliquer pour filtrer la page</title></path>' : '';
       return '<svg class="lines" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="' + d + '" vector-effect="non-scaling-stroke" style="fill:none;stroke:' + s.c + ';stroke-width:' + (s.w || 1.6) + ';stroke-dasharray:' + (s.dash || 'none') + '"/>' + hit + '</svg><svg class="lines">' + dots + '</svg>';
     }).join('');
-    return '<div class="chart">' + yAxis(mx, f) + '<div class="plot">' + paths + '</div><div class="xax">' + labels.map(function (l) { return '<span>' + esc(l) + '</span>'; }).join('') + '</div></div>';
+    return '<div class="chart">' + yAxis(mx, f) + '<div class="plot">' + paths + '</div><div class="xax xpos">' + labels.map(function (l, i) { return '<span style="left:' + (n === 1 ? 50 : i / (n - 1) * 100).toFixed(2) + '%">' + esc(l) + '</span>'; }).join('') + '</div></div>';
   }
   function hbars(rows, colors, f) {
     var mx = Math.max.apply(null, rows.map(function (r) { return sum(r.v); }).concat([1]));
@@ -384,11 +384,29 @@
       { right: [1, 2, 3, 4, 5, 6, 7, 8], cls: 'heat' });
 
     // 4. Cohortes
-    var tabs = N.FINANCEURS.map(function (f) { return '<button role="tab" aria-selected="' + (S.cohort === f) + '" data-cohort="' + esc(f) + '">' + esc(f) + '</button>'; }).join('');
-    var by = vintageBy(S.cohort), AGES = [1, 2, 3, 4, 6], AL = ['30 j', '60 j', '90 j', '120 j', '180 j'];
-    var cohorts = []; for (var cc = 6; cc >= 1; cc--) cohorts.push(addM(m, -cc));
+    // Cohortes sur l’argent effectivement reçu : règlement lettré au grand
+    // livre ou virement reçu (date réelle), ou tableau « Factures payées » pour
+    // une facture antérieure au grand livre. Une facture « payée » dans Monday
+    // mais ouverte au grand livre ne compte pas. Avoirs exclus.
+    var cohFin = N.FINANCEURS.indexOf(S.fin) >= 0 ? S.fin : S.cohort;
+    var tabs = N.FINANCEURS.map(function (f) { return '<button role="tab" aria-selected="' + (cohFin === f) + '" data-cohort="' + esc(f) + '">' + esc(f) + '</button>'; }).join('');
+    var AGES = [1, 2, 3, 4, 6], AL = ['30 j', '60 j', '90 j', '120 j', '180 j'], by = {}, nEst = 0, nNonRecu = 0;
+    function recu(x) { return x.paid && x.dp && (x.gs === 'r' || x.gs === 'v' || (x.gs === '' && x.src === 'monday')); }
+    calcList().forEach(function (x) {
+      if (!x.df || x.src === 'avoir' || x.fin !== cohFin) return;
+      var de = /allemagne|interco/i.test(x.rl || ''); if (S.ent === 'de' && !de) return; if (S.ent === 'fr' && de) return;
+      var o = by[x.df.slice(0, 7)] || (by[x.df.slice(0, 7)] = { fac: 0, items: [] });
+      o.fac += x.mt; o.items.push(x);
+    });
+    var refMo = REF.slice(0, 7), cohorts = []; for (var cc = 6; cc >= 1; cc--) cohorts.push(addM(refMo, -cc));
     var refN1 = addM(cohorts[0], -12);
-    function rate(mm, age) { var o = by[mm]; if (!o || !o.fac || o.p[age] == null || !o.p.some(function (v) { return v > 0; })) return null; var ageReached = (+m.slice(0, 4) * 12 + +m.slice(5, 7)) - (+mm.slice(0, 4) * 12 + +mm.slice(5, 7)); return ageReached >= age ? Math.min(100, o.p[age] / o.fac * 100) : null; }
+    function rate(mm, age) {
+      var o = by[mm]; if (!o || !o.fac) return null;
+      if (days(mm + '-' + String(dim(mm)).padStart(2, '0'), REF) < age * 30) return null;
+      var p = 0; o.items.forEach(function (x) { if (recu(x) && days(x.df, x.dp) <= age * 30) p += x.mt; });
+      return Math.min(100, p / o.fac * 100);
+    }
+    cohorts.concat([refN1]).forEach(function (mm) { (by[mm] ? by[mm].items : []).forEach(function (x) { if (recu(x) && x.pe) nEst++; if (x.paid && !recu(x)) nNonRecu++; }); });
     var ALP = [28, 40, 52, 66, 82, 100];
     var vSeries = cohorts.map(function (mm, i) { return { n: mLabel(mm, true), c: mix('var(--c2)', ALP[i]), w: i === 5 ? 2.6 : 1.6, dots: true, vals: AGES.map(function (a) { return rate(mm, a); }) }; });
     vSeries.push({ n: mLabel(refN1, true) + ' (référence N-1)', c: 'var(--c1)', w: 2, dash: '5 4', dots: true, vals: AGES.map(function (a) { return rate(refN1, a); }) });
@@ -469,11 +487,11 @@
         : '<div class="empty">Pas assez de facturation sur la période pour tracer ces courbes.</div>') + '</section>' +
       '</div>' +
       '<section class="card"><div class="sh"><div><h2><span class="n">3</span>Où se loge le retard</h2><p>En k€, au ' + dFR(dates[n]) + '. Plus la case est foncée, plus le montant pèse. Le DSO se lit contre le délai propre à chaque financeur (cibles dans Réglages).</p></div></div>' + heatHtml + '</section>' +
-      '<section class="card"><div class="sh"><div><h2><span class="n">4</span>Les cohortes de facturation</h2><p>Part encaissée de chaque mois de facturation à 30, 60, 90, 120 et 180 jours. Seuls les âges atteints par toute la cohorte sont affichés.</p></div>' +
+      '<section class="card"><div class="sh"><div><h2><span class="n">4</span>Les cohortes de facturation</h2><p>Part du montant facturé chaque mois effectivement reçue à 30, 60, 90, 120 et 180 jours de la date de facture. Seuls les âges atteints par toute la cohorte sont affichés.</p></div>' +
       '<div class="seg" role="tablist" aria-label="Financeur des cohortes">' + tabs + '</div></div>' +
       '<div class="grid2"><div class="sub">' + lineChart(vSeries, AL, function (v) { return fmt(v, 0) + ' %'; }, { max: 100 }) + legend(vSeries.map(function (s) { return [s.n, s.c]; })) + '</div>' +
       '<div style="display:flex;flex-direction:column;gap:10px;min-width:0">' + table(['Cohorte', '30 j', '60 j', '90 j', '120 j', '180 j', 'vs N-1'], vRows, { right: [1, 2, 3, 4, 5, 6] }) +
-      '<p class="note">L’écart N-1 compare chaque cohorte au même mois de l’an dernier, au dernier âge atteint. Une cohorte en dessous de sa référence rentre moins vite.</p></div></div></section>' +
+      '<p class="note">Reçu = règlement lettré au grand livre ou virement reçu sur Pennylane, à leur date réelle ; pour une facture antérieure au grand livre, le tableau « Factures payées » et sa date de paiement' + (nEst ? ' (estimée par la date de contrôle pour ' + fmt(nEst) + ' factures)' : '') + '. ' + (nNonRecu ? fmt(nNonRecu) + ' factures « payées » dans Monday mais toujours ouvertes au grand livre ne sont pas comptées. ' : '') + 'Avoirs exclus. L’écart N-1 compare chaque cohorte au même mois de l’an dernier, au dernier âge atteint.</p></div></div></section>' +
       '<section class="card"><div class="sh"><div><h2><span class="n">5</span>Le risque B2C</h2><p>Financement personnel : l’échu au grand livre et les dossiers ouverts dans Monday.</p></div></div>' +
       '<div class="kpis">' + [
         kpiCard({ l: 'Échu financement personnel', v: meur(fp.echu), sub: fmt(pct(fp.echu, fp.total), 0) + ' % de son encours', icon: ICON.alert, tone: TONE.bad, chips: fpPrev ? deltaChip('vs N-1', (fp.echu / fpPrev.echu - 1) * 100, ' %', true) : '' }),
@@ -797,6 +815,7 @@
     var C = [
       { k: 'paid', t: 'Réglées mais encore dans une étape Monday', d: 'La facture est réglée (tableau « Factures payées » ou lettrée au grand livre) et figure encore dans un groupe de travail : à sortir du circuit. Elle n’est plus comptée dans les étapes.', rows: all.filter(function (o) { return o.st2 === 'monday' || o.st2 === 'gl'; }), sev: 'c-bad' },
       { k: 'avoir', t: 'Annulées par avoir mais encore dans une étape Monday', d: 'Soldées par un avoir au grand livre, sans règlement : rien n’est rentré, rien n’est plus dû. Exclues des chiffres, comme dans la v1.', rows: all.filter(function (o) { return o.st2 === 'avoir'; }), sev: 'c-warn' },
+      { k: 'nonrecu', t: 'Payées dans Monday, toujours ouvertes au grand livre', d: 'La facture est dans le tableau « Factures payées » mais le grand livre ne montre ni règlement lettré ni virement reçu : rien ne prouve que l’argent soit rentré. Elle compte comme réglée dans le reste à encaisser, mais pas dans les cohortes d’encaissement.', rows: S.mo.paid.filter(function (o) { var v = S.calc[window.LioraEngine.key(o.n)]; return v && v.src === 'monday' && v.gs === 'o'; }), sev: 'c-warn' },
       { k: 'vir', t: 'Virement reçu sur Pennylane, non lettré', d: 'Un virement non lettré cite la facture et couvre son reste dû : elle compte comme réglée, et passe dans l’étape « Corriger » pour être lettrée.', rows: all.filter(function (o) { return o.st2 === 'vir'; }), sev: 'c-info' },
       { k: 'advDue', t: 'Échues encore dans « Rendre payable »', d: 'L’échéance est passée alors que la facture n’a pas encore été rendue payable.', rows: all.filter(function (o) { return fileOfItem(o) === 'adv' && o.de && o.de < REF; }), sev: 'c-bad' },
       { k: 'prom', t: 'Promesses de paiement dépassées de plus de 7 jours', d: 'La date promise est passée sans encaissement : relancer ou requalifier.', rows: all.filter(function (o) { return FILE[fileOfItem(o)] && o.dpr && days(o.dpr, REF) > 7; }), sev: 'c-warn' },
@@ -985,7 +1004,7 @@
   // Univers des factures vu par le calcul v1, avec le financeur v2.
   function calcList() {
     if (S._cl) return S._cl;
-    S._cl = Object.keys(S.calc).map(function (k) { var v = S.calc[k]; return { k: k, n: v.n, de: v.de, mt: v.mt || 0, fin: CAT_FIN[v.rl] || 'Non affecté', rl: v.rl, src: v.src, paid: v.paid, dp: v.dp, df: v.df, op: v.op }; });
+    S._cl = Object.keys(S.calc).map(function (k) { var v = S.calc[k]; return { k: k, n: v.n, de: v.de, mt: v.mt || 0, fin: CAT_FIN[v.rl] || 'Non affecté', rl: v.rl, src: v.src, paid: v.paid, dp: v.dp, df: v.df, op: v.op, gs: v.gs || '', pe: !!v.pe }; });
     return S._cl;
   }
   function calcPass(x) {
