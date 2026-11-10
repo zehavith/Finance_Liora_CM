@@ -3891,6 +3891,20 @@
             'Montant': arrondi(f.montant || 0),
             'Reste dû': arrondi(reste(f)),
             'Date de facture': f.dateFacture ? U.dateFR(f.dateFacture) : '',
+            // LES DATES DE FORMATION, 10/11/2026 : « j'aimerais une colonne début
+            // et fin de formation, échéance ds l'export ».
+            //
+            // Elles se placent JUSTE AVANT l'échéance, dans l'ordre du calcul :
+            // c'est d'elles que l'échéance se déduit — fin de formation + 60
+            // jours sur la plupart des dispositifs, début de formation sur le
+            // financement personnel. Les lire côte à côte, c'est pouvoir refaire
+            // le calcul de tête, ce qu'une colonne d'échéance seule ne permet pas.
+            //
+            // Une date absente le dit : c'est précisément quand la formation
+            // n'est pas datée que l'échéance se replie sur le libellé de la
+            // ligne, et une cellule vide laisserait croire à un oubli de l'export.
+            'Début de formation': f.dateDebutFormation ? U.dateFR(f.dateDebutFormation) : 'à compléter',
+            'Fin de formation': f.dateFinFormation ? U.dateFR(f.dateFinFormation) : 'à compléter',
             'Échéance': f.dateEcheance ? U.dateFR(f.dateEcheance) : 'à qualifier',
             'Jours de retard': f.retardJours == null ? '' : f.retardJours,
             'État': f.etat || '',
