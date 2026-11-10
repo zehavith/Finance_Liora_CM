@@ -11,7 +11,12 @@ const fs=require('fs'), path=require('path');
 const ICI=f=>path.join(__dirname,'..',f);
 const src=fs.readFileSync(ICI('art/balance-agee.html'),'utf8');
 const avant=[
-  ['<title>05.01. Balance âgée clients</title>','<title>Balance âgée - Liora</title>'],
+  // LES DEUX NOMS SONT ÉCHANGÉS, 10/11/2026 : « inverse le nom des artefact
+  // balance agé ». Le code de nomenclature « 05.01. » revient à la balance
+  // remise aux commissaires aux comptes, et « Balance âgée - Liora » à celle
+  // du grand livre clients. Seul le nom de l'artefact change ; le titre écrit
+  // en haut de chaque page reste celui qu'il était.
+  ['<title>Balance âgée - Liora</title>','<title>05.01. Balance âgée clients</title>'],
   ['<h1>Balance âgée · Grand livre Clients</h1>',
    '<h1>Balance âgée - Liora</h1>'],
 ];
