@@ -466,22 +466,91 @@
     // lisent entre 20 et 80 %. On ne retient donc que les financeurs qui
     // pèsent, et on ne pose un point que là où le dénominateur tient debout.
     const PLANCHER = 50000;
+    // LA COULEUR SUIT LE FINANCEUR, PAS SON RANG, 10/11/2026 : « les couleurs
+    // sont trop proches l'une de l'autre ».
+    //
+    // Deux défauts, et le second est le pire.
+    //
+    // 1. La palette tournait en boucle — pal[k % pal.length] — sur quatorze
+    //    teintes dont la validation échoue : huit sur quatorze hors de la bande
+    //    de luminosité, et la pire paire voisine, #f59e0b contre #84cc16, à
+    //    ΔE 1,5 en deutéranopie. Indiscernables.
+    //
+    // 2. L'indice k était celui de la LISTE FILTRÉE. Décocher une business unit
+    //    renumérotait tout le monde : chaque financeur changeait de couleur à
+    //    chaque filtre. On ne peut rien suivre d'un écran à l'autre.
+    //
+    // La teinte est donc accrochée au NOM du financeur, une fois pour toutes,
+    // dans un ordre figé. Huit teintes validées sur le fond sombre de la page
+    // (#111631) : bande de luminosité, plancher de chroma, séparation en vision
+    // des couleurs, plancher en vision normale et contraste — tous passés.
+    //
+    // Au-delà de huit financeurs, une neuvième teinte inventée ne se distingue
+    // plus : la teinte se répète, et c'est le TRAIT qui sépare — plein puis
+    // pointillé, rond puis triangle puis losange. Deux financeurs de même
+    // teinte n'ont donc jamais ni le même trait ni le même point.
+    const TEINTES = ['#3987e5', '#d95926', '#199e70', '#c98500',
+                     '#d55181', '#008300', '#9085e9', '#e66767'];
+    const TRAITS = [[], [6, 4], [2, 3]];
+    const POINTS = ['circle', 'triangle', 'rectRot'];
+    // L'ordre est celui du référentiel des règles, et il ne bouge pas : un
+    // financeur garde sa couleur même absent de l'écran.
+    const rangFinanceur = f => {
+        const tous = tousFinanceurs();
+        const i = tous.indexOf(f);
+        return i >= 0 ? i : tous.length;
+    };
+    const habit = (f) => {
+        const r = rangFinanceur(f);
+        return { couleur: TEINTES[r % TEINTES.length],
+                 trait: TRAITS[Math.floor(r / TEINTES.length) % TRAITS.length],
+                 point: POINTS[Math.floor(r / TEINTES.length) % POINTS.length] };
+    };
+
+    // UN CLIC SUR UNE COURBE FILTRE LA PAGE, 10/11/2026 : « lorsque l'on clique
+    // sur l'une des courbes je dois avoir un filtre qui se déclenche sur le
+    // type de financement de la courbe sur toute la page ».
+    //
+    // Le même clic rend la main : cliquer le financeur déjà seul retenu
+    // réaffiche tout le monde. Sans cela on ne saurait pas comment revenir, et
+    // la case « Tous » du déroulé est à deux clics.
+    function isolerFinanceur(f) {
+        if (!f) return;
+        const seul = F.financeurs.size === 1 && F.financeurs.has(f);
+        F.financeurs.clear();
+        if (!seul) F.financeurs.add(f);
+        // Les cases du déroulé disent ce que l'état dit, sinon le filtre ment.
+        const p = document.getElementById('pil-financeurs');
+        if (p) {
+            p.querySelectorAll('input[type=checkbox]').forEach(c => {
+                if (c.dataset.tout) return;
+                c.checked = F.financeurs.has(c.value);
+            });
+            majTout(p, F.financeurs);
+            p.dispatchEvent(new Event('change'));   // l'étiquette du bouton suit
+        }
+        rendre();
+    }
+
     function graphRetard(keep) {
         const fins = [...keep].filter(f => (D.encours || []).some(e =>
             (e.parFinancement || []).some(r => r.cat === f && (r.total || 0) >= PLANCHER)));
         const labels = (D.encours || []).map(e =>
             parseFR(e.d).toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }));
-        const pal = U().palette;
-        const series = fins.map((f, k) => ({
-            label: f, borderColor: pal[k % pal.length], backgroundColor: 'transparent',
-            borderWidth: 2, tension: 0.3, pointRadius: 2,
+        const series = fins.map((f) => {
+          const h = habit(f);
+          return {
+            label: f, borderColor: h.couleur, backgroundColor: 'transparent',
+            borderDash: h.trait, pointStyle: h.point,
+            borderWidth: 2, tension: 0.3, pointRadius: 3, pointHoverRadius: 6,
             spanGaps: true,
             data: (D.encours || []).map(e => {
                 const r = (e.parFinancement || []).find(x => x.cat === f);
                 if (!r || (r.total || 0) < PLANCHER) return null;
                 return Math.round(r.echu / r.total * 1000) / 10;
             }),
-        }));
+          };
+        });
         U().chart('pil-chart-retard', {
             type: 'line',
             data: { labels, datasets: series },
@@ -490,8 +559,32 @@
                 scales: { x: { grid: { display: false } },
                           y: { grid: U().grille, min: 0, max: 100,
                                ticks: { callback: v => v + ' %' } } },
-                plugins: { legend: { position: 'bottom' },
-                           tooltip: { callbacks: { label: c => c.dataset.label + ' : ' + c.raw + ' %' } } },
+                // Le survol prend la série la plus proche sans exiger le pixel :
+                // un trait de deux pixels ne se vise pas.
+                interaction: { mode: 'nearest', intersect: false },
+                onHover: (ev, els) => {
+                    const c = ev.native && ev.native.target;
+                    if (c) c.style.cursor = els.length ? 'pointer' : 'default';
+                },
+                onClick: (ev, els, ch) => {
+                    const pts = els.length ? els
+                        : ch.getElementsAtEventForMode(ev, 'nearest', { intersect: false }, true);
+                    if (!pts.length) return;
+                    const ds = ch.data.datasets[pts[0].datasetIndex];
+                    isolerFinanceur(ds && ds.label);
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { usePointStyle: true },
+                        // La légende filtre elle aussi : c'est la cible la plus
+                        // facile à viser, et masquer une série sans filtrer la
+                        // page — le geste par défaut de Chart.js — répondrait à
+                        // une autre question que la sienne.
+                        onClick: (e, item) => isolerFinanceur(item && item.text),
+                    },
+                    tooltip: { callbacks: { label: c => c.dataset.label + ' : ' + c.raw + ' %' } },
+                },
             },
         });
         // CE QUI N'EST PAS TRACÉ SE DIT. Un financeur écarté parce qu'il pèse
