@@ -2,7 +2,7 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" charset="utf-8"></script>
 <style>
 /* Mise en page de la maquette : barre latérale d'onglets + colonne principale,
    sections numérotées, cartes blanches sur fond pierre, accent orange Liora. */
@@ -80,7 +80,8 @@ section.card{background:var(--surface);border:1px solid var(--line);border-radiu
 .seg .cnt{font-size:11px;background:var(--sunk);padding:0 6px;border-radius:20px;color:var(--muted)}
 /* graphiques */
 .chart{position:relative;display:grid;grid-template-columns:auto 1fr;gap:0 8px}
-.yax{display:flex;flex-direction:column;justify-content:space-between;font-size:11px;color:var(--muted);font-family:var(--mono);text-align:right;height:220px;padding-bottom:0}
+.yax{position:relative;font-size:11px;color:var(--muted);font-family:var(--mono);text-align:right;height:220px;min-width:48px}
+.yax span{position:absolute;right:0;transform:translateY(-50%);white-space:nowrap}
 .plot{position:relative;height:220px;border-bottom:1px solid var(--axis);background:repeating-linear-gradient(to top,var(--grid) 0 1px,transparent 1px 20%)}
 .cols{position:absolute;inset:0;display:flex;align-items:flex-end;gap:6px;padding:0 4px}
 .col{flex:1;display:flex;flex-direction:column-reverse;height:100%;justify-content:flex-start;min-width:0;cursor:default}
@@ -168,5 +169,10 @@ details>summary{cursor:pointer;color:var(--accent);font-weight:500;font-size:13p
 </div>
 <div class="toast" id="toast" hidden></div>
 
-<script src="normalize.js"></script>
-<script src="app.js"></script>
+<script src="moteur-v1/rules.js" charset="utf-8"></script>
+<script src="moteur-v1/zoho.js" charset="utf-8"></script>
+<script src="moteur-v1/monday.js" charset="utf-8"></script>
+<script src="moteur-v1/ingest.js" charset="utf-8"></script>
+<script src="engine.js" charset="utf-8"></script>
+<script src="normalize.js" charset="utf-8"></script>
+<script src="app.js" charset="utf-8"></script>

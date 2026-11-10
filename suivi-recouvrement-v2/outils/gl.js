@@ -1,0 +1,12 @@
+const fs=require('fs'),path=require('path');
+const V1=process.argv[2], BAL=process.argv[3];
+global.window=global; global.location={protocol:'https:'};
+for(const f of ['js/rules.js','js/zoho.js','js/monday.js','js/ingest.js','js/grandlivre.js']) eval(fs.readFileSync(path.join(V1,f),'utf8'));
+const GL=global.LioraGrandLivre,I=global.LioraIngest;
+const d=JSON.parse(fs.readFileSync(BAL,'utf8'));const D=d.dico,cols=d.cols;
+const rows=d.lignes.map(r=>{const o={};cols.forEach((c,i)=>{const v=r[i];o[c]=typeof v==='number'?D[v]:v});return o;});
+const t0=Date.now();const lu=GL.lire(rows,{numerosConnus:new Set()});
+console.log('lu',lu.lignes.length,Date.now()-t0,'ms',lu.erreur||'',JSON.stringify(lu.stats).slice(0,400));
+console.log(Object.keys(lu.lignes[0]).join(' '));
+const c={};lu.lignes.forEach(l=>{const k=(l.soldee?'soldee':'ouverte')+(l.parAvoir?'-avoir':'');c[k]=(c[k]||0)+1});console.log(c);
+module.exports={lu,rows};

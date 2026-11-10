@@ -1,0 +1,927 @@
+/* ==========================================================
+   Liora — Suivi Recouvrement
+   rules.js — Référentiel métier
+     · Règles de date d'échéance par type de financement
+     · Normalisation des types de financement
+     · Rôles des tableaux Monday (périmètre, statut recouvrement)
+   ========================================================== */
+
+(function (global) {
+    'use strict';
+
+    // ──────────────────────────────────────────────
+    //  Utilitaires de normalisation de texte
+    // ──────────────────────────────────────────────
+
+    /** Minuscules, sans accents, sans ponctuation, espaces compactés. */
+    function norm(s) {
+        return String(s == null ? '' : s)
+            .normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .toLowerCase()
+            .replace(/[’']/g, ' ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+    }
+
+    // ──────────────────────────────────────────────
+    //  Règles de date d'échéance
+    //  (référentiel « Règle date d'échéance » — feuille de calcul Liora)
+    //
+    //  base   : champ servant de point de départ
+    //           'dateFacture' | 'dateFinFormation' | 'dateDebutFormation'
+    //  jours  : nombre de jours ajoutés à la base
+    //  fallback : base de repli si la base principale est absente
+    //  altBase / altJours : variante documentée (ex. facture modifiée)
+    // ──────────────────────────────────────────────
+
+    const DEFAULT_ECHEANCE_RULES = [
+        {
+            key: 'BTC_ENTREPRISE',
+            label: 'B2C-Entreprise',
+            base: 'dateFacture', jours: 30,
+            fallback: 'dateDebutFormation', fallbackJours: 30,
+            plafondDebutFormation: true,
+            // Le classeur de trésorerie compte autrement pour la balance âgée
+            // comptable : la colonne « Date d'échéance recalculée » de l'extrait
+            // de septembre y met le début de formation, sans délai. Les deux
+            // suivis ne mesurent pas la même chose — l'un le travail de relance,
+            // l'autre le solde du compte — et gardent chacun sa règle.
+            gl: { base: 'dateFinFormation', jours: 60 },
+            // Le texte imprimé disait encore « date de facture » et « au grand
+            // livre : début de formation » : deux états antérieurs de la règle,
+            // abandonnés l'un après l'autre. Il dit maintenant ce que le calcul
+            // fait — un auditeur qui applique la phrase doit retrouver la date.
+            note: "Date de facture +30 jours, sans dépasser début de formation +30 jours",
+            categorie: 'Corporate', perimetre: 'Corporate',
+            // Monday écrit « B2C - Entreprise », le référentiel « BTC-Entreprise ».
+            // Les deux graphies désignent la même chose : un particulier dont la
+            // formation est facturée à une entreprise. Sans le libellé « b2c
+            // entreprise », il était capté par « entreprise » et traité en B2B,
+            // donc calculé sur la fin de formation au lieu de la date de facture.
+            match: ['b2c entreprise', 'b2c ent', 'btc entreprise', 'btc ent',
+                    'b2c corporate', 'btc corporate'],
+        },
+        {
+            // Corporate - Alternance : une alternance facturée à l'entreprise.
+            // L'échéance suit celle du B2C-Entreprise — c'est la même
+            // facturation — mais le type de client est « Alternance », comme
+            // dans le classeur de trésorerie.
+            key: 'CORPORATE_ALTERNANCE', label: 'Corporate - Alternance',
+            base: 'dateFacture', jours: 30,
+            fallback: 'dateDebutFormation', fallbackJours: 30,
+            plafondDebutFormation: true,
+            // R4, 03/11/2026 : « Barème Corporate - Alternance → date de facture + 30 j ».
+            // La date de facture DE LA FACTURATION, comme le transformateur CAC
+            // (cac/transformer.js, FACT30) ; « dateFacture » est l'écriture comptable.
+            gl: { base: 'dateFactureFacturation', jours: 30 },
+            note: "Date de facture +30 jours, sans dépasser début de formation +30 jours",
+            categorie: 'Corporate', perimetre: 'Corporate',
+            match: ['corporate alternance', 'corporate-alternance'],
+        },
+        {
+            key: 'B2B', label: 'B2B',
+            base: 'dateFinFormation', jours: 60,
+            gl: { base: 'dateFinFormation', jours: 60 },
+            note: "Fin de formation +60 jours",
+            categorie: 'Corporate', perimetre: 'Corporate',
+            match: ['b2b', 'btob', 'entreprise', 'corporate'],
+        },
+        {
+            key: 'ALTERNANCE', label: 'Alternance',
+            base: 'dateFinFormation', jours: 60,
+            note: "Fin de formation +60 jours", categorie: 'Alternance', perimetre: 'Corporate',
+            match: ['alternance', 'apprentissage', 'contrat pro'],
+            gl: { base: 'dateFinFormation', jours: 60 },
+        },
+        {
+            key: 'TRANSITION', label: 'Transition Pro',
+            base: 'dateFinFormation', jours: 60,
+            note: 'Fin de formation +60 jours', categorie: 'Étatique', perimetre: 'B2C',
+            match: ['transition pro', 'transitions pro', 'transition', 'ptp', 'projet de transition', 'atpro', 'associations transitions pro'],
+            gl: { base: 'dateFinFormation', jours: 60 },
+        },
+        {
+            key: 'REGION', label: 'Region',
+            base: 'dateFinFormation', jours: 60,
+            // Le financement régional reste un dispositif à part — c'est la
+            // sous-catégorie qui le dit — mais son TYPE DE CLIENT est B2C, et
+            // seulement B2C : votre balance n'en compte que six, et « Region »
+            // n'en est pas un. Il avait eu sa propre ligne pour que ses
+            // créances anciennes se voient ; elles se voient aussi bien dans
+            // la vue par sous-catégorie, qui est faite pour ça.
+            note: 'Fin de formation +60 jours', categorie: 'Étatique', perimetre: 'B2C',
+            match: ['region', 'conseil regional', 'regional'],
+            gl: { base: 'dateFinFormation', jours: 60 },
+        },
+        {
+            // L'AIF est une aide de France Travail : son type de client est
+            // POEI, comme la POEI elle-même. C'est la lecture du classeur de
+            // trésorerie, pas celle du dispositif.
+            key: 'AIF', label: 'AIF',
+            base: 'dateFinFormation', jours: 60,
+            note: 'Fin de formation +60 jours', categorie: 'Étatique', perimetre: 'B2C',
+            match: ['aif', 'aide individuelle a la formation', 'pole emploi aif', 'france travail aif'],
+            gl: { base: 'dateFinFormation', jours: 60 },
+        },
+        {
+            key: 'POEI', label: 'POEI',
+            base: 'dateFinFormation', jours: 60,
+            note: 'Fin de formation +60 jours', categorie: 'Étatique', perimetre: 'B2C',
+            match: ['poei', 'poec', 'preparation operationnelle'],
+            gl: { base: 'dateFinFormation', jours: 60 },
+        },
+        {
+            key: 'AGEFIPH', label: 'Agefiph',
+            base: 'dateFinFormation', jours: 60,
+            note: 'Fin de formation +60 jours', categorie: 'Étatique', perimetre: 'B2C',
+            match: ['agefiph', 'fiphfp'],
+            gl: { base: 'dateFinFormation', jours: 60 },
+        },
+        {
+            key: 'ETAT', label: 'ETAT',
+            base: 'dateFinFormation', jours: 60,
+            note: "Fin de formation +60 jours",
+            categorie: 'Étatique',            perimetre: 'Corporate',
+            match: ['etat', 'public etat', 'ministere', 'prefecture'],
+            // R5, 03/11/2026 : « Barème OPCO, ETAT, OPCO - Alternance → fin de formation + 30 j ».
+            gl: { base: 'dateFinFormation', jours: 30 },
+        },
+        {
+            // « Interne », « Interne - UE » : le vocabulaire de Zoho pour les
+            // refacturations entre entités du groupe. La correspondance la plus
+            // longue l'emportant, « Interne - DST Allemagne » reste capté par
+            // sa règle propre.
+            key: 'INTERCO', label: 'Interco',
+            base: 'dateFinFormation', jours: 60,
+            note: 'Fin de formation +60 jours', categorie: 'Corporate', perimetre: 'Corporate',
+            match: ['interco', 'intercompany', 'inter co', 'intra groupe', 'interne', 'interne ue', 'intra groupe', 'inter societe'],
+            gl: { base: 'dateFinFormation', jours: 60 },
+        },
+        {
+            key: 'DST_ALLEMAGNE', label: 'Interne - DST Allemagne',
+            base: 'dateFinFormation', jours: 60,
+            note: 'Fin de formation +60 jours', categorie: 'Corporate', perimetre: 'Corporate',
+            match: ['dst allemagne', 'interne dst allemagne', 'dst', 'allemagne', 'germany', 'bu1 germany'],
+            gl: { base: 'dateFinFormation', jours: 60 },
+        },
+        {
+            key: 'OPCO', label: 'OPCO',
+            base: 'dateFinFormation', jours: 60,
+            note: "Fin de formation +60 jours — pas de recouvrement OPCO, suivi du retard uniquement",
+            categorie: 'Étatique',            perimetre: 'Corporate', sansRecouvrement: true,
+            match: ['opco', 'akto', 'atlas', 'uniformation', 'ocapiat', 'constructys', 'afdas', 'opcommerce', 'l opcommerce', 'opco ep', 'opco 2i', 'opco mobilites', 'opco sante'],
+            // R5, 03/11/2026 : fin de formation + 30 j.
+            gl: { base: 'dateFinFormation', jours: 30 },
+        },
+        {
+            // Un OPCO qui finance une alternance : même payeur, autre dispositif.
+            //
+            // Trente jours, comme votre feuille : « SI(AF="OPCO - Alternance" ;
+            // SI(AP<>"" ; AP+30 ; AA)) ». Un passage à quinze jours avait été
+            // posé puis repris — c'est la feuille qui fait foi.
+            key: 'OPCO_ALTERNANCE', label: 'OPCO - Alternance',
+            base: 'dateFinFormation', jours: 60,
+            note: "Fin de formation +60 jours — pas de recouvrement OPCO, suivi du retard uniquement",
+            categorie: 'Étatique', perimetre: 'Corporate', sansRecouvrement: true,
+            match: ['opco alternance', 'opco-alternance'],
+            // R5, 03/11/2026 : fin de formation + 30 j.
+            gl: { base: 'dateFinFormation', jours: 30 },
+        },
+        {
+            key: 'BTC_PERSO', label: 'Financement personnel',
+            // L'apprenant paie de sa poche : l'argent est appelé au démarrage,
+            // sans délai de battement — son tableau du 14/10/2026 ne lui en
+            // donne pas, et le texte imprimé en annonçait encore dix.
+            base: 'dateDebutFormation', jours: 0,
+            fallback: 'dateFinFormation', fallbackJours: 0,
+            note: 'Début de formation (aucun délai supplémentaire) — comme votre '
+                + 'colonne « Date d’échéance recalculée »',
+            categorie: 'Financement personnel', perimetre: 'B2C',
+            // « B2C » employé seul — le groupe « Factures payées B2C » du tableau
+            // 0.1, à côté de groupes CPF, AIF, POEI, REGION — désigne le
+            // financement personnel : les financements publics ont chacun le
+            // leur. « B2C - Entreprise » reste capté par sa règle propre, dont
+            // le libellé de correspondance est plus long et l'emporte.
+            match: ['b2c perso', 'btc perso', 'financement personnel',
+                    'perso', 'personnel', 'fonds propres', 'auto financement', 'autofinancement',
+                    'b2c', 'btc'],
+            gl: { base: 'dateDebutFormation', jours: 0 },
+        },
+        {
+            // Perso-Alternance : une alternance que l'apprenant paie lui-même.
+            // Elle ne se devine pas — elle ne vaut que là où elle a été posée
+            // à la main dans l'ancien grand livre.
+            key: 'PERSO_ALTERNANCE', label: 'Perso-Alternance',
+            base: 'dateDebutFormation', jours: 0,
+            fallback: 'dateFinFormation', fallbackJours: 0,
+            note: 'Début de formation (aucun délai supplémentaire)',
+            categorie: 'Financement personnel', perimetre: 'B2C',
+            match: ['perso alternance', 'perso-alternance'],
+            gl: { base: 'dateDebutFormation', jours: 0 },
+        },
+        {
+            key: 'CPF', label: 'CPF',
+            base: 'dateFinFormation', jours: 60,
+            // Quarante-cinq jours, son tableau du 14/10/2026 ; le texte imprimé
+            // était resté aux soixante d'un barème qu'elle avait écarté.
+            note: "Fin de formation +60 jours", categorie: 'Étatique', perimetre: 'B2C',
+            match: ['cpf', 'compte personnel de formation', 'edof', 'caisse des depots', 'cdc'],
+            gl: { base: 'dateFinFormation', jours: 60 },
+        },
+    ];
+
+    /** Règle appliquée quand le type de financement est inconnu. */
+    const DEFAULT_FALLBACK_RULE = {
+        key: 'INCONNU', label: 'Non renseigné',
+        // Aucun barème ne s'applique à un dispositif qu'on ne connaît pas : la
+        // date vient de l'échéance 1, pas d'un délai inventé.
+        base: null, jours: null,
+        fallback: null, fallbackJours: null,
+        note: 'Type de financement non identifié — dernière date du libellé, sinon la date de l’écriture',
+        perimetre: 'Inconnu', match: [],
+    };
+
+    // ──────────────────────────────────────────────
+    //  Rôles des tableaux Monday
+    //
+    //  role : 'payees' | 'tampon' | 'adv' | 'recouvrement' | 'opco'
+    //         | 'b2c' | 'technique' | 'ignore'
+    //  Le rôle pilote :
+    //    · le périmètre (Corporate / B2C)
+    //    · l'inclusion dans les compteurs de retard (chips « Source »)
+    //    · le financement par défaut quand la colonne est vide
+    // ──────────────────────────────────────────────
+
+    const BOARD_ROLE_PATTERNS = [
+        // Monday crée un tableau « Sous-éléments de … » pour chaque tableau
+        // utilisant des sous-éléments. Ses lignes ne sont pas des factures.
+        { role: 'ignore',       perimetre: 'Inconnu',   source: null,            financementDefaut: null,          match: ['sous elements de', 'sous element de', 'subitems of', 'subelements of'] },
+        { role: 'payees',       perimetre: 'Tous',      source: 'payees',        financementDefaut: null,          match: ['all factures payees', 'factures payees', '0 1 all', 'factures paye'] },
+        { role: 'technique',    perimetre: 'Tous',      source: 'technique',     financementDefaut: null,          match: ['technique', 'zone kairos', 'rib recus', 'transactions technique', 'dossier aif en cours'] },
+        { role: 'opco',         perimetre: 'Corporate', source: 'opco',          financementDefaut: 'OPCO',        match: ['entreprise opco', 'opco et plateforme', ' opco'] },
+        { role: 'recouvrement', perimetre: 'Corporate', source: 'recouvrement',  financementDefaut: null,          match: ['recouvrement'] },
+        { role: 'adv',          perimetre: 'Corporate', source: 'adv',           financementDefaut: null,          match: ['entreprise adv', ' adv'] },
+        { role: 'tampon',       perimetre: 'Corporate', source: 'adv',           financementDefaut: null,          match: ['tampon'] },
+        { role: 'b2c',          perimetre: 'B2C',       source: 'b2c',           financementDefaut: 'CPF',         match: ['financement cpf', 'cpf'] },
+        { role: 'b2c',          perimetre: 'B2C',       source: 'b2c',           financementDefaut: 'BTC_PERSO',   match: ['financement personnel', 'personnel'] },
+        { role: 'b2c',          perimetre: 'B2C',       source: 'b2c',           financementDefaut: 'AIF',         match: ['pole emploi', 'aif poei', 'aif  poei', 'france travail'] },
+        { role: 'b2c',          perimetre: 'B2C',       source: 'b2c',           financementDefaut: null,          match: ['financement complexe', 'region transition agefiph'] },
+        { role: 'b2c',          perimetre: 'B2C',       source: 'b2c',           financementDefaut: null,          match: ['b2c'] },
+        { role: 'adv',          perimetre: 'Corporate', source: 'adv',           financementDefaut: null,          match: ['corporate', 'entreprise'] },
+        { role: 'b2c',          perimetre: 'B2C',       source: 'b2c',           financementDefaut: 'DST_ALLEMAGNE', match: ['bu1 germany'] },
+    ];
+
+    const ROLE_LABELS = {
+        payees:       'Factures payées (toutes origines)',
+        tampon:       'Tampon (transit ADV ↔ Recouvrement)',
+        adv:          'ADV Corporate',
+        recouvrement: 'Recouvrement Corporate',
+        opco:         'OPCO (sans recouvrement)',
+        b2c:          'B2C',
+        technique:    'Technique (exclu des analyses)',
+        ignore:       'Ignoré',
+    };
+
+    /**
+     * Groupes à écarter des analyses.
+     *
+     * Un tableau opérationnel peut contenir des groupes de service — archives,
+     * zones techniques, corbeilles — qui gonflent les volumes sans rien devoir.
+     * Le tableau ADV, par exemple, héberge « 1.1.9. Technique - Archive » avec
+     * plusieurs milliers de lignes closes.
+     */
+    const GROUPES_EXCLUS = [
+        'technique', 'archive', 'archives', 'archivee', 'archivees',
+        'corbeille', 'poubelle', 'obsolete', 'a supprimer', 'ne pas utiliser',
+        'test', 'brouillon', 'doublon',
+    ];
+
+    /** Le libellé de ce groupe le désigne-t-il comme groupe de service ? */
+    function estGroupeTechnique(nom) {
+        const n = ' ' + norm(nom) + ' ';
+        return GROUPES_EXCLUS.some(m => n.includes(' ' + m + ' ') || n.includes(m + ' '));
+    }
+
+    /**
+     * Devine le périmètre à partir d'un libellé de groupe ou de tableau.
+     *
+     * Le tableau des factures payées mélange tous les périmètres : ses factures
+     * ne peuvent pas rester étiquetées « Tous », qui n'est pas un périmètre mais
+     * une absence de réponse. Le groupe d'origine, conservé au moment du
+     * règlement, permet le plus souvent de trancher.
+     */
+    function perimetreDepuisTexte(txt) {
+        const n = ' ' + norm(txt) + ' ';
+        if (!n.trim()) return null;
+        if (/cpf|aif|poei|agefiph|transition|region|perso|personnel|apprenant|kairos|b2c/.test(n)) return 'B2C';
+        if (/adv|recouv|opco|tampon|entreprise|corporate|b2b|interco|etat|alternance/.test(n)) return 'Corporate';
+        return null;
+    }
+
+    /**
+     * Étape du traitement, lue dans le libellé du groupe Monday.
+     *
+     * Le rôle du tableau ne suffit pas : « recouvrement » est chez Liora un
+     * groupe autant qu'un tableau. Le CPF a son groupe « Factures CPF
+     * recouvrement », le Financement Personnel ses groupes « Recouvrement -
+     * En cours de traitement » et « Facture en Contentieux ». S'en tenir au
+     * tableau revenait à ne compter que le seul 1.2.
+     *
+     * L'ordre compte : le premier motif rencontré gagne, du plus spécifique au
+     * plus général.
+     */
+    const ETAPES = [
+        { key: 'PAYEE',        label: 'Réglée',             match: ['payee', 'payees', 'paye'] },
+        { key: 'CONTENTIEUX',  label: 'Contentieux',        match: ['contentieux', 'huissier', 'judiciaire'] },
+        { key: 'PERTE',        label: 'Perdu / partiel',    match: ['perdu', 'partiellement', 'perte', 'irrecouvrable'] },
+        { key: 'ANNULER',      label: 'À annuler',          match: ['a annuler', 'annuler', 'annulation', 'avoir'] },
+        { key: 'RECOUVREMENT', label: 'Recouvrement',       match: ['recouvrement', 'relance', 'mise en demeure', 'a relancer', 'retraiter'] },
+        // Placé avant COMPTA et ADV pour que « Entre process ADV et
+        // recouvrement » ne soit pas capté par le mot « recouvrement » qui le
+        // termine : ces factures relèvent de l'ADV.
+        { key: 'ADV_TRANSIT',  label: 'ADV — entre process', match: ['avant import', 'entre process'] },
+        { key: 'COMPTA',       label: 'Comptabilité',       match: ['comptabilit', 'pennylane', 'non pointe', 'non remonte', 'sellsy'] },
+        { key: 'PAIEMENT',     label: 'Paiement prévu',     match: ['paiement prevu', 'paiement attendu', 'echeancier'] },
+        { key: 'DEPOT',        label: 'Dépôt / déposée',    match: ['a deposer', 'deposee', 'depose', 'depot'] },
+        { key: 'ADV',          label: 'ADV à traiter',      match: ['non conforme', 'incomplete', 'incomplet', 'a qualifier',
+                                                                   'a reclasser', 'action a faire', 'action fin de formation',
+                                                                   'a traiter', 'tampon'] },
+        { key: 'EN_COURS',     label: 'En cours',           match: ['en cours', 'en traitement'] },
+    ];
+
+    /**
+     * @returns {{key:string,label:string}} étape déduite du libellé du groupe.
+     *
+     * La négation est vérifiée avant tout : le groupe « Factures non payées :
+     * Perte / Contentieux » contient le mot « payées » et ressortait donc comme
+     * réglé, alors qu'il dit exactement l'inverse.
+     */
+    function etapeDepuisGroupe(nom) {
+        const n = ' ' + norm(nom) + ' ';
+        const nie = /non pay|impay|pas pay|non regl|a payer/.test(n);
+        for (const e of ETAPES) {
+            if (nie && e.key === 'PAYEE') continue;
+            if (e.match.some(m => n.includes(m))) return { key: e.key, label: e.label };
+        }
+        return { key: 'AUTRE', label: 'Non qualifié' };
+    }
+
+    /** Sources de retard, utilisées pour les chips de filtrage du dashboard. */
+    const SOURCES = [
+        // « Recouvrement » seul laissait croire à un circuit unique : le tableau
+        // 1.2 ne suit que les entreprises, le B2C n'a pas d'équivalent.
+        { key: 'recouvrement', label: 'Recouvrement Corporate', hint: 'Tableau 1.2 — recouvrement Corporate' },
+        { key: 'adv',          label: 'ADV / Tampon',  hint: 'Tableaux 1.0 et 1.1 — retard côté ADV' },
+        { key: 'opco',         label: 'OPCO',          hint: 'Tableau 1.3 — pas de recouvrement, suivi du retard' },
+        { key: 'b2c',          label: 'B2C',           hint: 'Tableaux 2.x — pas de tableau recouvrement dédié' },
+    ];
+
+    /**
+     * Catégorie de client d'un financement — le niveau au-dessus.
+     *
+     * C'est le « Type de client » de la facturation : B2C recouvre B2C-Perso,
+     * CPF, Transition Pro, AIF, Region et Agefiph. La balance de trésorerie se
+     * lit aux deux niveaux, et l'un ne remplace pas l'autre.
+     */
+    function categorieDe(financement, rules) {
+        const r = getRule(financement, rules);
+        return r.categorie || r.perimetre || 'Non catégorisé';
+    }
+
+    /**
+     * LE NUMÉRO DU TABLEAU FAIT FOI.
+     *
+     * Les tableaux sont rangés par un numéro qui porte à lui seul le périmètre
+     * et le rang : 0.x pour les factures payées, 1.x pour Corporate, 2.x pour
+     * B2C, et le rang 9 pour la zone technique de chaque série. C'est le
+     * classement de l'utilisatrice ; il figure sur chaque tableau et se
+     * retrouve sur chaque export.
+     *
+     * Il prime sur la reconnaissance par mots du nom, qui se trompait deux
+     * fois sur le compte réel. « DST_Germany_Planning », un planning de
+     * présence d'équipe — six salariés, des colonnes « At work » et
+     * « Holiday », pas un seul montant — était lu comme du financement
+     * allemand et entrait en créances. Et « 2.5. Recouvrement B2C » tombait
+     * en périmètre Corporate, parce que le mot « recouvrement » est testé
+     * avant « b2c » dans la liste des motifs.
+     *
+     * La reconnaissance par mots reste le recours : un export renommé à la
+     * main perd son numéro, et il vaut mieux le reconnaître que l'ignorer.
+     */
+    const NUM_TABLEAU = /^\s*(\d)\s*\.\s*(\d)\s*\./;
+
+    /**
+     * TABLEAUX ÉCARTÉS NOMMÉMENT.
+     *
+     * Un tableau peut porter un numéro parfaitement régulier et ne contenir que
+     * des lignes d'essai. Le numéro ne peut pas le dire ; seule une décision le
+     * peut. Chacun est donc écarté par son nom, avec son motif et la date de la
+     * décision — une balance à laquelle on retire des lignes doit pouvoir dire
+     * lesquelles et pourquoi, sans quoi elle n'est plus auditable.
+     */
+    const TABLEAUX_ECARTES = [
+        {
+            numero: /^\s*2\s*\.\s*5\s*\./,
+            nom: /recouvrement\s*b2c/i,
+            motif: "Lignes d'essai : les cinq lignes ont été créées le 13/09/2026 à la même "
+                 + "minute, sous des noms de clients génériques (ABC Formation SARL, Complex "
+                 + "Finance Ltd, PE Consulting), avec des montants ronds et trois dates de "
+                 + "facture à venir. 22 500 € qui n'ont jamais été dus.",
+            decide: '2026-10-25',
+        },
+    ];
+
+    /** Ce tableau a-t-il été écarté nommément ? Retourne la décision, ou null. */
+    function tableauEcarte(boardName) {
+        const brut = String(boardName == null ? '' : boardName);
+        for (const x of TABLEAUX_ECARTES) {
+            if (x.numero.test(brut) && x.nom.test(brut)) return x;
+        }
+        return null;
+    }
+
+    /** Reconnaissance par mots du nom — le recours quand le numéro manque. */
+    function roleParLeNom(boardName) {
+        const n = ' ' + norm(boardName) + ' ';
+        for (const pat of BOARD_ROLE_PATTERNS) {
+            for (const m of pat.match) {
+                if (n.includes(' ' + m.trim() + ' ') || n.includes(m)) {
+                    return { role: pat.role, perimetre: pat.perimetre, source: pat.source, financementDefaut: pat.financementDefaut };
+                }
+            }
+        }
+        return { role: 'ignore', perimetre: 'Inconnu', source: null, financementDefaut: null };
+    }
+
+    /** Déduit le rôle d'un tableau à partir de son nom Monday. */
+    function detectBoardRole(boardName) {
+        const ecarte = tableauEcarte(boardName);
+        if (ecarte) {
+            return { role: 'ignore', perimetre: 'Inconnu', source: null, financementDefaut: null,
+                     motif: ecarte.motif, decide: ecarte.decide };
+        }
+
+        const num = NUM_TABLEAU.exec(String(boardName == null ? '' : boardName));
+        if (!num) return roleParLeNom(boardName);
+
+        const serie = +num[1], rang = +num[2];
+
+        // Rang 9 : la zone technique de la série, écartée des analyses.
+        if (rang === 9) return { role: 'technique', perimetre: 'Tous', source: 'technique', financementDefaut: null };
+
+        // Série 0 : les factures payées, toutes origines confondues.
+        if (serie === 0) return { role: 'payees', perimetre: 'Tous', source: 'payees', financementDefaut: null };
+
+        // Séries 1 et 2 : le périmètre vient du numéro, le rôle et le
+        // financement par défaut restent lus dans le nom.
+        if (serie === 1 || serie === 2) {
+            const parLeNom = roleParLeNom(boardName);
+            if (parLeNom.role === 'technique') return parLeNom;
+            const perimetre = serie === 1 ? 'Corporate' : 'B2C';
+            if (parLeNom.role === 'ignore') {
+                return serie === 1
+                    ? { role: 'adv', perimetre: perimetre, source: 'adv', financementDefaut: null }
+                    : { role: 'b2c', perimetre: perimetre, source: 'b2c', financementDefaut: null };
+            }
+            return { role: parLeNom.role, perimetre: perimetre, source: parLeNom.source, financementDefaut: parLeNom.financementDefaut };
+        }
+
+        return roleParLeNom(boardName);
+    }
+
+    /**
+     * Identifie le type de financement à partir d'un libellé libre.
+     * Retourne la clé de règle (ex. 'CPF') ou null.
+     */
+    function detectFinancement(raw, rules) {
+        const list = rules || DEFAULT_ECHEANCE_RULES;
+        const n = norm(raw);
+        if (!n) return null;
+
+        let best = null, bestLen = 0;
+        for (const rule of list) {
+            for (const m of (rule.match || [])) {
+                const mn = norm(m);
+                if (!mn) continue;
+                // mot entier de préférence, sinon inclusion
+                const isWord = new RegExp('(^| )' + mn.replace(/ /g, ' ') + '( |$)').test(n);
+                if ((isWord || n.includes(mn)) && mn.length > bestLen) {
+                    best = rule.key; bestLen = mn.length;
+                }
+            }
+        }
+        return best;
+    }
+
+    /** Retourne la règle d'échéance correspondant à une clé de financement. */
+    function getRule(key, rules) {
+        const list = rules || DEFAULT_ECHEANCE_RULES;
+        return list.find(r => r.key === key) || DEFAULT_FALLBACK_RULE;
+    }
+
+    // ──────────────────────────────────────────────
+    //  Dates
+    // ──────────────────────────────────────────────
+
+    const MS_DAY = 86400000;
+
+    /** Date « nue » (minuit local), tolérante aux formats FR / ISO / série Excel. */
+    function parseDate(value) {
+        if (value == null || value === '') return null;
+        if (value instanceof Date) return isNaN(value.getTime()) ? null : jourDe(value);
+
+        const s = String(value).trim();
+        if (!s || /^(n\/?a|—|-|null|undefined)$/i.test(s)) return null;
+
+        let m = s.match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})/);
+        if (m) {
+            let y = +m[3]; if (y < 100) y += y < 70 ? 2000 : 1900;
+            return validate(new Date(y, +m[2] - 1, +m[1]));
+        }
+        m = s.match(/^(\d{4})[/.\-](\d{1,2})[/.\-](\d{1,2})/);
+        if (m) return validate(new Date(+m[1], +m[2] - 1, +m[3]));
+
+        if (/^\d+(\.\d+)?$/.test(s)) {
+            const num = parseFloat(s);
+            // Série Excel plausible : 1990-01-01 → 2100-01-01
+            if (num > 32800 && num < 73100) {
+                // Un numéro de série compte des jours depuis le 30 décembre
+                // 1899, sans fuseau. L'instant obtenu est donc un minuit
+                // UNIVERSEL : à l'ouest de Greenwich, la journée locale dans
+                // laquelle il tombe est la veille, et toutes les dates d'un
+                // classeur y reculaient d'un jour. On lit le jour qu'il
+                // désigne, puis on le pose dans le calendrier local.
+                const u = new Date(Math.round((num - 25569) * MS_DAY));
+                return validate(new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate()));
+            }
+            return null;
+        }
+
+        // Les mois écrits en français.
+        //
+        // Monday affiche ses dates dans la langue du compte : « avr. 23, 2026 »,
+        // « 4 nov. 2025 ». Le moteur de dates du navigateur ne connaît que
+        // l'anglais — « nov. » passe par chance, « avr. », « févr. », « juin »,
+        // « juil. », « août » et « déc. » échouent. La colonne était alors
+        // rejetée comme n'étant pas une colonne de dates, le tableau se
+        // retrouvait sans fin de formation, et ses factures sans échéance
+        // calculable. Trois millions d'euros y tenaient.
+        const MOIS_FR = [
+            [/\bjanv?(\.|ier)?\b/, 0], [/\bf[ée]vr?(\.|ier)?\b/, 1], [/\bmars\b/, 2],
+            [/\bavr(\.|il)?\b/, 3], [/\bmai\b/, 4], [/\bjuin\b/, 5],
+            [/\bjuil(\.|let)?\b/, 6], [/\bao[uû]t?\b/, 7], [/\bsept?(\.|embre)?\b/, 8],
+            [/\boct(\.|obre)?\b/, 9], [/\bnov(\.|embre)?\b/, 10], [/\bd[ée]c(\.|embre)?\b/, 11],
+        ];
+        const sansAccent = s.toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        let moisFr = null;
+        for (const [motif, mois] of MOIS_FR) {
+            if (motif.test(sansAccent)) { moisFr = mois; break; }
+        }
+        if (moisFr != null) {
+            // Le jour et l'année, dans l'ordre où ils se présentent :
+            // « avr. 23, 2026 » comme « 23 avril 2026 ».
+            const nombres = sansAccent.match(/\d{1,4}/g) || [];
+            const annee = nombres.find(n => n.length === 4);
+            const jour = nombres.find(n => n !== annee && +n >= 1 && +n <= 31);
+            // Un mois nommé sans jour ni année n'est pas une date. On s'arrête
+            // là plutôt que de laisser le navigateur deviner : « Facture avril
+            // 2026 » lui devenait le 1er janvier 2026, et cette date inventée
+            // se propageait jusque dans la balance âgée.
+            return (annee && jour) ? validate(new Date(+annee, moisFr, +jour)) : null;
+        }
+
+        const d = new Date(s);
+        return validate(d);
+
+        function validate(d) {
+            if (!d || isNaN(d.getTime())) return null;
+            const y = d.getFullYear();
+            if (y < 1990 || y > 2100) return null;
+            return stripTime(d);
+        }
+    }
+
+    function stripTime(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+
+    /**
+     * Le JOUR que porte une date, et non la journée dans laquelle son instant
+     * tombe.
+     *
+     * Une cellule de date d'un classeur Excel ne porte pas d'heure : elle
+     * porte un numéro de jour. Le lecteur de classeurs le reconvertit en
+     * instant, et cette reconversion perd quelques secondes — sur le grand
+     * livre déposé, le 22 octobre 2026 revient à 23 h 59 min 39 s le 21.
+     * Tronquer l'heure d'un tel instant donne la veille.
+     *
+     * À l'est de Greenwich, c'était TOUTES les dates : 36 332 cellules sur
+     * 36 332 reculaient d'une journée — dates d'écriture, d'enregistrement et
+     * d'échéance comprises. La balance âgée vieillissait donc tout son grand
+     * livre d'un jour, et les échéances affichées étaient fausses d'autant.
+     *
+     * Une heure à moins de cinq minutes d'un minuit est donc traitée comme ce
+     * qu'elle est — un arrondi — et la date est ramenée au jour le plus
+     * proche. Au-delà, l'heure est une vraie heure et le jour est celui dans
+     * lequel elle tombe.
+     */
+    const MARGE_MINUIT = 5 * 60 * 1000;
+    function jourDe(d) {
+        // L'heure se lit sur l'horloge, pas en millisecondes écoulées depuis
+        // le minuit local : le jour du passage à l'heure d'été ne dure que
+        // vingt-trois heures, et 23 h 59 min y tombait à 22 h 59 du minuit
+        // précédent. Les trente-cinq écritures du 30 mars 2026 reculaient
+        // ainsi au 29, les seules que la première version laissait passer.
+        const surLHorloge = d.getHours() * 3600000 + d.getMinutes() * 60000
+            + d.getSeconds() * 1000 + d.getMilliseconds();
+        const jour = stripTime(d);
+        return surLHorloge > MS_DAY - MARGE_MINUIT ? addDays(jour, 1) : jour;
+    }
+    function addDays(d, n) { return d ? new Date(d.getFullYear(), d.getMonth(), d.getDate() + n) : null; }
+    function diffDays(a, b) { return (a && b) ? Math.round((stripTime(a) - stripTime(b)) / MS_DAY) : null; }
+    function monthKey(d) { return d ? d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') : null; }
+
+    /**
+     * Calcule la date d'échéance d'une facture selon la règle de son financement.
+     * Retourne { date, origine, regle, baseUtilisee } — origine ∈ 'Monday' | 'Règle' | null.
+     *
+     * @param {object} inv    facture normalisée
+     * @param {object} opts   { rules, grandLivre }
+     */
+
+    // CE QUI A DATÉ LA LIGNE, DIT EN TOUTES LETTRES.
+    //
+    // Le repli a trois sources possibles — la dernière date du libellé de
+    // ligne, la date de l'écriture (sa colonne « Date »), et en tout dernier
+    // recours sa date d'enregistrement — et un délai qui ne s'ajoute qu'aux
+    // factures. Une seule fonction écrit la phrase, pour que le classeur, la
+    // page et l'application disent exactement la même chose : trois copies
+    // divergeaient déjà, et un filtre qui lit le motif ne reconnaissait plus
+    // ses lignes.
+    function motifEcheance1(source, jours) {
+        if (!source || source === 'libellé') return 'dernière date du libellé';
+        if (source === 'date comptable') return 'échéance portée par le grand livre';
+        if (source === 'Pennylane') return 'échéance Pennylane';
+        // Chaque source est nommée, aucune n'est rangée par défaut avec une
+        // autre : un ternaire à deux branches publiait « date d'enregistrement »
+        // pour toute valeur inattendue, y compris « date comptable ».
+        const nom = source === 'écriture' ? 'date de l’écriture'
+            : source === 'enregistrement' ? 'date d’enregistrement'
+            : String(source);
+        return nom + (jours ? ' + ' + jours + ' jours' : '') + ' (aucune date dans le libellé)';
+    }
+
+    function computeEcheance(inv, opts) {
+        const o = opts || {};
+        const rule = getRule(inv.financement, o.rules);
+
+        // Vos règles font autorité, et rien d'autre.
+        //
+        // La colonne « Date d'échéance » de Monday ne les remplace plus, ni en
+        // premier choix ni en repli. Elle donnait des dates qui ne sortent
+        // d'aucune règle : sur une facture B2C-Perso commencée le 12 janvier,
+        // la règle donne le 22 janvier et la colonne portait le 1er août —
+        // 191 jours d'écart, et une créance en retard depuis six mois qui
+        // ressortait non échue.
+        //
+        // Une facture que les règles ne savent pas dater n'a donc plus
+        // d'échéance du tout : elle rejoint « Date d'échéance manquante — à
+        // qualifier », où elle se voit et se corrige, au lieu de porter une
+        // date empruntée dont personne ne sait d'où elle vient. La date que
+        // Monday portait reste lisible dans la fiche et dans les exports.
+
+        // Le grand livre et le suivi recouvrement ne mesurent pas la même
+        // chose : l'un le solde du compte, l'autre le travail de relance. Les
+        // délais diffèrent donc sur certains dispositifs, et c'est le classeur
+        // de trésorerie qui fait foi côté comptable.
+        const gl = o.grandLivre === true;
+
+        // Chaque branche rend désormais « jours » : le délai RÉELLEMENT ajouté
+        // à la base, et non celui que le barème du dispositif laisserait
+        // supposer. Les deux ne coïncident pas : sous mandat de prélèvement le
+        // délai est nul quand le barème dit soixante, la refacturation après
+        // formation ajoute soixante jours quel que soit le dispositif, et le
+        // repli sur l'échéance du grand livre n'ajoute rien du tout. L'export
+        // annonçait jusqu'ici le barème à la place du délai appliqué, et se
+        // trompait donc près d'une fois sur deux — ce qu'un auditeur ne peut
+        // pas vérifier sans refaire le calcul à la main.
+
+        // ── Les deux cas qui passent avant la règle du dispositif ──
+        // Ils ne valent que pour la balance âgée comptable : c'est la règle du
+        // classeur de trésorerie, pas celle du suivi de relance.
+        //
+        // Le mandat de prélèvement passe avant tout le reste.
+        //
+        // Chez un client prélevé, l'argent est appelé automatiquement : il n'y
+        // a aucun délai de paiement à accorder, et l'échéance est la fin de la
+        // formation, sans rien ajouter. C'est la colonne AT du classeur.
+        //
+        // Le classeur teste AR avant AT ; ici c'est l'inverse, à votre
+        // demande : « les GoCardless sont prioritaires, date d'échéance fin de
+        // formation ». Une facture de régularisation émise après la formation
+        // ne change rien au fait que le client est prélevé — le prélèvement,
+        // lui, ne s'arrête pas pour attendre soixante jours.
+        // Une facture émise APRÈS la fin de la formation n'est pas une facture
+        // d'avance : c'est une régularisation, et le délai court depuis son
+        // émission. Sans cela, une formation terminée en 2024 refacturée en
+        // 2026 ressortait échue depuis deux ans le jour de son émission.
+        // C'est la première ligne de la formule du classeur :
+        // SI(AR="oui" ; AQ+60 ; …). AR vaut « oui » quand la date de facture de
+        // la facturation dépasse la fin de formation. La base est alors la date
+        // de facture *de la facturation*, pas celle de l'écriture comptable :
+        // les confondre décalait mille lignes de soixante jours.
+        //
+        // Le délai, lui, est de TRENTE jours et non soixante. Elle a redonné
+        // l'ordre de préférence le 14/10/2026 : « si date de facture est
+        // postérieure à fin de formation, on prend date de facture + 30 ». La
+        // formule du classeur dit soixante ; c'est elle qui décide, pas le
+        // classeur.
+        // LA FACTURE TARDIVE PASSE LA PREMIÈRE, 03/11/2026.
+        //
+        // L'ordre du 14/10/2026 — « les GoCardless sont prioritaires » — est
+        // défait à sa demande : « ordre des exceptions : la facture tardive
+        // passe avant GoCardless ». Une régularisation émise après la
+        // formation se date sur son émission, que le client soit prélevé ou
+        // non. C'est l'ordre du classeur (AR avant AT) et celui que le
+        // transformateur CAC applique déjà — rang 1 la facture, rang 2 le mandat.
+        //
+        // LE DÉLAI EST DE SOIXANTE JOURS, 03/11/2026, et non plus trente.
+        // C'est la première ligne de la formule du classeur : SI(AR="oui" ;
+        // AQ+60 ; …). La base reste la date de facture DE LA FACTURATION, pas
+        // celle de l'écriture comptable : les confondre décalait mille lignes.
+        if (gl && inv.dateFactureFacturation && inv.dateFinFormation
+            && inv.dateFactureFacturation > inv.dateFinFormation) {
+            return { date: addDays(inv.dateFactureFacturation, 60), origine: 'Règle', regle: rule,
+                     baseUtilisee: 'dateFactureFacturation', jours: 60,
+                     motif: 'Facture postérieure à la fin de formation' };
+        }
+        // Chez un client prélevé, l'argent est appelé automatiquement — mais
+        // TRENTE JOURS après la fin de la formation, 03/11/2026, et non le
+        // jour même : le « sans délai » de la colonne AT est remplacé.
+        if (gl && inv.mandatGocardless && inv.dateFinFormation) {
+            return { date: addDays(inv.dateFinFormation, 30), origine: 'Règle', regle: rule,
+                     baseUtilisee: 'dateFinFormation', jours: 30,
+                     motif: 'Mandat de prélèvement en place' };
+        }
+
+        // La base de la règle d'abord. Puis, s'il y en a une, l'échéance que
+        // porte le grand livre : c'est ce que fait le classeur de trésorerie,
+        // et elle vaut mieux qu'un repli calculé sur la date de facture, qui
+        // ne dit rien du dispositif. Le repli de la règle ne sert qu'aux
+        // factures Monday, où aucune échéance comptable n'existe.
+        const principale = (gl && rule.gl) ? rule.gl : rule;
+        //
+        // L'ordre a été remis en cause et TRANCHÉ le 13/10/2026. Mettre le repli
+        // de la règle (date de facture + N) devant l'échéance comptable aurait
+        // déplacé 661 créances de 80 jours en moyenne, 1 609 033 €, et sorti
+        // 515 501 € de l'échu — mais cela se serait écarté de sa feuille de
+        // septembre, où l'échéance d'une ligne sans date de formation est la
+        // dernière date de son libellé, sans délai ajouté (FA-771-000948 : AA et
+        // AC valent toutes deux le 30/11/2023). Zehavit a confirmé : « il faut
+        // prendre la dernière date du libellé ». L'ordre reste celui-ci.
+        const bases = [
+            { champ: principale.base, jours: principale.jours },
+            { comptable: true },
+            { champ: rule.fallback, jours: rule.fallbackJours != null ? rule.fallbackJours : rule.jours },
+            // Le repli, donné le 14/10/2026 — « comme repli il faut voir dans
+            // les libellés » — puis rouvert le 22/10/2026 : « au lieu de
+            // prendre par défaut la date d'enregistrement je veux que tu
+            // prennes cette date », la colonne « Date » du grand livre, et
+            // « pour les paiements et avoir colonne D, pour les factures
+            // colonne D + 30 jours ».
+            //
+            // La première branche n'a pas de délai — sa feuille de septembre le
+            // confirme, FA-771-000948 y porte la même date en AA et en AC. La
+            // seconde en a trente, mais seulement sur une facture.
+            //
+            // Elle remplace les replis « date de facture + N » que l'écriture
+            // initiale de l'application avait posés par symétrie, en août, sans
+            // qu'aucune règle d'elle ne les dise. Trois créances en vivaient
+            // encore — Safran deux fois et l'Institut technique des gaz — et
+            // elles étaient datées trente jours trop tard.
+            { echeance1: true },
+        ];
+
+        // Une facture réglée AVANT d'avoir été émise a été refaite.
+        //
+        // Sa date de facture ne dit plus quand la créance est née : elle dit
+        // quand le document a été réédité, souvent des mois plus tard. Une
+        // échéance calculée dessus repart à zéro alors que l'argent est déjà
+        // rentré, et la facture ressort « payée en avance » au lieu de
+        // « payée en retard ». C'est la formation qui fait foi dans ces
+        // cas-là — début ou fin selon le dispositif, comme le dit la règle.
+        const regleeAvantEmission = inv.datePaiementEffective && inv.dateFacture
+            && inv.datePaiementEffective < inv.dateFacture;
+        if (regleeAvantEmission) {
+            const surFormation = bases.filter(b =>
+                b.champ === 'dateDebutFormation' || b.champ === 'dateFinFormation');
+            if (surFormation.length) {
+                for (const b of surFormation) {
+                    const src = inv[b.champ];
+                    if (!src) continue;
+                    return { date: addDays(src, b.jours || 0), origine: 'Règle', regle: rule,
+                             baseUtilisee: b.champ, jours: b.jours || 0,
+                             motif: 'Règlement antérieur à la facture — la facture a été refaite' };
+                }
+            } else if (inv.dateFinFormation || inv.dateDebutFormation) {
+                // La règle du dispositif ne compte que sur la date de facture.
+                // Faute de mieux, la formation, sans délai ajouté : elle dit au
+                // moins quand la créance est née.
+                const src = inv.dateFinFormation || inv.dateDebutFormation;
+                return { date: addDays(src, principale.jours || 0), origine: 'Règle', regle: rule,
+                         baseUtilisee: inv.dateFinFormation ? 'dateFinFormation' : 'dateDebutFormation',
+                         jours: principale.jours || 0,
+                         motif: 'Règlement antérieur à la facture — la facture a été refaite' };
+            }
+        }
+        for (const b of bases) {
+            if (b.echeance1) {
+                if (!inv.dateEcheanceRepli) continue;
+                // LE DÉLAI DU REPLI, ET SEULEMENT LE SIEN.
+                //
+                // « Pour les paiements et avoir colonne D, pour les factures
+                // colonne D + 30 jours », 22/10/2026. Le délai est porté par
+                // la ligne, pas par le barème du dispositif : il vaut 30 sur
+                // une facture datée de sa colonne « Date », et zéro partout
+                // ailleurs — le libellé, lui, n'a jamais eu de délai.
+                const j = inv.echeance1Jours || 0;
+                return { date: addDays(stripTime(inv.dateEcheanceRepli), j),
+                         origine: 'Règle', regle: rule,
+                         baseUtilisee: 'echeance1', jours: j,
+                         motif: motifEcheance1(inv.echeance1Source, j) };
+            }
+            if (b.comptable) {
+                if (!inv.dateEcheanceComptable) continue;
+                return { date: inv.dateEcheanceComptable, origine: 'Grand livre', regle: rule,
+                         baseUtilisee: 'dateEcheanceComptable', jours: 0 };
+            }
+            if (!b.champ) continue;
+            const src = inv[b.champ];
+            if (!src) continue;
+            let date = addDays(src, b.jours || 0);
+            let base = b.champ;
+
+            // Garde-fou du suivi de relance : une facture corrigée est réémise,
+            // sa date devient récente, et son échéance repart à zéro alors que
+            // la créance traîne depuis des mois. Le début de formation, lui, ne
+            // bouge pas : il plafonne l'échéance, et ne peut que l'avancer.
+            // Au grand livre, c'est la règle « facture postérieure à la fin de
+            // formation » qui traite le même biais, autrement.
+            if (!gl && rule.plafondDebutFormation && base === 'dateFacture' && inv.dateDebutFormation) {
+                const plafond = addDays(inv.dateDebutFormation, b.jours || 0);
+                if (plafond < date) { date = plafond; base = 'dateDebutFormation'; }
+            }
+            return { date, origine: 'Règle', regle: rule, baseUtilisee: base, jours: b.jours || 0 };
+        }
+        // Faute de date de formation, l'échéance que porte le grand livre : elle
+        // vaut mieux qu'aucune échéance du tout, et c'est ce que fait le
+        // classeur de trésorerie.
+        if (inv.dateEcheanceComptable) {
+            return { date: inv.dateEcheanceComptable, origine: 'Grand livre', regle: rule,
+                     baseUtilisee: 'dateEcheanceComptable', jours: 0 };
+        }
+        return { date: null, origine: null, regle: rule, baseUtilisee: null, jours: null };
+    }
+
+    // ──────────────────────────────────────────────
+    //  Tranches de balance âgée
+    // ──────────────────────────────────────────────
+
+    /**
+     * Tranches d'antériorité de la balance âgée.
+     *
+     * Reprises telles quelles du tableau de balance âgée déjà utilisé chez
+     * Liora, en mois plutôt qu'en jours : l'ancienneté des créances s'y compte
+     * en années, et des tranches de trente jours n'y montraient rien. Les
+     * bornes sont exprimées en jours pour rester comparables au retard calculé,
+     * un mois valant trente jours.
+     */
+    const M = 30;
+    const AGING_BUCKETS = [
+        { key: 'nonEchu',  label: 'Non échu',      min: -1e9,    max: 0,        couleur: '#3b82f6' },
+        { key: 'm0_3',     label: '0 à 3 mois',    min: 1,       max: 3 * M,    couleur: '#84cc16' },
+        { key: 'm3_4',     label: '3 à 4 mois',    min: 3 * M + 1,  max: 4 * M, couleur: '#a3c714' },
+        { key: 'm4_6',     label: '4 à 6 mois',    min: 4 * M + 1,  max: 6 * M, couleur: '#eab308' },
+        { key: 'm6_12',    label: '6 à 12 mois',   min: 6 * M + 1,  max: 12 * M, couleur: '#f59e0b' },
+        { key: 'm12_18',   label: '12 à 18 mois',  min: 12 * M + 1, max: 18 * M, couleur: '#f97316' },
+        { key: 'm18_24',   label: '18 à 24 mois',  min: 18 * M + 1, max: 24 * M, couleur: '#F47458' },
+        { key: 'm24_36',   label: '24 à 36 mois',  min: 24 * M + 1, max: 36 * M, couleur: '#ef4444' },
+        { key: 'm36_48',   label: '36 à 48 mois',  min: 36 * M + 1, max: 48 * M, couleur: '#dc2626' },
+        { key: 'm48p',     label: '> 48 mois',     min: 48 * M + 1, max: 1e9,   couleur: '#991b1b' },
+    ];
+
+    function bucketFor(retardJours) {
+        if (retardJours == null) return null;
+        return AGING_BUCKETS.find(b => retardJours >= b.min && retardJours <= b.max) || null;
+    }
+
+    global.LioraRules = {
+        norm, parseDate, stripTime, addDays, diffDays, monthKey, motifEcheance1,
+        DEFAULT_ECHEANCE_RULES, DEFAULT_FALLBACK_RULE,
+        BOARD_ROLE_PATTERNS, ROLE_LABELS, SOURCES,
+        detectBoardRole, roleParLeNom, NUM_TABLEAU, TABLEAUX_ECARTES, tableauEcarte,
+        detectFinancement, getRule, computeEcheance,
+        GROUPES_EXCLUS, estGroupeTechnique, perimetreDepuisTexte,
+        ETAPES, etapeDepuisGroupe,
+        AGING_BUCKETS, bucketFor, MS_DAY, categorieDe,
+    };
+})(window);
