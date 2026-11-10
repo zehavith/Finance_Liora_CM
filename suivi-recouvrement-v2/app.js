@@ -143,6 +143,7 @@
   var REF = '2026-11-09';
   var FILE = {}; N.FILES.forEach(function (f) { FILE[f.k] = f; });
     function fileOfItem(o) {
+    if (o.nl) return 'cor';
     if (o.st2 === 'avoir' || o.st2 === 'monday' || o.st2 === 'gl') return 'regle';
     if (o.st2 === 'vir') return 'cor';
     var ov = CFG.overrides[N.prefix(o.g)];
@@ -391,7 +392,7 @@
     var cohFin = N.FINANCEURS.indexOf(S.fin) >= 0 ? S.fin : S.cohort;
     var tabs = N.FINANCEURS.map(function (f) { return '<button role="tab" aria-selected="' + (cohFin === f) + '" data-cohort="' + esc(f) + '">' + esc(f) + '</button>'; }).join('');
     var AGES = [1, 2, 3, 4, 6], AL = ['30 j', '60 j', '90 j', '120 j', '180 j'], by = {}, nEst = 0, nNonRecu = 0;
-    function recu(x) { return x.paid && x.dp && (x.gs === 'r' || x.gs === 'v' || (x.gs === '' && x.src === 'monday')); }
+    function recu(x) { return x.paid && x.dp; }
     calcList().forEach(function (x) {
       if (!x.df || x.src === 'avoir' || x.fin !== cohFin) return;
       var de = /allemagne|interco/i.test(x.rl || ''); if (S.ent === 'de' && !de) return; if (S.ent === 'fr' && de) return;
@@ -422,7 +423,7 @@
 
     // 5. Risque B2C (financement personnel) : grand livre + dossiers Monday
     var fp = encAt(n, 'Financement personnel'), fpPrev = n >= 12 ? encAt(n - 12, 'Financement personnel') : null;
-    var fpItems = S.mo.open.filter(function (o) { return o.fin === 'Financement personnel' && FILE[fileOfItem(o)]; });
+    var fpItems = S.mo.open.filter(function (o) { return !o.fromPaid && o.fin === 'Financement personnel' && FILE[fileOfItem(o)]; });
     var fpBy = {}; fpItems.forEach(function (o) { var g = o.g.replace(/^\s*[\d.]+\s*/, ''); (fpBy[g] || (fpBy[g] = [0, 0])); fpBy[g][0]++; fpBy[g][1] += o.mt || 0; });
     var fpRows = Object.keys(fpBy).map(function (g) { return { l: g, v: [fpBy[g][1]], tip: g + ' : ' + fpBy[g][0] + ' factures' }; }).sort(function (a, b) { return b.v[0] - a.v[0]; });
     var fpAges = range.slice(-13).map(function (i) { var e = encAt(i, 'Financement personnel'); return { label: mLabel(mOf(i), i === Math.max(0, n - 12) || i === n), segs: [{ v: e.a, c: 'var(--c4)' }, { v: e.bb, c: 'var(--c2)' }, { v: e.c, c: 'var(--c5)' }], tip: dFR(dates[i]) + ' : échu ' + meur(e.echu) }; });
@@ -491,7 +492,7 @@
       '<div class="seg" role="tablist" aria-label="Financeur des cohortes">' + tabs + '</div></div>' +
       '<div class="grid2"><div class="sub">' + lineChart(vSeries, AL, function (v) { return fmt(v, 0) + ' %'; }, { max: 100 }) + legend(vSeries.map(function (s) { return [s.n, s.c]; })) + '</div>' +
       '<div style="display:flex;flex-direction:column;gap:10px;min-width:0">' + table(['Cohorte', '30 j', '60 j', '90 j', '120 j', '180 j', 'vs N-1'], vRows, { right: [1, 2, 3, 4, 5, 6] }) +
-      '<p class="note">Reçu = règlement lettré au grand livre ou virement reçu sur Pennylane, à leur date réelle ; pour une facture antérieure au grand livre, le tableau « Factures payées » et sa date de paiement' + (nEst ? ' (estimée par la date de contrôle pour ' + fmt(nEst) + ' factures)' : '') + '. ' + (nNonRecu ? fmt(nNonRecu) + ' factures « payées » dans Monday mais toujours ouvertes au grand livre ne sont pas comptées. ' : '') + 'Avoirs exclus. L’écart N-1 compare chaque cohorte au même mois de l’an dernier, au dernier âge atteint.</p></div></div></section>' +
+      '<p class="note">Reçu = règlement lettré au grand livre ou virement reçu sur Pennylane, à leur date réelle ; sinon paiement enregistré dans Sellsy (tableau « Factures payées »), à sa date de paiement' + (nEst ? ' (estimée par la date de contrôle pour ' + fmt(nEst) + ' factures)' : '') + '. Avoirs exclus. L’écart N-1 compare chaque cohorte au même mois de l’an dernier, au dernier âge atteint.</p></div></div></section>' +
       '<section class="card"><div class="sh"><div><h2><span class="n">5</span>Le risque B2C</h2><p>Financement personnel : l’échu au grand livre et les dossiers ouverts dans Monday.</p></div></div>' +
       '<div class="kpis">' + [
         kpiCard({ l: 'Échu financement personnel', v: meur(fp.echu), sub: fmt(pct(fp.echu, fp.total), 0) + ' % de son encours', icon: ICON.alert, tone: TONE.bad, chips: fpPrev ? deltaChip('vs N-1', (fp.echu / fpPrev.echu - 1) * 100, ' %', true) : '' }),
@@ -810,12 +811,12 @@
     var all = S.mo.open, tracked = all.filter(function (o) { return FILE[fileOfItem(o)] || fileOfItem(o) === 'cours'; });
     all.forEach(function () { });
     var paid = paidSet(), seen = {}, dup = [];
-    all.forEach(function (o) { (seen[o.n] || (seen[o.n] = [])).push(o); });
+    all.forEach(function (o) { if (!o.fromPaid) (seen[o.n] || (seen[o.n] = [])).push(o); });
     Object.keys(seen).forEach(function (k) { if (seen[k].length > 1) dup = dup.concat(seen[k]); });
     var C = [
-      { k: 'paid', t: 'Réglées mais encore dans une étape Monday', d: 'La facture est réglée (tableau « Factures payées » ou lettrée au grand livre) et figure encore dans un groupe de travail : à sortir du circuit. Elle n’est plus comptée dans les étapes.', rows: all.filter(function (o) { return o.st2 === 'monday' || o.st2 === 'gl'; }), sev: 'c-bad' },
+      { k: 'paid', t: 'Réglées mais encore dans une étape Monday', d: 'La facture est réglée (tableau « Factures payées » ou lettrée au grand livre) et figure encore dans un groupe de travail : à sortir du circuit. Elle n’est plus comptée dans les étapes.', rows: all.filter(function (o) { return !o.fromPaid && (o.st2 === 'monday' || o.st2 === 'gl'); }), sev: 'c-bad' },
       { k: 'avoir', t: 'Annulées par avoir mais encore dans une étape Monday', d: 'Soldées par un avoir au grand livre, sans règlement : rien n’est rentré, rien n’est plus dû. Exclues des chiffres, comme dans la v1.', rows: all.filter(function (o) { return o.st2 === 'avoir'; }), sev: 'c-warn' },
-      { k: 'nonrecu', t: 'Payées dans Monday, toujours ouvertes au grand livre', d: 'La facture est dans le tableau « Factures payées » mais le grand livre ne montre ni règlement lettré ni virement reçu : rien ne prouve que l’argent soit rentré. Elle compte comme réglée dans le reste à encaisser, mais pas dans les cohortes d’encaissement.', rows: S.mo.paid.filter(function (o) { var v = S.calc[window.LioraEngine.key(o.n)]; return v && v.src === 'monday' && v.gs === 'o'; }), sev: 'c-warn' },
+      { k: 'nonrecu', t: 'Payées dans Sellsy, non pointées au grand livre', d: 'Le paiement est enregistré dans Sellsy (tableau « Factures payées ») mais la facture reste ouverte dans Pennylane : à pointer. Elle compte comme réglée et figure dans l’étape « Corriger ».', rows: S.mo.paid.filter(function (o) { return o.nl; }), sev: 'c-info' },
       { k: 'vir', t: 'Virement reçu sur Pennylane, non lettré', d: 'Un virement non lettré cite la facture et couvre son reste dû : elle compte comme réglée, et passe dans l’étape « Corriger » pour être lettrée.', rows: all.filter(function (o) { return o.st2 === 'vir'; }), sev: 'c-info' },
       { k: 'advDue', t: 'Échues encore dans « Rendre payable »', d: 'L’échéance est passée alors que la facture n’a pas encore été rendue payable.', rows: all.filter(function (o) { return fileOfItem(o) === 'adv' && o.de && o.de < REF; }), sev: 'c-bad' },
       { k: 'prom', t: 'Promesses de paiement dépassées de plus de 7 jours', d: 'La date promise est passée sans encaissement : relancer ou requalifier.', rows: all.filter(function (o) { return FILE[fileOfItem(o)] && o.dpr && days(o.dpr, REF) > 7; }), sev: 'c-warn' },
@@ -998,6 +999,7 @@
       if (v.mt != null) o.mt = v.mt;
       if (v.rl && CAT_FIN[v.rl]) o.fin = CAT_FIN[v.rl];
       o.st2 = v.src; o.dpay = v.dp;
+      o.nl = v.src === 'monday' && v.gs === 'o';
     }
     mo.open.forEach(one); mo.paid.forEach(one);
   }
@@ -1015,9 +1017,15 @@
     return true;
   }
   function setMonday(mo, src) {
+    mo.open = mo.open.filter(function (o) { return !o.fromPaid; });
     dedupeTampon(mo);
     S._cl = null;
     applyCalc(mo);
+    var enCours = {}; mo.open.forEach(function (o) { enCours[o.n] = 1; });
+    mo.paid.forEach(function (p) {
+      if (!p.nl || enCours[p.n]) return;
+      mo.open.push(Object.assign({}, p, { fromPaid: true, f: 'cor', pb: 'Payée dans Sellsy, non pointée au grand livre' }));
+    });
     S.mo = mo; S.moSource = src; S._paidSet = null; S._fx = null;
     var d = mo.at.slice(0, 10);
     REF = d;
