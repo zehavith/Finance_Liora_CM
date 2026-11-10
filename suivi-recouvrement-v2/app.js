@@ -380,9 +380,28 @@
       heatRows.map(function (r) {
         var ratio = r.dso != null && r.cib ? r.dso / r.cib : null;
         return '<tr>' + td(esc(r.f)) + r.cells.map(function (v, j) { return td(fmt(v / 1000), 'h', 'background:' + (j === 0 ? mix('var(--c1)', 6 + v / mxNE * 30) : mix('var(--c2)', 6 + Math.max(0, v) / mxE * 55))); }).join('') + td(fmt(r.t / 1000), 'r') +
-          td(chip((r.dso != null ? fmt(r.dso, 0) : '—') + ' j / ' + (r.cib || '—') + ' j', ratio == null ? 'c-mute' : ratio >= 1.5 ? 'c-bad' : ratio > 1 ? 'c-warn' : 'c-good'), 'r') + '</tr>';
-      }).concat(['<tr class="tot">' + td('Total') + [0, 1, 2, 3, 4, 5].map(function (j) { return td(fmt(sum(heatRows, function (r) { return r.cells[j]; }) / 1000), 'r'); }).join('') + td(fmt(sum(heatRows, function (r) { return r.t; }) / 1000), 'r') + td(chip(fmt(dsoS[n], 0) + ' j / ' + cible + ' j', dsoS[n] / cible >= 1.5 ? 'c-bad' : dsoS[n] > cible ? 'c-warn' : 'c-good'), 'r') + '</tr>']),
-      { right: [1, 2, 3, 4, 5, 6, 7, 8], cls: 'heat' });
+          td(chip((r.dso != null ? fmt(r.dso, 0) : '—') + '/' + (r.cib || '—') + ' j', ratio == null ? 'c-mute' : ratio >= 1.5 ? 'c-bad' : ratio > 1 ? 'c-warn' : 'c-good'), 'r') + '</tr>';
+      }).concat(['<tr class="tot">' + td('Total') + [0, 1, 2, 3, 4, 5].map(function (j) { return td(fmt(sum(heatRows, function (r) { return r.cells[j]; }) / 1000), 'r'); }).join('') + td(fmt(sum(heatRows, function (r) { return r.t; }) / 1000), 'r') + td(chip(fmt(dsoS[n], 0) + '/' + cible + ' j', dsoS[n] / cible >= 1.5 ? 'c-bad' : dsoS[n] > cible ? 'c-warn' : 'c-good'), 'r') + '</tr>']),
+      { right: [1, 2, 3, 4, 5, 6, 7, 8], cls: 'heat compact' });
+
+    // Variation du DSO (lecture de la v1) : délai moyen entre la date de facture
+    // et l’encaissement, pondéré par les montants, mois par mois du règlement.
+    var dsoMs = [], dsoV = [], dsoN = [];
+    var mN = mOf(n);
+    G.dso.forEach(function (r) { if (r.m <= mN && dsoMs.indexOf(r.m) < 0) dsoMs.push(r.m); });
+    dsoMs.sort(); dsoMs = dsoMs.slice(-16);
+    dsoMs.forEach(function (mm) {
+      var mt = 0, mj = 0, nb = 0;
+      G.dso.forEach(function (r) { if (r.m === mm && catPass(r.fin)) { mt += r.mt; mj += r.mj; nb += r.n || 0; } });
+      dsoV.push(mt > 0 ? mj / mt : null); dsoN.push(nb);
+    });
+    var dsoCib = S.fin === 'all' ? CFG.dsoGlobal : (CFG.dsoCible[S.fin] || null);
+    var dsoSer = [{ n: S.fin === 'all' ? 'Tous financements (moyenne pondérée)' : S.fin, c: S.fin === 'all' ? 'var(--accent)' : (FIN_COLORS[S.fin] || 'var(--accent)'), w: 2.4, dots: true, vals: dsoV }];
+    if (dsoCib) dsoSer.push({ n: 'Cible ' + dsoCib + ' j', c: 'var(--g2)', w: 1.4, dash: '5 4', vals: dsoMs.map(function () { return dsoCib; }) });
+    var dsoOk = dsoV.filter(function (v) { return v != null; });
+    var dsoHtml = dsoOk.length ? lineChart(dsoSer, dsoMs.map(function (mm, i) { var L = dsoMs.length - 1; return (i % 3 === L % 3) ? mLabel(mm, true) : ''; }), function (v) { return fmt(v, 0) + ' j'; }) + legend(dsoSer.map(function (x) { return [x.n, x.c]; })) +
+      '<p class="note">Dernier mois : <b class="num">' + fmt(dsoOk[dsoOk.length - 1], 0) + ' j</b> sur ' + fmt(dsoN[dsoN.length - 1]) + ' règlements · moyenne sur la période : ' + fmt(sum(dsoOk) / dsoOk.length, 0) + ' j.</p>'
+      : '<div class="empty">Aucun règlement sur la période pour ce filtre.</div>';
 
     // 4. Cohortes
     // Cohortes sur l’argent effectivement reçu : règlement lettré au grand
@@ -487,7 +506,8 @@
         '<div class="series">' + degr.map(function (s) { return '<button class="r fin-pick" data-fin="' + esc(s.n) + '" aria-pressed="' + (S.fin === s.n) + '" title="Filtrer la page sur ' + esc(s.n) + '"><i class="sw" style="background:' + s.c + '"></i><span>' + esc(s.n) + '</span><span class="num">' + fmt(s.last, 0) + ' %</span><span class="num" style="color:' + (s.dd >= 5 ? 'var(--bad)' : s.dd <= -5 ? 'var(--good)' : 'var(--muted)') + '">' + sgn(s.dd, 0) + ' pts sur 12 mois</span></button>'; }).join('') + '</div><p class="note">' + (S.fin === 'all' ? 'Cliquez une courbe ou une ligne de la légende pour filtrer toute la page sur ce financeur.' : 'Page filtrée sur ' + esc(S.fin) + '. <button class="btn fin-pick" data-fin="' + esc(S.fin) + '">Retirer le filtre</button>') + '</p>'
         : '<div class="empty">Pas assez de facturation sur la période pour tracer ces courbes.</div>') + '</section>' +
       '</div>' +
-      '<section class="card"><div class="sh"><div><h2><span class="n">3</span>Où se loge le retard</h2><p>En k€, au ' + dFR(dates[n]) + '. Plus la case est foncée, plus le montant pèse. Le DSO se lit contre le délai propre à chaque financeur (cibles dans Réglages).</p></div></div>' + heatHtml + '</section>' +
+      '<section class="card"><div class="sh"><div><h2><span class="n">3</span>Où se loge le retard</h2><p>En k€, au ' + dFR(dates[n]) + '. Plus la case est foncée, plus le montant pèse. Le DSO se lit contre le délai propre à chaque financeur (cibles dans Réglages).</p></div></div>' +
+        '<div class="split"><div style="min-width:0">' + heatHtml + '</div><div class="sub"><b>Variation du DSO' + (S.fin === 'all' ? '' : ' · ' + esc(S.fin)) + '</b><p class="note">Délai moyen entre la date de facture et l’encaissement, pondéré par les montants, par mois de règlement (méthode de la v1). ' + (S.fin === 'all' ? 'Tous financements : moyenne pondérée. Cliquez une courbe de « Qui se dégrade » pour un financeur.' : 'Financeur filtré.') + '</p>' + dsoHtml + '</div></div></section>' +
       '<section class="card"><div class="sh"><div><h2><span class="n">4</span>Les cohortes de facturation</h2><p>Part du montant facturé chaque mois effectivement reçue à 30, 60, 90, 120 et 180 jours de la date de facture. Seuls les âges atteints par toute la cohorte sont affichés.</p></div>' +
       '<div class="seg" role="tablist" aria-label="Financeur des cohortes">' + tabs + '</div></div>' +
       '<div class="grid2"><div class="sub">' + lineChart(vSeries, AL, function (v) { return fmt(v, 0) + ' %'; }, { max: 100 }) + legend(vSeries.map(function (s) { return [s.n, s.c]; })) + '</div>' +
