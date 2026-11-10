@@ -79,7 +79,7 @@ section.card{background:var(--surface);border:1px solid var(--line);border-radiu
 .seg button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
 .seg .cnt{font-size:11px;background:var(--sunk);padding:0 6px;border-radius:20px;color:var(--muted)}
 /* graphiques */
-.chart{position:relative;display:grid;grid-template-columns:auto 1fr;gap:0 8px}
+.chart{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 8px}
 .yax{position:relative;font-size:11px;color:var(--muted);font-family:var(--mono);text-align:right;height:220px;min-width:48px}
 .yax span{position:absolute;right:0;transform:translateY(-50%);white-space:nowrap}
 .plot{position:relative;height:220px;border-bottom:1px solid var(--axis);background:repeating-linear-gradient(to top,var(--grid) 0 1px,transparent 1px 20%)}
@@ -126,6 +126,9 @@ table.compact th{padding:6px 5px;font-size:10px;letter-spacing:0}
 table.compact td{padding:5px 5px}
 table.compact .chip{padding:1px 6px;font-size:11px}
 table.compact td:first-child{min-width:0;white-space:normal;max-width:150px}
+.plot i.gl{position:absolute;left:0;right:0;height:1px;background:var(--grid)}
+.col.wf{position:relative}
+.wl{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);font-size:10.5px;font-family:var(--mono);color:var(--ink);white-space:nowrap;padding-bottom:3px}
 .heat td.h{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .empty{padding:22px;border:1px dashed var(--axis);border-radius:10px;color:var(--muted);text-align:center;background:var(--bg)}
 .flow{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}

@@ -102,16 +102,16 @@
     return o;
   }
   function mOf(i) { return S.gl.dates[i].slice(0, 7); }
-  // DSO par épuisement : on retire le facturé des mois précédents de l'encours de fin de mois.
-  function dsoAt(i, fin) {
-    var R = encAt(i, fin).total, m = mOf(i), d = 0;
-    for (var k = 0; k < 36 && R > 0; k++) {
-      var mm = addM(m, -k), F = fluxM(mm, fin).fac, nd = dim(mm);
-      if (F <= 0) { d += nd; continue; }
-      if (R > F) { R -= F; d += nd; } else { d += R / F * nd; R = 0; }
-    }
-    return R > 0 ? null : d;
+  // DSO, méthode de la v1 : délai moyen entre la date de facture et
+  // l’encaissement, pondéré par les montants, sur l’exercice en cours
+  // (du 1er juillet jusqu’au mois d’arrêté).
+  function dsoInfo(i, fin) {
+    var m = mOf(i), y = +m.slice(0, 4), mo = +m.slice(5, 7);
+    var deb = (mo >= 7 ? y : y - 1) + '-07', mt = 0, mj = 0, nb = 0;
+    S.gl.dso.forEach(function (r) { if (r.m >= deb && r.m <= m && catPass(r.fin, fin)) { mt += r.mt; mj += r.mj; nb += r.n || 0; } });
+    return { d: mt > 0 ? mj / mt : null, mt: mt, n: nb, deb: deb };
   }
+  function dsoAt(i, fin) { return dsoInfo(i, fin).d; }
   function ceiAt(i, fin) {
     if (i < 1) return null;
     var r0 = encAt(i - 1, fin).total, e1 = encAt(i, fin), F = fluxM(mOf(i), fin).fac;
@@ -323,7 +323,7 @@
       kp('Encours clients', series.map(function (e) { return e.total; }), 'eur', null, 'dont non échu ' + meur(cur.ne), ICON.wallet, TONE.info),
       kp('Taux d’échu', peS, 'pct', true, 'soit ' + meur(cur.echu) + ' échus', ICON.clock, TONE.acc),
       kp('Échu à plus de 180 j', cS, 'eur', true, fmt(pct(cur.c, cur.total), 0) + ' % de l’encours', ICON.alert, TONE.bad),
-      kp('DSO', dsoS, 'day', true, 'méthode par épuisement', ICON.cal, TONE.info, 'cible ' + cible + ' j'),
+      kp('DSO', dsoS, 'day', true, fmt(dsoInfo(n).n) + ' règlements · ' + eurAuto(dsoInfo(n).mt) + ' depuis le 01/07', ICON.cal, TONE.info, 'cible ' + cible + ' j'),
       kp('CEI', ceiS, 'pct', false, 'encaissé / exigible du mois', ICON.target, TONE.good, 'cible ' + CFG.ceiCible + ' %'),
       kpiCard({ l: 'Couverture des provisions', v: S.fin === 'all' && S.ent === 'all' ? fmt(pct(provC, encAt(n).c), 0) + ' %' : '—', icon: ICON.shield, tone: TONE.warn,
         sub: S.fin === 'all' && S.ent === 'all' ? keur(provC) + ' provisionnés sur ' + keur(encAt(n).c) + ' à plus de 180 j' : 'Disponible sans filtre financeur ni entité : la provision n’est lue qu’en global.',
@@ -365,6 +365,41 @@
     degr.forEach(function (s) { s.dd = s.last - s.first; });
     degr.sort(function (a, b) { return (b.dd || 0) - (a.dd || 0); });
     degr.forEach(function (s, i) { s.w = i < 2 && s.dd > 3 ? 3 : 1.8; s.fin = s.n; });
+
+    // Bridge encours M-1 -> M (grand livre)
+    var brStart = n > 0 ? encAt(n - 1).total : null, brEnd = cur.total, bf = { fac: 0, enc: 0, avo: 0, od: 0, banque: 0, autre: 0, nFac: 0, nEnc: 0, nAvo: 0, nod: 0, nbanque: 0, nautre: 0 };
+    G.flux.forEach(function (r) {
+      if (r.m !== m || !catPass(r.fin)) return;
+      bf.fac += r.fac || 0; bf.enc += r.enc || 0; bf.avo += r.avo || 0; bf.nFac += r.nFac || 0; bf.nEnc += r.nEnc || 0; bf.nAvo += r.nAvo || 0;
+      Object.keys(r.autG || {}).forEach(function (k) { bf[k] = (bf[k] || 0) + r.autG[k]; });
+      Object.keys(r.nAutG || {}).forEach(function (k) { bf['n' + k] = (bf['n' + k] || 0) + r.nAutG[k]; });
+    });
+    var bridgeHtml = '<div class="empty">Pas de mois précédent pour cet arrêté.</div>';
+    if (brStart != null) {
+      var steps = [['Facturé', bf.fac, bf.nFac], ['Encaissé', -bf.enc, bf.nEnc], ['Avoirs', -bf.avo, bf.nAvo], ['Opérations diverses', bf.od, bf.nod], ['Banque hors règlement', bf.banque, bf.nbanque], ['Autres journaux', bf.autre, bf.nautre]];
+      var ecart = brEnd - brStart - sum(steps, function (x) { return x[1]; });
+      if (Math.abs(ecart) >= 1) steps.push(['Écart non expliqué', ecart, null]);
+      var dPrev = dFR(dates[n - 1]), dCur = dFR(dates[n]);
+      var wf = [{ l: 'Encours au ' + dPrev, a: 0, b: brStart, c: 'var(--c1)', v: brStart, tot: 1 }], run = brStart;
+      steps.forEach(function (x) { wf.push({ l: x[0], a: run, b: run + x[1], c: x[1] >= 0 ? 'var(--bad)' : 'var(--good)', v: x[1] }); run += x[1]; });
+      wf.push({ l: 'Encours au ' + dCur, a: 0, b: brEnd, c: 'var(--c1)', v: brEnd, tot: 1 });
+      var lv = []; wf.forEach(function (w) { if (!w.tot) { lv.push(w.a, w.b); } });
+      var lo = Math.min.apply(null, lv), hi = Math.max.apply(null, lv.concat([brStart, brEnd]));
+      var span = Math.max(hi - lo, 1), step = niceMax(span / 2.5) / 2, bot = Math.max(0, Math.floor((lo - span * 0.8) / step) * step), top = Math.ceil(hi * 1.01 / step) * step;
+      if ((top - bot) / step > 8) step = niceMax((top - bot) / 5);
+      var ticks = []; for (var tv = bot; tv <= top + 1e-6; tv += step) ticks.push(tv);
+      top = ticks[ticks.length - 1];
+      var Y = function (v) { return (Math.max(v, bot) - bot) / (top - bot) * 100; };
+      bridgeHtml = '<div class="chart"><div class="yax">' + ticks.map(function (tv) { return '<span style="top:' + (100 - Y(tv)).toFixed(2) + '%">' + fmt(tv / 1e6, 1) + ' M€</span>'; }).join('') + '</div>' +
+        '<div class="plot" style="background:none">' + ticks.map(function (tv) { return '<i class="gl" style="bottom:' + Y(tv).toFixed(2) + '%"></i>'; }).join('') + '<div class="cols">' + wf.map(function (w) {
+          var y0 = Y(Math.min(w.a, w.b)), y1 = Y(Math.max(w.a, w.b));
+          return '<div class="col wf" title="' + esc(w.l + ' : ' + (w.tot ? eur(w.v) : (w.v >= 0 ? '+' : '−') + eur(Math.abs(w.v)))) + '"><div style="position:absolute;left:0;right:0;bottom:' + y0.toFixed(2) + '%;height:' + Math.max(0.6, y1 - y0).toFixed(2) + '%;background:' + w.c + ';border-radius:2px">' + (w.tot ? '<span class="wl">' + fmt(w.v / 1e6, 2) + ' M€</span>' : '') + '</div></div>';
+        }).join('') + '</div></div><div class="xax">' + wf.map(function (w) { return '<span title="' + esc(w.l) + '">' + esc(w.tot ? (w.l.indexOf(dPrev) > 0 ? dPrev.slice(0, 5) : dCur.slice(0, 5)) : ({ 'Opérations diverses': 'OD', 'Banque hors règlement': 'Banque', 'Autres journaux': 'Autres', 'Écart non expliqué': 'Écart' }[w.l] || w.l)) + '</span>'; }).join('') + '</div></div>' +
+        legend([['Encours', 'var(--c1)'], ['Fait monter l’encours', 'var(--bad)'], ['Fait baisser l’encours', 'var(--good)']]) +
+        table(['Poste', 'Montant', 'Écritures'], ['<tr class="tot">' + td('Encours au ' + dPrev) + td(eur(brStart), 'r') + td('—', 'r') + '</tr>'].concat(steps.map(function (x) {
+          return '<tr>' + td(esc(x[0])) + td((x[1] > 0 ? '+' : x[1] < 0 ? '−' : '') + eur(Math.abs(x[1])), 'r', 'color:' + (x[1] > 0.5 ? 'var(--bad)' : x[1] < -0.5 ? 'var(--good)' : 'var(--muted)')) + td(x[2] == null ? '' : fmt(x[2]), 'r') + '</tr>';
+        })).concat(['<tr class="tot">' + td('Encours au ' + dCur) + td(eur(brEnd), 'r') + td('—', 'r') + '</tr>']), { right: [1, 2], cls: 'compact' });
+    }
 
     // 3. Où se loge le retard
     var heatRows = N.FINANCEURS.concat(['Interne (Allemagne)', 'Non affecté']).map(function (f) {
@@ -501,13 +536,14 @@
       '<div class="grid2">' +
       '<section class="card"><div class="sh"><div><h2><span class="n">1</span>L’encours et son âge</h2><p>Encours clients en fin de mois par ancienneté de l’échu, 13 mois glissants</p></div></div>' +
       legend([['Non échu', 'var(--c6)'], ['Échu 0-90 j', 'var(--c4)'], ['Échu 91-180 j', 'var(--c2)'], ['Échu > 180 j', 'var(--c5)']]) + stackChart(encCols, function (v) { return v ? fmt(v / 1e6, 1) + ' M€' : '0'; }) + '<p class="note">' + encNote + '</p></section>' +
-      '<section class="card"><div class="sh"><div><h2><span class="n">2</span>Qui se dégrade</h2><p>Part des factures arrivées à échéance dans le mois qui sont tombées en retard (réglées après l’échéance, ou toujours impayées), par financeur. Échéance calculée selon les règles de la v1 ; un point porte sur au moins cinq factures échues. Une courbe qui monte est un financeur qui se dégrade.</p></div></div>' +
+      '<section class="card"><div class="sh"><div><h2><span class="n">2</span>Bridge encours M / M+1</h2><p>' + (brStart != null ? 'L’encours passe de ' + eur(brStart) + ' à ' + eur(brEnd) + ', soit ' + (brEnd - brStart >= 0 ? '+' : '−') + eur(Math.abs(brEnd - brStart)) + '. En rouge ce qui le fait monter, en vert ce qui le fait baisser (grand livre).' : '') + '</p></div></div>' + bridgeHtml + '</section>' +
+      '</div>' +
+      '<section class="card"><div class="sh"><div><h2><span class="n">3</span>Où se loge le retard, et qui se dégrade</h2><p>En k€, au ' + dFR(dates[n]) + '. Plus la case est foncée, plus le montant pèse. Le DSO se lit contre le délai propre à chaque financeur (cibles dans Réglages).</p></div></div>' +
+        '<div class="split"><div style="min-width:0;display:flex;flex-direction:column;gap:14px">' + heatHtml +
+      '<div class="sub"><b>Qui se dégrade</b><p class="note">Part des factures arrivées à échéance dans le mois qui sont tombées en retard (réglées après l’échéance, ou toujours impayées), par financeur. Échéance calculée selon les règles de la v1 ; un point porte sur au moins cinq factures échues. Une courbe qui monte est un financeur qui se dégrade.</p>' +
       (degr.length ? lineChart(degr.slice().reverse(), cohMonths.map(function (mm, i) { return mLabel(mm, i === 0 || i === cohMonths.length - 1); }), function (v) { return fmt(v, 0) + ' %'; }, { max: 100 }) +
         '<div class="series">' + degr.map(function (s) { return '<button class="r fin-pick" data-fin="' + esc(s.n) + '" aria-pressed="' + (S.fin === s.n) + '" title="Filtrer la page sur ' + esc(s.n) + '"><i class="sw" style="background:' + s.c + '"></i><span>' + esc(s.n) + '</span><span class="num">' + fmt(s.last, 0) + ' %</span><span class="num" style="color:' + (s.dd >= 5 ? 'var(--bad)' : s.dd <= -5 ? 'var(--good)' : 'var(--muted)') + '">' + sgn(s.dd, 0) + ' pts sur 12 mois</span></button>'; }).join('') + '</div><p class="note">' + (S.fin === 'all' ? 'Cliquez une courbe ou une ligne de la légende pour filtrer toute la page sur ce financeur.' : 'Page filtrée sur ' + esc(S.fin) + '. <button class="btn fin-pick" data-fin="' + esc(S.fin) + '">Retirer le filtre</button>') + '</p>'
-        : '<div class="empty">Pas assez de facturation sur la période pour tracer ces courbes.</div>') + '</section>' +
-      '</div>' +
-      '<section class="card"><div class="sh"><div><h2><span class="n">3</span>Où se loge le retard</h2><p>En k€, au ' + dFR(dates[n]) + '. Plus la case est foncée, plus le montant pèse. Le DSO se lit contre le délai propre à chaque financeur (cibles dans Réglages).</p></div></div>' +
-        '<div class="split"><div style="min-width:0">' + heatHtml + '</div><div class="sub"><b>Variation du DSO' + (S.fin === 'all' ? '' : ' · ' + esc(S.fin)) + '</b><p class="note">Délai moyen entre la date de facture et l’encaissement, pondéré par les montants, par mois de règlement (méthode de la v1). ' + (S.fin === 'all' ? 'Tous financements : moyenne pondérée. Cliquez une courbe de « Qui se dégrade » pour un financeur.' : 'Financeur filtré.') + '</p>' + dsoHtml + '</div></div></section>' +
+        : '<div class="empty">Pas assez de facturation sur la période pour tracer ces courbes.</div>') + '</div>' + '</div><div class="sub"><b>Variation du DSO' + (S.fin === 'all' ? '' : ' · ' + esc(S.fin)) + '</b><p class="note">Délai moyen entre la date de facture et l’encaissement, pondéré par les montants, par mois de règlement (méthode de la v1). ' + (S.fin === 'all' ? 'Tous financements : moyenne pondérée. Cliquez une courbe de « Qui se dégrade » pour un financeur.' : 'Financeur filtré.') + '</p>' + dsoHtml + '</div></div></section>' +
       '<section class="card"><div class="sh"><div><h2><span class="n">4</span>Les cohortes de facturation</h2><p>Part du montant facturé chaque mois effectivement reçue à 30, 60, 90, 120 et 180 jours de la date de facture. Seuls les âges atteints par toute la cohorte sont affichés.</p></div>' +
       '<div class="seg" role="tablist" aria-label="Financeur des cohortes">' + tabs + '</div></div>' +
       '<div class="grid2"><div class="sub">' + lineChart(vSeries, AL, function (v) { return fmt(v, 0) + ' %'; }, { max: 100 }) + legend(vSeries.map(function (s) { return [s.n, s.c]; })) + '</div>' +
