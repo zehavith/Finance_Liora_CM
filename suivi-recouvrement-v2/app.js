@@ -231,7 +231,7 @@
     return chip(label + ' ' + (x == null || !isFinite(x) ? '—' : sgn(x, unit === ' %' || unit === ' pts' ? 1 : 0) + unit), cls);
   }
   function legend(items) { return '<div class="legend">' + items.map(function (l) { return '<span><i class="sw" style="background:' + l[1] + '"></i>' + esc(l[0]) + '</span>'; }).join('') + '</div>'; }
-  function niceMax(v) { if (v <= 0) return 1; var p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p; var s = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10; return s * p; }
+  function niceMax(v) { if (v <= 0) return 1; var p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p; var s = n <= 1 ? 1 : n <= 1.25 ? 1.25 : n <= 1.5 ? 1.5 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 3 ? 3 : n <= 4 ? 4 : n <= 5 ? 5 : n <= 6 ? 6 : n <= 8 ? 8 : 10; return s * p; }
   function yAxis(max, f) { var out = []; for (var i = 5; i >= 0; i--) out.push('<span style="top:' + ((5 - i) * 20) + '%">' + f(max * i / 5) + '</span>'); return '<div class="yax">' + out.join('') + '</div>'; }
   // Colonnes empilées : cols = [{label, tip, segs:[{v,c}]}]
   function stackChart(cols, f) {
@@ -262,10 +262,12 @@
         d += (pen ? 'L' : 'M') + x.toFixed(2) + ' ' + y.toFixed(2) + ' '; pen = true;
         if (i === s.vals.length - 1 || s.dots) dots += '<circle cx="' + x.toFixed(2) + '%" cy="' + y.toFixed(2) + '%" r="' + (s.w > 2 ? 4 : 2.6) + '" style="fill:' + s.c + '"><title>' + esc(s.n + ' · ' + labels[i] + ' : ' + f(v)) + '</title></circle>';
       });
+      var area = s.area && pen ? '<path d="' + d + 'L' + (n === 1 ? 50 : 100) + ' 100 L0 100 Z" style="fill:' + s.c + ';opacity:.10;stroke:none"/>' : '';
       var hit = s.fin ? '<path class="hit" data-fin="' + esc(s.fin) + '" d="' + d + '" vector-effect="non-scaling-stroke"><title>' + esc(s.n) + ' : cliquer pour filtrer la page</title></path>' : '';
-      return '<svg class="lines" viewBox="0 0 100 100" preserveAspectRatio="none"><path d="' + d + '" vector-effect="non-scaling-stroke" style="fill:none;stroke:' + s.c + ';stroke-width:' + (s.w || 1.6) + ';stroke-dasharray:' + (s.dash || 'none') + '"/>' + hit + '</svg><svg class="lines">' + dots + '</svg>';
+      return '<svg class="lines" viewBox="0 0 100 100" preserveAspectRatio="none">' + area + '<path d="' + d + '" vector-effect="non-scaling-stroke" style="fill:none;stroke:' + s.c + ';stroke-width:' + (s.w || 1.6) + ';stroke-dasharray:' + (s.dash || 'none') + '"/>' + hit + '</svg><svg class="lines">' + dots + '</svg>';
     }).join('');
-    return '<div class="chart">' + yAxis(mx, f) + '<div class="plot">' + paths + '</div><div class="xax xpos">' + labels.map(function (l, i) { return '<span style="left:' + (n === 1 ? 50 : i / (n - 1) * 100).toFixed(2) + '%">' + esc(l) + '</span>'; }).join('') + '</div></div>';
+    var hs = opts.h ? ' style="height:' + opts.h + 'px"' : '';
+    return '<div class="chart">' + yAxis(mx, f).replace('class="yax"', 'class="yax"' + hs) + '<div class="plot"' + hs + '>' + paths + '</div><div class="xax xpos">' + labels.map(function (l, i) { return '<span style="left:' + (n === 1 ? 50 : i / (n - 1) * 100).toFixed(2) + '%">' + esc(l) + '</span>'; }).join('') + '</div></div>';
   }
   function hbars(rows, colors, f) {
     var mx = Math.max.apply(null, rows.map(function (r) { return sum(r.v); }).concat([1]));
@@ -431,11 +433,10 @@
       dsoV.push(mt > 0 ? mj / mt : null); dsoN.push(nb);
     });
     var dsoCib = S.fin === 'all' ? CFG.dsoGlobal : (CFG.dsoCible[S.fin] || null);
-    var dsoSer = [{ n: S.fin === 'all' ? 'Tous financements (moyenne pondérée)' : S.fin, c: S.fin === 'all' ? 'var(--accent)' : (FIN_COLORS[S.fin] || 'var(--accent)'), w: 2.4, dots: true, vals: dsoV }];
+    var dsoSer = [{ n: S.fin === 'all' ? 'Tous financements (moyenne pondérée)' : S.fin, c: S.fin === 'all' ? 'var(--accent)' : (FIN_COLORS[S.fin] || 'var(--accent)'), w: 2.4, dots: true, area: true, vals: dsoV }];
     if (dsoCib) dsoSer.push({ n: 'Cible ' + dsoCib + ' j', c: 'var(--g2)', w: 1.4, dash: '5 4', vals: dsoMs.map(function () { return dsoCib; }) });
     var dsoOk = dsoV.filter(function (v) { return v != null; });
-    var dsoHtml = dsoOk.length ? lineChart(dsoSer, dsoMs.map(function (mm, i) { var L = dsoMs.length - 1; return (i % 3 === L % 3) ? mLabel(mm, true) : ''; }), function (v) { return fmt(v, 0) + ' j'; }) + legend(dsoSer.map(function (x) { return [x.n, x.c]; })) +
-      '<p class="note">Dernier mois : <b class="num">' + fmt(dsoOk[dsoOk.length - 1], 0) + ' j</b> sur ' + fmt(dsoN[dsoN.length - 1]) + ' règlements · moyenne sur la période : ' + fmt(sum(dsoOk) / dsoOk.length, 0) + ' j.</p>'
+    var dsoHtml = dsoOk.length ? lineChart(dsoSer, dsoMs.map(function (mm, i) { var L = dsoMs.length - 1; return (i % 3 === L % 3) ? mLabel(mm, true) : ''; }), function (v) { return fmt(v, 0) + ' j'; }, { h: 130 }) + legend(dsoSer.map(function (x) { return [x.n.replace(' (moyenne pondérée)', ''), x.c]; }).concat([['Moyenne de la période : ' + fmt(sum(dsoOk) / dsoOk.length, 0) + ' j', 'transparent']]))
       : '<div class="empty">Aucun règlement sur la période pour ce filtre.</div>';
 
     // 4. Cohortes
@@ -538,12 +539,16 @@
       legend([['Non échu', 'var(--c6)'], ['Échu 0-90 j', 'var(--c4)'], ['Échu 91-180 j', 'var(--c2)'], ['Échu > 180 j', 'var(--c5)']]) + stackChart(encCols, function (v) { return v ? fmt(v / 1e6, 1) + ' M€' : '0'; }) + '<p class="note">' + encNote + '</p></section>' +
       '<section class="card"><div class="sh"><div><h2><span class="n">2</span>Bridge encours M / M+1</h2><p>' + (brStart != null ? 'L’encours passe de ' + eur(brStart) + ' à ' + eur(brEnd) + ', soit ' + (brEnd - brStart >= 0 ? '+' : '−') + eur(Math.abs(brEnd - brStart)) + '. En rouge ce qui le fait monter, en vert ce qui le fait baisser (grand livre).' : '') + '</p></div></div>' + bridgeHtml + '</section>' +
       '</div>' +
-      '<section class="card"><div class="sh"><div><h2><span class="n">3</span>Où se loge le retard, et qui se dégrade</h2><p>En k€, au ' + dFR(dates[n]) + '. Plus la case est foncée, plus le montant pèse. Le DSO se lit contre le délai propre à chaque financeur (cibles dans Réglages).</p></div></div>' +
-        '<div class="split"><div style="min-width:0;display:flex;flex-direction:column;gap:14px">' + heatHtml +
-      '<div class="sub"><b>Qui se dégrade</b><p class="note">Part des factures arrivées à échéance dans le mois qui sont tombées en retard (réglées après l’échéance, ou toujours impayées), par financeur. Échéance calculée selon les règles de la v1 ; un point porte sur au moins cinq factures échues. Une courbe qui monte est un financeur qui se dégrade.</p>' +
-      (degr.length ? lineChart(degr.slice().reverse(), cohMonths.map(function (mm, i) { return mLabel(mm, i === 0 || i === cohMonths.length - 1); }), function (v) { return fmt(v, 0) + ' %'; }, { max: 100 }) +
-        '<div class="series">' + degr.map(function (s) { return '<button class="r fin-pick" data-fin="' + esc(s.n) + '" aria-pressed="' + (S.fin === s.n) + '" title="Filtrer la page sur ' + esc(s.n) + '"><i class="sw" style="background:' + s.c + '"></i><span>' + esc(s.n) + '</span><span class="num">' + fmt(s.last, 0) + ' %</span><span class="num" style="color:' + (s.dd >= 5 ? 'var(--bad)' : s.dd <= -5 ? 'var(--good)' : 'var(--muted)') + '">' + sgn(s.dd, 0) + ' pts sur 12 mois</span></button>'; }).join('') + '</div><p class="note">' + (S.fin === 'all' ? 'Cliquez une courbe ou une ligne de la légende pour filtrer toute la page sur ce financeur.' : 'Page filtrée sur ' + esc(S.fin) + '. <button class="btn fin-pick" data-fin="' + esc(S.fin) + '">Retirer le filtre</button>') + '</p>'
-        : '<div class="empty">Pas assez de facturation sur la période pour tracer ces courbes.</div>') + '</div>' + '</div><div class="sub"><b>Variation du DSO' + (S.fin === 'all' ? '' : ' · ' + esc(S.fin)) + '</b><p class="note">Délai moyen entre la date de facture et l’encaissement, pondéré par les montants, par mois de règlement (méthode de la v1). ' + (S.fin === 'all' ? 'Tous financements : moyenne pondérée. Cliquez une courbe de « Qui se dégrade » pour un financeur.' : 'Financeur filtré.') + '</p>' + dsoHtml + '</div></div></section>' +
+      '<section class="card"><div class="sh"><div><h2><span class="n">3</span>Où se loge le retard</h2><p>En k€, au ' + dFR(dates[n]) + '. Plus la case est foncée, plus le montant pèse. Le DSO se lit contre le délai propre à chaque financeur (cibles dans Réglages).</p></div></div>' +
+        '<div class="split split-eq"><div style="min-width:0">' + heatHtml + '</div>' +
+        '<div class="sub"><div class="sub-h"><b>Variation du DSO' + (S.fin === 'all' ? '' : ' · ' + esc(S.fin)) + '</b>' + (dsoOk.length ? '<span class="foot">dernier mois <b class="num" style="font-size:16px;color:var(--ink)">' + fmt(dsoOk[dsoOk.length - 1], 0) + ' j</b> · ' + fmt(dsoN[dsoN.length - 1]) + ' règlements</span>' : '') + '</div>' +
+        '<p class="note">Facture → encaissement, pondéré par les montants, par mois de règlement.</p>' + dsoHtml + '</div></div>' +
+        '<div class="sub"><div class="sub-h"><b>Qui se dégrade</b><span class="foot">par mois d’échéance, 12 derniers mois</span></div>' +
+        '<p class="note">Part des factures arrivées à échéance dans le mois qui sont tombées en retard : réglées après l’échéance, ou toujours impayées. Échéance calculée selon les règles de la v1 ; un point porte sur au moins cinq factures échues.</p>' +
+        (degr.length ? '<div class="degr-grid"><div style="min-width:0">' + lineChart(degr.slice().reverse(), cohMonths.map(function (mm, i) { return mLabel(mm, i === 0 || i === cohMonths.length - 1); }), function (v) { return fmt(v, 0) + ' %'; }, { max: 100, h: 230 }) + '</div>' +
+          '<div class="series leg-fin">' + degr.map(function (s) { var col = s.dd >= 5 ? 'var(--bad)' : s.dd <= -5 ? 'var(--good)' : 'var(--muted)'; return '<button class="r fin-pick" data-fin="' + esc(s.n) + '" aria-pressed="' + (S.fin === s.n) + '" title="Filtrer la page sur ' + esc(s.n) + '"><i class="sw" style="background:' + s.c + '"></i><span class="ln">' + esc(s.n) + '</span><span class="num lv">' + fmt(s.last, 0) + ' %</span><span class="num ld" style="color:' + col + '">' + sgn(s.dd, 0) + ' pts</span></button>'; }).join('') +
+          '<p class="note">Dernier mois et écart sur 12 mois. ' + (S.fin === 'all' ? 'Cliquez une courbe ou un financeur pour filtrer toute la page.' : 'Page filtrée sur ' + esc(S.fin) + '. <button class="btn fin-pick" data-fin="' + esc(S.fin) + '">Retirer le filtre</button>') + '</p></div></div>'
+          : '<div class="empty">Pas assez d’échéances sur la période pour tracer ces courbes.</div>') + '</div></section>' +
       '<section class="card"><div class="sh"><div><h2><span class="n">4</span>Les cohortes de facturation</h2><p>Part du montant facturé chaque mois effectivement reçue à 30, 60, 90, 120 et 180 jours de la date de facture. Seuls les âges atteints par toute la cohorte sont affichés.</p></div>' +
       '<div class="seg" role="tablist" aria-label="Financeur des cohortes">' + tabs + '</div></div>' +
       '<div class="grid2"><div class="sub">' + lineChart(vSeries, AL, function (v) { return fmt(v, 0) + ' %'; }, { max: 100 }) + legend(vSeries.map(function (s) { return [s.n, s.c]; })) + '</div>' +

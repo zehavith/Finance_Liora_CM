@@ -129,6 +129,19 @@ table.compact td:first-child{min-width:0;white-space:normal;max-width:150px}
 .plot i.gl{position:absolute;left:0;right:0;height:1px;background:var(--grid)}
 .col.wf{position:relative}
 .wl{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);font-size:10.5px;font-family:var(--mono);color:var(--ink);white-space:nowrap;padding-bottom:3px}
+.split-eq{align-items:stretch;margin-bottom:16px}
+.split-eq>.sub{justify-content:space-between}
+.split-eq>div:first-child{display:flex}
+.split-eq>div:first-child>.tw{flex:1}
+.split-eq table{height:100%}
+.sub-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.degr-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;align-items:center}
+@media (max-width:1000px){.degr-grid{grid-template-columns:minmax(0,1fr)}}
+.leg-fin{gap:2px}
+.leg-fin button.r{display:grid;grid-template-columns:12px minmax(0,1fr) auto 64px;gap:10px;align-items:center;padding:7px 8px;margin:0;width:100%}
+.leg-fin .ln{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.leg-fin .lv{font-weight:600;text-align:right}
+.leg-fin .ld{text-align:right;font-size:12px}
 .heat td.h{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
 .empty{padding:22px;border:1px dashed var(--axis);border-radius:10px;color:var(--muted);text-align:center;background:var(--bg)}
 .flow{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
