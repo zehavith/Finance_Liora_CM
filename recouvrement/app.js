@@ -10170,14 +10170,38 @@
      * fiche. Les colonnes sont donc celles de l'export — ce que Sellsy dit,
      * et rien de plus.
      */
+    // LE TYPE DE FINANCEMENT SUR CHAQUE LIGNE, 05/11/2026 : « j'aimerais que
+    // lorsque je fais un export des factures, j'aie aussi le type de financement
+    // par facture sur la ligne », puis le 10/11/2026 sur l'export d'une liste :
+    // « j'aimerais que ds l'export il y ai le type de financement ds une colonne
+    // supplémentaire ».
+    //
+    // Pour une facture que Monday ne connaît pas, il n'y a pas d'autre source que
+    // Sellsy : on lit le champ le plus explicite — le champ personnalisé qui
+    // nomme le financement quand il y en a un, puis le « Type de client », puis
+    // la mention d'alternance — et l'on dit « À qualifier » quand aucun ne
+    // tranche. C'est précisément pourquoi la colonne est utile : elle dit à qui
+    // adresser la relance.
+    //
+    // Une seule définition, pour le classeur du Contrôle Sellsy comme pour la
+    // liste à l'écran : deux copies d'une même règle finissent par diverger.
+    function financementSellsy(l) {
+        const k = R.detectFinancement(l.financementPersonnalise, state.rules)
+            || R.detectFinancement(l.typeClient, state.rules)
+            || R.detectFinancement(l.alternanceTexte, state.rules);
+        return k ? R.getRule(k, state.rules).label : 'À qualifier';
+    }
+
     function montrerLignesSellsy(titre, lignes) {
         if (!lignes.length) { U.toast('Aucune facture dans ce lot.', 'error'); return; }
-        const rows = lignes.slice().sort((a, b) => (b.montant || 0) - (a.montant || 0));
+        const rows = lignes.slice().sort((a, b) => (b.montant || 0) - (a.montant || 0))
+            .map(l => ({ ...l, financementSellsy: financementSellsy(l) }));
         const el = U.modal(`${titre} — ${U.nombre(rows.length)} factures · `
             + `${U.euros(X.sum(rows, l => l.montant || 0))}`,
             U.table([
                 { key: 'numero', label: 'Facture', format: v => `<span class="mono">${U.escapeHtml(v || '—')}</span>` },
                 { key: 'client', label: 'Client', format: v => `<span class="cell-clip cell-clip-lg" title="${U.escapeHtml(v || '')}">${U.escapeHtml(v || '—')}</span>` },
+                { key: 'financementSellsy', label: 'Type de financement', format: v => `<span class="pill">${U.escapeHtml(v || '—')}</span>` },
                 { key: 'montant', label: 'Montant TTC', align: 'right', format: U.euros },
                 { key: 'resteDu', label: 'Reste dû', align: 'right', format: v => v == null ? '—' : U.euros(v) },
                 { key: 'statutLabel', label: 'Statut Sellsy', format: v => `<span class="pill">${U.escapeHtml(v || '—')}</span>` },
@@ -10195,6 +10219,7 @@
                 const wb = XLSX.utils.book_new();
                 XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.map(l => ({
                     'Facture': l.numero, 'Client': l.client,
+                    'Type de financement': l.financementSellsy,
                     'Montant TTC': arrondi(l.montant || 0),
                     'Reste dû': l.resteDu == null ? '' : arrondi(l.resteDu),
                     'Statut Sellsy': l.statutLabel || '',
@@ -10730,21 +10755,6 @@
             { Indicateur: 'Version de l\'application', Valeur: VERSION + ' — ' + VERSION_DATE },
         ]), 'Synthèse');
 
-        // LE TYPE DE FINANCEMENT SUR CHAQUE LIGNE, 05/11/2026 : « j'aimerais que
-        // lorsque je fais un export des factures, j'aie aussi le type de
-        // financement par facture sur la ligne ». Le classeur du Contrôle Sellsy
-        // ne le portait que sur « Absentes à relancer ». Il le porte maintenant
-        // sur toutes ses feuilles de factures. Pour une facture que Monday ne
-        // connaît pas, il n'y a pas d'autre source que Sellsy : on lit le champ
-        // le plus explicite — le champ personnalisé qui nomme le financement
-        // quand il y en a un, puis le « Type de client », puis la mention
-        // d'alternance — et l'on dit « À qualifier » quand aucun ne tranche.
-        const financementSellsy = l => {
-            const k = R.detectFinancement(l.financementPersonnalise, state.rules)
-                || R.detectFinancement(l.typeClient, state.rules)
-                || R.detectFinancement(l.alternanceTexte, state.rules);
-            return k ? R.getRule(k, state.rules).label : 'À qualifier';
-        };
         const ligneSellsy = l => ({
             'Numéro': l.numero, 'Client': l.client,
             'Type de financement': financementSellsy(l),
