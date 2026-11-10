@@ -3050,6 +3050,20 @@
                 raison = 'L’export des avoirs nomme la facture annulée : ' + laParente;
                 force = 'certaine';
             }
+            // LA PARENTE EST CONNUE MAIS SOLDÉE : ON NE PROPOSE RIEN D'AUTRE.
+            //
+            // Quarante-six avoirs tombaient encore à côté après la règle du
+            // dessus, et tous pour la même raison : la facture qu'ils annulent
+            // n'est plus une créance ouverte — des FACT-2405-… de mai 2024,
+            // réglées ou soldées depuis. Faute de parente à proposer, le moteur
+            // reprenait sa descente et nommait une autre facture du même
+            // montant, ce qui est exactement le défaut qu'on vient de corriger.
+            // Quand la parente est écrite et qu'elle est soldée, il n'y a rien
+            // à rapprocher, et c'est cela qu'il faut dire.
+            else if (laParente) {
+                raison = 'L’export des avoirs nomme la facture annulée (' + laParente
+                    + '), mais elle n’est plus une créance ouverte : rien à rapprocher';
+            }
             else if (parNumero) {
                 // Citer un numéro ne suffit pas : un report à nouveau de
                 // 40 194 € citait une facture de 5 742 €. Le montant décide du
