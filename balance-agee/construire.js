@@ -1015,6 +1015,7 @@ const enListe = a => a.length>1 ? a.map(x=>'• '+x).join('\n') : (a[0]||'');
 const nonPointes=plat.filter(l=>(l.credit||0)>0.01 && (l.lettre===GL.POOL_NON_LETTRE||!l.lettre));
 const props=GL.propositionsRapprochement(nonPointes,cl,{parenteDeLAvoir:parenteExport});
 const parLigne=new Map();
+const raisonSeule=new Map();   // ligne → pourquoi rien n'est proposé
 nonPointes.forEach((l,i)=>{ const p=props[i]; if(!p) return;
   // CHAQUE PROPOSITION SE LIT SÉPARÉMENT, ET AVEC SON MONTANT.
   //
@@ -1024,7 +1025,17 @@ nonPointes.forEach((l,i)=>{ const p=props[i]; if(!p) return;
   // une somme de trois factures ne se vérifie pas à l'œil.
   const nums=(p.proposition||[]).map(c=>(c.numero||'(solde de compte)')
     +' · reste dû '+eurFr(c.resteDu||0)).filter(Boolean);
-  if(!nums.length) return;
+  // POURQUOI RIEN N'EST PROPOSÉ SE DIT AUSSI.
+  //
+  // La colonne « Justificatif du rapprochement » ne s'écrivait que lorsqu'une
+  // proposition existait : 411 règlements et avoirs non lettrés n'en portaient
+  // aucune et ne disaient pas pourquoi — ni « aucune créance ouverte sur ce
+  // compte », ni « plusieurs factures de ce même montant », ni « la facture
+  // annulée est soldée ». Le moteur calculait pourtant la phrase, elle
+  // tombait dans le vide. Elle se pose maintenant sur la ligne, sans
+  // proposition ni fiabilité, et la ligne n'entre dans aucun couple : il n'y a
+  // rien à apparier, seulement quelque chose à lire.
+  if(!nums.length){ if(p.raison) raisonSeule.set(l,p.raison); return; }
   parLigne.set(l, {quoi:enListe(nums), force:p.force||'', raison:p.raison||'',
     euros:(p.proposition||[]).reduce((a,c)=>a+(c.resteDu||0),0)}); });
 console.log('propositions de rapprochement : '+parLigne.size+' sur '+nonPointes.length+' règlements non pointés');
@@ -1439,7 +1450,8 @@ for(let i=0;i<plat.length;i++){
     // bout.
     'Proposition de rapprochement':(parLigne.get(l)||{}).quoi||autreCote(l,'reglement'),
     'Fiabilité du rapprochement':(parLigne.get(l)||{}).force||autreCote(l,'force'),
-    'Justificatif du rapprochement':(parLigne.get(l)||{}).raison||autreCote(l,'raison'),
+    'Justificatif du rapprochement':(parLigne.get(l)||{}).raison||autreCote(l,'raison')
+      ||raisonSeule.get(l)||'',
     'Reste dû de la créance':propre?ar(propre.resteDu):'',
     // La sous-catégorie et la tranche DE LA CRÉANCE, et non celles que la
     // ligne affiche. Les deux diffèrent : quand la créance n'est pas classée,
