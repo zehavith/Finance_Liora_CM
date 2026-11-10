@@ -2952,8 +2952,26 @@
      * Rien n'est pointé automatiquement : c'est une liste de propositions, avec
      * la raison de chacune, pour que le pointage se fasse à l'œil mais vite.
      */
-    function propositionsRapprochement(paiements, creances) {
+    function propositionsRapprochement(paiements, creances, o) {
         const TOL = 0.01;
+        // LA FACTURE QU'UN AVOIR ANNULE EST ÉCRITE, ON N'A PAS À LA DEVINER.
+        //
+        // 10/11/2026 : « AVR-2610-03491 a une proposition de rapprochement
+        // autre que sa facture parente FACT-2603-14125, comment cela se fait,
+        // un export d'avoir a bien été déposé pourtant ».
+        //
+        // L'export des avoirs porte une colonne « Facture parente ». La balance
+        // la lisait déjà — pour donner à l'avoir les dates de formation de la
+        // facture qu'il annule — mais jamais pour le rapprochement, qui se
+        // calculait sur le libellé puis, à défaut, sur le montant. Or le
+        // libellé d'un avoir ne nomme que l'avoir : « Avoir DR Pôle Emploi
+        // Ile-de-France - AVR-2610-03491 (label généré) ». Le repli sur le
+        // montant prenait donc la main, et sur un compte France Travail où des
+        // dizaines de factures POEI font 7 900,20 €, il désignait toujours la
+        // même : 118 avoirs pour 663 840 € tombaient à côté, et cinquante
+        // autres (192 073 €) ne recevaient aucune proposition alors que leur
+        // parente était connue.
+        const parenteDeLAvoir = (o && o.parenteDeLAvoir) || null;
         const parCompte = new Map(), parNom = new Map(), parCle = new Map();
         for (const c of (creances || [])) {
             if (!(c.resteDu > TOL)) continue;
@@ -3012,8 +3030,27 @@
             const combi = (m > TOL && surLeCompte.length > 1) ? combinaison(surLeCompte, m) : null;
             const partiel = surLeCompte.find(c => c.resteDu > m + TOL);
 
+            // Combien de factures du compte portent EXACTEMENT ce montant ?
+            // « c pas une fiabilité forte », 10/11/2026 : désigner la première
+            // venue quand quarante se valent n'est pas un rapprochement, c'est
+            // un tirage au sort — et l'annoncer « forte » le maquille en preuve.
+            const memeMontant = surLeCompte.filter(c => Math.abs(c.resteDu - m) < TOL);
+            const memeMontantAilleurs = ailleurs.filter(c => Math.abs(c.resteDu - m) < TOL);
+
             let proposition = null, raison = '', force = '';
-            if (parNumero) {
+            // LA PARENTE PASSE AVANT TOUT, 10/11/2026 : « oui tu pose ».
+            // Elle ne se calcule pas, elle se lit — c'est la seule preuve du
+            // lot, et elle interdit par construction qu'un avoir se rapproche
+            // d'une autre facture, ou de lui-même.
+            const laParente = (parenteDeLAvoir && o && o.numero)
+                ? parenteDeLAvoir.get(I.factureKey(o.numero)) : null;
+            const creanceParente = laParente ? parCle.get(I.factureKey(laParente)) : null;
+            if (creanceParente) {
+                proposition = [creanceParente];
+                raison = 'L’export des avoirs nomme la facture annulée : ' + laParente;
+                force = 'certaine';
+            }
+            else if (parNumero) {
                 // Citer un numéro ne suffit pas : un report à nouveau de
                 // 40 194 € citait une facture de 5 742 €. Le montant décide du
                 // degré de certitude.
@@ -3032,8 +3069,13 @@
             // Les trois propositions suivantes ne reposent sur AUCUN numéro :
             // le dire est la moitié du justificatif, puisque c'est ce qui les
             // sépare d'une preuve.
-            else if (exact) { proposition = [exact]; raison = 'Aucun numéro de facture dans le libellé — rapprochée sur le montant : même montant, même compte'; force = 'forte'; }
-            else if (exactAilleurs) { proposition = [exactAilleurs]; raison = 'Aucun numéro de facture dans le libellé — rapprochée sur le montant : même montant, même client sous un autre compte'; force = 'forte'; }
+            // UNE SEULE candidate au même montant : le rapprochement se tient.
+            // PLUSIEURS : aucune ne se désigne, et on ne désigne donc personne.
+            // Nommer la première du lot donnait toujours la même facture à tous
+            // les avoirs d'un même montant — treize avoirs de 7 980 € pointaient
+            // sur FACT-2509-11515, onze de 7 900,20 € sur FACT-2511-12355.
+            else if (exact && memeMontant.length === 1) { proposition = [exact]; raison = 'Aucun numéro de facture dans le libellé — rapprochée sur le montant : la seule facture du compte à ce montant'; force = 'forte'; }
+            else if (exactAilleurs && memeMontantAilleurs.length === 1 && !memeMontant.length) { proposition = [exactAilleurs]; raison = 'Aucun numéro de facture dans le libellé — rapprochée sur le montant : la seule facture du client à ce montant, sous un autre compte'; force = 'forte'; }
             else if (combi) {
                 proposition = combi;
                 // « Il faut qu'il y ait une raison pour cette proposition »,
@@ -3052,6 +3094,17 @@
                 proposition = [partiel];
                 raison = 'Aucun numéro de facture dans le libellé — le compte porte une facture plus grosse : acompte possible';
                 force = 'à vérifier';
+            }
+            // Le dire plutôt que de se taire : « plusieurs factures de ce
+            // montant » est une information, et c'est elle qui appelle l'œil.
+            else if (memeMontant.length > 1) {
+                raison = 'Aucun numéro de facture dans le libellé, et le compte porte '
+                    + memeMontant.length + ' factures de ce même montant : aucune ne peut être désignée';
+            }
+            else if (memeMontantAilleurs.length > 1) {
+                raison = 'Aucun numéro de facture dans le libellé, et ce client porte '
+                    + memeMontantAilleurs.length + ' factures de ce même montant sous d’autres comptes : '
+                    + 'aucune ne peut être désignée';
             }
             else if (surLeCompte.length) { raison = 'Créances ouvertes sur le compte, aucune ne correspond'; }
             else { raison = 'Aucune créance ouverte sur ce compte'; }

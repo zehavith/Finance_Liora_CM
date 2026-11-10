@@ -293,6 +293,24 @@ console.log('factures datées par leur objet : '+datesObjet.length);
 const DATES=factFiliz.concat(datesSeptembre).concat(datesAvoirs).concat(datesObjet);
 // De quoi écrire, sur la ligne, QUELLE facture lui a prêté ses dates.
 const parenteDeLAvoir=new Map(datesAvoirs.map(a=>[a.cle,a.parente]));
+// ET LA MÊME CORRESPONDANCE, SANS LA CONDITION DES DATES.
+//
+// Celle du dessus sert à dater : elle écarte les avoirs dont la facture
+// annulée ne porte aucune date, puisqu'il n'y aurait rien à leur emprunter.
+// Le rapprochement, lui, n'a que faire des dates — la parente est la parente.
+// Reprendre la carte du dessus aurait laissé de côté les avoirs dont la
+// parente n'est pas datée, c'est-à-dire précisément les plus anciens.
+const parenteExport=new Map();
+for(const l of sellsy){
+  const p=l.champs && l.champs['Facture parente'];
+  if(p && l.cle && !parenteExport.has(l.cle)) parenteExport.set(l.cle,String(p).trim());
+}
+for(const r of feuille(ANC,'BdD Zoho -Avoir Zoho',0).rows){
+  const n=String(r['Facture d’avoir#']||'').trim(), p=String(r['N° de facture']||'').trim();
+  if(!n||!p) continue;
+  const cle=I.factureKey(n); if(cle && !parenteExport.has(cle)) parenteExport.set(cle,p);
+}
+console.log('avoirs dont l’export nomme la facture annulée : '+parenteExport.size);
 // Et ce que cette facture parente porte : la ligne de l'avoir doit pouvoir
 // dire QUELLE date elle lui a prise, et d'où.
 const datesDeLaParente=new Map(datesAvoirs.map(a=>[a.cle,a]));
@@ -995,7 +1013,7 @@ for(const r of nouv.rows){ const k=String(r['N° de compte']||'').trim();
 const enListe = a => a.length>1 ? a.map(x=>'• '+x).join('\n') : (a[0]||'');
 
 const nonPointes=plat.filter(l=>(l.credit||0)>0.01 && (l.lettre===GL.POOL_NON_LETTRE||!l.lettre));
-const props=GL.propositionsRapprochement(nonPointes,cl);
+const props=GL.propositionsRapprochement(nonPointes,cl,{parenteDeLAvoir:parenteExport});
 const parLigne=new Map();
 nonPointes.forEach((l,i)=>{ const p=props[i]; if(!p) return;
   // CHAQUE PROPOSITION SE LIT SÉPARÉMENT, ET AVEC SON MONTANT.
