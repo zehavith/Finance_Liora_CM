@@ -2130,6 +2130,22 @@ html {
 }
 
 .pil-coches { display: flex; flex-wrap: wrap; gap: .35rem .75rem; }
+/* UN DÉROULÉ DESCEND, IL NE S'ÉTALE PAS, 10/11/2026 : « Financeur, déroulé
+   conditionné par business unit, continue vers le bas et non vers le côté ».
+
+   Le même div porte .pil-deroule-panneau ET .pil-coches. Le panneau demandait
+   flex-direction: column et flex-wrap: nowrap — mais sans jamais poser
+   display: flex. C'est donc .pil-coches qui faisait du div un conteneur flex,
+   et comme elle est déclarée plus bas à spécificité égale, son flex-wrap: wrap
+   l'emportait : les dix-neuf financeurs, bornés à 24rem de haut, repartaient
+   en nouvelles colonnes vers la droite.
+
+   Les deux classes ensemble font une spécificité plus forte que chacune : la
+   règle tient quel que soit l'ordre des déclarations. La liste descend donc en
+   une colonne, avec son ascenseur au-delà de 24rem — c'est bien « vers le bas ». */
+.pil-deroule-panneau.pil-coches {
+    display: flex; flex-direction: column; flex-wrap: nowrap; gap: .1rem;
+}
 /* Aucune case cochée veut dire TOUTES : un filtre vide ne cache rien, et la
    page n'a pas à deviner ce qu'on voulait dire en ne cochant rien. */
 .pil-coche {

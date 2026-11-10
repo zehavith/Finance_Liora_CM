@@ -805,6 +805,13 @@
          période, comparaison, équipe commerciale, financeur — et la barre
          commune, qui filtre les factures Monday, est masquée sur lui.        -->
     <div class="tab-content" id="tab-pilotage">
+        <!-- LA GOUTTIÈRE, COMME LES AUTRES ONGLETS, 10/11/2026 : « Laisser une
+             marge sur les côtés ». Pilotage était le seul des neuf onglets à ne
+             pas envelopper son contenu dans .dashboard-content — la règle qui
+             porte la marge de toute l'application (padding 2rem, largeur
+             maximale 1400px, centré). Son contenu touchait donc les deux bords
+             de la fenêtre, et s'étirait sans limite sur un grand écran. -->
+        <div class="dashboard-content">
         <div class="pil-barre">
             <div class="pil-filtre">
                 <label for="pil-periode">Période</label>
@@ -923,6 +930,7 @@
                      ne sont ni facture, ni règlement, ni avoir s'ouvrent. -->
                 <div class="pil-postes" id="pil-bridge-postes"></div>
             </div></div>
+        </div>
         </div>
     </div>
 
