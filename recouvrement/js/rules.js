@@ -166,8 +166,13 @@
         },
         {
             key: 'OPCO', label: 'OPCO',
-            base: 'dateFinFormation', jours: 60,
-            note: "Fin de formation +60 jours — pas de recouvrement OPCO, suivi du retard uniquement",
+            // 10/11/2026 : « opco c fin de formation +30 jours », pour le SUIVI
+            // RECOUVREMENT — « pas pour la balance agé, pour le suivi recouv ».
+            // Le barème comptable ci-dessous était déjà à trente depuis R5 ;
+            // c'est la colonne de relance qui en était restée à soixante, et
+            // les deux disent maintenant la même chose.
+            base: 'dateFinFormation', jours: 30,
+            note: "Fin de formation +30 jours — pas de recouvrement OPCO, suivi du retard uniquement",
             categorie: 'Étatique',            perimetre: 'Corporate', sansRecouvrement: true,
             match: ['opco', 'akto', 'atlas', 'uniformation', 'ocapiat', 'constructys', 'afdas', 'opcommerce', 'l opcommerce', 'opco ep', 'opco 2i', 'opco mobilites', 'opco sante'],
             // R5, 03/11/2026 : fin de formation + 30 j.
