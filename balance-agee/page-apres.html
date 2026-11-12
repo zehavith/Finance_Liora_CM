@@ -369,12 +369,18 @@ function synthese(){
   if(ceTitre) ceTitre.textContent = niveau==='prov'
     ? 'Montant à provisionner' : 'Reste dû par ancienneté';
   if(niveau==='prov'){ vueProvision(); return; }
-  // Une ligne « À classer » vide ne dit rien : quand il n'y a plus rien à
-  // classer, elle sort du tableau — et elle revient d'elle-même si un
-  // complément est retiré. Les six types de client, eux, restent affichés à
-  // zéro : leur absence se lirait comme un oubli, pas comme un fait.
+  // ENLEVER LA LIGNE SI ELLE EST À ZÉRO, 12/11/2026 : « enlève la ligne si 0 ».
+  //
+  // « À classer » ne sortait que si elle ne comptait AUCUNE créance en plus
+  // d'être à zéro : une créance soldée y restait, et la ligne s'affichait à
+  // 0 € sans rien dire. Les autres types, eux, restaient affichés à zéro par
+  // principe — au motif que leur absence se lirait comme un oubli. Une ligne
+  // qui ne porte aucun montant n'apprend rien ; elle sort, et elle revient
+  // d'elle-même dès qu'un euro y reparaît. Le total reste toujours là.
+  const sansMontant=s=>Math.abs(s.total||0)<0.005 && Math.abs(s.echu||0)<0.005
+    && Math.abs(s.nonEchu||0)<0.005;
   const rows=avecComplements((niveau==='cat'?D.syntheseCat:D.synthese)||D.synthese, niveau)
-    .filter(s=>!(s.cat==='À classer' && !s.nb && Math.abs(s.total)<0.005));
+    .filter(s=>s.cat==='TOTAL' || !sansMontant(s));
   let h='<thead><tr><th>'+(niveau==='cat'?'Type de client':'Type de financement')
     +'</th><th class="n">Reste dû</th><th class="n">Échu</th>'
     +'<th class="n">À provisionner</th>'
