@@ -487,11 +487,33 @@
             if (!base) return 'à compléter';
             return base + (g.jours ? ' + ' + g.jours + ' j' : '');
         };
+        // LA CHALEUR DIT OÙ SONT LES MONTANTS À RISQUE, 12/11/2026.
+        //
+        // « ds le code couleur il y a des montant plus faible que d'autre avec
+        // une couleur plus foncé que ces montant plus faible » — et c'était
+        // vrai : 493 865 € ressortaient plus sombres que 1 130 141 € dans la
+        // MÊME colonne. L'intensité se calculait sur la PART DE LA LIGNE, si
+        // bien qu'un petit financeur dont tout dort dans une case virait au
+        // rouge vif pendant qu'un gros financeur étalé restait pâle. La carte
+        // désignait la concentration, pas le risque.
+        //
+        // Elle se calcule désormais sur le MONTANT ABSOLU, rapporté à la plus
+        // grosse case du tableau. « le montant doit etre plus pondéré » : il
+        // pèse l'essentiel, l'ancienneté ne fait plus que moduler — une case
+        // ancienne est poussée vers le foncé, une case récente retenue vers le
+        // clair, mais jamais au point qu'un petit montant double un gros.
+        // À ancienneté égale, plus c'est gros, plus c'est foncé. Toujours.
+        //
+        // La racine relève le milieu de l'échelle : sans elle, une seule case
+        // énorme écrase toutes les autres dans un dégradé invisible.
         const RISQUE = [0, 0.18, 0.45, 0.75, 1];
+        const POIDS_AGE = 0.45;              // l'ancienneté module, elle ne décide pas
+        const vmax = Math.max(...lignes.flatMap(r => r.cases.map(Math.abs)), 1);
         const chaleur = (v, tot, j) => {
-            if (!tot || v <= 0 || !RISQUE[j]) return 'background:transparent';
-            const p = Math.max(0, Math.min(1, v / tot)) * RISQUE[j];
-            return 'background:rgba(239,68,68,' + (0.05 + p * 0.68).toFixed(3) + ')';
+            if (v <= 0 || !RISQUE[j]) return 'background:transparent';
+            const part = Math.pow(Math.min(1, v / vmax), 0.55);
+            const p = part * (1 - POIDS_AGE + POIDS_AGE * RISQUE[j]);
+            return 'background:rgba(var(--chaleur), ' + (0.06 + p * 0.74).toFixed(3) + ')';
         };
         const tot = COLONNES.map((_, j) => lignes.reduce((s, r) => s + r.cases[j], 0));
         let h = '<table class="pil-heat"><thead><tr><th>Financeur</th><th>Équipe</th>'
