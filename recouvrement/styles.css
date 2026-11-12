@@ -1264,6 +1264,13 @@ tr.ligne-total td {
 
 /* Les quatre colonnes de qualification du portefeuille B2C */
 .charts-grid-4 { grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); }
+/* DEUX COURBES CÔTE À CÔTE, 12/11/2026 : « Variation du DSO à côté de la
+   courbe variation du tx de recouv ». Le délai de paiement et le taux de
+   retard disent la même histoire par deux bouts ; l'une sous l'autre, il
+   fallait faire défiler pour les comparer. En dessous de 420 px par colonne
+   elles repassent l'une sous l'autre : deux courbes écrasées ne se lisent
+   pas davantage que deux courbes éloignées. */
+.charts-grid-2 { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); }
 .qualif-card { padding-bottom: 10px; }
 .qualif-vide { padding: 18px 4px; color: var(--text-muted); font-size: 12px; }
 .qualif-ligne {
