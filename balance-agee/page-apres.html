@@ -2711,14 +2711,50 @@ async function ouvrirCommentaires(){
  * emporter le moteur entier — elle dit ce qu'elle a et ce qu'elle n'a pas,
  * sans promettre un délai.
  */
-function demanderArrete(date){
+// DEMANDER UNE DATE QU'ON N'A PAS, C'EST LA FAIRE CONSTRUIRE, 12/11/2026.
+//
+// « normalement lorsque l'on met une date je suis censé avant tt la balance
+// agé qui s'actualise ». La page se contentait d'annoncer que la date n'était
+// pas arrêtée et de lister les autres : la demande différée avait été retirée
+// et rien ne l'avait remplacée. Elle est rétablie ici dans la forme que le
+// relevé lit déjà — collection « demandes », document « arrete », la date en
+// AAAA-MM-JJ dans le champ « date ».
+const ARRETE_MINI='2025-07-01';
+const jjmmaaaa=d=>{ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d||'')); 
+  return m ? m[3]+'/'+m[2]+'/'+m[1] : String(d||''); };
+async function demanderArrete(date){
+  const e=E('arrete-note'), dire=t=>{ if(e) e.textContent=t; };
   const dispo=Object.keys(ARRETES).sort().reverse().map(d=>ARRETES[d].a);
-  const e=E('arrete-note');
-  if(e) e.textContent='Le '+date+' n’est pas arrêté. Disponibles : '
-    +(dispo.join(', ')||'aucun')+'.';
+  // L'export part du 01/07/2025 : avant, tout arrive en report à nouveau et
+  // aucun arrêté ne se justifierait devant un commissaire aux comptes.
+  if(date<ARRETE_MINI){
+    dire('Le '+jjmmaaaa(date)+' n’est pas calculable : le grand livre part du 01/07/2025.');
+    return;
+  }
+  if(!DB||!admin){
+    dire('Le '+jjmmaaaa(date)+' n’est pas arrêté. Disponibles : '+(dispo.join(', ')||'aucun')+'.');
+    return;
+  }
+  dire('Demande en cours d’enregistrement…');
+  const v={date:date, quand:leJour(), quandISO:new Date().toISOString(),
+           motif:'arrêté au '+date, etat:'en attente'};
+  try{
+    await DB.collection('demandes').doc('arrete').set(v);
+    const envoi=await prevenir(v,
+      'Construire la balance âgée arrêtée au '+date+' — demande du '+v.quand+'.\n'
+      +'Construire l’arrêté à cette date, le contrôler, et republier la page '
+      +'avec ce nouvel arrêté dans le choix de dates si tout est vert.');
+    dire(envoi==='transmise'
+      ? 'Le '+jjmmaaaa(date)+' va être construit · la balance sera republiée avec cette date.'
+      : envoi==='consentement'
+        ? 'Demande enregistrée · autorisez l’envoi à Claude pour qu’elle parte tout de suite.'
+        : 'Demande enregistrée · elle sera reprise au prochain relevé.');
+  }catch(err){
+    dire('La demande n’a pas pu être enregistrée.');
+  }
 }
 
-async function prevenir(v){
+async function prevenir(v,texte){
   if(!COMM||!COMM.sendToClaude||!COMM.canSendToClaude) return '';
   let etat='';
   try{ etat=await COMM.canSendToClaude(); }catch(e){ return ''; }
@@ -2726,10 +2762,10 @@ async function prevenir(v){
   const bloc=E('depot-bloc')||document.body;
   try{
     const ancre=await COMM.anchorFor(bloc);
-    await COMM.sendToClaude({anchor:ancre, text:
-      'Actualiser la balance âgée — demande du '+v.quand+', motif : '+v.motif+'.\n'
+    await COMM.sendToClaude({anchor:ancre, text: texte ||
+      ('Actualiser la balance âgée — demande du '+v.quand+', motif : '+v.motif+'.\n'
       +'Reprendre les fichiers déposés et les réglages, reconstruire, repasser '
-      +'les contrôles, et republier la page avec ses données si tout est vert.'});
+      +'les contrôles, et republier la page avec ses données si tout est vert.')});
     return 'transmise';
   }catch(e){ return (e&&e.code==='consent_required')?'consentement':''; }
 }
@@ -2799,6 +2835,20 @@ function suivreReconstruction(){
       for(const id of ids) poserBande(id,3,1,'le '+(D.genere||'?'));
       return false;
     }
+    // UNE DEMANDE CLOSE NE LAISSE PAS LA JAUGE TOURNER, 12/11/2026.
+    //
+    // « l'actualisation est encore sur 99 % ». Les seuls états prévus étaient
+    // « en attente » et « en cours » : « échec » retombait sur le dernier cas
+    // et plantait la bande, « servie » attendait que la page soit rebâtie —
+    // ce qui n'arrive jamais quand la reconstruction n'a rien publié.
+    if(DEMANDE.etat==='échec'){
+      for(const id of ids) poserBande(id,3,0,'','Reconstruction interrompue');
+      return false;
+    }
+    if(DEMANDE.etat==='servie'){
+      for(const id of ids) poserBande(id,3,1,'le '+(D.genere||'?'));
+      return false;
+    }
     if(DEMANDE.etat==='en cours' && DEMANDE.debutISO){
       const duree=Number(D.dureeMs)>0?Number(D.dureeMs):120000;
       const passe=Date.now()-Date.parse(DEMANDE.debutISO);
@@ -2840,9 +2890,18 @@ function reconstruiteDepuis(){
 function direRecons(){
   const e=E('depot-recons'); if(!e) return;
   const faite='Dernière reconstruction : '+(D.genere||'?')+' · arrêté au '+(D.arrete||'?')+'.';
-  e.textContent=DEMANDE&&DEMANDE.quand
-    ? faite+' Actualisation demandée le '+DEMANDE.quand+', en attente de reconstruction.'
-    : faite;
+  if(!DEMANDE||!DEMANDE.quand){ e.textContent=faite; return; }
+  // Un échec se dit, et il se dit avec son motif : la bande seule ne porte
+  // qu'un libellé, et une demande qui s'arrête sans raison visible se relance
+  // indéfiniment.
+  if(DEMANDE.etat==='échec'){
+    e.textContent=faite+' Actualisation demandée le '+DEMANDE.quand
+      +' · interrompue. '+(DEMANDE.motif||'');
+    return;
+  }
+  if(DEMANDE.etat==='servie'){ e.textContent=faite; return; }
+  e.textContent=faite+' Actualisation demandée le '+DEMANDE.quand
+    +', en attente de reconstruction.';
 }
 
 async function demanderActualisation(motif,etatId,bandeId){
