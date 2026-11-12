@@ -788,9 +788,25 @@
                           y: { grid: U().grille, min: 0, max: 100,
                                title: { display: true, text: 'part de l’encours encore due' },
                                ticks: { callback: v => v + ' %' } } },
+                // CETTE COURBE AUSSI SE CLIQUE, 12/11/2026 : « Qd on clique sur
+                // une courbe on peut ne voir que les éléments de la courbe ».
+                //
+                // Le clic filtrait déjà toute la page depuis le taux de retard,
+                // des deux côtés — le tracé et la légende. Ici il ne faisait
+                // rien, et c'est pourtant la courbe qu'on regarde le plus
+                // longtemps. Même geste, même effet, même façon de rendre la
+                // main : recliquer le financeur déjà seul retenu réaffiche tout.
+                interaction: { mode: 'nearest', intersect: false },
+                onClick: (ev, els, ch) => {
+                    const d = els && els[0];
+                    if (!d) return;
+                    const ds = ch.data.datasets[d.datasetIndex];
+                    isolerFinanceur(ds && ds.label);
+                },
                 plugins: {
                     legend: { display: true, position: 'bottom',
-                              labels: { boxWidth: 12, font: { size: 11 } } },
+                              labels: { boxWidth: 12, font: { size: 11 } },
+                              onClick: (e, item) => isolerFinanceur(item && item.text) },
                     // LE POINT DÉCIMAL ANGLAIS N'A RIEN À FAIRE ICI : toFixed rendait
                     // « 23.7 % payé » au milieu d'une page où tout le reste s'écrit
                     // à la française. Les deux nombres passent par le format français.

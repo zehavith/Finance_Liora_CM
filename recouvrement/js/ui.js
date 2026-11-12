@@ -280,7 +280,7 @@
         Object.keys(registre).forEach(k => { registre[k].destroy(); delete registre[k]; });
     }
 
-    const grille = { color: 'rgba(99, 102, 241, 0.08)' };
+    const grille = { color: 'rgba(30, 28, 26, 0.07)' };
 
     global.LioraUI = {
         $, $$, euros, eurosCourt, nombre, pourcent, jours, dateFR, moisLabel, escapeHtml,
