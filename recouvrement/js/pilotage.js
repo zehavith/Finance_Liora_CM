@@ -361,13 +361,25 @@
     // Les bandes sont celles de la balance, regroupées pour rester lisibles :
     // c'est son aging, et le graphique doit se superposer à sa balance plutôt
     // que d'inventer une seconde échelle.
+    // UNE ANCIENNETÉ N'EST PAS UNE LISTE DE CATÉGORIES, 12/11/2026.
+    //
+    // Les six bandes portaient six teintes sans rapport — bleu, turquoise,
+    // vert, or, ambre, rouge. Un arc-en-ciel sur une donnée ORDONNÉE : rien
+    // dans les couleurs ne disait que « 1 à 2 ans » est pire que « 3 à 6
+    // mois », et le vert, qui veut dire « ça va », tombait au milieu de
+    // l'échu. L'œil devait relire la légende à chaque bande.
+    //
+    // Les cinq tranches échues prennent donc UNE SEULE teinte — l'orange
+    // Liora — du clair au foncé : la gravité se lit sans légende. Le non échu
+    // n'est pas une tranche d'ancienneté mais son absence : il reste neutre,
+    // en gris, et ne se confond avec aucune.
     const BANDES = [
-        { nom: 'Non échu', tr: [], nonEchu: true, c: '#3b82f6' },
-        { nom: '0 à 3 mois', tr: ['0 à 3 mois'], c: '#14b8a6' },
-        { nom: '3 à 6 mois', tr: ['3 à 4 mois', '4 à 6 mois'], c: '#84cc16' },
-        { nom: '6 à 12 mois', tr: ['6 à 12 mois'], c: '#eab308' },
-        { nom: '1 à 2 ans', tr: ['12 à 18 mois', '18 à 24 mois'], c: '#f59e0b' },
-        { nom: 'Plus de 2 ans', tr: ['24 à 36 mois', '36 à 48 mois', '> 48 mois'], c: '#ef4444' },
+        { nom: 'Non échu', tr: [], nonEchu: true, c: '#9A948D' },
+        { nom: '0 à 3 mois', tr: ['0 à 3 mois'], c: '#F2BBA4' },
+        { nom: '3 à 6 mois', tr: ['3 à 4 mois', '4 à 6 mois'], c: '#E8906B' },
+        { nom: '6 à 12 mois', tr: ['6 à 12 mois'], c: '#D9532E' },
+        { nom: '1 à 2 ans', tr: ['12 à 18 mois', '18 à 24 mois'], c: '#A8381B' },
+        { nom: 'Plus de 2 ans', tr: ['24 à 36 mois', '36 à 48 mois', '> 48 mois'], c: '#6E2210' },
     ];
 
     function bandesDe(e) {
@@ -380,7 +392,8 @@
         const pts = (D.encours || []).map(x => encours(x, keep));
         const labels = pts.map(p => parseFR(p.date).toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }));
         const series = BANDES.map((b, j) => ({
-            label: b.nom, backgroundColor: b.c, borderWidth: 0,
+            label: b.nom, backgroundColor: b.c,
+            borderWidth: 2, borderColor: '#FFFFFF', borderSkipped: false,
             data: pts.map(p => Math.round(bandesDe(p)[j])),
         }));
         U().chart('pil-chart-ancienneté', {
@@ -525,7 +538,7 @@
     //
     // 1. La palette tournait en boucle — pal[k % pal.length] — sur quatorze
     //    teintes dont la validation échoue : huit sur quatorze hors de la bande
-    //    de luminosité, et la pire paire voisine, #f59e0b contre #84cc16, à
+    //    de luminosité, et la pire paire voisine, #A86A06 contre #1D7F55, à
     //    ΔE 1,5 en deutéranopie. Indiscernables.
     //
     // 2. L'indice k était celui de la LISTE FILTRÉE. Décocher une business unit
@@ -740,7 +753,7 @@
             borderWidth: 2, tension: 0.25, pointRadius: 2, spanGaps: true,
             data: ages.map(a => val(f, a)),
         }));
-        series.push({ label: '20 % encore dû — 80 % payé', borderColor: '#8b92a5',
+        series.push({ label: '20 % encore dû — 80 % payé', borderColor: '#5C5750',
             borderDash: [5, 4], borderWidth: 1, pointRadius: 0, backgroundColor: 'transparent',
             data: ages.map(() => 20) });
         U().chart('pil-chart-decroissance', {
@@ -947,8 +960,8 @@
                     : [p.nom, (p.v >= 0 ? '+' : '−') + eur(Math.abs(p.v))]),
                 datasets: [{
                     data,
-                    backgroundColor: postes.map(p => p.type === 'socle' ? '#6366f1'
-                        : p.type === 'plus' ? '#ef4444' : '#84cc16'),
+                    backgroundColor: postes.map(p => p.type === 'socle' ? '#2B5DB8'
+                        : p.type === 'plus' ? '#B8352A' : '#1D7F55'),
                     borderWidth: 0,
                 }],
             },

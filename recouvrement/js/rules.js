@@ -902,16 +902,16 @@
      */
     const M = 30;
     const AGING_BUCKETS = [
-        { key: 'nonEchu',  label: 'Non échu',      min: -1e9,    max: 0,        couleur: '#3b82f6' },
-        { key: 'm0_3',     label: '0 à 3 mois',    min: 1,       max: 3 * M,    couleur: '#84cc16' },
+        { key: 'nonEchu',  label: 'Non échu',      min: -1e9,    max: 0,        couleur: '#2B5DB8' },
+        { key: 'm0_3',     label: '0 à 3 mois',    min: 1,       max: 3 * M,    couleur: '#1D7F55' },
         { key: 'm3_4',     label: '3 à 4 mois',    min: 3 * M + 1,  max: 4 * M, couleur: '#a3c714' },
-        { key: 'm4_6',     label: '4 à 6 mois',    min: 4 * M + 1,  max: 6 * M, couleur: '#eab308' },
-        { key: 'm6_12',    label: '6 à 12 mois',   min: 6 * M + 1,  max: 12 * M, couleur: '#f59e0b' },
-        { key: 'm12_18',   label: '12 à 18 mois',  min: 12 * M + 1, max: 18 * M, couleur: '#f97316' },
-        { key: 'm18_24',   label: '18 à 24 mois',  min: 18 * M + 1, max: 24 * M, couleur: '#F47458' },
-        { key: 'm24_36',   label: '24 à 36 mois',  min: 24 * M + 1, max: 36 * M, couleur: '#ef4444' },
-        { key: 'm36_48',   label: '36 à 48 mois',  min: 36 * M + 1, max: 48 * M, couleur: '#dc2626' },
-        { key: 'm48p',     label: '> 48 mois',     min: 48 * M + 1, max: 1e9,   couleur: '#991b1b' },
+        { key: 'm4_6',     label: '4 à 6 mois',    min: 4 * M + 1,  max: 6 * M, couleur: '#A8750B' },
+        { key: 'm6_12',    label: '6 à 12 mois',   min: 6 * M + 1,  max: 12 * M, couleur: '#A86A06' },
+        { key: 'm12_18',   label: '12 à 18 mois',  min: 12 * M + 1, max: 18 * M, couleur: '#C2410C' },
+        { key: 'm18_24',   label: '18 à 24 mois',  min: 18 * M + 1, max: 24 * M, couleur: '#D9532E' },
+        { key: 'm24_36',   label: '24 à 36 mois',  min: 24 * M + 1, max: 36 * M, couleur: '#B8352A' },
+        { key: 'm36_48',   label: '36 à 48 mois',  min: 36 * M + 1, max: 48 * M, couleur: '#B8352A' },
+        { key: 'm48p',     label: '> 48 mois',     min: 48 * M + 1, max: 1e9,   couleur: '#8E2A21' },
     ];
 
     function bucketFor(retardJours) {

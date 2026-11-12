@@ -3285,8 +3285,8 @@
 
     const treemapPalette = [
         '#1e2a5e', '#2a3a80', '#3b4fa0', '#4f62b8', '#6474cc', '#7c8ae0',
-        '#F47458', '#f59e0b', '#84cc16', '#3b82f6', '#8b5cf6', '#06b6d4',
-        '#ec4899', '#14b8a6', '#ef4444', '#f97316', '#6366f1', '#d946ef',
+        '#D9532E', '#A86A06', '#1D7F55', '#2B5DB8', '#7B4DB3', '#0E6F9E',
+        '#A33C86', '#0A8F82', '#B8352A', '#C2410C', '#2B5DB8', '#A33C86',
     ];
 
     function rendreTreemap(data) {
@@ -3330,8 +3330,8 @@
                     tree: groupes.map(g => ({ label: g.label, value: g.valeur, nb: g.nb, retard: g.retardMoyen })),
                     key: 'value',
                     groups: ['label'],
-                    backgroundColor: c => (c.raw && c.raw._data) ? (couleurs[c.raw._data.label] || '#6366f1') : 'transparent',
-                    borderColor: '#0b0e1a',
+                    backgroundColor: c => (c.raw && c.raw._data) ? (couleurs[c.raw._data.label] || '#2B5DB8') : 'transparent',
+                    borderColor: '#1E1C1A',
                     borderWidth: 3,
                     spacing: 2,
                     labels: {
@@ -4565,7 +4565,7 @@
         const reste = enRetard.filter(f => !vus.has(f));
         if (reste.length) {
             lots.push({ cle: 'autre', label: 'Hors des tableaux de circuit',
-                roles: [], couleur: '#94a3b8', items: reste, nb: reste.length,
+                roles: [], couleur: '#78736C', items: reste, nb: reste.length,
                 euros: X.sum(reste, f => f.montant || 0),
                 quoi: 'Factures dont le tableau d’origine ne porte aucun rôle de circuit — '
                     + 'y compris celles que seul Sellsy connaît.' });
@@ -4942,7 +4942,7 @@
               aide: "L'argent est arrivé après la date : le retard a été subi, il est rentré depuis." },
             { cle: 'sansEch', label: 'Réglées sans échéance calculable', couleur: U.couleurs.nonEchue,
               aide: "Aucune règle de délai n'a pu dater ces factures : on ne peut rien dire de leur ponctualité." },
-            { cle: 'sansDate', label: 'Réglées sans date de règlement connue', couleur: '#94a3b8',
+            { cle: 'sansDate', label: 'Réglées sans date de règlement connue', couleur: '#78736C',
               aide: "L'échéance est connue, mais pas la date d'encaissement : la ponctualité n'est pas mesurable." },
         ].map(p => Object.assign(p, {
             items: lots[p.cle], nb: lots[p.cle].length, euros: eur(lots[p.cle]),
@@ -5182,7 +5182,7 @@
                     // de sens. L'axe le dit maintenant, et l'infobulle redit à
                     // chaque fois sur quoi le pourcentage est pris.
                     x: { grid: U.grille, max: 100, ticks: { callback: v => v + ' %' },
-                         title: { display: true, color: '#94a3b8',
+                         title: { display: true, color: '#78736C',
                              text: 'rouge : sur 100 € arrivés à échéance   ·   '
                                  + 'vert : sur 100 € qui étaient en retard' } },
                     y: { grid: { display: false } },
@@ -5782,7 +5782,7 @@
             + tuile('Depuis plus d’un an', plusDunAn.euros, plusDunAn.nb,
                 `<strong>${part(plusDunAn.euros)}</strong> du reste à encaisser — `
                 + 'les cinq tranches au-delà de 12 mois réunies',
-                '#991b1b', plusDunAn.items)
+                '#8E2A21', plusDunAn.items)
             + tuile('Non échu', nonEchu.euros, nonEchu.nb,
                 `<strong>${part(nonEchu.euros)}</strong> du reste à encaisser — pas encore exigible`,
                 U.couleurs.nonEchue, nonEchu.items)
@@ -9688,7 +9688,7 @@
                 sub: 'repartis sans rejet sur leurs 3 derniers prélèvements',
             }),
             tuile({
-                couleur: '#f97316',
+                couleur: '#C2410C',
                 valeur: U.eurosCourt(st.montantARisque),
                 label: 'Montant à risque',
                 detail: `${U.nombre(st.nbEnDifficulte)} apprenants en difficulté`,

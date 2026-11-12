@@ -23,7 +23,7 @@
 .input:focus {
     outline: none;
     border-color: var(--accent);
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(30, 28, 26, 0.06);
 }
 .input::placeholder { color: var(--text-muted); }
 .input-sm { padding: 0.35rem 0.55rem; font-size: 0.78rem; }
@@ -122,7 +122,7 @@ select.input option { background: var(--bg-secondary); color: var(--text-primary
        filtres juste en dessous (hauteur mesurée au chargement). */
     top: var(--nav-h, 66px);
     z-index: 40;
-    background: rgba(11, 14, 26, 0.92);
+    background: rgba(255, 255, 255, 0.94);
     backdrop-filter: blur(12px);
     border-bottom: 1px solid var(--border-color);
     padding: 0.85rem 2rem 0.6rem;
@@ -202,7 +202,7 @@ select.input option { background: var(--bg-secondary); color: var(--text-primary
 }
 .chip:not(.active) { opacity: 0.55; }
 .chip-count {
-    background: rgba(255, 255, 255, 0.09);
+    background: rgba(30, 28, 26, 0.09);
     border-radius: 999px;
     padding: 0 0.4rem;
     font-size: 0.68rem;
@@ -213,7 +213,7 @@ select.input option { background: var(--bg-secondary); color: var(--text-primary
 .chip-etat.active.st-paye { background: var(--green-bg); border-color: var(--green); }
 
 .filter-chip button {
-    background: rgba(255, 255, 255, 0.22);
+    background: rgba(30, 28, 26, 0.10);
     border: none;
     color: inherit;
     width: 16px; height: 16px;
@@ -225,7 +225,7 @@ select.input option { background: var(--bg-secondary); color: var(--text-primary
     place-items: center;
     padding: 0;
 }
-.filter-chip button:hover { background: rgba(255, 255, 255, 0.42); }
+.filter-chip button:hover { background: rgba(30, 28, 26, 0.18); }
 
 /* ============================
    Mode « Aide »
@@ -250,7 +250,7 @@ body.aide .aide-bloc {
     font-size: 0.85rem;
     line-height: 1.6;
     color: var(--text-secondary);
-    background: rgba(99, 102, 241, 0.06);
+    background: rgba(43, 93, 184, 0.06);
     border-left: 3px solid var(--accent);
     border-radius: var(--radius-md);
     padding: 0.85rem 1.1rem;
@@ -354,7 +354,7 @@ button.recup-card:hover { border-color: var(--border-hover); transform: translat
 #repartition-table td:first-child { max-width: 430px; }
 
 .tree-toggle {
-    background: rgba(99, 102, 241, 0.12);
+    background: rgba(43, 93, 184, 0.12);
     border: none;
     color: var(--text-secondary);
     width: 18px;
@@ -377,7 +377,7 @@ button.recup-card:hover { border-color: var(--border-hover); transform: translat
 .tree-row-n2 td { color: var(--text-muted); font-size: 0.8rem; }
 
 .cell-mini { display: block; font-size: 0.68rem; color: var(--text-muted); font-weight: 400; }
-.cell-danger { color: #f87171; }
+.cell-danger { color: #B8352A; }
 .taux-cell { display: inline-flex; align-items: center; gap: 0.3rem; justify-content: flex-end; }
 
 /* ============================
@@ -451,7 +451,7 @@ button.recup-card:hover { border-color: var(--border-hover); transform: translat
     padding: 0.6rem 1rem;
     font-weight: 600;
     border-top: 1px solid var(--border-hover);
-    background: rgba(99, 102, 241, 0.05);
+    background: rgba(43, 93, 184, 0.05);
     font-variant-numeric: tabular-nums;
 }
 
@@ -514,7 +514,7 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
     width: 52px;
     height: 5px;
     border-radius: 3px;
-    background: rgba(255, 255, 255, 0.07);
+    background: rgba(30, 28, 26, 0.07);
     margin-left: 0.5rem;
     vertical-align: middle;
     overflow: hidden;
@@ -533,12 +533,12 @@ tr.st-inconnu-row td:first-child { box-shadow: inset 3px 0 0 var(--text-muted); 
 }
 .pill-ok { background: var(--green-bg); color: var(--green); }
 .pill-soft { background: var(--amber-bg); color: var(--amber); }
-.pill-warn { background: rgba(249, 115, 22, 0.14); color: #fb923c; }
-.pill-danger { background: var(--red-bg); color: #f87171; }
-.pill-muted { background: rgba(255, 255, 255, 0.05); color: var(--text-muted); }
-.pill-role { background: rgba(99, 102, 241, 0.12); color: var(--purple-300); }
+.pill-warn { background: rgba(249, 115, 22, 0.14); color: #A86A06; }
+.pill-danger { background: var(--red-bg); color: #B8352A; }
+.pill-muted { background: rgba(30, 28, 26, 0.05); color: var(--text-muted); }
+.pill-role { background: rgba(43, 93, 184, 0.12); color: var(--purple-300); }
 
-.st-retard { background: var(--red-bg); color: #f87171; }
+.st-retard { background: var(--red-bg); color: #B8352A; }
 .st-paye-retard { background: var(--amber-bg); color: var(--amber); }
 .st-paye { background: var(--green-bg); color: var(--green); }
 .st-non-echue { background: rgba(59, 130, 246, 0.14); color: var(--blue-400); }
@@ -593,11 +593,11 @@ tr.ligne-a-classer td { background: rgba(107, 114, 128, 0.10); font-style: itali
 /* La ligne de synthèse d'un tableau de comparaison : elle se détache sans
    crier, et se lit comme un total. */
 tr.ligne-total td {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(30, 28, 26, 0.04);
     border-top: 1px solid var(--border-color);
     font-weight: 600;
 }
-.cell-ok { color: var(--green, #22c55e); }
+.cell-ok { color: var(--green, #1D7F55); }
 
 /* L'addition d'une ligne TOTAL, posée sous son tableau. */
 .aging-somme {
@@ -605,13 +605,13 @@ tr.ligne-total td {
     padding: 0.6rem 0.9rem;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
-    background: var(--bg-elevated, rgba(255,255,255,0.02));
+    background: var(--bg-elevated, rgba(30, 28, 26, 0.02));
     font-size: 0.82rem;
     color: var(--text-secondary);
 }
 .aging-somme strong { color: var(--text-primary); }
 .aging-somme .somme-signe { color: var(--text-muted); margin: 0 0.35rem; }
-.st-inconnu { background: rgba(255, 255, 255, 0.05); color: var(--text-muted); }
+.st-inconnu { background: rgba(30, 28, 26, 0.05); color: var(--text-muted); }
 
 /* ============================
    Comparaison mensuelle
@@ -627,7 +627,7 @@ tr.ligne-total td {
     border-radius: var(--radius-sm);
     font-size: 0.85rem;
 }
-.cmp-row:nth-child(even) { background: rgba(99, 102, 241, 0.03); }
+.cmp-row:nth-child(even) { background: rgba(43, 93, 184, 0.03); }
 .cmp-head {
     font-size: 0.68rem;
     text-transform: uppercase;
@@ -711,7 +711,7 @@ tr.ligne-total td {
 }
 .bucket-card:hover { border-color: var(--border-hover); transform: translateY(-2px); }
 .bucket-card.selected { border-color: var(--accent); box-shadow: var(--shadow-glow); }
-.bucket-total { cursor: default; background: rgba(99, 102, 241, 0.06); }
+.bucket-total { cursor: default; background: rgba(43, 93, 184, 0.06); }
 .bucket-bar { position: absolute; top: 0; left: 0; right: 0; height: 3px; }
 .bucket-label { font-size: 0.75rem; color: var(--text-secondary); }
 .bucket-value { font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -768,7 +768,7 @@ tr.ligne-total td {
     margin-bottom: 1.5rem;
 }
 .besoin {
-    background: rgba(99, 102, 241, 0.05);
+    background: rgba(43, 93, 184, 0.05);
     border: 1px solid var(--border-color);
     border-left-width: 3px;
     border-left-color: var(--text-muted);
@@ -816,7 +816,7 @@ tr.ligne-total td {
     display: grid;
     place-items: center;
     flex-shrink: 0;
-    background: conic-gradient(var(--score-color) calc(var(--score) * 1%), rgba(255, 255, 255, 0.06) 0);
+    background: conic-gradient(var(--score-color) calc(var(--score) * 1%), rgba(30, 28, 26, 0.06) 0);
     position: relative;
 }
 .score-ring::before {
@@ -862,7 +862,7 @@ tr.ligne-total td {
     border-radius: var(--radius-sm);
     color: var(--text-primary);
 }
-.quality-detail li:nth-child(odd) { background: rgba(239, 68, 68, 0.06); }
+.quality-detail li:nth-child(odd) { background: rgba(184, 53, 42, 0.06); }
 
 /* ============================
    Onglet Données
@@ -878,7 +878,7 @@ tr.ligne-total td {
     gap: 0.75rem;
     font-size: 0.82rem;
     padding: 0.45rem 0.7rem;
-    background: rgba(99, 102, 241, 0.04);
+    background: rgba(43, 93, 184, 0.04);
     border-radius: var(--radius-sm);
 }
 .chaine { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.75rem; }
@@ -891,7 +891,7 @@ tr.ligne-total td {
     border-radius: var(--radius-sm);
     font-size: 0.85rem;
 }
-.chaine-fort { background: rgba(99, 102, 241, 0.07); font-weight: 600; }
+.chaine-fort { background: rgba(43, 93, 184, 0.07); font-weight: 600; }
 .chaine-retrait .chaine-label, .chaine-retrait .chaine-nb { color: var(--text-secondary); }
 .chaine-signe { color: var(--text-muted); text-align: center; }
 .chaine-nb { text-align: right; font-variant-numeric: tabular-nums; }
@@ -916,7 +916,7 @@ tr.ligne-total td {
     padding: 0.25rem 0.5rem;
     border-radius: var(--radius-sm);
 }
-.exclusions-liste li:nth-child(odd) { background: rgba(99, 102, 241, 0.04); }
+.exclusions-liste li:nth-child(odd) { background: rgba(43, 93, 184, 0.04); }
 .exclusions-liste span { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .exclusions-liste strong { font-variant-numeric: tabular-nums; color: var(--text-muted); }
 
@@ -926,7 +926,7 @@ tr.ligne-total td {
     justify-content: space-between;
     font-size: 0.83rem;
     padding: 0.35rem 0;
-    border-bottom: 1px solid rgba(99, 102, 241, 0.06);
+    border-bottom: 1px solid rgba(43, 93, 184, 0.06);
 }
 .storage-line span { color: var(--text-secondary); }
 
@@ -999,7 +999,7 @@ tr.ligne-total td {
     justify-content: space-between;
     gap: 1rem;
     padding: 0.45rem 0;
-    border-bottom: 1px solid rgba(99, 102, 241, 0.06);
+    border-bottom: 1px solid rgba(43, 93, 184, 0.06);
     font-size: 0.84rem;
 }
 .fiche-row span { color: var(--text-secondary); }
@@ -1007,7 +1007,7 @@ tr.ligne-total td {
 .fiche-note {
     margin-top: 1.2rem;
     padding: 0.9rem 1.1rem;
-    background: rgba(99, 102, 241, 0.06);
+    background: rgba(43, 93, 184, 0.06);
     border-radius: var(--radius-md);
     font-size: 0.82rem;
 }
@@ -1099,7 +1099,7 @@ tr.ligne-total td {
 
 /* Ligne de la chaîne de traitement qui ouvre son détail */
 .chaine-ligne.chaine-cliquable { cursor: pointer; border-radius: 6px; }
-.chaine-ligne.chaine-cliquable:hover { background: rgba(255, 255, 255, .05); }
+.chaine-ligne.chaine-cliquable:hover { background: rgba(30, 28, 26, .05); }
 .chaine-ligne.chaine-cliquable .chaine-nb { text-decoration: underline dotted; text-underline-offset: 3px; }
 
 
@@ -1136,7 +1136,7 @@ tr.ligne-total td {
 .barre-selection {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     padding: 10px 14px; margin-bottom: 10px; border-radius: 8px;
-    background: var(--surface-2, rgba(255,255,255,.04));
+    background: var(--surface-2, rgba(30, 28, 26, .04));
     border: 1px solid var(--border-color);
 }
 .barre-selection .sel-nb { font-weight: 600; }
@@ -1152,7 +1152,7 @@ tr.ligne-total td {
 .regle-form {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     padding: 12px 14px; margin: 12px 0 10px; border-radius: 8px;
-    background: var(--surface-2, rgba(255,255,255,.04));
+    background: var(--surface-2, rgba(30, 28, 26, .04));
     border: 1px solid var(--border-color);
 }
 .regle-form .input { min-width: 150px; }
@@ -1171,7 +1171,7 @@ tr.ligne-total td {
 .suggestion {
     display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
     padding: 10px 14px; border-radius: 8px;
-    background: var(--surface-2, rgba(255,255,255,.03));
+    background: var(--surface-2, rgba(30, 28, 26, .03));
     border: 1px solid var(--border-color);
 }
 .suggestion .suggestion-motif { font-weight: 600; font-size: 13px; min-width: 240px; }
@@ -1192,8 +1192,8 @@ tr.ligne-total td {
 .acte-num {
     display: inline-flex; align-items: center; justify-content: center;
     width: 28px; height: 28px; border-radius: 50%;
-    background: var(--red-bg, rgba(244,116,88,.15));
-    color: var(--red, #F47458);
+    background: var(--red-bg, rgba(217, 83, 46,.15));
+    color: var(--red, #D9532E);
     font-size: 14px; font-weight: 700;
 }
 .acte-sous { font-size: 13px; color: var(--text-muted); }
@@ -1211,7 +1211,7 @@ tr.ligne-total td {
 
 
 /* Détail d'une catégorie de financement */
-.detail-categorie { border-left: 3px solid var(--red, #F47458); }
+.detail-categorie { border-left: 3px solid var(--red, #D9532E); }
 .detail-sous-bloc { margin-top: 26px; }
 .detail-sous-bloc > h3 { font-size: 14px; margin-bottom: 6px; }
 .qualif-barres { display: grid; gap: 10px; margin-top: 10px; }
@@ -1220,9 +1220,9 @@ tr.ligne-total td {
     background: none; border: 0; padding: 4px 2px; font: inherit;
     color: inherit; cursor: pointer; border-radius: 6px;
 }
-.qualif-barre:hover { background: rgba(255,255,255,.04); }
+.qualif-barre:hover { background: rgba(30, 28, 26, .04); }
 .qualif-barre-tete { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
-.qualif-barre-piste { height: 8px; border-radius: 4px; background: rgba(255,255,255,.06); overflow: hidden; }
+.qualif-barre-piste { height: 8px; border-radius: 4px; background: rgba(30, 28, 26, .06); overflow: hidden; }
 .qualif-barre-jauge { display: block; height: 100%; border-radius: 4px; }
 .qualif-barre-pied { font-size: 11px; color: var(--text-muted); }
 
@@ -1230,12 +1230,12 @@ tr.ligne-total td {
 /* Colonnes proposées quand un champ essentiel n'est pas pourvu */
 .candidat {
     display: inline-block; margin: 2px 4px 2px 0; padding: 3px 10px;
-    border: 1px dashed var(--border-hover, rgba(255,255,255,.25));
+    border: 1px dashed var(--border-hover, rgba(30, 28, 26, .25));
     border-radius: 999px; background: none; color: var(--text-secondary);
     font: inherit; font-size: 11px; cursor: pointer; max-width: 220px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
 }
-.candidat:hover { border-style: solid; border-color: var(--red, #F47458); color: var(--text-primary); }
+.candidat:hover { border-style: solid; border-color: var(--red, #D9532E); color: var(--text-primary); }
 
 
 /* Puces de financement : compactes, la barre de filtres reste basse */
@@ -1281,28 +1281,28 @@ tr.ligne-total td {
 .qualif-entete .qualif-val, .qualif-entete .qualif-ecart { font-weight: 400; }
 .qualif-legende { display: inline-flex; align-items: center; gap: 5px; margin: 0 6px; }
 .pastille { display: inline-block; width: 9px; height: 9px; border-radius: 3px; }
-.pastille-verte { background: #22c55e; }
-.pastille-rouge { background: var(--accent, #F47458); margin-left: 6px; }
+.pastille-verte { background: #1D7F55; }
+.pastille-rouge { background: var(--accent, #D9532E); margin-left: 6px; }
 .qualif-nom {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     color: var(--text-secondary);
 }
-.qualif-barre { display: block; height: 10px; border-radius: 5px; background: rgba(255,255,255,.06); }
+.qualif-barre { display: block; height: 10px; border-radius: 5px; background: rgba(30, 28, 26, .06); }
 .qualif-barre-fond {
     display: block; height: 100%; border-radius: 5px; min-width: 3px;
-    background: var(--accent, #F47458); position: relative; overflow: hidden;
+    background: var(--accent, #D9532E); position: relative; overflow: hidden;
 }
 /* La part déjà encaissée, en vert, dans la barre de la valeur */
 .qualif-barre-paye {
     position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px;
-    background: #22c55e; opacity: .85;
+    background: #1D7F55; opacity: .85;
 }
 .qualif-val { text-align: right; font-weight: 600; white-space: nowrap; }
 .qualif-part { display: block; font-weight: 400; font-size: 10px; color: var(--text-muted); }
 .etincelle { display: block; }
 .qualif-ecart { text-align: right; font-size: 11px; font-weight: 600; white-space: nowrap; }
-.qualif-hausse { color: #ef4444; }
-.qualif-baisse { color: #22c55e; }
+.qualif-hausse { color: #B8352A; }
+.qualif-baisse { color: #1D7F55; }
 .qualif-stable { color: var(--text-muted); }
 
 
@@ -1313,7 +1313,7 @@ tr.ligne-total td {
        y a à faire reste sous les yeux, quel que soit le défilement. */
     position: sticky; top: calc(var(--nav-h, 66px) + var(--filters-h, 300px)); z-index: 30;
     padding: 10px 12px; margin-bottom: 14px; border-radius: 8px;
-    background: var(--surface-2, rgba(255,255,255,.04));
+    background: var(--surface-2, rgba(30, 28, 26, .04));
     border: 1px solid var(--border-color);
 }
 .gl-actions .gl-actions-titre {
@@ -1323,15 +1323,15 @@ tr.ligne-total td {
 .gl-actions .btn { white-space: nowrap; }
 .gl-actions .compteur {
     display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 9px;
-    background: rgba(255,255,255,.12); font-size: 11px; font-weight: 700;
+    background: rgba(30, 28, 26, .12); font-size: 11px; font-weight: 700;
 }
 
 /* D'où viennent les chiffres et de quand ils datent : discret, mais lisible. */
 .source-ligne {
     margin: 0 0 12px;
     padding: 8px 12px;
-    border-left: 3px solid var(--accent, #F47458);
-    background: rgba(244, 116, 88, 0.06);
+    border-left: 3px solid var(--accent, #D9532E);
+    background: rgba(217, 83, 46, 0.06);
     border-radius: 0 6px 6px 0;
 }
 
@@ -1348,7 +1348,7 @@ tr.ligne-total td {
     border: 1px solid var(--border-color);
     border-radius: 12px;
     padding: 0.85rem 1rem 0.95rem;
-    background: rgba(255, 255, 255, 0.015);
+    background: rgba(30, 28, 26, 0.015);
 }
 .motifs-colonne-tete { margin-bottom: 0.6rem; }
 .motifs-colonne-tete h4 {
@@ -1372,7 +1372,7 @@ tr.ligne-total td {
     grid-template-columns: 10px minmax(0, 1fr) 4.2rem 6.5rem 4.5rem;
     gap: 0.55rem; align-items: center;
     padding: 0.2rem 0; font-size: 0.74rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid rgba(30, 28, 26, 0.04);
 }
 .motifs-legende-ligne:last-child { border-bottom: none; }
 .motifs-puce { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
@@ -1456,7 +1456,7 @@ tr.ligne-total td {
 
 /* Une part de camembert se clique : la légende doit le dire. */
 .motifs-legende-ligne { cursor: pointer; border-radius: var(--radius-sm); }
-.motifs-legende-ligne:hover { background: rgba(255, 255, 255, 0.05); }
+.motifs-legende-ligne:hover { background: rgba(30, 28, 26, 0.05); }
 .motifs-pie canvas { cursor: pointer; }
 
 /* Les tuiles de synthèse s'ouvrent sur leurs factures. */
@@ -1550,9 +1550,9 @@ tr.ligne-total td {
 .api-bloc > .bloc-repli .input { margin-top: 4px; }
 
 /* L'état d'un appel se lit à sa couleur avant de se lire à son texte. */
-.connect-status.ok   { color: var(--success, #34d399); }
-.connect-status.warn { color: var(--warning, #fbbf24); }
-.connect-status.err  { color: var(--danger, #f87171); }
+.connect-status.ok   { color: var(--success, #1D7F55); }
+.connect-status.warn { color: var(--warning, #A86A06); }
+.connect-status.err  { color: var(--danger, #B8352A); }
 
 /* Le journal des pages : il grandit pendant l'import, sans pousser le reste. */
 #api-journal {
@@ -1731,8 +1731,8 @@ tr.ligne-total td {
     cursor: pointer;
 }
 .ligne-flux .flux-lien:hover { border-bottom-style: solid; }
-.ligne-flux .flux-hausse { color: var(--red, #F47458); font-weight: 700; }
-.ligne-flux .flux-baisse { color: #84cc16; font-weight: 700; }
+.ligne-flux .flux-hausse { color: var(--red, #D9532E); font-weight: 700; }
+.ligne-flux .flux-baisse { color: #1D7F55; font-weight: 700; }
 .ligne-flux .flux-vide { color: var(--text-muted); }
 
 /* Un renvoi vers un autre onglet, écrit dans une phrase. */
@@ -1868,7 +1868,7 @@ tr.ligne-total td {
     .filters-wrap {
         position: static;
         backdrop-filter: none;
-        background: var(--bg-card, rgba(11, 14, 26, 0.92));
+        background: var(--bg-card, #FFFFFF);
     }
     .data-table thead th { top: 0; }
 }
@@ -1940,7 +1940,7 @@ html {
    financement manquant, mais ils se vérifient. Le trait pointillé le dit
    sans crier, et le survol donne la source exacte. */
 .fin-approx {
-    border-bottom: 1px dotted var(--red, #F47458);
+    border-bottom: 1px dotted var(--red, #D9532E);
     cursor: help;
 }
 
@@ -1974,16 +1974,16 @@ html {
     gap: 12px;
     flex-wrap: wrap;
     padding: 10px 2rem;
-    background: linear-gradient(90deg, rgba(244, 116, 88, .22), rgba(244, 116, 88, .08));
-    border-bottom: 1px solid var(--red, #F47458);
+    background: linear-gradient(90deg, rgba(217, 83, 46, .22), rgba(217, 83, 46, .08));
+    border-bottom: 1px solid var(--red, #D9532E);
     font-size: 13.5px;
     color: var(--text-primary);
 }
 .bandeau-demo[hidden] { display: none; }
 .bandeau-demo-pastille {
     flex: none;
-    background: var(--red, #F47458);
-    color: #0b0e1a;
+    background: var(--red, #D9532E);
+    color: #1E1C1A;
     font-weight: 700;
     font-size: 11px;
     letter-spacing: .06em;
@@ -1994,8 +1994,8 @@ html {
 .bandeau-demo #btn-quitter-demo {
     margin-left: auto;
     flex: none;
-    background: var(--red, #F47458);
-    color: #0b0e1a;
+    background: var(--red, #D9532E);
+    color: #1E1C1A;
     border: none;
     font-weight: 600;
 }
@@ -2023,8 +2023,8 @@ html {
 .brand-demo .marque-demo { margin-left: 0; margin-top: 2px; }
 
 .marque-demo {
-    background: var(--red, #F47458);
-    color: #0b0e1a;
+    background: var(--red, #D9532E);
+    color: #1E1C1A;
     font-weight: 700;
     font-size: 10px;
     letter-spacing: .08em;
@@ -2072,20 +2072,20 @@ html {
     display: flex; flex-wrap: wrap; gap: 1.25rem 2rem; align-items: flex-start;
     padding: 1rem 1.25rem; margin-bottom: 1.5rem;
     position: sticky; top: var(--nav-h, 66px); z-index: 40;
-    background: rgba(11, 14, 26, 0.94);
+    background: rgba(255, 255, 255, 0.94);
     backdrop-filter: blur(12px);
-    border: 1px solid rgba(99, 102, 241, 0.14); border-radius: 12px;
+    border: 1px solid rgba(43, 93, 184, 0.14); border-radius: 12px;
 }
 .pil-filtre { display: flex; flex-direction: column; gap: .4rem; min-width: 11rem; }
 .pil-filtre-large { min-width: 18rem; flex: 1 1 18rem; }
 .pil-filtre > label {
     font-size: .72rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
-    color: var(--encre-3, #8b92a5);
+    color: var(--encre-3, #78736C);
 }
 .pil-filtre select, .pil-filtre input[type="date"] {
     padding: .45rem .6rem; border-radius: 8px; font-size: .85rem;
-    border: 1px solid rgba(99,102,241,.22);
-    background: var(--surface-2, rgba(255,255,255,.04)); color: inherit;
+    border: 1px solid rgba(43, 93, 184,.22);
+    background: var(--surface-2, rgba(30, 28, 26, .04)); color: inherit;
 }
 /* LE DÉROULÉ NATIF DOIT SE LIRE, 04/11/2026 : « lorsque je clique sur exercice
    courant, le déroulé n'est pas bien visible, même chose pour comparaison ».
@@ -2102,31 +2102,31 @@ html {
 .pil-deroule-bouton {
     width: 100%; text-align: left; cursor: pointer; position: relative;
     padding: .45rem 1.9rem .45rem .6rem; border-radius: 8px; font-size: .85rem;
-    border: 1px solid rgba(99,102,241,.22);
-    background: var(--surface-2, rgba(255,255,255,.04)); color: var(--text-primary);
+    border: 1px solid rgba(43, 93, 184,.22);
+    background: var(--surface-2, rgba(30, 28, 26, .04)); color: var(--text-primary);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .pil-deroule-bouton::after {
     content: '▾'; position: absolute; right: .6rem; top: 50%;
     transform: translateY(-50%); pointer-events: none; opacity: .65;
 }
-.pil-deroule-bouton[aria-expanded="true"] { border-color: var(--accent, #F47458); }
+.pil-deroule-bouton[aria-expanded="true"] { border-color: var(--accent, #D9532E); }
 .pil-deroule-panneau {
     position: absolute; z-index: 60; top: calc(100% + .3rem); left: 0;
     min-width: 100%; max-height: min(60vh, 24rem); overflow-y: auto;
     flex-direction: column; flex-wrap: nowrap; gap: .1rem;
     padding: .5rem; border-radius: 10px;
     background: var(--bg-secondary); color: var(--text-primary);
-    border: 1px solid rgba(99,102,241,.28); box-shadow: 0 14px 30px rgba(0,0,0,.38);
+    border: 1px solid rgba(43, 93, 184,.28); box-shadow: 0 14px 30px rgba(0,0,0,.38);
 }
 .pil-deroule-panneau[hidden] { display: none; }
 .pil-deroule-panneau .pil-coche { padding: .25rem .3rem; border-radius: 6px; }
-.pil-deroule-panneau .pil-coche:hover { background: rgba(99,102,241,.12); }
+.pil-deroule-panneau .pil-coche:hover { background: rgba(43, 93, 184,.12); }
 /* « Tous » ouvre la liste, détaché du reste : c'est la remise à zéro du
    filtre, pas un choix de plus. */
 .pil-deroule-panneau .pil-coche-tout {
     font-weight: 600; margin-bottom: .3rem; padding-bottom: .45rem;
-    border-bottom: 1px solid rgba(99,102,241,.2);
+    border-bottom: 1px solid rgba(43, 93, 184,.2);
 }
 
 .pil-coches { display: flex; flex-wrap: wrap; gap: .35rem .75rem; }
@@ -2152,38 +2152,38 @@ html {
     display: inline-flex; align-items: center; gap: .35rem;
     font-size: .82rem; cursor: pointer; white-space: nowrap;
 }
-.pil-coche input { accent-color: var(--accent, #F47458); }
+.pil-coche input { accent-color: var(--accent, #D9532E); }
 
 .pil-vide {
     padding: 2.5rem 1rem; text-align: center; font-size: .95rem;
-    color: var(--encre-3, #8b92a5);
+    color: var(--encre-3, #78736C);
 }
 .pil-note {
     margin: .1rem 1.25rem .75rem; font-size: .82rem; line-height: 1.45;
-    color: var(--encre-3, #8b92a5);
+    color: var(--encre-3, #78736C);
 }
 
 /* La comparaison se lit SOUS la valeur, en petit : elle commente, elle ne
    remplace pas. Sa demande du 03/11/2026. */
 .pil-comparaison { font-size: .75rem; margin-top: .15rem; }
-.pil-ref { color: var(--encre-3, #8b92a5); }
-.pil-mieux { color: #84cc16; font-weight: 600; }
-.pil-moins { color: #ef4444; font-weight: 600; }
-.pil-acompleter { color: #f59e0b; font-size: .9em; }
+.pil-ref { color: var(--encre-3, #78736C); }
+.pil-mieux { color: #1D7F55; font-weight: 600; }
+.pil-moins { color: #B8352A; font-weight: 600; }
+.pil-acompleter { color: #A86A06; font-size: .9em; }
 
 /* La carte de chaleur : la valeur se lit DANS la case. Une couleur seule ne
    se recopie pas dans un dossier d'arrêté. */
 .pil-heat { width: 100%; border-collapse: collapse; font-size: .82rem; }
-.pil-heat th, .pil-heat td { padding: .45rem .6rem; border-bottom: 1px solid rgba(99,102,241,.08); }
+.pil-heat th, .pil-heat td { padding: .45rem .6rem; border-bottom: 1px solid rgba(43, 93, 184,.08); }
 .pil-heat thead th {
     position: sticky; top: 0; text-align: left; font-weight: 600;
-    background: var(--surface-2, rgba(255,255,255,.04));
-    color: var(--encre-3, #8b92a5); font-size: .74rem;
+    background: var(--surface-2, rgba(30, 28, 26, .04));
+    color: var(--encre-3, #78736C); font-size: .74rem;
     letter-spacing: .03em; text-transform: uppercase;
 }
 .pil-heat th.n, .pil-heat td.n { text-align: right; font-variant-numeric: tabular-nums; }
 .pil-heat td.fam { font-weight: 600; }
-.pil-heat tr.total td { border-top: 2px solid rgba(99,102,241,.3); font-weight: 700; }
+.pil-heat tr.total td { border-top: 2px solid rgba(43, 93, 184,.3); font-weight: 700; }
 
 /* LE TABLEAU DES POSTES DE LA CASCADE. Il dit en toutes lettres ce que les
    barres ne peuvent pas montrer : un poste de quinze mille euros sur une
@@ -2191,7 +2191,7 @@ html {
 .pil-postes { margin-top: 1rem; overflow-x: auto; }
 .pil-postes-table { font-size: .82rem; }
 .pil-postes-table tr.total td {
-    border-top: 2px solid rgba(99,102,241,.3); font-weight: 700;
+    border-top: 2px solid rgba(43, 93, 184,.3); font-weight: 700;
 }
 .pil-postes-table td, .pil-postes-table th { padding: .4rem .6rem; }
 .pil-postes-table td.ta-r { font-variant-numeric: tabular-nums; }
@@ -2206,4 +2206,4 @@ html {
 }
 /* La maille du relevé, sous le filtre de période : il est bâti sur des arrêtés
    mensuels, et une fenêtre plus courte ne pourrait répondre qu'en mentant. */
-.pil-maille { font-size: .72rem; color: var(--encre-3, #8b92a5); font-style: italic; }
+.pil-maille { font-size: .72rem; color: var(--encre-3, #78736C); font-style: italic; }

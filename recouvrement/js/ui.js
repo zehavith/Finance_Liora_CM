@@ -220,21 +220,40 @@
     // ──────────────────────────────────────────────
 
     const couleurs = {
-        retard: '#ef4444',
-        payeRetard: '#f59e0b',
-        paye: '#84cc16',
-        nonEchue: '#3b82f6',
+        retard: '#B8352A',
+        payeRetard: '#A86A06',
+        paye: '#1D7F55',
+        nonEchue: '#2B5DB8',
         inconnu: '#6b7280',
-        accent: '#F47458',
-        indigo: '#6366f1',
+        accent: '#D9532E',
+        indigo: '#2B5DB8',
     };
 
-    const palette = ['#F47458', '#6366f1', '#84cc16', '#f59e0b', '#3b82f6', '#ec4899',
-        '#14b8a6', '#8b5cf6', '#f97316', '#06b6d4', '#eab308', '#f43f5e', '#10b981', '#d946ef'];
+    // LA PALETTE DE LA CHARTE LIORA, VALIDÉE ET NON RECOPIÉE, 12/11/2026.
+    //
+    // « tu peux mettre le code couleur liora sur mon appli suivi recouv ? »
+    //
+    // Les quatorze teintes d'avant étaient celles d'un thème sombre, et elles
+    // n'avaient jamais été contrôlées. Sur fond clair, deux d'entre elles se
+    // lisaient comme du gris et une troisième n'atteignait pas trois contre un
+    // de contraste. Celles de la version 2 échouent aussi : son turquoise
+    // #178A82 tombe sous le seuil de chroma, son or #D4970F plafonne à 2,48.
+    //
+    // Ces dix-là passent les cinq contrôles sur la surface claire : bande de
+    // luminosité, chroma, séparation en vision déficiente, séparation en
+    // vision normale, contraste. Les six premières SONT celles de la charte,
+    // à l'or et au turquoise près, recalés pour passer. L'ordre est fixe : une
+    // série garde sa couleur quand un filtre en retire une autre.
+    //
+    // Aucune ne reprend une couleur d'état — le vert, le rouge et l'ambre sont
+    // réservés à ce qui va bien, mal ou presque mal, et ne désignent jamais un
+    // financeur.
+    const palette = ['#A8750B', '#2B5DB8', '#D9532E', '#0A8F82', '#7B4DB3',
+        '#8E2A21', '#A33C86', '#4E7A1F', '#0E6F9E', '#C2410C'];
 
     function initChartDefaults() {
         if (!global.Chart) return;
-        Chart.defaults.color = '#8b92a5';
+        Chart.defaults.color = '#5C5750';
         Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
         Chart.defaults.font.size = 11;
         Chart.defaults.plugins.legend.labels.usePointStyle = true;
