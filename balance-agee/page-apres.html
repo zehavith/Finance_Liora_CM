@@ -124,6 +124,20 @@ function brancherArrete(){
     E('arrete-date').hidden=true;
     if((sel.value||'')!==(ARRETE_VU||'')) partirVers(sel.value,false);
   });
+  // METTRE LA DATE SUFFIT, 12/11/2026 : « ça ne s'est pas mis à jour ».
+  //
+  // Le menu bascule l'écran dès qu'on choisit — c'est écrit juste au-dessus,
+  // et c'est ce qu'elle avait demandé le 27/10. Le champ de date, lui,
+  // n'écoutait rien : il attendait « Télécharger ». On met une date, il ne se
+  // passe rien, et il n'y a aucun moyen de deviner qu'il reste un bouton à
+  // cliquer. Les deux font désormais la même chose.
+  E('arrete-date').addEventListener('change',()=>{
+    const v=E('arrete-date').value;
+    if(!v) return;
+    E('arrete-note').textContent='';
+    if(ARRETES[v]) return partirVers(v,false);
+    demanderArrete(v);
+  });
   E('arrete-ok').addEventListener('click',()=>{
     // Une date précise qu'on n'a pas ne se télécharge pas : on le dit, et la
     // fenêtre ne s'ouvre pas sur un choix qui ne mènerait nulle part.
