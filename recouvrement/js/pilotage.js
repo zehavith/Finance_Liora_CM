@@ -434,6 +434,46 @@
         // produit de deux choses : la part que cette tranche pèse dans la
         // ligne, et le poids de risque de la tranche elle-même. Une créance
         // non échue ne porte aucun risque : sa case reste neutre.
+        // LE DSO SE LIT À CÔTÉ DU DÉLAI, PAS CONTRE LUI, 12/11/2026.
+        //
+        // La version 2 colore l'écart entre le DSO et le délai cible du
+        // financeur. C'est faux sans en avoir l'air : une facture CPF émise au
+        // début d'un parcours qui se termine six mois plus tard affiche plus de
+        // trois cents jours de DSO en étant parfaitement dans les temps, parce
+        // que son échéance court depuis la FIN de formation, pas depuis la
+        // facture. Un écart calculé là-dessus désignerait les bons payeurs.
+        //
+        // Les deux colonnes se posent donc côte à côte, sans soustraction et
+        // sans couleur : le DSO mesuré, et la règle qui s'applique à ce
+        // financeur au grand livre. Qui veut comparer compare, en sachant ce
+        // qu'il compare.
+        const per = bornes();
+        const dsoPar = new Map();
+        for (const r of (D.dso || [])) {
+            if (!keep.has(r.fin) || !dans(r.m, per)) continue;
+            const o = dsoPar.get(r.fin) || { mt: 0, mj: 0, n: 0 };
+            o.mt += r.mt; o.mj += r.mj; o.n += r.n;
+            dsoPar.set(r.fin, o);
+        }
+        const dsoDe = fin => {
+            const o = dsoPar.get(fin);
+            return o && o.mt ? { j: Math.round(o.mj / o.mt), n: o.n, mt: o.mt } : null;
+        };
+        // Le délai propre vient de la règle d'échéance du GRAND LIVRE — celle
+        // qui a servi à dater la créance — et non de celle du suivi de relance :
+        // les deux ne mesurent pas la même chose, et c'est le grand livre qui
+        // remplit cette carte.
+        const REGLES = (window.LioraRules && window.LioraRules.DEFAULT_ECHEANCE_RULES) || [];
+        const BASE_FR = { dateFacture: 'date de facture', dateFinFormation: 'fin de formation',
+                          dateDebutFormation: 'début de formation' };
+        const delaiPropre = fin => {
+            const r = REGLES.find(x => x.label === fin);
+            if (!r) return 'à compléter';
+            const g = r.gl || r;
+            const base = BASE_FR[g.base] || '';
+            if (!base) return 'à compléter';
+            return base + (g.jours ? ' + ' + g.jours + ' j' : '');
+        };
         const RISQUE = [0, 0.18, 0.45, 0.75, 1];
         const chaleur = (v, tot, j) => {
             if (!tot || v <= 0 || !RISQUE[j]) return 'background:transparent';
@@ -443,17 +483,29 @@
         const tot = COLONNES.map((_, j) => lignes.reduce((s, r) => s + r.cases[j], 0));
         let h = '<table class="pil-heat"><thead><tr><th>Financeur</th><th>Équipe</th>'
             + COLONNES.map(c => '<th class="n">' + c.nom + '</th>').join('')
-            + '<th class="n">Total</th></tr></thead><tbody>';
+            + '<th class="n">Total</th><th class="n">DSO</th>'
+            + '<th>Délai propre</th></tr></thead><tbody>';
         for (const r of lignes) {
             h += '<tr><td class="fam">' + U().escapeHtml(r.fin) + '</td>'
                 + '<td>' + U().escapeHtml(r.unite) + '</td>'
                 + r.cases.map((v, j) => '<td class="n" style="' + chaleur(v, r.total, j) + '">'
                     + eur(v) + '</td>').join('')
-                + '<td class="n"><strong>' + eur(r.total) + '</strong></td></tr>';
+                + '<td class="n"><strong>' + eur(r.total) + '</strong></td>'
+                + (d => '<td class="n"' + (d ? ' title="' + d.n.toLocaleString('fr-FR')
+                        + ' règlement' + (d.n > 1 ? 's' : '') + ' · ' + eur(d.mt) + '"' : '')
+                    + '>' + (d ? d.j.toLocaleString('fr-FR') + ' j' : 'à compléter') + '</td>')(dsoDe(r.fin))
+                + '<td>' + U().escapeHtml(delaiPropre(r.fin)) + '</td></tr>';
         }
         h += '<tr class="total"><td>TOTAL</td><td></td>'
             + tot.map(v => '<td class="n">' + eur(v) + '</td>').join('')
-            + '<td class="n">' + eur(tot.reduce((a, b) => a + b, 0)) + '</td></tr>';
+            + '<td class="n">' + eur(tot.reduce((a, b) => a + b, 0)) + '</td>'
+            + (() => { let mt = 0, mj = 0, n = 0;
+                for (const o of dsoPar.values()) { mt += o.mt; mj += o.mj; n += o.n; }
+                return '<td class="n"' + (mt ? ' title="' + n.toLocaleString('fr-FR')
+                        + ' règlements · ' + eur(mt) + '"' : '') + '>'
+                    + (mt ? Math.round(mj / mt).toLocaleString('fr-FR') + ' j' : 'à compléter')
+                    + '</td>'; })()
+            + '<td></td></tr>';
         h += '</tbody></table>';
         el.innerHTML = h;
     }
