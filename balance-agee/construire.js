@@ -1655,10 +1655,18 @@ for(const c of cl){ const k=c.compte||'(sans compte)';
 add('Par compte client',[...parCompte.values()].sort((a,b)=>b['Restant dû']-a['Restant dû'])
   .map(g=>({...g,'Restant dû':ar(g['Restant dû']),'Types de financement':[...g['Types de financement']].join(' · ')})));
 // ce que l'ancienne balance a appris
+//
+// LE CLASSEUR DE RÉFÉRENCE PEUT MANQUER, 12/11/2026. Reference-septembre.xlsx a
+// disparu avec le conteneur, et le lecteur du grand livre ne rend ses tables
+// d'apprentissage que pour une feuille qu'il reconnaît comme comptable : sans
+// elles, cet export tombait et emportait toute la construction, qui était
+// pourtant allée jusqu'au bout. La feuille sort donc vide quand il n'y a rien
+// appris. Aucun chiffre ne dépend de ce garde-fou : grandlivre.js rend déjà la
+// créance inchangée quand appris est absent.
 const apprisRows=[];
-for(const [k,v] of Object.entries(appris.comptes)) apprisRows.push({'Clé':'compte','Valeur':k,
+for(const [k,v] of Object.entries(appris.comptes||{})) apprisRows.push({'Clé':'compte','Valeur':k,
   'Type de financement appris':v.qualif,'Lignes qui la portent':v.nb,'Consensus':Math.round(v.part*100)+' %'});
-for(const [k,v] of Object.entries(appris.tiers)) apprisRows.push({'Clé':'identifiant du tiers','Valeur':k,
+for(const [k,v] of Object.entries(appris.tiers||{})) apprisRows.push({'Clé':'identifiant du tiers','Valeur':k,
   'Type de financement appris':v.qualif,'Lignes qui la portent':v.nb,'Consensus':Math.round(v.part*100)+' %'});
 add('Appris de l’ancienne balance',apprisRows);
 // les règles d'échéance appliquées
