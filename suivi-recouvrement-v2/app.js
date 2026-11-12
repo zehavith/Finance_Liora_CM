@@ -93,7 +93,7 @@
       o.total += r.total; o.echu += r.echu; o.ne += r.nonEchu; o.nb += r.nb || 0;
       r.buckets.forEach(function (v, j) { o.b[j] += v; });
     });
-    o.a = o.b[0]; o.bb = o.b[1] + o.b[2]; o.c = sum(o.b.slice(3));
+    o.a = o.b[0]; o.bb = o.b[1] + o.b[2]; o.t612 = o.b[3]; o.t12 = sum(o.b.slice(4)); o.c = sum(o.b.slice(2));
     return o;
   }
   function fluxM(m, fin) {
@@ -112,6 +112,12 @@
     return { d: mt > 0 ? mj / mt : null, mt: mt, n: nb, deb: deb };
   }
   function dsoAt(i, fin) { return dsoInfo(i, fin).d; }
+  function facInfo(i, fin) {
+    var m = mOf(i), y = +m.slice(0, 4), mo = +m.slice(5, 7);
+    var deb = (mo >= 7 ? y : y - 1) + '-07', f = 0, nb = 0;
+    S.gl.flux.forEach(function (r) { if (r.m >= deb && r.m <= m && catPass(r.fin, fin)) { f += r.fac || 0; nb += r.nFac || 0; } });
+    return { f: f, n: nb, deb: deb };
+  }
   function ceiAt(i, fin) {
     if (i < 1) return null;
     var r0 = encAt(i - 1, fin).total, e1 = encAt(i, fin), F = fluxM(mOf(i), fin).fac;
@@ -317,18 +323,20 @@
       var v = arr[n], p = arr[n - 1], y = n >= 12 ? arr[n - 12] : null;
       var d = function (x) { return (v == null || x == null) ? null : kind === 'eur' ? (v / x - 1) * 100 : v - x; };
       var u = kind === 'eur' ? ' %' : kind === 'pct' ? ' pts' : ' j';
-      var val = v == null ? '—' : kind === 'eur' ? meur(v) : kind === 'pct' ? fmt(v, 0) + ' %' : fmt(v, 0) + ' j';
+      var val = v == null ? '—' : kind === 'eur' ? eur(v) : kind === 'pct' ? fmt(v, 1) + ' %' : fmt(v, 0) + ' j';
       return kpiCard({ l: l, v: val, sub: sub + (extra ? ' · ' + extra : ''), icon: ic, tone: tone, spark: spark(arr.slice(-13), 'var(--g1)'), chips: deltaChip('vs M-1', d(p), u, badUp) + deltaChip('vs N-1', d(y), u, badUp) });
     }
     var provC = G.provision.comptabilisee, cible = S.fin === 'all' ? CFG.dsoGlobal : (CFG.dsoCible[S.fin] || CFG.dsoGlobal);
+    var facS = range.map(function (i) { return facInfo(i).f; }), facN = facInfo(n);
+    var c120S = series.map(function (e) { return pct(e.c, e.total); });
     var kpis = [
-      kp('Encours clients', series.map(function (e) { return e.total; }), 'eur', null, 'dont non échu ' + meur(cur.ne), ICON.wallet, TONE.info),
-      kp('Taux d’échu', peS, 'pct', true, 'soit ' + meur(cur.echu) + ' échus', ICON.clock, TONE.acc),
-      kp('Échu à plus de 180 j', cS, 'eur', true, fmt(pct(cur.c, cur.total), 0) + ' % de l’encours', ICON.alert, TONE.bad),
-      kp('DSO', dsoS, 'day', true, fmt(dsoInfo(n).n) + ' règlements · ' + eurAuto(dsoInfo(n).mt) + ' depuis le 01/07', ICON.cal, TONE.info, 'cible ' + cible + ' j'),
-      kp('CEI', ceiS, 'pct', false, 'encaissé / exigible du mois', ICON.target, TONE.good, 'cible ' + CFG.ceiCible + ' %'),
-      kpiCard({ l: 'Couverture des provisions', v: S.fin === 'all' && S.ent === 'all' ? fmt(pct(provC, encAt(n).c), 0) + ' %' : '—', icon: ICON.shield, tone: TONE.warn,
-        sub: S.fin === 'all' && S.ent === 'all' ? keur(provC) + ' provisionnés sur ' + keur(encAt(n).c) + ' à plus de 180 j' : 'Disponible sans filtre financeur ni entité : la provision n’est lue qu’en global.',
+      kp('Total facturé', facS, 'eur', null, fmt(facN.n) + ' factures depuis le ' + dFR(facN.deb + '-01'), ICON.inbox, TONE.info),
+      kp('Total encours', series.map(function (e) { return e.total; }), 'eur', null, 'échu ' + eur(cur.echu) + ' · non échu ' + eur(cur.ne), ICON.wallet, TONE.info),
+      kp('Taux d’échu', peS, 'pct', true, 'part échue de l’encours', ICON.clock, TONE.acc),
+      kp('Échu de plus de 120 jours', c120S, 'pct', true, eur(cur.c) + ' sur ' + eur(cur.total), ICON.alert, TONE.bad),
+      kp('DSO', dsoS, 'day', true, fmt(dsoInfo(n).n) + ' règlements · ' + eur(dsoInfo(n).mt) + ' depuis le 01/07', ICON.cal, TONE.info, 'cible ' + cible + ' j'),
+      kpiCard({ l: 'Couverture des provisions', v: S.fin === 'all' && S.ent === 'all' ? fmt(pct(provC, encAt(n).total), 1) + ' %' : '—', icon: ICON.shield, tone: TONE.warn,
+        sub: S.fin === 'all' && S.ent === 'all' ? eur(provC) + ' provisionnés sur ' + eur(encAt(n).total) + ' de créances' : 'Disponible sans filtre financeur ni entité : la provision n’est lue qu’en global.',
         chips: chip('provision lue au ' + esc(G.provision.provisionLue ? G.provision.provisionLue.au : '—')) })
     ];
 
@@ -336,10 +344,10 @@
     var lo = Math.max(0, n - 12), encCols = [];
     for (var k = lo; k <= n; k++) {
       var e = series[k];
-      encCols.push({ label: mLabel(mOf(k), k === lo || k === n), tip: dFR(dates[k]) + ' : ' + meur(e.total) + ', dont échu ' + meur(e.echu) + ' (> 180 j : ' + meur(e.c) + ')', segs: [{ v: e.ne, c: 'var(--c6)' }, { v: e.a, c: 'var(--c4)' }, { v: e.bb, c: 'var(--c2)' }, { v: e.c, c: 'var(--c5)' }] });
+      encCols.push({ label: mLabel(mOf(k), k === lo || k === n), tip: dFR(dates[k]) + ' : ' + meur(e.total) + ', dont échu ' + meur(e.echu) + ' (plus de 120 j : ' + meur(e.c) + ')', segs: [{ v: e.ne, c: 'var(--c6)' }, { v: e.a, c: 'var(--c4)' }, { v: e.bb, c: 'var(--c2)' }, { v: e.t612, c: 'var(--c5)' }, { v: e.t12, c: 'var(--c8)' }] });
     }
     var cGrowth = n >= 12 ? (cur.c / series[n - 12].c - 1) * 100 : null;
-    var encNote = 'Sur 13 mois, l’échu à plus de 180 jours passe de ' + meur(series[lo].c) + ' à ' + meur(cur.c) + (cGrowth != null ? ' (' + sgn(cGrowth, 0) + ' % sur un an)' : '') + '. Le non échu suit la facturation ; c’est la couche la plus sombre qui dit si le stock vieillit.';
+    var encNote = 'Sur 13 mois, l’échu de plus de 120 jours passe de ' + eur(series[lo].c) + ' à ' + eur(cur.c) + (cGrowth != null ? ' (' + sgn(cGrowth, 0) + ' % sur un an)' : '') + '. Le non échu suit la facturation ; c’est la couche la plus sombre qui dit si le stock vieillit.';
 
     // 2. Qui se dégrade (lecture de la v1) : par mois d’échéance, part des
     // factures arrivées à échéance qui sont tombées en retard — payées après
@@ -407,19 +415,19 @@
     var heatRows = N.FINANCEURS.concat(['Interne (Allemagne)', 'Non affecté']).map(function (f) {
       if (S.fin !== 'all' && S.fin !== f) return null;
       var e = encAt(n, f); if (Math.abs(e.total) < 1) return null;
-      var cells = [e.ne, e.b[0], e.b[1] + e.b[2], e.b[3], e.b[4] + e.b[5], e.b[6] + e.b[7] + e.b[8]];
+      var cells = [e.ne, e.b[0], e.b[1] + e.b[2], e.b[3], e.t12];
       var dso = dsoAt(n, f), cib = CFG.dsoCible[f];
       return { f: f, cells: cells, t: e.total, dso: dso, cib: cib };
     }).filter(Boolean);
     var mxNE = Math.max.apply(null, heatRows.map(function (r) { return r.cells[0]; }).concat([1]));
     var mxE = Math.max.apply(null, heatRows.map(function (r) { return Math.max.apply(null, r.cells.slice(1)); }).concat([1]));
-    var heatHtml = table(['Financeur', 'Non échu', '0-3 mois', '3-6 mois', '6-12 mois', '12-24 mois', '> 24 mois', 'Total', 'DSO / cible'],
+    var heatHtml = table(['Financeur', 'Non échu', '0-3 mois', '3-6 mois', '6-12 mois', 'Plus d’un an', 'Total', 'DSO / cible'],
       heatRows.map(function (r) {
         var ratio = r.dso != null && r.cib ? r.dso / r.cib : null;
-        return '<tr>' + td(esc(r.f)) + r.cells.map(function (v, j) { return td(fmt(v / 1000), 'h', 'background:' + (j === 0 ? mix('var(--c1)', 6 + v / mxNE * 30) : mix('var(--c2)', 6 + Math.max(0, v) / mxE * 55))); }).join('') + td(fmt(r.t / 1000), 'r') +
+        return '<tr>' + td(esc(r.f)) + r.cells.map(function (v, j) { return td('<span title="' + eur(v) + '">' + fmt(v / 1000) + '</span>', 'h', 'background:' + (j === 0 ? mix('var(--c1)', 6 + v / mxNE * 30) : mix('var(--c2)', 6 + Math.max(0, v) / mxE * 55))); }).join('') + td(fmt(r.t / 1000), 'r') +
           td(chip((r.dso != null ? fmt(r.dso, 0) : '—') + '/' + (r.cib || '—') + ' j', ratio == null ? 'c-mute' : ratio >= 1.5 ? 'c-bad' : ratio > 1 ? 'c-warn' : 'c-good'), 'r') + '</tr>';
-      }).concat(['<tr class="tot">' + td('Total') + [0, 1, 2, 3, 4, 5].map(function (j) { return td(fmt(sum(heatRows, function (r) { return r.cells[j]; }) / 1000), 'r'); }).join('') + td(fmt(sum(heatRows, function (r) { return r.t; }) / 1000), 'r') + td(chip(fmt(dsoS[n], 0) + '/' + cible + ' j', dsoS[n] / cible >= 1.5 ? 'c-bad' : dsoS[n] > cible ? 'c-warn' : 'c-good'), 'r') + '</tr>']),
-      { right: [1, 2, 3, 4, 5, 6, 7, 8], cls: 'heat compact' });
+      }).concat(['<tr class="tot">' + td('Total') + [0, 1, 2, 3, 4].map(function (j) { return td(fmt(sum(heatRows, function (r) { return r.cells[j]; }) / 1000), 'r'); }).join('') + td(fmt(sum(heatRows, function (r) { return r.t; }) / 1000), 'r') + td(chip(fmt(dsoS[n], 0) + '/' + cible + ' j', dsoS[n] / cible >= 1.5 ? 'c-bad' : dsoS[n] > cible ? 'c-warn' : 'c-good'), 'r') + '</tr>']),
+      { right: [1, 2, 3, 4, 5, 6, 7], cls: 'heat compact' });
 
     // Variation du DSO (lecture de la v1) : délai moyen entre la date de facture
     // et l’encaissement, pondéré par les montants, mois par mois du règlement.
@@ -490,18 +498,18 @@
     var provCols = [];
     for (var pk = lo; pk <= n; pk++) {
       var ec = encAt(pk), req = provRequise(pk);
-      provCols.push({ label: mLabel(mOf(pk), pk === lo || pk === n), tip: dFR(dates[pk]) + ' : ' + keur(ec.c) + ' à plus de 180 j, provision requise ' + keur(req), bars: [{ v: ec.c, c: 'var(--c5)' }, { v: req, c: 'var(--c1)' }] });
+      provCols.push({ label: mLabel(mOf(pk), pk === lo || pk === n), tip: dFR(dates[pk]) + ' : ' + keur(ec.c) + ' échus de plus de 120 j, provision requise ' + keur(req), bars: [{ v: ec.c, c: 'var(--c5)' }, { v: req, c: 'var(--c1)' }] });
     }
     var reqN = provRequise(n), finItems = S.mo.open.filter(function (o) { return fileOfItem(o) === 'fin'; });
     var perdus = finItems.filter(function (o) { return /perdu|lost/i.test(o.g); }), conten = finItems.filter(function (o) { return /contentieux/i.test(o.g); });
     var corItems = S.mo.open.filter(function (o) { return fileOfItem(o) === 'cor'; });
     var decisions = [
-      ['Provision requise selon vos taux, fin ' + MOIS_L[+m.slice(5, 7) - 1], keur(reqN), 'var(--ink)'],
-      ['Provision comptabilisée (au ' + (G.provision.provisionLue ? G.provision.provisionLue.au : '—') + ')', keur(provC), 'var(--ink)'],
-      [reqN > provC ? 'Dotation complémentaire à arbitrer' : 'Reprise possible', keur(Math.abs(reqN - provC)), reqN > provC ? 'var(--warn)' : 'var(--good)'],
-      ['Dossiers perdus / partiellement perdus (Monday)', perdus.length + ' · ' + keur(sum(perdus, function (o) { return o.mt; })), 'var(--bad)'],
-      ['Dossiers en contentieux (Monday)', conten.length + ' · ' + keur(sum(conten, function (o) { return o.mt; })), 'var(--ink)'],
-      ['Factures à annuler ou reclasser (Monday)', corItems.length + ' · ' + keur(sum(corItems, function (o) { return o.mt; })), 'var(--ink)']
+      ['Provision requise selon vos taux, fin ' + MOIS_L[+m.slice(5, 7) - 1], eur(reqN), 'var(--ink)'],
+      ['Provision comptabilisée (au ' + (G.provision.provisionLue ? G.provision.provisionLue.au : '—') + ')', eur(provC), 'var(--ink)'],
+      [reqN > provC ? 'Dotation complémentaire à arbitrer' : 'Reprise possible', eur(Math.abs(reqN - provC)), reqN > provC ? 'var(--warn)' : 'var(--good)'],
+      ['Dossiers perdus / partiellement perdus (Monday)', perdus.length + ' · ' + eur(sum(perdus, function (o) { return o.mt; })), 'var(--bad)'],
+      ['Dossiers en contentieux (Monday)', conten.length + ' · ' + eur(sum(conten, function (o) { return o.mt; })), 'var(--ink)'],
+      ['Factures à annuler ou reclasser (Monday)', corItems.length + ' · ' + eur(sum(corItems, function (o) { return o.mt; })), 'var(--ink)']
     ];
 
     // mois en bref
@@ -519,9 +527,9 @@
 
     var worst = degr.filter(function (s) { return s.dd > 3; }).slice(0, 2);
     var autoComment = [
-      'L’encours ' + (cur.total >= prev.total ? 'progresse' : 'recule') + ' de ' + fmt(Math.abs((cur.total / prev.total - 1) * 100), 1) + ' % sur le mois, à ' + meur(cur.total) + ', dont ' + meur(cur.echu) + ' échus (' + fmt(pct(cur.echu, cur.total), 0) + ' %). L’échu à plus de 180 jours atteint ' + meur(cur.c) + (cGrowth != null ? ' (' + sgn(cGrowth, 0) + ' % sur un an)' : '') + ' et le DSO s’établit à ' + fmt(dsoS[n], 0) + ' jours.',
+      'L’encours ' + (cur.total >= prev.total ? 'progresse' : 'recule') + ' de ' + fmt(Math.abs((cur.total / prev.total - 1) * 100), 1) + ' % sur le mois, à ' + eur(cur.total) + ', dont ' + eur(cur.echu) + ' échus (' + fmt(pct(cur.echu, cur.total), 0) + ' %). L’échu de plus de 120 jours atteint ' + eur(cur.c) + (cGrowth != null ? ' (' + sgn(cGrowth, 0) + ' % sur un an)' : '') + ' et le DSO s’établit à ' + fmt(dsoS[n], 0) + ' jours.',
       worst.length ? 'Financeurs qui se dégradent : ' + worst.map(function (s) { return s.n + ' (' + fmt(s.last, 0) + ' % des échéances tombées en retard, ' + sgn(s.dd, 0) + ' pts sur 12 mois)'; }).join(' et ') + '.' : 'Aucun financeur ne se dégrade nettement sur 12 mois.',
-      'Provision requise selon vos taux : ' + keur(reqN) + ', pour ' + keur(provC) + ' comptabilisés. Côté Monday : ' + perdus.length + ' dossiers perdus et ' + conten.length + ' en contentieux à arbitrer.'
+      'Provision requise selon vos taux : ' + eur(reqN) + ', pour ' + eur(provC) + ' comptabilisés. Côté Monday : ' + perdus.length + ' dossiers perdus et ' + conten.length + ' en contentieux à arbitrer.'
     ].join('\n\n');
     var commentKey = 'comment:' + m + ':' + S.fin + ':' + S.ent;
     var comment = lsGet(commentKey, null);
@@ -533,10 +541,10 @@
       '<div class="actions"><button class="btn" id="x-pilotage">Exporter Excel</button></div></div>' +
       '<div class="filters"><label>Arrêté au<select id="f-idx">' + dateOpts + '</select></label><label>Financeur<select id="f-fin">' + finOpts + '</select></label>' +
       '<label>Entité<select id="f-ent"><option value="all">Toutes</option><option value="fr"' + (S.ent === 'fr' ? ' selected' : '') + '>France</option><option value="de"' + (S.ent === 'de' ? ' selected' : '') + '>Allemagne</option></select></label></div>' +
-      '<div class="kpis">' + kpis.join('') + '</div>' +
+      '<div class="kpis k6">' + kpis.join('') + '</div>' +
       '<div class="grid2">' +
       '<section class="card"><div class="sh"><div><h2><span class="n">1</span>L’encours et son âge</h2><p>Encours clients en fin de mois par ancienneté de l’échu, 13 mois glissants</p></div></div>' +
-      legend([['Non échu', 'var(--c6)'], ['Échu 0-90 j', 'var(--c4)'], ['Échu 91-180 j', 'var(--c2)'], ['Échu > 180 j', 'var(--c5)']]) + stackChart(encCols, function (v) { return v ? fmt(v / 1e6, 1) + ' M€' : '0'; }) + '<p class="note">' + encNote + '</p></section>' +
+      legend([['Non échu', 'var(--c6)'], ['0 à 3 mois', 'var(--c4)'], ['3 à 6 mois', 'var(--c2)'], ['6 à 12 mois', 'var(--c5)'], ['Plus d’un an', 'var(--c8)']]) + stackChart(encCols, function (v) { return v ? fmt(v / 1e6, 1) + ' M€' : '0'; }) + '<p class="note">' + encNote + '</p></section>' +
       '<section class="card"><div class="sh"><div><h2><span class="n">2</span>Bridge encours M / M+1</h2><p>' + (brStart != null ? 'L’encours passe de ' + eur(brStart) + ' à ' + eur(brEnd) + ', soit ' + (brEnd - brStart >= 0 ? '+' : '−') + eur(Math.abs(brEnd - brStart)) + '. En rouge ce qui le fait monter, en vert ce qui le fait baisser (grand livre).' : '') + '</p></div></div>' + bridgeHtml + '</section>' +
       '</div>' +
       '<section class="card"><div class="sh"><div><h2><span class="n">3</span>Où se loge le retard</h2><p>En k€, au ' + dFR(dates[n]) + '. Plus la case est foncée, plus le montant pèse. Le DSO se lit contre le délai propre à chaque financeur (cibles dans Réglages).</p></div></div>' +
@@ -556,20 +564,20 @@
       '<p class="note">Reçu = règlement lettré au grand livre ou virement reçu sur Pennylane, à leur date réelle ; sinon paiement enregistré dans Sellsy (tableau « Factures payées »), à sa date de paiement' + (nEst ? ' (estimée par la date de contrôle pour ' + fmt(nEst) + ' factures)' : '') + '. Avoirs exclus. L’écart N-1 compare chaque cohorte au même mois de l’an dernier, au dernier âge atteint.</p></div></div></section>' +
       '<section class="card"><div class="sh"><div><h2><span class="n">5</span>Le risque B2C</h2><p>Financement personnel : l’échu au grand livre et les dossiers ouverts dans Monday.</p></div></div>' +
       '<div class="kpis">' + [
-        kpiCard({ l: 'Échu financement personnel', v: meur(fp.echu), sub: fmt(pct(fp.echu, fp.total), 0) + ' % de son encours', icon: ICON.alert, tone: TONE.bad, chips: fpPrev ? deltaChip('vs N-1', (fp.echu / fpPrev.echu - 1) * 100, ' %', true) : '' }),
-        kpiCard({ l: 'Échu à plus de 180 j', v: meur(fp.c), sub: fmt(pct(fp.c, fp.echu), 0) + ' % de l’échu B2C', icon: ICON.clock, tone: TONE.warn }),
-        kpiCard({ l: 'Dossiers ouverts dans Monday', v: fmt(fpItems.length), sub: keur(sum(fpItems, function (o) { return o.mt; })) + ' restant dû', icon: ICON.users, tone: TONE.info })
-      ].join('') + '</div><div class="grid2"><div class="sub"><b>Âge de l’échu B2C</b>' + legend([['0-90 j', 'var(--c4)'], ['91-180 j', 'var(--c2)'], ['> 180 j', 'var(--c5)']]) + stackChart(fpAges, function (v) { return v ? keur(v) : '0'; }) + '</div>' +
+        kpiCard({ l: 'Échu financement personnel', v: eur(fp.echu), sub: fmt(pct(fp.echu, fp.total), 0) + ' % de son encours', icon: ICON.alert, tone: TONE.bad, chips: fpPrev ? deltaChip('vs N-1', (fp.echu / fpPrev.echu - 1) * 100, ' %', true) : '' }),
+        kpiCard({ l: 'Échu de plus de 120 jours', v: eur(fp.c), sub: fmt(pct(fp.c, fp.echu), 1) + ' % de l’échu B2C', icon: ICON.clock, tone: TONE.warn }),
+        kpiCard({ l: 'Dossiers ouverts dans Monday', v: fmt(fpItems.length), sub: eur(sum(fpItems, function (o) { return o.mt; })) + ' restant dû', icon: ICON.users, tone: TONE.info })
+      ].join('') + '</div><div class="grid2"><div class="sub"><b>Âge de l’échu B2C</b>' + legend([['0 à 3 mois', 'var(--c4)'], ['3 à 6 mois', 'var(--c2)'], ['6 à 12 mois', 'var(--c5)'], ['Plus d’un an', 'var(--c8)']]) + stackChart(fpAges, function (v) { return v ? keur(v) : '0'; }) + '</div>' +
       '<div class="sub"><b>Où en sont les dossiers</b><p class="note">Restant dû par groupe Monday du tableau 2.1.</p>' + hbars(fpRows, ['var(--c2)'], keur) + '</div></div>' +
       '<p class="note">Les rejets de prélèvement GoCardless (taux de rejet, rang de la première rupture) demandent l’export GoCardless, qui n’est pas branché sur cette application.</p></section>' +
       '<div class="grid2">' +
       '<section class="card"><div class="sh"><div><h2><span class="n">6</span>Trésorerie : prévu et encaissé</h2><p>Encaissements clients par semaine, en k€.</p></div></div>' +
       legend([['Prévu', 'var(--g3)'], ['Encaissé', 'var(--c1)']]) + groupChart(cash.cols, function (v) { return v ? fmt(v / 1000) : '0'; }, { labels: true }) +
       '<div class="kpis">' + kpiCard({ l: 'Fiabilité du prévisionnel', v: cash.fiab == null ? '—' : fmt(cash.fiab, 1) + ' %', sub: 'encaissé / prévu, 4 dernières semaines', icon: ICON.target, tone: TONE.good }) +
-      kpiCard({ l: 'Attendu sur 4 semaines', v: keur(cash.attendu), sub: 'dont ' + keur(cash.promis) + ' de promesses de paiement', icon: ICON.cal, tone: TONE.info }) + '</div>' +
+      kpiCard({ l: 'Attendu sur 4 semaines', v: eur(cash.attendu), sub: 'dont ' + eur(cash.promis) + ' de promesses de paiement', icon: ICON.cal, tone: TONE.info }) + '</div>' +
       '<p class="note">' + cash.note + '</p></section>' +
-      '<section class="card"><div class="sh"><div><h2>Provisions et décisions du mois</h2><p>Créances échues depuis plus de 180 jours face à la provision que vos taux exigent, en k€</p></div></div>' +
-      legend([['Créances > 180 j', 'var(--c5)'], ['Provision requise', 'var(--c1)']]) + groupChart(provCols, function (v) { return v ? fmt(v / 1000) : '0'; }) +
+      '<section class="card"><div class="sh"><div><h2>Provisions et décisions du mois</h2><p>Créances échues depuis plus de 120 jours face à la provision que vos taux exigent (taux appliqués à partir de 121 jours), en k€</p></div></div>' +
+      legend([['Échu de plus de 120 j', 'var(--c5)'], ['Provision requise', 'var(--c1)']]) + groupChart(provCols, function (v) { return v ? fmt(v / 1000) : '0'; }) +
       '<div class="hb">' + decisions.map(function (d) { return '<div class="r" style="grid-template-columns:1fr auto"><span style="white-space:normal">' + esc(d[0]) + '</span><span class="num" style="color:' + d[2] + ';font-weight:600">' + d[1] + '</span></div>'; }).join('') + '</div>' +
       '<a href="#operationnel" data-goto-file="fin">Voir les dossiers dans la file « Clore le dossier » →</a></section>' +
       '</div>' +
@@ -1160,10 +1168,10 @@
   });
 
   function exportPilotage() {
-    var rows = [['Fin de mois', 'Encours', 'Non échu', 'Échu', 'Échu 0-90 j', 'Échu 91-180 j', 'Échu > 180 j', 'Taux d’échu', 'DSO (j)', 'CEI (%)', 'Facturé du mois', 'Encaissé du mois']];
+    var rows = [['Fin de mois', 'Encours', 'Non échu', 'Échu', 'Échu 0-3 mois', 'Échu 3-6 mois', 'Échu de plus de 120 j', 'Taux d’échu', 'DSO (j)', 'CEI (%)', 'Facturé du mois', 'Encaissé du mois']];
     for (var i = 0; i <= S.idx; i++) { var e = encAt(i), fl = fluxM(mOf(i)); rows.push([S.gl.dates[i], Math.round(e.total), Math.round(e.ne), Math.round(e.echu), Math.round(e.a), Math.round(e.bb), Math.round(e.c), +(pct(e.echu, e.total) || 0).toFixed(1), dsoAt(i) == null ? '' : +dsoAt(i).toFixed(0), ceiAt(i) == null ? '' : +ceiAt(i).toFixed(1), Math.round(fl.fac), Math.round(fl.enc)]); }
-    var r2 = [['Financeur', 'Non échu', '0-3 mois', '3-6 mois', '6-12 mois', '12-24 mois', '> 24 mois', 'Total', 'DSO (j)', 'DSO cible (j)']];
-    N.FINANCEURS.forEach(function (f) { var e = encAt(S.idx, f); r2.push([f, Math.round(e.ne), Math.round(e.b[0]), Math.round(e.b[1] + e.b[2]), Math.round(e.b[3]), Math.round(e.b[4] + e.b[5]), Math.round(e.b[6] + e.b[7] + e.b[8]), Math.round(e.total), dsoAt(S.idx, f) == null ? '' : Math.round(dsoAt(S.idx, f)), CFG.dsoCible[f]]); });
+    var r2 = [['Financeur', 'Non échu', '0-3 mois', '3-6 mois', '6-12 mois', 'Plus d’un an', 'Total', 'DSO (j)', 'DSO cible (j)']];
+    N.FINANCEURS.forEach(function (f) { var e = encAt(S.idx, f); r2.push([f, Math.round(e.ne), Math.round(e.b[0]), Math.round(e.b[1] + e.b[2]), Math.round(e.b[3]), Math.round(e.t12), Math.round(e.total), dsoAt(S.idx, f) == null ? '' : Math.round(dsoAt(S.idx, f)), CFG.dsoCible[f]]); });
     exportXlsx('pilotage-recouvrement-' + S.gl.dates[S.idx] + '.xlsx', [{ name: 'Encours mensuel', rows: rows }, { name: 'Retard par financeur', rows: r2 }]);
   }
   function itemRow(o) { return [o.n, o.fin, o.cl || '', o.ap || '', o.g, FILE[fileOfItem(o)] ? FILE[fileOfItem(o)].n : fileOfItem(o), o.mt, o.de || '', o.df || '', retard(o), ageItem(o), o.ow || '', o.e || '', o.q || '', o.dpr || '', o.drl || '', mondayLink(o)]; }
