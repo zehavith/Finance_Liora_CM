@@ -335,8 +335,8 @@
       kp('Taux d’échu', peS, 'pct', true, 'part échue de l’encours', ICON.clock, TONE.acc),
       kp('Échu de plus de 120 jours', c120S, 'pct', true, eur(cur.c) + ' sur ' + eur(cur.total), ICON.alert, TONE.bad),
       kp('DSO', dsoS, 'day', true, fmt(dsoInfo(n).n) + ' règlements · ' + eur(dsoInfo(n).mt) + ' depuis le 01/07', ICON.cal, TONE.info, 'cible ' + cible + ' j'),
-      kpiCard({ l: 'Couverture des provisions', v: S.fin === 'all' && S.ent === 'all' ? fmt(pct(provC, encAt(n).total), 1) + ' %' : '—', icon: ICON.shield, tone: TONE.warn,
-        sub: S.fin === 'all' && S.ent === 'all' ? eur(provC) + ' provisionnés sur ' + eur(encAt(n).total) + ' de créances' : 'Disponible sans filtre financeur ni entité : la provision n’est lue qu’en global.',
+      kpiCard({ l: 'Couverture des provisions', v: S.fin === 'all' && S.ent === 'all' ? fmt(pct(provC, encAt(n).c), 1) + ' %' : '—', icon: ICON.shield, tone: TONE.warn,
+        sub: S.fin === 'all' && S.ent === 'all' ? eur(provC) + ' provisionnés sur ' + eur(encAt(n).c) + ' de créances à plus de 121 jours (balance âgée)' : 'Disponible sans filtre financeur ni entité : la provision n’est lue qu’en global.',
         chips: chip('provision lue au ' + esc(G.provision.provisionLue ? G.provision.provisionLue.au : '—')) })
     ];
 
@@ -577,7 +577,7 @@
       kpiCard({ l: 'Attendu sur 4 semaines', v: eur(cash.attendu), sub: 'dont ' + eur(cash.promis) + ' de promesses de paiement', icon: ICON.cal, tone: TONE.info }) + '</div>' +
       '<p class="note">' + cash.note + '</p></section>' +
       '<section class="card"><div class="sh"><div><h2>Provisions et décisions du mois</h2><p>Créances échues depuis plus de 120 jours face à la provision que vos taux exigent (taux appliqués à partir de 121 jours), en k€</p></div></div>' +
-      legend([['Échu de plus de 120 j', 'var(--c5)'], ['Provision requise', 'var(--c1)']]) + groupChart(provCols, function (v) { return v ? fmt(v / 1000) : '0'; }) +
+      legend([['Créances à plus de 121 jours', 'var(--c5)'], ['Provision requise', 'var(--c1)']]) + groupChart(provCols, function (v) { return v ? fmt(v / 1000) : '0'; }) +
       '<div class="hb">' + decisions.map(function (d) { return '<div class="r" style="grid-template-columns:1fr auto"><span style="white-space:normal">' + esc(d[0]) + '</span><span class="num" style="color:' + d[2] + ';font-weight:600">' + d[1] + '</span></div>'; }).join('') + '</div>' +
       '<a href="#operationnel" data-goto-file="fin">Voir les dossiers dans la file « Clore le dossier » →</a></section>' +
       '</div>' +
