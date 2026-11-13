@@ -884,6 +884,25 @@
 
             <div class="kpi-grid" id="pil-kpis"></div>
 
+            <!-- LE MOIS EN BREF, 13/11/2026. « Vision par financeur en ligne,
+                 en colonne nb facturé, nb encaissé, taux de retard, comparaison
+                 N-1, M-1 » à gauche ; « commentaire, l'ia analyse la selection
+                 faite » à droite. Le commentaire est un BROUILLON : il est
+                 calculé, pas deviné, mais c'est elle qui le valide. -->
+            <div class="pil-bref">
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Le mois en bref</h3>
+                        <span class="pil-coin" id="pil-bref-mois"></span></div>
+                    <p class="pil-note" id="pil-bref-dit"></p>
+                    <div class="table-wrap" id="pil-bref-table"></div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Commentaire du mois</h3>
+                        <span class="pil-brouillon">brouillon à valider</span></div>
+                    <div class="pil-commentaire" id="pil-bref-commentaire"></div>
+                </div>
+            </div>
+
             <div class="charts-grid"><div class="chart-card chart-wide">
                 <div class="chart-header"><h3>Encours par ancienneté — treize arrêtés mensuels</h3></div>
                 <!-- LA NOTE PARLE DU GRAPHIQUE, PAS DE LA CUISINE, 04/11/2026 : « on
@@ -921,13 +940,37 @@
                 </div>
             </div>
 
+            <!-- QUI SE DÉGRADE, 13/11/2026. Le seul bloc du relevé qui se
+                 range par mois d'ÉCHÉANCE et non par mois de facturation : il ne
+                 dit pas quand on a facturé, il dit si la date qu'on s'était
+                 donnée a été tenue. Une créance est en retard si elle a été
+                 réglée après son échéance, ou si elle n'est toujours pas soldée
+                 alors que son échéance est passée. -->
             <div class="charts-grid"><div class="chart-card chart-wide">
-                <div class="chart-header"><h3>Évolution de l’encours par financeur, jour après jour depuis la facture</h3>
-                    <span id="pil-decroissance-sortie"></span></div>
-                <p class="pil-note" id="pil-decroissance-dit"></p>
-                <div class="chart-container"><canvas id="pil-chart-decroissance"></canvas></div>
+                <div class="chart-header"><h3>Qui se dégrade</h3>
+                    <span class="pil-coin">par mois d’échéance, 12 derniers mois</span>
+                    <span id="pil-degrade-sortie"></span></div>
+                <p class="pil-note" id="pil-degrade-dit"></p>
+                <div class="pil-degrade">
+                    <div class="chart-container"><canvas id="pil-chart-degrade"></canvas></div>
+                    <div class="pil-degrade-liste" id="pil-degrade-liste"></div>
+                </div>
             </div></div>
 
+            <!-- LES MOIS DE FACTURATION, 13/11/2026. « les cohortes ne
+                 m'interesse pas » : le mot ne disait rien de plus que « mois de
+                 facturation », et c'est celui-là qui est écrit. Chaque courbe
+                 est un mois de facturation ; on y lit quelle part du montant
+                 facturé ce mois-là était rentrée à 30, 60, 90, 120 et 180 jours.
+                 Seuls les âges atteints par TOUT le mois sont tracés : à un
+                 arrêté du 12 novembre, octobre n'a pas encore 60 jours. -->
+            <div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>Les mois de facturation</h3>
+                    <span id="pil-vintage-sortie"></span></div>
+                <p class="pil-note" id="pil-vintage-dit"></p>
+                <div class="chart-container"><canvas id="pil-chart-vintage"></canvas></div>
+                <div class="table-wrap" id="pil-vintage-table"></div>
+            </div></div>
 
             <div class="charts-grid"><div class="chart-card chart-wide">
                 <div class="chart-header"><h3>Bridge encours M / M+1</h3></div>

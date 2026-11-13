@@ -238,6 +238,12 @@
         : (Math.round(v * 1000) / 10).toLocaleString('fr-FR') + ' %';
     const jrs = v => (v === null || v === undefined || !isFinite(v)) ? '—'
         : Math.round(v).toLocaleString('fr-FR') + ' j';
+    // « 2026-03 » ne se lit pas, « mars 26 » si. Les deux formes servent :
+    // la courte sur un axe, la longue en titre de bloc.
+    const moisFR = m => { const d = new Date(+String(m).slice(0, 4), +String(m).slice(5, 7) - 1, 1);
+        return isNaN(d) ? String(m) : d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }); };
+    const moisFRLong = m => { const d = new Date(+String(m).slice(0, 4), +String(m).slice(5, 7) - 1, 1);
+        return isNaN(d) ? String(m) : d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }); };
     // Un nombre à une décimale, à la française : 23,7 et non 23.7.
     const nb1 = v => (Math.round(v * 10) / 10).toLocaleString('fr-FR',
         { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -280,8 +286,10 @@
         graphAncienneté(keep);
         graphHeatmap(e);
         graphRetard(keep);
-        graphDecroissance(keep);
         graphDso(keep);
+        graphDegrade(keep);
+        graphVintage(keep);
+        brefDuMois(keep);
         graphBridge(keep, b);
     }
 
@@ -637,7 +645,7 @@
         const texte = liste.length === 0 ? ''
             : liste.length === 1 ? liste[0]
             : liste.length + ' financeurs';
-        for (const id of ['pil-retard-sortie', 'pil-decroissance-sortie']) {
+        for (const id of ['pil-retard-sortie', 'pil-degrade-sortie', 'pil-vintage-sortie']) {
             const hote = document.getElementById(id);
             if (!hote) continue;
             if (!texte) { hote.innerHTML = ''; continue; }
@@ -776,124 +784,6 @@
     // qui pèsent. Ce qui est écarté est nommé sous le graphique.
     const DECROISSANCE_JOURS = 360;
     const DECROISSANCE_COURBES = 7;
-    function graphDecroissance(keep) {
-        const dit = document.getElementById('pil-decroissance-dit');
-        const parFin = new Map();
-        for (const e of (D.ages || [])) {
-            const da = parseFR(e.d); if (!da) continue;
-            for (const l of (e.lignes || [])) {
-                if (!keep.has(l.fin) || !(l.f > 0)) continue;
-                const dm = new Date(+l.m.slice(0, 4), +l.m.slice(5, 7) - 1, 15);
-                const j = Math.round((da - dm) / 86400000);
-                if (j < 0 || j > DECROISSANCE_JOURS + 15) continue;
-                const pas = Math.round(j / 30) * 30;
-                const t = parFin.get(l.fin) || new Map();
-                const o = t.get(pas) || { f: 0, r: 0 };
-                o.f += l.f; o.r += l.r;
-                t.set(pas, o); parFin.set(l.fin, t);
-            }
-        }
-        if (!parFin.size) {
-            U().chart('pil-chart-decroissance', { type: 'line', data: { labels: [], datasets: [] },
-                options: { responsive: true, maintainAspectRatio: false,
-                           plugins: { legend: { display: false } } } });
-            if (dit) dit.textContent = 'Aucune facture sur le périmètre retenu.';
-            return;
-        }
-        const ages = [...new Set([].concat(...[...parFin.values()].map(t => [...t.keys()])))]
-            .sort((a, b) => a - b);
-        // UNE COURBE TIRÉE DE TROIS MILLE EUROS NE DIT RIEN : elle saute au gré
-        // d'une facture. Le plancher les écarte du dessin, et la note les nomme.
-        const PLANCHER = 100000;
-        const poids = f => [...(parFin.get(f) || new Map()).values()]
-            .reduce((s, o) => Math.max(s, o.f), 0);
-        const assez = [...parFin.keys()].filter(f => poids(f) >= PLANCHER)
-            .sort((a, b) => poids(b) - poids(a));
-        const gardes = assez.slice(0, DECROISSANCE_COURBES);
-        const ecartes = [...parFin.keys()].filter(f => poids(f) > 0 && assez.indexOf(f) < 0)
-            .concat(assez.slice(DECROISSANCE_COURBES));
-        const val = (f, a) => { const o = (parFin.get(f) || new Map()).get(a);
-            return (o && o.f > 0) ? Math.max(0, Math.round((o.r / o.f) * 1000) / 10) : null; };
-        // Le jour où 80 % est payé, c'est-à-dire où l'encours passe sous 20 %
-        // de ce qui a été facturé. Interpolé entre les deux âges qui l'encadrent.
-        const croisement = f => {
-            let avant = null, vAvant = null;
-            for (const a of ages) { const v = val(f, a); if (v == null) continue;
-                if (v <= 20) { if (avant == null || vAvant === v) return a;
-                    return Math.round(avant + (vAvant - 20) * (a - avant) / (vAvant - v)); }
-                avant = a; vAvant = v; }
-            return null;
-        };
-        const palette = U().palette;
-        const series = gardes.map((f, k) => ({
-            label: f, borderColor: palette[k % palette.length], backgroundColor: 'transparent',
-            borderWidth: 2, tension: 0.25, pointRadius: 2, spanGaps: true,
-            data: ages.map(a => val(f, a)),
-        }));
-        series.push({ label: '20 % encore dû — 80 % payé', borderColor: '#5C5750',
-            borderDash: [5, 4], borderWidth: 1, pointRadius: 0, backgroundColor: 'transparent',
-            data: ages.map(() => 20) });
-        U().chart('pil-chart-decroissance', {
-            type: 'line',
-            data: { labels: ages.map(a => a + ' j'), datasets: series },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                scales: { x: { grid: { display: false },
-                               title: { display: true, text: 'jours depuis la facture' } },
-                          y: { grid: U().grille, min: 0, max: 100,
-                               title: { display: true, text: 'part de l’encours encore due' },
-                               ticks: { callback: v => v + ' %' } } },
-                // CETTE COURBE AUSSI SE CLIQUE, 12/11/2026 : « Qd on clique sur
-                // une courbe on peut ne voir que les éléments de la courbe ».
-                //
-                // Le clic filtrait déjà toute la page depuis le taux de retard,
-                // des deux côtés — le tracé et la légende. Ici il ne faisait
-                // rien, et c'est pourtant la courbe qu'on regarde le plus
-                // longtemps. Même geste, même effet, même façon de rendre la
-                // main : recliquer le financeur déjà seul retenu réaffiche tout.
-                interaction: { mode: 'nearest', intersect: false },
-                onClick: (ev, els, ch) => {
-                    const d = els && els[0];
-                    if (!d) return;
-                    const ds = ch.data.datasets[d.datasetIndex];
-                    isolerFinanceur(ds && ds.label);
-                },
-                plugins: {
-                    legend: { display: true, position: 'bottom',
-                              labels: { boxWidth: 12, font: { size: 11 } },
-                              onClick: (e, item) => isolerFinanceur(item && item.text) },
-                    // LE POINT DÉCIMAL ANGLAIS N'A RIEN À FAIRE ICI : toFixed rendait
-                    // « 23.7 % payé » au milieu d'une page où tout le reste s'écrit
-                    // à la française. Les deux nombres passent par le format français.
-                    tooltip: { callbacks: { label: c => c.dataset.label + ' : '
-                        + (c.parsed.y == null ? '·'
-                           : nb1(c.parsed.y) + ' % encore dû, soit '
-                             + nb1(100 - c.parsed.y) + ' % payé') } },
-                },
-            },
-        });
-        // Toutes natures confondues, sur le même périmètre.
-        const tous = new Map();
-        for (const [, t] of parFin) for (const [a, o] of t) {
-            const x = tous.get(a) || { f: 0, r: 0 }; x.f += o.f; x.r += o.r; tous.set(a, x); }
-        parFin.set('\u0000tous', tous);
-        const jours = croisement('\u0000tous');
-        parFin.delete('\u0000tous');
-        const parNom = gardes.map(f => { const j = croisement(f);
-            return f + ' ' + (j == null ? '— 80 % non atteint en un an' : j + ' j'); });
-        if (dit) dit.textContent =
-            (jours == null
-              ? 'Sur le périmètre retenu, 80 % de l’encours n’est pas payé dans l’année qui suit la facture.'
-              : '80 % de l’encours est payé en ' + jours + ' jours après la facture,'
-                + ' tous financeurs confondus.')
-            + ' Par financeur : ' + parNom.join(' · ') + '.'
-            + (ecartes.length ? ' Hors du dessin, pour qu’il se lise : ' + ecartes.join(', ')
-                + '.' : '')
-            + ' Chaque point est un encours recalculé à sa date : tout ce qui a éteint une'
-            + ' facture y est compté, paiements comme avoirs, et le dernier point cadre avec'
-            + ' l’encours publié. L’âge se compte depuis le 15 du mois de facturation —'
-            + ' le jour moyen d’une facturation étalée sur le mois. L’horizon s’arrête à un an.';
-    }
 
     // ── 5. la variation du DSO ──
     // LE POINT DIT SUR COMBIEN IL REPOSE, 13/11/2026.
@@ -920,10 +810,6 @@
         const base = mois.map(m => parMois.get(m) || { mt: 0, mj: 0, n: 0 });
         const nMax = Math.max(...base.map(o => o.n), 1);
         const rayon = n => n ? 2.5 + 5.5 * Math.sqrt(Math.min(1, n / nMax)) : 0;
-        const moisFR = m => {
-            const d = new Date(+m.slice(0, 4), +m.slice(5, 7) - 1, 1);
-            return d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
-        };
         U().chart('pil-chart-dso', {
             type: 'line',
             data: {
@@ -994,6 +880,389 @@
                          banque: 'de mouvements bancaires hors règlement',
                          autre: 'd’écritures sur d’autres journaux' };
     const ORDRE_GROUPE = ['od', 'banque', 'autre'];
+
+    // ═══════════ 1. Qui se dégrade — le retard par mois d'ÉCHÉANCE ═══════════
+    //
+    // Tout le reste du relevé se range par mois de FACTURATION. Celui-ci se
+    // range sur la date promise : il ne dit pas quand on a facturé, il dit si
+    // l'échéance qu'on s'était donnée a été tenue. Une créance est en retard
+    // si elle a été réglée après son échéance, ou si elle n'est toujours pas
+    // soldée alors que son échéance est passée.
+    //
+    // UN POINT PORTE SUR AU MOINS CINQ CRÉANCES ÉCHUES. En dessous, le taux
+    // saute de 0 à 100 % d'une créance à l'autre et dessine une dégradation
+    // qui n'existe pas. Le mois de l'arrêté est écarté : il n'est pas fini.
+    const DEGRADE_MINI = 5;
+    function moisPrecedentArrete() {
+        const a = String(D.arrete || '').slice(0, 7);
+        return a;
+    }
+    function graphDegrade(keep) {
+        const R = (D.retard || []).filter(r => keep.has(r.fin));
+        const dit = document.getElementById('pil-degrade-dit');
+        const hoteListe = document.getElementById('pil-degrade-liste');
+        const mArrete = moisPrecedentArrete();
+        const mois = [...new Set(R.map(r => r.m))].sort().filter(m => m < mArrete).slice(-12);
+        if (!(D.retard || []).length) {
+            if (dit) dit.textContent = 'Le relevé comptable ne porte pas encore le retard par '
+                + 'mois d’échéance : il sera là au prochain relevé de la balance âgée.';
+            if (hoteListe) hoteListe.innerHTML = '';
+            U().chart('pil-chart-degrade', { type: 'line', data: { labels: [], datasets: [] },
+                options: { responsive: true, maintainAspectRatio: false } });
+            return;
+        }
+        const par = new Map();                       // financeur → mois → {nEch,nRet,mEch,mRet}
+        for (const r of R) {
+            if (mois.indexOf(r.m) < 0) continue;
+            let o = par.get(r.fin); if (!o) { o = new Map(); par.set(r.fin, o); }
+            const a = o.get(r.m) || { nEch: 0, nRet: 0, mEch: 0, mRet: 0 };
+            a.nEch += r.nEch; a.nRet += r.nRet; a.mEch += r.mEch; a.mRet += r.mRet;
+            o.set(r.m, a);
+        }
+        const serie = o => mois.map(m => { const a = o.get(m);
+            return a && a.nEch >= DEGRADE_MINI ? Math.round(1000 * a.nRet / a.nEch) / 10 : null; });
+        const fins = [...par.keys()].filter(f => serie(par.get(f)).some(v => v !== null));
+        const datasets = fins.map(f => { const h = habit(f), s = serie(par.get(f));
+            return { label: f, data: s, borderColor: h.couleur, backgroundColor: h.couleur,
+                     borderDash: h.trait, pointStyle: h.point, borderWidth: 2,
+                     tension: 0.25, pointRadius: 3, spanGaps: true, fill: false }; });
+        U().chart('pil-chart-degrade', {
+            type: 'line',
+            data: { labels: mois.map(moisFR), datasets: datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'nearest', intersect: false },
+                onClick: (ev, els, ch) => { const d = els && els[0]; if (!d) return;
+                    isolerFinanceur(ch.data.datasets[d.datasetIndex].label); },
+                scales: { x: { grid: { display: false } },
+                          y: { grid: U().grille, min: 0, max: 100,
+                               ticks: { callback: v => v + ' %' } } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: {
+                        label: c => c.dataset.label + ' : ' + c.raw + ' % en retard',
+                        afterLabel: c => { const a = (par.get(c.dataset.label) || new Map()).get(mois[c.dataIndex]);
+                            return a ? 'sur ' + a.nEch + ' créance' + (a.nEch > 1 ? 's' : '')
+                                     + ' échue' + (a.nEch > 1 ? 's' : '') + ' · ' + eur(a.mEch) : ''; },
+                    } },
+                },
+            },
+        });
+        // LA LISTE DIT LE DERNIER MOIS ET L'ÉCART SUR LA FENÊTRE, et elle se
+        // clique : c'est la cible la plus facile à viser, bien plus qu'une
+        // courbe au milieu de quinze autres.
+        if (hoteListe) {
+            const u = U();
+            const li = fins.map(f => { const s = serie(par.get(f));
+                const vus = s.map((v, i) => [v, i]).filter(x => x[0] !== null);
+                if (!vus.length) return null;
+                const dernier = vus[vus.length - 1][0], premier = vus[0][0];
+                return { fin: f, pct: dernier, delta: Math.round(dernier - premier),
+                         couleur: habit(f).couleur };
+            }).filter(Boolean).sort((a, b) => b.delta - a.delta);
+            hoteListe.innerHTML = li.map(x =>
+                '<button type="button" class="pil-dg-ligne" data-fin="' + u.escapeHtml(x.fin) + '">'
+                + '<span class="pil-dg-pastille" style="background:' + x.couleur + '"></span>'
+                + '<span class="pil-dg-nom">' + u.escapeHtml(x.fin) + '</span>'
+                + '<span class="pil-dg-pct">' + x.pct.toLocaleString('fr-FR') + ' %</span>'
+                + '<span class="pil-dg-delta ' + (x.delta > 0 ? 'pire' : x.delta < 0 ? 'mieux' : '') + '">'
+                + (x.delta > 0 ? '+' : '') + x.delta.toLocaleString('fr-FR') + ' pts</span>'
+                + '</button>').join('')
+                + '<p class="pil-dg-pied">Dernier mois et écart sur la fenêtre. '
+                + 'Cliquez une courbe ou un financeur pour filtrer toute la page.</p>';
+            hoteListe.querySelectorAll('.pil-dg-ligne').forEach(b =>
+                b.onclick = () => isolerFinanceur(b.dataset.fin));
+        }
+        if (dit) {
+            const maigres = [...par.values()].reduce((n, o) =>
+                n + [...o.values()].filter(a => a.nEch > 0 && a.nEch < DEGRADE_MINI).length, 0);
+            dit.textContent = 'Part des créances arrivées à échéance dans le mois qui sont tombées '
+                + 'en retard : réglées après l’échéance, ou toujours impayées. Le mois de l’arrêté '
+                + 'est écarté, il n’est pas fini.'
+                + (maigres ? ' ' + maigres + ' points ne sont pas tracés : ils porteraient sur moins de '
+                           + DEGRADE_MINI + ' créances échues.' : '');
+        }
+    }
+
+    // ═══════════ 2. Les mois de facturation ═══════════
+    //
+    // « les cohortes ne m'interesse pas » : le mot ne disait rien de plus que
+    // « mois de facturation », et c'est celui-là qui est écrit. Chaque courbe
+    // est un mois de facturation ; on y lit quelle part du montant facturé ce
+    // mois-là était rentrée à 30, 60, 90, 120 et 180 jours.
+    //
+    // SEULS LES ÂGES ATTEINTS PAR TOUT LE MOIS SONT TRACÉS. À un arrêté du
+    // 12 novembre, le mois d'octobre n'a pas encore soixante jours : porter
+    // son taux à 60 j reviendrait à mesurer une course avant l'arrivée.
+    const VINT_AGES = [30, 60, 90, 120, 180];
+    function graphVintage(keep) {
+        const PAL = D.paliers || [];
+        const col = VINT_AGES.map(p => PAL.indexOf(p));
+        const dit = document.getElementById('pil-vintage-dit');
+        const hoteT = document.getElementById('pil-vintage-table');
+        const parMois = new Map();
+        for (const r of (D.vintage || [])) {
+            if (!keep.has(r.fin)) continue;
+            let o = parMois.get(r.m);
+            if (!o) { o = { fac: 0, nFac: 0, p: PAL.map(() => 0) }; parMois.set(r.m, o); }
+            o.fac += r.fac; o.nFac += r.nFac;
+            (r.p || []).forEach((v, i) => { o.p[i] += v; });
+        }
+        const arr = parseFR(D.arrete);
+        const ageAtteint = m => {
+            const finMois = new Date(+m.slice(0, 4), +m.slice(5, 7), 0);
+            return Math.floor((arr - finMois) / 86400000);
+        };
+        const part = (o, i) => (o && o.fac) ? Math.round(1000 * o.p[i] / o.fac) / 10 : null;
+        const tous = [...parMois.keys()].sort().filter(m => parMois.get(m).fac > 0
+                                                         && ageAtteint(m) >= VINT_AGES[0]);
+        const mois = tous.slice(-6);
+        if (!mois.length) {
+            if (dit) dit.textContent = 'Aucun mois de facturation n’a encore trente jours sur le périmètre retenu.';
+            if (hoteT) hoteT.innerHTML = '';
+            U().chart('pil-chart-vintage', { type: 'line', data: { labels: [], datasets: [] },
+                options: { responsive: true, maintainAspectRatio: false } });
+            return;
+        }
+        // Du plus pâle au plus soutenu : le mois le plus récent est le plus net.
+        const TEINTE = (i, n) => { const a = 0.28 + 0.72 * (n > 1 ? i / (n - 1) : 1);
+            return 'rgba(217, 83, 46, ' + a.toFixed(2) + ')'; };
+        const serieDe = (m, o) => col.map((i, k) =>
+            (i < 0 || ageAtteint(m) < VINT_AGES[k]) ? null : part(o, i));
+        const datasets = mois.map((m, i) => ({
+            label: moisFR(m), borderColor: TEINTE(i, mois.length),
+            backgroundColor: TEINTE(i, mois.length), borderWidth: 2,
+            pointRadius: 3, tension: 0.2, fill: false, spanGaps: false,
+            data: serieDe(m, parMois.get(m)),
+        }));
+        // LA RÉFÉRENCE N-1 : le même mois, un an plus tôt. Elle se lit en
+        // pointillé et n'est pas cliquable — ce n'est pas un mois du périmètre,
+        // c'est le repère contre lequel il se mesure.
+        const refM = mois[0].slice(0, 4) - 1 + mois[0].slice(4);
+        const refO = parMois.get(String(+mois[0].slice(0, 4) - 1) + mois[0].slice(4));
+        if (refO && refO.fac) {
+            datasets.push({ label: moisFR(String(+mois[0].slice(0, 4) - 1) + mois[0].slice(4))
+                                   + ' (référence N-1)',
+                borderColor: U().couleurs.indigo || '#2B5DB8',
+                backgroundColor: U().couleurs.indigo || '#2B5DB8',
+                borderDash: [6, 4], borderWidth: 2, pointRadius: 3, tension: 0.2, fill: false,
+                data: col.map(i => i < 0 ? null : part(refO, i)) });
+        }
+        U().chart('pil-chart-vintage', {
+            type: 'line',
+            data: { labels: VINT_AGES.map(a => a + ' j'), datasets: datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { x: { grid: { display: false } },
+                          y: { grid: U().grille, min: 0, max: 100,
+                               ticks: { callback: v => v + ' %' } } },
+                plugins: {
+                    legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } },
+                    tooltip: { callbacks: { label: c => c.dataset.label + ' : '
+                        + (c.raw === null ? 'pas encore atteint' : c.raw + ' % encaissé') } },
+                },
+            },
+        });
+        // LE TABLEAU DIT LES MÊMES CHIFFRES, EN TOUTES LETTRES, avec le montant
+        // facturé du mois et l'écart au même mois de l'année précédente.
+        if (hoteT) {
+            const vert = v => v === null ? '' :
+                'background:rgba(29, 127, 85, ' + (0.05 + 0.55 * Math.pow(v / 100, 1.1)).toFixed(3) + ')';
+            let h = '<table class="pil-vint"><thead><tr><th>Mois de facturation</th>'
+                + VINT_AGES.map(a => '<th class="n">' + a + ' j</th>').join('')
+                + '<th class="n">vs N-1</th></tr></thead><tbody>';
+            for (const m of mois) {
+                const o = parMois.get(m), s = serieDe(m, o);
+                const an1 = String(+m.slice(0, 4) - 1) + m.slice(4);
+                const o1 = parMois.get(an1);
+                // L'écart se prend au PLUS PROFOND des âges atteints par les deux,
+                // sinon on comparerait trente jours à cent quatre-vingts.
+                let ecart = null, ageCommun = null;
+                if (o1 && o1.fac) {
+                    for (let k = VINT_AGES.length - 1; k >= 0; k--) {
+                        const a = part(o, col[k]), b = part(o1, col[k]);
+                        if (s[k] !== null && a !== null && b !== null && ageAtteint(an1) >= VINT_AGES[k]) {
+                            ecart = Math.round(a - b); ageCommun = VINT_AGES[k]; break;
+                        }
+                    }
+                }
+                h += '<tr><td class="fam">' + U().escapeHtml(moisFR(m))
+                   + '<small>' + eur(o.fac) + ' · ' + o.nFac + ' fact.</small></td>'
+                   + s.map(v => '<td class="n" style="' + vert(v) + '">'
+                        + (v === null ? '<span class="pil-acompleter">·</span>'
+                                      : v.toLocaleString('fr-FR') + ' %') + '</td>').join('')
+                   + '<td class="n">' + (ecart === null
+                        ? '<span class="pil-acompleter">à compléter</span>'
+                        : '<span class="' + (ecart >= 0 ? 'ec-mieux' : 'ec-pire') + '">'
+                          + (ecart > 0 ? '+' : '') + ecart + ' pts</span><small>à ' + ageCommun + ' j</small>')
+                   + '</td></tr>';
+            }
+            h += '</tbody></table>';
+            hoteT.innerHTML = h;
+        }
+        if (dit) {
+            const pasEncore = tous.length ? [...parMois.keys()].sort()
+                .filter(m => parMois.get(m).fac > 0 && ageAtteint(m) < VINT_AGES[0]) : [];
+            dit.textContent = 'Part du montant facturé chaque mois effectivement encaissée à 30, 60, '
+                + '90, 120 et 180 jours de la date de facture. Seuls les âges atteints par tout le '
+                + 'mois sont tracés.'
+                + (pasEncore.length ? ' ' + pasEncore.map(moisFR).join(', ')
+                     + ' n’a pas encore trente jours et n’est pas tracé.' : '');
+        }
+    }
+
+    // ═══════════ 3. Le mois en bref ═══════════
+    //
+    // « Vision par financeur en ligne, en colonne nb facturé, nb encaissé, taux
+    // de retard, comparaison N-1, M-1 » à gauche ; « commentaire, l'ia analyse
+    // la selection faite » à droite.
+    //
+    // LE MOIS RETENU EST LE DERNIER MOIS COMPLET. Celui de l'arrêté est en
+    // cours : son facturé et son encaissé ne sont pas comparables à un mois
+    // entier, et les mettre côte à côte ferait lire un effondrement.
+    //
+    // LE TAUX D'ÉCHU N-1 DEMANDE UN ARRÊTÉ D'IL Y A UN AN. Le relevé en garde
+    // treize ; au-delà la case dit « à compléter » plutôt qu'un chiffre faux.
+    function brefDuMois(keep) {
+        const hoteT = document.getElementById('pil-bref-table');
+        const hoteC = document.getElementById('pil-bref-commentaire');
+        const hoteM = document.getElementById('pil-bref-mois');
+        const hoteD = document.getElementById('pil-bref-dit');
+        const mArrete = String(D.arrete || '').slice(0, 7);
+        const moisFlux = [...new Set((D.flux || []).map(r => r.m))].sort().filter(m => m < mArrete);
+        const M = moisFlux[moisFlux.length - 1];
+        if (!M) { if (hoteT) hoteT.innerHTML = ''; if (hoteC) hoteC.innerHTML = ''; return; }
+        const recule = (m, k) => { const d = new Date(+m.slice(0, 4), +m.slice(5, 7) - 1 - k, 1);
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+        const M1 = recule(M, 1), N1 = recule(M, 12);
+        if (hoteM) hoteM.textContent = moisFRLong(M);
+
+        // L'encours d'un mois : l'arrêté qui tombe dans ce mois-là.
+        const encoursDe = m => (D.encours || []).find(e => String(e.d).slice(0, 7) === m);
+        const echuDe = (m, fin) => { const e = encoursDe(m); if (!e) return null;
+            const r = (e.parFinancement || []).find(x => x.cat === fin);
+            return r && r.total ? r.echu / r.total : null; };
+        const echuTotal = m => { const e = encoursDe(m); if (!e) return null;
+            const li = (e.parFinancement || []).filter(x => keep.has(x.cat));
+            const t = li.reduce((a, x) => a + (x.total || 0), 0);
+            const c = li.reduce((a, x) => a + (x.echu || 0), 0);
+            return t ? c / t : null; };
+        const fluxDe = (m, fin) => (D.flux || []).find(r => r.m === m && r.fin === fin);
+        const dsoDeMois = (m, fin) => { const r = (D.dso || []).find(x => x.m === m && x.fin === fin);
+            return r && r.mt ? { j: Math.round(r.mj / r.mt), n: r.n, mt: r.mt } : null; };
+
+        const fins = [...keep].filter(f => fluxDe(M, f) || echuDe(M, f) !== null)
+            .sort((a, b) => { const x = fluxDe(M, a), y = fluxDe(M, b);
+                return ((y && y.fac) || 0) - ((x && x.fac) || 0); });
+        const ptsCell = v => v === null ? '<span class="pil-acompleter">à compléter</span>'
+            : '<span class="' + (v > 0 ? 'ec-pire' : v < 0 ? 'ec-mieux' : '') + '">'
+              + (v > 0 ? '+' : '') + Math.round(v) + ' pts</span>';
+        const delta = (a, b) => (a === null || b === null) ? null : 100 * (a - b);
+
+        let h = '<table class="pil-bref-t"><thead><tr><th>Financeur</th>'
+            + '<th class="n">Facturé</th><th class="n">Encaissé</th><th class="n">Taux d’échu</th>'
+            + '<th class="n">vs M-1</th><th class="n">vs N-1</th><th class="n">DSO</th>'
+            + '</tr></thead><tbody>';
+        let tFac = 0, tEnc = 0;
+        for (const f of fins) {
+            const fx = fluxDe(M, f);
+            const e0 = echuDe(M, f), e1 = echuDe(M1, f), e2 = echuDe(N1, f);
+            const d = dsoDeMois(M, f);
+            tFac += (fx && fx.fac) || 0; tEnc += (fx && fx.enc) || 0;
+            h += '<tr><td class="fam">' + U().escapeHtml(f) + '</td>'
+               + '<td class="n">' + eur((fx && fx.fac) || 0)
+                 + '<small>' + ((fx && fx.nFac) || 0) + ' fact.</small></td>'
+               + '<td class="n">' + eur((fx && fx.enc) || 0)
+                 + '<small>' + ((fx && fx.nEnc) || 0) + ' règl.</small></td>'
+               + '<td class="n">' + (e0 === null ? '<span class="pil-acompleter">à compléter</span>' : pct(e0)) + '</td>'
+               + '<td class="n">' + ptsCell(delta(e0, e1)) + '</td>'
+               + '<td class="n">' + ptsCell(delta(e0, e2)) + '</td>'
+               + '<td class="n">' + (d ? jrs(d.j) + '<small>' + d.n + ' règl.</small>'
+                                       : '<span class="pil-acompleter">à compléter</span>') + '</td></tr>';
+        }
+        const t0 = echuTotal(M), t1 = echuTotal(M1), t2 = echuTotal(N1);
+        const dT = (() => { let mt = 0, mj = 0, n = 0;
+            for (const r of (D.dso || [])) { if (r.m !== M || !keep.has(r.fin)) continue;
+                mt += r.mt; mj += r.mj; n += r.n; }
+            return mt ? { j: Math.round(mj / mt), n: n } : null; })();
+        h += '<tr class="total"><td>Total</td>'
+           + '<td class="n">' + eur(tFac) + '</td><td class="n">' + eur(tEnc) + '</td>'
+           + '<td class="n">' + (t0 === null ? '<span class="pil-acompleter">à compléter</span>' : pct(t0)) + '</td>'
+           + '<td class="n">' + ptsCell(delta(t0, t1)) + '</td>'
+           + '<td class="n">' + ptsCell(delta(t0, t2)) + '</td>'
+           + '<td class="n">' + (dT ? jrs(dT.j) : '<span class="pil-acompleter">à compléter</span>') + '</td></tr>';
+        h += '</tbody></table>';
+        if (hoteT) hoteT.innerHTML = h;
+        if (hoteD) hoteD.textContent = 'Facturé et encaissé du mois d’après le grand livre, '
+            + 'taux d’échu de l’encours arrêté à la fin du mois, et son évolution.';
+        if (hoteC) hoteC.innerHTML = commentaireDuMois(keep, M, M1, N1, t0, t1, t2, dT, tFac, tEnc);
+    }
+
+    // LE COMMENTAIRE EST CALCULÉ, PAS DEVINÉ. Chaque phrase porte un chiffre
+    // qui vient du relevé ; aucune ne porte d'appréciation que les chiffres ne
+    // justifient. Il est présenté comme un BROUILLON À VALIDER, parce que
+    // c'est elle qui signe ce qui sort.
+    function commentaireDuMois(keep, M, M1, N1, t0, t1, t2, dT, tFac, tEnc) {
+        const u = U(), ph = [];
+        const encoursDe = m => (D.encours || []).find(e => String(e.d).slice(0, 7) === m);
+        const somme = (m, champ) => { const e = encoursDe(m); if (!e) return null;
+            return (e.parFinancement || []).filter(x => keep.has(x.cat))
+                .reduce((a, x) => a + (x[champ] || 0), 0); };
+        const e0 = somme(M, 'total'), e1 = somme(M1, 'total'), c0 = somme(M, 'echu');
+        if (e0 !== null) {
+            const v = (e1 !== null && e1) ? (e0 - e1) / e1 : null;
+            ph.push('L’encours ' + (v === null ? 's’établit' : v < 0 ? 'recule de ' + pct(-v)
+                        : 'progresse de ' + pct(v)) + (v === null ? '' : ' sur le mois')
+                + ', à ' + eur(e0) + (c0 !== null ? ', dont ' + eur(c0) + ' échus ('
+                        + pct(e0 ? c0 / e0 : null) + ')' : '') + '.');
+        }
+        // L'échu de plus de 120 jours : les tranches à partir de « 4 à 6 mois ».
+        const tr = D.tranches || [];
+        const iLong = tr.indexOf('4 à 6 mois');
+        if (iLong >= 0) {
+            const vieux = m => { const e = encoursDe(m); if (!e) return null;
+                return (e.parFinancement || []).filter(x => keep.has(x.cat))
+                    .reduce((a, x) => a + (x.buckets || []).slice(iLong)
+                        .reduce((s, v) => s + (v || 0), 0), 0); };
+            const v0 = vieux(M), vN = vieux(N1);
+            if (v0 !== null) ph.push('L’échu de plus de 120 jours atteint ' + eur(v0)
+                + (vN ? ' (' + (v0 >= vN ? '+' : '') + pct((v0 - vN) / vN) + ' sur un an)' : '')
+                + (dT ? ' et le DSO du mois s’établit à ' + jrs(dT.j)
+                        + ' sur ' + dT.n.toLocaleString('fr-FR') + ' règlements' : '') + '.');
+        }
+        // Qui se dégrade, d'après le mois d'échéance.
+        const R = (D.retard || []).filter(r => keep.has(r.fin));
+        if (R.length) {
+            const mArrete = String(D.arrete || '').slice(0, 7);
+            const mois = [...new Set(R.map(r => r.m))].sort().filter(m => m < mArrete).slice(-12);
+            const par = new Map();
+            for (const r of R) { if (mois.indexOf(r.m) < 0) continue;
+                let o = par.get(r.fin); if (!o) { o = new Map(); par.set(r.fin, o); }
+                const a = o.get(r.m) || { nEch: 0, nRet: 0 };
+                a.nEch += r.nEch; a.nRet += r.nRet; o.set(r.m, a); }
+            const li = [...par].map(([f, o]) => { const vus = mois.map(m => o.get(m))
+                    .filter(a => a && a.nEch >= DEGRADE_MINI);
+                if (vus.length < 2) return null;
+                const d = 100 * vus[vus.length - 1].nRet / vus[vus.length - 1].nEch;
+                const p = 100 * vus[0].nRet / vus[0].nEch;
+                return { f, d: Math.round(d), delta: Math.round(d - p) }; })
+                .filter(Boolean).sort((a, b) => b.delta - a.delta);
+            const pires = li.filter(x => x.delta > 0).slice(0, 3);
+            const mieux = li.filter(x => x.delta < 0).slice(-3).reverse();
+            if (pires.length) ph.push('Financeurs qui se dégradent : '
+                + pires.map(x => x.f + ' (' + x.d + ' % des échéances en retard, +'
+                    + x.delta + ' pts sur douze mois)').join(' et ') + '.');
+            if (mieux.length) ph.push('Qui s’améliore : '
+                + mieux.map(x => x.f + ' (' + x.d + ' %, ' + x.delta + ' pts)').join(' et ') + '.');
+        }
+        if (tFac || tEnc) ph.push('Sur le mois, ' + eur(tFac) + ' facturés pour '
+            + eur(tEnc) + ' encaissés' + (tFac ? ' — un encaissement de ' + pct(tEnc / tFac)
+                + ' du facturé du mois' : '') + '.');
+        if (t2 === null) ph.push('La comparaison N-1 du taux d’échu demande un arrêté d’il y a un an : '
+            + 'le relevé n’en garde que treize mois, les cases concernées disent « à compléter ».');
+        return ph.map(p => '<p>' + u.escapeHtml(p) + '</p>').join('')
+            || '<p class="pil-acompleter">Rien à dire sur ce périmètre.</p>';
+    }
 
     function graphBridge(keep, b) {
         const pts = (D.encours || []);

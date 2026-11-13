@@ -330,6 +330,73 @@ function flux(bal) {
   };
 }
 
+// ───────── qui se dégrade : le retard par mois d'échéance ─────────
+//
+// « Part des factures arrivées à échéance dans le mois qui sont tombées en
+// retard. » Le reste du relevé compte par mois de FACTURATION ; celui-ci
+// compte par mois d'ÉCHÉANCE, et c'est une autre question : il ne dit pas
+// quand on a facturé, il dit si l'on a tenu la date qu'on s'était donnée.
+//
+// Une créance est en retard si elle a été réglée APRÈS son échéance, ou si
+// elle n'est toujours pas soldée alors que son échéance est passée. Un
+// règlement tombé le jour même ne l'est pas.
+//
+// LES AVOIRS NE SONT PAS DES CRÉANCES et n'entrent pas dans le compte.
+function retardParEcheance(bal) {
+  const V = (l, i) => { const x = l[i]; return typeof x === 'number' ? bal.dico[x] : x; };
+  const col = n => bal.cols.indexOf(n);
+  const iNat = col('Nature de l’écriture'), iFac = col('N° de facture'),
+        iFR = col('Facture rattachée'), iDate = col('Date'), iJrn = col('Journal'),
+        iEch = col('Date d’échéance recalculée'), iDeb = col('Débit'),
+        iReste = col('Reste dû de la créance'),
+        iFin = col('Type de financement de la créance') >= 0
+             ? col('Type de financement de la créance') : col('Type de financement');
+  const arrete = jour(bal.arrete);
+  if (!arrete || iEch < 0) return [];
+
+  // 1. Chaque créance : son échéance, son financeur, son montant, son reste dû.
+  const CRE = new Map();
+  for (const l of bal.lignes) {
+    if (String(V(l, iNat)) !== 'facture') continue;
+    const n = String(V(l, iFac) || '').trim();
+    if (!n || /^avr/i.test(n)) continue;
+    const e = jour(V(l, iEch)); if (!e) continue;
+    const o = CRE.get(n);
+    const mt = num(V(l, iDeb));
+    if (o) { o.mt += mt; if (e < o.ech) o.ech = e; continue; }
+    CRE.set(n, { ech: e, mt: mt, reste: num(V(l, iReste)),
+                 fin: String(V(l, iFin) || '(à compléter)'), paye: null });
+  }
+
+  // 2. Le dernier règlement de chaque créance. Les reports à nouveau portent
+  //    la date de la reprise, pas celle du paiement : ils fausseraient tout.
+  for (const l of bal.lignes) {
+    if (String(V(l, iNat)) !== 'reglement') continue;
+    if (/^an/i.test(String(V(l, iJrn) || ''))) continue;
+    const n = String(V(l, iFR) || '').trim(); if (!n) continue;
+    const o = CRE.get(n); if (!o) continue;
+    const d = jour(V(l, iDate)); if (!d) continue;
+    if (!o.paye || d > o.paye) o.paye = d;
+  }
+
+  // 3. Par mois d'échéance × financeur.
+  const M = new Map();
+  for (const o of CRE.values()) {
+    if (o.ech > arrete) continue;              // pas encore arrivée à échéance
+    const m = o.ech.getFullYear() + '-' + String(o.ech.getMonth() + 1).padStart(2, '0');
+    const k = m + '\u0001' + o.fin;
+    let a = M.get(k);
+    if (!a) { a = { nEch: 0, nRet: 0, mEch: 0, mRet: 0 }; M.set(k, a); }
+    a.nEch++; a.mEch += o.mt;
+    const impayee = Math.abs(o.reste) > 0.005;
+    const tardif = o.paye && o.paye > o.ech;
+    if (impayee || tardif) { a.nRet++; a.mRet += o.mt; }
+  }
+  return [...M].map(([k, a]) => { const [m, fin] = k.split('\u0001');
+    return { m, fin, nEch: a.nEch, nRet: a.nRet, mEch: ar(a.mEch), mRet: ar(a.mRet) }; })
+    .sort((x, y) => x.m < y.m ? -1 : x.m > y.m ? 1 : (x.fin < y.fin ? -1 : 1));
+}
+
 // ───────── construire un arrêté dans un dossier à part ─────────
 function arreterAilleurs(date) {
   const T = fs.mkdtempSync(path.join(os.tmpdir(), 'pilotage-'));
@@ -404,6 +471,7 @@ for (const d of dates) {
 }
 
 const f = flux(bal);
+const retard = retardParEcheance(bal);
 const prov = provisionComptabilisee(bal.arrete);
 const tm = f.dso.reduce((a, r) => a + r.mt, 0), tj = f.dso.reduce((a, r) => a + r.mj, 0);
 
@@ -427,6 +495,10 @@ const releve = {
   // ne disait rien de plus que « mois de facturation ».
   ages: cubes.map(c => ({ d: c.date, lignes: c.cohortes })),
   flux: f.flux, dso: f.dso, vintage: f.vintage, ecartes: f.ecartes,
+  // Par mois d'ÉCHÉANCE : combien de créances arrivaient à échéance ce mois-là
+  // et combien sont tombées en retard. C'est la seule mesure du relevé qui se
+  // range sur la date promise plutôt que sur la date de facture.
+  retard: retard,
   mouvements: f.mouvements,
   provision: {
     fenetres: (bal.provision || {}).fenetres || [],
@@ -454,6 +526,9 @@ console.log('\nart/pilotage.json : ' + ko + ' ko'
     + f.ecartes.sansDate + ' dont la facture n’a pas de date connue ('
     + Math.round(f.ecartes.montantSansDate).toLocaleString('fr-FR') + ' €)'
   + '\n  vintages  : ' + f.vintage.length + ' mois de facturation × financement'
+  + '\n  échéances : ' + retard.length + ' mois d’échéance × financement · '
+    + retard.reduce((a, r) => a + r.nEch, 0) + ' créances échues, dont '
+    + retard.reduce((a, r) => a + r.nRet, 0) + ' en retard'
   + '\n  mouvements: ' + f.mouvements.length + ' écritures qui ne sont ni facture, ni règlement, ni avoir'
   + '\n  provision : ' + (prov.montant === null
       ? 'à compléter — ' + prov.motif
