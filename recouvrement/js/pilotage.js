@@ -957,13 +957,16 @@
                 const vus = s.map((v, i) => [v, i]).filter(x => x[0] !== null);
                 if (!vus.length) return null;
                 const dernier = vus[vus.length - 1][0], premier = vus[0][0];
+                const aDer = (par.get(f) || new Map()).get(mois[vus[vus.length - 1][1]]) || {};
                 return { fin: f, pct: dernier, delta: Math.round(dernier - premier),
-                         couleur: habit(f).couleur };
+                         n: aDer.nEch || 0, couleur: habit(f).couleur };
             }).filter(Boolean).sort((a, b) => b.delta - a.delta);
             hoteListe.innerHTML = li.map(x =>
                 '<button type="button" class="pil-dg-ligne" data-fin="' + u.escapeHtml(x.fin) + '">'
                 + '<span class="pil-dg-pastille" style="background:' + x.couleur + '"></span>'
-                + '<span class="pil-dg-nom">' + u.escapeHtml(x.fin) + '</span>'
+                + '<span class="pil-dg-nom">' + u.escapeHtml(x.fin)
+                + '<small>sur ' + x.n + ' créance' + (x.n > 1 ? 's' : '') + ' échue'
+                + (x.n > 1 ? 's' : '') + '</small></span>'
                 + '<span class="pil-dg-pct">' + x.pct.toLocaleString('fr-FR') + ' %</span>'
                 + '<span class="pil-dg-delta ' + (x.delta > 0 ? 'pire' : x.delta < 0 ? 'mieux' : '') + '">'
                 + (x.delta > 0 ? '+' : '') + x.delta.toLocaleString('fr-FR') + ' pts</span>'
@@ -1013,8 +1016,18 @@
             const finMois = new Date(+m.slice(0, 4), +m.slice(5, 7), 0);
             return Math.floor((arr - finMois) / 86400000);
         };
+        // AUCUN MOIS ANTÉRIEUR AU GRAND LIVRE N'EST COMPARABLE, 13/11/2026.
+        // Juin 2025 affichait 677 % encaissé. Les factures d'avant le premier
+        // jour du grand livre y sont arrivées en report à nouveau : leur
+        // montant facturé n'est pas compté — les reports ne sont ni une
+        // facturation ni un encaissement — alors que les règlements qui les
+        // ont suivies, eux, le sont. On connaît le numérateur et pas le
+        // dénominateur. Ces mois-là ne sont ni tracés ni pris en référence.
+        const PREMIER = (D.flux || []).reduce((a, r) => (!a || r.m < a) ? r.m : a, '');
+        const fiable = m => !PREMIER || m >= PREMIER;
         const part = (o, i) => (o && o.fac) ? Math.round(1000 * o.p[i] / o.fac) / 10 : null;
         const tous = [...parMois.keys()].sort().filter(m => parMois.get(m).fac > 0
+                                                         && fiable(m)
                                                          && ageAtteint(m) >= VINT_AGES[0]);
         const mois = tous.slice(-6);
         if (!mois.length) {
@@ -1038,11 +1051,16 @@
         // LA RÉFÉRENCE N-1 : le même mois, un an plus tôt. Elle se lit en
         // pointillé et n'est pas cliquable — ce n'est pas un mois du périmètre,
         // c'est le repère contre lequel il se mesure.
-        const refM = mois[0].slice(0, 4) - 1 + mois[0].slice(4);
-        const refO = parMois.get(String(+mois[0].slice(0, 4) - 1) + mois[0].slice(4));
+        // La référence est le N-1 du mois le PLUS RÉCENT qui en ait un dans le
+        // grand livre : c'est celui-là qu'on veut battre, pas le plus vieux.
+        let refM = '', refO = null;
+        for (let i = mois.length - 1; i >= 0; i--) {
+            const an1 = String(+mois[i].slice(0, 4) - 1) + mois[i].slice(4);
+            const o1 = fiable(an1) ? parMois.get(an1) : null;
+            if (o1 && o1.fac) { refM = an1; refO = o1; break; }
+        }
         if (refO && refO.fac) {
-            datasets.push({ label: moisFR(String(+mois[0].slice(0, 4) - 1) + mois[0].slice(4))
-                                   + ' (référence N-1)',
+            datasets.push({ label: moisFR(refM) + ' (référence N-1)',
                 borderColor: U().couleurs.indigo || '#2B5DB8',
                 backgroundColor: U().couleurs.indigo || '#2B5DB8',
                 borderDash: [6, 4], borderWidth: 2, pointRadius: 3, tension: 0.2, fill: false,
@@ -1074,7 +1092,7 @@
             for (const m of mois) {
                 const o = parMois.get(m), s = serieDe(m, o);
                 const an1 = String(+m.slice(0, 4) - 1) + m.slice(4);
-                const o1 = parMois.get(an1);
+                const o1 = fiable(an1) ? parMois.get(an1) : null;
                 // L'écart se prend au PLUS PROFOND des âges atteints par les deux,
                 // sinon on comparerait trente jours à cent quatre-vingts.
                 let ecart = null, ageCommun = null;
@@ -1107,7 +1125,10 @@
                 + '90, 120 et 180 jours de la date de facture. Seuls les âges atteints par tout le '
                 + 'mois sont tracés.'
                 + (pasEncore.length ? ' ' + pasEncore.map(moisFR).join(', ')
-                     + ' n’a pas encore trente jours et n’est pas tracé.' : '');
+                     + ' n’a pas encore trente jours et n’est pas tracé.' : '')
+                + (PREMIER ? ' Le grand livre part du ' + moisFRLong(PREMIER) + ' : les mois '
+                           + 'antérieurs sont arrivés en report à nouveau, leur montant facturé '
+                           + 'n’est pas connu, et ils ne servent pas non plus de référence N-1.' : '');
         }
     }
 

@@ -2327,3 +2327,5 @@ html {
 
 /* Le tableau des mois de facturation respire sous sa courbe. */
 #pil-vintage-table { margin-top: 1rem; }
+.pil-dg-nom small { display: block; font-size: 0.66rem; color: var(--text-muted); font-weight: 400; }
+.pil-dg-ligne { align-items: center; }
