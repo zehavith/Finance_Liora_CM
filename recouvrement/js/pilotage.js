@@ -1212,22 +1212,44 @@
         const fluxFam = (m, fam) => fam.membres.reduce((o, f) => { const r = fluxDe(m, f);
             if (r) { o.fac += r.fac || 0; o.enc += r.enc || 0; o.nFac += r.nFac || 0; o.nEnc += r.nEnc || 0; }
             return o; }, { fac: 0, enc: 0, nFac: 0, nEnc: 0 });
+        // UN TAUX SUR UNE BASE NÉGATIVE NE VEUT RIEN DIRE, 13/11/2026. Interco
+        // affichait « -17,6 % d'échu » et « -118 pts » : son encours est à
+        // SOLDE CRÉDITEUR — plus d'encaissé que de facturé — et diviser l'échu
+        // par un nombre négatif retourne le signe sans rien mesurer. La case
+        // dit ce qu'il en est plutôt que d'afficher ce quotient.
+        const CREDITEUR = 'créditeur';
         const echuFam = (m, fam) => { const e = encoursDe(m); if (!e) return null;
             let t = 0, c = 0, vu = false;
             for (const f of fam.membres) { const r = (e.parFinancement || []).find(x => x.cat === f);
                 if (r) { t += r.total || 0; c += r.echu || 0; vu = true; } }
-            return (vu && t) ? c / t : null; };
+            if (!vu) return null;
+            // Deux façons d'arriver à un taux négatif, et aucune ne se dit en
+            // pourcentage : un ENCOURS à solde créditeur — plus d'encaissé que
+            // de facturé — ou un ÉCHU à solde créditeur, quand les règlements
+            // reçus sur les créances échues dépassent ce qu'elles portaient.
+            if (t < -0.005 || c < -0.005) return CREDITEUR;
+            return t > 0.005 ? c / t : null; };
         const dsoFam = (m, fam) => { let mt = 0, mj = 0, n = 0;
             for (const r of (D.dso || [])) { if (r.m !== m || fam.membres.indexOf(r.fin) < 0) continue;
                 mt += r.mt; mj += r.mj; n += r.n; }
             return mt ? { j: Math.round(mj / mt), n: n, mt: mt } : null; };
+        // Une famille sans rien ce mois-là — ni facturé, ni encaissé, ni encours —
+        // n'a pas de ligne : elle n'apprendrait rien et allongerait le tableau.
+        const encoursFam = (m, fam) => { const e = encoursDe(m); if (!e) return 0;
+            return fam.membres.reduce((t, f) => { const r = (e.parFinancement || []).find(x => x.cat === f);
+                return t + ((r && r.total) || 0); }, 0); };
         const familles = famillesDe(keep)
-            .filter(fam => fluxFam(M, fam).fac || fluxFam(M, fam).enc || echuFam(M, fam) !== null)
+            .filter(fam => { const fx = fluxFam(M, fam);
+                return Math.abs(fx.fac) > 0.005 || Math.abs(fx.enc) > 0.005
+                    || Math.abs(encoursFam(M, fam)) > 0.005; })
             .sort((a, b) => fluxFam(M, b).fac - fluxFam(M, a).fac);
         const ptsCell = v => v === null ? '<span class="pil-acompleter">à compléter</span>'
             : '<span class="' + (v > 0 ? 'ec-pire' : v < 0 ? 'ec-mieux' : '') + '">'
               + (v > 0 ? '+' : '') + Math.round(v) + ' pts</span>';
-        const delta = (a, b) => (a === null || b === null) ? null : 100 * (a - b);
+        const delta = (a, b) => (typeof a !== 'number' || typeof b !== 'number') ? null : 100 * (a - b);
+        const echuCell = v => '<td class="n">' + (v === CREDITEUR
+                ? '<span class="pil-acompleter">solde créditeur</span>'
+            : v === null ? '<span class="pil-acompleter">à compléter</span>' : pct(v)) + '</td>';
 
         let h = '<table class="pil-bref-t"><thead><tr><th>Financeur</th>'
             + '<th class="n">Facturé</th><th class="n">Encaissé</th><th class="n">Taux d’échu</th>'
@@ -1245,7 +1267,7 @@
                + '</td>'
                + '<td class="n">' + eur(fx.fac) + '<small>' + fx.nFac + ' fact.</small></td>'
                + '<td class="n">' + eur(fx.enc) + '<small>' + fx.nEnc + ' règl.</small></td>'
-               + '<td class="n">' + (e0 === null ? '<span class="pil-acompleter">à compléter</span>' : pct(e0)) + '</td>'
+               + echuCell(e0)
                + '<td class="n">' + ptsCell(delta(e0, e1)) + '</td>'
                + '<td class="n">' + ptsCell(delta(e0, e2)) + '</td>'
                + '<td class="n">' + (d ? jrs(d.j) + '<small>' + d.n + ' règl.</small>'
