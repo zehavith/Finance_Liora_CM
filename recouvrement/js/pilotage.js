@@ -1144,6 +1144,42 @@
     //
     // LE TAUX D'ÉCHU N-1 DEMANDE UN ARRÊTÉ D'IL Y A UN AN. Le relevé en garde
     // treize ; au-delà la case dit « à compléter » plutôt qu'un chiffre faux.
+    // LES FAMILLES DU « MOIS EN BREF », 13/11/2026 : « mets moi c financeur ».
+    //
+    // Six familles, celles de la version 2. Elles ne valent que pour CE
+    // tableau : le reste de l'onglet garde les financeurs du grand livre, qui
+    // sont la maille de la comptabilité. Mélanger les deux donnerait un écran
+    // dont on ne saurait pas ce qu'il compte.
+    //
+    // L'INTRAGROUPE SE LIT SUR SA PROPRE LIGNE et n'est jamais noyé dans
+    // Entreprise : c'est la règle du barème CAC — « l'intragroupe se lit sur sa
+    // propre ligne, et non noyé dans Corporate » — et elle vaut ici aussi.
+    //
+    // UN FINANCEUR QUE LA TABLE NE NOMME PAS GARDE SON NOM, sur sa propre
+    // ligne. Pas de poste « Autres » : « je ne veux pas de categorie tampon ».
+    const FAMILLES_BREF = [
+        ['Entreprise', ['B2B', 'B2C-Entreprise', 'Corporate - Alternance']],
+        ['OPCO', ['OPCO', 'OPCO - Alternance']],
+        ['Financement personnel', ['Financement personnel', 'Perso-Alternance']],
+        ['CPF', ['CPF']],
+        ['France Travail', ['AIF', 'POEI']],
+        ['Région / Transition / Agefiph', ['Region', 'Transition Pro', 'Agefiph']],
+        ['Interco', ['Interco', 'Interne - DST Allemagne']],
+        ['ETAT', ['ETAT']],
+    ];
+    // Les familles retenues, membres filtrés par le périmètre de la page.
+    function famillesDe(keep) {
+        const vus = new Set();
+        const out = [];
+        for (const [nom, membres] of FAMILLES_BREF) {
+            const m = membres.filter(x => keep.has(x));
+            m.forEach(x => vus.add(x));
+            if (m.length) out.push({ nom, membres: m });
+        }
+        for (const f of keep) if (!vus.has(f)) out.push({ nom: f, membres: [f] });
+        return out;
+    }
+
     function brefDuMois(keep) {
         const hoteT = document.getElementById('pil-bref-table');
         const hoteC = document.getElementById('pil-bref-commentaire');
@@ -1172,9 +1208,22 @@
         const dsoDeMois = (m, fin) => { const r = (D.dso || []).find(x => x.m === m && x.fin === fin);
             return r && r.mt ? { j: Math.round(r.mj / r.mt), n: r.n, mt: r.mt } : null; };
 
-        const fins = [...keep].filter(f => fluxDe(M, f) || echuDe(M, f) !== null)
-            .sort((a, b) => { const x = fluxDe(M, a), y = fluxDe(M, b);
-                return ((y && y.fac) || 0) - ((x && x.fac) || 0); });
+        // Les mêmes mesures, mais cumulées sur les membres de chaque famille.
+        const fluxFam = (m, fam) => fam.membres.reduce((o, f) => { const r = fluxDe(m, f);
+            if (r) { o.fac += r.fac || 0; o.enc += r.enc || 0; o.nFac += r.nFac || 0; o.nEnc += r.nEnc || 0; }
+            return o; }, { fac: 0, enc: 0, nFac: 0, nEnc: 0 });
+        const echuFam = (m, fam) => { const e = encoursDe(m); if (!e) return null;
+            let t = 0, c = 0, vu = false;
+            for (const f of fam.membres) { const r = (e.parFinancement || []).find(x => x.cat === f);
+                if (r) { t += r.total || 0; c += r.echu || 0; vu = true; } }
+            return (vu && t) ? c / t : null; };
+        const dsoFam = (m, fam) => { let mt = 0, mj = 0, n = 0;
+            for (const r of (D.dso || [])) { if (r.m !== m || fam.membres.indexOf(r.fin) < 0) continue;
+                mt += r.mt; mj += r.mj; n += r.n; }
+            return mt ? { j: Math.round(mj / mt), n: n, mt: mt } : null; };
+        const familles = famillesDe(keep)
+            .filter(fam => fluxFam(M, fam).fac || fluxFam(M, fam).enc || echuFam(M, fam) !== null)
+            .sort((a, b) => fluxFam(M, b).fac - fluxFam(M, a).fac);
         const ptsCell = v => v === null ? '<span class="pil-acompleter">à compléter</span>'
             : '<span class="' + (v > 0 ? 'ec-pire' : v < 0 ? 'ec-mieux' : '') + '">'
               + (v > 0 ? '+' : '') + Math.round(v) + ' pts</span>';
@@ -1185,16 +1234,17 @@
             + '<th class="n">vs M-1</th><th class="n">vs N-1</th><th class="n">DSO</th>'
             + '</tr></thead><tbody>';
         let tFac = 0, tEnc = 0;
-        for (const f of fins) {
-            const fx = fluxDe(M, f);
-            const e0 = echuDe(M, f), e1 = echuDe(M1, f), e2 = echuDe(N1, f);
-            const d = dsoDeMois(M, f);
-            tFac += (fx && fx.fac) || 0; tEnc += (fx && fx.enc) || 0;
-            h += '<tr><td class="fam">' + U().escapeHtml(f) + '</td>'
-               + '<td class="n">' + eur((fx && fx.fac) || 0)
-                 + '<small>' + ((fx && fx.nFac) || 0) + ' fact.</small></td>'
-               + '<td class="n">' + eur((fx && fx.enc) || 0)
-                 + '<small>' + ((fx && fx.nEnc) || 0) + ' règl.</small></td>'
+        for (const fam of familles) {
+            const fx = fluxFam(M, fam);
+            const e0 = echuFam(M, fam), e1 = echuFam(M1, fam), e2 = echuFam(N1, fam);
+            const d = dsoFam(M, fam);
+            tFac += fx.fac; tEnc += fx.enc;
+            h += '<tr><td class="fam">' + U().escapeHtml(fam.nom)
+               + (fam.membres.length > 1
+                    ? '<small>' + U().escapeHtml(fam.membres.join(' · ')) + '</small>' : '')
+               + '</td>'
+               + '<td class="n">' + eur(fx.fac) + '<small>' + fx.nFac + ' fact.</small></td>'
+               + '<td class="n">' + eur(fx.enc) + '<small>' + fx.nEnc + ' règl.</small></td>'
                + '<td class="n">' + (e0 === null ? '<span class="pil-acompleter">à compléter</span>' : pct(e0)) + '</td>'
                + '<td class="n">' + ptsCell(delta(e0, e1)) + '</td>'
                + '<td class="n">' + ptsCell(delta(e0, e2)) + '</td>'
@@ -1215,7 +1265,9 @@
         h += '</tbody></table>';
         if (hoteT) hoteT.innerHTML = h;
         if (hoteD) hoteD.textContent = 'Facturé et encaissé du mois d’après le grand livre, '
-            + 'taux d’échu de l’encours arrêté à la fin du mois, et son évolution.';
+            + 'taux d’échu de l’encours arrêté à la fin du mois, et son évolution. '
+            + 'Les financeurs du grand livre sont regroupés en familles, rappelées sous chaque nom ; '
+            + 'l’intragroupe garde sa propre ligne et n’est pas compté dans Entreprise.';
         if (hoteC) hoteC.innerHTML = commentaireDuMois(keep, M, M1, N1, t0, t1, t2, dT, tFac, tEnc);
     }
 

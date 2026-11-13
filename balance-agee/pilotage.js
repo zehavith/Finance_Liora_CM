@@ -31,7 +31,16 @@ const { execFileSync } = require('child_process');
 
 const ICI = __dirname;
 const SORTIE = path.join(ICI, 'art', 'pilotage.json');
-const NB_MOIS = 13;
+// DIX-SEPT ARRÊTÉS, 13/11/2026 : « prk tu n'a rien en N-1, tu as le gd livre
+// pourtant ». Elle avait raison, et ma réponse était incomplète : le grand
+// livre remonte au 01/07/2025, c'est le relevé qui n'en gardait que treize
+// mois. Un taux d'échu « vs N-1 » demande l'arrêté du même mois un an plus
+// tôt : avec treize mois, aucun mois de 2026 n'en avait un. Dix-sept couvrent
+// de juillet 2025 à aujourd'hui, donc tous les mois de l'exercice.
+//
+// Le coût est un cube de plus par mois ajouté, et ils sont mis en cache :
+// seuls les quatre nouveaux sont calculés.
+const NB_MOIS = 17;
 
 // ── LE RATTACHEMENT D'UN TYPE DE FINANCEMENT À SON ÉQUIPE COMMERCIALE ──
 //
