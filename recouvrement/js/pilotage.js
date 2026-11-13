@@ -1158,14 +1158,14 @@
     // UN FINANCEUR QUE LA TABLE NE NOMME PAS GARDE SON NOM, sur sa propre
     // ligne. Pas de poste « Autres » : « je ne veux pas de categorie tampon ».
     const FAMILLES_BREF = [
-        ['Entreprise', ['B2B', 'B2C-Entreprise', 'Corporate - Alternance']],
+        // ETAT EST DANS ENTREPRISE, 13/11/2026 : « etat c ds entreprise ».
+        ['Entreprise', ['B2B', 'B2C-Entreprise', 'Corporate - Alternance', 'ETAT']],
         ['OPCO', ['OPCO', 'OPCO - Alternance']],
         ['Financement personnel', ['Financement personnel', 'Perso-Alternance']],
         ['CPF', ['CPF']],
         ['France Travail', ['AIF', 'POEI']],
         ['Région / Transition / Agefiph', ['Region', 'Transition Pro', 'Agefiph']],
         ['Interco', ['Interco', 'Interne - DST Allemagne']],
-        ['ETAT', ['ETAT']],
     ];
     // Les familles retenues, membres filtrés par le périmètre de la page.
     function famillesDe(keep) {
