@@ -1439,6 +1439,9 @@
         // Le pilotage lit la COMPTABILITÉ, pas les factures Monday : il ne
         // reçoit donc pas `data`, et il se rend depuis son propre relevé.
         case 'pilotage':     if (window.LioraPilotage) window.LioraPilotage.rendre(); break;
+        // L'opérationnel lit les factures Monday, comme le reste : il reçoit
+        // donc `data`, filtré par la barre du haut.
+        case 'operationnel': if (window.LioraOperationnel) window.LioraOperationnel.rendre(data); break;
             case 'aging':        rendreAging(data); rendreAgingSource(); rendreBoutonsPrecision(); break;
             case 'financements': rendreFinancements(data); break;
             case 'factures':     rendreFactures(data); break;
@@ -13620,6 +13623,8 @@
         // fois : il pèse quelques centaines de kilo-octets et ne change qu'au
         // dépôt d'un nouveau grand livre.
         if (nom === 'pilotage' && window.LioraPilotage) window.LioraPilotage.ouvrir();
+        if (nom === 'operationnel' && window.LioraOperationnel)
+            window.LioraOperationnel.ouvrir(facturesFiltrees());
         rendreTout();
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }

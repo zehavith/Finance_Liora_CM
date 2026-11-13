@@ -90,6 +90,17 @@
         { field: 'relance',              label: 'Relances',               aliases: ['relance', 'nb relance', 'nombre de relances', 'derniere relance', 'date de relance'] },
         { field: 'commentaire',          label: 'Commentaire',            aliases: ['commentaire', 'commentaires', 'note', 'notes', 'observation'] },
         { field: 'litige',               label: 'Litige',                 aliases: ['litige', 'contentieux', 'en litige', 'blocage'] },
+        // ── Les quatre colonnes que l'onglet Opérationnel lit, 13/11/2026 ──
+        //
+        // Elles existaient dans les tableaux Monday mais n'étaient retenues
+        // nulle part : la promesse de paiement, la problématique saisie avant
+        // l'échéance, la date à laquelle la facture est entrée dans son étape
+        // du circuit, et la date de la dernière relance manuelle. Sans elles,
+        // l'onglet ne saurait ni depuis quand une facture dort, ni pourquoi.
+        { field: 'promesse',             label: 'Paiement promis',        aliases: ['date de paiement prevu post echeance', 'date de paiement prevu recouv', 'date paiement prevue pre ech', 'date de paiement prevue', 'date de paiement prevu', 'paiement promis', 'date promesse'] },
+        { field: 'problematique',        label: 'Problématique pré-échéance', aliases: ['problematique pre echeance', 'problematique pre echeance ( service recouvrement )', 'problematique pre-echeance', 'problematique'] },
+        { field: 'dateEtape',            label: 'Entrée dans l’étape',    aliases: ['date maj qualif adv', 'date qualif recouvrement', 'date bascule en recouvrement', 'date basculement en recouvrement', 'date passage en recouvrement', 'date bascule - facture deposee non payee', 'date bascule'] },
+        { field: 'derniereRelance',      label: 'Dernière relance',       aliases: ['date derniere relance manuelle', 'date derniere relance', 'derniere relance manuelle'] },
     ];
 
     const FIELD_BY_NAME = Object.fromEntries(FIELD_DEFS.map(f => [f.field, f]));
@@ -431,6 +442,13 @@
             dateDebutFormation: R.parseDate(v.dateDebutFormation),
             dateFinFormation: R.parseDate(v.dateFinFormation),
             dateEcheanceSource: R.parseDate(v.dateEcheanceSource),
+            // Les quatre colonnes que l'onglet Opérationnel lit. Elles étaient
+            // mappées sans être recopiées ici : l'onglet lisait donc zéro
+            // promesse de paiement sur un tableau qui en porte une colonne.
+            promesse: R.parseDate(v.promesse),
+            problematique: String(v.problematique || '').trim(),
+            dateEtape: R.parseDate(v.dateEtape),
+            derniereRelance: R.parseDate(v.derniereRelance),
             datePaiement,
             dateControlePaiement,
 
@@ -764,7 +782,8 @@
             'resteDu', 'dateFacture', 'dateDebutFormation', 'dateFinFormation', 'dateEcheanceSource',
             'datePaiement', 'dateControlePaiement', 'statut', 'proprietaire', 'qualifRecouvrement', 'qualifBascule',
             'relance', 'commentaire', 'litige', 'groupeOrigine', 'motif', 'motifColonne',
-            'numeroDossier', 'apprenant'];
+            'numeroDossier', 'apprenant',
+            'promesse', 'problematique', 'dateEtape', 'derniereRelance'];
         // Les qualifications de chaque source se cumulent : une facture vue sur
         // deux tableaux porte les colonnes de qualification des deux.
         out.qualifs = { ...(extra.qualifs || {}), ...(base.qualifs || {}) };

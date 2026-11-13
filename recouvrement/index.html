@@ -125,6 +125,7 @@
         <div class="nav-tabs">
             <button class="nav-tab active" data-tab="dashboard">Tableau de bord</button>
             <button class="nav-tab" data-tab="pilotage">Pilotage</button>
+            <button class="nav-tab" data-tab="operationnel">Opérationnel</button>
             <button class="nav-tab" data-tab="aging">Balance âgée</button>
             <button class="nav-tab" data-tab="financements">Financements</button>
             <button class="nav-tab" data-tab="factures">Factures</button>
@@ -1639,6 +1640,16 @@
     </div>
 
     <!-- ══════════ ONGLET : DONNÉES ══════════ -->
+    <!-- L'ONGLET OPÉRATIONNEL, 13/11/2026 — repris de « Suivi recouvrement
+         version 2 ». Tout son contenu est bâti par js/operationnel.js : le
+         circuit à quatre étapes, leurs cibles et la table qui range chaque
+         groupe Monday y vivent, parce qu'ils ne servent qu'ici. -->
+    <div class="tab-content" id="tab-operationnel">
+        <div class="dashboard-content">
+            <div id="op-corps"></div>
+        </div>
+    </div>
+
     <div class="tab-content" id="tab-donnees">
         <div class="dashboard-content">
             <div class="section-header"><h2>Sources de données</h2></div>
@@ -1942,6 +1953,7 @@
 <script src="js/api.js?v=4.0.0"></script>
 <script src="js/ui.js?v=4.0.0"></script>
 <script src="js/pilotage.js?v=4.0.0"></script>
+<script src="js/operationnel.js?v=4.0.0"></script>
 <script src="app.js?v=4.0.0"></script>
 </body>
 </html>

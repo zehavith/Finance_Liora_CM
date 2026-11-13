@@ -2329,3 +2329,104 @@ html {
 #pil-vintage-table { margin-top: 1rem; }
 .pil-dg-nom small { display: block; font-size: 0.66rem; color: var(--text-muted); font-weight: 400; }
 .pil-dg-ligne { align-items: center; }
+
+/* ═══════════ L'ONGLET OPÉRATIONNEL ═══════════ */
+.op-rech {
+    background: var(--bg-input); border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm, 6px); padding: 0.4rem 0.7rem;
+    color: var(--text-primary); font: inherit; font-size: 0.85rem;
+    min-width: 16rem; max-width: 100%;
+}
+/* Le circuit : trois étapes qui se suivent, une quatrième à part. */
+.op-flow { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: stretch; margin-bottom: 0.4rem; }
+.op-fcard {
+    flex: 1 1 14rem; min-width: 0; text-align: left; cursor: pointer;
+    background: var(--bg-input); border: 1px solid var(--border-color);
+    border-radius: var(--radius, 10px); padding: 0.8rem 0.85rem;
+    display: flex; flex-direction: column; gap: 0.2rem; font: inherit;
+    transition: border-color var(--transition);
+}
+.op-fcard:hover { border-color: var(--accent); }
+.op-ft { display: flex; justify-content: space-between; gap: 0.5rem; font-weight: 600; color: var(--text-primary); }
+.op-ft span { font-size: 0.72rem; font-weight: 500; color: var(--text-muted); }
+.op-fbig { font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.op-fbig small { font-size: 0.78rem; font-weight: 500; color: var(--text-muted); }
+.op-fs { font-size: 0.78rem; color: var(--text-secondary); }
+.op-fs b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.op-fleche { align-self: center; color: var(--text-muted); font-size: 1.1rem; }
+.op-sep { display: flex; align-items: center; gap: 0.7rem; color: var(--text-muted); font-size: 0.75rem; margin: 0.5rem 0; }
+.op-sep span { flex: 1; height: 1px; background: var(--border-color); }
+.op-sub {
+    background: var(--bg-input); border: 1px solid var(--border-color);
+    border-radius: var(--radius, 10px); padding: 0.85rem; margin-top: 0.9rem;
+    display: flex; flex-direction: column; gap: 0.45rem; min-width: 0;
+}
+.op-sub > b { font-size: 0.86rem; color: var(--text-primary); }
+.op-pied { font-size: 0.72rem; color: var(--text-muted); line-height: 1.45; }
+.op-focus-h { font-size: 0.86rem; color: var(--text-secondary); margin: 0.7rem 0 0.2rem; }
+.op-focus-h b { color: var(--text-primary); }
+.op-cnt { font-size: 0.7rem; background: rgba(30, 28, 26, 0.08); border-radius: 999px; padding: 0 0.4rem; }
+
+/* Tableaux de l'onglet */
+.op-t { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+.op-t th {
+    text-align: left; font-weight: 600; font-size: 0.68rem; text-transform: uppercase;
+    letter-spacing: 0.03em; color: var(--text-muted); padding: 0.45rem 0.5rem;
+    border-bottom: 1px solid var(--border-color); white-space: nowrap;
+}
+.op-t th.n, .op-t td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.op-t td { padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--grid, #ECE9E5); vertical-align: top; }
+.op-t tr.total td { font-weight: 600; border-top: 2px solid var(--border-color); border-bottom: none; }
+.op-t tr.op-sous td { color: var(--text-secondary); font-size: 0.76rem; }
+.op-t tr.op-sous td:first-child { padding-left: 1.8rem; }
+.op-tog { background: none; border: 0; padding: 0; font: inherit; font-weight: 600;
+          color: var(--text-primary); cursor: pointer; text-align: left; }
+.op-mini { display: block; height: 3px; background: var(--grid, #ECE9E5); border-radius: 2px; margin-top: 0.2rem; }
+.op-mini i { display: block; height: 100%; border-radius: 2px; }
+
+/* Pastilles de priorité */
+.op-chip {
+    display: inline-flex; align-items: center; font-size: 0.68rem; font-weight: 600;
+    padding: 0.05rem 0.45rem; border-radius: 999px; white-space: nowrap;
+    background: rgba(30, 28, 26, 0.07); color: var(--text-secondary);
+}
+.op-chip.bon { background: var(--green-bg, rgba(29,127,85,.12)); color: var(--green, #1D7F55); }
+.op-chip.moyen { background: var(--amber-bg, rgba(168,106,6,.12)); color: var(--amber, #A86A06); }
+.op-chip.mauvais { background: var(--red-bg, rgba(184,53,42,.12)); color: var(--red, #B8352A); }
+.op-tags { display: inline-flex; gap: 0.25rem; flex-wrap: wrap; }
+.op-acompleter { color: var(--text-muted); font-style: italic; }
+
+/* Barres horizontales par groupe */
+.op-hbs { display: flex; flex-direction: column; gap: 0.35rem; }
+.op-hb { display: grid; grid-template-columns: minmax(6rem, 42%) 1fr auto; gap: 0.6rem;
+         align-items: center; font-size: 0.76rem; color: var(--text-secondary); }
+.op-hb > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-track { display: block; height: 0.8rem; background: var(--grid, #ECE9E5); border-radius: 3px; overflow: hidden; }
+.op-track i { display: block; height: 100%; }
+.op-v { font-variant-numeric: tabular-nums; color: var(--text-primary); min-width: 2.5rem; text-align: right; }
+
+/* Histogramme de l'âge dans l'étape */
+.op-chart { display: flex; align-items: flex-end; gap: 0.5rem; height: 12rem; padding-top: 1.2rem; }
+.op-col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end;
+          align-items: center; height: 100%; min-width: 0; position: relative; }
+.op-col i { display: block; width: 100%; border-radius: 3px 3px 0 0; min-height: 2px; }
+.op-col-v { font-size: 0.7rem; font-variant-numeric: tabular-nums; color: var(--text-secondary);
+            margin-bottom: 0.2rem; }
+.op-col-l { font-size: 0.66rem; color: var(--text-muted); margin-top: 0.3rem; white-space: nowrap; }
+
+/* Destinations des sorties */
+.op-stk { display: flex; flex-direction: column; gap: 0.35rem; padding: 0.55rem 0;
+          border-top: 1px solid var(--grid, #ECE9E5); }
+.op-stk:first-of-type { border-top: 0; }
+.op-stk-h { display: flex; flex-wrap: wrap; gap: 0.2rem 0.8rem; align-items: baseline;
+            justify-content: space-between; font-size: 0.8rem; }
+.op-stk-bar { display: flex; height: 1.3rem; border-radius: 4px; overflow: hidden;
+              background: var(--grid, #ECE9E5); }
+.op-stk-bar > div { display: flex; align-items: center; justify-content: center;
+                    font-size: 0.66rem; font-weight: 600; color: #FFFFFF;
+                    font-variant-numeric: tabular-nums; min-width: 0; overflow: hidden; white-space: nowrap; }
+.op-legende { display: flex; flex-wrap: wrap; gap: 0.3rem 0.9rem; font-size: 0.72rem; color: var(--text-muted); }
+.op-legende span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.op-sw { width: 0.6rem; height: 0.6rem; border-radius: 2px; display: inline-block; }
+.op-vide { padding: 1.3rem; border: 1px dashed var(--border-color); border-radius: var(--radius, 10px);
+           color: var(--text-muted); text-align: center; background: var(--bg-primary); font-size: 0.82rem; }
