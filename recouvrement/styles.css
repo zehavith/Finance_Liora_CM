@@ -2214,3 +2214,44 @@ html {
 /* La maille du relevé, sous le filtre de période : il est bâti sur des arrêtés
    mensuels, et une fenêtre plus courte ne pourrait répondre qu'en mentant. */
 .pil-maille { font-size: .72rem; color: var(--encre-3, #78736C); font-style: italic; }
+
+/* ─── La sortie du filtre, posée sur le graphique qui l’a posé ───
+   Cliquer une courbe isole son financeur, et recliquer la même rend la main.
+   Mais une fois isolée la légende ne porte plus qu’une entrée : rien ne dit
+   qu’il faut recliquer dessus, et il faut remonter jusqu’au graphique pour le
+   faire. La sortie se dit donc en toutes lettres, à côté du titre. */
+.pil-sortie {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--accent-bg);
+    border: 1px solid var(--accent);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.76rem;
+    padding: 0.22rem 0.5rem 0.22rem 0.7rem;
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: all var(--transition);
+}
+.pil-sortie b { font-weight: 600; }
+.pil-sortie .croix { font-size: 1rem; line-height: 1; opacity: 0.6; }
+.pil-sortie:hover { background: var(--accent); border-color: var(--accent); color: #FFFFFF; }
+.pil-sortie:hover .croix { opacity: 1; }
+
+/* ─── La base sous le délai ───
+   Un DSO ne se vérifie pas sans le nombre de règlements qui le composent :
+   19 jours sur une facture et 19 jours sur trente ne disent pas la même chose. */
+.pil-heat small {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    white-space: nowrap;
+    margin-top: 0.1rem;
+}
+.pil-acompleter { color: var(--text-muted); font-style: italic; font-size: 0.78rem; }

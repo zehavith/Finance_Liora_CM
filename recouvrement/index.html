@@ -908,20 +908,22 @@
 
             <div class="charts-grid charts-grid-2">
                 <div class="chart-card">
-                    <div class="chart-header"><h3>Taux de retard par financeur</h3></div>
+                    <div class="chart-header"><h3>Taux de retard par financeur</h3>
+                        <span id="pil-retard-sortie"></span></div>
                     <p class="pil-note" id="pil-retard-dit">La part échue de l’encours de chaque financeur, arrêté après arrêté.</p>
                     <div class="chart-container"><canvas id="pil-chart-retard"></canvas></div>
                 </div>
                 <div class="chart-card">
                     <div class="chart-header"><h3>Variation du DSO</h3></div>
-                    <p class="pil-note">Délai moyen entre la date de facture et l’encaissement,
-                       pondéré par les montants.</p>
+                    <p class="pil-note" id="pil-dso-dit">Délai moyen entre la date de facture et
+                       l’encaissement, pondéré par les montants.</p>
                     <div class="chart-container"><canvas id="pil-chart-dso"></canvas></div>
                 </div>
             </div>
 
             <div class="charts-grid"><div class="chart-card chart-wide">
-                <div class="chart-header"><h3>Évolution de l’encours par financeur, jour après jour depuis la facture</h3></div>
+                <div class="chart-header"><h3>Évolution de l’encours par financeur, jour après jour depuis la facture</h3>
+                    <span id="pil-decroissance-sortie"></span></div>
                 <p class="pil-note" id="pil-decroissance-dit"></p>
                 <div class="chart-container"><canvas id="pil-chart-decroissance"></canvas></div>
             </div></div>

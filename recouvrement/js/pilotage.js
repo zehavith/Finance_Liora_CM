@@ -274,6 +274,7 @@
         const f = flux(b, keep), fc = bc ? flux(bc, keep) : null;
         const d = delai(b, keep), dc = bc ? delai(bc, keep) : null;
 
+        majSortieFiltre();
         majBandeau(b, e);
         majVignettes(e, ec, f, fc, d, dc, bc);
         graphAncienneté(keep);
@@ -460,18 +461,50 @@
         // sans couleur : le DSO mesuré, et la règle qui s'applique à ce
         // financeur au grand livre. Qui veut comparer compare, en sachant ce
         // qu'il compare.
+        // DEUX DSO CÔTE À CÔTE, 13/11/2026. « tu passe de 600j env à 0 ».
+        //
+        // La colonne suivait la période choisie. Sur un mois, Region affichait
+        // 19 j : le délai d'UNE facture de 1 590 €, posé à côté de 520 544 €
+        // d'encours dont 493 865 € dorment depuis plus d'un an. Un DSO calculé
+        // sur une facture n'est pas un DSO, c'est cette facture-là.
+        //
+        // La période reste — c'est elle qui dit le mouvement récent — mais elle
+        // se lit maintenant CONTRE un rythme de fond, douze mois glissants, que
+        // le sélecteur ne bouge pas. Et chaque cellule porte sa base : sans le
+        // nombre de règlements derrière, un délai ne se vérifie pas.
         const per = bornes();
-        const dsoPar = new Map();
-        for (const r of (D.dso || [])) {
-            if (!keep.has(r.fin) || !dans(r.m, per)) continue;
-            const o = dsoPar.get(r.fin) || { mt: 0, mj: 0, n: 0 };
-            o.mt += r.mt; o.mj += r.mj; o.n += r.n;
-            dsoPar.set(r.fin, o);
-        }
-        const dsoDe = fin => {
-            const o = dsoPar.get(fin);
+        const finPer = D && D.arrete ? parseFR(D.arrete) : new Date();
+        const moisDe = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        const DOUZE_DEBUT = moisDe(new Date(finPer.getFullYear(), finPer.getMonth() - 11, 1));
+        const DOUZE_FIN = moisDe(finPer);
+
+        const cumuler = garde => {
+            const m = new Map();
+            for (const r of (D.dso || [])) {
+                if (!keep.has(r.fin) || !garde(r)) continue;
+                const o = m.get(r.fin) || { mt: 0, mj: 0, n: 0 };
+                o.mt += r.mt; o.mj += r.mj; o.n += r.n;
+                m.set(r.fin, o);
+            }
+            return m;
+        };
+        const dsoPar = cumuler(r => dans(r.m, per));
+        const dsoDouze = cumuler(r => r.m >= DOUZE_DEBUT && r.m <= DOUZE_FIN);
+        const lire = m => fin => {
+            const o = m.get(fin);
             return o && o.mt ? { j: Math.round(o.mj / o.mt), n: o.n, mt: o.mt } : null;
         };
+        const dsoDe = lire(dsoPar), dsoDouzeDe = lire(dsoDouze);
+        // La cellule dit le délai ET sa base. « à compléter » quand il n'y a
+        // eu aucun règlement : la case ne s'invente pas un nombre.
+        const celluleDso = d => '<td class="n">'
+            + (d ? d.j.toLocaleString('fr-FR') + ' j<small>' + d.n.toLocaleString('fr-FR')
+                   + ' fact. · ' + eur(d.mt) + '</small>'
+                 : '<span class="pil-acompleter">à compléter</span>')
+            + '</td>';
+        const totalDso = m => { let mt = 0, mj = 0, n = 0;
+            for (const o of m.values()) { mt += o.mt; mj += o.mj; n += o.n; }
+            return mt ? { j: Math.round(mj / mt), n: n, mt: mt } : null; };
         // Le délai propre vient de la règle d'échéance du GRAND LIVRE — celle
         // qui a servi à dater la créance — et non de celle du suivi de relance :
         // les deux ne mesurent pas la même chose, et c'est le grand livre qui
@@ -518,7 +551,8 @@
         const tot = COLONNES.map((_, j) => lignes.reduce((s, r) => s + r.cases[j], 0));
         let h = '<table class="pil-heat"><thead><tr><th>Financeur</th><th>Équipe</th>'
             + COLONNES.map(c => '<th class="n">' + c.nom + '</th>').join('')
-            + '<th class="n">Total</th><th class="n">DSO</th>'
+            + '<th class="n">Total</th>'
+            + '<th class="n">DSO période</th><th class="n">DSO 12 mois</th>'
             + '<th>Délai propre</th></tr></thead><tbody>';
         for (const r of lignes) {
             h += '<tr><td class="fam">' + U().escapeHtml(r.fin) + '</td>'
@@ -526,20 +560,15 @@
                 + r.cases.map((v, j) => '<td class="n" style="' + chaleur(v, r.total, j) + '">'
                     + eur(v) + '</td>').join('')
                 + '<td class="n"><strong>' + eur(r.total) + '</strong></td>'
-                + (d => '<td class="n"' + (d ? ' title="' + d.n.toLocaleString('fr-FR')
-                        + ' règlement' + (d.n > 1 ? 's' : '') + ' · ' + eur(d.mt) + '"' : '')
-                    + '>' + (d ? d.j.toLocaleString('fr-FR') + ' j' : 'à compléter') + '</td>')(dsoDe(r.fin))
+                + celluleDso(dsoDe(r.fin))
+                + celluleDso(dsoDouzeDe(r.fin))
                 + '<td>' + U().escapeHtml(delaiPropre(r.fin)) + '</td></tr>';
         }
         h += '<tr class="total"><td>TOTAL</td><td></td>'
             + tot.map(v => '<td class="n">' + eur(v) + '</td>').join('')
             + '<td class="n">' + eur(tot.reduce((a, b) => a + b, 0)) + '</td>'
-            + (() => { let mt = 0, mj = 0, n = 0;
-                for (const o of dsoPar.values()) { mt += o.mt; mj += o.mj; n += o.n; }
-                return '<td class="n"' + (mt ? ' title="' + n.toLocaleString('fr-FR')
-                        + ' règlements · ' + eur(mt) + '"' : '') + '>'
-                    + (mt ? Math.round(mj / mt).toLocaleString('fr-FR') + ' j' : 'à compléter')
-                    + '</td>'; })()
+            + celluleDso(totalDso(dsoPar))
+            + celluleDso(totalDso(dsoDouze))
             + '<td></td></tr>';
         h += '</tbody></table>';
         el.innerHTML = h;
@@ -598,6 +627,41 @@
     // sur l'une des courbes je dois avoir un filtre qui se déclenche sur le
     // type de financement de la courbe sur toute la page ».
     //
+    // Le clic sur une courbe isole son financeur. Le même clic rend la main,
+    // mais une fois isolée la légende ne porte plus qu'une entrée et rien ne
+    // dit qu'il faut recliquer dessus — il faut en plus remonter jusqu'au
+    // graphique. La sortie se tient donc là où le filtre a été posé, écrite.
+    function majSortieFiltre() {
+        const u = U();
+        const liste = [...F.financeurs];
+        const texte = liste.length === 0 ? ''
+            : liste.length === 1 ? liste[0]
+            : liste.length + ' financeurs';
+        for (const id of ['pil-retard-sortie', 'pil-decroissance-sortie']) {
+            const hote = document.getElementById(id);
+            if (!hote) continue;
+            if (!texte) { hote.innerHTML = ''; continue; }
+            hote.innerHTML = '<button type="button" class="pil-sortie" '
+                + 'title="Revenir à tous les financeurs">'
+                + '<b>' + u.escapeHtml(texte) + '</b> seul'
+                + (liste.length > 1 ? 's' : '') + ' · tout afficher'
+                + '<span class="croix" aria-hidden="true">×</span></button>';
+            hote.firstChild.onclick = () => { F.financeurs.clear(); synchroniserDeroule(); rendre(); };
+        }
+    }
+
+    // Les cases du déroulé disent ce que l'état dit, sinon le filtre ment.
+    function synchroniserDeroule() {
+        const p = document.getElementById('pil-financeurs');
+        if (!p) return;
+        p.querySelectorAll('input[type=checkbox]').forEach(c => {
+            if (c.dataset.tout) return;
+            c.checked = F.financeurs.has(c.value);
+        });
+        majTout(p, F.financeurs);
+        p.dispatchEvent(new Event('change'));   // l'étiquette du bouton suit
+    }
+
     // Le même clic rend la main : cliquer le financeur déjà seul retenu
     // réaffiche tout le monde. Sans cela on ne saurait pas comment revenir, et
     // la case « Tous » du déroulé est à deux clics.
@@ -606,16 +670,7 @@
         const seul = F.financeurs.size === 1 && F.financeurs.has(f);
         F.financeurs.clear();
         if (!seul) F.financeurs.add(f);
-        // Les cases du déroulé disent ce que l'état dit, sinon le filtre ment.
-        const p = document.getElementById('pil-financeurs');
-        if (p) {
-            p.querySelectorAll('input[type=checkbox]').forEach(c => {
-                if (c.dataset.tout) return;
-                c.checked = F.financeurs.has(c.value);
-            });
-            majTout(p, F.financeurs);
-            p.dispatchEvent(new Event('change'));   // l'étiquette du bouton suit
-        }
+        synchroniserDeroule();
         rendre();
     }
 
@@ -841,34 +896,74 @@
     }
 
     // ── 5. la variation du DSO ──
+    // LE POINT DIT SUR COMBIEN IL REPOSE, 13/11/2026.
+    //
+    // « je ne compd pas comment tu calcul ton dso, tu passe de 600j env à 0 ».
+    // La courbe d'AIF tombait à 3 j en septembre et montait à 580 j en juillet.
+    // Les deux étaient exacts : septembre, UNE facture de 2 245 € payée trois
+    // jours après son émission ; juillet, DEUX vieilles factures enfin réglées.
+    // Mais la courbe les traçait du même trait qu'un mois à 31 règlements, si
+    // bien qu'elle faisait lire un effondrement de performance là où il n'y
+    // avait qu'une facture.
+    //
+    // Le diamètre du point porte donc le nombre de règlements, et l'infobulle
+    // le dit en toutes lettres avec le montant. Un point minuscule se lit pour
+    // ce qu'il est : une facture, pas une tendance.
     function graphDso(keep) {
         const parMois = new Map();
         for (const r of (D.dso || [])) {
             if (!keep.has(r.fin)) continue;
-            const o = parMois.get(r.m) || { mt: 0, mj: 0 };
-            o.mt += r.mt; o.mj += r.mj; parMois.set(r.m, o);
+            const o = parMois.get(r.m) || { mt: 0, mj: 0, n: 0 };
+            o.mt += r.mt; o.mj += r.mj; o.n += (r.n || 0); parMois.set(r.m, o);
         }
         const mois = [...parMois.keys()].sort().slice(-18);
+        const base = mois.map(m => parMois.get(m) || { mt: 0, mj: 0, n: 0 });
+        const nMax = Math.max(...base.map(o => o.n), 1);
+        const rayon = n => n ? 2.5 + 5.5 * Math.sqrt(Math.min(1, n / nMax)) : 0;
+        const moisFR = m => {
+            const d = new Date(+m.slice(0, 4), +m.slice(5, 7) - 1, 1);
+            return d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
+        };
         U().chart('pil-chart-dso', {
             type: 'line',
             data: {
-                labels: mois,
+                labels: mois.map(moisFR),
                 datasets: [{
                     label: 'DSO du mois', borderColor: U().couleurs.accent,
-                    backgroundColor: 'rgba(244,116,88,0.12)', fill: true,
-                    borderWidth: 2, tension: 0.3, pointRadius: 2,
-                    data: mois.map(m => { const o = parMois.get(m);
-                        return o.mt ? Math.round(o.mj / o.mt) : null; }),
+                    backgroundColor: 'rgba(217, 83, 46, 0.10)', fill: true,
+                    borderWidth: 2, tension: 0.3,
+                    pointRadius: base.map(o => rayon(o.n)),
+                    pointHoverRadius: base.map(o => rayon(o.n) + 2),
+                    pointBackgroundColor: U().couleurs.accent,
+                    data: base.map(o => o.mt ? Math.round(o.mj / o.mt) : null),
                 }],
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { x: { grid: { display: false } },
                           y: { grid: U().grille, ticks: { callback: v => v + ' j' } } },
-                plugins: { legend: { display: false },
-                           tooltip: { callbacks: { label: c => 'délai moyen pondéré : ' + c.raw + ' jours' } } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: {
+                        label: c => 'délai moyen pondéré : ' + c.raw + ' jours',
+                        afterLabel: c => { const o = base[c.dataIndex] || {};
+                            return 'sur ' + (o.n || 0).toLocaleString('fr-FR') + ' facture'
+                                 + ((o.n || 0) > 1 ? 's' : '') + ' encaissée'
+                                 + ((o.n || 0) > 1 ? 's' : '') + ' · ' + eur(o.mt || 0); },
+                    } },
+                },
             },
         });
+        // CE QUI PORTE LE MOIS SE DIT SOUS LE TITRE, pas seulement au survol.
+        const el = document.getElementById('pil-dso-dit');
+        if (el) {
+            const maigres = base.filter(o => o.n && o.n <= 2).length;
+            el.textContent = 'Délai moyen entre la date de facture et l’encaissement, '
+                + 'pondéré par les montants, sur les factures encaissées dans le mois. '
+                + 'Le diamètre du point dit combien de factures le composent.'
+                + (maigres ? ' ' + maigres + ' mois ne reposent que sur une ou deux factures : '
+                           + 'leur délai est celui de ces factures-là, pas une tendance.' : '');
+        }
     }
 
     // ── 6. le pont des encours, d'un arrêté au suivant ──
