@@ -162,6 +162,7 @@
         var o = ONGLETS[actif && actif.dataset.tab] || ONGLETS.dashboard;
         // L'onglet des règles ne filtre rien : la barre de filtres s'efface.
         document.body.classList.toggle('v3-onglet-regles', !!(actif && actif.dataset.tab === 'regles'));
+        document.body.classList.toggle('v3-onglet-operationnel', !!(actif && actif.dataset.tab === 'operationnel'));
         var t = $('#v3-entete-titre'), q = $('#v3-entete-quoi'), s = $('#v3-entete-source');
         if (t && t.textContent !== o.titre) t.textContent = o.titre;
         if (q && q.textContent !== o.quoi) q.textContent = o.quoi;
