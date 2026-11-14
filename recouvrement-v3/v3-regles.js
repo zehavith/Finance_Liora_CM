@@ -197,13 +197,16 @@
                 + '<td><input class="input input-sm input-num" type="number" min="0" id="rg-j-' + i + '" data-gl="' + i
                 + '" data-k="jours" value="' + (+g.jours || 0) + '" aria-label="Jours ajoutés"></td></tr>';
         }).join('');
-        return bloc('echeances-gl', 'Échéances — balance âgée d’après le grand livre',
+        return bloc('echeances-gl', 'Échéances — balance âgée d’après le grand livre et Pilotage',
             regles.length + ' financements' + (modif ? ' · ' + modif + ' modifiée' + (modif > 1 ? 's' : '') : ' · règles d’origine'),
             'modifiable',
             '<p class="v3-regle-dit">La balance âgée comptable (onglet Balance âgée → « D’après le grand livre ») date ses '
             + 'créances avec sa propre règle, qui peut différer de celle du suivi Monday : l’une mesure le travail de '
-            + 'relance, l’autre le solde du compte. Ces règles s’appliquent quand un grand livre est chargé dans la page. '
-            + '<b>Le relevé de l’onglet Pilotage, lui, est calculé en amont : il ne suit pas une modification faite ici.</b></p>'
+            + 'relance, l’autre le solde du compte. <b>Modifier ici la date de départ ou le délai d’un financement '
+            + 'recalcule l’onglet Pilotage</b> : ses créances sont redatées puis reclassées par tranche, et l’échu, le non '
+            + 'échu et le taux d’échu de ce financement sont refaits. Une créance datée par une exception (facture émise '
+            + 'après la fin de formation, mandat de prélèvement) garde son échéance, et les arrêtés antérieurs au '
+            + '30/06/2026 gardent les délais d’origine, leur détail n’étant pas disponible.</p>'
             + '<div class="table-wrap"><table class="op-t v3-regles-t"><thead><tr><th>Financement</th><th>Date de départ</th>'
             + '<th>+ jours</th></tr></thead><tbody>' + lignes + '</tbody></table></div>'
             + '<p><button type="button" class="btn btn-ghost btn-sm" data-action="raz-echeances">Rétablir les règles d’origine</button></p>');
@@ -376,9 +379,8 @@
     // Les pages que chaque règle modifie — et celles qu'elle ne modifie pas.
     var PORTEES = {
         echeances: ['Tableau de bord, Opérationnel, Balance âgée d’après Monday, Financements, Factures',
-                    'le Pilotage : son relevé comptable est calculé en amont, avec les règles de la balance âgée comptable'],
-        'echeances-gl': ['Balance âgée d’après le grand livre (quand un grand livre est chargé dans la page)',
-                    'le Pilotage : son relevé est calculé en amont ; pour qu’il change, la règle doit aussi être changée dans la chaîne de la balance âgée'],
+                    'le Pilotage : il suit la règle « balance âgée d’après le grand livre et Pilotage », juste en dessous'],
+        'echeances-gl': ['Pilotage (échu, non échu, tranches et taux d’échu, pour les arrêtés du 30/06/2026 à aujourd’hui) et Balance âgée d’après le grand livre', ''],
         tranches: ['Balance âgée, Tableau de bord, et Pilotage (colonnes du tableau par financeur, graphique d’ancienneté)', ''],
         classement: ['Balance âgée d’après le grand livre', ''],
         controle: ['Opérationnel', ''],

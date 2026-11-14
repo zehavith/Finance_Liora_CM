@@ -68,6 +68,140 @@
         return D;
     }
 
+    // ═════════ VERSION 3 : UN DÉLAI D'ÉCHÉANCE MODIFIÉ RECALCULE LE PILOTAGE ═════════
+    //
+    // « Ce qui peut modifier l'onglet pilotage serait la modification des
+    // délais d'échéance par type de financement, qui serait dans les règles. »
+    //
+    // Le relevé ne porte que des totaux par tranche : on ne peut pas y déplacer
+    // une échéance. À côté de lui est donc déposé donnees/creances.json — une
+    // ligne par créance, sans nom ni numéro : son financement, son reste dû,
+    // son retard, et les dates sur lesquelles une échéance peut s'appuyer
+    // (début et fin de formation, facture). Quand la règle d'un financement
+    // change dans l'onglet « Règles d'application », ses créances sont
+    // redatées — date choisie + délai choisi — puis reclassées par tranche,
+    // et l'échu, le non échu et les tranches de ce financement sont refaits.
+    //
+    // CE QUI NE BOUGE PAS, ET C'EST VOULU :
+    //   · une créance datée par une exception (facture émise après la fin de
+    //     formation, mandat de prélèvement) garde son échéance : ces deux
+    //     règles passent avant le barème ;
+    //   · une créance à qui la date choisie manque garde son échéance actuelle ;
+    //   · un arrêté dont le détail n'est pas déposé garde ses chiffres
+    //     d'origine — l'écran dit lesquels ;
+    //   · le total de l'encours : changer une échéance ne change pas ce qui est dû.
+    //
+    // Sans modification, rien n'est recalculé : les chiffres sont ceux du relevé.
+    let CRE = null, creEtat = '';              // '', 'charge', 'absent'
+    let ENCOURS_ORIGINE = null, SIG_ECHEANCES = null, INFO_ECHEANCES = null;
+    const CHAMP_BASE = { dateDebutFormation: 4, dateFinFormation: 5, dateFactureFacturation: 6, dateFacture: 7 };
+    const NOM_BASE = { dateDebutFormation: 'début de formation', dateFinFormation: 'fin de formation',
+                       dateFactureFacturation: 'date de facture', dateFacture: 'date de l’écriture' };
+
+    function echeancesModifiees() {
+        const R = global.LioraRules, st = global.__recouvrement;
+        const origine = (R && R.DEFAULT_ECHEANCE_RULES) || [], out = {};
+        for (const r of ((st && st.rules) || [])) {
+            const o = origine.find(x => x.key === r.key);
+            if (!o) continue;
+            const a = r.gl || r, b = o.gl || o;
+            if (a.base !== b.base || (+a.jours || 0) !== (+b.jours || 0)) {
+                if (CHAMP_BASE[a.base]) out[r.label] = { base: a.base, jours: +a.jours || 0 };
+            }
+        }
+        return out;
+    }
+
+    async function chargerCreances() {
+        try {
+            const a = new AbortController();
+            setTimeout(() => a.abort(), 45000);
+            const r = await fetch('donnees/creances.json', { cache: 'no-store', signal: a.signal });
+            if (!r.ok) { creEtat = 'absent'; return; }
+            CRE = await r.json();
+        } catch (e) { creEtat = 'absent'; }
+    }
+
+    function appliquerEcheances() {
+        if (!ENCOURS_ORIGINE) ENCOURS_ORIGINE = D.encours;
+        const modifs = echeancesModifiees();
+        const sig = JSON.stringify(modifs);
+        if (!Object.keys(modifs).length) { D.encours = ENCOURS_ORIGINE; INFO_ECHEANCES = null; SIG_ECHEANCES = sig; return; }
+        if (!CRE) {
+            D.encours = ENCOURS_ORIGINE; SIG_ECHEANCES = null;
+            INFO_ECHEANCES = { modifs, attente: creEtat !== 'absent', absent: creEtat === 'absent' };
+            if (creEtat === '') { creEtat = 'charge'; chargerCreances().then(() => rendre()); }
+            return;
+        }
+        if (sig === SIG_ECHEANCES) return;
+        SIG_ECHEANCES = sig;
+        const bornes = CRE.bornes || [], nT = bornes.length + 1;
+        const tranche = j => { if (j == null || j <= 0) return -1;
+            for (let i = 0; i < bornes.length; i++) if (j <= bornes[i]) return i;
+            return bornes.length; };
+        const recalcules = [], inchanges = [];
+        let sansDate = 0, redatees = 0;
+        D.encours = ENCOURS_ORIGINE.map(e => {
+            const a = CRE.arretes && CRE.arretes[e.d];
+            if (!a) { inchanges.push(e.d); return e; }
+            recalcules.push(e.d);
+            const dernier = e === ENCOURS_ORIGINE[ENCOURS_ORIGINE.length - 1];
+            const nv = {};
+            for (const l of a.c) {
+                const fin = a.fins[l[0]], m = modifs[fin];
+                if (!m) continue;
+                let j = l[3];
+                if (l[2] === 0 || l[2] === 2) {                 // barème, ou repli faute de date
+                    const base = l[CHAMP_BASE[m.base]];
+                    if (base != null) { j = a.jour - (base + m.jours); if (dernier) redatees++; }
+                    else if (dernier) sansDate++;
+                }
+                const o = nv[fin] || (nv[fin] = { echu: 0, nonEchu: 0, b: new Array(nT).fill(0) });
+                const t = tranche(j);
+                if (t < 0) o.nonEchu += l[1]; else { o.echu += l[1]; o.b[t] += l[1]; }
+            }
+            const pf = (e.parFinancement || []).map(r => { const o = nv[r.cat];
+                return o ? Object.assign({}, r, { echu: o.echu / 100, nonEchu: o.nonEchu / 100,
+                                                  buckets: o.b.map(x => x / 100) }) : r; });
+            return Object.assign({}, e, { parFinancement: pf });
+        });
+        INFO_ECHEANCES = { modifs, recalcules, inchanges, sansDate, redatees };
+    }
+
+    // Ce qui a été recalculé se dit en tête de l'onglet : un Pilotage dont une
+    // partie suit une règle et l'autre non ne doit pas se lire comme un bloc.
+    function majNoteEcheances() {
+        let el = document.getElementById('pil-note-echeances');
+        const i = INFO_ECHEANCES;
+        if (!i) { if (el) el.hidden = true; return; }
+        if (!el) {
+            const apres = document.getElementById('pilotage-badge');
+            if (!apres || !apres.parentNode) return;
+            el = document.createElement('p');
+            el.id = 'pil-note-echeances'; el.className = 'pil-note pil-note-echeances';
+            apres.parentNode.insertBefore(el, apres.nextSibling);
+        }
+        el.hidden = false;
+        const fr = d => parseFR(d).toLocaleDateString('fr-FR');
+        const quoi = Object.keys(i.modifs).map(f => f + ' (' + (NOM_BASE[i.modifs[f].base] || i.modifs[f].base)
+            + (i.modifs[f].jours ? ' + ' + i.modifs[f].jours + ' j' : '') + ')').join(', ');
+        el.textContent = i.absent
+            ? 'Délais d’échéance modifiés pour ' + quoi + ', mais le détail des créances n’est pas déposé avec cette '
+              + 'page : le Pilotage affiche les chiffres d’origine.'
+            : i.attente
+            ? 'Délais d’échéance modifiés pour ' + quoi + ' : lecture du détail des créances…'
+            : 'Délais d’échéance modifiés dans les règles pour ' + quoi + '. '
+              + (i.recalcules.length ? 'Les arrêtés du ' + fr(i.recalcules[0]) + ' au '
+                    + fr(i.recalcules[i.recalcules.length - 1]) + ' sont recalculés avec ces délais'
+                    + ' (' + i.redatees.toLocaleString('fr-FR') + ' créances redatées au dernier arrêté). ' : '')
+              + (i.inchanges.length ? 'Les arrêtés antérieurs gardent les délais d’origine : leur détail n’est pas '
+                    + 'déposé, les courbes changent donc de règle au ' + fr(i.recalcules[0] || i.inchanges[0]) + '. ' : '')
+              + (i.sansDate ? i.sansDate.toLocaleString('fr-FR') + ' créances n’ont pas la date demandée et gardent leur '
+                    + 'échéance actuelle. ' : '')
+              + 'Le total de l’encours ne change pas ; « Qui se dégrade » et le DSO ne dépendent pas de ces délais '
+              + 'dans ce recalcul.';
+    }
+
     // ═════════ les périodes ═════════
 
     const moisDe = iso => String(iso || '').slice(0, 7);
@@ -272,6 +406,8 @@
         document.getElementById('pil-vide').hidden = true;
         document.getElementById('pil-corps').hidden = false;
 
+        // Les délais d'échéance modifiés dans les règles se posent avant tout calcul.
+        appliquerEcheances();
         const keep = retenus();
         const b = bornes();
         const bc = bornesComparaison();
@@ -282,6 +418,7 @@
 
         majSortieFiltre();
         majBandeau(b, e);
+        majNoteEcheances();
         majVignettes(e, ec, f, fc, d, dc, bc);
         graphAncienneté(keep);
         graphHeatmap(e);
@@ -552,9 +689,11 @@
         // qui a servi à dater la créance — et non de celle du suivi de relance :
         // les deux ne mesurent pas la même chose, et c'est le grand livre qui
         // remplit cette carte.
-        const REGLES = (window.LioraRules && window.LioraRules.DEFAULT_ECHEANCE_RULES) || [];
+        // La règle affichée est celle en vigueur, modifications comprises.
+        const REGLES = (global.__recouvrement && global.__recouvrement.rules)
+            || (window.LioraRules && window.LioraRules.DEFAULT_ECHEANCE_RULES) || [];
         const BASE_FR = { dateFacture: 'date de facture', dateFinFormation: 'fin de formation',
-                          dateDebutFormation: 'début de formation' };
+                          dateDebutFormation: 'début de formation', dateFactureFacturation: 'date de facture' };
         const delaiPropre = fin => {
             const r = REGLES.find(x => x.label === fin);
             if (!r) return 'à compléter';

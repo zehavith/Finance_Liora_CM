@@ -17,6 +17,7 @@ modules `js/`, bibliothèques) sont ceux de cette branche, inchangés.
 | `js/monday.js` | Client Monday : jeton, ou connecteur monday.com (lecture complète ou des seuls changements). |
 | `js/operationnel.js` | Circuit : vignette « Sous contrôle », descente tableaux › groupes › factures, correspondance groupe → étape, entrées et sorties. |
 | `js/pilotage.js` | Pilotage : tableau par financeur resserré, libellé des échéances du mois. |
+| `outils/extraire-creances.py` | Fabrique `donnees/creances.json` (une ligne par créance, sans nom ni numéro) à partir des balances âgées publiées, et contrôle chaque arrêté au centime contre le relevé du Pilotage. C'est ce fichier qui permet au Pilotage de se recalculer quand un délai d'échéance change. |
 
 Aucune donnée réelle n'est dans ce dossier : les fichiers `donnees/` de
 l'artefact sont produits par `recouvrement/artefact/actualiser.js` (lecture
