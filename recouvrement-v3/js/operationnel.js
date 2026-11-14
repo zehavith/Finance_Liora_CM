@@ -179,6 +179,7 @@
     const F = { etape: 'adv', q: '', deplies: {} };
     let HIST = null;                    // { mois, de, le, par: Map(etape → {e,s,dest,dur}) }
     let histEtat = { s: 'idle', msg: '' };
+    let LISTE_FILTRE = 'tout', LISTE_COURANTE = { pr: [], k: '', nom: 'tout' };
     let DERNIERES = [];                 // les factures du dernier rendu
 
     // ═════════ helpers ═════════
@@ -1039,7 +1040,20 @@
                  + '<span class="op-col-l">' + libs[i] + '</span></div>'; }).join('');
 
         // la liste priorisée
-        const pr = priorisees(s.its, k), top = pr.slice(0, 30);
+        // VERSION 3 — cinq lignes visibles, le reste défile ; trois pastilles
+        // pour ne garder que les grosses factures ou les retards longs ; et
+        // l'export donne exactement la liste affichée.
+        const prTout = priorisees(s.its, k);
+        const FILTRES_LISTE = [['tout', 'Toutes', () => true], ['m10k', 'Plus de 10 000 €', p => p.m > 10000],
+            ['r90', 'Plus de 90 jours de retard', p => p.r != null && p.r > 90],
+            ['r360', 'Plus de 360 jours de retard', p => p.r != null && p.r > 360]];
+        const filtreListe = FILTRES_LISTE.find(x => x[0] === LISTE_FILTRE) || FILTRES_LISTE[0];
+        const prListe = prTout.filter(filtreListe[2]);
+        LISTE_COURANTE = { pr: prListe, k: k, nom: filtreListe[0] };
+        const pastillesListe = '<div class="pil-vues">' + FILTRES_LISTE.map(x =>
+            '<button type="button" class="pil-vue' + (x[0] === filtreListe[0] ? ' active' : '') + '" data-liste-filtre="' + x[0] + '">'
+            + x[1] + ' <span class="op-cnt">' + nb(prTout.filter(x[2]).length) + '</span></button>').join('') + '</div>';
+        const pr = prTout, top = prListe.slice(0, 500);
         const lien = lienMonday;
         const lignes = top.map(p => { const f = p.f;
             return '<tr><td>' + lien(f)
@@ -1127,12 +1141,16 @@
           + (srcs.aucune ? ', et ' + nb(srcs.aucune) + ' sans aucune date' : '') + '.</span>'
           + '<div class="op-chart">' + hist + '</div></div></div>'
           + '<div class="op-sub"><b>Liste priorisée</b>'
-          + '<span class="op-pied">' + nb(Math.min(30, pr.length)) + ' premières lignes sur ' + nb(pr.length)
-          + ', classées par montant et ancienneté du retard. « Exporter l’étape » donne toutes les lignes.</span>'
-          + (top.length ? '<table class="op-t"><thead><tr><th>Facture · client</th><th>Financement</th>'
+          + '<span class="op-pied">' + nb(prListe.length) + ' facture' + (prListe.length > 1 ? 's' : '') + ' · '
+          + eur(prListe.reduce((t, p) => t + (p.m || 0), 0)) + ', classées par montant et ancienneté du retard. '
+          + 'Cinq lignes visibles : faites défiler pour voir les autres.'
+          + (prListe.length > 500 ? ' Les 500 premières sont affichées ; l’export les donne toutes.' : '') + '</span>'
+          + pastillesListe
+          + '<p><button type="button" class="btn btn-ghost btn-sm" id="op-export-liste">Exporter cette liste (Excel)</button></p>'
+          + (top.length ? '<div class="op-defile"><table class="op-t"><thead><tr><th>Facture · client</th><th>Financement</th>'
               + '<th>Groupe Monday</th><th class="n">Restant dû</th><th class="n">Échéance</th>'
               + '<th class="n">Dans l’étape depuis</th><th>Priorité</th></tr></thead><tbody>'
-              + lignes + '</tbody></table>'
+              + lignes + '</tbody></table></div>'
             : '<div class="op-vide">Aucune facture dans cette étape avec ces filtres.</div>')
           + '</div></div></div>'
           + '<div class="charts-grid"><div class="chart-card chart-wide" id="op-correspondance">'
@@ -1187,12 +1205,22 @@
             catch (err) { histEtat = { s: 'error', msg: (err && err.message) || String(err) }; }
             rendre(DERNIERES);
         };
+        h.querySelectorAll('[data-liste-filtre]').forEach(b => b.onclick = () => {
+            LISTE_FILTRE = b.dataset.listeFiltre; const y = window.scrollY; rendre(DERNIERES); window.scrollTo(0, y); });
+        // Exactement cinq lignes visibles, quelle que soit leur hauteur.
+        const boite = h.querySelector('.op-defile');
+        if (boite) { const tete = boite.querySelector('thead'), rangs = [...boite.querySelectorAll('tbody tr')].slice(0, 5);
+            const haut = (tete ? tete.offsetHeight : 0) + rangs.reduce((t, r) => t + r.offsetHeight, 0);
+            if (haut > 0) boite.style.maxHeight = (haut + 2) + 'px'; }
+        const exl = document.getElementById('op-export-liste');
+        if (exl) exl.onclick = () => exporter(LISTE_COURANTE.pr || [], LISTE_COURANTE.k,
+            LISTE_COURANTE.nom === 'tout' ? '' : '-' + LISTE_COURANTE.nom);
         const ex = document.getElementById('op-export');
         if (ex) ex.onclick = () => exporter(pr || [], k);
     }
 
     // L'export donne TOUTES les lignes de l'étape, pas les trente affichées.
-    function exporter(pr, k) {
+    function exporter(pr, k, suffixe) {
         const X = global.XLSX;
         if (!X) { U().toast && U().toast('SheetJS n’est pas chargé.'); return; }
         const lignes = pr.map(p => ({
@@ -1208,7 +1236,7 @@
         }));
         const wb = X.utils.book_new();
         X.utils.book_append_sheet(wb, X.utils.json_to_sheet(lignes), ETAPE[k].n.slice(0, 30));
-        X.writeFile(wb, 'operationnel-' + k + '-' + new Date().toISOString().slice(0, 10) + '.xlsx');
+        X.writeFile(wb, 'operationnel-' + k + (suffixe || '') + '-' + new Date().toISOString().slice(0, 10) + '.xlsx');
     }
 
     function ouvrir(factures) { rendre(factures); }
