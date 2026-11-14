@@ -649,6 +649,32 @@
             } catch (e) { /* le fichier garde son usage d'origine : les dates */ }
             return lu;
         };
+        // Contrôle ajouté : la comptabilité dit « réglée », Monday la garde parmi
+        // les non payées. Ce sont des lignes à déplacer vers les factures payées.
+        var MX = G.LioraMetrics;
+        if (MX && MX.qualite) {
+            var qualiteOrigine = MX.qualite;
+            MX.qualite = function (factures) {
+                var liste = qualiteOrigine.apply(this, arguments) || [];
+                try {
+                    var its = (factures || []).filter(function (f) {
+                        return f.grandLivreSoldee && f.role !== 'sellsy' && (f.presenceRoles || [f.role]).indexOf('payees') < 0;
+                    });
+                    if (its.length) {
+                        var par = {};
+                        its.forEach(function (f) { var k = f.financement || 'non identifié'; par[k] = (par[k] || 0) + 1; });
+                        var detail = Object.keys(par).sort(function (a, b) { return par[b] - par[a]; })
+                            .map(function (k) { return k + ' — ' + par[k]; }).join(' · ');
+                        liste.unshift({ code: 'GL_SOLDEE_NON_PAYEES', titre: 'Réglée au grand livre, encore sur un tableau Monday des non payées',
+                            gravite: 'haute', nb: its.length, euros: its.reduce(function (t, f) { return t + (f.montant || 0); }, 0), items: its,
+                            conseil: 'Le grand livre solde ces factures par un règlement lettré, mais Monday ne les a pas déplacées dans '
+                                + '« 0.1. ALL - Factures payées ». Elles sont comptées comme réglées dans les indicateurs ; reste à les déplacer dans Monday. '
+                                + 'Par financement : ' + detail + '. Pour n’en voir qu’un (CPF par exemple), choisissez-le dans le filtre « Financement ».' });
+                    }
+                } catch (e) { /* les contrôles d'origine restent */ }
+                return liste;
+            };
+        }
         var enrichirOrigine = I.enrichir;
         I.enrichir = function (factures, opts) {
             var st = etat() || {};
