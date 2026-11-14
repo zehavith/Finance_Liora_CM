@@ -401,3 +401,7 @@ body.v3-onglet-regles #filters-wrap { display: none; }
 .pil-phrase { background: var(--bg-tertiary, #f4f1ec); border-left: 3px solid var(--accent, #c8472b); border-radius: 6px; padding: 0.6rem 0.8rem; margin: 0 0 0.8rem; font-size: 0.86rem; line-height: 1.45; }
 /* Opérationnel ne compte que les factures Monday : le filtre Sellsy n'y a pas sa place. */
 body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !important; }
+/* Période : la même liste déroulante que dans le Pilotage. */
+.v3-periode { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.v3-periode select, .v3-periode input[type="date"] { font: inherit; font-size: 0.85rem; padding: 0.38rem 0.6rem; border: 1px solid var(--border-hover, #d8d4cc);
+    border-radius: 8px; background: var(--bg-secondary, #fff); color: var(--text-primary); min-height: 2.1rem; }

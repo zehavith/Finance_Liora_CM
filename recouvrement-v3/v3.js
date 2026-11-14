@@ -702,43 +702,63 @@
             default: return [cle(a, m - 11), cle(a, m)];
         }
     }
-    function choisirPeriode(k) {
+    function appliquerMois(de, a, quoi) {
         var st = etat();
-        if (!st || !st.filtres) return;
-        var ref = (st.filtres.dateRef && R.parseDate(st.filtres.dateRef)) || new Date();
-        var b = bornesPeriode(k, ref);
-        var voulus = (st.moisDispo || []).filter(function (mk) { return mk >= b[0] && mk <= b[1]; });
-        var boite = $('#dd-periode');
-        if (!voulus.length) {
-            dire('Aucune facture sur cette période (' + k.replace('-1', ' précédent') + ').', 'info', 4000);
-            return;
-        }
+        if (!st || !st.filtres) return false;
+        var voulus = (st.moisDispo || []).filter(function (mk) { return mk >= de && mk <= a; });
+        if (!voulus.length) { dire('Aucune facture sur cette période (' + quoi + ').', 'info', 4000); return false; }
         // Le dernier mois est coché par un vrai clic : c'est lui qui relance l'affichage.
         var dernier = voulus[voulus.length - 1];
         st.filtres.mois = new Set(voulus.slice(0, -1));
-        var bouton = boite && boite.querySelector('.date-month-btn[data-month="' + dernier + '"]');
+        var bouton = document.querySelector('#dd-periode .date-month-btn[data-month="' + dernier + '"]');
         if (bouton) bouton.click();
-        var lib = PERIODES.filter(function (p) { return p[0] === k; })[0];
-        setTimeout(function () { var r = $('#periode-resume'); if (r && lib) r.textContent = lib[1] + ' — ' + r.textContent; }, 60);
+        return true;
     }
+    function choisirPeriode(k) {
+        var st = etat();
+        if (!st || !st.filtres) return;
+        if (k === 'tout') { var t = $('#dd-periode [data-action="tous"]'); if (t) t.click(); return; }
+        var ref = (st.filtres.dateRef && R.parseDate(st.filtres.dateRef)) || new Date();
+        var b = bornesPeriode(k, ref), lib = PERIODES.filter(function (p) { return p[0] === k; })[0];
+        appliquerMois(b[0], b[1], lib ? lib[1] : k);
+    }
+    /**
+     * Le filtre « Période » est le même que celui du Pilotage : une liste
+     * déroulante avec les mêmes choix, et deux dates pour « Date personnalisée ».
+     * L'ancien déroulé à pastilles de mois reste dans la page, masqué : c'est
+     * lui qui applique le choix.
+     */
     function brancherPeriode() {
-        var actions = $('#dd-periode .dd-actions');
-        if (!actions || actions.dataset.v3) return;
-        actions.dataset.v3 = '1';
-        actions.querySelectorAll('button').forEach(function (b) {
-            if (b.dataset.action === 'tous') b.textContent = 'Toute la période';
-            else b.remove();
+        var boite = $('#dd-periode');
+        if (!boite || $('#v3-periode')) return;
+        boite.style.display = 'none';
+        var hote = document.createElement('span');
+        hote.className = 'v3-periode';
+        hote.innerHTML = '<select id="v3-periode" aria-label="Période"><option value="tout">Toute la période</option>'
+            + PERIODES.map(function (p) { return '<option value="' + p[0] + '">' + p[1] + '</option>'; }).join('')
+            + '<option value="libre">Date personnalisée</option></select>'
+            + '<span id="v3-periode-dates" hidden><input type="date" id="v3-periode-du" aria-label="Du"> '
+            + '<input type="date" id="v3-periode-au" aria-label="Au"></span>';
+        boite.parentNode.insertBefore(hote, boite);
+        var sel = $('#v3-periode'), dates = $('#v3-periode-dates'), du = $('#v3-periode-du'), au = $('#v3-periode-au');
+        sel.addEventListener('change', function () {
+            dates.hidden = sel.value !== 'libre';
+            if (sel.value !== 'libre') choisirPeriode(sel.value);
+            else if (du.value && au.value) libre();
         });
-        PERIODES.forEach(function (p) {
-            var b = document.createElement('button');
-            b.type = 'button'; b.className = 'btn btn-ghost btn-sm'; b.dataset.v3Periode = p[0]; b.textContent = p[1];
-            b.addEventListener('click', function (e) { e.stopPropagation(); choisirPeriode(p[0]); });
-            actions.appendChild(b);
-        });
-        var note = document.createElement('div');
-        note.className = 'v3-periode-note';
-        note.textContent = 'Date personnalisée : cochez les mois voulus ci-dessous.';
-        actions.parentNode.insertBefore(note, actions.nextSibling);
+        function libre() {
+            if (!du.value || !au.value) return;
+            var a = du.value <= au.value ? [du.value, au.value] : [au.value, du.value];
+            appliquerMois(a[0].slice(0, 7), a[1].slice(0, 7), 'du ' + a[0].split('-').reverse().join('/') + ' au ' + a[1].split('-').reverse().join('/'));
+        }
+        du.addEventListener('change', libre); au.addEventListener('change', libre);
+        var aide = boite.parentNode.querySelector('.aide-ligne');
+        if (aide) aide.textContent = 'Les mêmes choix que dans le Pilotage. Les factures sont retenues d’après le mois de leur échéance.';
+        // « Réinitialiser » ou une pastille retirée ailleurs : la liste suit.
+        setInterval(function () {
+            var st = etat();
+            if (st && st.filtres && !st.filtres.mois && sel.value !== 'tout' && document.activeElement !== sel) { sel.value = 'tout'; dates.hidden = true; }
+        }, 1500);
     }
 
     // ══════════════════════════════════════════════
