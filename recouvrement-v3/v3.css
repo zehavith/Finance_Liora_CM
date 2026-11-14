@@ -451,3 +451,12 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 #v3-op-edof .v3-edof-grille { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 @media (max-width: 1250px) { #v3-op-edof .v3-edof-grille { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .v3-circuit-sep { margin-top: 1.2rem; padding-top: 0.9rem; border-top: 1px solid var(--border, #e6e2da); }
+/* EDOF × circuit, et la facturation à revérifier */
+.v3-croise th, .v3-croise td { vertical-align: top; }
+.v3-croise td.v3-vide { color: var(--text-muted); }
+.v3-croise tr.total td { font-weight: 600; border-top: 2px solid var(--border-hover, #d8d4cc); }
+.v3-averifier { margin-top: 1.3rem; padding-top: 0.9rem; border-top: 1px solid var(--border, #e6e2da); }
+.v3-averifier h3 { margin: 0 0 0.3rem; }
+.v3-averifier tr.v3-rien td { opacity: 0.55; }
+.v3-circuit-choix { font: inherit; font-size: 0.9rem; font-weight: 600; padding: 0.42rem 0.7rem; border: 1px solid var(--border-hover, #d8d4cc); border-radius: 8px;
+    background: var(--bg-secondary, #fff); color: var(--text-primary); min-height: 2.2rem; max-width: 100%; }

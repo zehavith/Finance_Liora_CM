@@ -560,7 +560,10 @@
     function poserEdof() {
         if (!Object.keys(EDOF_BRUT.factures).length && !Object.keys(EDOF_BRUT.avances).length) { EDOF = null; return; }
         EDOF = { factures: {}, avances: EDOF_BRUT.avances, periodes: EDOF_BRUT.periodes };
-        Object.keys(EDOF_BRUT.factures).forEach(function (n) { EDOF.factures[I.factureKey(n)] = EDOF_BRUT.factures[n]; });
+        EDOF.parDossier = {};
+        Object.keys(EDOF_BRUT.factures).forEach(function (n) { var l = EDOF_BRUT.factures[n];
+            EDOF.factures[I.factureKey(n)] = l;
+            if (l[3]) (EDOF.parDossier[String(l[3]).replace(/\s+/g, '')] = EDOF.parDossier[String(l[3]).replace(/\s+/g, '')] || []).push(n); });
     }
     /** Lit un export EDOF (CSV à points-virgules) : renvoie un lot, ou lève une erreur lisible. */
     function lireCsvEdof(texte, nom) {
@@ -661,12 +664,17 @@
         var fins = Object.keys(parFin).sort(function (a, b) { return (b === 'CPF') - (a === 'CPF') || parFin[b] - parFin[a]; });
         if (fins.indexOf(CIRCUIT_FIN) < 0) CIRCUIT_FIN = fins[0] || 'CPF';
         var nomFin = function (k) { return libelles[k] || (k === 'INCONNU' ? 'Non renseigné' : k); };
-        var tete = '<div class="v3-circuit-tete"><h3>Le circuit :</h3><div class="pil-vues">' + fins.map(function (k) {
-            return '<button type="button" class="pil-vue' + (k === CIRCUIT_FIN ? ' active' : '') + '" data-circuit-fin="' + esc(k) + '">' + esc(nomFin(k))
-                + ' <span class="op-cnt">' + parFin[k].toLocaleString('fr-FR') + '</span></button>'; }).join('') + '</div></div>';
+        var tete = '<div class="v3-circuit-tete"><h3><label for="v3-circuit-fin">Le circuit :</label></h3><select id="v3-circuit-fin" class="v3-circuit-choix">' + fins.map(function (k) {
+            return '<option value="' + esc(k) + '"' + (k === CIRCUIT_FIN ? ' selected' : '') + '>' + esc(nomFin(k)) + ' — ' + parFin[k].toLocaleString('fr-FR') + ' factures non réglées</option>'; }).join('') + '</select></div>';
         var brancherTete = function () {
-            hote.querySelectorAll('[data-circuit-fin]').forEach(function (b) { b.onclick = function () { CIRCUIT_FIN = b.dataset.circuitFin; carteEdofOperationnel(); }; });
-            hote.querySelectorAll('[data-edof-lot]').forEach(function (b) { b.onclick = function () { var l = EDOF_LOTS[+b.dataset.edofLot]; if (l && OPX.montrerFactures) OPX.montrerFactures(l.titre, l.its, l.note); }; });
+            var choix = hote.querySelector('#v3-circuit-fin'); if (choix) choix.onchange = function () { CIRCUIT_FIN = choix.value; carteEdofOperationnel(); };
+            hote.querySelectorAll('[data-edof-lot]').forEach(function (b) { b.onclick = function () { var l = EDOF_LOTS[+b.dataset.edofLot];
+                if (!l || !OPX.montrerFactures) return;
+                OPX.montrerFactures(l.titre, l.its, l.note);
+                // La fenêtre porte son propre bouton d'export : la liste affichée, en entier.
+                setTimeout(function () { var pied = document.querySelector('#modal-overlay .modal-foot'); if (!pied || pied.querySelector('.v3-export-lot')) return;
+                    var e = document.createElement('button'); e.type = 'button'; e.className = 'btn btn-ghost btn-sm v3-export-lot'; e.textContent = 'Exporter cette liste (Excel)';
+                    e.onclick = function () { exporterControle({ code: l.code, items: l.its }); }; pied.insertBefore(e, pied.firstChild); }, 60); }; });
             hote.querySelectorAll('[data-edof-export]').forEach(function (b) { b.onclick = function () { var l = EDOF_LOTS[+b.dataset.edofExport]; if (l) exporterControle({ code: l.code, items: l.its }); }; });
         };
         var parcours = '';
@@ -746,27 +754,78 @@
             return '<tr><td>' + esc(g) + '<br><span class="op-pied">' + esc(t) + '</span></td><td class="n">' + nbLien(l, i) + '</td><td class="n">' + eur0(l) + '</td>'
                 + '<td class="n">' + (np ? np + ' non pointée' + (np > 1 ? 's' : '') : 'toutes pointées') + '</td><td class="n">' + exp(l, i) + '</td></tr>';
         }).join('');
-        var iVerse = poser(verse, 'CPF — versées par EDOF, à déplacer dans les payées', 'EDOF indique « Versé » : ces factures sont payées, mais encore dans un tableau Monday des non payées.', 'edof-verse');
         var jour = function (d) { return String(d || '').split('-').reverse().join('/'); }, p = EDOF.periodes;
-        hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + parcours + '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">CPF — où en est EDOF</h3>'
+        // ── EDOF × circuit : chaque facture a une étape EDOF (ligne) et une étape du circuit Monday (colonne).
+        var COLS = [{ k: 'ctl', n: 'Sous contrôle' }].concat((OPX.CIRCUIT || []).map(function (e) { return { k: e.k, n: e.n }; })).concat([{ k: 'hors', n: 'Échue, hors étape' }]);
+        var colDe = function (f) { var k = OPX.etapeDe(f); if (cles[k]) return k; return echue(f) ? 'hors' : 'ctl'; };
+        var LIGNES = [
+            { n: '1 · Pas encore dans EDOF', faire: 'déposer la facture', l: lots.rien, code: 'edof-1-aucune-trace' },
+            { n: '2 · Avance versée, solde à facturer', faire: 'déposer la facture de solde', l: lots.avance, code: 'edof-2-avance-seule' },
+            { n: '3 · Déposée, en attente de règlement', faire: 'attendre le versement', l: lots.attente, code: 'edof-3-attente' },
+            { n: '4 · Rejetée par EDOF', faire: 'corriger et redéposer', l: lots.rejet, code: 'edof-4-rejet' },
+            { n: '5 · Versée par EDOF', faire: 'pointer, puis déplacer dans les payées', l: verse, code: 'edof-5-versee' }
+        ];
+        var cellule = function (l, titre, code) { if (!l.length) return '<td class="n v3-vide">—</td>';
+            var i = poser(l, titre, 'Étape EDOF et étape du circuit Monday croisées.', code);
+            return '<td class="n">' + nbLien(l, i) + '<br><span class="op-pied">' + eur0(l) + '</span></td>'; };
+        var matrice = '<div class="table-wrap"><table class="op-t v3-croise"><thead><tr><th>Étape dans EDOF ↓ &nbsp;/&nbsp; étape du circuit →</th>'
+            + COLS.map(function (c) { return '<th class="n">' + esc(c.n) + '</th>'; }).join('') + '<th class="n">Total</th></tr></thead><tbody>'
+            + LIGNES.map(function (L) {
+                var i = poser(L.l, 'CPF — ' + L.n, 'Factures CPF à cette étape EDOF.', L.code);
+                return '<tr><td><b>' + esc(L.n) + '</b><br><span class="op-pied">→ ' + esc(L.faire) + '</span></td>'
+                    + COLS.map(function (c) { return cellule(L.l.filter(function (f) { return colDe(f) === c.k; }), 'CPF — ' + L.n + ' × ' + c.n, L.code + '-' + c.k); }).join('')
+                    + '<td class="n"><b>' + nbLien(L.l, i) + '</b><br><span class="op-pied">' + eur0(L.l) + exp(L.l, i) + '</span></td></tr>'; }).join('')
+            + '<tr class="total"><td>Total</td>' + COLS.map(function (c) { var l = ouvertes.filter(function (f) { return (f.edofVerse || !f.paye) && colDe(f) === c.k; });
+                    return cellule(l, 'CPF — ' + c.n, 'edof-circuit-' + c.k); }).join('')
+            + '<td class="n"><b>' + (nonVersees.length + verse.length).toLocaleString('fr-FR') + '</b></td></tr></tbody></table></div>';
+
+        // ── Facturation à revérifier : doublons, absences d'EDOF qui étonnent, incohérences.
+        var norm = function (x) { return String(x || '').replace(/\s+/g, ''); };
+        var tous = nonVersees.concat(verse), parDossier = {};
+        tous.forEach(function (f) { var d = norm(f.numeroDossier || (f.edof && f.edof.dossier)); if (d) (parDossier[d] = parDossier[d] || []).push(f); });
+        var enRelance = function (f) { var k = OPX.etapeDe(f); return k === 'rec' || k === 'fin'; };
+        var VERIFS = [
+            ['Même dossier CPF sur plusieurs factures non payées', 'Plusieurs factures Monday portent le même numéro de dossier : doublon possible, ou facture refaite sans annuler l’ancienne.',
+                tous.filter(function (f) { var d = norm(f.numeroDossier || (f.edof && f.edof.dossier)); return d && parDossier[d].length > 1; }), 'doublon-dossier'],
+            ['Facture saisie deux fois dans Monday', 'La même facture apparaît sur plusieurs lignes ou plusieurs tableaux Monday.',
+                tous.filter(function (f) { return f.doublonOperationnel || f.doublonPayees; }), 'doublon-monday'],
+            ['Dossier déjà facturé dans EDOF sous un autre numéro', 'EDOF connaît une facture pour ce dossier, mais avec un autre numéro que celui de Monday : facture refaite, ou numéro mal saisi.',
+                nonVersees.filter(function (f) { var d = norm(f.numeroDossier); return !f.edof && d && EDOF.parDossier[d]; }), 'autre-numero-edof'],
+            ['Relancée ou en clôture, mais absente d’EDOF', 'La facture est dans une étape de relance alors qu’EDOF ne connaît ni la facture ni une avance : elle n’a peut-être jamais été déposée.',
+                lots.rien.filter(enRelance), 'relance-sans-edof'],
+            ['Versée par EDOF, mais encore relancée', 'EDOF a versé la facture ; elle est pourtant dans une étape de relance ou de clôture.',
+                verse.filter(enRelance), 'versee-encore-relancee'],
+            ['Montant versé différent du montant de la facture', 'Le règlement EDOF, avance comprise, s’écarte de plus d’un euro du montant de la facture Monday.',
+                verse.filter(function (f) { var m = f.montant || 0, v = f.edof.montant, av = f.edofAvance ? f.edofAvance.montant : 0; return m > 0 && Math.abs(v - m) > 1 && Math.abs(v + av - m) > 1; }), 'ecart-montant'],
+            ['Rejetée par EDOF', 'Statut « Rejeté » dans EDOF : à corriger et redéposer.', lots.rejet, 'rejet'],
+            ['Dossier en contrôle dans EDOF', 'EDOF signale un contrôle sur le dossier.', tous.filter(function (f) { return f.edof && f.edof.controle; }), 'dossier-en-controle'],
+            ['Sans numéro de dossier dans Monday', 'Impossible de rapprocher la facture d’une avance EDOF sans numéro de dossier.',
+                lots.rien.filter(function (f) { return !norm(f.numeroDossier); }), 'sans-numero-dossier']
+        ];
+        var dejaVu = {}, nbUniques = 0;
+        VERIFS.forEach(function (v) { v[2].forEach(function (f) { if (!dejaVu[f.id || f.cle || f.numero]) { dejaVu[f.id || f.cle || f.numero] = 1; nbUniques++; } }); });
+        var aVerifier = '<div class="v3-averifier"><h3 class="v3-circuit-sous">Facturation à revérifier <span class="op-cnt">' + nbUniques.toLocaleString('fr-FR') + ' factures</span></h3>'
+            + '<p class="pil-note">Les factures CPF qui posent question : doublons, absentes d’EDOF alors qu’elles sont relancées, ou incohérentes. Une même facture peut figurer dans plusieurs lignes.</p>'
+            + '<table class="op-t"><thead><tr><th>Ce qui est à revérifier</th><th class="n">Factures</th><th class="n">Montant</th><th></th></tr></thead><tbody>'
+            + VERIFS.map(function (v) { var i = poser(v[2], 'À revérifier — ' + v[0], v[1], 'a-reverifier-' + v[3]);
+                return '<tr' + (v[2].length ? '' : ' class="v3-rien"') + '><td><b>' + esc(v[0]) + '</b><br><span class="op-pied">' + esc(v[1]) + '</span></td><td class="n">' + nbLien(v[2], i)
+                    + '</td><td class="n">' + (v[2].length ? eur0(v[2]) : '—') + '</td><td class="n">' + exp(v[2], i) + '</td></tr>'; }).join('')
+            + '</tbody></table></div>';
+
+        hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + parcours
+            + '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">CPF — étapes EDOF croisées avec les étapes du circuit</h3>'
             + '<span class="pil-coin">export EDOF jusqu’au ' + jour(p.length && p[p.length - 1][1]) + ' · grand livre au ' + jour(GL_INFO && GL_INFO.arrete) + '</span></div>'
-            + '<p class="pil-note">Les mêmes factures CPF, plus celles qu’EDOF a déjà versées, rangées cette fois d’après EDOF (' + ouvertes.length.toLocaleString('fr-FR') + ' au total).</p>'
-            + '<div class="v3-edof-grille">'
-            + etape(1, lots.rien, 'Pas encore dans EDOF', 'ni facture ni avance connue', 'déposer la facture sur EDOF', 'Factures CPF non payées pour lesquelles EDOF ne connaît ni la facture ni une avance sur le dossier.', 'edof-1-aucune-trace')
-            + etape(2, lots.avance, 'Avance versée, solde à facturer', 'EDOF a versé l’avance ; pas de facture de solde', 'déposer la facture de solde', 'Une avance a été versée sur le dossier, mais la facture n’apparaît pas dans EDOF.', 'edof-2-avance-seule')
-            + etape(3, lots.attente, 'Déposée, en attente de règlement', 'statut « En attente » dans EDOF', 'attendre le versement', 'EDOF indique « En attente » pour ces factures.', 'edof-3-attente')
-            + etape(4, lots.rejet, 'Rejetée par EDOF', 'statut « Rejeté » dans EDOF', 'corriger et redéposer', 'EDOF indique « Rejeté » pour ces factures.', 'edof-4-rejet', lots.rejet.length ? 'alerte' : '')
-            + '<div class="v3-edof-tuile fort"><span class="v3-edof-rang">5</span><span class="v3-edof-nb">' + nbLien(verse, iVerse) + '</span>'
-              + '<span class="v3-edof-titre">Versée par EDOF, à déplacer dans les payées</span><span class="v3-edof-mt">' + eur0(verse) + exp(verse, iVerse) + '</span>'
-              + '<span class="op-pied">' + rangees.toLocaleString('fr-FR') + ' autres sont déjà rangées dans les payées</span>'
-              + '<span class="v3-edof-faire">→ pointer en comptabilité, puis déplacer dans Monday</span></div>'
-            + '</div>'
+            + '<p class="pil-note">En ligne, où en est la facture dans EDOF ; en colonne, dans quelle étape du circuit elle se trouve dans Monday. '
+            + 'Les factures versées par EDOF sont comptées payées : elles ne sont plus dans les vignettes du dessus, mais restent ici tant qu’elles ne sont pas déplacées. '
+            + rangees.toLocaleString('fr-FR') + ' autres factures versées sont déjà rangées dans les payées.</p>'
+            + matrice
             + (verse.length ? '<div class="v3-edof-detail"><div><b>Étape 5 — pointage en comptabilité</b><ul class="v3-edof-sous">'
                 + '<li>' + enLigne(lots.nonPointee, 'non pointées : ouvertes au grand livre', 'Versées par EDOF, mais le grand livre les montre encore ouvertes : le règlement n’est pas lettré avec la facture.', 'edof-5-non-pointees') + '</li>'
                 + '<li>' + enLigne(lots.absente, 'introuvables au grand livre', 'Versées par EDOF, mais le numéro de facture n’apparaît pas dans le grand livre : pointage impossible à vérifier.', 'edof-5-absentes-grand-livre') + '</li>'
                 + '<li>' + enLigne(lots.pointee, 'pointées : il reste à les déplacer', 'Versées par EDOF et lettrées au grand livre : il ne reste qu’à les déplacer dans Monday.', 'edof-5-pointees') + '</li></ul></div>'
                 + '<div><b>Étape 5 — dans quel groupe Monday elles sont encore</b><div class="pil-defile"><table class="op-t"><thead><tr><th>Groupe Monday</th><th class="n">Factures</th>'
                 + '<th class="n">Montant</th><th class="n">Pointage</th><th></th></tr></thead><tbody>' + lignesGroupes + '</tbody></table></div></div></div>' : '')
+            + aVerifier
             + '</div></div>';
         brancherTete();
     }
