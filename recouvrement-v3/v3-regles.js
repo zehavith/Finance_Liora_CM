@@ -271,6 +271,26 @@
             + '« D’après le grand livre », une fois un grand livre chargé.</span></p>');
     }
 
+    function blocSources() {
+        var b = (G.LioraV3 && G.LioraV3.bilan && G.LioraV3.bilan()) || {}, gl = (G.LioraV3 && G.LioraV3.grandLivre && G.LioraV3.grandLivre()) || null;
+        var jour = gl ? String(gl.arrete || '').split('-').reverse().join('/') : '';
+        return bloc('sources', 'Quelle source fait foi : grand livre, Monday, ancienne facture, Sellsy', '5 priorités', 'lecture seule',
+            '<dl class="v3-lexique">'
+            + '<div><dt>Date de paiement</dt><dd>La date du grand livre passe toujours en premier. À défaut, la date de paiement de Monday ; '
+            + 'en dernier recours la date de « contrôle paiement » (signalée comme estimée).'
+            + (gl ? ' Grand livre utilisé : celui de la balance âgée, arrêté au ' + jour + '.' : '') + '</dd></div>'
+            + '<div><dt>Montant manquant</dt><dd>Complété par le grand livre, puis par l’export Sellsy, puis par le fichier du financeur '
+            + '(Filiz…) quand il porte un montant — par numéro de facture, ou par numéro de dossier s’il n’y a qu’un montant pour ce dossier.</dd></div>'
+            + '<div><dt>Facture refaite</dt><dd>Quand la colonne « Ancienne facture » de Monday donne le numéro d’origine, l’échéance se calcule '
+            + 'sur la date de la facture d’origine : refaire une facture ne repousse pas ce qui est dû.'
+            + (b.anciennes ? ' ' + b.anciennes + ' facture(s) concernée(s) aujourd’hui.' : '') + '</dd></div>'
+            + '<div><dt>Facture saisie deux fois</dt><dd>Une facture présente sur plusieurs lignes ou plusieurs tableaux n’est comptée qu’une seule fois.</dd></div>'
+            + '<div><dt>Factures Sellsy absentes de Monday</dt><dd>Quand elles sont incluses, les lignes au montant négatif (avoirs) ou supérieur à '
+            + '500 000 € (erreur de saisie) sont écartées.'
+            + ((b.sellsyEcartees || []).length ? ' ' + b.sellsyEcartees.length + ' ligne(s) écartée(s) aujourd’hui.' : '') + '</dd></div>'
+            + '</dl>');
+    }
+
     function blocEtats() {
         return bloc('etats', 'Réglée, en retard, annulée : comment une facture est qualifiée', '5 états', 'lecture seule',
             '<dl class="v3-lexique">'
@@ -390,6 +410,7 @@
         cibles: ['Opérationnel', ''],
         exclus: ['toutes les pages qui lisent Monday : Tableau de bord, Opérationnel, Balance âgée, Financements, Factures', ''],
         etats: ['toutes les pages', ''],
+        sources: ['Tableau de bord, Opérationnel, Balance âgée, Financements, Factures, Contrôles', 'le Pilotage, qui lit déjà le grand livre'],
     };
     function bloc(id, titre, resume, mode, corps) {
         var po = PORTEES[id];
@@ -420,7 +441,7 @@
             + famille('Circuit de l’onglet Opérationnel', 'Ce qui range une facture dans une vignette : Sous contrôle, Rendre payable, Relancer, Clôture, Corriger.',
                 [blocControle(), blocGroupes(), blocCibles(), blocExclus()])
             + famille('Qualification des factures', 'Ce que veulent dire les états affichés partout dans l’application.',
-                [blocEtats()]);
+                [blocSources(), blocEtats()]);
     }
 
     // ── Les gestes ──

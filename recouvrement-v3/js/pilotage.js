@@ -112,6 +112,22 @@
         return out;
     }
 
+    // La provision comptabilisée (comptes 491) est lue directement dans
+    // Pennylane et publiée avec la page : plus besoin de déposer le grand livre
+    // complet pour connaître la couverture.
+    let PROV = null, provEtat = '';
+    function provisionPubliee() {
+        if (provEtat === '') {
+            provEtat = 'charge';
+            fetch('donnees/provision.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+                .then(j => { if (j && j.montant != null) { PROV = j; rendre(); } }).catch(() => {});
+        }
+        if (!PROV || !D || !D.provision || D.provision.comptabilisee != null) return;
+        D.provision.comptabilisee = PROV.montant;
+        D.provision.provisionLue = { comptes: (PROV.comptes || []).filter(c => c.solde).map(c => c.compte),
+            au: String(PROV.arrete || '').split('-').reverse().join('/'), source: PROV.source || '' };
+    }
+
     async function chargerCreances() {
         try {
             const a = new AbortController();
@@ -454,6 +470,7 @@
         // comparerait une provision de tout le portefeuille à une fraction des
         // créances, et annoncerait une couverture de 300 % sur un périmètre
         // étroit. Dès qu'un filtre est posé, la vignette le dit et se tait.
+        provisionPubliee();
         const P = D.provision || {};
         const prov = P.comptabilisee;
         const filtre = F.unites.size > 0 || F.financeurs.size > 0;
@@ -604,6 +621,72 @@
         RISQUE_CHOISI = [0].concat(tr.map((_, i) => n > 1 ? 0.18 + 0.82 * (i / (n - 1)) : 1));
     }
 
+    // VERSION 3 — UN MONTANT S'OUVRE SUR SES LIGNES. « Lorsque je clique sur les
+    // montants je dois pouvoir voir les lignes concernées. » Le détail (factures
+    // et règlements du mois, créances dues à l'arrêté) est publié à part et lu
+    // au premier clic seulement.
+    let LIGNES = null, lignesEtat = '';
+    let DETAILS = [];
+    const CRE_LIGNES = {};
+    function lien(html, spec) {
+        if (DETAILS.length > 6000) DETAILS = [];
+        DETAILS.push(spec);
+        return '<button type="button" class="pil-lien" data-pil-detail="' + (DETAILS.length - 1) + '" title="Voir les lignes">' + html + '</button>';
+    }
+    async function ouvrirLignes(spec) {
+        if (!LIGNES && lignesEtat !== 'absent') {
+            U().modal(spec.titre, '<p class="pil-note">Lecture du détail…</p>', [{ label: 'Fermer' }], { large: true });
+            try { const r = await fetch('donnees/lignes.json', { cache: 'no-store' }); LIGNES = r.ok ? await r.json() : null; } catch (e) { LIGNES = null; }
+            if (!LIGNES) lignesEtat = 'absent';
+        }
+        const fermer = [{ label: 'Fermer' }];
+        if (!LIGNES) { U().modal(spec.titre, '<p class="pil-note">Le détail ligne à ligne n’est pas disponible.</p>', fermer); return; }
+        const dansFins = f => spec.fins.indexOf(f) >= 0;
+        const dateFR = d => d ? d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4) : '';
+        let lignes, cols, note;
+        if (spec.type === 'flux') {
+            if (!LIGNES.flux || LIGNES.flux.mois !== spec.mois) {
+                U().modal(spec.titre, '<p class="pil-note">Le détail est publié pour ' + U().moisLabel((LIGNES.flux || {}).mois || '') + ' seulement.</p>', fermer); return; }
+            lignes = LIGNES.flux.lignes.filter(l => l[1] === spec.nat && dansFins(l[0]))
+                .map(l => ({ fin: l[0], d: l[2], n: l[3], t: l[4], v: l[5] })).sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
+            cols = [{ key: 'd', label: 'Date', width: '92px', format: dateFR },
+                { key: 'n', label: spec.nat === 'f' ? 'Facture' : 'Facture réglée', width: '170px', format: v => v ? U().escapeHtml(v) : '<span class="pil-acompleter">non rattachée</span>' },
+                { key: 't', label: 'Client' }, { key: 'fin', label: 'Financeur', width: '170px' },
+                { key: 'v', label: 'Montant', align: 'right', width: '110px', format: v => eur(v) }];
+            note = (spec.nat === 'f' ? ' facture' : ' règlement');
+        } else {
+            let cre = null;
+            if (LIGNES.creances[spec.arrete]) {
+                CRE_LIGNES[spec.arrete] = CRE_LIGNES[spec.arrete] || await fetch('donnees/creances-' + spec.arrete + '.json', { cache: 'no-store' })
+                    .then(r => r.ok ? r.json() : null).catch(() => null);
+                cre = CRE_LIGNES[spec.arrete];
+            }
+            if (!cre) { U().modal(spec.titre, '<p class="pil-note">Le détail des créances est publié pour les arrêtés du '
+                + Object.keys(LIGNES.creances).sort().map(dateFR).join(', ') + '. Choisissez une période qui se termine à l’une de ces dates.</p>', fermer); return; }
+            lignes = cre.filter(l => dansFins(l[0]) && (spec.tranches ? spec.tranches.indexOf(l[4]) >= 0 : l[4] !== 'Non échu')
+                    && (!spec.positif || l[3] > 0))
+                .map(l => ({ fin: l[0], n: l[1], t: l[2], v: l[3], tr: l[4], j: l[5], d: l[6] })).sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
+            cols = [{ key: 'n', label: 'Facture', width: '170px' }, { key: 't', label: 'Client' },
+                { key: 'fin', label: 'Financeur', width: '160px' }, { key: 'd', label: 'Date de facture', width: '104px', format: dateFR },
+                { key: 'tr', label: 'Ancienneté', width: '110px' },
+                { key: 'j', label: 'Retard', align: 'right', width: '80px', format: v => v > 0 ? v.toLocaleString('fr-FR') + ' j' : '—' },
+                { key: 'v', label: 'Reste dû', align: 'right', width: '110px', format: v => (v < 0 ? '−' : '') + eur(Math.abs(v)) }];
+            note = ' créance';
+        }
+        const somme = lignes.reduce((t, x) => t + x.v, 0);
+        const nbCred = spec.type === 'flux' ? 0 : lignes.filter(x => x.v < 0).length;
+        U().modal(spec.titre, '<p class="pil-note">' + lignes.length.toLocaleString('fr-FR') + note + (lignes.length > 1 ? 's' : '')
+            + ' · ' + (somme < 0 ? '−' : '') + eur(Math.abs(somme))
+            + (nbCred ? ' — dont ' + nbCred.toLocaleString('fr-FR') + ' ligne(s) créditrice(s) (avances, trop-perçus) qui viennent en déduction' : '')
+            + (spec.avert ? '<br>' + spec.avert : '') + '</p>'
+            + (spec.phrase ? '<p class="pil-phrase">' + spec.phrase + '</p>' : '')
+            + '<div class="table-wrap-tall">' + U().table(cols, lignes, { vide: 'Aucune ligne.' }) + '</div>', fermer, { large: true });
+    }
+    document.addEventListener('click', ev => {
+        const b = ev.target.closest && ev.target.closest('[data-pil-detail]');
+        if (b && DETAILS[+b.dataset.pilDetail]) ouvrirLignes(DETAILS[+b.dataset.pilDetail]);
+    });
+
     function graphHeatmap(e) {
         const el = document.getElementById('pil-heatmap');
         if (!el) return;
@@ -736,7 +819,13 @@
         // coupé sur trois lignes, doublait la hauteur de chaque rangée.
         // L'équipe et le délai propre passent sous le nom du financeur ; il
         // reste neuf colonnes, une rangée par financeur.
-        let h = '<table class="pil-heat pil-heat-v3"><thead><tr><th>Financeur</th>'
+        const toutesTr = ['Non échu'].concat(t);
+        const avertEch = (typeof echeancesModifiees === 'function' && Object.keys(echeancesModifiees() || {}).length)
+            ? 'Les délais d’échéance ont été modifiés dans les règles : ce détail reste classé selon les délais d’origine.' : '';
+        const specHeat = (fins, j, nom) => ({ type: 'creances', arrete: String(arrete.d).slice(0, 10), fins: fins, avert: avertEch,
+            tranches: j < 0 ? toutesTr : (COLONNES[j].nonEchu ? ['Non échu'] : COLONNES[j].tr),
+            titre: nom + ' — ' + (j < 0 ? 'tout l’encours' : COLONNES[j].nom) + ' au ' + parseFR(arrete.d).toLocaleDateString('fr-FR') });
+        let h = '<div class="pil-defile"><table class="pil-heat pil-heat-v3"><thead><tr><th>Financeur</th>'
             + COLONNES.map(c => '<th class="n">' + c.nom + '</th>').join('')
             + '<th class="n">Total</th>'
             + '<th class="n">DSO période</th><th class="n">DSO 12 mois</th>'
@@ -746,19 +835,19 @@
                 + '<small>' + U().escapeHtml(r.unite) + ' · échéance : '
                 + U().escapeHtml(delaiPropre(r.fin)) + '</small></td>'
                 + r.cases.map((v, j) => '<td class="n" style="' + chaleur(v, r.total, j) + '">'
-                    + eur(v) + '</td>').join('')
-                + '<td class="n"><strong>' + eur(r.total) + '</strong></td>'
+                    + (Math.abs(v) >= 0.5 ? lien(eur(v), specHeat([r.fin], j, r.fin)) : eur(v)) + '</td>').join('')
+                + '<td class="n"><strong>' + lien(eur(r.total), specHeat([r.fin], -1, r.fin)) + '</strong></td>'
                 + celluleDso(dsoDe(r.fin))
                 + celluleDso(dsoDouzeDe(r.fin))
                 + '</tr>';
         }
         h += '<tr class="total"><td>TOTAL</td>'
-            + tot.map(v => '<td class="n">' + eur(v) + '</td>').join('')
-            + '<td class="n">' + eur(tot.reduce((a, b) => a + b, 0)) + '</td>'
+            + tot.map((v, j) => '<td class="n">' + lien(eur(v), specHeat(lignes.map(r => r.fin), j, 'Tous les financeurs')) + '</td>').join('')
+            + '<td class="n">' + lien(eur(tot.reduce((a, b) => a + b, 0)), specHeat(lignes.map(r => r.fin), -1, 'Tous les financeurs')) + '</td>'
             + celluleDso(totalDso(dsoPar))
             + celluleDso(totalDso(dsoDouze))
             + '</tr>';
-        h += '</tbody></table>';
+        h += '</tbody></table></div>';
         el.innerHTML = h;
     }
 
@@ -831,9 +920,8 @@
             if (!texte) { hote.innerHTML = ''; continue; }
             hote.innerHTML = '<button type="button" class="pil-sortie" '
                 + 'title="Revenir à tous les financeurs">'
-                + '<b>' + u.escapeHtml(texte) + '</b> seul'
-                + (liste.length > 1 ? 's' : '') + ' · tout afficher'
-                + '<span class="croix" aria-hidden="true">×</span></button>';
+                + 'Retirer le filtre</button>'
+                + '<span class="pil-sortie-quoi">' + u.escapeHtml(texte) + ' seul' + (liste.length > 1 ? 's' : '') + '</span>';
             hote.firstChild.onclick = () => { F.financeurs.clear(); synchroniserDeroule(); rendre(); };
         }
     }
@@ -860,6 +948,17 @@
         if (!seul) F.financeurs.add(f);
         synchroniserDeroule();
         rendre();
+    }
+
+    function detailRetard(fin, i) {
+        const e = (D.encours || [])[i]; if (!e) return;
+        const r = (e.parFinancement || []).find(x => x.cat === fin) || {};
+        const jour = parseFR(e.d).toLocaleDateString('fr-FR');
+        const phrase = r.total ? '<b>' + pct(r.echu / r.total) + '</b> de l’encours ' + U().escapeHtml(fin) + ' est échu au ' + jour
+            + ' : ' + eur(r.echu || 0) + ' en retard sur ' + eur(r.total) + ' restant dus. Le reste, ' + eur(r.nonEchu || 0)
+            + ', n’est pas encore arrivé à échéance. Ci-dessous, les créances échues, de la plus grosse à la plus petite.' : '';
+        ouvrirLignes({ type: 'creances', arrete: String(e.d).slice(0, 10), fins: [fin], tranches: null, phrase: phrase,
+            titre: fin + ' — créances échues au ' + jour });
     }
 
     function graphRetard(keep) {
@@ -901,7 +1000,10 @@
                         : ch.getElementsAtEventForMode(ev, 'nearest', { intersect: false }, true);
                     if (!pts.length) return;
                     const ds = ch.data.datasets[pts[0].datasetIndex];
-                    isolerFinanceur(ds && ds.label);
+                    // Premier clic : la page se filtre sur ce financeur. Deuxième
+                    // clic, une fois seul : les créances échues derrière le point.
+                    if (ds && F.financeurs.size === 1 && F.financeurs.has(ds.label)) detailRetard(ds.label, pts[0].index);
+                    else if (ds) { const f = ds.label; setTimeout(() => { F.financeurs.clear(); F.financeurs.add(f); synchroniserDeroule(); rendre(); }, 0); }
                 },
                 plugins: {
                     legend: {
@@ -911,9 +1013,12 @@
                         // facile à viser, et masquer une série sans filtrer la
                         // page — le geste par défaut de Chart.js — répondrait à
                         // une autre question que la sienne.
-                        onClick: (e, item) => isolerFinanceur(item && item.text),
+                        onClick: (e, item) => { const f = item && item.text; if (!f) return;
+                            if (F.financeurs.size === 1 && F.financeurs.has(f)) detailRetard(f, (D.encours || []).length - 1);
+                            else setTimeout(() => { F.financeurs.clear(); F.financeurs.add(f); synchroniserDeroule(); rendre(); }, 0); },
                     },
-                    tooltip: { callbacks: { label: c => c.dataset.label + ' : ' + c.raw + ' %' } },
+                    tooltip: { callbacks: { label: c => c.dataset.label + ' : ' + c.raw + ' %',
+                        footer: () => (F.financeurs.size === 1 ? 'Cliquer pour voir les factures' : 'Cliquer pour filtrer sur ce financeur') } },
                 },
             },
         });
@@ -990,6 +1095,18 @@
         const base = mois.map(m => parMois.get(m) || { mt: 0, mj: 0, n: 0 });
         const nMax = Math.max(...base.map(o => o.n), 1);
         const rayon = n => n ? 2.5 + 5.5 * Math.sqrt(Math.min(1, n / nMax)) : 0;
+        // VERSION 3 — CE QUI N'EST PAS ENCAISSÉ, EN BLEU. Le DSO ne mesure que
+        // les factures payées : un mois peut afficher un bon délai pendant que
+        // les impayés s'accumulent. La courbe bleue compte, pour chaque mois,
+        // les factures arrivées à échéance ce mois-là et toujours impayées.
+        const retMois = new Map();
+        for (const r of (D.retard || [])) {
+            if (!keep.has(r.fin)) continue;
+            const o = retMois.get(r.m) || { nEch: 0, nRet: 0, mRet: 0 };
+            o.nEch += r.nEch || 0; o.nRet += r.nRet || 0; o.mRet += r.mRet || 0; retMois.set(r.m, o);
+        }
+        const ret = mois.map(m => retMois.get(m) || { nEch: 0, nRet: 0, mRet: 0 });
+        const BLEU = '#2563EB';
         U().chart('pil-chart-dso', {
             type: 'line',
             data: {
@@ -1002,17 +1119,32 @@
                     pointHoverRadius: base.map(o => rayon(o.n) + 2),
                     pointBackgroundColor: U().couleurs.accent,
                     data: base.map(o => o.mt ? Math.round(o.mj / o.mt) : null),
+                    yAxisID: 'y',
+                }, {
+                    label: 'Factures en retard (échues dans le mois, toujours impayées)', borderColor: BLEU,
+                    backgroundColor: BLEU, pointBackgroundColor: BLEU, fill: false,
+                    borderWidth: 2, tension: 0.3, pointRadius: 3, pointHoverRadius: 5,
+                    data: ret.map(o => o.nRet), yAxisID: 'y2',
                 }],
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
                 scales: { x: { grid: { display: false } },
-                          y: { grid: U().grille, ticks: { callback: v => v + ' j' } } },
+                          y: { grid: U().grille, ticks: { callback: v => v + ' j' },
+                               title: { display: true, text: 'Délai des factures encaissées' } },
+                          y2: { position: 'right', beginAtZero: true, grid: { display: false },
+                                ticks: { color: BLEU, precision: 0 },
+                                title: { display: true, text: 'Factures en retard', color: BLEU } } },
+                interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    legend: { display: false },
+                    legend: { display: true, position: 'bottom', labels: { usePointStyle: true } },
                     tooltip: { callbacks: {
-                        label: c => 'délai moyen pondéré : ' + c.raw + ' jours',
-                        afterLabel: c => { const o = base[c.dataIndex] || {};
+                        label: c => c.datasetIndex === 1
+                            ? (c.raw || 0).toLocaleString('fr-FR') + ' facture(s) en retard sur ' + ((ret[c.dataIndex] || {}).nEch || 0).toLocaleString('fr-FR')
+                              + ' échéances du mois · ' + eur((ret[c.dataIndex] || {}).mRet || 0) + ' impayés'
+                            : 'délai moyen pondéré : ' + c.raw + ' jours',
+                        afterLabel: c => { if (c.datasetIndex === 1) return '';
+                            const o = base[c.dataIndex] || {};
                             return 'sur ' + (o.n || 0).toLocaleString('fr-FR') + ' facture'
                                  + ((o.n || 0) > 1 ? 's' : '') + ' encaissée'
                                  + ((o.n || 0) > 1 ? 's' : '') + ' · ' + eur(o.mt || 0); },
@@ -1026,7 +1158,8 @@
             const maigres = base.filter(o => o.n && o.n <= 2).length;
             el.textContent = 'Délai moyen entre la date de facture et l’encaissement, '
                 + 'pondéré par les montants, sur les factures encaissées dans le mois. '
-                + 'Le diamètre du point dit combien de factures le composent.'
+                + 'Le diamètre du point dit combien de factures le composent. '
+                + 'En bleu (échelle de droite) : le nombre de factures arrivées à échéance ce mois-là et toujours impayées.'
                 + (maigres ? ' ' + maigres + ' mois ne reposent que sur une ou deux factures : '
                            + 'leur délai est celui de ces factures-là, pas une tendance.' : '');
         }
@@ -1336,6 +1469,7 @@
     //
     // LE TAUX D'ÉCHU N-1 DEMANDE UN ARRÊTÉ D'IL Y A UN AN. Le relevé en garde
     // treize ; au-delà la case dit « à compléter » plutôt qu'un chiffre faux.
+    let BREF_VUE = 'client';
     function brefDuMois(keep) {
         const hoteT = document.getElementById('pil-bref-table');
         const hoteC = document.getElementById('pil-bref-commentaire');
@@ -1364,30 +1498,98 @@
         const dsoDeMois = (m, fin) => { const r = (D.dso || []).find(x => x.m === m && x.fin === fin);
             return r && r.mt ? { j: Math.round(r.mj / r.mt), n: r.n, mt: r.mt } : null; };
 
-        const fins = [...keep].filter(f => fluxDe(M, f) || echuDe(M, f) !== null)
-            .sort((a, b) => { const x = fluxDe(M, a), y = fluxDe(M, b);
-                return ((y && y.fac) || 0) - ((x && x.fac) || 0); });
+        // TROIS LECTURES DU MÊME MOIS, au choix par les pastilles au-dessus du
+        // tableau : par type de client (les trois familles du barème de
+        // provision), par type de financement, ou ce qu'il faudrait provisionner.
+        const FAMILLES = { 'Étatique': ['Transition Pro', 'AIF', 'POEI', 'CPF', 'Region', 'OPCO - Alternance', 'OPCO', 'ETAT', 'Agefiph'],
+            'Corporate': ['B2B', 'B2C-Entreprise', 'Corporate - Alternance', 'Interco', 'Corporate — financement à préciser', 'Interne - DST Allemagne'],
+            'Financement personnel': ['Financement personnel', 'Perso-Alternance'] };
+        const familleDe = f => Object.keys(FAMILLES).find(k => FAMILLES[k].indexOf(f) >= 0) || 'Autres';
+        const pastilles = '<div class="pil-vues" role="tablist">'
+            + [['client', 'Par type de client'], ['financement', 'Par type de financement'], ['provision', 'À provisionner']]
+                .map(v => '<button type="button" class="pil-vue' + (BREF_VUE === v[0] ? ' active' : '') + '" data-bref-vue="' + v[0] + '">' + v[1] + '</button>').join('')
+            + '</div>';
+        const poser = html => { if (!hoteT) return; hoteT.innerHTML = pastilles + html;
+            hoteT.querySelectorAll('[data-bref-vue]').forEach(bt => bt.addEventListener('click', () => { BREF_VUE = bt.dataset.brefVue; rendre(); })); };
+
+        // Les lignes : un financeur chacune, ou les financeurs d'une même famille réunis.
+        const actifs = [...keep];
+        const arreteM = String((encoursDe(M) || {}).d || '').slice(0, 10);
+        let groupes;
+        if (BREF_VUE === 'financement') groupes = actifs.map(f => ({ nom: f, fins: [f] }));
+        else { const par = new Map();
+            for (const f of actifs) { const k = familleDe(f); if (!par.has(k)) par.set(k, []); par.get(k).push(f); }
+            groupes = [...par].map(([nom, fins]) => ({ nom, fins })); }
+        const ligneEnc = (m, g) => { const e = encoursDe(m); if (!e) return null;
+            const li = (e.parFinancement || []).filter(x => g.fins.indexOf(x.cat) >= 0);
+            return li.length ? { total: li.reduce((a, x) => a + (x.total || 0), 0), echu: li.reduce((a, x) => a + (x.echu || 0), 0),
+                buckets: (D.tranches || []).map((_, i) => li.reduce((a, x) => a + ((x.buckets || [])[i] || 0), 0)) } : null; };
+        const echuG = (m, g) => { const r = ligneEnc(m, g); return r && r.total ? r.echu / r.total : null; };
+        const fluxG = (m, g) => { const o = { fac: 0, enc: 0, nFac: 0, nEnc: 0 };
+            for (const r of (D.flux || [])) { if (r.m !== m || g.fins.indexOf(r.fin) < 0) continue;
+                o.fac += r.fac || 0; o.enc += r.enc || 0; o.nFac += r.nFac || 0; o.nEnc += r.nEnc || 0; }
+            return o; };
+        const dsoG = (m, g) => { let mt = 0, mj = 0, n = 0;
+            for (const r of (D.dso || [])) { if (r.m !== m || g.fins.indexOf(r.fin) < 0) continue; mt += r.mt; mj += r.mj; n += r.n; }
+            return mt ? { j: Math.round(mj / mt), n } : null; };
+        // Une ligne sans facturé, sans encaissé et sans encours ne dit rien : elle n'est pas montrée.
+        // Ni les lignes sans financeur connu (« à compléter », « À classer ») :
+        // elles restent dans le total, et une note dit ce qu'elles pèsent.
+        const SANS_NOM = f => /^\(?à compléter\)?$|^à classer$/i.test(String(f).trim());
+        const horsTableau = { nom: '', fins: actifs.filter(SANS_NOM) };
+        groupes = groupes.filter(g => g.nom !== 'Autres' && !SANS_NOM(g.nom));
+        groupes = groupes.filter(g => { const fx = fluxG(M, g), e = ligneEnc(M, g);
+                return Math.abs(fx.fac) >= 1 || Math.abs(fx.enc) >= 1 || (e && Math.abs(e.total) >= 1000); })
+            .sort((x, y) => fluxG(M, y).fac - fluxG(M, x).fac);
         const ptsCell = v => v === null ? '<span class="pil-acompleter">à compléter</span>'
             : '<span class="' + (v > 0 ? 'ec-pire' : v < 0 ? 'ec-mieux' : '') + '">'
               + (v > 0 ? '+' : '') + Math.round(v) + ' pts</span>';
         const delta = (a, b) => (a === null || b === null) ? null : 100 * (a - b);
 
-        let h = '<table class="pil-bref-t"><thead><tr><th>Financeur</th>'
+        if (BREF_VUE === 'provision') {
+            const P = D.provision || {}, fen = P.fenetres || [], tr = D.tranches || [];
+            const fams = Object.keys(P.taux || {});
+            let hp = '<table class="pil-bref-t"><thead><tr><th>Type de client</th>'
+                + fen.map(f => '<th class="n">' + U().escapeHtml(f.label) + '</th>').join('')
+                + '<th class="n">À provisionner</th></tr></thead><tbody>';
+            let tot = 0; const totF = fen.map(() => 0);
+            for (const k of fams) {
+                const g = { nom: k, fins: actifs.filter(f => familleDe(f) === k) };
+                const e = ligneEnc(M, g); if (!e) continue;
+                let prov = 0;
+                const cells = fen.map((f, i) => { const base = (f.tranches || []).reduce((a, t) => { const ix = tr.indexOf(t); return a + (ix >= 0 ? Math.max(0, e.buckets[ix] || 0) : 0); }, 0);
+                    const tx = (P.taux[k] || [])[i] || 0; prov += base * tx; totF[i] += base * tx;
+                    return '<td class="n">' + lien(eur(base), { type: 'creances', arrete: arreteM, fins: g.fins, tranches: f.tranches,
+                            titre: k + ' — échu ' + f.label + ' au ' + parseFR(arreteM).toLocaleDateString('fr-FR') }) + '<small>× ' + Math.round(tx * 100) + ' % = ' + eur(base * tx) + '</small></td>'; }).join('');
+                tot += prov;
+                hp += '<tr><td class="fam">' + U().escapeHtml(k) + '</td>' + cells + '<td class="n"><strong>' + eur(prov) + '</strong></td></tr>';
+            }
+            hp += '<tr class="total"><td>Total</td>' + totF.map(v => '<td class="n">' + eur(v) + '</td>').join('') + '<td class="n">' + eur(tot) + '</td></tr></tbody></table>';
+            const cpt = P.comptabilisee;
+            poser(hp);
+            if (hoteD) hoteD.textContent = 'Créances échues à la fin du mois, par ancienneté, multipliées par le taux du barème de provision. '
+                + (cpt != null ? 'Provision comptabilisée (compte 491) : ' + eur(cpt) + ', soit ' + (tot ? pct(cpt / tot) : '—') + ' du montant calculé ici.'
+                               : 'La provision comptabilisée n’est pas connue.');
+            if (hoteC) hoteC.innerHTML = commentaireDuMois(keep, M, M1, N1, echuTotal(M), echuTotal(M1), echuTotal(N1), null, 0, 0);
+            return;
+        }
+
+        let h = '<div class="pil-defile"><table class="pil-bref-t"><thead><tr><th>' + (BREF_VUE === 'client' ? 'Type de client' : 'Financeur') + '</th>'
             + '<th class="n">Facturé</th><th class="n">Encaissé</th><th class="n">Taux d’échu</th>'
             + '<th class="n">vs M-1</th><th class="n">vs N-1</th><th class="n">DSO</th>'
             + '</tr></thead><tbody>';
         let tFac = 0, tEnc = 0;
-        for (const f of fins) {
-            const fx = fluxDe(M, f);
-            const e0 = echuDe(M, f), e1 = echuDe(M1, f), e2 = echuDe(N1, f);
-            const d = dsoDeMois(M, f);
-            tFac += (fx && fx.fac) || 0; tEnc += (fx && fx.enc) || 0;
-            h += '<tr><td class="fam">' + U().escapeHtml(f) + '</td>'
-               + '<td class="n">' + eur((fx && fx.fac) || 0)
-                 + '<small>' + ((fx && fx.nFac) || 0) + ' fact.</small></td>'
-               + '<td class="n">' + eur((fx && fx.enc) || 0)
-                 + '<small>' + ((fx && fx.nEnc) || 0) + ' règl.</small></td>'
-               + '<td class="n">' + (e0 === null ? '<span class="pil-acompleter">à compléter</span>' : pct(e0)) + '</td>'
+        for (const f of actifs) { const fx = fluxDe(M, f); tFac += (fx && fx.fac) || 0; tEnc += (fx && fx.enc) || 0; }
+        for (const g of groupes) {
+            const fx = fluxG(M, g);
+            const e0 = echuG(M, g), e1 = echuG(M1, g), e2 = echuG(N1, g);
+            const d = dsoG(M, g);
+            h += '<tr><td class="fam">' + U().escapeHtml(g.nom)
+                 + (BREF_VUE === 'client' ? '<small>' + U().escapeHtml(g.fins.join(', ')) + '</small>' : '') + '</td>'
+               + '<td class="n">' + lien(eur(fx.fac), { type: 'flux', nat: 'f', mois: M, fins: g.fins, titre: g.nom + ' — facturé en ' + moisFRLong(M) }) + '<small>' + fx.nFac + ' fact.</small></td>'
+               + '<td class="n">' + lien(eur(fx.enc), { type: 'flux', nat: 'r', mois: M, fins: g.fins, titre: g.nom + ' — encaissé en ' + moisFRLong(M) }) + '<small>' + fx.nEnc + ' règl.</small></td>'
+               + '<td class="n">' + (e0 === null ? '<span class="pil-acompleter">à compléter</span>'
+                    : lien(pct(e0), { type: 'creances', arrete: arreteM, fins: g.fins, tranches: null, titre: g.nom + ' — créances échues au ' + parseFR(arreteM).toLocaleDateString('fr-FR') })) + '</td>'
                + '<td class="n">' + ptsCell(delta(e0, e1)) + '</td>'
                + '<td class="n">' + ptsCell(delta(e0, e2)) + '</td>'
                + '<td class="n">' + (d ? jrs(d.j) + '<small>' + d.n + ' règl.</small>'
@@ -1399,13 +1601,18 @@
                 mt += r.mt; mj += r.mj; n += r.n; }
             return mt ? { j: Math.round(mj / mt), n: n } : null; })();
         h += '<tr class="total"><td>Total</td>'
-           + '<td class="n">' + eur(tFac) + '</td><td class="n">' + eur(tEnc) + '</td>'
+           + '<td class="n">' + lien(eur(tFac), { type: 'flux', nat: 'f', mois: M, fins: actifs, titre: 'Facturé en ' + moisFRLong(M) }) + '</td>'
+           + '<td class="n">' + lien(eur(tEnc), { type: 'flux', nat: 'r', mois: M, fins: actifs, titre: 'Encaissé en ' + moisFRLong(M) }) + '</td>'
            + '<td class="n">' + (t0 === null ? '<span class="pil-acompleter">à compléter</span>' : pct(t0)) + '</td>'
            + '<td class="n">' + ptsCell(delta(t0, t1)) + '</td>'
            + '<td class="n">' + ptsCell(delta(t0, t2)) + '</td>'
            + '<td class="n">' + (dT ? jrs(dT.j) : '<span class="pil-acompleter">à compléter</span>') + '</td></tr>';
-        h += '</tbody></table>';
-        if (hoteT) hoteT.innerHTML = h;
+        h += '</tbody></table></div>';
+        const hx = fluxG(M, horsTableau);
+        if (Math.abs(hx.fac) >= 1 || Math.abs(hx.enc) >= 1)
+            h += '<p class="pil-note">Le total comprend ' + eur(hx.fac) + ' facturés et ' + eur(hx.enc)
+               + ' encaissés sans financeur identifié au grand livre.</p>';
+        poser(h);
         if (hoteD) hoteD.textContent = 'Facturé et encaissé du mois d’après le grand livre, '
             + 'taux d’échu de l’encours arrêté à la fin du mois, et son évolution.';
         if (hoteC) hoteC.innerHTML = commentaireDuMois(keep, M, M1, N1, t0, t1, t2, dT, tFac, tEnc);

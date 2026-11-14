@@ -364,3 +364,38 @@ body.v3-onglet-regles #filters-wrap { display: none; }
     background: var(--amber-bg); border: 1px solid var(--amber); border-radius: 8px;
     color: var(--text-primary); font-size: 0.86rem; line-height: 1.5;
 }
+
+/* ── Fenêtres : elles tiennent toujours dans l'écran ──────────────────────
+   La grille qui centre la fenêtre prenait la largeur du tableau qu'elle
+   contient : la fenêtre partait vers la droite et on n'en voyait qu'un bout.
+   La colonne ne peut plus dépasser l'écran, et c'est le tableau qui défile. */
+.modal-overlay { grid-template-columns: minmax(0, 1fr); padding: 1.2rem 0.8rem; }
+.modal-overlay > .modal { min-width: 0; max-width: 100%; justify-self: center; max-height: calc(100vh - 2.4rem); }
+.modal-overlay > .modal.modal-large { width: min(1500px, 100%); }
+.modal-body { min-width: 0; overflow-x: auto; }
+.modal-head { min-width: 0; }
+.modal-head h3 { min-width: 0; overflow-wrap: anywhere; }
+.chart-header, .chart-controls, .table-toolbar { flex-wrap: wrap; min-width: 0; }
+.chart-header > *, .chart-controls > *, .table-toolbar > * { min-width: 0; max-width: 100%; }
+.v3-source-gl { display: block; font-size: 0.72rem; color: var(--text-muted); line-height: 1.35; margin-top: 0.25rem; }
+/* « Mois comptés d'après » est retiré : les mois se comptent sur l'échéance. */
+.filter-block:has(#dd-base-mois) { display: none !important; }
+.v3-periode-note { font-size: 0.74rem; color: var(--text-muted); margin: 0.35rem 0 0.2rem; }
+#dd-periode .dd-actions { flex-wrap: wrap; }
+/* Pastilles de vue du « mois en bref » */
+.pil-vues { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.2rem 0 0.8rem; }
+.pil-vue { border: 1px solid var(--border-hover, #d8d4cc); background: var(--bg-secondary, #fff); color: var(--text-secondary, #555);
+    border-radius: 999px; padding: 0.42rem 0.95rem; font: inherit; font-size: 0.82rem; cursor: pointer; }
+.pil-vue:hover { color: var(--text-primary); }
+.pil-vue.active { background: #1a1a2e; border-color: #1a1a2e; color: #fff; font-weight: 600; }
+.pil-bref-t td.fam small { display: block; font-weight: 400; }
+/* Tableaux du Pilotage : quatre lignes visibles, le reste défile ; l'en-tête et le total restent en vue. */
+.pil-defile { max-height: 19.5rem; overflow-y: auto; overflow-x: auto; border-radius: 8px; }
+.pil-defile thead th { position: sticky; top: 0; z-index: 2; background: var(--bg-secondary, #fff); }
+.pil-defile tr.total td { position: sticky; bottom: 0; z-index: 2; background: var(--bg-secondary, #fff); box-shadow: 0 -1px 0 var(--border-hover, #ddd); }
+.pil-lien { all: unset; cursor: pointer; border-bottom: 1px dotted currentColor; font: inherit; color: inherit; }
+.pil-lien:hover, .pil-lien:focus-visible { color: var(--accent, #c8472b); border-bottom-style: solid; }
+#pil-bref-table .pil-defile { max-height: 21.5rem; }
+.pil-sortie { font-size: 0.74rem !important; padding: 0.25rem 0.7rem !important; border-radius: 999px; white-space: nowrap; }
+.pil-sortie-quoi { font-size: 0.74rem; color: var(--text-muted); margin-left: 0.5rem; }
+.pil-phrase { background: var(--bg-tertiary, #f4f1ec); border-left: 3px solid var(--accent, #c8472b); border-radius: 6px; padding: 0.6rem 0.8rem; margin: 0 0 0.8rem; font-size: 0.86rem; line-height: 1.45; }

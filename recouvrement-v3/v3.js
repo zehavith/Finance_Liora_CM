@@ -19,7 +19,7 @@
 (function (G) {
     'use strict';
 
-    var S = G.LioraStore, M = G.LioraMonday, R = G.LioraRules;
+    var S = G.LioraStore, M = G.LioraMonday, R = G.LioraRules, I = G.LioraIngest;
     var UI = function () { return G.LioraUI; };
     var $ = function (sel) { return document.querySelector(sel); };
     var JETON = M && M.CONNECTEUR;
@@ -519,7 +519,226 @@
         recalculer();
         return true;
     }
-    G.LioraV3 = { completerDate: completerDate, datesSaisies: function () { return DATES; } };
+    G.LioraV3 = { completerDate: completerDate, datesSaisies: function () { return DATES; },
+                  bilan: function () { return BILAN; }, grandLivre: function () { return GL_INFO; } };
+
+    // ══════════════════════════════════════════════
+    //  Compléments appliqués avant chaque calcul
+    // ══════════════════════════════════════════════
+    /**
+     * Quatre compléments passent juste avant le calcul des échéances, à chaque
+     * recalcul :
+     *  1. le grand livre fait foi pour les règlements — date de paiement,
+     *     avoir, montant manquant. Sans grand livre déposé à la main, c'est
+     *     l'extrait de la balance âgée publié avec la page qui sert ;
+     *  2. une facture refaite (colonne « Ancienne facture » de Monday) garde
+     *     la date de la facture d'origine : la refaire ne repousse pas ce qui
+     *     est dû ;
+     *  3. le fichier du financeur (Filiz…) complète aussi les montants vides ;
+     *  4. les lignes Sellsy au montant aberrant ou négatif (avoirs, erreurs
+     *     de saisie) sont écartées des factures ajoutées depuis Sellsy.
+     */
+    var GL = null, GL_INFO = null, ANCIENNES = null;
+    var BILAN = { gl: null, anciennes: 0, anciennesSansDate: 0, montantsDossier: 0, sellsyEcartees: [] };
+    var PLAFOND_SELLSY = 500000;
+
+    async function lireJson(chemin) {
+        try {
+            var r = await fetch(chemin, { cache: 'no-cache' });
+            return r.ok ? await r.json() : null;
+        } catch (e) { return null; }
+    }
+    async function chargerComplements() {
+        var res = await Promise.all([lireJson('donnees/reglements.json'), lireJson('donnees/anciennes-factures.json')]);
+        var regl = res[0], anc = res[1];
+        if (regl && regl.factures) {
+            GL = Object.keys(regl.factures).map(function (numero) {
+                var v = regl.factures[numero];
+                return { numero: numero, cle: I.factureKey(numero),
+                         soldee: v[0] !== 'o', parAvoir: v[0] === 'a',
+                         datePaiement: v[0] === 'r' ? v[1] : null, dateAvoir: v[0] === 'a' ? v[1] : null,
+                         montant: v[2] || null, dateFacture: v[3] || null };
+            });
+            GL_INFO = { arrete: regl.arrete, nb: GL.length };
+            var parCle = {};
+            GL.forEach(function (l) { parCle[l.cle] = l; });
+            GL_INFO.parCle = parCle;
+        }
+        if (anc && anc.factures) {
+            ANCIENNES = {};
+            Object.keys(anc.factures).forEach(function (n) { ANCIENNES[I.factureKey(n)] = anc.factures[n]; });
+        }
+    }
+    /** Date d'une ancienne facture : la pièce au grand livre, sinon le mois que porte son numéro. */
+    function dateAncienne(numero) {
+        var l = GL_INFO && GL_INFO.parCle[I.factureKey(numero)];
+        var d = l && l.dateFacture && R.parseDate(l.dateFacture);
+        if (d) return { date: d, sure: true };
+        var m = /(\d{2})(\d{2})-\d+$/.exec(String(numero));
+        if (m && +m[2] >= 1 && +m[2] <= 12) return { date: new Date(2000 + (+m[1]), +m[2], 0), sure: false };
+        return null;
+    }
+    function appliquerAnciennes(factures) {
+        var n = 0, sansDate = 0;
+        if (!ANCIENNES) return;
+        factures.forEach(function (f) {
+            var anciens = f.cle && ANCIENNES[f.cle];
+            if (!anciens) return;
+            f.anciennesFactures = anciens;
+            var meilleure = null;
+            anciens.forEach(function (num) {
+                var d = dateAncienne(num);
+                if (d && (!meilleure || d.date < meilleure.date)) meilleure = { date: d.date, sure: d.sure, numero: num };
+            });
+            if (!meilleure) { sansDate++; return; }
+            var actuelle = f.dateFactureRefaite || f.dateFacture;
+            if (actuelle && +meilleure.date >= +R.parseDate(actuelle)) return;
+            if (!f.dateFactureRefaite) f.dateFactureRefaite = f.dateFacture || null;
+            f.dateFacture = meilleure.date;
+            f.dateFactureVientAncienne = meilleure.numero;
+            f.dateAncienneEstimee = !meilleure.sure;
+            n++;
+        });
+        BILAN.anciennes = n; BILAN.anciennesSansDate = sansDate;
+    }
+    function appliquerMontantsDossiers(factures, st) {
+        var lignes = (st.dossiers && st.dossiers.lignes) || [];
+        var parCle = {}, parDossier = {}, n = 0;
+        lignes.forEach(function (l) {
+            if (!l.montant) return;
+            if (l.cle && parCle[l.cle] == null) parCle[l.cle] = l.montant;
+            // Un dossier qui porte plusieurs montants ne permet pas de choisir.
+            if (l.dossier) parDossier[l.dossier] = (parDossier[l.dossier] == null || parDossier[l.dossier] === l.montant) ? l.montant : false;
+        });
+        factures.forEach(function (f) {
+            if (f.montant != null && f.montant !== 0) return;
+            var m = (f.cle && parCle[f.cle]) || null;
+            if (!m && f.numeroDossier) m = parDossier[R.norm(f.numeroDossier).replace(/\s+/g, '')] || null;
+            if (m) { f.montant = m; f.montantVientDuDossier = true; n++; }
+        });
+        BILAN.montantsDossier = n;
+    }
+    function ecarterSellsyAberrantes(factures) {
+        var ecartees = [];
+        for (var i = factures.length - 1; i >= 0; i--) {
+            var f = factures[i];
+            if (f.source !== 'sellsy' && f.role !== 'sellsy') continue;
+            var m = Number(f.montant) || 0;
+            if (m < 0 || Math.abs(m) > PLAFOND_SELLSY) { ecartees.push({ numero: f.numero, client: f.client, montant: m }); factures.splice(i, 1); }
+        }
+        BILAN.sellsyEcartees = ecartees;
+    }
+    function brancherComplements() {
+        var lireOrigine = I.lireDossiers;
+        I.lireDossiers = function (rows) {
+            var lu = lireOrigine.apply(this, arguments);
+            try {
+                var col = lu && lu.mapping && (lu.mapping.montant || lu.mapping.montantHT);
+                if (col) (rows || []).forEach(function (r) {
+                    var montant = I.parseMontant(r[col]);
+                    if (!montant) return;
+                    var v = function (champ) { var c = lu.mapping[champ]; return c == null || r[c] == null ? '' : String(r[c]).trim(); };
+                    var numero = v('numero'), cle = /\d/.test(numero) ? I.factureKey(numero) : '';
+                    var dossier = R.norm(v('numeroDossier')).replace(/\s+/g, '');
+                    if (!cle && !dossier) return;
+                    // Ligne d'appoint : elle ne porte que le montant, aucune date.
+                    lu.lignes.push({ dossier: dossier, cle: cle, numero: numero, personne: '', client: v('client'),
+                                     dateDebutFormation: null, dateFinFormation: null, montant: montant });
+                });
+            } catch (e) { /* le fichier garde son usage d'origine : les dates */ }
+            return lu;
+        };
+        var enrichirOrigine = I.enrichir;
+        I.enrichir = function (factures, opts) {
+            var st = etat() || {};
+            try {
+                ecarterSellsyAberrantes(factures);
+                if (GL && !(st.grandLivre || []).length) {
+                    BILAN.gl = I.appliquerGrandLivre(factures, GL);
+                    st.glStats = BILAN.gl;
+                } else BILAN.gl = null;
+                appliquerMontantsDossiers(factures, st);
+                appliquerAnciennes(factures);
+            } catch (e) { if (G.console) console.warn('Compléments v3 :', e); }
+            var r = enrichirOrigine.apply(this, arguments);
+            setTimeout(majSourceGL, 0);
+            return r;
+        };
+    }
+    function majSourceGL() {
+        var hote = $('#v3-ligne-monday');
+        if (!hote) return;
+        var el = $('#v3-source-gl');
+        if (!el) { el = document.createElement('small'); el.id = 'v3-source-gl'; el.className = 'v3-source-gl'; hote.parentNode.insertBefore(el, hote.nextSibling); }
+        var st = etat() || {}, t = [];
+        if ((st.grandLivre || []).length) t.push('Règlements : votre grand livre déposé');
+        else if (BILAN.gl && GL_INFO) {
+            var j = String(GL_INFO.arrete || '').split('-').reverse().join('/');
+            t.push('Règlements : grand livre arrêté au ' + j);
+        }
+        if (BILAN.sellsyEcartees.length) t.push(BILAN.sellsyEcartees.length + ' ligne(s) Sellsy écartée(s) : montant négatif ou aberrant');
+        el.textContent = t.join(' · ');
+        el.title = BILAN.sellsyEcartees.slice(0, 30).map(function (e) { return (e.numero || '?') + ' : ' + Math.round(e.montant).toLocaleString('fr-FR') + ' €'; }).join('\n');
+    }
+
+    // ══════════════════════════════════════════════
+    //  Période du tableau de bord : les mêmes noms que dans Pilotage
+    // ══════════════════════════════════════════════
+    var PERIODES = [['exercice', 'Exercice courant'], ['exercice-1', 'Exercice précédent'], ['mois', 'Mois en cours'],
+                    ['mois-1', 'Mois dernier'], ['trimestre', 'Trimestre en cours'], ['annee', 'Année en cours'],
+                    ['annee-1', 'Année dernière'], ['douze', 'Douze derniers mois']];
+    function bornesPeriode(k, ref) {
+        var a = ref.getFullYear(), m = ref.getMonth(), cle = function (y, mo) { var d = new Date(y, mo, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+        var ex = m >= 6 ? a : a - 1;   // l'exercice court du 1er juillet au 30 juin
+        switch (k) {
+            case 'exercice': return [cle(ex, 6), cle(ex + 1, 5)];
+            case 'exercice-1': return [cle(ex - 1, 6), cle(ex, 5)];
+            case 'mois': return [cle(a, m), cle(a, m)];
+            case 'mois-1': return [cle(a, m - 1), cle(a, m - 1)];
+            case 'trimestre': { var t = Math.floor(m / 3) * 3; return [cle(a, t), cle(a, t + 2)]; }
+            case 'annee': return [cle(a, 0), cle(a, 11)];
+            case 'annee-1': return [cle(a - 1, 0), cle(a - 1, 11)];
+            default: return [cle(a, m - 11), cle(a, m)];
+        }
+    }
+    function choisirPeriode(k) {
+        var st = etat();
+        if (!st || !st.filtres) return;
+        var ref = (st.filtres.dateRef && R.parseDate(st.filtres.dateRef)) || new Date();
+        var b = bornesPeriode(k, ref);
+        var voulus = (st.moisDispo || []).filter(function (mk) { return mk >= b[0] && mk <= b[1]; });
+        var boite = $('#dd-periode');
+        if (!voulus.length) {
+            dire('Aucune facture sur cette période (' + k.replace('-1', ' précédent') + ').', 'info', 4000);
+            return;
+        }
+        // Le dernier mois est coché par un vrai clic : c'est lui qui relance l'affichage.
+        var dernier = voulus[voulus.length - 1];
+        st.filtres.mois = new Set(voulus.slice(0, -1));
+        var bouton = boite && boite.querySelector('.date-month-btn[data-month="' + dernier + '"]');
+        if (bouton) bouton.click();
+        var lib = PERIODES.filter(function (p) { return p[0] === k; })[0];
+        setTimeout(function () { var r = $('#periode-resume'); if (r && lib) r.textContent = lib[1] + ' — ' + r.textContent; }, 60);
+    }
+    function brancherPeriode() {
+        var actions = $('#dd-periode .dd-actions');
+        if (!actions || actions.dataset.v3) return;
+        actions.dataset.v3 = '1';
+        actions.querySelectorAll('button').forEach(function (b) {
+            if (b.dataset.action === 'tous') b.textContent = 'Toute la période';
+            else b.remove();
+        });
+        PERIODES.forEach(function (p) {
+            var b = document.createElement('button');
+            b.type = 'button'; b.className = 'btn btn-ghost btn-sm'; b.dataset.v3Periode = p[0]; b.textContent = p[1];
+            b.addEventListener('click', function (e) { e.stopPropagation(); choisirPeriode(p[0]); });
+            actions.appendChild(b);
+        });
+        var note = document.createElement('div');
+        note.className = 'v3-periode-note';
+        note.textContent = 'Date personnalisée : cochez les mois voulus ci-dessous.';
+        actions.parentNode.insertBefore(note, actions.nextSibling);
+    }
 
     // ══════════════════════════════════════════════
     //  Démarrage
@@ -548,12 +767,14 @@
         await preparer();
         // Les règles modifiées à la main se reposent avant le premier calcul.
         try { if (G.LioraV3Regles) await G.LioraV3Regles.pret; } catch (e) { /* règles d'origine */ }
+        try { await chargerComplements(); brancherComplements(); } catch (e) { /* la page s'ouvre sans ces compléments */ }
         await lancerApplication();
         if (G.LioraV3Regles) G.LioraV3Regles.brancher();
         reprendreSiPossible();
         suivreOnglets();
         suivreAide();
         brancherMonday();
+        brancherPeriode();
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', demarrer);
     else demarrer();
