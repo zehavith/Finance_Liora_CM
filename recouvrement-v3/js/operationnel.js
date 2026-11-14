@@ -1117,6 +1117,7 @@
               + (HIST.tronque ? ' Le journal est très long : la lecture a été arrêtée avant la fin, les '
                   + 'nombres sont un minimum.' : '') : '') + '</span>'
           + blocSorties() + '</div></div></div>'
+          + '<div id="v3-op-edof"></div>'
           + '<div class="charts-grid"><div class="chart-card chart-wide">'
           + '<div class="chart-header"><h3>2 · Focus sur chaque étape</h3></div>'
           + '<p class="pil-note">Quoi traiter, pourquoi ça bloque, et est-ce que ça avance.</p>'
@@ -1170,6 +1171,8 @@
     function brancher(items, st, k, pr) {
         const h = document.getElementById('op-corps');
         if (!h) return;
+        // Le circuit CPF d'après EDOF se pose juste sous le circuit général.
+        try { if (global.LioraV3 && global.LioraV3.carteEdof) global.LioraV3.carteEdof(); } catch (e) { /* le circuit reste lisible sans lui */ }
         h.querySelectorAll('[data-nav-etape]').forEach(b =>
             b.onclick = ev => { ev.stopPropagation();
                 montrerEtape(b.dataset.navEtape, b.dataset.t || '', b.dataset.g || ''); });

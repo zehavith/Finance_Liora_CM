@@ -430,3 +430,16 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 .v3-edof-mt { font-size: 0.8rem; color: var(--text-secondary, #555); font-variant-numeric: tabular-nums; }
 .v3-edof-sous { list-style: none; margin: 0.45rem 0 0; padding: 0.45rem 0 0; border-top: 1px dashed var(--border, #e6e2da); font-size: 0.82rem; display: grid; gap: 0.25rem; }
 .v3-edof-exp { all: unset; cursor: pointer; font-size: 0.7rem; color: var(--accent, #c8472b); text-decoration: underline; margin-left: 0.3rem; }
+/* Circuit CPF d'après EDOF : cinq étapes dans l'ordre */
+.v3-edof-grille { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 1250px) { .v3-edof-grille { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.v3-edof-tuile { position: relative; padding-top: 0.9rem; }
+.v3-edof-rang { position: absolute; top: 0.6rem; right: 0.7rem; width: 1.5rem; height: 1.5rem; border-radius: 999px; background: var(--bg-tertiary, #f1eee8); color: var(--text-secondary, #555);
+    display: grid; place-items: center; font-size: 0.74rem; font-weight: 700; }
+.v3-edof-tuile.fort .v3-edof-rang { background: var(--accent, #c8472b); color: #fff; }
+.v3-edof-faire { font-size: 0.74rem; font-weight: 600; color: var(--text-primary); margin-top: auto; padding-top: 0.4rem; }
+.v3-edof-bilan { background: var(--bg-tertiary, #f4f1ec); border-radius: 8px; padding: 0.6rem 0.8rem; font-size: 0.86rem; margin: 0 0 0.8rem; line-height: 1.6; }
+.v3-edof-detail { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(0, 2fr); gap: 1.2rem; margin-top: 1rem; align-items: start; font-size: 0.84rem; }
+@media (max-width: 1100px) { .v3-edof-detail { grid-template-columns: 1fr; } }
+.v3-edof-detail .v3-edof-sous { border-top: 0; padding-top: 0.2rem; }
+.v3-edof-detail .pil-defile { max-height: 17rem; margin-top: 0.4rem; }
