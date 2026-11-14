@@ -539,7 +539,7 @@
      *  4. les lignes Sellsy au montant aberrant ou négatif (avoirs, erreurs
      *     de saisie) sont écartées des factures ajoutées depuis Sellsy.
      */
-    var GL = null, GL_INFO = null, ANCIENNES = null;
+    var GL = null, GL_INFO = null, ANCIENNES = null, RAPPRO = null, RAPPRO_INFO = null, CONTROLES = [];
     var BILAN = { gl: null, anciennes: 0, anciennesSansDate: 0, montantsDossier: 0, sellsyEcartees: [] };
     var PLAFOND_SELLSY = 500000;
 
@@ -550,7 +550,11 @@
         } catch (e) { return null; }
     }
     async function chargerComplements() {
-        var res = await Promise.all([lireJson('donnees/reglements.json'), lireJson('donnees/anciennes-factures.json')]);
+        var res = await Promise.all([lireJson('donnees/reglements.json'), lireJson('donnees/anciennes-factures.json'), lireJson('donnees/rapprochements.json')]);
+        if (res[2] && res[2].factures) {
+            RAPPRO = {}; RAPPRO_INFO = res[2];
+            Object.keys(res[2].factures).forEach(function (n) { RAPPRO[I.factureKey(n)] = res[2].factures[n]; });
+        }
         var regl = res[0], anc = res[1];
         if (regl && regl.factures) {
             GL = Object.keys(regl.factures).map(function (numero) {
@@ -671,7 +675,24 @@
                                 + '« 0.1. ALL - Factures payées ». Elles sont comptées comme réglées dans les indicateurs ; reste à les déplacer dans Monday. '
                                 + 'Par financement : ' + detail + '. Pour n’en voir qu’un (CPF par exemple), choisissez-le dans le filtre « Financement ».' });
                     }
+                    var prob = (factures || []).filter(function (f) {
+                        return f.reglementPropose && !f.paye && f.role !== 'sellsy' && (f.presenceRoles || [f.role]).indexOf('payees') < 0;
+                    });
+                    if (prob.length) {
+                        var pf = {}, entier = 0;
+                        prob.forEach(function (f) { var k = f.financement || 'non identifié'; pf[k] = (pf[k] || 0) + 1;
+                            if (f.reglementPropose.montant >= f.reglementPropose.reste - 1) entier++; });
+                        var na = (RAPPRO_INFO && RAPPRO_INFO.nonAttribues) || {};
+                        liste.splice(its.length ? 1 : 0, 0, { code: 'GL_REGLEMENT_PROPOSE', titre: 'Probablement réglée : un règlement non lettré lui correspond au grand livre',
+                            gravite: 'haute', nb: prob.length, euros: prob.reduce(function (t, f) { return t + (f.montant || 0); }, 0), items: prob,
+                            conseil: 'Un règlement a été reçu en comptabilité mais n’est pas lettré avec la facture ; la balance âgée propose ce rapprochement '
+                                + '(fiabilité : certaine, forte, probable ou à vérifier — elle figure dans l’export). ' + entier + ' sont couvertes en entier. '
+                                + 'Ces factures restent comptées comme non payées tant que le lettrage n’est pas fait. Par financement : '
+                                + Object.keys(pf).sort(function (a, b) { return pf[b] - pf[a]; }).map(function (k) { return k + ' — ' + pf[k]; }).join(' · ') + '. '
+                                + (na.CPF ? 'Il reste en plus ' + Math.round(na.CPF).toLocaleString('fr-FR') + ' € de règlements CPF reçus pour lesquels aucune facture ne peut être proposée.' : '') });
+                    }
                 } catch (e) { /* les contrôles d'origine restent */ }
+                CONTROLES = liste;
                 return liste;
             };
         }
@@ -686,12 +707,52 @@
                 } else BILAN.gl = null;
                 appliquerMontantsDossiers(factures, st);
                 appliquerAnciennes(factures);
+                if (RAPPRO) factures.forEach(function (f) { var x = f.cle && RAPPRO[f.cle];
+                    f.reglementPropose = x ? { montant: x[0], reste: x[1], fiabilite: x[2], date: x[3] } : null; });
             } catch (e) { if (G.console) console.warn('Compléments v3 :', e); }
             var r = enrichirOrigine.apply(this, arguments);
             setTimeout(majSourceGL, 0);
             return r;
         };
     }
+    /** Un bouton « Exporter » à côté de chaque « Voir les factures » des contrôles. */
+    function exporterControle(a) {
+        var X = G.XLSX;
+        if (!X) { dire('L’export Excel n’est pas disponible.', 'error', 4000); return; }
+        var d = function (v) { var x = v && R.parseDate(v); return x ? jourLocal(x).split('-').reverse().join('/') : ''; };
+        var lignes = (a.items || []).map(function (f) {
+            var o = { 'Facture': f.numero || '', 'Client': f.client || '', 'Apprenant': f.apprenant || '', 'Financement': f.financement || '',
+                'Tableau Monday': f.board || '', 'Groupe Monday': f.groupe || '', 'Montant': f.montant == null ? '' : f.montant,
+                'Date de facture': d(f.dateFacture), 'Échéance calculée': d(f.dateEcheance), 'Jours de retard': f.retardJours == null ? '' : f.retardJours,
+                'État': f.etat || '', 'Payée': f.paye ? 'oui' : 'non', 'Date de paiement': d(f.datePaiement), 'Origine du paiement': f.originePaiement || f.motifPaye || '' };
+            if (f.reglementPropose) { o['Règlement proposé'] = f.reglementPropose.montant; o['Reste dû au grand livre'] = f.reglementPropose.reste;
+                o['Fiabilité du rapprochement'] = f.reglementPropose.fiabilite; o['Date du règlement'] = d(f.reglementPropose.date); }
+            if (f.anciennesFactures) o['Ancienne facture'] = f.anciennesFactures.join(', ');
+            return o;
+        });
+        var wb = X.utils.book_new();
+        X.utils.book_append_sheet(wb, X.utils.json_to_sheet(lignes), 'Factures');
+        X.writeFile(wb, 'controle-' + String(a.code || 'factures').toLowerCase().replace(/_/g, '-') + '-' + jourLocal(new Date()) + '.xlsx');
+    }
+    function poserExports() {
+        var hote = $('#quality-list');
+        if (!hote || !CONTROLES.length) return;
+        hote.querySelectorAll('button').forEach(function (b) {
+            if (!/voir les factures/i.test(b.textContent) || b.dataset.v3Export) return;
+            var carte = b; while (carte.parentNode && carte.parentNode !== hote) carte = carte.parentNode;
+            var texte = carte.textContent || '';
+            var a = CONTROLES.filter(function (c) { return c.titre && texte.indexOf(c.titre) >= 0; })
+                .sort(function (x, y) { return y.titre.length - x.titre.length; })[0];
+            b.dataset.v3Export = '1';
+            if (!a) return;
+            var e = document.createElement('button');
+            e.type = 'button'; e.className = b.className; e.textContent = 'Exporter (Excel)'; e.style.marginLeft = '0.4rem';
+            e.addEventListener('click', function (ev) { ev.stopPropagation(); var c = CONTROLES.filter(function (x) { return x.code === a.code; })[0] || a; exporterControle(c); });
+            b.parentNode.insertBefore(e, b.nextSibling);
+        });
+    }
+    setInterval(poserExports, 1200);
+
     function majSourceGL() {
         var hote = $('#v3-ligne-monday');
         if (!hote) return;
