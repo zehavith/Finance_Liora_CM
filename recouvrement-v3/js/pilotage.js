@@ -1304,11 +1304,41 @@
         if (dit) {
             const maigres = [...par.values()].reduce((n, o) =>
                 n + [...o.values()].filter(a => a.nEch > 0 && a.nEch < DEGRADE_MINI).length, 0);
-            dit.textContent = 'Part des créances arrivées à échéance dans le mois qui sont tombées '
-                + 'en retard : réglées après l’échéance, ou toujours impayées. Le mois de l’arrêté '
-                + 'est écarté, il n’est pas fini.'
-                + (maigres ? ' ' + maigres + ' points ne sont pas tracés : ils porteraient sur moins de '
-                           + DEGRADE_MINI + ' créances échues.' : '');
+            // VERSION 3 — LA NOTE EXPLIQUE ET ANALYSE. « Cette phrase ne veut pas
+            // dire grand-chose, fais-moi une phrase avec de l'analyse aussi. »
+            const tot = mois.map(m => { const t = { nEch: 0, nRet: 0, mRet: 0 };
+                for (const o of par.values()) { const x = o.get(m); if (x) { t.nEch += x.nEch; t.nRet += x.nRet; t.mRet += x.mRet; } }
+                return t; });
+            const vus = tot.map((t, i) => [t, i]).filter(x => x[0].nEch >= DEGRADE_MINI);
+            let h = '<b>Comment lire :</b> pour chaque mois, on prend les factures qui devaient être payées ce mois-là '
+                + 'et on regarde quelle part ne l’a pas été à temps (payée en retard, ou toujours impayée). '
+                + 'Plus la courbe est haute, plus le financeur paie mal ; une courbe qui monte, c’est un financeur qui se dégrade.';
+            if (vus.length) {
+                const der = vus[vus.length - 1], pre = vus[0];
+                const tx = t => t.nEch ? 100 * t.nRet / t.nEch : 0;
+                const ecart = Math.round(tx(der[0]) - tx(pre[0]));
+                h += '<br><b>Ce que ça dit :</b> en ' + moisFR(mois[der[1]]) + ', ' + der[0].nRet.toLocaleString('fr-FR') + ' factures sur '
+                    + der[0].nEch.toLocaleString('fr-FR') + ' n’ont pas été payées à l’échéance, soit <b>' + Math.round(tx(der[0])) + ' %</b> ('
+                    + eur(der[0].mRet) + '). ' + (Math.abs(ecart) < 3 ? 'C’est stable par rapport à ' + moisFR(mois[pre[1]]) + ' (' + Math.round(tx(pre[0])) + ' %).'
+                        : ecart > 0 ? 'C’est <span class="ec-pire">' + ecart + ' points de plus</span> qu’en ' + moisFR(mois[pre[1]]) + ' (' + Math.round(tx(pre[0])) + ' %) : la situation se dégrade.'
+                        : 'C’est <span class="ec-mieux">' + (-ecart) + ' points de moins</span> qu’en ' + moisFR(mois[pre[1]]) + ' (' + Math.round(tx(pre[0])) + ' %) : la situation s’améliore.');
+                const evol = fins.map(f => { const sv = serie(par.get(f)).map((v, i) => [v, i]).filter(x => x[0] !== null);
+                    if (sv.length < 2) return null;
+                    const a = par.get(f).get(mois[sv[sv.length - 1][1]]) || {};
+                    return { f, d: Math.round(sv[sv.length - 1][0] - sv[0][0]), p: Math.round(sv[sv.length - 1][0]), n: a.nRet || 0, m: a.mRet || 0 }; }).filter(Boolean);
+                const pires = evol.filter(x => x.d >= 5).sort((x, y) => y.d - x.d).slice(0, 2);
+                const mieux = evol.filter(x => x.d <= -5).sort((x, y) => x.d - y.d).slice(0, 2);
+                const gros = evol.slice().sort((x, y) => y.m - x.m)[0];
+                const dire = x => U().escapeHtml(x.f) + ' (' + x.p + ' % en retard, ' + (x.d > 0 ? '+' : '') + x.d + ' pts)';
+                if (pires.length) h += ' À surveiller en priorité : ' + pires.map(dire).join(' et ') + '.';
+                if (mieux.length) h += ' En amélioration : ' + mieux.map(dire).join(' et ') + '.';
+                if (gros && gros.m > 0) h += ' Le plus gros montant resté impayé à l’échéance du dernier mois vient de ' + U().escapeHtml(gros.f)
+                    + ' : ' + eur(gros.m) + ' sur ' + gros.n + ' facture' + (gros.n > 1 ? 's' : '') + '.';
+            }
+            h += '<br><small>Le mois en cours n’est pas compté, il n’est pas fini.'
+                + (maigres ? ' ' + maigres + ' points ne sont pas tracés : moins de ' + DEGRADE_MINI + ' échéances dans le mois, trop peu pour un pourcentage.' : '')
+                + '</small>';
+            dit.innerHTML = h;
         }
     }
 
