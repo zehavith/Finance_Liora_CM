@@ -647,12 +647,65 @@
     }
 
     // ── Opérationnel : où en est EDOF pour le CPF ──
-    var EDOF_LOTS = [];
+    var EDOF_LOTS = [], CIRCUIT_FIN = 'CPF';
     function carteEdofOperationnel() {
         var st = etat(), OPX = G.LioraOperationnel, hote = $('#v3-op-edof');
         if (!hote || !st || !OPX) return;
-        if (!EDOF) { hote.innerHTML = ''; return; }
         var hp = function (f) { return f.role !== 'sellsy' && (f.presenceRoles || [f.role]).indexOf('payees') < 0; };
+        // « Le circuit : » puis une vignette par financement. Le CPF se lit
+        // d'après EDOF ; les autres, d'après les étapes du circuit Monday.
+        var libelles = {}; (st.rules || R.DEFAULT_ECHEANCE_RULES || []).forEach(function (r) { libelles[r.key] = r.label; });
+        var nonReglees = (st.factures || []).filter(function (f) { return hp(f) && !f.paye && !f.groupeTechnique && f.role !== 'technique' && f.role !== 'ignore'; });
+        var parFin = {};
+        nonReglees.forEach(function (f) { var k = f.financement || 'INCONNU'; parFin[k] = (parFin[k] || 0) + 1; });
+        var fins = Object.keys(parFin).sort(function (a, b) { return (b === 'CPF') - (a === 'CPF') || parFin[b] - parFin[a]; });
+        if (fins.indexOf(CIRCUIT_FIN) < 0) CIRCUIT_FIN = fins[0] || 'CPF';
+        var nomFin = function (k) { return libelles[k] || (k === 'INCONNU' ? 'Non renseigné' : k); };
+        var tete = '<div class="v3-circuit-tete"><h3>Le circuit :</h3><div class="pil-vues">' + fins.map(function (k) {
+            return '<button type="button" class="pil-vue' + (k === CIRCUIT_FIN ? ' active' : '') + '" data-circuit-fin="' + esc(k) + '">' + esc(nomFin(k))
+                + ' <span class="op-cnt">' + parFin[k].toLocaleString('fr-FR') + '</span></button>'; }).join('') + '</div></div>';
+        var brancherTete = function () {
+            hote.querySelectorAll('[data-circuit-fin]').forEach(function (b) { b.onclick = function () { CIRCUIT_FIN = b.dataset.circuitFin; carteEdofOperationnel(); }; });
+            hote.querySelectorAll('[data-edof-lot]').forEach(function (b) { b.onclick = function () { var l = EDOF_LOTS[+b.dataset.edofLot]; if (l && OPX.montrerFactures) OPX.montrerFactures(l.titre, l.its, l.note); }; });
+            hote.querySelectorAll('[data-edof-export]').forEach(function (b) { b.onclick = function () { var l = EDOF_LOTS[+b.dataset.edofExport]; if (l) exporterControle({ code: l.code, items: l.its }); }; });
+        };
+        var parcours = '';
+        {
+            EDOF_LOTS = [];
+            var its = nonReglees.filter(function (f) { return (f.financement || 'INCONNU') === CIRCUIT_FIN; });
+            var somme = function (l) { return Math.round(l.reduce(function (t, f) { return t + (f.montant || 0); }, 0)).toLocaleString('fr-FR') + ' €'; };
+            var cles = {}; (OPX.CIRCUIT || []).forEach(function (e) { cles[e.k] = e; });
+            var dans = function (k) { return its.filter(function (f) { return OPX.etapeDe(f) === k; }); };
+            var hors = its.filter(function (f) { return !cles[OPX.etapeDe(f)]; });
+            var echue = function (f) { return f.retardJours != null ? f.retardJours > 0 : f.etat === 'En retard'; };
+            var nom = nomFin(CIRCUIT_FIN);
+            var vignette = function (n, l, titre, quoi, faire, code, classe) {
+                EDOF_LOTS.push({ titre: nom + ' — ' + titre, its: l, note: quoi, code: 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-' + code });
+                var i = EDOF_LOTS.length - 1;
+                return '<div class="v3-edof-tuile ' + (classe || '') + '"><span class="v3-edof-rang">' + n + '</span><span class="v3-edof-nb">'
+                    + (l.length ? '<button type="button" class="op-lien" data-edof-lot="' + i + '" title="Voir ces factures"><b>' + l.length.toLocaleString('fr-FR') + '</b></button>' : '<b>0</b>')
+                    + '</span><span class="v3-edof-titre">' + esc(titre) + '</span><span class="v3-edof-mt">' + somme(l)
+                    + (l.length ? ' <button type="button" class="v3-edof-exp" data-edof-export="' + i + '">exporter</button>' : '') + '</span>'
+                    + '<span class="op-pied">' + esc(quoi) + '</span><span class="v3-edof-faire">→ ' + esc(faire) + '</span></div>';
+            };
+            var horsEchues = hors.filter(echue), n = 1;
+            var tuiles = vignette(n++, hors.filter(function (f) { return !echue(f); }), 'Sous contrôle', 'Avant échéance, dans aucune étape du circuit.', 'rien à faire pour l’instant', 'sous-controle');
+            (OPX.CIRCUIT || []).forEach(function (e) {
+                tuiles += vignette(n++, dans(e.k), e.n, 'Groupes Monday de l’étape « ' + e.n + ' » (' + e.svc + ').', e.svc + ' · cible ' + e.cible + ' j', e.k, e.k === 'rec' ? 'fort' : '');
+            });
+            parcours = '<p class="pil-note">Les ' + its.length.toLocaleString('fr-FR') + ' factures ' + esc(nom) + ' non réglées, rangées dans l’ordre du circuit. '
+                + 'Chaque nombre ouvre ses factures ; « exporter » en donne la liste Excel. Cette carte ne suit pas les filtres de période.</p>'
+                + '<div class="v3-edof-grille">' + tuiles + '</div>'
+                + (horsEchues.length ? (function () { EDOF_LOTS.push({ titre: nom + ' — échues, dans aucune étape', its: horsEchues, note: 'Échéance passée, mais le groupe Monday n’est rangé dans aucune étape du circuit.', code: 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-echues-hors-etape' });
+                    var i = EDOF_LOTS.length - 1;
+                    return '<p class="op-alerte"><button type="button" class="op-lien" data-edof-lot="' + i + '"><b>' + horsEchues.length.toLocaleString('fr-FR') + '</b> factures échues</button> ('
+                        + somme(horsEchues) + ') sont encore dans un groupe « en cours », hors de toute étape. <button type="button" class="v3-edof-exp" data-edof-export="' + i + '">exporter</button></p>'; })() : '');
+        }
+        if (CIRCUIT_FIN !== 'CPF' || !EDOF) {
+            hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + parcours + '</div></div>';
+            brancherTete();
+            return;
+        }
         var cpf = (st.factures || []).filter(function (f) { return f.role !== 'sellsy' && (f.financement === 'CPF' || f.edof); });
         var ouvertes = cpf.filter(hp);
         var verse = ouvertes.filter(function (f) { return f.edofVerse; });
@@ -671,7 +724,6 @@
         var avecAvance = nonVersees.filter(function (f) { return f.edofAvance; });
         var deLAnnee = nonVersees.filter(function (f) { return an(f) === anneeRef; });
         var rangees = cpf.filter(function (f) { return f.edofVerse && !hp(f); }).length;
-        EDOF_LOTS = [];
         var eur0 = function (l) { return Math.round(l.reduce(function (t, f) { return t + (f.montant || 0); }, 0)).toLocaleString('fr-FR') + ' €'; };
         var poser = function (l, titre, note, code) { EDOF_LOTS.push({ titre: titre, its: l, note: note, code: code }); return EDOF_LOTS.length - 1; };
         var nbLien = function (l, i) { return l.length ? '<button type="button" class="op-lien" data-edof-lot="' + i + '" title="Voir ces factures"><b>' + l.length.toLocaleString('fr-FR') + '</b></button>' : '<b>0</b>'; };
@@ -696,10 +748,9 @@
         }).join('');
         var iVerse = poser(verse, 'CPF — versées par EDOF, à déplacer dans les payées', 'EDOF indique « Versé » : ces factures sont payées, mais encore dans un tableau Monday des non payées.', 'edof-verse');
         var jour = function (d) { return String(d || '').split('-').reverse().join('/'); }, p = EDOF.periodes;
-        hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide"><div class="chart-header"><h3>Le circuit CPF, d’après EDOF</h3>'
+        hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + parcours + '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">CPF — où en est EDOF</h3>'
             + '<span class="pil-coin">export EDOF jusqu’au ' + jour(p.length && p[p.length - 1][1]) + ' · grand livre au ' + jour(GL_INFO && GL_INFO.arrete) + '</span></div>'
-            + '<p class="pil-note">Les ' + ouvertes.length.toLocaleString('fr-FR') + ' factures CPF encore dans les tableaux Monday des non payées, rangées dans l’ordre du circuit EDOF. '
-            + 'Chaque nombre ouvre ses factures ; « exporter » en donne la liste Excel. Cette carte ne suit pas les filtres de période.</p>'
+            + '<p class="pil-note">Les mêmes factures CPF, plus celles qu’EDOF a déjà versées, rangées cette fois d’après EDOF (' + ouvertes.length.toLocaleString('fr-FR') + ' au total).</p>'
             + '<div class="v3-edof-grille">'
             + etape(1, lots.rien, 'Pas encore dans EDOF', 'ni facture ni avance connue', 'déposer la facture sur EDOF', 'Factures CPF non payées pour lesquelles EDOF ne connaît ni la facture ni une avance sur le dossier.', 'edof-1-aucune-trace')
             + etape(2, lots.avance, 'Avance versée, solde à facturer', 'EDOF a versé l’avance ; pas de facture de solde', 'déposer la facture de solde', 'Une avance a été versée sur le dossier, mais la facture n’apparaît pas dans EDOF.', 'edof-2-avance-seule')
@@ -717,8 +768,7 @@
                 + '<div><b>Étape 5 — dans quel groupe Monday elles sont encore</b><div class="pil-defile"><table class="op-t"><thead><tr><th>Groupe Monday</th><th class="n">Factures</th>'
                 + '<th class="n">Montant</th><th class="n">Pointage</th><th></th></tr></thead><tbody>' + lignesGroupes + '</tbody></table></div></div></div>' : '')
             + '</div></div>';
-        hote.querySelectorAll('[data-edof-lot]').forEach(function (b) { b.onclick = function () { var l = EDOF_LOTS[+b.dataset.edofLot]; if (l && OPX.montrerFactures) OPX.montrerFactures(l.titre, l.its, l.note); }; });
-        hote.querySelectorAll('[data-edof-export]').forEach(function (b) { b.onclick = function () { var l = EDOF_LOTS[+b.dataset.edofExport]; if (l) exporterControle({ code: l.code, items: l.its }); }; });
+        brancherTete();
     }
     function brancherEdofOperationnel() { /* la carte est posée par l'onglet Opérationnel lui-même, à chaque rendu */ }
 
