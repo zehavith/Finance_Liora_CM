@@ -274,11 +274,13 @@
     function blocSources() {
         var b = (G.LioraV3 && G.LioraV3.bilan && G.LioraV3.bilan()) || {}, gl = (G.LioraV3 && G.LioraV3.grandLivre && G.LioraV3.grandLivre()) || null;
         var jour = gl ? String(gl.arrete || '').split('-').reverse().join('/') : '';
-        return bloc('sources', 'Quelle source fait foi : grand livre, Monday, ancienne facture, Sellsy', '5 priorités', 'lecture seule',
+        return bloc('sources', 'Quelle source fait foi : grand livre, Monday, ancienne facture, Sellsy', '6 priorités', 'lecture seule',
             '<dl class="v3-lexique">'
             + '<div><dt>Date de paiement</dt><dd>La date du grand livre passe toujours en premier. À défaut, la date de paiement de Monday ; '
             + 'en dernier recours la date de « contrôle paiement » (signalée comme estimée).'
             + (gl ? ' Grand livre utilisé : celui de la balance âgée, arrêté au ' + jour + '.' : '') + '</dd></div>'
+            + '<div><dt>Paiement CPF</dt><dd>Pour le CPF, l’export EDOF fait foi : une facture « Versé » dans EDOF est payée, à la date de règlement EDOF, '
+            + 'avant le grand livre et avant Monday.' + (b.edof ? ' ' + b.edof + ' facture(s) concernée(s) aujourd’hui.' : '') + '</dd></div>'
             + '<div><dt>Montant manquant</dt><dd>Complété par le grand livre, puis par l’export Sellsy, puis par le fichier du financeur '
             + '(Filiz…) quand il porte un montant — par numéro de facture, ou par numéro de dossier s’il n’y a qu’un montant pour ce dossier.</dd></div>'
             + '<div><dt>Facture refaite</dt><dd>Quand la colonne « Ancienne facture » de Monday donne le numéro d’origine, l’échéance se calcule '

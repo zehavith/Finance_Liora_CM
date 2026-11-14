@@ -539,7 +539,7 @@
      *  4. les lignes Sellsy au montant aberrant ou négatif (avoirs, erreurs
      *     de saisie) sont écartées des factures ajoutées depuis Sellsy.
      */
-    var GL = null, GL_INFO = null, ANCIENNES = null, RAPPRO = null, RAPPRO_INFO = null, CONTROLES = [];
+    var GL = null, GL_INFO = null, ANCIENNES = null, RAPPRO = null, RAPPRO_INFO = null, CONTROLES = [], EDOF = null;
     var BILAN = { gl: null, anciennes: 0, anciennesSansDate: 0, montantsDossier: 0, sellsyEcartees: [] };
     var PLAFOND_SELLSY = 500000;
 
@@ -551,6 +551,11 @@
     }
     async function chargerComplements() {
         var res = await Promise.all([lireJson('donnees/reglements.json'), lireJson('donnees/anciennes-factures.json'), lireJson('donnees/rapprochements.json')]);
+        var edof = await lireJson('donnees/edof.json');
+        if (edof && edof.factures) {
+            EDOF = { factures: {}, avances: edof.avances || {}, periodes: edof.periodes || [] };
+            Object.keys(edof.factures).forEach(function (n) { EDOF.factures[I.factureKey(n)] = edof.factures[n]; });
+        }
         if (res[2] && res[2].factures) {
             RAPPRO = {}; RAPPRO_INFO = res[2];
             Object.keys(res[2].factures).forEach(function (n) { RAPPRO[I.factureKey(n)] = res[2].factures[n]; });
@@ -605,6 +610,36 @@
             n++;
         });
         BILAN.anciennes = n; BILAN.anciennesSansDate = sansDate;
+    }
+    /**
+     * POUR LE CPF, EDOF FAIT FOI. Une facture « Versé » dans l'export EDOF est
+     * payée, à la date de règlement EDOF — avant le grand livre, avant Monday.
+     * « Rejeté » et « En attente » sont signalés sans rien changer au calcul.
+     * Une avance versée sur le dossier est notée sur la facture encore ouverte.
+     */
+    function appliquerEdof(factures) {
+        var n = 0;
+        BILAN.edof = 0;
+        if (!EDOF) return;
+        factures.forEach(function (f) {
+            var e = f.cle && EDOF.factures[f.cle];
+            f.edof = null;
+            if (e) {
+                f.edof = { montant: e[0], date: e[1], statut: e[2], dossier: e[3], controle: !!e[5] };
+                if (e[2] === 'Versé') {
+                    var d = R.parseDate(e[1]);
+                    if (f.datePaiement && d && +R.parseDate(f.datePaiement) !== +d && !f.datePaiementMonday) f.datePaiementAvantEdof = f.datePaiement;
+                    f.paye = true; f.edofVerse = true; f.soldeeParAvoir = false;
+                    if (d) { f.datePaiement = d; f.dateVientDuGL = false; }
+                    f.originePaiement = 'EDOF — versé';
+                    n++;
+                }
+            }
+            var dossier = String(f.numeroDossier || (f.edof && f.edof.dossier) || '').replace(/\s+/g, '');
+            var a = dossier && EDOF.avances[dossier];
+            f.edofAvance = (a && a[2] === 'Versé') ? { montant: a[0], date: a[1] } : null;
+        });
+        BILAN.edof = n;
     }
     function appliquerMontantsDossiers(factures, st) {
         var lignes = (st.dossiers && st.dossiers.lignes) || [];
@@ -675,6 +710,18 @@
                                 + '« 0.1. ALL - Factures payées ». Elles sont comptées comme réglées dans les indicateurs ; reste à les déplacer dans Monday. '
                                 + 'Par financement : ' + detail + '. Pour n’en voir qu’un (CPF par exemple), choisissez-le dans le filtre « Financement ».' });
                     }
+                    var horsPayees = function (f) { return f.role !== 'sellsy' && (f.presenceRoles || [f.role]).indexOf('payees') < 0; };
+                    var ev = (factures || []).filter(function (f) { return f.edofVerse && horsPayees(f); });
+                    if (ev.length) liste.unshift({ code: 'EDOF_VERSE_NON_PAYEES', titre: 'CPF : versée selon EDOF, encore sur un tableau Monday des non payées',
+                        gravite: 'haute', nb: ev.length, euros: ev.reduce(function (t, f) { return t + (f.montant || 0); }, 0), items: ev,
+                        conseil: 'EDOF indique « Versé » pour ces factures : elles sont payées, et comptées comme telles dans les indicateurs. '
+                            + 'Il reste à les déplacer dans « 0.1. ALL - Factures payées » dans Monday. L’export donne la date et le montant du règlement EDOF. '
+                            + 'Par groupe : ' + (function () { var g = {}; ev.forEach(function (f) { g[f.groupe] = (g[f.groupe] || 0) + 1; });
+                                return Object.keys(g).sort(function (a, b) { return g[b] - g[a]; }).map(function (k) { return k + ' — ' + g[k]; }).join(' · '); })() + '.' });
+                    var er = (factures || []).filter(function (f) { return f.edof && f.edof.statut !== 'Versé'; });
+                    if (er.length) liste.splice(ev.length ? 1 : 0, 0, { code: 'EDOF_REJETE', titre: 'CPF : règlement rejeté ou en attente dans EDOF',
+                        gravite: 'haute', nb: er.length, euros: er.reduce(function (t, f) { return t + (f.montant || 0); }, 0), items: er,
+                        conseil: 'EDOF n’a pas versé ces factures : statut « Rejeté » ou « En attente ». Le statut figure dans l’export.' });
                     var prob = (factures || []).filter(function (f) {
                         return f.reglementPropose && !f.paye && f.role !== 'sellsy' && (f.presenceRoles || [f.role]).indexOf('payees') < 0;
                     });
@@ -706,6 +753,7 @@
                     st.glStats = BILAN.gl;
                 } else BILAN.gl = null;
                 appliquerMontantsDossiers(factures, st);
+                appliquerEdof(factures);
                 appliquerAnciennes(factures);
                 if (RAPPRO) factures.forEach(function (f) { var x = f.cle && RAPPRO[f.cle];
                     f.reglementPropose = x ? { montant: x[0], reste: x[1], fiabilite: x[2], date: x[3] } : null; });
@@ -727,6 +775,9 @@
                 'État': f.etat || '', 'Payée': f.paye ? 'oui' : 'non', 'Date de paiement': d(f.datePaiement), 'Origine du paiement': f.originePaiement || f.motifPaye || '' };
             if (f.reglementPropose) { o['Règlement proposé'] = f.reglementPropose.montant; o['Reste dû au grand livre'] = f.reglementPropose.reste;
                 o['Fiabilité du rapprochement'] = f.reglementPropose.fiabilite; o['Date du règlement'] = d(f.reglementPropose.date); }
+            if (f.edof) { o['EDOF — statut'] = f.edof.statut; o['EDOF — montant réglé'] = f.edof.montant; o['EDOF — date de règlement'] = d(f.edof.date);
+                o['EDOF — dossier'] = f.edof.dossier; o['EDOF — dossier en contrôle'] = f.edof.controle ? 'oui' : 'non'; }
+            if (f.edofAvance) { o['EDOF — avance versée'] = f.edofAvance.montant; o['EDOF — date de l’avance'] = d(f.edofAvance.date); }
             if (f.anciennesFactures) o['Ancienne facture'] = f.anciennesFactures.join(', ');
             return o;
         });
@@ -764,6 +815,8 @@
             var j = String(GL_INFO.arrete || '').split('-').reverse().join('/');
             t.push('Règlements : grand livre arrêté au ' + j);
         }
+        if (EDOF && EDOF.periodes.length) t.push('CPF : EDOF fait foi (factures émises du '
+            + EDOF.periodes[0][0].split('-').reverse().join('/') + ' au ' + EDOF.periodes[EDOF.periodes.length - 1][1].split('-').reverse().join('/') + ')');
         if (BILAN.sellsyEcartees.length) t.push(BILAN.sellsyEcartees.length + ' ligne(s) Sellsy écartée(s) : montant négatif ou aberrant');
         el.textContent = t.join(' · ');
         el.title = BILAN.sellsyEcartees.slice(0, 30).map(function (e) { return (e.numero || '?') + ' : ' + Math.round(e.montant).toLocaleString('fr-FR') + ' €'; }).join('\n');
