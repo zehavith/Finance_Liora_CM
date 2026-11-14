@@ -700,9 +700,6 @@
             + '<span class="pil-coin">export EDOF jusqu’au ' + jour(p.length && p[p.length - 1][1]) + ' · grand livre au ' + jour(GL_INFO && GL_INFO.arrete) + '</span></div>'
             + '<p class="pil-note">Les ' + ouvertes.length.toLocaleString('fr-FR') + ' factures CPF encore dans les tableaux Monday des non payées, rangées dans l’ordre du circuit EDOF. '
             + 'Chaque nombre ouvre ses factures ; « exporter » en donne la liste Excel. Cette carte ne suit pas les filtres de période.</p>'
-            + '<p class="v3-edof-bilan">' + enLigne(nonVersees, 'factures CPF restent non payées après EDOF', 'Factures CPF non payées : EDOF ne les a pas versées.', 'edof-non-payees')
-            + ' — dont ' + enLigne(deLAnnee, 'de ' + anneeRef, 'Factures CPF non payées datées de ' + anneeRef + '.', 'edof-non-payees-' + anneeRef)
-            + ' et ' + enLigne(avecAvance, 'avec une avance déjà versée sur le dossier', 'Factures CPF non payées dont le dossier a reçu une avance EDOF.', 'edof-non-payees-avec-avance') + '.</p>'
             + '<div class="v3-edof-grille">'
             + etape(1, lots.rien, 'Pas encore dans EDOF', 'ni facture ni avance connue', 'déposer la facture sur EDOF', 'Factures CPF non payées pour lesquelles EDOF ne connaît ni la facture ni une avance sur le dossier.', 'edof-1-aucune-trace')
             + etape(2, lots.avance, 'Avance versée, solde à facturer', 'EDOF a versé l’avance ; pas de facture de solde', 'déposer la facture de solde', 'Une avance a été versée sur le dossier, mais la facture n’apparaît pas dans EDOF.', 'edof-2-avance-seule')
