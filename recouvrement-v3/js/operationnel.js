@@ -164,7 +164,7 @@
     const estPropose = titre => !SURCHARGES[cleTitre(titre)] && !estTechnique(titre)
         && !!AJOUTS_V3[prefixe(titre)] && AJOUTS_V3[prefixe(titre)] === categorieOrigine(titre);
     const LIB_CATEGORIE = {
-        cours: ['En cours', 'pas encore à traiter — non compté dans le circuit'],
+        cours: ['Sous contrôle', 'groupe « en cours » : compté dans « Sous contrôle » tant que l’échéance n’est pas passée'],
         technique: ['Technique / archive', 'groupe de service — non compté'],
     };
 

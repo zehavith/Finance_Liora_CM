@@ -291,7 +291,7 @@
     var CATEGORIES = function () {
         var o = {};
         (OP.CIRCUIT || []).forEach(function (e) { o[e.k] = e.n + ' (' + e.svc + ')'; });
-        o.cours = 'En cours — hors circuit';
+        o.cours = 'Sous contrôle (groupe « en cours »)';
         o.aucune = 'Non classé';
         return o;
     };
@@ -321,8 +321,10 @@
                     : 'classement d’origine',
             'modifiable',
             '<p class="v3-regle-dit">Une facture non réglée compte dans la vignette de l’étape où son groupe Monday est '
-            + 'rangé : Rendre payable, Relancer, Clôture ou Corriger. Un groupe « En cours » n’est dans aucune étape : ses '
-            + 'factures pas encore échues apparaissent dans « Sous contrôle ».</p>'
+            + 'rangé : Rendre payable, Relancer, Clôture ou Corriger. Un groupe « Sous contrôle » n’est dans aucune étape : '
+            + 'ses factures comptent dans la vignette « Sous contrôle » tant que leur échéance n’est pas passée. Une fois '
+            + 'l’échéance passée, si la facture est restée dans ce groupe, elle sort de la vignette et apparaît dans '
+            + 'l’alerte « échues encore dans un groupe en cours ».</p>'
             + '<div class="table-wrap"><table class="op-t op-corr"><thead><tr><th>Groupe Monday</th><th>Compte dans</th></tr></thead>'
             + '<tbody>' + corps + '</tbody></table></div>'
             + '<p><button type="button" class="btn btn-ghost btn-sm" data-action="raz-groupes">Rétablir le classement d’origine</button></p>');
