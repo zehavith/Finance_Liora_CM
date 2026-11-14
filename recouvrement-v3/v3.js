@@ -784,7 +784,17 @@
         var tous = nonVersees.concat(verse), parDossier = {};
         tous.forEach(function (f) { var d = norm(f.numeroDossier || (f.edof && f.edof.dossier)); if (d) (parDossier[d] = parDossier[d] || []).push(f); });
         var enRelance = function (f) { var k = OPX.etapeDe(f); return k === 'rec' || k === 'fin'; };
+        // La règle CPF : la facture passe en recouvrement à fin de formation + 60 jours
+        // (le délai suit la règle d'échéance CPF de l'onglet Règles d'application).
+        var regleCpf = (st.rules || []).filter(function (r) { return r.key === 'CPF'; })[0] || {};
+        var delaiCpf = regleCpf.jours != null ? regleCpf.jours : 60;
         var VERIFS = [
+            ['En recouvrement avant fin de formation + ' + delaiCpf + ' jours', 'La facture est dans un groupe de relance alors que son échéance (fin de formation + ' + delaiCpf + ' jours) n’est pas encore passée.',
+                nonVersees.filter(function (f) { return OPX.etapeDe(f) === 'rec' && f.dateEcheance && !echue(f); }), 'recouvrement-trop-tot'],
+            ['Fin de formation + ' + delaiCpf + ' jours dépassée, mais pas passée en recouvrement', 'L’échéance est passée : la facture devrait être en recouvrement, elle est encore dans un groupe « en cours » ou côté ADV.',
+                nonVersees.filter(function (f) { var k = OPX.etapeDe(f); return echue(f) && k !== 'rec' && k !== 'fin' && k !== 'cor'; }), 'echue-pas-en-recouvrement'],
+            ['Date de fin de formation manquante', 'Sans date de fin de formation, impossible de savoir quand la facture doit passer en recouvrement.',
+                nonVersees.filter(function (f) { return !f.dateFinFormation; }), 'fin-de-formation-manquante'],
             ['Même dossier CPF sur plusieurs factures non payées', 'Plusieurs factures Monday portent le même numéro de dossier : doublon possible, ou facture refaite sans annuler l’ancienne.',
                 tous.filter(function (f) { var d = norm(f.numeroDossier || (f.edof && f.edof.dossier)); return d && parDossier[d].length > 1; }), 'doublon-dossier'],
             ['Facture saisie deux fois dans Monday', 'La même facture apparaît sur plusieurs lignes ou plusieurs tableaux Monday.',
@@ -815,7 +825,8 @@
         hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + parcours
             + '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">CPF — étapes EDOF croisées avec les étapes du circuit</h3>'
             + '<span class="pil-coin">export EDOF jusqu’au ' + jour(p.length && p[p.length - 1][1]) + ' · grand livre au ' + jour(GL_INFO && GL_INFO.arrete) + '</span></div>'
-            + '<p class="pil-note">En ligne, où en est la facture dans EDOF ; en colonne, dans quelle étape du circuit elle se trouve dans Monday. '
+            + '<p class="pil-note"><b>Règle CPF :</b> une facture passe en recouvrement (étape « Relancer ») à fin de formation + ' + delaiCpf + ' jours. '
+            + 'En ligne, où en est la facture dans EDOF ; en colonne, dans quelle étape du circuit elle se trouve dans Monday. '
             + 'Les factures versées par EDOF sont comptées payées : elles ne sont plus dans les vignettes du dessus, mais restent ici tant qu’elles ne sont pas déplacées. '
             + rangees.toLocaleString('fr-FR') + ' autres factures versées sont déjà rangées dans les payées.</p>'
             + matrice
