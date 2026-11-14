@@ -26,8 +26,49 @@
 
     var S = G.LioraStore, R = G.LioraRules, OP = G.LioraOperationnel;
     var CLE = 'rec_v3_regles';
-    var REG = { groupes: {}, cibles: {}, controle: {}, exclus: null };
+    var REG = { groupes: {}, cibles: {}, controle: {}, exclus: null, tranches: null };
     var EXCLUS_ORIGINE = (R && R.GROUPES_EXCLUS) ? R.GROUPES_EXCLUS.slice() : [];
+
+    // ── Les tranches d'ancienneté ──
+    //
+    // Les bornes se choisissent sur la grille du relevé comptable (3, 4, 6,
+    // 12, 18, 24, 36, 48 mois) : c'est la seule façon que la page et le
+    // Pilotage découpent au même endroit. La borne des 12 mois reste
+    // toujours posée — « plus d'un an » et les créances compromises s'y lisent.
+    var GRILLE = [3, 4, 6, 12, 18, 24, 36, 48];
+    var TRANCHES_ORIGINE = (R && R.AGING_BUCKETS) ? R.AGING_BUCKETS.map(function (b) { return Object.assign({}, b); }) : [];
+    var CLES_PLUS_DUN_AN = ['m12_18', 'm18_24', 'm24_36', 'm36_48', 'm48p'];
+    var TEINTES_TRANCHES = ['#1D7F55', '#a3c714', '#A8750B', '#A86A06', '#C2410C', '#D9532E', '#B8352A', '#B8352A', '#8E2A21'];
+    function coupesRetenues() {
+        var c = (REG.tranches || GRILLE).map(Number).filter(function (x) { return GRILLE.indexOf(x) >= 0; });
+        if (c.indexOf(12) < 0) c.push(12);
+        return c.sort(function (a, b) { return a - b; });
+    }
+    function tranchesDepuis(coupes) {
+        var bornes = [0].concat(coupes).concat([Infinity]), n = bornes.length - 1, vieux = 0;
+        var out = [Object.assign({}, TRANCHES_ORIGINE[0])];          // « Non échu », inchangé
+        for (var i = 0; i < n; i++) {
+            var lo = bornes[i], hi = bornes[i + 1];
+            out.push({
+                // Au-delà de douze mois, les noms internes d'origine sont repris :
+                // la synthèse « plus d'un an » de la balance les cherche par ce nom.
+                key: lo >= 12 ? CLES_PLUS_DUN_AN[vieux++] : (hi === Infinity ? 'm' + lo + 'p' : 'm' + lo + '_' + hi),
+                label: hi === Infinity ? '> ' + lo + ' mois' : lo + ' à ' + hi + ' mois',
+                min: lo * 30 + 1, max: hi === Infinity ? 1e9 : hi * 30,
+                couleur: TEINTES_TRANCHES[Math.round(n > 1 ? i * (TEINTES_TRANCHES.length - 1) / (n - 1) : 0)],
+            });
+        }
+        return out;
+    }
+    function appliquerTranches() {
+        if (!R || !R.AGING_BUCKETS) return;
+        var l = R.AGING_BUCKETS, nouvelles = REG.tranches ? tranchesDepuis(coupesRetenues()) : TRANCHES_ORIGINE;
+        l.length = 0;
+        nouvelles.forEach(function (b) { l.push(Object.assign({}, b)); });
+        if (G.LioraPilotage && G.LioraPilotage.definirTranches) {
+            G.LioraPilotage.definirTranches(REG.tranches ? coupesRetenues() : null);
+        }
+    }
     var OUVERTS = {};
     var etat = function () { return G.__recouvrement; };
     var hote = function () { return document.getElementById('v3-regles-corps'); };
@@ -47,6 +88,7 @@
             l.length = 0;
             (REG.exclus && REG.exclus.length ? REG.exclus : EXCLUS_ORIGINE).forEach(function (m) { l.push(m); });
         }
+        appliquerTranches();
     }
     var pret = (async function () {
         try {
@@ -54,6 +96,7 @@
             if (r && typeof r === 'object') {
                 REG.groupes = r.groupes || {}; REG.cibles = r.cibles || {};
                 REG.controle = r.controle || {}; REG.exclus = r.exclus || null;
+                REG.tranches = Array.isArray(r.tranches) && r.tranches.length ? r.tranches : null;
             }
         } catch (e) { /* les règles d'origine s'appliquent */ }
         appliquer();
@@ -178,14 +221,25 @@
                     : 'de ' + b.min + ' à ' + b.max + ' jours de retard') + '</td></tr>';
         }).join('');
         var seuils = { 180: '6 mois (180 jours)', 360: '12 mois (360 jours)', 540: '18 mois (540 jours)', 720: '24 mois (720 jours)' };
+        var coupes = coupesRetenues();
+        var cases = GRILLE.map(function (m) {
+            var oui = coupes.indexOf(m) >= 0, fixe = m === 12;
+            return '<label class="check v3-coupe" for="rt-' + m + '"><input type="checkbox" id="rt-' + m + '" data-coupe="' + m + '"'
+                + (oui ? ' checked' : '') + (fixe ? ' disabled' : '') + '> ' + m + ' mois'
+                + (fixe ? ' <span class="op-pied">(toujours posée)</span>' : '') + '</label>';
+        }).join('');
         return bloc('tranches', 'Balance âgée — tranches d’ancienneté et créances compromises',
-            (R.AGING_BUCKETS || []).length + ' tranches · compromise au-delà de ' + seuil + ' jours',
-            'seuil modifiable',
-            '<p class="v3-regle-dit">Le reste dû est rangé selon le nombre de jours écoulés depuis l’échéance. '
-            + 'Les tranches sont celles de votre balance âgée comptable : elles sont communes à la page et au relevé du '
-            + 'Pilotage, et ne se modifient donc pas ici — les changer d’un seul côté ferait diverger les deux.</p>'
-            + '<div class="table-wrap"><table class="op-t"><thead><tr><th>Tranche</th><th class="n">Retard</th></tr></thead><tbody>'
+            ((R.AGING_BUCKETS || []).length - 1) + ' tranches échues' + (REG.tranches ? ' · découpage modifié' : ' · découpage d’origine')
+            + ' · compromise au-delà de ' + seuil + ' jours',
+            'modifiable',
+            '<p class="v3-regle-dit">Le reste dû est rangé selon le temps écoulé depuis l’échéance. '
+            + '<b>Cochez les seuils où une tranche se termine</b> : décocher « 4 mois » réunit « 3 à 4 mois » et '
+            + '« 4 à 6 mois » en une seule tranche « 3 à 6 mois ». Les seuils proposés sont ceux auxquels la comptabilité '
+            + 'découpe l’encours ; c’est ce qui permet au Pilotage de suivre exactement le même découpage.</p>'
+            + '<div class="v3-coupes">' + cases + '</div>'
+            + '<div class="table-wrap"><table class="op-t"><thead><tr><th>Tranche obtenue</th><th class="n">Retard</th></tr></thead><tbody>'
             + lignes + '</tbody></table></div>'
+            + (REG.tranches ? '<p><button type="button" class="btn btn-ghost btn-sm" data-action="raz-tranches">Rétablir le découpage d’origine</button></p>' : '')
             + '<p class="v3-regle-ligne"><label for="rs-seuil">Une créance est dite <b>compromise</b> (bad debt) au-delà de</label> '
             + '<select class="input input-sm" id="rs-seuil" data-action="seuil">' + options(seuils, String(seuil)) + '</select></p>');
     }
@@ -319,7 +373,24 @@
     // ══════════════════════════════════════════════
     //  Le bloc replié, et la page
     // ══════════════════════════════════════════════
+    // Les pages que chaque règle modifie — et celles qu'elle ne modifie pas.
+    var PORTEES = {
+        echeances: ['Tableau de bord, Opérationnel, Balance âgée d’après Monday, Financements, Factures',
+                    'le Pilotage : son relevé comptable est calculé en amont, avec les règles de la balance âgée comptable'],
+        'echeances-gl': ['Balance âgée d’après le grand livre (quand un grand livre est chargé dans la page)',
+                    'le Pilotage : son relevé est calculé en amont ; pour qu’il change, la règle doit aussi être changée dans la chaîne de la balance âgée'],
+        tranches: ['Balance âgée, Tableau de bord, et Pilotage (colonnes du tableau par financeur, graphique d’ancienneté)', ''],
+        classement: ['Balance âgée d’après le grand livre', ''],
+        controle: ['Opérationnel', ''],
+        groupes: ['Opérationnel', ''],
+        cibles: ['Opérationnel', ''],
+        exclus: ['toutes les pages qui lisent Monday : Tableau de bord, Opérationnel, Balance âgée, Financements, Factures', ''],
+        etats: ['toutes les pages', ''],
+    };
     function bloc(id, titre, resume, mode, corps) {
+        var po = PORTEES[id];
+        if (po) corps = '<p class="v3-regle-portee"><b>S’applique à :</b> ' + esc(po[0]) + '.'
+            + (po[1] ? ' <b>Ne change pas</b> ' + esc(po[1]) + '.' : '') + '</p>' + corps;
         return '<details class="v3-regle" data-regle="' + id + '"' + (OUVERTS[id] ? ' open' : '') + '>'
             + '<summary><span class="v3-regle-titre">' + esc(titre) + '</span>'
             + '<span class="v3-regle-resume">' + esc(resume) + '</span>'
@@ -337,7 +408,7 @@
         if (!st || !OP || !R) { h.innerHTML = '<p class="op-vide">Les règles s’affichent une fois les données chargées.</p>'; return; }
         h.innerHTML = '<p class="aide-bloc">Chaque règle est repliée sous son titre : cliquez la flèche pour voir son détail '
             + 'et la modifier. Une modification s’applique tout de suite aux calculs de cette page et reste gardée dans '
-            + 'ce navigateur. Elle ne change rien dans Monday, ni dans le relevé comptable de l’onglet Pilotage.</p>'
+            + 'ce navigateur. Chaque règle dit, dans son détail, quelles pages elle modifie. Rien n’est changé dans Monday.</p>'
             + famille('Échéances', 'La date à laquelle une facture doit être payée.',
                 [blocEcheances(st), blocEcheancesGL(st)])
             + famille('Balance âgée', 'Comment le reste dû est rangé par ancienneté et par financement.',
@@ -367,6 +438,14 @@
             }
             try { await S.set(S.KEYS.rules, st.rules); } catch (x) { /* vaut pour cette session */ }
             recalculer(); rendre(); dire('Règle d’échéance enregistrée : les chiffres sont recalculés.');
+            return;
+        }
+        if (d.coupe != null) {
+            var choisies = [];
+            (hote().querySelectorAll('[data-coupe]') || []).forEach(function (x) { if (x.checked) choisies.push(+x.dataset.coupe); });
+            REG.tranches = choisies.length ? choisies : [12];
+            appliquer(); await garder(); recalculer(); rendre();
+            dire('Tranches d’ancienneté enregistrées : la balance âgée, le tableau de bord et le Pilotage les suivent.');
             return;
         }
         if (d.groupe != null) {
@@ -422,6 +501,7 @@
             recalculer(); rendre(); dire('Règles d’échéance d’origine rétablies.');
         } else if (a === 'raz-groupes') { REG.groupes = {}; appliquer(); await garder(); rendre(); dire('Classement d’origine rétabli.'); }
         else if (a === 'raz-cibles') { REG.cibles = {}; appliquer(); await garder(); rendre(); dire('Délais d’origine rétablis.'); }
+        else if (a === 'raz-tranches') { REG.tranches = null; appliquer(); await garder(); recalculer(); rendre(); dire('Découpage d’origine rétabli.'); }
         else if (a === 'raz-exclus') { REG.exclus = null; appliquer(); await garder(); recalculer(); rendre(); dire('Liste d’origine rétablie.'); }
         else if (a === 'vers-aging') { var t = document.querySelector('.nav-tab[data-tab="aging"]'); if (t) t.click(); }
     }

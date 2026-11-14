@@ -382,7 +382,7 @@
     // Liora — du clair au foncé : la gravité se lit sans légende. Le non échu
     // n'est pas une tranche d'ancienneté mais son absence : il reste neutre,
     // en gris, et ne se confond avec aucune.
-    const BANDES = [
+    const BANDES_ORIGINE = [
         { nom: 'Non échu', tr: [], nonEchu: true, c: '#9A948D' },
         { nom: '0 à 3 mois', tr: ['0 à 3 mois'], c: '#F2BBA4' },
         { nom: '3 à 6 mois', tr: ['3 à 4 mois', '4 à 6 mois'], c: '#E8906B' },
@@ -390,6 +390,7 @@
         { nom: '1 à 2 ans', tr: ['12 à 18 mois', '18 à 24 mois'], c: '#A8381B' },
         { nom: 'Plus de 2 ans', tr: ['24 à 36 mois', '36 à 48 mois', '> 48 mois'], c: '#6E2210' },
     ];
+    let BANDES = BANDES_ORIGINE;
 
     function bandesDe(e) {
         const t = D.tranches || [];
@@ -424,13 +425,47 @@
     // Ses cinq colonnes, et un dégradé qui dit le risque : plus la créance est
     // vieille, plus la case est chaude. La valeur se lit dans la case — une
     // couleur seule ne se recopie pas dans un dossier.
-    const COLONNES = [
+    const COLONNES_ORIGINE = [
         { nom: 'Non échu', nonEchu: true, tr: [] },
         { nom: '0 à 3 mois', tr: ['0 à 3 mois'] },
         { nom: '3 à 6 mois', tr: ['3 à 4 mois', '4 à 6 mois'] },
         { nom: '6 à 12 mois', tr: ['6 à 12 mois'] },
         { nom: 'Plus d’un an', tr: ['12 à 18 mois', '18 à 24 mois', '24 à 36 mois', '36 à 48 mois', '> 48 mois'] },
     ];
+    let COLONNES = COLONNES_ORIGINE;
+    let RISQUE_CHOISI = null;
+
+    // VERSION 3 — LES TRANCHES SE CHOISISSENT, ET LE PILOTAGE LES SUIT.
+    //
+    // « Je veux pouvoir modifier les tranches d'ancienneté, les modifs doivent
+    // avoir un impact sur la page pilotage. » Le relevé comptable est calculé
+    // en amont : il porte l'encours découpé à 3, 4, 6, 12, 18, 24, 36 et 48
+    // mois, et rien entre ces bornes. Une tranche choisie parmi elles se
+    // recompose donc exactement, par addition ; une borne placée ailleurs ne
+    // pourrait être qu'inventée, et c'est pourquoi le choix se fait sur cette
+    // grille. Sans choix, chaque carte garde son regroupement d'origine.
+    const GRILLE_RELEVE = [['0 à 3 mois', 0, 3], ['3 à 4 mois', 3, 4], ['4 à 6 mois', 4, 6],
+        ['6 à 12 mois', 6, 12], ['12 à 18 mois', 12, 18], ['18 à 24 mois', 18, 24],
+        ['24 à 36 mois', 24, 36], ['36 à 48 mois', 36, 48], ['> 48 mois', 48, Infinity]];
+    function definirTranches(coupes) {
+        const c = [...new Set((coupes || []).map(Number).filter(x => x > 0 && x <= 48))].sort((a, b) => a - b);
+        if (!c.length) { COLONNES = COLONNES_ORIGINE; BANDES = BANDES_ORIGINE; RISQUE_CHOISI = null; return; }
+        const bornes = [0].concat(c).concat([Infinity]);
+        const n = bornes.length - 1;
+        // Du clair au foncé, dans la même teinte : la gravité se lit sans légende.
+        const teinte = i => { const t = n > 1 ? i / (n - 1) : 1;
+            const mix = (a, b) => Math.round(a + (b - a) * t);
+            return 'rgb(' + mix(242, 110) + ', ' + mix(187, 34) + ', ' + mix(164, 16) + ')'; };
+        const tr = [];
+        for (let i = 0; i < n; i++) {
+            const lo = bornes[i], hi = bornes[i + 1];
+            tr.push({ nom: hi === Infinity ? 'Plus de ' + lo + ' mois' : lo + ' à ' + hi + ' mois',
+                      tr: GRILLE_RELEVE.filter(g => g[1] >= lo && g[2] <= hi).map(g => g[0]), c: teinte(i) });
+        }
+        COLONNES = [{ nom: 'Non échu', nonEchu: true, tr: [] }].concat(tr.map(x => ({ nom: x.nom, tr: x.tr })));
+        BANDES = [{ nom: 'Non échu', tr: [], nonEchu: true, c: '#9A948D' }].concat(tr);
+        RISQUE_CHOISI = [0].concat(tr.map((_, i) => n > 1 ? 0.18 + 0.82 * (i / (n - 1)) : 1));
+    }
 
     function graphHeatmap(e) {
         const el = document.getElementById('pil-heatmap');
@@ -547,7 +582,7 @@
         //
         // La racine relève le milieu de l'échelle : sans elle, une seule case
         // énorme écrase toutes les autres dans un dégradé invisible.
-        const RISQUE = [0, 0.18, 0.45, 0.75, 1];
+        const RISQUE = RISQUE_CHOISI || [0, 0.18, 0.45, 0.75, 1];
         const POIDS_AGE = 0.45;              // l'ancienneté module, elle ne décide pas
         const vmax = Math.max(...lignes.flatMap(r => r.cases.map(Math.abs)), 1);
         const chaleur = (v, tot, j) => {
@@ -1636,5 +1671,5 @@
         rendre();
     }
 
-    global.LioraPilotage = { charger, ouvrir, rendre, etat: () => ({ D, erreur, F }) };
+    global.LioraPilotage = { charger, ouvrir, rendre, definirTranches, etat: () => ({ D, erreur, F }) };
 })(window);

@@ -355,3 +355,7 @@ body.v3-onglet-regles #filters-wrap { display: none; }
 .v3-regle-saisie .input-num { width: 5rem; }
 .v3-regle-texte { width: 100%; max-width: 60rem; font: inherit; font-size: 0.86rem; resize: vertical; }
 @media (max-width: 760px) { .v3-regle-corps { padding-left: 1rem; } }
+.v3-regle-portee { font-size: 0.8rem; line-height: 1.5; color: var(--text-muted); max-width: 95ch; }
+.v3-regle-portee b { color: var(--text-secondary); }
+.v3-coupes { display: flex; flex-wrap: wrap; gap: 0.4rem 1.3rem; }
+.v3-coupe { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.88rem; color: var(--text-primary); }
