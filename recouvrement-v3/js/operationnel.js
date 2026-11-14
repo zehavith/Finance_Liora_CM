@@ -1136,17 +1136,14 @@
             : '<div class="op-vide">Aucune facture dans cette étape avec ces filtres.</div>')
           + '</div></div></div>'
           + '<div class="charts-grid"><div class="chart-card chart-wide" id="op-correspondance">'
-          + '<div class="chart-header"><h3>3 · Quel groupe Monday compte dans quelle étape</h3></div>'
-          + '<p class="pil-note">Tableau par tableau, chaque groupe Monday et l’étape où ses factures non réglées '
-          + 'sont comptées. « En cours » et « Technique / archive » ne sont dans aucune étape. '
-          + 'Un groupe marqué « à vérifier » n’était pas classé jusqu’ici : la version 3 le range comme le groupe '
-          + 'voisin qui porte le même intitulé, et attend votre confirmation.</p>'
           + (horsCircuit.length ? '<p class="op-alerte">' + ouvrable(nb(horsCircuit.length) + ' factures non réglées',
                 'Factures dans un groupe non classé', horsCircuit,
                 'Ces factures sont dans un groupe Monday qu’aucune étape ne range : elles ne sont comptées nulle part '
                 + 'dans le circuit.') + ' se trouvent dans un groupe qu’aucune étape ne range. '
                 + 'Elles ne sont comptées dans aucun des nombres ci-dessus.</p>' : '')
-          + '<div class="table-wrap">' + tableCorrespondance(DERNIERES) + '</div>'
+          + '<p class="pil-note">Quel groupe Monday compte dans quelle étape, avec le nombre de factures non réglées de chaque groupe : '
+          + 'c’est dans <button type="button" class="op-lien" data-vers-regles="1">Contrôles › Règles d’application</button>, '
+          + 'règle « Circuit — dans quelle vignette compte chaque groupe Monday ».</p>'
           + '</div></div>';
 
         brancher(items, st, k, pr);
@@ -1158,6 +1155,10 @@
         h.querySelectorAll('[data-nav-etape]').forEach(b =>
             b.onclick = ev => { ev.stopPropagation();
                 montrerEtape(b.dataset.navEtape, b.dataset.t || '', b.dataset.g || ''); });
+        h.querySelectorAll('[data-vers-regles]').forEach(b => b.onclick = () => {
+            const o = document.querySelector('[data-tab="regles"]'); if (o) o.click();
+            setTimeout(() => { const d = document.querySelector('#v3-regles-corps details[data-regle="groupes"], #v3-regle-groupes');
+                if (d) { d.open = true; d.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }, 400); });
         h.querySelectorAll('[data-lot]').forEach(b =>
             b.onclick = ev => { ev.stopPropagation(); const l = LOTS[+b.dataset.lot]; if (l) montrerLot(l); });
         h.querySelectorAll('[data-etape]').forEach(b =>
@@ -1224,7 +1225,23 @@
         CONTROLE.horsEtapes = c.horsEtapes !== false;
     }
 
+    /** Les factures non réglées de chaque groupe Monday, pour l'onglet des règles. */
+    function ouvertesParGroupe(factures) {
+        const num = t => prefixe(t).split('.').slice(0, 2).join('.');
+        const sortie = {};
+        for (const f of (factures || [])) {
+            if (f.paye || f.role === 'payees' || f.role === 'sellsy' || f.role === 'ignore') continue;
+            if (/^avr/i.test(String(f.numero || ''))) continue;
+            const t = tableauDe(f), g = groupeDe(f), k = (num(t) || t) + '|' + cleTitre(g);
+            (sortie[k] = sortie[k] || { tableau: t, groupe: g, its: [] }).its.push(f);
+        }
+        return sortie;
+    }
+    const cleGroupe = (t, g) => ((prefixe(t).split('.').slice(0, 2).join('.')) || t) + '|' + cleTitre(g);
+    const montrerFactures = (titre, its, note) => montrerLot({ titre, its: its || [], note: note || '', completer: false });
+
     global.LioraOperationnel = {
+        ouvertesParGroupe, cleGroupe, montrerFactures,
         appliquerReglages, categorieDuGroupe, estPropose, estTechnique, cleTitre,
         referentiel: REFERENTIEL, CONTROLE, CIBLES_ORIGINE,
         rendre, ouvrir, CIRCUIT, GROUPE_ETAPE, etapeDe,

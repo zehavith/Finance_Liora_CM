@@ -316,26 +316,55 @@
         return o;
     };
 
+    var VOIR = {};
     function blocGroupes() {
         var cats = CATEGORIES();
         var nbModif = Object.keys(REG.groupes || {}).length;
+        // Les factures non réglées de chaque groupe : le nombre s'ouvre sur ses factures.
+        var st0 = etat() || {};
+        var ouvertes = OP.ouvertesParGroupe ? OP.ouvertesParGroupe(st0.factures || []) : {};
+        VOIR = {};
+        var vus = {}, totalOuvert = 0;
+        var compte = function (tableau, g) {
+            var k = OP.cleGroupe(tableau, g), o = ouvertes[k];
+            vus[k] = true;
+            if (!o || !o.its.length) return '<td class="n">0</td>';
+            totalOuvert += o.its.length;
+            VOIR[k] = { titre: g, its: o.its, note: 'Factures non réglées du groupe Monday « ' + g + ' », tableau « ' + tableau + ' ».' };
+            var montant = o.its.reduce(function (t, f) { return t + (Number(f.encours != null ? f.encours : f.montant) || 0); }, 0);
+            return '<td class="n"><button type="button" class="op-lien" data-voir-groupe="' + esc(k) + '" title="Voir ces factures">'
+                + o.its.length.toLocaleString('fr-FR') + '</button><br><span class="op-pied">'
+                + Math.round(montant).toLocaleString('fr-FR') + ' €</span></td>';
+        };
+        var ligne = function (tableau, g, id) {
+            var cle = OP.cleTitre(g);
+            if (OP.estTechnique(g)) {
+                return '<tr><td>' + esc(g) + '</td><td><span class="op-chip">Technique / archive</span> '
+                    + '<span class="op-pied">écarté par les mots de la règle « Groupes écartés »</span></td>' + compte(tableau, g) + '</tr>';
+            }
+            var v = OP.categorieDuGroupe(g) || 'aucune';
+            return '<tr><td><label for="' + id + '">' + esc(g) + '</label>'
+                + (REG.groupes[cle] ? ' <span class="op-chip moyen">modifié</span>'
+                    : OP.estPropose(g) ? ' <span class="op-chip moyen" title="Groupe classé par analogie par la '
+                      + 'version 3 : à confirmer.">à vérifier</span>' : '') + '</td>'
+                + '<td><select class="input input-sm" id="' + id + '" data-groupe="' + esc(cle) + '">'
+                + options(cats, v) + '</select></td>' + compte(tableau, g) + '</tr>';
+        };
         var corps = (OP.referentiel || []).map(function (t) {
-            return '<tr class="op-sous-tableau op-corr-tableau"><td colspan="2">' + esc(t[0]) + '</td></tr>'
-                + t[1].map(function (g, i) {
-                    var cle = OP.cleTitre(g), id = 'rgp-' + OP.cleTitre(t[0]).replace(/[^a-z0-9]+/g, '-') + '-' + i;
-                    if (OP.estTechnique(g)) {
-                        return '<tr><td>' + esc(g) + '</td><td><span class="op-chip">Technique / archive</span> '
-                            + '<span class="op-pied">écarté par les mots de la règle « Groupes écartés »</span></td></tr>';
-                    }
-                    var v = OP.categorieDuGroupe(g) || 'aucune';
-                    return '<tr><td><label for="' + id + '">' + esc(g) + '</label>'
-                        + (REG.groupes[cle] ? ' <span class="op-chip moyen">modifié</span>'
-                            : OP.estPropose(g) ? ' <span class="op-chip moyen" title="Groupe classé par analogie par la '
-                              + 'version 3 : à confirmer.">à vérifier</span>' : '') + '</td>'
-                        + '<td><select class="input input-sm" id="' + id + '" data-groupe="' + esc(cle) + '">'
-                        + options(cats, v) + '</select></td></tr>';
-                }).join('');
+            var base = 'rgp-' + OP.cleTitre(t[0]).replace(/[^a-z0-9]+/g, '-') + '-';
+            var h = '<tr class="op-sous-tableau op-corr-tableau"><td colspan="3">' + esc(t[0]) + '</td></tr>'
+                + t[1].map(function (g, i) { return ligne(t[0], g, base + i); }).join('');
+            // Les groupes que Monday porte en plus de la liste connue, pour ce tableau.
+            var prefixe = OP.cleGroupe(t[0], '').split('|')[0], n = 0;
+            Object.keys(ouvertes).forEach(function (k) {
+                if (vus[k] || k.split('|')[0] !== prefixe) return;
+                h += ligne(t[0], ouvertes[k].groupe, base + 'x' + (n++));
+            });
+            return h;
         }).join('');
+        var restes = Object.keys(ouvertes).filter(function (k) { return !vus[k]; });
+        if (restes.length) corps += '<tr class="op-sous-tableau op-corr-tableau"><td colspan="3">Autres tableaux</td></tr>'
+            + restes.map(function (k, i) { return ligne(ouvertes[k].tableau, ouvertes[k].groupe, 'rgp-autres-' + i); }).join('');
         return bloc('groupes', 'Circuit — dans quelle vignette compte chaque groupe Monday',
             nbModif ? nbModif + ' groupe' + (nbModif > 1 ? 's' : '') + ' reclassé' + (nbModif > 1 ? 's' : '') + ' à la main'
                     : 'classement d’origine',
@@ -345,7 +374,9 @@
             + 'ses factures comptent dans la vignette « Sous contrôle » tant que leur échéance n’est pas passée. Une fois '
             + 'l’échéance passée, si la facture est restée dans ce groupe, elle sort de la vignette et apparaît dans '
             + 'l’alerte « échues encore dans un groupe en cours ».</p>'
-            + '<div class="table-wrap"><table class="op-t op-corr"><thead><tr><th>Groupe Monday</th><th>Compte dans</th></tr></thead>'
+            + '<p class="v3-regle-dit">La colonne « Factures non réglées » compte toutes les factures Monday non réglées du groupe, '
+            + 'sans filtre de période (' + totalOuvert.toLocaleString('fr-FR') + ' au total). Cliquez un nombre pour voir les factures.</p>'
+            + '<div class="table-wrap"><table class="op-t op-corr"><thead><tr><th>Groupe Monday</th><th>Compte dans</th><th class="n">Factures non réglées</th></tr></thead>'
             + '<tbody>' + corps + '</tbody></table></div>'
             + '<p><button type="button" class="btn btn-ghost btn-sm" data-action="raz-groupes">Rétablir le classement d’origine</button></p>');
     }
@@ -514,6 +545,8 @@
     }
 
     async function surClic(e) {
+        var v = e.target && e.target.closest && e.target.closest('[data-voir-groupe]');
+        if (v) { var l = VOIR[v.dataset.voirGroupe]; if (l && OP.montrerFactures) OP.montrerFactures(l.titre, l.its, l.note); return; }
         var b = e.target && e.target.closest && e.target.closest('[data-action]');
         var st = etat();
         if (!b || !st || b.tagName !== 'BUTTON') return;
