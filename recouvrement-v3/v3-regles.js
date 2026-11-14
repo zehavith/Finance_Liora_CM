@@ -415,6 +415,21 @@
             + c.proche + '"> prochains jours</p>');
     }
 
+    function blocCpf() {
+        var payable = +(REG.controle && REG.controle.cpfPayable) > 0 ? +REG.controle.cpfPayable : 45;
+        var st = etat() || {}, r = (st.rules || []).filter(function (x) { return x.key === 'CPF'; })[0] || {};
+        var reco = r.jours != null ? r.jours : 60;
+        return bloc('cpf', 'Circuit CPF — à quelle date une facture change d’étape',
+            'Rendre payable à fin de formation + ' + payable + ' j · recouvrement à + ' + reco + ' j', 'modifiable',
+            '<p class="v3-regle-dit">Pour le CPF, l’étape attendue se déduit de la date de fin de formation. Avant le premier seuil, la facture est '
+            + '« Sous contrôle » ; entre les deux, elle doit être dans « Rendre payable » ; après le second, en recouvrement (« Relancer »). '
+            + 'L’onglet Opérationnel compare cette étape attendue au groupe Monday où se trouve la facture, et range les écarts dans « Facturation à revérifier ».</p>'
+            + '<p class="v3-regle-ligne"><label for="rk-cpf-payable">« Rendre payable » commence à fin de formation +</label> '
+            + '<input class="input input-sm input-num" type="number" min="0" id="rk-cpf-payable" data-action="cpf-payable" value="' + payable + '"> jours</p>'
+            + '<p class="v3-regle-ligne">Le recouvrement commence à fin de formation + <b>' + reco + ' jours</b> : c’est l’échéance CPF, '
+            + 'qui se règle dans la règle « Échéances — suivi Monday et opérationnel », en haut de cette page.</p>');
+    }
+
     function blocExclus() {
         var mots = (R.GROUPES_EXCLUS || []).slice();
         return bloc('exclus', 'Groupes écartés — techniques, archives, corbeilles',
@@ -439,6 +454,7 @@
         tranches: ['Balance âgée, Tableau de bord, et Pilotage (colonnes du tableau par financeur, graphique d’ancienneté)', ''],
         classement: ['Balance âgée d’après le grand livre', ''],
         controle: ['Opérationnel', ''],
+        cpf: ['Opérationnel — carte « Le circuit », financement CPF', ''],
         groupes: ['Opérationnel', ''],
         cibles: ['Opérationnel', ''],
         exclus: ['toutes les pages qui lisent Monday : Tableau de bord, Opérationnel, Balance âgée, Financements, Factures', ''],
@@ -472,7 +488,7 @@
             + famille('Balance âgée', 'Comment le reste dû est rangé par ancienneté et par financement.',
                 [blocTranches(st), blocClassement(st)])
             + famille('Circuit de l’onglet Opérationnel', 'Ce qui range une facture dans une vignette : Sous contrôle, Rendre payable, Relancer, Clôture, Corriger.',
-                [blocControle(), blocGroupes(), blocCibles(), blocExclus()])
+                [blocControle(), blocCpf(), blocGroupes(), blocCibles(), blocExclus()])
             + famille('Qualification des factures', 'Ce que veulent dire les états affichés partout dans l’application.',
                 [blocSources(), blocEtats()]);
     }
@@ -526,6 +542,12 @@
             return;
         }
         if (d.action === 'hors') { REG.controle.horsEtapes = c.checked; appliquer(); await garder(); rendre(); dire('Règle « Sous contrôle » enregistrée.'); return; }
+        if (d.action === 'cpf-payable') {
+            var cp = parseInt(c.value, 10);
+            if (cp >= 0 && cp !== 45) REG.controle.cpfPayable = cp; else delete REG.controle.cpfPayable;
+            await garder(); rendre(); dire('Règle du circuit CPF enregistrée.');
+            return;
+        }
         if (d.action === 'proche') {
             var p = parseInt(c.value, 10);
             if (p > 0) REG.controle.proche = p; else delete REG.controle.proche;

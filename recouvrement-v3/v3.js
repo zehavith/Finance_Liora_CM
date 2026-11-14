@@ -788,11 +788,22 @@
         // (le délai suit la règle d'échéance CPF de l'onglet Règles d'application).
         var regleCpf = (st.rules || []).filter(function (r) { return r.key === 'CPF'; })[0] || {};
         var delaiCpf = regleCpf.jours != null ? regleCpf.jours : 60;
+        var reglagesV3 = (G.LioraV3Regles && G.LioraV3Regles.reglages && G.LioraV3Regles.reglages()) || {};
+        var delaiPayable = +((reglagesV3.controle || {}).cpfPayable) > 0 ? +reglagesV3.controle.cpfPayable : 45;
+        var jourRef = (st.filtres && st.filtres.dateRef && R.parseDate(st.filtres.dateRef)) || new Date();
+        // L'étape attendue d'après la date de fin de formation : sous contrôle, puis rendre payable, puis recouvrement.
+        var attendue = function (f) { var fin = f.dateFinFormation && R.parseDate(f.dateFinFormation); if (!fin) return null;
+            var j = Math.floor((+jourRef - +fin) / 86400000); return j < delaiPayable ? 'ctl' : j < delaiCpf ? 'adv' : 'rec'; };
+        var etapeMonday = function (f) { var k = OPX.etapeDe(f); return cles[k] ? k : 'cours'; };
         var VERIFS = [
-            ['En recouvrement avant fin de formation + ' + delaiCpf + ' jours', 'La facture est dans un groupe de relance alors que son échéance (fin de formation + ' + delaiCpf + ' jours) n’est pas encore passée.',
-                nonVersees.filter(function (f) { return OPX.etapeDe(f) === 'rec' && f.dateEcheance && !echue(f); }), 'recouvrement-trop-tot'],
-            ['Fin de formation + ' + delaiCpf + ' jours dépassée, mais pas passée en recouvrement', 'L’échéance est passée : la facture devrait être en recouvrement, elle est encore dans un groupe « en cours » ou côté ADV.',
-                nonVersees.filter(function (f) { var k = OPX.etapeDe(f); return echue(f) && k !== 'rec' && k !== 'fin' && k !== 'cor'; }), 'echue-pas-en-recouvrement'],
+            ['Dans « Rendre payable » avant fin de formation + ' + delaiPayable + ' jours', 'La facture est déjà dans un groupe « Rendre payable » alors que la fin de formation + ' + delaiPayable + ' jours n’est pas atteinte.',
+                nonVersees.filter(function (f) { return etapeMonday(f) === 'adv' && attendue(f) === 'ctl'; }), 'payable-trop-tot'],
+            ['Fin de formation + ' + delaiPayable + ' jours dépassée, mais pas encore dans « Rendre payable »', 'La facture devrait être en cours de dépôt (Rendre payable) : elle est encore dans un groupe « en cours ».',
+                nonVersees.filter(function (f) { return attendue(f) === 'adv' && etapeMonday(f) === 'cours'; }), 'payable-en-retard'],
+            ['En recouvrement avant fin de formation + ' + delaiCpf + ' jours', 'La facture est dans un groupe de relance alors que la fin de formation + ' + delaiCpf + ' jours n’est pas atteinte.',
+                nonVersees.filter(function (f) { var a = attendue(f); return etapeMonday(f) === 'rec' && a && a !== 'rec'; }), 'recouvrement-trop-tot'],
+            ['Fin de formation + ' + delaiCpf + ' jours dépassée, mais pas passée en recouvrement', 'La facture devrait être en recouvrement : elle est encore dans un groupe « en cours » ou dans « Rendre payable ».',
+                nonVersees.filter(function (f) { var k = etapeMonday(f); return attendue(f) === 'rec' && (k === 'cours' || k === 'adv'); }), 'echue-pas-en-recouvrement'],
             ['Date de fin de formation manquante', 'Sans date de fin de formation, impossible de savoir quand la facture doit passer en recouvrement.',
                 nonVersees.filter(function (f) { return !f.dateFinFormation; }), 'fin-de-formation-manquante'],
             ['Même dossier CPF sur plusieurs factures non payées', 'Plusieurs factures Monday portent le même numéro de dossier : doublon possible, ou facture refaite sans annuler l’ancienne.',
@@ -825,7 +836,8 @@
         hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + parcours
             + '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">CPF — étapes EDOF croisées avec les étapes du circuit</h3>'
             + '<span class="pil-coin">export EDOF jusqu’au ' + jour(p.length && p[p.length - 1][1]) + ' · grand livre au ' + jour(GL_INFO && GL_INFO.arrete) + '</span></div>'
-            + '<p class="pil-note"><b>Règle CPF :</b> une facture passe en recouvrement (étape « Relancer ») à fin de formation + ' + delaiCpf + ' jours. '
+            + '<p class="pil-note"><b>Règle CPF :</b> « Rendre payable » commence à fin de formation + ' + delaiPayable + ' jours, et le recouvrement (« Relancer ») à fin de formation + ' + delaiCpf + ' jours. '
+            + 'Les factures dont le groupe Monday ne correspond pas à cette règle sont dans « Facturation à revérifier ». '
             + 'En ligne, où en est la facture dans EDOF ; en colonne, dans quelle étape du circuit elle se trouve dans Monday. '
             + 'Les factures versées par EDOF sont comptées payées : elles ne sont plus dans les vignettes du dessus, mais restent ici tant qu’elles ne sont pas déplacées. '
             + rangees.toLocaleString('fr-FR') + ' autres factures versées sont déjà rangées dans les payées.</p>'
