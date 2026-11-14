@@ -1,0 +1,2023 @@
+<title>Suivi recouv version 3</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="recouvrement.css">
+<script src="vendor/chart.umd.min.js"></script>
+<script src="vendor/chartjs-chart-treemap.min.js"></script>
+<script src="vendor/papaparse.min.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<style>
+/* ── RATTRAPAGES DU CADRE ──
+   Les réglages que le cadre d'un artefact impose et que l'application
+   n'avait pas de raison de prévoir. Ils ne vivent que dans le paquet publié :
+   en local, rien de tout cela ne s'applique. */
+
+/* La connexion par jeton Monday ne peut pas aboutir ici. Les deux blocs qui
+   la proposent sont masqués ; leur code reste en place, et les gardes de
+   l'application sur un jeton vide font le reste. */
+.connect-grid > .connect-card:first-child { display: none; }
+.connect-grid { grid-template-columns: minmax(0, 1fr); max-width: 620px; margin-inline: auto; }
+/* Les commandes du jeton restent masquées. Les deux boutons « Actualiser
+   depuis Monday », eux, reviennent : en version 3 ils passent par le
+   connecteur monday.com de claude.ai. */
+#settings-token, #btn-settings-token-visible, #btn-settings-forget,
+#btn-boards-refresh, #btn-boards-load { display: none; }
+
+/* Deux grilles à plancher fixe débordaient à la largeur d'un téléphone. */
+@media (max-width: 900px) {
+  .charts-grid-4 { grid-template-columns: minmax(0, 1fr); }
+}
+/* La barre de qualification demande 502 px avec sa carte. Elle ne déborde
+   donc qu'en dessous, pas à 900 px où l'on perdait deux colonnes pour rien.
+   Et quand elle se replie, elle reste élastique plutôt que de descendre
+   sous son propre plancher. */
+@media (max-width: 560px) {
+  .qualif-ligne { grid-template-columns: minmax(0, 1.6fr) minmax(40px, 1fr) 74px; gap: 6px; }
+  .qualif-ligne > :nth-child(4), .qualif-ligne > :nth-child(5) { display: none; }
+}
+</style>
+<link rel="stylesheet" href="v3.css">
+
+
+<!-- ══════════════════════════════════════════════
+     Écran d'accueil / connexion
+     ══════════════════════════════════════════════ -->
+<div id="welcome-screen" class="screen active">
+    <nav class="navbar">
+        <div class="nav-brand">
+            <div class="logo-icon"><img src="Liora_Logo_Orange_alpha.png" alt="Liora" style="height: 32px;"></div>
+            <span class="brand-name"><span class="brand-sub">Suivi Recouvrement</span><span class="brand-version" id="brand-version"></span></span>
+        </div>
+        <div class="nav-actions">
+        </div>
+    </nav>
+
+    <div class="upload-hero">
+        <div class="hero-content">
+            <h1 class="hero-title">Pilotez votre <span class="gradient-text">recouvrement</span></h1>
+            <p class="hero-subtitle">
+                Déposez vos exports : l'application calcule les échéances selon vos règles de
+                financement, identifie les factures en retard, confronte la balance âgée du grand
+                livre à votre portefeuille et mesure le taux de recouvrement par mois et par type
+                de financement.
+            </p>
+
+            <div class="connect-grid">
+                <!-- Connexion Monday -->
+                <div class="connect-card">
+                    <div class="connect-head">
+                        <span class="connect-badge">1</span>
+                        <h3>Connexion Monday</h3>
+                    </div>
+                    <p class="connect-desc">
+                        Collez votre jeton API personnel Monday (Avatar → <em>Développeurs</em> →
+                        <em>Mes jetons d'accès</em>). Il reste stocké sur ce poste uniquement.
+                    </p>
+                    <div class="field-row">
+                        <input type="password" id="monday-token" class="input" placeholder="Jeton API Monday" autocomplete="off">
+                        <button class="btn btn-ghost btn-sm" id="btn-token-visible" title="Afficher / masquer">👁</button>
+                    </div>
+                    <div class="field-row">
+                        <label class="check"><input type="checkbox" id="monday-remember" checked> Mémoriser le jeton sur ce poste</label>
+                    </div>
+                    <button class="btn btn-primary" id="btn-monday-connect">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                        Se connecter
+                    </button>
+                    <div id="monday-status" class="connect-status"></div>
+                </div>
+
+                <!-- Import de fichiers -->
+                <div class="connect-card">
+                    <div class="connect-head">
+                        <span class="connect-badge">1</span>
+                        <h3>Importer vos exports</h3>
+                    </div>
+                    <p class="connect-desc">
+                        Déposez les exports Excel / CSV de vos tableaux Monday, un fichier par
+                        tableau, puis votre grand livre et vos exports de facturation. Le rôle de
+                        chaque tableau est déduit du nom du fichier. Tout reste dans ce navigateur :
+                        vos fichiers ne sont ni envoyés ni publiés.
+                    </p>
+                    <div class="upload-zone upload-zone-sm" id="welcome-drop">
+                        <p class="upload-text">Glissez vos exports ici</p>
+                        <p class="upload-hint">ou cliquez pour parcourir — .xlsx, .xls, .csv</p>
+                        <input type="file" id="welcome-file-input" accept=".csv,.xlsx,.xls" multiple hidden>
+                    </div>
+                    <div id="welcome-files" class="welcome-files"></div>
+                </div>
+            </div>
+
+            <p class="connect-desc" style="text-align:center;max-width:620px;margin-inline:auto">
+                Cette page s'ouvre vide : vos fichiers restent dans ce navigateur, ne sont
+                jamais envoyés, et ne suivent pas d'un appareil à l'autre. Déposez-les une
+                fois, ils seront retrouvés à la prochaine ouverture sur le même navigateur.
+            </p>
+            <p class="connect-desc" style="text-align:center;max-width:620px;margin-inline:auto">
+                <strong>Pour relire Monday sans aucun export :</strong> une fois dans l'application,
+                cliquez &laquo;&nbsp;Actualiser depuis Monday&nbsp;&raquo; en bas du menu. La lecture passe par le
+                connecteur monday.com de claude.ai, avec votre compte : claude.ai vous demande
+                l'autorisation la première fois.
+            </p>
+            <div class="welcome-actions">
+                <button class="btn btn-ghost" id="btn-open-saved" hidden>Reprendre les données enregistrées</button>
+                <button class="btn btn-primary" id="btn-demo">Voir une démonstration</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     Écran de chargement
+     ══════════════════════════════════════════════ -->
+<div id="loading-screen" class="screen">
+    <div class="loader-container">
+        <div class="loader-ring"></div>
+        <p class="loader-text">Récupération des données…</p>
+        <p class="loader-sub" id="loader-status">Lecture de vos fichiers</p>
+        <div class="loader-log" id="loader-log"></div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     Application
+     ══════════════════════════════════════════════ -->
+<div id="app-screen" class="screen">
+    <nav class="navbar navbar-dash v3-side" aria-label="Onglets de l'application">
+        <div class="nav-brand nav-brand-link" id="nav-logo-home" title="Retour au tableau de bord">
+            <div class="logo-icon"><img src="Liora_Logo_Orange_alpha.png" alt="Liora" style="height: 30px;"></div>
+            <span class="brand-name"><span class="brand-sub">Suivi recouvrement</span><span class="v3-version">Version 3</span><span class="brand-version" id="brand-version"></span></span>
+        </div>
+        <div class="nav-tabs">
+            <span class="v3-nav-titre">Vue d'ensemble</span>
+            <button class="nav-tab active" data-tab="dashboard"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13h6V4H4z M14 20h6v-9h-6z M4 20h6v-3H4z M14 7h6V4h-6z"/></svg>Tableau de bord</button>
+            <button class="nav-tab" data-tab="pilotage"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V11 M10 20V4 M16 20v-7 M3 20h18"/></svg>Pilotage</button>
+            <span class="v3-nav-titre">Au quotidien</span>
+            <button class="nav-tab" data-tab="operationnel"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11 M9 12h11 M9 18h11 M4.5 6h.01 M4.5 12h.01 M4.5 18h.01"/></svg>Opérationnel</button>
+            <button class="nav-tab" data-tab="aging"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 7v5l3 2 M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18z"/></svg>Balance âgée</button>
+            <button class="nav-tab" data-tab="financements"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 4.5-8 4.5-8-4.5z M4 12l8 4.5 8-4.5 M4 16.5L12 21l8-4.5"/></svg>Financements</button>
+            <button class="nav-tab" data-tab="factures"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z M14 3v5h5 M10 13h6 M10 17h4"/></svg>Factures</button>
+            <button class="nav-tab" data-tab="prelevements"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h18v10H3z M3 11h18 M7 15h3"/></svg>Prélèvements GoCardless</button>
+            <span class="v3-nav-titre">Contrôles</span>
+            <button class="nav-tab" data-tab="sellsy"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9c-4.5-1-8-4-8-9V6z M8.5 12l2.5 2.5 4.5-5"/></svg>Contrôle Sellsy</button>
+            <button class="nav-tab" data-tab="quality"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4 M12 17h.01 M10.3 3.9L2.5 17.5a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Qualité des données</button>
+            <span class="v3-nav-titre">Réglages</span>
+            <button class="nav-tab" data-tab="donnees"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10 M18 7h2 M4 17h4 M12 17h8 M16 5v4 M10 15v4"/></svg>Données</button>
+        </div>
+        <div class="v3-side-bas">
+            <div class="v3-fraicheur">
+                <span><i class="v3-point ok" id="v3-point-monday"></i><span id="v3-ligne-monday">Monday : données déposées</span></span>
+                <span class="maj-indic" id="indicateur-actualisation"></span>
+            </div>
+            <div class="nav-actions">
+                <button class="btn btn-primary" id="btn-refresh">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    Actualiser depuis Monday
+                </button>
+                <button class="btn btn-ghost" id="btn-export-xlsx">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+                    Exporter en Excel
+                </button>
+                <button class="btn btn-ghost" id="v3-btn-lexique" type="button">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21a2 2 0 0 1 2-2h13v2H6"/><line x1="9" y1="8" x2="15" y2="8"/></svg>
+                    Lexique
+                </button>
+                <button class="btn btn-ghost" id="btn-aide" title="Affiche ou masque l'explication écrite sous chaque indicateur">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    <span id="v3-aide-libelle">Masquer les explications</span>
+                </button>
+                <button class="btn btn-ghost" id="btn-export-pdf" hidden>Exporter PDF</button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="v3-main">
+    <header class="v3-entete">
+        <h1 id="v3-entete-titre">Tableau de bord</h1>
+        <p id="v3-entete-quoi">Où en est l’argent qu’on nous doit : ce qui est facturé, encaissé, en retard, et depuis quand.</p>
+        <p class="v3-source" id="v3-entete-source">Source : les tableaux Monday. Les échéances sont calculées par vos règles de financement.</p>
+    </header>
+
+    <!-- ── Barre de filtres commune à tous les onglets ── -->
+    <div class="filters-wrap" id="filters-wrap">
+        <div class="filter-bar">
+            <!-- LA PÉRIODE EST UN FILTRE COMME LES AUTRES.
+                 Elle occupait une rangée entière à elle seule — une étiquette,
+                 un résumé, quatre boutons et soixante-dix pastilles de mois
+                 dépliées sous la barre. Elle tient maintenant dans un déroulé,
+                 et son bouton porte déjà l'intervalle retenu. -->
+            <div class="filter-block" id="filter-block-periode">
+                <span class="filter-label">Période</span>
+                <span class="aide-ligne">Les mois retenus. Aucun choix : tous comptent.</span>
+                <div class="dd" id="dd-periode">
+                    <button class="btn btn-ghost btn-sm dd-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="dd-resume" id="periode-resume">tous les mois</span><span class="dd-fleche" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="dd-panneau dd-panneau-mois" hidden>
+                        <div class="dd-actions">
+                            <button class="btn btn-ghost btn-sm" type="button" data-action="tous">Tout</button>
+                            <button class="btn btn-ghost btn-sm" type="button" data-action="courant">Mois en cours</button>
+                            <button class="btn btn-ghost btn-sm" type="button" data-action="precedent">Mois précédent</button>
+                            <button class="btn btn-ghost btn-sm" type="button" data-action="douze">12 derniers mois</button>
+                            <button class="btn btn-ghost btn-sm" type="button" data-action="aucun">Aucun</button>
+                        </div>
+                        <div class="date-filter-months" id="date-filter-months"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="filter-block">
+                <span class="filter-label">Mois comptés d’après</span>
+                <span class="aide-ligne">Sur quelle date les mois sont découpés. En recouvrement, l'échéance est la bonne.</span>
+                <div class="seg" id="seg-base-mois" hidden>
+                    <button class="seg-btn active" data-base="echeance">Échéance</button>
+                    <button class="seg-btn" data-base="facture">Facture</button>
+                    <button class="seg-btn" data-base="paiement">Paiement</button>
+                </div>
+                <div class="dd dd-unique" id="dd-base-mois">
+                    <button class="btn btn-ghost btn-sm dd-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="dd-resume">—</span><span class="dd-fleche" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="dd-panneau" role="listbox" hidden></div>
+                </div>
+            </div>
+
+            <!-- « Enlever le filtre périmètre pour l'instant » : l'attribut se
+                 retire en un mot, et tout ce qui en dépend — dont les quatre
+                 cartes de qualification B2C — revient avec lui. -->
+            <div class="filter-block" id="filter-block-perimetre" hidden>
+                <span class="filter-label">Périmètre</span>
+                <span class="aide-ligne">Corporate = vos clients entreprises. B2C = les apprenants en direct.</span>
+                <div class="seg" id="seg-perimetre">
+                    <button class="seg-btn active" data-perimetre="Tous">Tous</button>
+                    <button class="seg-btn" data-perimetre="Corporate">Corporate</button>
+                    <button class="seg-btn" data-perimetre="B2C">B2C</button>
+                </div>
+            </div>
+
+
+            <div class="filter-block" id="filter-block-avoirs">
+                <span class="filter-label">Factures annulées par avoir</span>
+                <span class="aide-ligne" id="aide-avoirs">Soldées au grand livre par un avoir, non par un règlement :
+                    la créance a été annulée, rien n'est rentré. Exclues, les taux disent ce que le recouvrement a
+                    réellement encaissé. Incluses, le portefeuille se lit tel qu'il a été facturé — utile pour
+                    rapprocher un chiffre d'affaires, trompeur pour juger le recouvrement.</span>
+                <div class="seg" id="seg-avoirs" hidden>
+                    <button class="seg-btn" data-avoirs="inclure">Incluses</button>
+                    <button class="seg-btn active" data-avoirs="exclure">Exclues</button>
+                </div>
+                <div class="dd dd-unique" id="dd-avoirs">
+                    <button class="btn btn-ghost btn-sm dd-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="dd-resume">—</span><span class="dd-fleche" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="dd-panneau" role="listbox" hidden></div>
+                </div>
+            </div>
+
+            <div class="filter-block" id="filter-block-sellsy-manquantes" hidden>
+                <span class="filter-label">Factures Sellsy — manquantes sur Monday</span>
+                <span class="aide-ligne" id="aide-sellsy-manquantes">L'import Monday a commencé en cours de route :
+                    des factures déjà réglées n'y ont jamais été reprises. Les inclure les fait entrer dans le
+                    portefeuille — total facturé, encaissé, délais — à partir de ce que dit Sellsy. Leur échéance
+                    est calculée par vos règles quand les dates le permettent, reprise du grand livre à défaut, et
+                    laissée « à qualifier » sinon : aucune date n'est inventée.</span>
+                <div class="seg" id="seg-sellsy-manquantes">
+                    <button class="seg-btn" data-sellsym="inclure">Incluses</button>
+                    <button class="seg-btn active" data-sellsym="exclure">Exclues</button>
+                </div>
+            </div>
+
+            <div class="filter-block" id="filter-block-financement">
+                <span class="filter-label">Financement</span>
+                <span class="aide-ligne">Restreint l'ensemble de l'application à un ou plusieurs dispositifs. Aucun sélectionné : tous comptent.</span>
+                <div class="dd" id="dd-financements">
+                    <button class="btn btn-ghost btn-sm dd-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+                        <span class="dd-resume">Tous les dispositifs</span><span class="dd-fleche" aria-hidden="true">▾</span>
+                    </button>
+                    <div class="dd-panneau dd-panneau-large" role="listbox" hidden>
+                        <input type="search" class="input input-sm dd-recherche" placeholder="Filtrer les dispositifs…" aria-label="Filtrer les dispositifs">
+                        <div class="dd-actions"><button class="btn btn-ghost btn-sm" type="button" data-action="tous">Tous</button></div>
+                        <div class="dd-options"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="filter-block">
+                <span class="filter-label">Situation arrêtée au</span>
+                <span class="aide-ligne">Date de référence. Reculez-la pour revoir la situation telle qu'elle était.</span>
+                <input type="date" id="date-ref" class="input input-sm">
+            </div>
+
+            <div class="filter-block">
+                <span class="filter-label">Recherche</span>
+                <input type="search" id="search-input" class="input input-sm" placeholder="Facture, client, groupe…">
+            </div>
+
+            <button class="btn btn-ghost btn-sm" id="btn-reset-filters">Réinitialiser</button>
+
+            <!-- Les filtres actifs tiennent dans la ligne des commandes, et
+                 non sur une bande à eux : une seule puce occupait une rangée
+                 entière sous la barre. -->
+            <div id="active-filters" class="active-filters hidden"></div>
+        </div>
+    </div>
+
+    <!-- Le jeu de démonstration se dit tant qu'il est chargé. Hors des
+         onglets et au-dessus d'eux : il ne concerne pas un écran, il
+         concerne la provenance de TOUS les chiffres. -->
+    <div id="bandeau-demo" class="bandeau-demo" hidden>
+        <span class="bandeau-demo-pastille">Démonstration</span>
+        <span id="bandeau-demo-texte"></span>
+        <button class="btn btn-sm" id="btn-quitter-demo">Charger mes données</button>
+    </div>
+
+    <!-- ══════════ ONGLET : TABLEAU DE BORD ══════════ -->
+    <div class="tab-content active" id="tab-dashboard">
+        <div class="dashboard-content">
+
+            <!-- Pourquoi l'écran est vide. Hors des actes, et au-dessus de
+                 tout : au moment où tous les chiffres valent zéro, c'est la
+                 seule chose qui mérite d'être lue, et un acte replié ne doit
+                 pas pouvoir la cacher. -->
+            <div id="ecran-vide" class="scope-note"></div>
+
+            <!-- ═════════════════ ACTE 1 ═════════════════ -->
+            <div class="section-header section-acte" data-acte="1">
+                <h2><span class="acte-num">1</span>Vue d'ensemble</h2>
+                <span class="acte-sous">Où en est l'argent qu'on me doit</span>
+                <button class="acte-toggle" data-acte-toggle="1" aria-expanded="true">Replier</button>
+            </div>
+            <div class="acte-corps" data-acte-corps="1">
+            <p class="aide-bloc">
+                Une facture est dite <strong>en recouvrement</strong> dès que sa <strong>date d'échéance
+                calculée selon les règles de financement</strong> est dépassée à la date d'arrêté, et
+                qu'elle n'est pas réglée — peu importe le tableau ou le groupe Monday où elle se trouve.
+                La date d'échéance éventuellement saisie dans Monday n'est pas utilisée, sauf à cocher
+                l'option correspondante dans l'onglet Données.
+                Le <strong>montant en retard</strong> est ce que ces factures représentent en euros.
+            </p>
+            <div class="kpi-grid">
+<div class="kpi-card kpi-cliquable" data-kpi="total">
+                        <div class="kpi-icon kpi-blue">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Total facturé</span>
+                            <span class="kpi-value" id="kpi-total-euros">—</span>
+                            <span class="kpi-sub" id="kpi-total-sub"></span>
+                            <span class="aide-ligne">Somme de toutes les factures de la période filtrée, réglées ou non.</span>
+                        </div>
+                    </div>
+<div class="kpi-card kpi-cliquable" data-kpi="encaisse">
+                        <div class="kpi-icon kpi-purple">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Encaissé</span>
+                            <span class="kpi-value" id="kpi-encaisse">—</span>
+                            <span class="kpi-sub" id="kpi-encaisse-sub"></span>
+                            <span class="aide-ligne">Montant déjà encaissé. Une facture est considérée réglée si elle figure dans le tableau des factures payées, si elle porte une date de paiement, ou si le grand livre la lettre.</span>
+                        </div>
+                    </div>
+<div class="kpi-card kpi-cliquable" data-kpi="encours">
+                        <div class="kpi-icon kpi-blue">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Reste à encaisser</span>
+                            <span class="kpi-value" id="kpi-encours">—</span>
+                            <span class="kpi-sub" id="kpi-encours-sub"></span>
+                            <span class="aide-ligne">Montant total des factures non réglées : celles en retard, plus celles qui ne sont pas encore arrivées à échéance. Le pourcentage indique la part de ce reste qui est <strong>déjà en retard</strong>.</span>
+                        </div>
+                    </div>
+                    <div class="kpi-card kpi-cliquable" data-kpi="enRecouvrement">
+                        <div class="kpi-icon kpi-red">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">En recouvrement</span>
+                            <span class="kpi-value" id="kpi-recouvrement">—</span>
+                            <span class="kpi-sub" id="kpi-recouvrement-sub"></span>
+                            <span class="aide-ligne">Les factures dont l'échéance calculée est dépassée à la date d'arrêté <strong>et qui ne sont toujours pas réglées</strong> : l'argent à aller chercher. C'est une part de « Reste à encaisser », qui comprend en plus ce qui n'est pas encore échu. Le pourcentage est pris sur le <strong>total facturé</strong> ; la part du seul reste à encaisser, plus élevée, figure sous la tuile voisine.</span>
+                        </div>
+                    </div>
+            </div>
+            <!-- Où en est la récupération des factures échues -->
+            <div class="section-header section-header-sub">
+                <h3>Où en est le portefeuille</h3>
+                <span class="fv-hint">Toutes les factures, échues ou non — les tuiles totalisent 100 %</span>
+                <div class="chart-controls">
+                    <div class="seg seg-sm" id="seg-unite-recup">
+                        <button class="seg-btn active" data-unite="euros">€</button>
+                        <button class="seg-btn" data-unite="nb">Nombre</button>
+                    </div>
+                </div>
+            </div>
+            <div class="recup-grid" id="recup-grid"></div>
+
+            <!-- Alerte OPCO / ADV -->
+            <div id="scope-note" class="scope-note"></div>
+
+<div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Montants — ce qui est en retard, et le reste</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-repartition">
+                                <button class="seg-btn active" data-dims="perimetre,financement">Périmètre › Financement</button>
+                                <button class="seg-btn" data-dims="financement,board">Financement › Tableau</button>
+                                <button class="seg-btn" data-dims="board,groupe">Tableau › Groupe</button>
+                                <button class="seg-btn" data-dims="etape,financement">Qualification recouv. › Financement</button>
+                                <button class="seg-btn" data-dims="mois,financement">Mois › Financement</button>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" id="btn-repartition-toggle">Tout déplier</button>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Montant total = « pas en retard » + « échu et impayé ». « Pas en retard » réunit
+                        le réglé, le non échu et ce dont l'échéance n'est pas calculable — le détail
+                        s'affiche en passant la souris. Cliquez sur une flèche pour déplier, sur une
+                        ligne pour ouvrir les factures correspondantes.
+                    </span>
+                    <span class="fv-hint" id="repartition-note"></span>
+                    <div class="table-wrap" id="repartition-table"></div>
+                </div>
+            </div>
+
+
+
+            <!-- Où en est le retard de CE dispositif dans le circuit. Posée
+                 en dur mais vide par défaut : elle ne s'écrit que lorsqu'un
+                 seul dispositif est retenu, c'est-à-dire en profondeur. -->
+            <div id="carte-circuit"></div>
+
+            <!-- La variation du mois, en toutes lettres : les deux compteurs
+                 s'ouvrent sur leurs factures, et la carte qui suit porte la
+                 même série. -->
+            <div class="section-header section-header-sub">
+                <h3>Ce qui a bougé ce mois-ci</h3>
+                <span class="fv-hint" id="flux-mois"></span>
+            </div>
+            <p class="ligne-flux" id="ligne-flux"></p>
+            <!-- Comparaison mensuelle -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Flux de recouvrement</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-flux-unite">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Gagne-t-on ou perd-on du terrain ? Une facture réglée avant son échéance
+                        n'y figure pas : elle n'est jamais tombée en retard, elle ne peut pas en
+                        sortir — un mois sans colonne verte veut donc dire qu'aucune créance échue
+                        n'est rentrée ce mois-là.
+                    </span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-flux"></canvas>
+                    </div>
+                </div>
+            </div>
+
+<div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Quels dispositifs se dégradent</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-evocat-unite">
+                                <button class="seg-btn active" data-unite="nb">Nombre</button>
+                                <button class="seg-btn" data-unite="euros">€</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">Part des factures tombées en retard, par dispositif et par mois d'échéance. Une courbe qui monte est un dispositif qui se dégrade. Un point porte sur <strong>au moins cinq factures échues</strong> — survolez-le pour savoir combien exactement, car cent pour cent sur cinq factures et cent pour cent sur cinquante se dessinent pareil.</span>
+                    <div id="evo-cat-note" class="note-reserve"></div>
+                    <div class="chart-container chart-tall"><canvas id="chart-evo-categorie"></canvas></div>
+                </div>
+            </div>
+
+                                    <!-- Détail de la courbe : la carte thermique, mois par mois -->
+            <div id="evo-detail" hidden>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>% en recouvrement par mois et par financement</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-unite-heat">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">Chaque case : part des factures échues du mois qui sont en retard. Cliquez pour filtrer.</span>
+                    <div class="heatmap-wrap" id="heatmap-mois-financement"></div>
+                </div>
+            </div>
+            </div>
+
+
+
+
+            <!-- Treemap : outil de fouille, dimension au choix. Remontée dans
+                 l’acte 1 — c’est une question de vue d’ensemble, pas d’ancienneté.
+                 PLACÉE AVANT LA BAD DEBT, ET NON APRÈS. Collée sous « Le détail de
+                 la bad debt », elle se lisait comme un détail de celle-ci : « je veux
+                 que cela soit aussi pas pour la bad debt mais aussi tt les factures en
+                 recouvrement », 27/10/2026. Elle portait déjà TOUTES les factures en
+                 retard — 2 322 pour 11,1 M€, dont 4,9 M€ de bad debt — mais rien ne le
+                 disait. Elle passe donc devant, et écrit son assiette elle-même. -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Où se loge ce qui reste dû</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-treemap-dim">
+                                <button class="seg-btn active" data-dim="financement">Financement</button>
+                                <button class="seg-btn" data-dim="client">Client</button>
+                                <button class="seg-btn" data-dim="board">Tableau</button>
+                                <button class="seg-btn" data-dim="etape">Qualification recouv.</button>
+                                <button class="seg-btn" data-dim="groupe">Groupe</button>
+                                <button class="seg-btn" data-dim="proprietaire">Propriétaire</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint" id="treemap-assiette"></span>
+                    <span class="fv-hint">La surface est proportionnelle au montant en retard.
+                        Cliquez une case&nbsp;: sur «&nbsp;Financement&nbsp;» elle ouvre le détail du
+                        dispositif — tableau, puis groupe, puis qualification. Sur les autres
+                        dimensions, elle filtre l’application.</span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-treemap"></canvas>
+                    </div>
+                </div>
+            </div>
+            <!-- La bad debt : le seuil est écrit en toutes lettres sous le
+                 chiffre, et il se règle dans l'onglet Réglages. -->
+            <div class="section-header section-header-sub">
+                <h3 id="bad-debt-titre">Ce qui attend depuis plus de douze mois</h3>
+                <span class="fv-hint" id="bad-debt-seuil"></span>
+            </div>
+            <div class="kpi-grid" id="bad-debt-kpi"></div>
+            <span class="fv-hint" id="bad-debt-note"></span>
+            <details class="bloc-repli" id="bad-debt-detail">
+                <summary>Le détail des créances compromises (bad debt)</summary>
+                <span class="fv-hint" id="bad-debt-detail-note"></span>
+                <div class="table-wrap" id="bad-debt-table"></div>
+                <div class="chart-container chart-tall"><canvas id="chart-bad-debt"></canvas></div>
+            </details>
+            </div>
+
+            <!-- ═════════════════ ACTE 2 ═════════════════ -->
+            <div class="section-header section-acte" data-acte="2">
+                <h2><span class="acte-num">2</span>Quand mes clients payent, avant ou après l'échéance</h2>
+                <span class="acte-sous">Sur ce qui est déjà rentré : combien est arrivé avant la date, combien après, et sous quel dispositif</span>
+                <button class="acte-toggle" data-acte-toggle="2" aria-expanded="true">Replier</button>
+            </div>
+            <div class="acte-corps" data-acte-corps="2">
+            <p class="acte-transition">On vient de dire combien reste dehors. Savoir pourquoi se lit sur l'argent déjà rentré&nbsp;: ces factures-là ont fini leur course, et leur date de règlement dit si le délai que le dispositif accorde a été tenu, ou de combien il a été dépassé.</p>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3 id="regl-titre">Comment l'encaissé est arrivé</h3></div>
+                    <span class="fv-hint" id="regl-hint"></span>
+                    <div class="recup-grid" id="regl-kpi"></div>
+                    <div id="regl-note" class="scope-note"></div>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Avant ou après l'échéance, par type de financement</h3></div>
+                    <span class="fv-hint">
+                        Le <strong>terme accordé</strong> est la règle de délai du dispositif, telle
+                        qu'elle est écrite&nbsp;: c'est la seule référence qui existe, et c'est elle
+                        que l'écart constaté juste à côté met à l'épreuve. L'écart médian porte son
+                        effectif, qui n'est pas toujours le nombre de la ligne&nbsp;: une facture
+                        réglée sans date de règlement connue ne s'y mesure pas.
+                    </span>
+                    <div class="table-wrap" id="regl-financements"></div>
+                </div>
+            </div>
+            <div class="kpi-grid" id="ecart-echeance-kpi"></div>
+<div class="kpi-grid"><div class="kpi-card kpi-cliquable" data-kpi="payeesRetard">
+                        <div class="kpi-icon kpi-green">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Retard moyen au paiement</span>
+                            <span class="kpi-value" id="kpi-retard-paiement">—</span>
+                            <span class="kpi-sub" id="kpi-delai-paiement-sub"></span>
+                            <span class="aide-ligne">Sur les factures <strong>qui ont fini par être payées</strong>, combien de jours après l'échéance l'argent est réellement tombé. À ne pas confondre avec « Retard moyen », qui porte sur les factures <strong>toujours impayées</strong> : l'un dit combien de temps vos clients mettent à payer, l'autre depuis combien de temps vous attendez.</span>
+                        </div>
+                    </div></div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Qui tombe en retard, et qui finit par payer</h3></div>
+                    <span class="fv-hint">La barre <strong>rouge</strong> : sur tout ce qui est arrivé à échéance, la part qui a connu du retard. La barre <strong>verte</strong> : sur ces seules retardataires, la part qui a fini par rentrer. Les deux ne se comparent donc pas en longueur — « tombe souvent mais finit par payer » n'appelle pas le même geste que « tombe peu et ne paye jamais ». Les dispositifs de moins de cinq factures échues sont écartés : un taux sur trois factures ne se lit pas.</span>
+                    <div class="chart-container chart-tall"><canvas id="chart-bascule-rentree"></canvas></div>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>La part de l'encaissement qui arrive après l'échéance</h3></div>
+                    <span class="fv-hint">Mois par mois, sur la date de règlement. C'est la pente qui se lit ici&nbsp;: les volumes sont donnés par la carte de flux du premier acte.</span>
+                    <span class="fv-hint" id="part-apres-couverture"></span>
+                    <div class="chart-container chart-tall"><canvas id="chart-regl-mois"></canvas></div>
+                </div>
+            </div>
+                        <!-- Flux : ce qui entre, ce qui sort, ce qui reste -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Taux de recouvrement par mois</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-unite-mois">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Rangées par mois d'échéance. La hauteur de la colonne, c'est la taille du
+                        mois ; les couleurs, ce qu'elles sont devenues. Cliquez un mois pour n'afficher
+                        que lui.
+                    </span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-mois"></canvas>
+                    </div>
+                </div>
+            </div>
+            <details class="bloc-repli">
+                <summary>La lecture par processus — après relance, sans relance</summary>
+                <span class="fv-hint">
+                    Ce découpage-là se fait sur le groupe Monday d'origine du règlement, et non sur
+                    une date&nbsp;: il dit par quel chemin l'argent est rentré, pas quand.
+                </span>
+                <div class="chart-controls">
+                    <div class="seg seg-sm" id="seg-regl-origine">
+                        <button class="seg-btn active" data-origine="recouvrement">Après relance</button>
+                        <button class="seg-btn" data-origine="hors">Sans relance</button>
+                    </div>
+                </div>
+                <div class="recup-grid" id="regl-origine-kpi"></div>
+            </details>
+            </div>
+
+            <!-- ═════════════════ ACTE 3 ═════════════════ -->
+            <div class="section-header section-acte" data-acte="3">
+                <h2><span class="acte-num">3</span>Depuis combien de temps j'attends, et si cela s'aggrave</h2>
+                <span class="acte-sous">Le stock d'impayés, son âge, et le sens dans lequel il bouge</span>
+                <button class="acte-toggle" data-acte-toggle="3" aria-expanded="true">Replier</button>
+            </div>
+            <div class="acte-corps" data-acte-corps="3">
+            <p class="acte-transition">On sait maintenant comment ils payent quand ils payent. Reste à regarder ce qui n'est pas payé du tout, et depuis quand.</p>
+            <div class="kpi-grid">
+<div class="kpi-card kpi-cliquable" data-kpi="impayees">
+                        <div class="kpi-icon kpi-volatility">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Retard moyen</span>
+                            <span class="kpi-value" id="kpi-retard-moyen">—</span>
+                            <span class="kpi-sub" id="kpi-retard-moyen-sub"></span>
+                            <span class="aide-ligne">Nombre de jours écoulés depuis l'échéance, en moyenne, sur les factures encore impayées. La médiane est souvent plus parlante : la moyenne est tirée vers le haut par quelques créances très anciennes.</span>
+                        </div>
+                    </div>
+<div class="kpi-card kpi-cliquable" data-kpi="impayees">
+                        <div class="kpi-icon kpi-volatility">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+                        </div>
+                        <div class="kpi-data">
+                            <span class="kpi-label">Retard moyen pondéré €</span>
+                            <span class="kpi-value" id="kpi-retard-pondere">—</span>
+                            <span class="kpi-sub">pondéré par le montant</span>
+                            <span class="aide-ligne">Même retard moyen, mais où chaque facture pèse à hauteur de son montant. Un gros impayé ancien compte plus qu'un petit. Si ce chiffre dépasse nettement le retard moyen, ce sont vos grosses factures qui traînent.</span>
+                        </div>
+                    </div>
+                <div class="kpi-card kpi-cliquable" data-kpi="retardVieux">
+                    <div class="kpi-icon kpi-red">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+                    </div>
+                    <div class="kpi-data">
+                        <span class="kpi-label">Plus de six mois d'attente</span>
+                        <span class="kpi-value" id="kpi-vieux">—</span>
+                        <span class="kpi-sub" id="kpi-vieux-sub"></span>
+                        <span class="aide-ligne">Montant échu depuis plus de six mois à la date d'arrêté et toujours pas encaissé — la même borne que la tranche « 6 à 12 mois » de la balance âgée, au jour près. Cette tuile n'en donne qu'un point&nbsp;: <button class="lien-interne" data-onglet="aging">la balance âgée</button> donne toute la distribution d'âge.</span>
+                    </div>
+                </div>
+            </div>
+            <!-- Évolution du retard moyen -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Le stock d'impayés vieillit-il, ou s'assainit-il ?</h3></div>
+                    <span class="fv-hint">
+                        Depuis combien de jours vos factures impayées attendent, à la fin de chaque mois.
+                        La médiane écarte les quelques très vieilles créances qui tirent la moyenne vers
+                        le haut.
+                    </span>
+                    <span class="fv-hint" id="retard-evolution-note"></span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-retard-evolution"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Le retard par type de financement</h3></div>
+                    <span class="fv-hint">Son axe de travail&nbsp;: le retard moyen, ce que la pondération par le montant en dit, et la part qui attend depuis plus de six mois. Cliquez une ligne pour ouvrir le détail du dispositif, tableau par tableau.</span>
+                    <div class="table-wrap" id="retard-financements"></div>
+                </div>
+            </div>
+<div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Les créances anciennes finissent-elles par rentrer ?</h3>
+                        <span class="fv-hint">le vert est une histoire, le rouge une photographie</span>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-histo-unite">
+                                <button class="seg-btn active" data-unite="euros">€</button>
+                                <button class="seg-btn" data-unite="nb">Nombre</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint">
+                        Chaque colonne se lit de haut en bas : parmi les factures ayant atteint ce
+                        retard, la part qui a fini par rentrer (vert) et celle qui est toujours due
+                        (rouge). Plus on va vers la droite, moins il rentre. Cliquez sur une tranche
+                        pour ouvrir ses factures.
+                    </span>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-histo-retards"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Les qualifications B2C, quand le périmètre B2C est retenu -->
+            <div id="qualif-b2c" hidden>
+                <div class="section-header section-header-sub">
+                    <h3>Les qualifications du portefeuille B2C</h3>
+                    <span class="fv-hint" id="qualif-b2c-hint"></span>
+                    <div class="seg seg-sm" id="seg-qualif-unite">
+                        <button class="seg-btn active" data-unite="nb">En nombre</button>
+                        <button class="seg-btn" data-unite="euros">En montant</button>
+                    </div>
+                </div>
+                <div class="charts-grid charts-grid-4" id="qualif-b2c-grid"></div>
+            </div>
+
+            <!-- Le mois écoulé, catégorie par catégorie -->
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Le mois écoulé, par catégorie</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-cmpcat-base">
+                                <button class="seg-btn active" data-base="precedent">vs mois précédent</button>
+                                <button class="seg-btn" data-base="annee">vs un an plus tôt</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint" id="cmpcat-titre"></span>
+                    <span class="fv-hint">
+                        Un mois, ce sont les factures dont l'échéance tombe dedans. Combien
+                        sont passées en recouvrement, quelle part est rentrée à l'heure, de combien
+                        le retard et le délai de règlement ont bougé — et l'écart avec le mois de
+                        comparaison, catégorie par catégorie. Chaque nombre ouvre ses factures.
+                    </span>
+                    <div class="mini-table-wrap" id="cmp-categorie"></div>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Les créances qui viennent de franchir les six mois</h3></div>
+                    <span class="fv-hint">Depuis le dernier arrêté mensuel clos. C'est la seule chose de cet acte qui se termine par un geste.</span>
+                    <div class="mini-table-wrap" id="franchissements"></div>
+                </div>
+            </div>
+            </div>
+
+            <!-- ═════════════════ ACTE 4 ═════════════════ -->
+            <div class="section-header section-acte" data-acte="4">
+                <h2><span class="acte-num">4</span>Ce qui change l'ordre de mes appels</h2>
+                <span class="acte-sous">Les clients qui décrochent, ce qui tombe à échéance chez eux, et le retard que la donnée rend douteux</span>
+                <button class="acte-toggle" data-acte-toggle="4" aria-expanded="false">Déplier</button>
+            </div>
+            <div class="acte-corps" data-acte-corps="4" hidden>
+            <p class="acte-transition">Tout cela décrit le stock. Il reste ce qui change l'ordre des appels de demain matin.</p>
+<div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3 id="top-clients-titre">Les clients à appeler</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-top-clients">
+                                <button class="seg-btn active" data-vue="gros">Les plus gros</button>
+                                <button class="seg-btn" data-vue="degrades">Ceux qui se dégradent</button>
+                            </div>
+                        </div>
+                    </div>
+                    <span class="fv-hint" id="top-clients-note"></span>
+                    <div class="mini-table-wrap" id="top-clients"></div>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Ce qui tombe à échéance chez des clients déjà en défaut</h3></div>
+                    <span class="fv-hint">La seule carte de l'écran qui regarde devant. Les trente jours sont une fenêtre de lecture, pas une date posée sur une facture&nbsp;: aucune échéance n'est inventée.</span>
+                    <span class="fv-hint" id="risque-note"></span>
+                    <div class="kpi-grid" id="risque-kpi"></div>
+                    <div class="mini-table-wrap" id="risque-financements"></div>
+                </div>
+            </div>
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Du retard qui n'est peut-être pas du retard</h3></div>
+                    <span class="fv-hint">L'acte 1 porte les créances compromises&nbsp;; celui-ci ne porte que le retard que la donnée rend douteux — et celui-là se corrige dans Monday, pas en justice.</span>
+                    <div id="douteux-motifs"></div>
+                </div>
+            </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════ ONGLET : BALANCE ÂGÉE ══════════ -->
+    <!-- ══════════════════════ PILOTAGE ══════════════════════
+         Cet onglet ne lit PAS les tableaux Monday : il lit la comptabilité,
+         par le relevé donnees/pilotage.json que la construction recopie
+         depuis la balance âgée. Il porte donc SA PROPRE barre de filtres —
+         période, comparaison, équipe commerciale, financeur — et la barre
+         commune, qui filtre les factures Monday, est masquée sur lui.        -->
+    <div class="tab-content" id="tab-pilotage">
+        <!-- LA GOUTTIÈRE, COMME LES AUTRES ONGLETS, 10/11/2026 : « Laisser une
+             marge sur les côtés ». Pilotage était le seul des neuf onglets à ne
+             pas envelopper son contenu dans .dashboard-content — la règle qui
+             porte la marge de toute l'application (padding 2rem, largeur
+             maximale 1400px, centré). Son contenu touchait donc les deux bords
+             de la fenêtre, et s'étirait sans limite sur un grand écran. -->
+        <div class="dashboard-content">
+        <div class="pil-barre">
+            <div class="pil-filtre">
+                <label for="pil-periode">Période</label>
+                <!-- « 7 derniers jours » figure dans sa capture Pennylane et n'est pas
+                     repris ici : le relevé comptable est bâti sur des arrêtés MENSUELS
+                     et sur des flux par mois. Une fenêtre de sept jours ne pourrait
+                     répondre qu'en renvoyant le mois entier — un chiffre faux sous un
+                     libellé juste. La maille est dite sous le filtre plutôt que cachée. -->
+                <select id="pil-periode">
+                    <option value="exercice">Exercice courant</option>
+                    <option value="exercice-1">Exercice précédent</option>
+                    <option value="mois">Mois en cours</option>
+                    <option value="mois-1">Mois dernier</option>
+                    <option value="trimestre">Trimestre en cours</option>
+                    <option value="annee">Année en cours</option>
+                    <option value="annee-1">Année dernière</option>
+                    <option value="douze">Douze derniers mois</option>
+                    <option value="libre">Date personnalisée</option>
+                </select>
+                <span id="pil-dates" hidden>
+                    <input type="date" id="pil-du" aria-label="Du"> 
+                    <input type="date" id="pil-au" aria-label="Au">
+                </span>
+            </div>
+            <!-- M POUR LES MOIS, 10/11/2026 : « Filtre comparaison, m et non m
+                 pour les mois » puis « oui M-1 pour les mois ». Les trois
+                 premières options comparaient des MOIS sous l'étiquette N-1,
+                 qui désigne un exercice ; la vignette, elle, annonçait déjà
+                 « vs M-1 ». Le libellé dit maintenant la même lettre que le
+                 calcul. Les trois suivantes comparent des ANNÉES et gardent N. -->
+            <div class="pil-filtre">
+                <label for="pil-comparaison">Comparaison</label>
+                <select id="pil-comparaison">
+                    <option value="">Aucune</option>
+                    <option value="M-1">Mois M-1</option>
+                    <option value="M-2">Mois M-2</option>
+                    <option value="M-3">Mois M-3</option>
+                    <option value="A-1">Année N-1</option>
+                    <option value="A-2">Année N-2</option>
+                    <option value="A-3">Année N-3</option>
+                </select>
+            </div>
+            <!-- DEUX FILTRES QUI S'OUVRENT, 04/11/2026 : « business unit je veux
+                 que cela soit un déroulé, même chose pour financeur ». Dix-huit
+                 financeurs étalés en cases à cocher poussaient les graphiques hors
+                 de l'écran. Le bouton dit ce qui est retenu ; le panneau garde les
+                 cases, parce que le choix reste multiple. -->
+            <div class="pil-filtre">
+                <label>Business unit</label>
+                <div class="pil-deroule">
+                    <button type="button" class="pil-deroule-bouton" id="pil-unites-bouton"
+                            aria-expanded="false" aria-haspopup="true">Toutes</button>
+                    <div class="pil-deroule-panneau pil-coches" id="pil-unites" hidden></div>
+                </div>
+            </div>
+            <div class="pil-filtre">
+                <label>Financeur</label>
+                <div class="pil-deroule">
+                    <button type="button" class="pil-deroule-bouton" id="pil-financeurs-bouton"
+                            aria-expanded="false" aria-haspopup="true">Tous</button>
+                    <div class="pil-deroule-panneau pil-coches" id="pil-financeurs" hidden></div>
+                </div>
+            </div>
+        </div>
+
+        <p class="pil-vide" id="pil-vide" hidden></p>
+
+        <div id="pil-corps" hidden>
+            <div class="period-badge" id="pilotage-badge"></div>
+
+            <div class="kpi-grid" id="pil-kpis"></div>
+
+            <!-- LE MOIS EN BREF, 13/11/2026. « Vision par financeur en ligne,
+                 en colonne nb facturé, nb encaissé, taux de retard, comparaison
+                 N-1, M-1 » à gauche ; « commentaire, l'ia analyse la selection
+                 faite » à droite. Le commentaire est un BROUILLON : il est
+                 calculé, pas deviné, mais c'est elle qui le valide. -->
+            <div class="pil-bref">
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Le mois en bref</h3>
+                        <span class="pil-coin" id="pil-bref-mois"></span></div>
+                    <p class="pil-note" id="pil-bref-dit"></p>
+                    <div class="table-wrap" id="pil-bref-table"></div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Commentaire du mois</h3>
+                        <span class="pil-brouillon">brouillon à valider</span></div>
+                    <div class="pil-commentaire" id="pil-bref-commentaire"></div>
+                </div>
+            </div>
+
+            <div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>Encours par ancienneté — treize arrêtés mensuels</h3></div>
+                <!-- LA NOTE PARLE DU GRAPHIQUE, PAS DE LA CUISINE, 04/11/2026 : « on
+                     parle de l'encours par ancienneté, pourquoi tu parles de lettrage du
+                     coup ? ». Lettrage, rapprochement et imputation au prorata sont la
+                     mécanique de l'arrêté, pas ce que la barre montre. Ce qu'il faut
+                     savoir, c'est qu'une barre ancienne n'est pas la balance d'aujourd'hui
+                     filtrée à une date : c'est l'encours tel qu'il était ce jour-là. -->
+                <p class="pil-note">Chaque barre est l’encours à la fin d’un mois, réparti par
+                   tranche d’ancienneté. Elle est recalculée à sa date : une facture soldée
+                   depuis y figure encore si elle était ouverte ce jour-là. La dernière barre
+                   est la balance publiée.</p>
+                <div class="chart-container"><canvas id="pil-chart-ancienneté"></canvas></div>
+            </div></div>
+
+            <div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>Encours par financeur et par ancienneté</h3></div>
+                <p class="pil-note">Les colonnes de votre balance âgée. Plus la case est chaude,
+                   plus la part de ce financeur dort dans cette tranche.</p>
+                <div id="pil-heatmap"></div>
+            </div></div>
+
+            <div class="charts-grid charts-grid-2">
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Taux de retard par financeur</h3>
+                        <span id="pil-retard-sortie"></span></div>
+                    <p class="pil-note" id="pil-retard-dit">La part échue de l’encours de chaque financeur, arrêté après arrêté.</p>
+                    <div class="chart-container"><canvas id="pil-chart-retard"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Délai moyen d’encaissement (DSO), mois par mois</h3></div>
+                    <p class="pil-note" id="pil-dso-dit">Délai moyen entre la date de facture et
+                       l’encaissement, pondéré par les montants.</p>
+                    <div class="chart-container"><canvas id="pil-chart-dso"></canvas></div>
+                </div>
+            </div>
+
+            <!-- QUI SE DÉGRADE, 13/11/2026. Le seul bloc du relevé qui se
+                 range par mois d'ÉCHÉANCE et non par mois de facturation : il ne
+                 dit pas quand on a facturé, il dit si la date qu'on s'était
+                 donnée a été tenue. Une créance est en retard si elle a été
+                 réglée après son échéance, ou si elle n'est toujours pas soldée
+                 alors que son échéance est passée. -->
+            <div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>Qui se dégrade</h3>
+                    <span class="pil-coin">par mois d’échéance, 12 derniers mois</span>
+                    <span id="pil-degrade-sortie"></span></div>
+                <p class="pil-note" id="pil-degrade-dit"></p>
+                <div class="pil-degrade">
+                    <div class="chart-container"><canvas id="pil-chart-degrade"></canvas></div>
+                    <div class="pil-degrade-liste" id="pil-degrade-liste"></div>
+                </div>
+            </div></div>
+
+            <!-- LES MOIS DE FACTURATION, 13/11/2026. « les cohortes ne
+                 m'interesse pas » : le mot ne disait rien de plus que « mois de
+                 facturation », et c'est celui-là qui est écrit. Chaque courbe
+                 est un mois de facturation ; on y lit quelle part du montant
+                 facturé ce mois-là était rentrée à 30, 60, 90, 120 et 180 jours.
+                 Seuls les âges atteints par TOUT le mois sont tracés : à un
+                 arrêté du 12 novembre, octobre n'a pas encore 60 jours. -->
+            <div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>Les mois de facturation</h3>
+                    <span id="pil-vintage-sortie"></span></div>
+                <p class="pil-note" id="pil-vintage-dit"></p>
+                <div class="chart-container"><canvas id="pil-chart-vintage"></canvas></div>
+                <div class="table-wrap" id="pil-vintage-table"></div>
+            </div></div>
+
+            <div class="charts-grid"><div class="chart-card chart-wide">
+                <div class="chart-header"><h3>Comment l’encours est passé d’un mois au suivant</h3></div>
+                <p class="pil-note" id="pil-bridge-dit"></p>
+                <div class="chart-container"><canvas id="pil-chart-bridge"></canvas></div>
+                <!-- UN POSTE DE 15 690 € SUR UNE ÉCHELLE DE 14 M€ MESURE UN
+                     CINQUIÈME DE PIXEL : il ne se voit pas, et il ne se clique
+                     pas. Les postes se lisent donc aussi en toutes lettres,
+                     avec leur montant et leur nombre d'écritures, et ceux qui
+                     ne sont ni facture, ni règlement, ni avoir s'ouvrent. -->
+                <div class="pil-postes" id="pil-bridge-postes"></div>
+            </div></div>
+        </div>
+        </div>
+    </div>
+
+    <div class="tab-content" id="tab-aging">
+        <div class="dashboard-content">
+            <div class="section-header">
+                <h2>Balance âgée</h2>
+                <div class="period-badge" id="aging-badge"></div>
+            </div>
+            <p class="aide-bloc">Répartit ce qui reste dû selon l'ancienneté du retard. Plus une créance glisse vers la droite, plus elle devient difficile à récupérer.</p>
+
+            <div class="table-toolbar">
+                <div class="seg" id="seg-aging-source">
+                    <button class="seg-btn active" data-source="monday">D'après Monday</button>
+                    <button class="seg-btn" data-source="gl">D'après le grand livre</button>
+                    <button class="seg-btn" data-source="comparaison">Comparer les deux</button>
+                    <button class="seg-btn" data-source="pointage">Pointage des paiements</button>
+                </div>
+                <div class="table-toolbar-right">
+                    <!-- Actualiser sans quitter la balance : une facture saisie
+                         dans Monday à l'instant apparaît ici en un clic. -->
+                    <span class="maj-indic" id="aging-maj"></span>
+                    <button class="btn btn-primary btn-sm" id="btn-aging-refresh">
+                        ⟳ Actualiser depuis Monday
+                    </button>
+                    <span class="fv-hint" id="aging-source-hint"></span>
+                </div>
+            </div>
+
+            <!-- Les règles au-dessus des trois balances : une balance âgée ne se
+                 lit pas sans savoir sur quelle date chaque échéance est calculée. -->
+            <details class="regles-bloc" id="aging-regles" open>
+                <summary>Les règles appliquées — échéance et classement</summary>
+                <div id="aging-regles-corps"></div>
+            </details>
+
+            <!-- « Pourquoi ce n'est pas payé » ne figure plus nulle part : la liste
+                 plate des motifs, colonne de qualification par colonne, répondait mal
+                 à la question. Elle doit se lire en descendant depuis un financement
+                 — tableau par tableau, puis groupe par groupe — et non d'un bloc. -->
+            <div id="aging-monday">
+            <div id="aging-synthese"></div>
+            <div class="bucket-grid" id="bucket-cards"></div>
+
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Antériorité du montant non réglé</h3>
+                        <div class="chart-controls">
+                            <div class="seg seg-sm" id="seg-aging-dim">
+                                <button class="seg-btn active" data-dim="financement">Financement</button>
+                                <button class="seg-btn" data-dim="board">Tableau</button>
+                                <button class="seg-btn" data-dim="client">Client</button>
+                                <button class="seg-btn" data-dim="proprietaire">Propriétaire</button>
+                            </div>
+                            <button class="btn btn-ghost btn-sm" id="btn-aging-precision">Montants exacts</button>
+                        </div>
+                    </div>
+                    <div class="table-wrap" id="aging-table"></div>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header"><h3>Antériorité par mois d'échéance</h3></div>
+                    <div class="chart-container chart-tall">
+                        <canvas id="chart-aging-mois"></canvas>
+                    </div>
+                </div>
+            </div>
+            </div><!-- /aging-monday -->
+
+            <!-- Balance âgée reconstituée depuis le grand livre -->
+            <div id="aging-gl" hidden>
+                <div id="aging-gl-vide" class="empty-state">
+                    <h3>Aucun grand livre chargé</h3>
+                    <p>
+                        Déposez un extrait de grand livre client dans l'onglet <strong>Données</strong>.
+                        Un extrait <strong>non lettré</strong> donne directement les créances vivantes ;
+                        un extrait lettré n'en contient que si des groupes ne se soldent pas.
+                    </p>
+                </div>
+                <div id="aging-gl-contenu" hidden>
+                    <div class="gl-actions" id="gl-actions"></div>
+                    <!-- D'où viennent ces chiffres et de quand ils datent :
+                         la première chose à savoir devant une balance. -->
+                    <p class="fv-hint source-ligne" id="gl-source"></p>
+                    <div class="recup-grid" id="aging-gl-kpi"></div>
+                    <details class="regles-bloc" id="aging-gl-regles">
+                        <summary>Les règles appliquées — échéance et classement</summary>
+                        <div id="aging-gl-regles-corps"></div>
+                    </details>
+                    <div id="aging-gl-notes" class="scope-note"></div>
+                    <div class="charts-grid">
+                        <div class="chart-card chart-wide">
+                            <div class="chart-header">
+                                <h3 id="aging-gl-titre">Reste dû comptable par financement et par ancienneté</h3>
+                                <div class="chart-controls">
+                                    <div class="seg seg-sm" id="seg-gl-niveau">
+                                        <button class="seg-btn active" data-niveau="financement">Par financement</button>
+                                        <button class="seg-btn" data-niveau="categorie">Par catégorie</button>
+                                    </div>
+                                    <button class="btn btn-ghost btn-sm" id="btn-aging-gl-precision">Montants exacts</button>
+                                    <button class="btn btn-primary btn-sm" id="btn-aging-gl-export">Exporter le grand livre en Excel</button>
+                                </div>
+                            </div>
+                            <span class="fv-hint">
+                                Le grand livre ne connaît pas les dispositifs : le financement est
+                                recoupé depuis les factures Monday, l'export Sellsy et l'historique des
+                                comptes clients. Ce qui n'est pas sûr n'est pas deviné — il part
+                                dans « À classer ».
+                            </span>
+                            <div class="table-wrap" id="aging-gl-table"></div>
+                            <!-- L'addition de la ligne TOTAL, écrite en toutes
+                                 lettres : la première colonne chiffrée n'est
+                                 pas le total d'une ligne, c'est la part échue.
+                                 Sans cette phrase, la ligne TOTAL semblait ne
+                                 pas tomber juste. -->
+                            <div id="aging-gl-somme" class="aging-somme"></div>
+                        </div>
+                    </div>
+                    <div class="section-header section-header-sub" id="sec-regles">
+                        <h3>Vos règles de classement</h3>
+                        <span class="fv-hint">Classer en masse tout ce qui se reconnaît à son libellé, son compte ou son client</span>
+                    </div>
+                    <div class="regles-classement">
+                        <p class="aide-bloc">
+                            Une règle lit un champ de l'écriture et lui attribue un financement :
+                            <em>« Nom du client contient ALMA → B2C - Financement personnel »</em>. Elle
+                            s'applique à <strong>toutes</strong> les créances du grand livre, celles de cet
+                            extrait comme celles des prochains, et elle est <strong>conservée</strong>.
+                            Les règles passent après la facture Monday et le référentiel qualifié — un
+                            rapprochement nominatif reste plus sûr qu'un motif — mais avant tout le reste.
+                            L'ordre compte&nbsp;: la première règle qui répond l'emporte, une règle précise
+                            se place donc au-dessus.
+                        </p>
+                        <div class="regle-form" id="gl-regle-form">
+                            <select class="input input-sm" id="gl-regle-champ"></select>
+                            <select class="input input-sm" id="gl-regle-op"></select>
+                            <input class="input input-sm" id="gl-regle-val" type="text"
+                                   placeholder="texte recherché" autocomplete="off">
+                            <select class="input input-sm" id="gl-regle-fin"></select>
+                            <button class="btn btn-primary btn-sm" id="gl-regle-ajouter">Ajouter la règle</button>
+                            <span class="fv-hint" id="gl-regle-apercu"></span>
+                        </div>
+                        <div id="gl-regles-livrees"></div>
+                        <div id="gl-regles-suggerees"></div>
+                        <div class="table-wrap" id="gl-regles-table"></div>
+                    </div>
+                    <div class="section-header section-header-sub" id="sec-aclasser">
+                        <h3 id="sec-aclasser-titre">Les créances à classer</h3>
+                        <span class="fv-hint" id="sec-aclasser-aide">Aucun recoupement n'a permis de leur attribuer un financement</span>
+                        <div class="seg seg-sm" id="seg-gl-quoi">
+                            <button class="seg-btn active" data-quoi="dispositif">Sans dispositif</button>
+                            <button class="seg-btn" data-quoi="date">Sans date de formation</button>
+                        </div>
+                        <div class="seg seg-sm" id="seg-gl-aclasser">
+                            <button class="seg-btn active" data-vue="compte">Par compte client</button>
+                            <button class="seg-btn" data-vue="ligne">Ligne à ligne</button>
+                        </div>
+                        <button class="btn btn-ghost btn-sm" id="btn-gl-aclasser-export">Exporter les créances à classer</button>
+                    </div>
+                    <div class="barre-selection" id="aging-gl-barre" hidden></div>
+                    <div class="table-wrap" id="aging-gl-aclasser"></div>
+                </div>
+            </div>
+
+            <!-- Le pointage des paiements, en sous-onglet -->
+            <div id="aging-pointage" hidden>
+                <div id="pointage-vide" class="empty-state" hidden>
+                    <h3>Aucun grand livre chargé</h3>
+                    <p>Le pointage lit les écritures du grand livre : déposez-en un dans
+                       l'onglet <em>Données</em> pour voir quels règlements ne sont rattachés
+                       à aucune facture, et lesquels pourraient l'être.</p>
+                </div>
+                <div id="pointage-contenu">
+                    <p class="fv-hint source-ligne" id="pointage-source"></p>
+                    <div class="section-header section-header-sub" id="sec-pointage">
+                        <h3>Les paiements à pointer</h3>
+                        <span class="fv-hint">Règlements et avoirs qu'aucune facture du même lettrage ne rattache</span>
+                        <button class="btn btn-primary btn-sm" id="btn-pointage-compta">
+                            Exporter pour la comptable
+                        </button>
+                        <button class="btn btn-ghost btn-sm" id="btn-gl-orphelins-export">Export complet</button>
+                    </div>
+                    <div id="gl-orphelins-note" class="scope-note"></div>
+                    <div class="recup-grid" id="gl-pointage-kpi"></div>
+
+                    <!-- Le suivi des lignes non clôturées, dans la forme de la
+                         balance âgée : une ligne par sous-catégorie, une colonne
+                         par tranche d'ancienneté. -->
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header">
+                            <h3>Les lignes non clôturées, par sous-catégorie et par ancienneté</h3>
+                            <div class="chart-controls">
+                                <div class="seg seg-sm" id="seg-pointage-niveau">
+                                    <button class="seg-btn active" data-niveau="financement">Par sous-catégorie</button>
+                                    <button class="seg-btn" data-niveau="categorie">Par catégorie</button>
+                                </div>
+                                <button class="btn btn-ghost btn-sm" id="btn-pointage-export">Exporter le suivi</button>
+                            </div>
+                        </div>
+                        <span class="fv-hint">
+                            Même lecture que la balance âgée, appliquée à l'argent qui est rentré sans
+                            solder de facture. L'ancienneté n'est pas celle d'une échéance — un
+                            règlement n'est dû à personne — c'est le temps qu'il passe sans être pointé,
+                            depuis la date de l'écriture. Un encaissement de la semaine dernière n'a
+                            rien d'inquiétant ; le même, vieux de deux ans, dit qu'une facture est
+                            peut-être soldée sans que la balance âgée le sache.
+                            <strong>Cliquez une ligne</strong> pour voir les règlements qu'elle porte.
+                        </span>
+                        <div class="table-wrap" id="gl-pointage-financement"></div>
+                    </div>
+
+                    <div class="table-wrap" id="gl-pointage-mois"></div>
+                    <div class="table-wrap" id="gl-orphelins"></div>
+
+                </div>
+            </div>
+
+            <!-- Confrontation des deux balances -->
+            <div id="aging-comparaison" hidden>
+                <div class="recup-grid" id="aging-cmp-kpi"></div>
+                <div id="aging-cmp-notes" class="scope-note"></div>
+                <div class="charts-grid">
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header"><h3>Monday face au grand livre, par financement</h3></div>
+                        <span class="fv-hint">
+                            Les deux ne peuvent pas coïncider exactement — Monday suit un circuit,
+                            la comptabilité tient un compte. L'écart dit où regarder : au-dessus côté
+                            comptable, des factures manquent au circuit ; en dessous, des règlements
+                            ne sont pas lettrés.
+                        </span>
+                        <div class="table-wrap" id="aging-cmp-table"></div>
+                    </div>
+                </div>
+                <div class="charts-grid">
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header"><h3>Où se creuse l'écart</h3></div>
+                        <div class="chart-container"><canvas id="chart-aging-cmp"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════ ONGLET : FINANCEMENTS ══════════ -->
+    <div class="tab-content" id="tab-financements">
+        <div class="dashboard-content">
+            <div class="section-header">
+                <h2>Par type de financement</h2>
+                <div class="period-badge" id="fin-badge"></div>
+            </div>
+            <p class="aide-bloc">Le même suivi, dispositif par dispositif. La règle d'échéance n'est pas la même partout : le CPF paie à fin de formation +60 jours, le B2B à +30, le financement personnel dès le début de formation. <strong>Cliquez sur une ligne</strong> pour entrer dans la catégorie : ses qualifications, tableau par tableau, et ses prélèvements.</p>
+
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Synthèse</h3>
+                        <span class="fv-hint">Cliquez sur une ligne pour entrer dans la catégorie</span>
+                    </div>
+                    <div class="table-wrap" id="fin-table"></div>
+                    <p class="fv-hint" id="fin-coherence"></p>
+                </div>
+            </div>
+
+            <!-- Détail d'une catégorie : ce qu'on voit en « entrant » dedans -->
+            <div id="fin-detail" hidden></div>
+
+            <div class="charts-grid charts-2col">
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Taux en recouvrement (€)</h3></div>
+                    <span class="fv-hint">
+                        <strong>Aujourd'hui</strong> : sur tout ce que vous avez facturé dans cette catégorie,
+                        la part encore en retard à ce jour. <strong>Au fil du temps</strong> : sur les seules
+                        factures arrivées à échéance, la part qui a fini par être en retard — payées en retard
+                        comprises. La seconde est plus haute parce qu'elle compte aussi ce qui est rentré,
+                        mais en retard.
+                    </span>
+                    <div class="chart-container"><canvas id="chart-fin-taux"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <div class="chart-header"><h3>Retard moyen par financement</h3></div>
+                    <span class="fv-hint">
+                        <strong>Impayées</strong> : depuis combien de jours les factures encore dues attendent.
+                        <strong>Réglées</strong> : sur celles qui ont fini par rentrer, combien de jours après
+                        l'échéance le paiement est tombé.
+                    </span>
+                    <div class="chart-container"><canvas id="chart-fin-retard"></canvas></div>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-card chart-wide">
+                    <div class="chart-header">
+                        <h3>Règles de date d'échéance</h3>
+                        <button class="btn btn-ghost btn-sm" id="btn-edit-rules">Modifier les règles</button>
+                    </div>
+                    <span class="fv-hint">Règle appliquée pour calculer l'échéance quand Monday ne fournit pas de date.</span>
+                    <div class="table-wrap" id="rules-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══════════ ONGLET : FACTURES ══════════ -->
+    <div class="tab-content" id="tab-factures">
+        <div class="dashboard-content">
+            <div class="section-header">
+                <h2>Détail des factures</h2>
+                <div class="period-badge" id="factures-badge"></div>
+            </div>
+            <p class="aide-bloc">La liste de toutes les factures du périmètre filtré. Cliquez sur une ligne pour voir le détail d'une facture et comprendre comment son échéance a été calculée.</p>
+
+            <div class="table-toolbar">
+                <div class="chips" id="chips-etats"></div>
+                <div class="table-toolbar-right">
+                    <label class="table-pagesize">
+                        Lignes
+                        <select id="page-size" class="input input-sm">
+                            <option>25</option><option selected>50</option><option>100</option><option>200</option>
+                        </select>
+                    </label>
+                    <button class="btn btn-ghost btn-sm" id="btn-export-table">Exporter la vue</button>
+                </div>
+            </div>
+
+            <div class="barre-selection" id="barre-selection" hidden></div>
+            <div class="table-wrap table-wrap-tall" id="factures-table"></div>
+            <div class="pagination" id="factures-pagination"></div>
+        </div>
+    </div>
+
+    <!-- ══════════ ONGLET : QUALIFICATIONS ══════════ -->
+<!-- ══════════ ONGLET : PRÉLÈVEMENTS ══════════ -->
+    <div class="tab-content" id="tab-prelevements">
+        <div class="dashboard-content">
+            <div class="section-header">
+                <h2>Prélèvements GoCardless</h2>
+                <div class="period-badge" id="prlv-badge"></div>
+            </div>
+            <p class="aide-bloc">Le suivi des apprenants qui paient par prélèvement automatique : combien vont au bout sans incident, et au bout de combien de temps les premiers décrochent.</p>
+
+            <div id="prlv-vide" class="empty-state">
+                <h3>Aucun export GoCardless chargé</h3>
+                <p>
+                    Déposez ci-dessous les exports du tableau de bord GoCardless. Les fichiers sont
+                    reconnus automatiquement à leurs colonnes — l'ordre et le nombre n'importent pas.
+                    Deux lectures sont possibles, indépendantes l'une de l'autre : <strong>Payouts</strong>
+                    seul suffit à voir ce qui est arrivé en banque ; <strong>Payments</strong> et
+                    <strong>Customers</strong> ouvrent le détail apprenant par apprenant.
+                </p>
+                <div class="besoin-grid">
+                    <div class="besoin besoin-requis">
+                        <strong>Payments</strong><span>indispensable</span>
+                        <p>Une ligne par prélèvement : date d'échéance, montant, statut, motif de rejet.</p>
+                    </div>
+                    <div class="besoin besoin-requis">
+                        <strong>Customers</strong><span>indispensable</span>
+                        <p>L'identité de l'apprenant : e-mail, prénom, nom.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>Subscriptions</strong><span>utile</span>
+                        <p>Date de début, périodicité et nombre d'échéances de chaque abonnement.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>Mandates</strong><span>utile</span>
+                        <p>Fait le lien entre prélèvement et apprenant si Payments ne le porte pas.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>Payouts</strong><span>trésorerie</span>
+                        <p>Les virements que GoCardless vous a faits : le net arrivé en banque, le
+                           brut prélevé aux clients et les frais retenus. Il se lit seul, sans aucun
+                           autre fichier, et c'est le seul montant que le relevé bancaire confirme —
+                           la somme des prélèvements, elle, ne s'y retrouvera jamais.</p>
+                    </div>
+                </div>
+                <div class="upload-zone upload-zone-sm" id="prlv-drop">
+                    <p class="upload-text">Glissez vos exports GoCardless ici</p>
+                    <p class="upload-hint">.csv, .xlsx — sélection multiple</p>
+                    <input type="file" id="prlv-file-input" accept=".csv,.xlsx,.xls" multiple hidden>
+                </div>
+            </div>
+
+            <div id="prlv-contenu" hidden>
+                <!-- Ce qui est arrivé en banque. Lisible sans aucun autre
+                     fichier : l'export Payouts se suffit à lui-même. -->
+                <div id="prlv-versements" hidden>
+                    <div class="recup-grid" id="prlv-vers-kpi"></div>
+                    <p class="aide-bloc" id="prlv-vers-aide"></p>
+                    <div class="charts-grid">
+                        <div class="chart-card chart-wide">
+                            <div class="chart-header">
+                                <h3>Ce que GoCardless a viré en banque, mois par mois</h3>
+                                <button class="btn btn-ghost btn-sm" id="btn-vers-export">Exporter</button>
+                            </div>
+                            <span class="fv-hint">
+                                En barres, le net réellement crédité sur le compte. La ligne, c'est la
+                                part que GoCardless a retenue au passage (frais de transaction et taxe).
+                            </span>
+                            <div class="chart-container chart-tall"><canvas id="chart-versements"></canvas></div>
+                        </div>
+                    </div>
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header"><h3>Versements et grand livre</h3></div>
+                        <span class="fv-hint" id="prlv-vers-rappro"></span>
+                        <div class="table-wrap" id="prlv-vers-table"></div>
+                    </div>
+                </div>
+
+                <div id="prlv-detail">
+                <div class="table-toolbar">
+                    <div class="seg" id="seg-prlv-fenetre">
+                        <button class="seg-btn active" data-fenetre="0">Tout l'historique</button>
+                        <button class="seg-btn" data-fenetre="24">24 derniers mois</button>
+                        <button class="seg-btn" data-fenetre="12">12 derniers mois</button>
+                        <button class="seg-btn" data-fenetre="6">6 derniers mois</button>
+                    </div>
+                    <div class="table-toolbar-right">
+                        <span class="fv-hint" id="prlv-periode"></span>
+                    </div>
+                </div>
+                <div class="recup-grid" id="prlv-kpi"></div>
+                <div id="prlv-notes" class="scope-note"></div>
+
+                <div class="charts-grid">
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header">
+                            <h3>Combien de temps un apprenant tient-il sans incident ?</h3>
+                        </div>
+                        <span class="fv-hint">
+                            Part des apprenants n'ayant encore connu aucun rejet, mois après mois depuis
+                            leur premier prélèvement. Estimateur de Kaplan-Meier : les apprenants récents,
+                            observés moins longtemps, ne faussent pas la courbe.
+                        </span>
+                        <div class="chart-container chart-tall">
+                            <canvas id="chart-survie"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-grid charts-2col">
+                    <div class="chart-card">
+                        <div class="chart-header">
+                            <h3>À quel prélèvement ça casse</h3>
+                            <div class="chart-controls">
+                                <div class="seg seg-sm" id="seg-rang-unite">
+                                    <button class="seg-btn active" data-unite="nb">Nombre</button>
+                                    <button class="seg-btn" data-unite="euros">€</button>
+                                </div>
+                            </div>
+                        </div>
+                        <span class="fv-hint">
+                            Chaque barre : le nombre d'apprenants dont le premier rejet est tombé à ce
+                            rang de prélèvement. <strong>En rouge, les ruptures précoces</strong> — dès
+                            l'un des trois premiers prélèvements : le mandat n'a jamais vraiment
+                            fonctionné, et c'est là que la perte est la plus lourde puisque presque
+                            rien n'a été encaissé. En orange, les ruptures plus tardives, sur des
+                            échéanciers déjà bien avancés.
+                        </span>
+                        <div class="chart-container"><canvas id="chart-rang"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header"><h3>Taux de rejet par mois</h3></div>
+                        <span class="fv-hint">Sur les prélèvements présentés à la banque, hors annulations</span>
+                        <div class="chart-container chart-tall">
+                            <canvas id="chart-echecs-mois"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header">
+                            <h3>Apprenants</h3>
+                            <div class="chart-controls">
+                                <div class="seg seg-sm" id="seg-prlv-etat">
+                                    <button class="seg-btn active" data-etat="">Tous</button>
+                                    <button class="seg-btn" data-etat="En difficulté">En difficulté</button>
+                                    <button class="seg-btn" data-etat="Incident rattrapé">Rattrapés</button>
+                                    <button class="seg-btn" data-etat="Sans incident">Sans incident</button>
+                                </div>
+                                <input type="search" id="prlv-recherche" class="input input-sm" placeholder="Nom, e-mail…">
+                                <button class="btn btn-ghost btn-sm" id="btn-prlv-export">Exporter</button>
+                            </div>
+                        </div>
+                        <div class="table-wrap table-wrap-tall" id="prlv-table"></div>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header">
+                            <h3>Fiabilité de l'analyse</h3>
+                            <button class="btn btn-ghost btn-sm" id="btn-prlv-remplacer">Remplacer les exports</button>
+                        </div>
+                        <div id="prlv-qualite" class="quality-list"></div>
+                        <input type="file" id="prlv-file-input-2" accept=".csv,.xlsx,.xls" multiple hidden>
+                    </div>
+                </div>
+                </div><!-- /prlv-detail -->
+            </div><!-- /prlv-contenu -->
+        </div>
+    </div>
+
+    <!-- ══════════ ONGLET : DATA QUALITY ══════════ -->
+<!-- ══════════ ONGLET : CONTRÔLE SELLSY ══════════ -->
+    <div class="tab-content" id="tab-sellsy">
+        <div class="dashboard-content">
+            <div class="section-header">
+                <h2>Contrôle d'exhaustivité — Sellsy ↔ Monday</h2>
+                <div class="period-badge" id="sellsy-badge"></div>
+            </div>
+            <p class="aide-bloc">
+                Sellsy est le logiciel de facturation : c'est lui qui dit quelles factures
+                existent. Monday est le tableau de suivi. Une facture émise dans Sellsy et
+                absente de Monday n'est suivie par personne. Déposez l'export Sellsy :
+                l'application vous dit <strong>combien de factures manquent, lesquelles, et
+                dans quel état elles sont</strong> — payées, impayées, partiellement réglées.
+            </p>
+
+            <div id="sellsy-vide" class="empty-state">
+                <h3>Aucun export de facturation chargé</h3>
+                <p>
+                    Déposez ici vos exports de facturation. <strong>Sellsy</strong> émet les
+                    factures d'aujourd'hui (Facturation → Factures → Exporter) ; <strong>Zoho</strong>
+                    n'en émet plus, mais son export reste indispensable — les factures
+                    <code>FA-…</code> qu'il a émises figurent encore au grand livre, et lui seul
+                    porte leurs dates de formation. Vous pouvez déposer les deux ensemble : ils sont
+                    fusionnés sur le <strong>numéro de facture</strong>, ponctuation et casse
+                    ignorées, et aucune source n'en écrase une autre — la première qui renseigne un
+                    champ le garde, les suivantes ne comblent que les vides.
+                    Chaque export porte aussi le numéro de la facture dans l'autre outil
+                    (« Numéro de facture Zoho » chez Sellsy, « Facture sellsy correspondante » chez
+                    Zoho) : c'est ce numéro croisé qui fait passer une date ou un e-mail d'un export
+                    à l'autre, quel que soit le numéro sous lequel le grand livre connaît la facture.
+                </p>
+                <div class="besoin-grid">
+                    <div class="besoin besoin-requis">
+                        <strong>Numéro de facture</strong><span>indispensable</span>
+                        <p>La clé du rapprochement. Sans elle, aucun contrôle n'est possible.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>Statut</strong><span>très utile</span>
+                        <p>Dit si la facture manquante est déjà payée ou reste à recouvrer. À défaut, le reste dû suffit.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>Montant TTC</strong><span>très utile</span>
+                        <p>Chiffre l'enjeu des manquantes et révèle les écarts de saisie sur les factures communes.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>Date de facture</strong><span>utile</span>
+                        <p>Situe le trou dans le temps et borne le contrôle à la période couverte par l'export.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>Client</strong><span>utile</span>
+                        <p>Dit si l'absence se concentre sur un compte ou touche tout le portefeuille.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>E-mail du client</strong><span>très utile</span>
+                        <p>C'est la clé du mandat GoCardless : elle dit qui est prélevé, donc quelles
+                           factures arrivent à échéance dès la fin de la formation, sans délai de
+                           paiement. Sellsy la porte pour ses factures, Zoho pour les
+                           <code>FA-…</code> — les deux exports se complètent.</p>
+                    </div>
+                    <div class="besoin">
+                        <strong>Début et fin de formation</strong><span>très utile</span>
+                        <p>Ce sont elles qui font l'échéance, pas la date de facture. Sellsy les nomme
+                           « début / fin de service », Zoho « Debut / Fin formation » : les deux sont
+                           reconnues.</p>
+                    </div>
+                </div>
+                <div class="upload-zone upload-zone-sm" id="sellsy-drop">
+                    <p class="upload-text">Glissez vos exports de facturation ici</p>
+                    <p class="upload-hint">Sellsy et Zoho — .csv, .xlsx, plusieurs fichiers à la fois</p>
+                    <input type="file" id="sellsy-file-input" accept=".csv,.xlsx,.xls" multiple hidden>
+                </div>
+            </div>
+
+            <div id="sellsy-contenu" hidden>
+                <div class="recup-grid" id="sellsy-kpi"></div>
+                <div id="sellsy-notes" class="scope-note"></div>
+
+                <div class="table-toolbar">
+                    <div class="seg" id="seg-sellsy-vue">
+                        <button class="seg-btn active" data-vue="absentes">Absentes de Monday</button>
+                        <button class="seg-btn" data-vue="ecarts">Écarts de saisie</button>
+                        <button class="seg-btn" data-vue="surnumeraires">Inconnues de Sellsy</button>
+                        <button class="seg-btn" data-vue="ignorees">Hors périmètre</button>
+                    </div>
+                    <div class="table-toolbar-right">
+                        <button class="btn btn-ghost btn-sm" id="btn-sellsy-recharger">Remplacer l'export</button>
+                        <input type="file" id="sellsy-file-input-2" accept=".csv,.xlsx,.xls" multiple hidden>
+                        <button class="btn btn-ghost btn-sm" id="btn-sellsy-export">Exporter en Excel</button>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-card chart-wide">
+                        <div class="chart-header">
+                            <h3>À quelle période les factures ont-elles cessé d'arriver dans Monday ?</h3>
+                        </div>
+                        <span class="fv-hint">
+                            Part des factures Sellsy absentes de Monday, mois par mois. Un pic sur
+                            quelques mois est une rupture d'import à une date donnée ; une absence
+                            étalée est une fuite permanente du circuit.
+                        </span>
+                        <div class="chart-container"><canvas id="chart-sellsy-mois"></canvas></div>
+                    </div>
+                </div>
+
+                <div id="sellsy-repartition" class="recup-grid"></div>
+
+                <!-- Les écarts, détaillés par nature : « 1 545 écarts de statut »
+                     ne dit pas dans quel sens ils vont, et les deux sens n'ont
+                     ni la même cause ni la même urgence. -->
+                <div id="sellsy-ecarts-detail"></div>
+
+                <div class="section-header section-header-sub">
+                    <h3 id="sellsy-titre-table">Factures absentes de Monday</h3>
+                    <div class="chart-controls">
+                        <div class="seg seg-sm" id="seg-sellsy-portee">
+                            <button class="seg-btn active" data-portee="traiter"
+                                title="Impayées et partiellement payées, montant et reste dû supérieurs à un euro">À traiter</button>
+                            <button class="seg-btn" data-portee="impayee">Impayées</button>
+                            <button class="seg-btn" data-portee="partielle">Partiellement</button>
+                            <button class="seg-btn" data-portee="payee">Payées</button>
+                            <button class="seg-btn" data-portee="tout">Toutes</button>
+                        </div>
+                    </div>
+                </div>
+                <p class="aide-bloc" id="sellsy-aide-table"></p>
+                <span class="fv-hint" id="sellsy-note-portee"></span>
+                <div class="table-wrap table-wrap-tall" id="sellsy-table"></div>
+                <div class="pagination" id="sellsy-pagination"></div>
+            </div>
+        </div>
+    </div>
+
+        <div class="tab-content" id="tab-quality">
+        <div class="dashboard-content">
+            <div class="section-header">
+                <h2>Qualité des données</h2>
+                <div class="period-badge" id="quality-badge"></div>
+            </div>
+            <p class="aide-bloc">Ce qui manque dans Monday et fausse les calculs. Une facture sans date de fin de formation, par exemple, n'a pas d'échéance calculable et sort des taux.</p>
+            <div class="quality-score" id="quality-score"></div>
+            <div id="quality-list" class="quality-list"></div>
+        </div>
+    </div>
+
+    <!-- ══════════ ONGLET : DONNÉES ══════════ -->
+    <!-- L'ONGLET OPÉRATIONNEL, 13/11/2026 — repris de « Suivi recouvrement
+         version 2 ». Tout son contenu est bâti par js/operationnel.js : le
+         circuit à quatre étapes, leurs cibles et la table qui range chaque
+         groupe Monday y vivent, parce qu'ils ne servent qu'ici. -->
+    <div class="tab-content" id="tab-operationnel">
+        <div class="dashboard-content">
+            <div id="op-corps"></div>
+        </div>
+    </div>
+
+    <div class="tab-content" id="tab-donnees">
+        <div class="dashboard-content">
+            <div class="section-header"><h2>Sources de données</h2></div>
+
+            <!-- VERSION 3 : relire Monday par le connecteur de claude.ai -->
+            <div class="chart-card chart-wide settings-card" id="v3-carte-monday">
+                <div class="chart-header">
+                    <h3>Actualiser depuis Monday</h3>
+                    <div class="chart-controls">
+                        <button class="btn btn-ghost btn-sm" id="v3-btn-depot" type="button" hidden>Revenir aux données déposées</button>
+                        <button class="btn btn-ghost btn-sm" id="v3-btn-complet" type="button">Tout relire</button>
+                        <button class="btn btn-primary btn-sm" id="v3-btn-monday" type="button">Actualiser depuis Monday</button>
+                    </div>
+                </div>
+                <div class="settings-body">
+                    <p id="v3-monday-etat"></p>
+                    <ol class="v3-etapes">
+                        <li>claude.ai vous demande d’autoriser le connecteur monday.com pour cette page (la première fois).</li>
+                        <li>La première fois, les neuf tableaux du circuit sont relus en entier avec votre compte, sans les groupes « Technique » et « Archive » : comptez quelques minutes. Les lignes lues sont gardées dans ce navigateur.</li>
+                        <li>Les fois suivantes, seules les factures que Monday dit créées, modifiées, déplacées ou supprimées depuis la dernière lecture sont relues : c’est l’affaire de quelques secondes. « Tout relire » refait une lecture complète, utile une fois de temps en temps car une colonne recopiée d’un autre tableau peut changer sans que la ligne soit signalée.</li>
+                        <li>Les chiffres de tous les onglets sont recalculés, et la date d’arrêté passe à aujourd’hui. Si la lecture échoue, la page reprend les données déposées.</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Connexion -->
+            <div class="chart-card chart-wide settings-card" hidden>
+                <div class="chart-header"><h3>Connexion Monday</h3></div>
+                <div class="settings-body">
+                    <div class="field-row">
+                        <input type="password" id="settings-token" class="input" placeholder="Jeton API Monday" autocomplete="off">
+                        <button class="btn btn-ghost btn-sm" id="btn-settings-token-visible">👁</button>
+                        <button class="btn btn-primary btn-sm" id="btn-settings-connect">Connecter</button>
+                        <button class="btn btn-ghost btn-sm" id="btn-settings-forget">Oublier le jeton</button>
+                    </div>
+                    <div id="settings-monday-status" class="connect-status"></div>
+                    <p class="fv-hint">
+                        Le jeton est conservé dans le stockage local du navigateur (IndexedDB) et n'est
+                        transmis qu'à <code>api.monday.com</code>.
+                    </p>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════
+                 Sellsy et Pennylane, sans passer par un fichier
+                 ══════════════════════════════════════════════ -->
+            <div class="chart-card chart-wide settings-card" id="carte-api">
+                <div class="chart-header"><h3>Aller chercher la facturation et le grand livre</h3></div>
+                <div class="settings-body">
+                    <p class="fv-hint">
+                        Plutôt que d'exporter depuis Sellsy et Pennylane puis de déposer les fichiers,
+                        l'application peut les demander directement. Les identifiants restent dans le
+                        stockage de ce navigateur et ne sont envoyés qu'au service concerné. Cela ne
+                        fonctionne que depuis l'application lancée sur votre poste : une page publiée
+                        n'a pas le droit d'appeler ces adresses.
+                    </p>
+
+                    <!-- ── Pennylane ── -->
+                    <div class="api-bloc">
+                        <span class="filter-label">Pennylane — grand livre</span>
+                        <span class="fv-hint">
+                            Paramètres → Connectivité → Développeurs → « Generate an API Token ».
+                            Prenez <strong>lecture seule</strong> : l'application n'écrit jamais chez vous.
+                            Le jeton ne s'affiche qu'une fois.
+                        </span>
+                        <div class="field-row">
+                            <input type="password" id="pl-jeton" class="input" placeholder="Jeton API Pennylane" autocomplete="off">
+                            <button class="btn btn-ghost btn-sm" id="btn-pl-visible" title="Afficher / masquer">👁</button>
+                            <button class="btn btn-ghost btn-sm" id="btn-pl-tester">Tester</button>
+                            <button class="btn btn-primary btn-sm" id="btn-pl-charger">Charger le grand livre</button>
+                            <button class="btn btn-ghost btn-sm" id="btn-pl-oublier">Oublier</button>
+                        </div>
+                        <details class="bloc-repli">
+                            <summary>Adresse de base</summary>
+                            <span class="fv-hint">À ne changer que si Pennylane déplace son API.</span>
+                            <input type="text" id="pl-base" class="input input-sm" spellcheck="false">
+                        </details>
+                        <div id="pl-etat" class="connect-status"></div>
+                    </div>
+
+                    <!-- ── Sellsy ── -->
+                    <div class="api-bloc">
+                        <span class="filter-label">Sellsy — facturation</span>
+                        <span class="fv-hint">
+                            Menu → Paramètres → Espace développeur → API V2 → « Créer un accès API »,
+                            type <strong>Privé</strong>. Vous obtenez un identifiant client et un secret ;
+                            le secret ne s'affiche qu'une fois.
+                        </span>
+                        <div class="field-row">
+                            <input type="text" id="sy-id" class="input" placeholder="Identifiant client" autocomplete="off">
+                            <input type="password" id="sy-secret" class="input" placeholder="Secret client" autocomplete="off">
+                            <button class="btn btn-ghost btn-sm" id="btn-sy-visible" title="Afficher / masquer">👁</button>
+                            <button class="btn btn-ghost btn-sm" id="btn-sy-tester">Tester</button>
+                            <button class="btn btn-primary btn-sm" id="btn-sy-charger">Charger la facturation</button>
+                            <button class="btn btn-ghost btn-sm" id="btn-sy-oublier">Oublier</button>
+                        </div>
+                        <details class="bloc-repli">
+                            <summary>Adresses de base</summary>
+                            <span class="fv-hint">À ne changer que si Sellsy déplace son API.</span>
+                            <input type="text" id="sy-base" class="input input-sm" spellcheck="false">
+                            <input type="text" id="sy-jetons" class="input input-sm" spellcheck="false">
+                        </details>
+                        <div id="sy-etat" class="connect-status"></div>
+                    </div>
+
+                    <div id="api-journal" class="loader-log" hidden></div>
+                </div>
+            </div>
+
+            <!-- Chaîne de traitement -->
+            <div class="chart-card chart-wide settings-card">
+                <div class="chart-header"><h3>De Monday au tableau de bord</h3></div>
+                <span class="fv-hint">
+                    Où passent les lignes entre ce que Monday contient et ce que les indicateurs comptent.
+                    Comparez la première ligne au nombre d'éléments affiché dans Monday.
+                </span>
+                <div id="chaine-traitement" class="chaine"></div>
+            </div>
+
+            <!-- Tableaux -->
+            <div class="chart-card chart-wide settings-card">
+                <div class="chart-header">
+                    <h3>Tableaux suivis</h3>
+                    <div class="chart-controls">
+                        <button class="btn btn-ghost btn-sm" id="btn-boards-refresh">Rafraîchir la liste</button>
+                        <button class="btn btn-primary btn-sm" id="btn-boards-load">Charger les tableaux cochés</button>
+                    </div>
+                </div>
+                <span class="fv-hint">
+                    Le rôle est déduit du nom du tableau : il détermine le périmètre (Corporate / B2C),
+                    la source de retard et le financement par défaut. Les colonnes de droite suivent les
+                    factures de chaque tableau : <strong>chargées</strong> = <strong>écartées</strong>
+                    (groupes de service) + <strong>analysées ici</strong> + <strong>analysées
+                    ailleurs</strong>. Une même facture passe par plusieurs tableaux au fil du circuit —
+                    tampon, ADV, recouvrement, puis factures payées — et n'est comptée qu'une fois, sur
+                    le plus avancé. Un tableau qui affiche peu d'« analysées ici » n'a donc rien perdu :
+                    ses factures sont comptées plus loin. Seules les <strong>manquantes</strong> sont une
+                    perte réelle.
+                </span>
+                <div id="boards-resume"></div>
+                <div class="table-wrap" id="boards-table"></div>
+                <details class="bloc-repli">
+                    <summary>Chaque groupe, ligne par ligne</summary>
+                    <span class="fv-hint">Monday affiche le nombre d'éléments en tête de chaque groupe replié.
+                        Comparez-le à la colonne <strong>Chargées</strong> ci-dessous : c'est le seul endroit
+                        où une perte de lignes se voit, groupe par groupe. Les factures payées sont réparties
+                        sur plusieurs groupes (ADV, B2C…) et un groupe absent de cette liste n'a jamais été
+                        récupéré.</span>
+                    <div class="mini-table-wrap" id="boards-groupes"></div>
+                </details>
+                <h4 class="qualif-col-titre">Le retard par tableau
+                    <span class="fv-hint">ce qui est encore dû d'un côté, ce qui est rentré en retard de l'autre : un tableau
+                        dont tout est encaissé a pu subir beaucoup de retard. Le tableau Monday dit où la facture se trouve,
+                        pas ce qu'elle est : ce n'est pas un axe d'analyse.</span>
+                </h4>
+                <div class="mini-table-wrap" id="par-tableau"></div>
+            </div>
+
+            <!-- Mapping des colonnes -->
+            <div class="chart-card chart-wide settings-card">
+                <div class="chart-header">
+                    <h3>Correspondance des colonnes</h3>
+                    <select id="mapping-board-select" class="input input-sm"></select>
+                </div>
+                <span class="fv-hint">Ajustez si une colonne Monday n'a pas été reconnue automatiquement.</span>
+                <div class="table-wrap" id="mapping-table"></div>
+            </div>
+
+            <!-- Options de calcul -->
+            <div class="chart-card chart-wide settings-card">
+                <div class="chart-header"><h3>Options de calcul</h3></div>
+                <div class="settings-body">
+                    <!-- Le réglage « faire primer la date d'échéance de Monday » a été
+                         retiré : les règles de financement font autorité, sans exception.
+                         La colonne de Monday donnait des dates qui ne sortent d'aucune
+                         règle — jusqu'à 191 jours d'écart sur une même facture. -->
+                    <p class="fv-hint">
+                        Les dates d'échéance sont toujours calculées selon vos règles de financement,
+                        visibles et modifiables dans l'onglet <strong>Financements</strong>. La colonne
+                        « Date d'échéance » de Monday n'est jamais reprise : une facture que les règles
+                        ne savent pas dater est classée « Date d'échéance manquante — à qualifier »
+                        plutôt que de porter une date d'origine inconnue.
+                    </p>
+                    <label class="check">
+                        <input type="checkbox" id="opt-masquer-technique" checked>
+                        Exclure les tableaux et les groupes de service (Technique, Archive, Corbeille…)
+                    </label>
+                    <div id="exclusions-info" class="exclusions-info"></div>
+                    <label class="check">
+                        <input type="checkbox" id="opt-payees-hors-portefeuille">
+                        Exclure les factures déjà payées du portefeuille affiché
+                    </label>
+                    <label class="check">
+                        <span>Une créance est dite <strong>compromise</strong> au-delà de :</span>
+                        <select id="opt-seuil-bad-debt" class="input input-sm">
+                            <option value="180">6 mois d'échéance dépassée (180 jours)</option>
+                            <option value="360">12 mois d'échéance dépassée (360 jours)</option>
+                            <option value="540">18 mois d'échéance dépassée (540 jours)</option>
+                            <option value="720">24 mois d'échéance dépassée (720 jours)</option>
+                        </select>
+                        <span class="fv-hint">360 jours est la frontière « plus de 12 mois » de la
+                        balance âgée, au jour près : au-delà, les deux écrans cessent de coïncider.</span>
+                    </label>
+                    <label class="check">
+                        <input type="checkbox" id="opt-actualiser-demarrage" checked>
+                        Actualiser depuis Monday à l'ouverture de l'application
+                        <span class="fv-hint">(sauté si les données ont moins d'un quart d'heure)</span>
+                    </label>
+                    <label class="check">
+                        <span>Actualisation automatique pendant l'utilisation :</span>
+                        <select id="opt-actualisation-auto" class="input input-sm">
+                            <option value="0">désactivée</option>
+                            <option value="15">toutes les 15 minutes</option>
+                            <option value="30">toutes les 30 minutes</option>
+                            <option value="60">toutes les heures</option>
+                            <option value="180">toutes les 3 heures</option>
+                        </select>
+                    </label>
+                    <p class="fv-hint">
+                        L'application interroge Monday à intervalle régulier tant qu'elle est ouverte :
+                        une facture ajoutée dans Monday apparaît au passage suivant, sans rien cliquer.
+                        L'actualisation se fait en arrière-plan, sans interrompre votre travail, et est
+                        suspendue quand l'onglet n'est pas affiché.
+                    </p>
+
+                </div>
+            </div>
+
+            <!-- Import fichiers -->
+            <div class="chart-card chart-wide settings-card">
+                <div class="chart-header"><h3>Import de fichiers</h3></div>
+                <span class="fv-hint">
+                    Les quatre sources qui alimentent les indicateurs et la balance âgée sont ici.
+                    Chaque source a sa zone — et un fichier déposé au mauvais endroit est redirigé
+                    tout seul. Elles se complètent dans cet ordre, et aucune ne remplace ce qu'une
+                    autre a déjà rempli : <strong>Monday</strong> porte le circuit,
+                    <strong>Sellsy</strong> les montants et les dates de service, le
+                    <strong>fichier du financeur</strong> les dates de formation qui manquent encore,
+                    le <strong>grand livre</strong> les règlements et les créances vivantes. Les dates
+                    ainsi rassemblées descendent jusqu'aux créances du grand livre, où vos règles
+                    calculent l'échéance. <strong>Le grand livre fait foi</strong> sur les règlements : ses dates
+                    remplacent celles de Monday, la date d'origine restant consultable dans la fiche de
+                    chaque facture. Un extrait <strong>non lettré</strong> porte en plus les créances
+                    vivantes : c'est lui qui alimente la <strong>balance âgée comptable</strong>, à voir
+                    dans l'onglet Balance âgée → « D'après le grand livre ».
+                </span>
+                <div class="import-grid">
+                    <div class="upload-zone upload-zone-sm" id="settings-drop">
+                        <p class="upload-text">Exports de tableaux Monday</p>
+                        <p class="upload-hint">.xlsx, .xls, .csv — sélection multiple</p>
+                        <input type="file" id="settings-file-input" accept=".csv,.xlsx,.xls" multiple hidden>
+                    </div>
+                    <div class="upload-zone upload-zone-sm" id="gl-drop">
+                        <p class="upload-text">Grand livre client</p>
+                        <p class="upload-hint">Lettré ou non lettré — c'est le non lettré qui porte la balance âgée</p>
+                        <input type="file" id="gl-file-input" accept=".csv,.xlsx,.xls" hidden>
+                    </div>
+                    <!-- La facturation avait sa zone dans un autre onglet :
+                         les quatre sources qui alimentent le grand livre et
+                         les indicateurs sont désormais au même endroit. -->
+                    <div class="upload-zone upload-zone-sm" id="sellsy-drop-2">
+                        <p class="upload-text">Facturation Sellsy</p>
+                        <p class="upload-hint">Montants, dates de service, type de client — complète Monday et le grand livre</p>
+                        <input type="file" id="sellsy-file-input-3" accept=".csv,.xlsx,.xls" multiple hidden>
+                    </div>
+                    <div class="upload-zone upload-zone-sm" id="gcl-drop">
+                        <p class="upload-text">Exports GoCardless</p>
+                        <p class="upload-hint">Payments, Customers, Subscriptions, Mandates</p>
+                        <input type="file" id="gcl-file-input" accept=".csv,.xlsx,.xls" multiple hidden>
+                    </div>
+                    <!-- Les tableaux d'alternance ne portent pas les dates de
+                         formation : le fichier du financeur les détient, et le
+                         numéro de dossier fait la jointure. -->
+                    <div class="upload-zone upload-zone-sm" id="dossiers-drop">
+                        <p class="upload-text">Dossiers du financeur (Filiz, Transition Pro…)</p>
+                        <p class="upload-hint">N° de dossier + dates de formation — n'apporte aucune échéance</p>
+                        <input type="file" id="dossiers-file-input" accept=".csv,.xlsx,.xls" multiple hidden>
+                    </div>
+                </div>
+                <div id="dossiers-resume"></div>
+                <div id="import-history" class="import-history"></div>
+            </div>
+
+            <!-- Stockage -->
+            <div class="chart-card chart-wide settings-card">
+                <div class="chart-header"><h3>Stockage local</h3></div>
+                <div class="settings-body">
+                    <div id="storage-info" class="storage-info"></div>
+                    <div class="field-row">
+                        <button class="btn btn-ghost btn-sm" id="btn-clear-data">Effacer les factures</button>
+                        <button class="btn btn-ghost btn-sm" id="btn-clear-all">Tout effacer (données + réglages)</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div><!-- /v3-main -->
+</div>
+
+<!-- Modale générique -->
+<div class="modal-overlay" id="modal-overlay" hidden>
+    <div class="modal" id="modal">
+        <div class="modal-head">
+            <h3 id="modal-title"></h3>
+            <button class="modal-close" id="modal-close">×</button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+        <div class="modal-foot" id="modal-foot"></div>
+    </div>
+</div>
+
+<div class="toast-stack" id="toast-stack"></div>
+
+<script src="js/rules.js"></script>
+<script src="js/store.js"></script>
+<script src="js/monday.js"></script>
+<script src="js/ingest.js"></script>
+<script src="js/metrics.js"></script>
+<script src="js/prelevements.js"></script>
+    <script src="js/grandlivre.js"></script>
+    <script src="js/sellsy.js"></script>
+    <script src="js/zoho.js"></script>
+<script src="js/api.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/pilotage.js"></script>
+<script src="js/operationnel.js"></script>
+<script src="artefact.js"></script>
+<script>window.LIORA_DONNEES_DU_JOUR = true;</script>
+<script src="v3.js"></script>

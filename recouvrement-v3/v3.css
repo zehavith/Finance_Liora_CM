@@ -1,0 +1,318 @@
+/* ══════════════════════════════════════════════════════════════════════
+   SUIVI RECOUV — VERSION 3
+   ══════════════════════════════════════════════════════════════════════
+   Mise en page : un menu latéral qui range les dix onglets en quatre
+   familles (repris de « Suivi recouvrement version 2 »), et à droite une
+   colonne qui s'ouvre toujours sur le nom de l'onglet et la question à
+   laquelle il répond.
+
+   Cette feuille se charge APRÈS styles.css et recouvrement.css et ne
+   redéfinit aucune couleur : elle se sert des variables de la charte
+   Liora posées dans styles.css (--accent, --bg-*, --text-*, --border-*).
+   L'application est claire, par choix (demande du 12/11/2026).            */
+
+:root { color-scheme: light; }
+
+/* La barre du haut n'existe plus : rien ne se cale sous elle. */
+#app-screen { --nav-h: 0px; }
+html { scroll-padding-top: calc(var(--filters-h, 90px) + 16px); }
+
+/* Le numéro interne de l'application (v4.0.0) prêtait à confusion à côté
+   de « version 3 » : il reste dans les exports, plus dans l'en-tête. */
+.brand-version { display: none; }
+
+/* ── La structure : menu + colonne ── */
+#app-screen.active { display: flex; flex-wrap: wrap; align-items: flex-start; }
+.v3-main { flex: 999 1 600px; min-width: 0; }
+
+#app-screen > .navbar.v3-side {
+    flex: 1 1 100%;
+    position: static;
+    display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start;
+    gap: 0; padding: 0;
+    background: var(--bg-secondary);
+    backdrop-filter: none;
+    border-bottom: 1px solid var(--border-color);
+    min-width: 0;
+}
+
+.v3-side .nav-brand {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem;
+    padding: 1.15rem 1.1rem 0.95rem;
+    border-bottom: 1px solid var(--border-color);
+}
+.v3-side .logo-icon img { display: block; height: 30px; width: auto; }
+.v3-side .brand-name {
+    display: flex; flex-direction: column; gap: 0.1rem;
+    font-size: 0.95rem; font-weight: 700; letter-spacing: -0.01em; white-space: normal;
+}
+.v3-side .brand-sub { font-weight: 700; color: var(--text-primary); }
+.v3-version {
+    font-size: 0.72rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+/* Les onglets, en colonne, rangés par famille. */
+#app-screen > .navbar.v3-side .nav-tabs {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 0.5rem 0.6rem 0.8rem;
+    background: none; border-radius: 0;
+    overflow: visible; max-width: none; flex: 0 0 auto;
+}
+.v3-nav-titre {
+    font-size: 0.68rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 0.85rem 0.7rem 0.3rem;
+}
+.v3-side .nav-tab {
+    display: flex; align-items: center; gap: 0.65rem;
+    width: 100%; padding: 0.5rem 0.7rem;
+    font-size: 0.875rem; font-weight: 500; text-align: left; white-space: normal; line-height: 1.3;
+    color: var(--text-secondary);
+    border-radius: 8px;
+}
+.v3-side .nav-tab svg { flex: none; color: var(--text-muted); }
+.v3-side .nav-tab:hover { background: var(--bg-primary); color: var(--text-primary); }
+.v3-side .nav-tab.active {
+    background: var(--accent-bg); color: var(--text-primary); font-weight: 600;
+}
+.v3-side .nav-tab.active svg { color: var(--accent); }
+.v3-side .nav-tab:focus-visible,
+.v3-side .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Le pied du menu : de quand datent les chiffres, et les trois gestes. */
+.v3-side-bas {
+    margin-top: auto;
+    display: flex; flex-direction: column; gap: 0.5rem;
+    padding: 0.9rem 0.9rem 1rem;
+    border-top: 1px solid var(--border-color);
+}
+.v3-fraicheur { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.75rem; color: var(--text-muted); }
+.v3-fraicheur > span { display: flex; align-items: flex-start; gap: 0.45rem; line-height: 1.35; }
+.v3-point { flex: none; width: 7px; height: 7px; border-radius: 50%; margin-top: 0.3rem; background: var(--border-hover); }
+.v3-point.ok { background: var(--green); }
+.v3-point.attente { background: var(--amber); }
+.v3-side .maj-indic {
+    display: block; max-width: none; margin: 0; padding: 0;
+    font-size: 0.75rem; line-height: 1.35; white-space: normal; text-align: left;
+    overflow: visible; text-overflow: clip;
+}
+.v3-side .nav-actions { display: flex; flex-direction: column; gap: 0.35rem; }
+.v3-side .nav-actions .btn {
+    width: 100%; justify-content: flex-start;
+    padding: 0.45rem 0.7rem; font-size: 0.82rem; white-space: normal; text-align: left;
+}
+.v3-side .nav-actions .btn svg { flex: none; }
+
+@media (min-width: 1000px) {
+    #app-screen > .navbar.v3-side {
+        flex: 0 0 244px;
+        position: sticky;
+        top: env(safe-area-inset-top, 0px);
+        height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+        overflow-y: auto;
+        border-bottom: 0;
+        border-right: 1px solid var(--border-color);
+        z-index: 60;
+    }
+}
+
+/* En dessous, le menu repasse au-dessus du contenu : les onglets défilent
+   sur une ligne, les familles ne s'écrivent plus. */
+@media (max-width: 999px) {
+    .v3-side .nav-brand { flex-direction: row; align-items: center; padding: 0.8rem 1rem; gap: 0.8rem; }
+    #app-screen > .navbar.v3-side .nav-tabs {
+        flex-direction: row; overflow-x: auto; padding: 0.5rem 0.75rem;
+        scrollbar-width: thin;
+    }
+    .v3-nav-titre { display: none; }
+    .v3-side .nav-tab { width: auto; flex: none; white-space: nowrap; }
+    .v3-side-bas {
+        margin-top: 0; flex-direction: row; flex-wrap: wrap; align-items: center;
+        gap: 0.5rem 1rem; padding: 0.6rem 1rem 0.75rem;
+    }
+    .v3-side .nav-actions { flex-direction: row; flex-wrap: wrap; }
+    .v3-side .nav-actions .btn { width: auto; }
+}
+
+/* ── L'en-tête de chaque onglet : son nom, et ce à quoi il répond ── */
+.v3-entete {
+    max-width: 1400px; margin: 0 auto;
+    padding: 1.6rem 2rem 0;
+    display: flex; flex-direction: column; gap: 0.3rem;
+}
+.v3-entete h1 {
+    margin: 0; font-size: 1.45rem; font-weight: 700; letter-spacing: -0.015em;
+    color: var(--text-primary); text-wrap: balance;
+}
+.v3-entete p { margin: 0; max-width: 78ch; font-size: 0.92rem; line-height: 1.55; color: var(--text-secondary); }
+.v3-entete .v3-source { font-size: 0.78rem; color: var(--text-muted); }
+@media (max-width: 760px) { .v3-entete { padding: 1.1rem 1rem 0; } }
+
+/* Le titre est dit par l'en-tête : celui de l'onglet ne le répète pas. */
+.tab-content > .dashboard-content > .section-header:first-child > h2 { display: none; }
+.tab-content > .dashboard-content { padding-top: 1.25rem; }
+
+/* La barre de filtres reste collée en haut de la colonne. */
+#app-screen .filters-wrap { top: env(safe-area-inset-top, 0px); }
+/* Dans la barre de filtres, l'explication de chaque filtre se lit au survol
+   (et dans le lexique) : écrite en clair sous chaque commande, elle
+   occupait un tiers de l'écran sur tous les onglets. */
+body.aide .filter-block .aide-ligne { display: none; }
+.filter-block[title] .filter-label { cursor: help; }
+/* Une tuile dont l'explication est longue garde son icône en haut. */
+body.aide .kpi-card { align-items: flex-start; }
+
+/* L'ordre du menu est celui de la page : marque, onglets, pied. */
+.v3-side .nav-brand { order: 0; }
+#app-screen > .navbar.v3-side .nav-tabs { order: 1; flex-basis: auto; width: auto; }
+.v3-side-bas { order: 2; }
+
+/* ── L'actualisation depuis Monday, onglet Données ── */
+#v3-carte-monday .v3-monday-ligne {
+    display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; align-items: center; justify-content: space-between;
+}
+#v3-monday-etat { font-size: 0.88rem; line-height: 1.55; color: var(--text-secondary); max-width: 80ch; }
+#v3-monday-etat strong { color: var(--text-primary); }
+.v3-etapes { margin: 0.4rem 0 0; padding-left: 1.1rem; font-size: 0.82rem; line-height: 1.6; color: var(--text-muted); max-width: 80ch; }
+.btn:disabled { opacity: 0.55; cursor: default; transform: none; }
+
+/* ── Le lexique ── */
+.v3-lexique { display: flex; flex-direction: column; gap: 0; margin: 0; }
+.v3-lexique > div { padding: 0.7rem 0; border-bottom: 1px solid var(--border-color); }
+.v3-lexique > div:last-child { border-bottom: 0; }
+.v3-lexique dt { font-weight: 600; color: var(--text-primary); font-size: 0.92rem; }
+.v3-lexique dd { margin: 0.2rem 0 0; font-size: 0.86rem; line-height: 1.55; color: var(--text-secondary); max-width: 80ch; }
+.v3-lexique-intro { font-size: 0.86rem; color: var(--text-muted); margin: 0 0 0.4rem; }
+
+/* ── Onglet Opérationnel : d'où vient chaque nombre ── */
+/* Le nombre qui s'ouvre sur ses factures. */
+.op-lien {
+    background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit;
+    cursor: pointer; text-decoration: underline; text-decoration-style: dotted;
+    text-decoration-color: var(--accent); text-underline-offset: 3px;
+    font-variant-numeric: tabular-nums;
+}
+.op-lien:hover { color: var(--accent); text-decoration-style: solid; }
+.op-lien:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+/* Les tuiles : libellé, valeur, précision, empilés. */
+.kpi-card.op-tuile { display: block; }
+.kpi-card.op-tuile .kpi-data { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.kpi-card.op-tuile .kpi-value { white-space: normal; overflow-wrap: anywhere; }
+.kpi-card.op-tuile .kpi-sub { line-height: 1.45; }
+
+/* La carte d'étape n'est plus un bouton : elle porte ses propres boutons. */
+.op-fcard { cursor: default; gap: 0.3rem; }
+.op-fcard:hover { border-color: var(--border-color); }
+.op-fdesc { color: var(--text-muted); line-height: 1.4; }
+.op-ou {
+    display: flex; flex-direction: column; gap: 0.15rem;
+    margin-top: 0.45rem; padding-top: 0.5rem; border-top: 1px solid var(--border-color);
+}
+.op-ou-t { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.op-ou-l {
+    display: flex; justify-content: space-between; gap: 0.75rem; align-items: baseline;
+    font-size: 0.78rem; color: var(--text-secondary);
+}
+.op-ou-l > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.op-ou-l .op-lien { flex: none; font-weight: 600; color: var(--text-primary); }
+.op-fdetail { align-self: flex-start; margin-top: 0.5rem; }
+
+/* Le détail d'une étape dépliée : tableau, puis groupe. */
+.op-t tr.op-sous-titre td {
+    font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--text-muted); background: var(--bg-primary); padding-left: 1.1rem;
+}
+.op-t tr.op-sous-tableau td { font-weight: 600; color: var(--text-primary); }
+.op-t tr.op-sous-tableau td:first-child { padding-left: 1.1rem; }
+.op-t tr.op-sous-groupe td:first-child { padding-left: 2.2rem; }
+
+.op-def { margin: 0 0 0.6rem; max-width: 90ch; }
+.op-def b { color: var(--text-secondary); }
+.op-hb { grid-template-columns: minmax(8rem, 50%) 1fr auto; }
+.op-hb > .op-hb-nom { white-space: normal; overflow: visible; line-height: 1.3; }
+.op-hb-nom small { display: block; font-size: 0.68rem; color: var(--text-muted); }
+.op-col-v .op-lien { color: var(--text-primary); }
+
+/* La liste ouverte par un nombre. */
+.op-lot-note { margin: 0 0 0.6rem; max-width: 90ch; font-size: 0.82rem; }
+.op-lot-total { margin: 0 0 0.4rem; font-size: 0.95rem; color: var(--text-primary); }
+.op-lot-resume { margin: 0 0 0.8rem; display: flex; flex-wrap: wrap; gap: 0.3rem 0.4rem; align-items: center; }
+
+/* La table de correspondance groupe → étape. */
+.op-corr td { vertical-align: middle; }
+.op-corr tr.op-corr-tableau td { background: var(--bg-primary); padding-top: 0.6rem; padding-bottom: 0.6rem; }
+.op-corr .op-pied { margin-left: 0.2rem; }
+.op-chip.op-cat-adv { background: rgba(43, 93, 184, 0.10); color: var(--blue-600); }
+.op-chip.op-cat-rec { background: var(--accent-bg); color: var(--accent); }
+.op-chip.op-cat-fin { background: var(--red-bg); color: var(--red); }
+.op-chip.op-cat-cor { background: rgba(123, 77, 179, 0.12); color: var(--purple-600); }
+.op-alerte {
+    margin: 0 0 0.8rem; padding: 0.7rem 0.9rem; font-size: 0.86rem; line-height: 1.5;
+    color: var(--text-primary); background: var(--red-bg);
+    border: 1px solid var(--red); border-radius: 8px; max-width: 90ch;
+}
+
+/* Rien ne pousse la page en largeur : le menu tient dans l'écran, ses
+   onglets défilent à l'intérieur, et un tableau large défile dans son cadre. */
+#app-screen > .navbar.v3-side { width: 100%; max-width: 100%; box-sizing: border-box; }
+@media (min-width: 1000px) { #app-screen > .navbar.v3-side { width: 244px; max-width: 244px; } }
+#app-screen > .navbar.v3-side .nav-tabs { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.v3-side-bas, .v3-side .nav-brand { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.v3-side .nav-actions { min-width: 0; max-width: 100%; }
+@media (max-width: 999px) {
+    .v3-side .nav-actions { flex: 1 1 100%; }
+    .v3-fraicheur { flex: 1 1 100%; }
+}
+#pil-heatmap { overflow-x: auto; max-width: 100%; }
+.op-sub { overflow-x: auto; }
+@media (max-width: 760px) {
+    .charts-grid.charts-grid-2 { grid-template-columns: minmax(0, 1fr); }
+    .charts-grid-2 > .chart-card, .charts-grid-2 > .op-sub { min-width: 0; }
+}
+
+/* Sur un écran peu haut, le menu défile : il ne se replie jamais sur une
+   seconde colonne (une règle héritée de l'ancienne barre l'y autorisait). */
+#app-screen > .navbar.v3-side { flex-wrap: nowrap; row-gap: 0; }
+#app-screen > .navbar.v3-side > * { flex-shrink: 0; }
+
+/* Pilotage — le tableau « Encours par financeur et par ancienneté », resserré. */
+.pil-heat.pil-heat-v3 { font-size: 0.78rem; }
+.pil-heat.pil-heat-v3 th, .pil-heat.pil-heat-v3 td { padding: 0.32rem 0.5rem; white-space: nowrap; }
+.pil-heat.pil-heat-v3 thead th { font-size: 0.68rem; white-space: normal; vertical-align: bottom; }
+.pil-heat.pil-heat-v3 td.fam { white-space: normal; min-width: 9.5rem; }
+.pil-heat.pil-heat-v3 td.fam small { white-space: normal; }
+.pil-heat.pil-heat-v3 small { font-size: 0.64rem; margin-top: 0; }
+.pil-dg-pied strong { color: var(--text-secondary); }
+
+/* Opérationnel — la saisie de la date qui manque. */
+.op-compl { min-width: 15rem; }
+.op-compl-l { display: flex; gap: 0.4rem; align-items: center; margin-top: 0.15rem; }
+.op-compl-l .input { min-width: 0; }
+
+/* La fenêtre d'une étape : le fil pour remonter, et des lignes qui se cliquent. */
+.op-fil { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem; margin: 0 0 0.7rem; font-size: 0.95rem; }
+.op-fil b { color: var(--text-primary); }
+.op-fil .op-lien { color: var(--accent); text-decoration-style: solid; }
+.op-fil span { color: var(--text-muted); }
+.op-t tr.op-nav { cursor: pointer; }
+.op-t tr.op-nav:hover td { background: var(--accent-bg); }
+.op-t tr.op-nav td:first-child .op-lien { font-weight: 600; color: var(--text-primary); text-align: left; }
+
+/* La fenêtre d'une étape : le fil pour remonter, et des lignes qui se cliquent. */
+.op-fil { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem; margin: 0 0 0.7rem; font-size: 0.95rem; }
+.op-fil b { color: var(--text-primary); }
+.op-fil .op-lien { color: var(--accent); text-decoration-style: solid; }
+.op-fil span { color: var(--text-muted); }
+.op-t tr.op-nav { cursor: pointer; }
+.op-t tr.op-nav:hover td { background: var(--accent-bg); }
+.op-t tr.op-nav td:first-child .op-lien { font-weight: 600; color: var(--text-primary); text-align: left; }
+.op-ft .op-lien { font-weight: 600; text-align: left; }
+
+/* « Sous contrôle » : avant le circuit, sur toute la largeur. */
+.op-fcard.op-fcard-ctl { flex: 1 1 100%; }
+.op-chips { display: flex; flex-wrap: wrap; gap: 0.3rem 0.4rem; margin-top: 0.15rem; }
+.op-chip .op-lien { text-decoration-color: currentColor; }
+.op-ou.op-ou-large { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 0.15rem 2rem; }
+.op-ou.op-ou-large .op-ou-t { grid-column: 1 / -1; }
