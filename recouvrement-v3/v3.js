@@ -543,6 +543,108 @@
     var BILAN = { gl: null, anciennes: 0, anciennesSansDate: 0, montantsDossier: 0, sellsyEcartees: [] };
     var PLAFOND_SELLSY = 500000;
 
+    // ── Import EDOF depuis l'onglet Données ──
+    var CLE_EDOF = 'rec_v3_edof', EDOF_BRUT = { factures: {}, avances: {}, periodes: [] }, EDOF_IMPORT = null;
+    /** Ajoute un lot EDOF à ce qui est connu : la ligne la plus récente d'une facture l'emporte. */
+    function fusionnerEdof(lot) {
+        [['factures', lot.factures || {}], ['avances', lot.avances || {}]].forEach(function (c) {
+            Object.keys(c[1]).forEach(function (k) { var l = c[1][k], a = EDOF_BRUT[c[0]][k];
+                if (!a || String(l[4]) >= String(a[4])) EDOF_BRUT[c[0]][k] = l; });
+        });
+        (lot.periodes || []).forEach(function (p) {
+            if (!EDOF_BRUT.periodes.some(function (q) { return q[0] === p[0] && q[1] === p[1]; })) EDOF_BRUT.periodes.push(p);
+        });
+        EDOF_BRUT.periodes.sort();
+    }
+    function poserEdof() {
+        if (!Object.keys(EDOF_BRUT.factures).length && !Object.keys(EDOF_BRUT.avances).length) { EDOF = null; return; }
+        EDOF = { factures: {}, avances: EDOF_BRUT.avances, periodes: EDOF_BRUT.periodes };
+        Object.keys(EDOF_BRUT.factures).forEach(function (n) { EDOF.factures[I.factureKey(n)] = EDOF_BRUT.factures[n]; });
+    }
+    /** Lit un export EDOF (CSV à points-virgules) : renvoie un lot, ou lève une erreur lisible. */
+    function lireCsvEdof(texte, nom) {
+        var lignes = String(texte || '').replace(/^\uFEFF/, '').split(/\r?\n/).filter(function (l) { return l.trim(); });
+        var sep = (lignes[0] || '').indexOf(';') >= 0 ? ';' : ',';
+        var tete = (lignes[0] || '').split(sep).map(function (h) { return h.trim().replace(/^"|"$/g, '').toUpperCase(); });
+        var col = function (n) { return tete.indexOf(n); };
+        var iD = col('NUMERO_DOSSIER'), iF = col('NUMERO_FACTURE'), iT = col('TYPE FACTURE'), iE = col('DATE_EMISSION_FACTURE'),
+            iM = col('MONTANT_REGLEMENT'), iS = col('STATUT_REGLEMENT'), iR = col('DATE_REGLEMENT'), iC = col('DOSSIER EN CONTROLE O/N');
+        if (iD < 0 || iF < 0 || iS < 0 || iM < 0) throw new Error('« ' + nom + ' » n’est pas un export EDOF des factures : colonnes NUMERO_DOSSIER, NUMERO_FACTURE, MONTANT_REGLEMENT et STATUT_REGLEMENT attendues.');
+        var lot = { factures: {}, avances: {}, periodes: [] }, min = '', max = '', n = 0;
+        for (var i = 1; i < lignes.length; i++) {
+            var c = lignes[i].split(sep).map(function (x) { return x.trim().replace(/^"|"$/g, ''); });
+            if (!c[iD] && !c[iF]) continue;
+            var em = iE >= 0 ? c[iE] : '', avance = iT >= 0 && /avance/i.test(c[iT]);
+            var ligne = [Math.round(parseFloat(String(c[iM]).replace(',', '.')) * 100) / 100 || 0, iR >= 0 ? c[iR] : '', c[iS], c[iD], em, iC >= 0 && c[iC] === 'O'];
+            lot[avance ? 'avances' : 'factures'][avance ? c[iD] : c[iF]] = ligne;
+            if (em) { if (!min || em < min) min = em; if (em > max) max = em; }
+            n++;
+        }
+        if (!n) throw new Error('« ' + nom + ' » ne contient aucune ligne.');
+        lot.periodes = [[min, max, n]];
+        return lot;
+    }
+    async function importerEdof(fichiers) {
+        var etatEl = $('#v3-edof-etat'), recus = 0, noms = [];
+        try {
+            for (var i = 0; i < fichiers.length; i++) {
+                var lot = lireCsvEdof(await fichiers[i].text(), fichiers[i].name);
+                fusionnerEdof(lot);
+                EDOF_IMPORT = EDOF_IMPORT || { factures: {}, avances: {}, periodes: [] };
+                Object.assign(EDOF_IMPORT.factures, lot.factures); Object.assign(EDOF_IMPORT.avances, lot.avances);
+                EDOF_IMPORT.periodes = EDOF_IMPORT.periodes.concat(lot.periodes);
+                recus += lot.periodes[0][2]; noms.push(fichiers[i].name);
+            }
+        } catch (e) { dire(e.message || 'Fichier EDOF illisible.', 'error', 9000); if (etatEl) majCarteEdof(); return; }
+        poserEdof();
+        var garde = true;
+        try { await S.set(CLE_EDOF, EDOF_IMPORT); } catch (e) { garde = false; }
+        recalculer();
+        majCarteEdof();
+        dire(recus.toLocaleString('fr-FR') + ' lignes EDOF importées' + (garde ? ' et gardées dans ce navigateur.' : ' — mais elles n’ont pas pu être gardées : il faudra réimporter à la prochaine visite.'), garde ? 'success' : 'error', 7000);
+    }
+    function majCarteEdof() {
+        var el = $('#v3-edof-etat');
+        if (!el) return;
+        var f = EDOF_BRUT.factures, nb = Object.keys(f).length, verse = 0;
+        Object.keys(f).forEach(function (k) { if (f[k][2] === 'Versé') verse++; });
+        var jour = function (d) { return String(d || '').split('-').reverse().join('/'); };
+        var p = EDOF_BRUT.periodes;
+        el.innerHTML = nb ? '<b>' + nb.toLocaleString('fr-FR') + ' factures EDOF connues</b>, dont ' + verse.toLocaleString('fr-FR') + ' « Versé », et '
+            + Object.keys(EDOF_BRUT.avances).length.toLocaleString('fr-FR') + ' avances. Factures déposées du ' + jour(p[0] && p[0][0]) + ' au ' + jour(p.length && p[p.length - 1][1]) + '. '
+            + (BILAN.edof ? BILAN.edof.toLocaleString('fr-FR') + ' factures Monday sont comptées payées grâce à EDOF.' : '')
+            + (EDOF_IMPORT ? ' <span class="op-pied">Dont un import fait depuis ce navigateur.</span>' : '')
+            : 'Aucun export EDOF n’est connu pour l’instant.';
+        var raz = $('#v3-edof-raz'); if (raz) raz.hidden = !EDOF_IMPORT;
+    }
+    function brancherEdof() {
+        var ancre = $('#v3-carte-monday');
+        if (!ancre || $('#v3-carte-edof')) return;
+        var carte = document.createElement('div');
+        carte.className = 'chart-card chart-wide settings-card'; carte.id = 'v3-carte-edof';
+        carte.innerHTML = '<div class="chart-header"><h3>Paiements CPF — export EDOF</h3><div class="chart-controls">'
+            + '<button class="btn btn-ghost btn-sm" id="v3-edof-raz" type="button" hidden>Oublier mes imports</button>'
+            + '<button class="btn btn-primary btn-sm" id="v3-edof-btn" type="button">Importer un export EDOF</button>'
+            + '<input type="file" id="v3-edof-fichier" accept=".csv,text/csv" multiple hidden></div></div>'
+            + '<div class="settings-body"><p id="v3-edof-etat"></p>'
+            + '<p class="op-pied">Pour le CPF, EDOF fait foi : une facture « Versé » est comptée payée à la date de règlement EDOF. '
+            + 'Fichier attendu : l’export « Factures » d’EDOF, au format CSV, tel qu’il est téléchargé. Plusieurs fichiers peuvent être choisis d’un coup ; '
+            + 'un nouvel export s’ajoute aux précédents, et la ligne la plus récente d’une facture l’emporte. '
+            + 'L’import est gardé dans ce navigateur : sur un autre poste, il faut le refaire.</p></div>';
+        ancre.parentNode.insertBefore(carte, ancre.nextSibling);
+        var champ = $('#v3-edof-fichier');
+        $('#v3-edof-btn').addEventListener('click', function () { champ.click(); });
+        champ.addEventListener('change', function () { var l = [].slice.call(champ.files || []); champ.value = ''; if (l.length) importerEdof(l); });
+        $('#v3-edof-raz').addEventListener('click', async function () {
+            EDOF_IMPORT = null;
+            try { await S.set(CLE_EDOF, null); } catch (e) { /* rien à effacer */ }
+            dire('Imports EDOF de ce navigateur oubliés : la page est rechargée avec les données publiées.', 'info', 3000);
+            setTimeout(function () { location.reload(); }, 1200);
+        });
+        majCarteEdof();
+        setInterval(majCarteEdof, 4000);
+    }
+
     async function lireJson(chemin) {
         try {
             var r = await fetch(chemin, { cache: 'no-cache' });
@@ -552,10 +654,10 @@
     async function chargerComplements() {
         var res = await Promise.all([lireJson('donnees/reglements.json'), lireJson('donnees/anciennes-factures.json'), lireJson('donnees/rapprochements.json')]);
         var edof = await lireJson('donnees/edof.json');
-        if (edof && edof.factures) {
-            EDOF = { factures: {}, avances: edof.avances || {}, periodes: edof.periodes || [] };
-            Object.keys(edof.factures).forEach(function (n) { EDOF.factures[I.factureKey(n)] = edof.factures[n]; });
-        }
+        EDOF_BRUT = { factures: {}, avances: {}, periodes: [] };
+        if (edof && edof.factures) fusionnerEdof(edof);
+        try { var garde = await S.get(CLE_EDOF, null); if (garde && garde.factures) { fusionnerEdof(garde); EDOF_IMPORT = garde; } } catch (e) { /* pas d'import gardé */ }
+        poserEdof();
         if (res[2] && res[2].factures) {
             RAPPRO = {}; RAPPRO_INFO = res[2];
             Object.keys(res[2].factures).forEach(function (n) { RAPPRO[I.factureKey(n)] = res[2].factures[n]; });
@@ -936,6 +1038,7 @@
         suivreAide();
         brancherMonday();
         brancherPeriode();
+        brancherEdof();
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', demarrer);
     else demarrer();
