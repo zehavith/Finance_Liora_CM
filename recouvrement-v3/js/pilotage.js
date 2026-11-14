@@ -1084,6 +1084,7 @@
     // Le diamètre du point porte donc le nombre de règlements, et l'infobulle
     // le dit en toutes lettres avec le montant. Un point minuscule se lit pour
     // ce qu'il est : une facture, pas une tendance.
+    let IMPAYES = null, impEtat = '';
     function graphDso(keep) {
         const parMois = new Map();
         for (const r of (D.dso || [])) {
@@ -1106,6 +1107,23 @@
             o.nEch += r.nEch || 0; o.nRet += r.nRet || 0; o.mRet += r.mRet || 0; retMois.set(r.m, o);
         }
         const ret = mois.map(m => retMois.get(m) || { nEch: 0, nRet: 0, mRet: 0 });
+        // TROIS PARTS QUI FONT LE TOTAL. « L'addition des deux nombres fait plus
+        // que la totalité » : le rouge compte les factures ENCAISSÉES ce mois-là,
+        // quelle que soit leur échéance ; le bleu part des factures À ÉCHÉANCE ce
+        // mois-là. Ce ne sont pas les mêmes factures, on ne peut pas les
+        // additionner. L'info-bulle bleue découpe donc les échéances du mois en
+        // trois parts qui, elles, font bien le total : payées à temps, payées en
+        // retard, toujours impayées. La courbe trace la dernière.
+        if (!IMPAYES && impEtat === '') { impEtat = 'charge';
+            fetch('donnees/lignes.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+                .then(j => { if (j && j.impayes) { IMPAYES = j.impayes; rendre(); } }).catch(() => {}); }
+        const impMois = new Map();
+        for (const x of (IMPAYES || [])) { if (!keep.has(x[1])) continue;
+            const o = impMois.get(x[0]) || { n: 0, m: 0 }; o.n += x[2]; o.m += x[3]; impMois.set(x[0], o); }
+        const parts = mois.map((m, i) => { const r = ret[i], im = impMois.get(m) || { n: 0, m: 0 };
+            const impayees = IMPAYES ? Math.min(im.n, r.nRet) : null;
+            return { total: r.nEch, aTemps: r.nEch - r.nRet, enRetard: impayees === null ? r.nRet : r.nRet - impayees,
+                     impayees: impayees, mImp: im.m }; });
         const BLEU = '#2563EB';
         U().chart('pil-chart-dso', {
             type: 'line',
@@ -1121,10 +1139,10 @@
                     data: base.map(o => o.mt ? Math.round(o.mj / o.mt) : null),
                     yAxisID: 'y',
                 }, {
-                    label: 'Factures en retard (échues dans le mois, toujours impayées)', borderColor: BLEU,
+                    label: IMPAYES ? 'Factures à échéance dans le mois, toujours impayées' : 'Factures à échéance dans le mois, non payées à temps', borderColor: BLEU,
                     backgroundColor: BLEU, pointBackgroundColor: BLEU, fill: false,
                     borderWidth: 2, tension: 0.3, pointRadius: 3, pointHoverRadius: 5,
-                    data: ret.map(o => o.nRet), yAxisID: 'y2',
+                    data: parts.map(q => q.impayees === null ? q.enRetard : q.impayees), yAxisID: 'y2',
                 }],
             },
             options: {
@@ -1139,15 +1157,17 @@
                 plugins: {
                     legend: { display: true, position: 'bottom', labels: { usePointStyle: true } },
                     tooltip: { callbacks: {
-                        label: c => c.datasetIndex === 1
-                            ? (c.raw || 0).toLocaleString('fr-FR') + ' facture(s) en retard sur ' + ((ret[c.dataIndex] || {}).nEch || 0).toLocaleString('fr-FR')
-                              + ' échéances du mois · ' + eur((ret[c.dataIndex] || {}).mRet || 0) + ' impayés'
-                            : 'délai moyen pondéré : ' + c.raw + ' jours',
+                        label: c => { if (c.datasetIndex !== 1) return 'délai moyen pondéré : ' + c.raw + ' jours';
+                            const q = parts[c.dataIndex] || {}, n = v => (v || 0).toLocaleString('fr-FR');
+                            return [n(q.total) + ' factures à échéance ce mois-là, dont :',
+                                '  ' + n(q.aTemps) + ' payées à temps',
+                                '  ' + n(q.enRetard) + (q.impayees === null ? ' non payées à temps' : ' payées en retard')]
+                                .concat(q.impayees === null ? [] : ['  ' + n(q.impayees) + ' toujours impayées · ' + eur(q.mImp)]); },
                         afterLabel: c => { if (c.datasetIndex === 1) return '';
                             const o = base[c.dataIndex] || {};
                             return 'sur ' + (o.n || 0).toLocaleString('fr-FR') + ' facture'
                                  + ((o.n || 0) > 1 ? 's' : '') + ' encaissée'
-                                 + ((o.n || 0) > 1 ? 's' : '') + ' · ' + eur(o.mt || 0); },
+                                 + ((o.n || 0) > 1 ? 's' : '') + ' ce mois-là, toutes échéances confondues · ' + eur(o.mt || 0); },
                     } },
                 },
             },
@@ -1159,7 +1179,9 @@
             el.textContent = 'Délai moyen entre la date de facture et l’encaissement, '
                 + 'pondéré par les montants, sur les factures encaissées dans le mois. '
                 + 'Le diamètre du point dit combien de factures le composent. '
-                + 'En bleu (échelle de droite) : le nombre de factures arrivées à échéance ce mois-là et toujours impayées.'
+                + 'En bleu (échelle de droite) : parmi les factures arrivées à échéance ce mois-là, celles qui sont toujours impayées. '
+                + 'Les deux courbes ne s’additionnent pas : le rouge compte les factures encaissées dans le mois, quelle que soit leur échéance ; '
+                + 'survolez un point bleu pour voir le découpage complet des échéances du mois.'
                 + (maigres ? ' ' + maigres + ' mois ne reposent que sur une ou deux factures : '
                            + 'leur délai est celui de ces factures-là, pas une tendance.' : '');
         }

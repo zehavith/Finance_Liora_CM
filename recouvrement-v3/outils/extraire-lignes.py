@@ -48,6 +48,15 @@ for i, p in enumerate(sys.argv[2:]):
         L.append([fin(r), v(r, 'N° de facture') or k, v(r, 'Tiers') or '', reste, tr, int(num(v(r, 'Jours de retard de la créance'))),
                   iso(v(r, 'Date de facture (facturation)') or v(r, 'Date'))])
         tot[tr] += reste
+    if i == 0:
+        # Ce qui reste impayé aujourd'hui, rangé par mois d'échéance : l'échéance
+        # est l'arrêté moins le retard.
+        imp = collections.defaultdict(lambda: [0, 0.0]); jour = datetime.date.fromisoformat(arrete)
+        for x in L:
+            if x[3] > 0 and x[5] > 0:
+                m = (jour - datetime.timedelta(days=x[5])).strftime('%Y-%m')
+                imp[(m, x[0])][0] += 1; imp[(m, x[0])][1] += x[3]
+        sortie['impayes'] = [[m, f, n, round(v, 2)] for (m, f), (n, v) in sorted(imp.items())]
     json.dump(L, open(os.path.join(os.path.dirname(sys.argv[1]), 'creances-%s.json' % arrete), 'w'), separators=(',', ':'), ensure_ascii=False)
     sortie['creances'][arrete] = len(L)
     print(arrete, len(L), round(sum(tot.values())), {k: round(x) for k, x in tot.items()})
