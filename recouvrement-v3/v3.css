@@ -419,3 +419,14 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 .pil-dg-defile { max-height: 17rem; overflow-y: auto; }
 .pil-dg-titre { font-size: 0.68rem; font-weight: 600; margin: 0.55rem 0.4rem 0.15rem; }
 .pil-dg-titre.pire { color: var(--red, #B8352A); } .pil-dg-titre.mieux { color: var(--green, #1D7F55); }
+/* Opérationnel : la carte EDOF */
+.v3-edof-grille { display: grid; grid-template-columns: minmax(17rem, 1.5fr) repeat(4, minmax(9.5rem, 1fr)); gap: 0.7rem; }
+@media (max-width: 1250px) { .v3-edof-grille { grid-template-columns: repeat(2, minmax(0, 1fr)); } .v3-edof-tuile.fort { grid-column: 1 / -1; } }
+.v3-edof-tuile { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.75rem 0.85rem; border: 1px solid var(--border, #e6e2da); border-radius: 10px; background: var(--bg-secondary, #fff); min-width: 0; }
+.v3-edof-tuile.fort { border-color: var(--accent, #c8472b); box-shadow: inset 3px 0 0 var(--accent, #c8472b); }
+.v3-edof-tuile.alerte { border-color: var(--red, #B8352A); }
+.v3-edof-nb { font-size: 1.55rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.v3-edof-titre { font-weight: 600; font-size: 0.84rem; }
+.v3-edof-mt { font-size: 0.8rem; color: var(--text-secondary, #555); font-variant-numeric: tabular-nums; }
+.v3-edof-sous { list-style: none; margin: 0.45rem 0 0; padding: 0.45rem 0 0; border-top: 1px dashed var(--border, #e6e2da); font-size: 0.82rem; display: grid; gap: 0.25rem; }
+.v3-edof-exp { all: unset; cursor: pointer; font-size: 0.7rem; color: var(--accent, #c8472b); text-decoration: underline; margin-left: 0.3rem; }

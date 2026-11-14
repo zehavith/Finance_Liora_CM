@@ -645,6 +645,73 @@
         setInterval(majCarteEdof, 4000);
     }
 
+    // ── Opérationnel : où en est EDOF pour le CPF ──
+    var EDOF_LOTS = [];
+    function carteEdofOperationnel() {
+        var corps = $('#op-corps'), st = etat(), OPX = G.LioraOperationnel;
+        if (!corps || !st || !OPX) return;
+        var hote = $('#v3-op-edof');
+        if (!hote) { hote = document.createElement('div'); hote.id = 'v3-op-edof'; corps.parentNode.insertBefore(hote, corps); }
+        if (!EDOF) { hote.innerHTML = ''; return; }
+        var hp = function (f) { return f.role !== 'sellsy' && (f.presenceRoles || [f.role]).indexOf('payees') < 0; };
+        var cpf = (st.factures || []).filter(function (f) { return f.role !== 'sellsy' && (f.financement === 'CPF' || f.edof); });
+        var ouvertes = cpf.filter(hp);
+        var verse = ouvertes.filter(function (f) { return f.edofVerse; });
+        var lots = {
+            pointee: verse.filter(function (f) { return f.grandLivreSoldee; }),
+            nonPointee: verse.filter(function (f) { return !f.grandLivreSoldee && f.grandLivre; }),
+            absente: verse.filter(function (f) { return !f.grandLivre; }),
+            attente: ouvertes.filter(function (f) { return f.edof && f.edof.statut === 'En attente'; }),
+            rejet: ouvertes.filter(function (f) { return f.edof && f.edof.statut === 'Rejeté'; }),
+            avance: ouvertes.filter(function (f) { return !f.edof && f.edofAvance; }),
+            rien: ouvertes.filter(function (f) { return !f.edof && !f.edofAvance && !f.paye; })
+        };
+        var rangees = cpf.filter(function (f) { return f.edofVerse && !hp(f); }).length;
+        EDOF_LOTS = [];
+        var somme = function (l) { return Math.round(l.reduce(function (t, f) { return t + (f.montant || 0); }, 0)).toLocaleString('fr-FR') + ' €'; };
+        var lien = function (l, titre, note, code) {
+            if (!l.length) return '<b>0</b>';
+            EDOF_LOTS.push({ titre: titre, its: l, note: note, code: code });
+            var i = EDOF_LOTS.length - 1;
+            return '<button type="button" class="op-lien" data-edof-lot="' + i + '" title="Voir ces factures"><b>' + l.length.toLocaleString('fr-FR') + '</b></button>';
+        };
+        var exp = function (i) { return ' <button type="button" class="v3-edof-exp" data-edof-export="' + i + '">exporter</button>'; };
+        var tuile = function (l, titre, quoi, note, code, classe) {
+            var h = lien(l, 'CPF — ' + titre, note, code), i = EDOF_LOTS.length - 1;
+            return '<div class="v3-edof-tuile ' + (classe || '') + '"><span class="v3-edof-nb">' + h + '</span><span class="v3-edof-titre">' + esc(titre) + '</span>'
+                + '<span class="v3-edof-mt">' + somme(l) + (l.length ? exp(i) : '') + '</span><span class="op-pied">' + quoi + '</span></div>';
+        };
+        var sous = function (l, lib, note, code) { var h = lien(l, 'CPF versée EDOF — ' + lib, note, code), i = EDOF_LOTS.length - 1;
+            return '<li>' + h + ' ' + esc(lib) + ' <span class="op-pied">· ' + somme(l) + (l.length ? exp(i) : '') + '</span></li>'; };
+        var jour = function (d) { return String(d || '').split('-').reverse().join('/'); }, p = EDOF.periodes;
+        hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide"><div class="chart-header"><h3>CPF — où en est EDOF</h3>'
+            + '<span class="pil-coin">export EDOF jusqu’au ' + jour(p.length && p[p.length - 1][1]) + ' · grand livre au ' + jour(GL_INFO && GL_INFO.arrete) + '</span></div>'
+            + '<p class="pil-note">Les factures CPF encore dans les tableaux Monday des non payées, classées d’après ce que dit EDOF. '
+            + rangees.toLocaleString('fr-FR') + ' autres factures « Versé » sont déjà rangées dans les factures payées.</p>'
+            + '<div class="v3-edof-grille">'
+            + '<div class="v3-edof-tuile fort"><span class="v3-edof-nb">' + lien(verse, 'CPF — versées par EDOF, à déplacer dans les payées', 'EDOF indique « Versé » : ces factures sont payées, mais encore dans un tableau Monday des non payées.', 'edof-verse')
+              + '</span><span class="v3-edof-titre">Versées par EDOF, à déplacer dans les payées</span><span class="v3-edof-mt">' + somme(verse) + exp(EDOF_LOTS.length - 1) + '</span>'
+              + '<ul class="v3-edof-sous">'
+              + sous(lots.nonPointee, 'non pointées en comptabilité', 'Versées par EDOF, mais le grand livre les montre encore ouvertes : le règlement n’est pas lettré avec la facture.', 'edof-verse-non-pointee')
+              + sous(lots.absente, 'introuvables au grand livre', 'Versées par EDOF, mais le numéro de facture n’apparaît pas dans le grand livre : pointage impossible à vérifier.', 'edof-verse-absente-gl')
+              + sous(lots.pointee, 'pointées en comptabilité', 'Versées par EDOF et lettrées au grand livre : il ne reste qu’à les déplacer dans Monday.', 'edof-verse-pointee')
+              + '</ul></div>'
+            + tuile(lots.attente, 'En attente dans EDOF', 'facture déposée, règlement pas encore versé', 'EDOF indique « En attente » pour ces factures.', 'edof-attente')
+            + tuile(lots.rejet, 'Rejetées par EDOF', 'à corriger et redéposer', 'EDOF indique « Rejeté » pour ces factures.', 'edof-rejet', lots.rejet.length ? 'alerte' : '')
+            + tuile(lots.avance, 'Avance versée, solde non facturé dans EDOF', 'EDOF a versé l’avance du dossier ; aucune facture de solde n’y figure', 'Une avance a été versée sur le dossier, mais la facture n’apparaît pas dans EDOF.', 'edof-avance-seule')
+            + tuile(lots.rien, 'Aucune trace dans EDOF', 'ni facture ni avance connue pour ces factures CPF', 'Factures CPF non payées pour lesquelles EDOF ne connaît ni la facture ni une avance sur le dossier.', 'edof-aucune-trace')
+            + '</div></div></div>';
+        hote.querySelectorAll('[data-edof-lot]').forEach(function (b) { b.onclick = function () { var l = EDOF_LOTS[+b.dataset.edofLot]; if (l && OPX.montrerFactures) OPX.montrerFactures(l.titre, l.its, l.note); }; });
+        hote.querySelectorAll('[data-edof-export]').forEach(function (b) { b.onclick = function () { var l = EDOF_LOTS[+b.dataset.edofExport]; if (l) exporterControle({ code: l.code, items: l.its }); }; });
+    }
+    function brancherEdofOperationnel() {
+        var OPX = G.LioraOperationnel;
+        if (!OPX || OPX.__edof) return;
+        OPX.__edof = true;
+        var origine = OPX.rendre;
+        OPX.rendre = function () { var r = origine.apply(this, arguments); try { carteEdofOperationnel(); } catch (e) { if (G.console) console.warn('Carte EDOF :', e); } return r; };
+    }
+
     async function lireJson(chemin) {
         try {
             var r = await fetch(chemin, { cache: 'no-cache' });
@@ -1039,6 +1106,7 @@
         brancherMonday();
         brancherPeriode();
         brancherEdof();
+        brancherEdofOperationnel();
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', demarrer);
     else demarrer();
