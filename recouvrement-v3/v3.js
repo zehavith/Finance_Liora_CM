@@ -145,6 +145,11 @@
             quoi: 'Ce qui manque dans Monday et fausse les calculs : dates absentes, montants vides, doublons.',
             source: 'Chaque ligne dit combien de factures sont concernées et où les corriger.',
         },
+        regles: {
+            titre: 'Règles d’application',
+            quoi: 'Toutes les règles que l’application applique : échéances, classement de la balance âgée, vignettes du circuit. Chacune se déplie et se modifie.',
+            source: 'Les modifications restent dans ce navigateur et s’appliquent aux calculs de cette page.',
+        },
         donnees: {
             titre: 'Données',
             quoi: 'D’où viennent les chiffres, de quand ils datent, et comment les actualiser.',
@@ -155,6 +160,8 @@
     function majEntete() {
         var actif = document.querySelector('.v3-side .nav-tab.active');
         var o = ONGLETS[actif && actif.dataset.tab] || ONGLETS.dashboard;
+        // L'onglet des règles ne filtre rien : la barre de filtres s'efface.
+        document.body.classList.toggle('v3-onglet-regles', !!(actif && actif.dataset.tab === 'regles'));
         var t = $('#v3-entete-titre'), q = $('#v3-entete-quoi'), s = $('#v3-entete-source');
         if (t && t.textContent !== o.titre) t.textContent = o.titre;
         if (q && q.textContent !== o.quoi) q.textContent = o.quoi;
@@ -539,7 +546,10 @@
     async function demarrer() {
         try { DATES = (await S.get(CLE_DATES, {})) || {}; } catch (e) { DATES = {}; }
         await preparer();
+        // Les règles modifiées à la main se reposent avant le premier calcul.
+        try { if (G.LioraV3Regles) await G.LioraV3Regles.pret; } catch (e) { /* règles d'origine */ }
         await lancerApplication();
+        if (G.LioraV3Regles) G.LioraV3Regles.brancher();
         reprendreSiPossible();
         suivreOnglets();
         suivreAide();

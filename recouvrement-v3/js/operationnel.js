@@ -51,7 +51,11 @@
     const GROUPE_ETAPE = {
         '1.0.1': 'adv',
         '1.1.1': 'adv', '1.1.2': 'adv', '1.1.3': 'adv', '1.1.4': 'adv', '1.1.5': 'cours',
-        '1.2.1': 'rec', '1.2.2': 'adv', '1.2.3': 'rec', '1.2.4': 'fin', '1.2.5': 'fin',
+        // 1.2.2 « Recouvrement - Facture à déposer » venait de la v2 dans « Rendre
+        // payable ». « Il y a dans le rendre payable des factures en recouvrement,
+        // je ne comprends pas pourquoi » : un groupe du tableau Recouvrement est
+        // tenu par le recouvrement, il compte donc dans « Relancer ».
+        '1.2.1': 'rec', '1.2.2': 'rec', '1.2.3': 'rec', '1.2.4': 'fin', '1.2.5': 'fin',
         '1.2.6': 'rec', '1.2.7': 'rec', '1.2.8': 'cor',
         '1.3.1': 'adv', '1.3.5': 'cours',
         '2.1.1': 'rec', '2.1.1.1': 'rec', '2.1.2': 'cor', '2.1.3': 'cor', '2.1.4': 'rec',
@@ -146,10 +150,19 @@
     };
     // La catégorie d'un groupe, d'après son seul titre : une des quatre
     // étapes, « cours », « technique », ou null quand rien ne le classe.
+    // Les groupes reclassés à la main dans l'onglet « Règles d'application » :
+    // titre du groupe → catégorie choisie (« aucune » = non classé).
+    const SURCHARGES = {};
+    const categorieOrigine = titre => GROUPE_ETAPE[prefixe(titre)] || TITRE_ETAPE[cleTitre(titre)] || null;
     function categorieDuGroupe(titre) {
         if (estTechnique(titre)) return 'technique';
-        return GROUPE_ETAPE[prefixe(titre)] || TITRE_ETAPE[cleTitre(titre)] || null;
+        const s = SURCHARGES[cleTitre(titre)];
+        if (s) return s === 'aucune' ? null : s;
+        return categorieOrigine(titre);
     }
+    // Un groupe que la version 3 a rangé par analogie, et que personne n'a confirmé.
+    const estPropose = titre => !SURCHARGES[cleTitre(titre)] && !estTechnique(titre)
+        && !!AJOUTS_V3[prefixe(titre)] && AJOUTS_V3[prefixe(titre)] === categorieOrigine(titre);
     const LIB_CATEGORIE = {
         cours: ['En cours', 'pas encore à traiter — non compté dans le circuit'],
         technique: ['Technique / archive', 'groupe de service — non compté'],
@@ -194,7 +207,8 @@
     const etapeDe = f => {
         if (f.groupeTechnique) return null;
         const g = f.groupeOperationnel || f.groupe || '';
-        return GROUPE_ETAPE[prefixe(g)] || TITRE_ETAPE[cleTitre(g)] || null;
+        const c = categorieDuGroupe(g);
+        return (c && c !== 'technique') ? c : null;
     };
 
     // Les factures non réglées qu'aucune catégorie ne range : elles ne sont
@@ -241,8 +255,7 @@
             for (const g of t.groupes) {
                 const cat = categorieDuGroupe(g);
                 const its = (t.donnees && t.donnees.get(cleTitre(g))) || [];
-                const propose = cat && cat !== 'technique' && AJOUTS_V3[prefixe(g)] === cat
-                    && !estTechnique(g);
+                const propose = estPropose(g);
                 let lib;
                 if (cat && ETAPE[cat]) {
                     lib = '<span class="op-chip op-cat-' + cat + '">' + esc(ETAPE[cat].n) + '</span> '
@@ -285,7 +298,12 @@
     }
 
     // Les groupes Monday qui composent une étape, d'après la table ci-dessus.
-    const groupesDeLEtape = k => Object.keys(GROUPE_ETAPE).filter(p => GROUPE_ETAPE[p] === k);
+    // Les numéros des groupes du référentiel que la règle en vigueur range
+    // dans cette étape — reclassements faits à la main compris.
+    const groupesDeLEtape = k => { const vus = [];
+        REFERENTIEL.forEach(t => t[1].forEach(g => { if (categorieDuGroupe(g) === k) { const p = prefixe(g) || g;
+            if (vus.indexOf(p) < 0) vus.push(p); } }));
+        return vus; };
 
     // Tableau → groupe → factures, les plus fournis d'abord.
     function composition(its) {
@@ -532,7 +550,12 @@
     // dans Monday, groupes « en cours » compris. Certaines sont déjà dans une
     // étape du circuit (une facture incomplète se traite avant son échéance) :
     // la vignette le dit, et elle n'entre pas dans le total du circuit.
-    const CONTROLE = { k: 'ctl', n: 'Sous contrôle', svc: 'Avant échéance', proche: 15,
+    // « UNE FACTURE EN RECOUVREMENT NE PEUT PAS ÊTRE SOUS CONTRÔLE. » Une
+    // facture déjà rangée dans une étape — à rendre payable, à relancer, en
+    // clôture, à corriger — est suivie par cette étape, même si son échéance
+    // calculée n'est pas passée : elle n'entre pas ici. C'est la règle
+    // « horsEtapes », modifiable dans l'onglet « Règles d'application ».
+    const CONTROLE = { k: 'ctl', n: 'Sous contrôle', svc: 'Avant échéance', proche: 15, horsEtapes: true,
         d: 'Factures non réglées dont l’échéance n’est pas encore passée' };
     const etapeOuControle = k => k === 'ctl' ? CONTROLE : ETAPE[k];
     const joursAvant = f => { const r = retard(f); return r == null ? null : -r; };
@@ -541,18 +564,32 @@
             if (f.paye || f.groupeTechnique) return false;
             if (f.role === 'payees' || f.role === 'technique' || f.role === 'ignore' || f.role === 'sellsy') return false;
             if (/^avr/i.test(String(f.numero || ''))) return false;
+            if (CONTROLE.horsEtapes) { const k = etapeDe(f); if (k && ETAPE[k]) return false; }
             const r = retard(f);
             return r != null && r <= 0;
         });
     }
-    function vignetteControle(c, circuit) {
+    // Échues, non réglées, et pourtant encore dans un groupe « en cours » :
+    // elles ne sont ni sous contrôle (leur échéance est passée) ni dans une
+    // étape. Sans cette alerte, elles n'apparaîtraient nulle part.
+    function echuesEnCours(factures) {
+        return (factures || []).filter(f => {
+            if (f.paye || f.groupeTechnique) return false;
+            if (f.role === 'payees' || f.role === 'technique' || f.role === 'ignore' || f.role === 'sellsy') return false;
+            if (/^avr/i.test(String(f.numero || ''))) return false;
+            const r = retard(f);
+            return r != null && r > 0 && categorieDuGroupe(groupeDe(f)) === 'cours';
+        });
+    }
+    function vignetteControle(c, circuit, oubliees) {
         const dans = new Set((circuit || []).map(f => f.cle));
         const deja = c.its.filter(f => dans.has(f.cle));
         const proches = c.its.filter(f => joursAvant(f) <= CONTROLE.proche);
         const comp = composition(c.its);
         return '<div class="op-fcard op-fcard-ctl" data-carte="ctl">'
             + '<span class="op-ft">' + ouvrableEtape(esc(CONTROLE.n), 'ctl') + '<span>' + esc(CONTROLE.svc) + '</span></span>'
-            + '<span class="op-fs op-fdesc">' + esc(CONTROLE.d) + ', où qu’elles soient dans Monday.</span>'
+            + '<span class="op-fs op-fdesc">' + esc(CONTROLE.d) + (CONTROLE.horsEtapes
+                ? ' et qui ne sont encore dans aucune étape du circuit.' : ', où qu’elles soient dans Monday.') + '</span>'
             + '<span class="op-fbig">' + ouvrableEtape(nb(c.st), 'ctl') + ' <small>factures</small></span>'
             + '<span class="op-fs">' + eur(c.mt) + ' de restant dû</span>'
             + '<span class="op-fs">échéance médiane dans <b>'
@@ -562,6 +599,11 @@
                 + CONTROLE.proche + ' jours', 'Sous contrôle — échéance sous ' + CONTROLE.proche + ' jours', proches,
                 'Factures non réglées dont l’échéance tombe dans les ' + CONTROLE.proche + ' prochains jours.')
                 + ' · ' + eur(somme(proches, montantDe)) + '</span>' : '')
+            + ((oubliees || []).length ? '<span class="op-chip mauvais">' + ouvrable(nb(oubliees.length)
+                + ' échues encore dans un groupe « en cours »', 'Échues encore dans un groupe « en cours »', oubliees,
+                'Factures non réglées dont l’échéance est passée, mais qui sont toujours dans un groupe Monday « en cours » : '
+                + 'elles ne sont ni sous contrôle ni dans une étape du circuit. À déplacer dans Monday.')
+                + ' · ' + eur(somme(oubliees, montantDe)) + '</span>' : '')
             + (deja.length ? '<span class="op-chip">' + ouvrable(nb(deja.length) + ' déjà dans une étape',
                 'Sous contrôle — déjà dans une étape du circuit', deja,
                 'Factures pas encore échues mais déjà rangées dans un groupe du circuit (à rendre payable, à corriger…). '
@@ -647,9 +689,11 @@
 
         let corps, aide;
         if (niveau === 1) {
-            aide = (ctl ? 'Les factures non réglées dont l’échéance calculée n’est pas encore passée, où qu’elles '
-                    + 'soient rangées dans Monday — groupes « en cours » compris. Rien n’y est en retard : c’est ce '
-                    + 'qui arrive à échéance.' : noteEtape(k)) + ' Cliquez un tableau pour voir ses groupes.';
+            aide = (ctl ? 'Les factures non réglées dont l’échéance calculée n’est pas encore passée'
+                    + (CONTROLE.horsEtapes ? ' et qui ne sont dans aucune étape du circuit (groupes « en cours »).'
+                        : ', où qu’elles soient rangées dans Monday.')
+                    + ' Rien n’y est en retard : c’est ce qui arrive à échéance.' : noteEtape(k))
+                + ' Cliquez un tableau pour voir ses groupes.';
             corps = '<table class="op-t">' + enTete('Tableau Monday', 'Groupes concernés') + '<tbody>'
                 + comp.map(c => ligne(c.tableau, c.its, r.n, c.tableau, '',
                     nb(c.groupes.length) + ' groupe' + (c.groupes.length > 1 ? 's' : ''))).join('')
@@ -710,7 +754,7 @@
     function noteEtape(k) {
         const e = ETAPE[k];
         return 'Étape « ' + e.n + ' » (' + e.svc + ') : les factures non réglées rangées dans les groupes Monday '
-            + groupesDeLEtape(k).join(', ') + '. Les factures réglées, les avoirs et les groupes « en cours » '
+            + groupesDeLEtape(k).join(', ') + ' (classement modifiable dans l’onglet « Règles d’application »). Les factures réglées, les avoirs et les groupes « en cours » '
             + 'ou techniques n’y sont pas comptés.';
     }
 
@@ -887,6 +931,9 @@
         const ctl = !q ? ctl0 : ctl0.filter(f =>
             [f.numero, f.client, f.apprenant, f.groupe].some(v => String(v || '').toLowerCase().includes(q)));
         st.ctl = { its: ctl, st: ctl.length, mt: somme(ctl, montantDe) };
+        const oubliees0 = echuesEnCours(factures);
+        const oubliees = !q ? oubliees0 : oubliees0.filter(f =>
+            [f.numero, f.client, f.apprenant, f.groupe].some(v => String(v || '').toLowerCase().includes(q)));
         ST = st;
         const avecEntree = items.filter(f => !!f.dateEtape).length;
         const horsCircuit = nonClassees(factures);
@@ -1032,7 +1079,7 @@
           + '<div class="chart-header"><h3>1 · Le circuit</h3></div>'
           + '<p class="pil-note">Combien de factures à chaque étape, depuis combien de temps elles y sont, '
           + 'face à la cible de traitement.</p>'
-          + '<div class="op-flow op-flow-ctl">' + vignetteControle(st.ctl, items) + '</div>'
+          + '<div class="op-flow op-flow-ctl">' + vignetteControle(st.ctl, items, oubliees) + '</div>'
           + '<div class="op-sep"><span></span>à l’échéance, la facture non réglée entre dans le circuit<span></span></div>'
           + '<div class="op-flow">' + vignetteEtape(st, 'adv', true) + vignetteEtape(st, 'rec', true)
           + vignetteEtape(st, 'fin') + '</div>'
@@ -1165,7 +1212,21 @@
 
     function ouvrir(factures) { rendre(factures); }
 
+    // ═════════ les réglages posés depuis l'onglet « Règles d'application » ═════════
+    const CIBLES_ORIGINE = {}; CIRCUIT.forEach(e => { CIBLES_ORIGINE[e.k] = e.cible; });
+    function appliquerReglages(r) {
+        r = r || {};
+        Object.keys(SURCHARGES).forEach(k => { delete SURCHARGES[k]; });
+        Object.keys(r.groupes || {}).forEach(k => { SURCHARGES[k] = r.groupes[k]; });
+        CIRCUIT.forEach(e => { const v = r.cibles ? +r.cibles[e.k] : 0; e.cible = v > 0 ? v : CIBLES_ORIGINE[e.k]; });
+        const c = r.controle || {};
+        CONTROLE.proche = +c.proche > 0 ? +c.proche : 15;
+        CONTROLE.horsEtapes = c.horsEtapes !== false;
+    }
+
     global.LioraOperationnel = {
+        appliquerReglages, categorieDuGroupe, estPropose, estTechnique, cleTitre,
+        referentiel: REFERENTIEL, CONTROLE, CIBLES_ORIGINE,
         rendre, ouvrir, CIRCUIT, GROUPE_ETAPE, etapeDe,
         etat: () => ({ F, HIST, histEtat }),
     };

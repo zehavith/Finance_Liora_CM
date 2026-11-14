@@ -316,3 +316,42 @@ body.aide .kpi-card { align-items: flex-start; }
 .op-chip .op-lien { text-decoration-color: currentColor; }
 .op-ou.op-ou-large { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 0.15rem 2rem; }
 .op-ou.op-ou-large .op-ou-t { grid-column: 1 / -1; }
+
+/* ── L'onglet « Règles d'application » ── */
+body.v3-onglet-regles #filters-wrap { display: none; }
+.v3-regles-famille { margin: 0 0 1.6rem; }
+.v3-regles-famille > h3 { margin: 0; font-size: 1.05rem; font-weight: 650; color: var(--text-primary); }
+.v3-regles-famille > .op-pied { margin: 0.15rem 0 0.7rem; font-size: 0.8rem; }
+.v3-regle {
+    background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 10px;
+    margin-bottom: 0.5rem;
+}
+.v3-regle > summary {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.9rem;
+    padding: 0.75rem 1rem; cursor: pointer; list-style: none;
+}
+.v3-regle > summary::-webkit-details-marker { display: none; }
+.v3-regle > summary::before {
+    content: "▸"; flex: none; width: 1rem; color: var(--accent); font-size: 0.95rem;
+}
+.v3-regle[open] > summary::before { content: "▾"; }
+.v3-regle > summary:hover { background: var(--bg-primary); border-radius: 10px; }
+.v3-regle > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+.v3-regle-titre { font-weight: 600; font-size: 0.93rem; color: var(--text-primary); }
+.v3-regle-resume { flex: 1 1 12rem; min-width: 0; font-size: 0.8rem; color: var(--text-muted); }
+.v3-regle-corps { padding: 0.2rem 1rem 1rem 2rem; display: flex; flex-direction: column; gap: 0.7rem; min-width: 0; }
+.v3-regle-corps > p { margin: 0; }
+.v3-regle-dit { font-size: 0.86rem; line-height: 1.55; color: var(--text-secondary); max-width: 90ch; }
+.v3-regle-dit b { color: var(--text-primary); }
+.v3-regles-t td { vertical-align: middle; }
+.v3-regles-t .input-num { width: 5rem; }
+.v3-regles-t select { max-width: 100%; }
+.v3-regle-ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; font-size: 0.86rem; color: var(--text-secondary); }
+.v3-regle-ligne .input-num { width: 5rem; }
+.v3-regle-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.7rem 1.2rem; }
+.v3-regle-grille label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.86rem; font-weight: 600; color: var(--text-primary); }
+.v3-regle-grille .op-pied { font-weight: 400; }
+.v3-regle-saisie { display: flex; align-items: center; gap: 0.4rem; font-weight: 400; color: var(--text-secondary); }
+.v3-regle-saisie .input-num { width: 5rem; }
+.v3-regle-texte { width: 100%; max-width: 60rem; font: inherit; font-size: 0.86rem; resize: vertical; }
+@media (max-width: 760px) { .v3-regle-corps { padding-left: 1rem; } }

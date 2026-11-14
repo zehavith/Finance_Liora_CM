@@ -1,0 +1,449 @@
+/* ══════════════════════════════════════════════════════════════════════
+   SUIVI RECOUV — VERSION 3 — L'ONGLET « RÈGLES D'APPLICATION »
+   ══════════════════════════════════════════════════════════════════════
+
+   « Dans la partie Contrôles, une catégorie "Règles d'application" : toutes
+   les règles — classement de la balance âgée, échéances de la balance âgée,
+   classement dans les vignettes Sous contrôle, Rendre payable…, échéances de
+   la partie opérationnelle. Elles doivent pouvoir être modifiées à la main,
+   et se dérouler : le titre de la règle, puis la flèche pour voir le détail. »
+
+   Chaque règle est un bloc replié : son titre, ce qu'elle vaut en une ligne,
+   et son détail derrière la flèche. Ce qui se modifie ici :
+     · les échéances par financement (suivi Monday et opérationnel) ;
+     · les échéances de la balance âgée d'après le grand livre ;
+     · le seuil des créances compromises ;
+     · l'étape de chaque groupe Monday, les délais cibles, la vignette
+       « Sous contrôle » ;
+     · les mots qui désignent un groupe technique.
+
+   Les modifications sont gardées dans ce navigateur et s'appliquent aux
+   calculs de cette page. Elles ne changent rien dans Monday, et pas
+   davantage le relevé comptable de l'onglet Pilotage, calculé en amont.
+   ══════════════════════════════════════════════════════════════════════ */
+(function (G) {
+    'use strict';
+
+    var S = G.LioraStore, R = G.LioraRules, OP = G.LioraOperationnel;
+    var CLE = 'rec_v3_regles';
+    var REG = { groupes: {}, cibles: {}, controle: {}, exclus: null };
+    var EXCLUS_ORIGINE = (R && R.GROUPES_EXCLUS) ? R.GROUPES_EXCLUS.slice() : [];
+    var OUVERTS = {};
+    var etat = function () { return G.__recouvrement; };
+    var hote = function () { return document.getElementById('v3-regles-corps'); };
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    function dire(t, g) { var U = G.LioraUI; if (U && U.toast) U.toast(t, g || 'success', 5000); }
+
+    // ── Les réglages gardés : relus avant que l'application ne démarre ──
+    function appliquer() {
+        if (OP && OP.appliquerReglages) OP.appliquerReglages(REG);
+        if (R && R.GROUPES_EXCLUS) {
+            var l = R.GROUPES_EXCLUS;
+            l.length = 0;
+            (REG.exclus && REG.exclus.length ? REG.exclus : EXCLUS_ORIGINE).forEach(function (m) { l.push(m); });
+        }
+    }
+    var pret = (async function () {
+        try {
+            var r = S ? await S.get(CLE, null) : null;
+            if (r && typeof r === 'object') {
+                REG.groupes = r.groupes || {}; REG.cibles = r.cibles || {};
+                REG.controle = r.controle || {}; REG.exclus = r.exclus || null;
+            }
+        } catch (e) { /* les règles d'origine s'appliquent */ }
+        appliquer();
+    })();
+    function garder() { try { return S.set(CLE, REG); } catch (e) { return Promise.resolve(false); } }
+
+    function recalculer() {
+        var champ = document.getElementById('date-ref');
+        if (champ) champ.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    // ══════════════════════════════════════════════
+    //  Les échéances
+    // ══════════════════════════════════════════════
+    var BASES = { dateFacture: 'Date de facture', dateFinFormation: 'Fin de formation',
+                  dateDebutFormation: 'Début de formation' };
+    var BASES_GL = { dateFacture: 'Date de facture (écriture comptable)',
+                     dateFactureFacturation: 'Date de facture (facturation)',
+                     dateFinFormation: 'Fin de formation', dateDebutFormation: 'Début de formation' };
+
+    function phrase(r) {
+        var base = BASES[r.base] || r.base || '';
+        var t = base + (r.jours ? ' +' + r.jours + ' jours' : '');
+        if (r.plafondDebutFormation) {
+            var j = r.fallbackJours != null ? r.fallbackJours : r.jours;
+            t += ', sans dépasser début de formation' + (j ? ' +' + j + ' jours' : '');
+        }
+        return t;
+    }
+    function phraseGL(r) {
+        var g = r.gl || r;
+        return (BASES_GL[g.base] || g.base || '') + (g.jours ? ' +' + g.jours + ' jours' : '');
+    }
+    function origine(cle) {
+        return (R.DEFAULT_ECHEANCE_RULES || []).find(function (x) { return x.key === cle; }) || null;
+    }
+    function memeRegle(a, b) {
+        if (!a || !b) return false;
+        return a.base === b.base && (+a.jours || 0) === (+b.jours || 0)
+            && (a.fallback || '') === (b.fallback || '')
+            && (a.fallbackJours == null ? null : +a.fallbackJours) === (b.fallbackJours == null ? null : +b.fallbackJours)
+            && !!a.plafondDebutFormation === !!b.plafondDebutFormation;
+    }
+    function memeGL(a, b) {
+        var x = (a && (a.gl || a)) || {}, y = (b && (b.gl || b)) || {};
+        return x.base === y.base && (+x.jours || 0) === (+y.jours || 0);
+    }
+    var options = function (liste, valeur, vide) {
+        return (vide ? '<option value="">' + esc(vide) + '</option>' : '')
+            + Object.keys(liste).map(function (k) {
+                return '<option value="' + k + '"' + (valeur === k ? ' selected' : '') + '>' + esc(liste[k]) + '</option>';
+            }).join('');
+    };
+
+    function blocEcheances(st) {
+        var regles = st.rules || [];
+        var modif = regles.filter(function (r) { return !memeRegle(r, origine(r.key)); }).length;
+        var lignes = regles.map(function (r, i) {
+            var m = !memeRegle(r, origine(r.key));
+            return '<tr><td><b>' + esc(r.label || r.key) + '</b>'
+                + (m ? ' <span class="op-chip moyen">modifiée</span>' : '')
+                + '<br><span class="op-pied">' + esc(phrase(r)) + '</span></td>'
+                + '<td><select class="input input-sm" id="re-b-' + i + '" data-ech="' + i + '" data-k="base" aria-label="Date de départ">'
+                + options(BASES, r.base) + '</select></td>'
+                + '<td><input class="input input-sm input-num" type="number" min="0" id="re-j-' + i + '" data-ech="' + i
+                + '" data-k="jours" value="' + (+r.jours || 0) + '" aria-label="Jours ajoutés"></td>'
+                + '<td><select class="input input-sm" id="re-f-' + i + '" data-ech="' + i + '" data-k="fallback" aria-label="Date de repli">'
+                + options(BASES, r.fallback || '', '— aucun —') + '</select></td>'
+                + '<td><input class="input input-sm input-num" type="number" min="0" id="re-fj-' + i + '" data-ech="' + i
+                + '" data-k="fallbackJours" value="' + (r.fallbackJours != null ? +r.fallbackJours : (+r.jours || 0))
+                + '" aria-label="Jours du repli"></td>'
+                + '<td class="n"><input type="checkbox" id="re-p-' + i + '" data-ech="' + i + '" data-k="plafondDebutFormation"'
+                + (r.plafondDebutFormation ? ' checked' : '') + ' aria-label="Plafonner au début de formation"></td></tr>';
+        }).join('');
+        return bloc('echeances', 'Échéances — suivi Monday et opérationnel',
+            regles.length + ' financements' + (modif ? ' · ' + modif + ' modifiée' + (modif > 1 ? 's' : '') : ' · règles d’origine'),
+            'modifiable',
+            '<p class="v3-regle-dit">L’échéance d’une facture se calcule en ajoutant un nombre de jours à une date. '
+            + 'Elle sert partout où l’application lit Monday : tableau de bord, opérationnel (retard, « Sous contrôle »), '
+            + 'balance âgée d’après Monday. Le <b>repli</b> est la date prise quand la première manque. '
+            + 'Le <b>plafond</b> empêche l’échéance de dépasser le début de formation augmenté des jours du repli.</p>'
+            + '<div class="table-wrap"><table class="op-t v3-regles-t"><thead><tr><th>Financement</th><th>Date de départ</th>'
+            + '<th>+ jours</th><th>Repli</th><th>+ jours</th><th class="n">Plafond</th></tr></thead><tbody>' + lignes
+            + '</tbody></table></div>'
+            + '<p><button type="button" class="btn btn-ghost btn-sm" data-action="raz-echeances">Rétablir les règles d’origine</button></p>');
+    }
+
+    function blocEcheancesGL(st) {
+        var regles = st.rules || [];
+        var modif = regles.filter(function (r) { return !memeGL(r, origine(r.key)); }).length;
+        var lignes = regles.map(function (r, i) {
+            var g = r.gl || { base: r.base, jours: r.jours };
+            return '<tr><td><b>' + esc(r.label || r.key) + '</b>'
+                + (!memeGL(r, origine(r.key)) ? ' <span class="op-chip moyen">modifiée</span>' : '')
+                + '<br><span class="op-pied">' + esc(phraseGL(r)) + '</span></td>'
+                + '<td><select class="input input-sm" id="rg-b-' + i + '" data-gl="' + i + '" data-k="base" aria-label="Date de départ">'
+                + options(BASES_GL, g.base) + '</select></td>'
+                + '<td><input class="input input-sm input-num" type="number" min="0" id="rg-j-' + i + '" data-gl="' + i
+                + '" data-k="jours" value="' + (+g.jours || 0) + '" aria-label="Jours ajoutés"></td></tr>';
+        }).join('');
+        return bloc('echeances-gl', 'Échéances — balance âgée d’après le grand livre',
+            regles.length + ' financements' + (modif ? ' · ' + modif + ' modifiée' + (modif > 1 ? 's' : '') : ' · règles d’origine'),
+            'modifiable',
+            '<p class="v3-regle-dit">La balance âgée comptable (onglet Balance âgée → « D’après le grand livre ») date ses '
+            + 'créances avec sa propre règle, qui peut différer de celle du suivi Monday : l’une mesure le travail de '
+            + 'relance, l’autre le solde du compte. Ces règles s’appliquent quand un grand livre est chargé dans la page. '
+            + '<b>Le relevé de l’onglet Pilotage, lui, est calculé en amont : il ne suit pas une modification faite ici.</b></p>'
+            + '<div class="table-wrap"><table class="op-t v3-regles-t"><thead><tr><th>Financement</th><th>Date de départ</th>'
+            + '<th>+ jours</th></tr></thead><tbody>' + lignes + '</tbody></table></div>'
+            + '<p><button type="button" class="btn btn-ghost btn-sm" data-action="raz-echeances">Rétablir les règles d’origine</button></p>');
+    }
+
+    // ══════════════════════════════════════════════
+    //  La balance âgée
+    // ══════════════════════════════════════════════
+    function blocTranches(st) {
+        var seuil = (st.options && st.options.seuilBadDebtJours) || 360;
+        var lignes = (R.AGING_BUCKETS || []).map(function (b) {
+            return '<tr><td>' + esc(b.label) + '</td><td class="n">'
+                + (b.max <= 0 ? 'échéance pas encore passée'
+                    : b.max >= 1e8 ? 'plus de ' + (b.min - 1) + ' jours de retard'
+                    : 'de ' + b.min + ' à ' + b.max + ' jours de retard') + '</td></tr>';
+        }).join('');
+        var seuils = { 180: '6 mois (180 jours)', 360: '12 mois (360 jours)', 540: '18 mois (540 jours)', 720: '24 mois (720 jours)' };
+        return bloc('tranches', 'Balance âgée — tranches d’ancienneté et créances compromises',
+            (R.AGING_BUCKETS || []).length + ' tranches · compromise au-delà de ' + seuil + ' jours',
+            'seuil modifiable',
+            '<p class="v3-regle-dit">Le reste dû est rangé selon le nombre de jours écoulés depuis l’échéance. '
+            + 'Les tranches sont celles de votre balance âgée comptable : elles sont communes à la page et au relevé du '
+            + 'Pilotage, et ne se modifient donc pas ici — les changer d’un seul côté ferait diverger les deux.</p>'
+            + '<div class="table-wrap"><table class="op-t"><thead><tr><th>Tranche</th><th class="n">Retard</th></tr></thead><tbody>'
+            + lignes + '</tbody></table></div>'
+            + '<p class="v3-regle-ligne"><label for="rs-seuil">Une créance est dite <b>compromise</b> (bad debt) au-delà de</label> '
+            + '<select class="input input-sm" id="rs-seuil" data-action="seuil">' + options(seuils, String(seuil)) + '</select></p>');
+    }
+
+    function blocClassement(st) {
+        var regles = st.reglesClassement || [];
+        var corps = regles.length
+            ? '<div class="table-wrap"><table class="op-t"><thead><tr><th>Champ lu</th><th>Condition</th><th>Texte</th>'
+              + '<th>Financement attribué</th></tr></thead><tbody>'
+              + regles.map(function (x) {
+                  return '<tr><td>' + esc(x.champ || '') + '</td><td>' + esc(x.op || '') + '</td><td>'
+                      + esc(x.valeur != null ? x.valeur : (x.val || '')) + '</td><td>'
+                      + esc((R.getRule && x.fin ? R.getRule(x.fin, st.rules).label : x.fin) || '') + '</td></tr>';
+              }).join('') + '</tbody></table></div>'
+            : '<p class="op-vide">Aucune règle de classement n’est écrite pour l’instant.</p>';
+        return bloc('classement', 'Balance âgée — classement des créances par financement',
+            regles.length ? regles.length + ' règle' + (regles.length > 1 ? 's' : '') + ' écrite' + (regles.length > 1 ? 's' : '')
+                          : 'aucune règle écrite',
+            'modifiable dans Balance âgée',
+            '<p class="v3-regle-dit">Le grand livre ne connaît pas les dispositifs. Chaque créance reçoit son financement '
+            + 'dans cet ordre : la facture Monday du même numéro, puis une qualification déjà validée, puis vos règles '
+            + '(« le nom du client contient ALMA → Financement personnel »), la première qui répond l’emportant. '
+            + 'Ce qui n’est pas sûr part dans « À classer » : rien n’est deviné.</p>' + corps
+            + '<p><button type="button" class="btn btn-ghost btn-sm" data-action="vers-aging">Ajouter ou modifier ces règles '
+            + 'dans l’onglet Balance âgée</button> <span class="op-pied">Elles s’écrivent là-bas, sous la balance '
+            + '« D’après le grand livre », une fois un grand livre chargé.</span></p>');
+    }
+
+    function blocEtats() {
+        return bloc('etats', 'Réglée, en retard, annulée : comment une facture est qualifiée', '5 états', 'lecture seule',
+            '<dl class="v3-lexique">'
+            + '<div><dt>Réglée</dt><dd>La facture figure dans le tableau Monday des factures payées, ou porte une date de '
+            + 'paiement, ou le grand livre la solde par un règlement.</dd></div>'
+            + '<div><dt>En retard (en recouvrement)</dt><dd>Non réglée, et son échéance calculée est dépassée à la date d’arrêté.</dd></div>'
+            + '<div><dt>Non échue</dt><dd>Non réglée, et son échéance calculée n’est pas encore passée.</dd></div>'
+            + '<div><dt>Échéance inconnue</dt><dd>Une date manque pour calculer l’échéance : la facture sort des taux. '
+            + 'La date peut être complétée depuis l’onglet Opérationnel.</dd></div>'
+            + '<div><dt>Annulée par avoir</dt><dd>Soldée au grand livre par un avoir et non par un paiement : exclue des '
+            + 'chiffres par défaut (filtre « Factures annulées par avoir »).</dd></div>'
+            + '</dl><p class="op-pied">Ces définitions sont celles du moteur de calcul ; elles ne se règlent pas ici.</p>');
+    }
+
+    // ══════════════════════════════════════════════
+    //  Le circuit de l'onglet Opérationnel
+    // ══════════════════════════════════════════════
+    var CATEGORIES = function () {
+        var o = {};
+        (OP.CIRCUIT || []).forEach(function (e) { o[e.k] = e.n + ' (' + e.svc + ')'; });
+        o.cours = 'En cours — hors circuit';
+        o.aucune = 'Non classé';
+        return o;
+    };
+
+    function blocGroupes() {
+        var cats = CATEGORIES();
+        var nbModif = Object.keys(REG.groupes || {}).length;
+        var corps = (OP.referentiel || []).map(function (t) {
+            return '<tr class="op-sous-tableau op-corr-tableau"><td colspan="2">' + esc(t[0]) + '</td></tr>'
+                + t[1].map(function (g, i) {
+                    var cle = OP.cleTitre(g), id = 'rgp-' + OP.cleTitre(t[0]).replace(/[^a-z0-9]+/g, '-') + '-' + i;
+                    if (OP.estTechnique(g)) {
+                        return '<tr><td>' + esc(g) + '</td><td><span class="op-chip">Technique / archive</span> '
+                            + '<span class="op-pied">écarté par les mots de la règle « Groupes écartés »</span></td></tr>';
+                    }
+                    var v = OP.categorieDuGroupe(g) || 'aucune';
+                    return '<tr><td><label for="' + id + '">' + esc(g) + '</label>'
+                        + (REG.groupes[cle] ? ' <span class="op-chip moyen">modifié</span>'
+                            : OP.estPropose(g) ? ' <span class="op-chip moyen" title="Groupe classé par analogie par la '
+                              + 'version 3 : à confirmer.">à vérifier</span>' : '') + '</td>'
+                        + '<td><select class="input input-sm" id="' + id + '" data-groupe="' + esc(cle) + '">'
+                        + options(cats, v) + '</select></td></tr>';
+                }).join('');
+        }).join('');
+        return bloc('groupes', 'Circuit — dans quelle vignette compte chaque groupe Monday',
+            nbModif ? nbModif + ' groupe' + (nbModif > 1 ? 's' : '') + ' reclassé' + (nbModif > 1 ? 's' : '') + ' à la main'
+                    : 'classement d’origine',
+            'modifiable',
+            '<p class="v3-regle-dit">Une facture non réglée compte dans la vignette de l’étape où son groupe Monday est '
+            + 'rangé : Rendre payable, Relancer, Clôture ou Corriger. Un groupe « En cours » n’est dans aucune étape : ses '
+            + 'factures pas encore échues apparaissent dans « Sous contrôle ».</p>'
+            + '<div class="table-wrap"><table class="op-t op-corr"><thead><tr><th>Groupe Monday</th><th>Compte dans</th></tr></thead>'
+            + '<tbody>' + corps + '</tbody></table></div>'
+            + '<p><button type="button" class="btn btn-ghost btn-sm" data-action="raz-groupes">Rétablir le classement d’origine</button></p>');
+    }
+
+    function blocCibles() {
+        var modif = Object.keys(REG.cibles || {}).length;
+        return bloc('cibles', 'Circuit — délai cible de chaque étape',
+            (OP.CIRCUIT || []).map(function (e) { return e.n + ' ' + e.cible + ' j'; }).join(' · '),
+            'modifiable',
+            '<p class="v3-regle-dit">Au-delà de ce nombre de jours dans l’étape, une facture est comptée « hors délai ». '
+            + 'L’âge se compte depuis l’entrée dans l’étape quand Monday porte la date, sinon depuis la date de facture '
+            + '(Rendre payable) ou l’échéance (les autres).</p>'
+            + '<div class="v3-regle-grille">' + (OP.CIRCUIT || []).map(function (e) {
+                return '<label for="rc-' + e.k + '">' + esc(e.n) + ' <span class="op-pied">' + esc(e.svc) + '</span>'
+                    + '<span class="v3-regle-saisie"><input class="input input-sm input-num" type="number" min="1" id="rc-'
+                    + e.k + '" data-cible="' + e.k + '" value="' + e.cible + '"> jours</span></label>';
+            }).join('') + '</div>'
+            + (modif ? '<p><button type="button" class="btn btn-ghost btn-sm" data-action="raz-cibles">Rétablir les délais d’origine</button></p>' : ''));
+    }
+
+    function blocControle() {
+        var c = OP.CONTROLE || {};
+        return bloc('controle', 'Circuit — vignette « Sous contrôle »',
+            'avant échéance' + (c.horsEtapes ? ', hors étapes du circuit' : ', étapes comprises')
+            + ' · alerte à ' + c.proche + ' jours',
+            'modifiable',
+            '<p class="v3-regle-dit">« Sous contrôle » réunit les factures non réglées dont l’échéance calculée n’est pas '
+            + 'encore passée. Une facture déjà rangée dans une étape — à rendre payable, en recouvrement, en clôture, à '
+            + 'corriger — est suivie par cette étape : elle n’est pas sous contrôle.</p>'
+            + '<p class="v3-regle-ligne"><label class="check" for="rk-hors"><input type="checkbox" id="rk-hors" data-action="hors"'
+            + (c.horsEtapes ? ' checked' : '') + '> Écarter de « Sous contrôle » les factures déjà dans une étape du circuit</label></p>'
+            + '<p class="v3-regle-ligne"><label for="rk-proche">Signaler une échéance qui tombe dans les</label> '
+            + '<input class="input input-sm input-num" type="number" min="1" id="rk-proche" data-action="proche" value="'
+            + c.proche + '"> prochains jours</p>');
+    }
+
+    function blocExclus() {
+        var mots = (R.GROUPES_EXCLUS || []).slice();
+        return bloc('exclus', 'Groupes écartés — techniques, archives, corbeilles',
+            mots.length + ' mots' + (REG.exclus ? ' · liste modifiée' : ''),
+            'modifiable',
+            '<p class="v3-regle-dit">Un groupe Monday dont le titre contient l’un de ces mots est un groupe de service : '
+            + 'ses factures sont hors du portefeuille et ne sont pas lues lors d’une actualisation depuis Monday. '
+            + 'Écrivez les mots en minuscules, sans accent, séparés par des virgules.</p>'
+            + '<p class="v3-regle-ligne"><label for="rx-mots" class="op-pied">Mots qui désignent un groupe écarté</label>'
+            + '<textarea class="input v3-regle-texte" id="rx-mots" data-action="exclus" rows="2">' + esc(mots.join(', ')) + '</textarea></p>'
+            + '<p><button type="button" class="btn btn-ghost btn-sm" data-action="raz-exclus">Rétablir la liste d’origine</button></p>');
+    }
+
+    // ══════════════════════════════════════════════
+    //  Le bloc replié, et la page
+    // ══════════════════════════════════════════════
+    function bloc(id, titre, resume, mode, corps) {
+        return '<details class="v3-regle" data-regle="' + id + '"' + (OUVERTS[id] ? ' open' : '') + '>'
+            + '<summary><span class="v3-regle-titre">' + esc(titre) + '</span>'
+            + '<span class="v3-regle-resume">' + esc(resume) + '</span>'
+            + '<span class="op-chip' + (/lecture/.test(mode) ? '' : ' bon') + '">' + esc(mode) + '</span></summary>'
+            + '<div class="v3-regle-corps">' + corps + '</div></details>';
+    }
+    function famille(titre, dit, blocs) {
+        return '<section class="v3-regles-famille"><h3>' + esc(titre) + '</h3><p class="op-pied">' + esc(dit) + '</p>'
+            + blocs.join('') + '</section>';
+    }
+
+    function rendre() {
+        var h = hote(), st = etat();
+        if (!h) return;
+        if (!st || !OP || !R) { h.innerHTML = '<p class="op-vide">Les règles s’affichent une fois les données chargées.</p>'; return; }
+        h.innerHTML = '<p class="aide-bloc">Chaque règle est repliée sous son titre : cliquez la flèche pour voir son détail '
+            + 'et la modifier. Une modification s’applique tout de suite aux calculs de cette page et reste gardée dans '
+            + 'ce navigateur. Elle ne change rien dans Monday, ni dans le relevé comptable de l’onglet Pilotage.</p>'
+            + famille('Échéances', 'La date à laquelle une facture doit être payée.',
+                [blocEcheances(st), blocEcheancesGL(st)])
+            + famille('Balance âgée', 'Comment le reste dû est rangé par ancienneté et par financement.',
+                [blocTranches(st), blocClassement(st)])
+            + famille('Circuit de l’onglet Opérationnel', 'Ce qui range une facture dans une vignette : Sous contrôle, Rendre payable, Relancer, Clôture, Corriger.',
+                [blocControle(), blocGroupes(), blocCibles(), blocExclus()])
+            + famille('Qualification des factures', 'Ce que veulent dire les états affichés partout dans l’application.',
+                [blocEtats()]);
+    }
+
+    // ── Les gestes ──
+    async function surChangement(e) {
+        var c = e.target, st = etat();
+        if (!c || !st) return;
+        var d = c.dataset || {};
+        if (d.ech != null || d.gl != null) {
+            var r = (st.rules || [])[+(d.ech != null ? d.ech : d.gl)];
+            if (!r) return;
+            var num = (d.k === 'jours' || d.k === 'fallbackJours');
+            var v = c.type === 'checkbox' ? c.checked : num ? Math.max(0, parseInt(c.value, 10) || 0) : (c.value || null);
+            if (d.gl != null) {
+                r.gl = Object.assign({ base: r.base, jours: r.jours }, r.gl || {});
+                r.gl[d.k] = v;
+            } else {
+                r[d.k] = v;
+                r.note = phrase(r);
+            }
+            try { await S.set(S.KEYS.rules, st.rules); } catch (x) { /* vaut pour cette session */ }
+            recalculer(); rendre(); dire('Règle d’échéance enregistrée : les chiffres sont recalculés.');
+            return;
+        }
+        if (d.groupe != null) {
+            var titre = d.groupe;
+            REG.groupes[titre] = c.value;
+            appliquer();
+            // Revenu à son classement d'origine : la surcharge n'a plus lieu d'être.
+            var sans = Object.assign({}, REG.groupes); delete sans[titre];
+            var essai = { groupes: sans, cibles: REG.cibles, controle: REG.controle };
+            OP.appliquerReglages(essai);
+            if ((OP.categorieDuGroupe(titre) || 'aucune') === c.value) delete REG.groupes[titre];
+            appliquer(); await garder(); rendre(); dire('Classement du groupe enregistré.');
+            return;
+        }
+        if (d.cible != null) {
+            var j = parseInt(c.value, 10);
+            if (j > 0) REG.cibles[d.cible] = j; else delete REG.cibles[d.cible];
+            if (OP.CIBLES_ORIGINE && REG.cibles[d.cible] === OP.CIBLES_ORIGINE[d.cible]) delete REG.cibles[d.cible];
+            appliquer(); await garder(); rendre(); dire('Délai cible enregistré.');
+            return;
+        }
+        if (d.action === 'hors') { REG.controle.horsEtapes = c.checked; appliquer(); await garder(); rendre(); dire('Règle « Sous contrôle » enregistrée.'); return; }
+        if (d.action === 'proche') {
+            var p = parseInt(c.value, 10);
+            if (p > 0) REG.controle.proche = p; else delete REG.controle.proche;
+            appliquer(); await garder(); rendre(); dire('Règle « Sous contrôle » enregistrée.');
+            return;
+        }
+        if (d.action === 'exclus') {
+            var norm = R.norm || function (x) { return String(x).toLowerCase(); };
+            var mots = String(c.value || '').split(',').map(function (m) { return norm(m).trim(); }).filter(Boolean);
+            REG.exclus = mots.length && mots.join('|') !== EXCLUS_ORIGINE.join('|') ? mots : null;
+            appliquer(); await garder(); recalculer(); rendre(); dire('Liste des groupes écartés enregistrée.');
+            return;
+        }
+        if (d.action === 'seuil') {
+            var sel = document.getElementById('opt-seuil-bad-debt');
+            if (sel) { sel.value = c.value; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+            setTimeout(rendre, 300); dire('Seuil des créances compromises enregistré.');
+        }
+    }
+
+    async function surClic(e) {
+        var b = e.target && e.target.closest && e.target.closest('[data-action]');
+        var st = etat();
+        if (!b || !st || b.tagName !== 'BUTTON') return;
+        var a = b.dataset.action;
+        if (a === 'raz-echeances') {
+            st.rules = (R.DEFAULT_ECHEANCE_RULES || []).map(function (r) {
+                return Object.assign({}, r, r.gl ? { gl: Object.assign({}, r.gl) } : {});
+            });
+            try { await S.set(S.KEYS.rules, st.rules); } catch (x) { /* ignore */ }
+            recalculer(); rendre(); dire('Règles d’échéance d’origine rétablies.');
+        } else if (a === 'raz-groupes') { REG.groupes = {}; appliquer(); await garder(); rendre(); dire('Classement d’origine rétabli.'); }
+        else if (a === 'raz-cibles') { REG.cibles = {}; appliquer(); await garder(); rendre(); dire('Délais d’origine rétablis.'); }
+        else if (a === 'raz-exclus') { REG.exclus = null; appliquer(); await garder(); recalculer(); rendre(); dire('Liste d’origine rétablie.'); }
+        else if (a === 'vers-aging') { var t = document.querySelector('.nav-tab[data-tab="aging"]'); if (t) t.click(); }
+    }
+
+    function brancher() {
+        var h = hote();
+        if (!h || h.dataset.pret) return;
+        h.dataset.pret = '1';
+        h.addEventListener('change', surChangement);
+        h.addEventListener('click', surClic);
+        // « toggle » ne remonte pas : on l'écoute à la descente, pour garder
+        // ouvert ce qui l'était quand la page se redessine.
+        h.addEventListener('toggle', function (e) {
+            var d = e.target;
+            if (d && d.dataset && d.dataset.regle) OUVERTS[d.dataset.regle] = d.open;
+        }, true);
+        var onglet = document.getElementById('tab-regles');
+        if (onglet && G.MutationObserver) {
+            new MutationObserver(function () { if (onglet.classList.contains('active')) rendre(); })
+                .observe(onglet, { attributes: true, attributeFilter: ['class'] });
+        }
+    }
+
+    G.LioraV3Regles = { pret: pret, rendre: rendre, brancher: brancher, reglages: function () { return REG; } };
+})(window);

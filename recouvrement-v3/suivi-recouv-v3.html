@@ -160,6 +160,7 @@
             <span class="v3-nav-titre">Contrôles</span>
             <button class="nav-tab" data-tab="sellsy"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9c-4.5-1-8-4-8-9V6z M8.5 12l2.5 2.5 4.5-5"/></svg>Contrôle Sellsy</button>
             <button class="nav-tab" data-tab="quality"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4 M12 17h.01 M10.3 3.9L2.5 17.5a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>Qualité des données</button>
+            <button class="nav-tab" data-tab="regles"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9l4 4v12H6z M14 4v5h5 M9 13h7 M9 17h5 M9 9h2"/></svg>Règles d’application</button>
             <span class="v3-nav-titre">Réglages</span>
             <button class="nav-tab" data-tab="donnees"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10 M18 7h2 M4 17h4 M12 17h8 M16 5v4 M10 15v4"/></svg>Données</button>
         </div>
@@ -1988,6 +1989,12 @@
             </div>
         </div>
     </div>
+    <!-- VERSION 3 : toutes les règles, repliées, modifiables. Bâti par v3-regles.js. -->
+    <div class="tab-content" id="tab-regles">
+        <div class="dashboard-content">
+            <div id="v3-regles-corps"></div>
+        </div>
+    </div>
     </div><!-- /v3-main -->
 </div>
 
@@ -2020,4 +2027,5 @@
 <script src="js/operationnel.js"></script>
 <script src="artefact.js"></script>
 <script>window.LIORA_DONNEES_DU_JOUR = true;</script>
+<script src="v3-regles.js"></script>
 <script src="v3.js"></script>

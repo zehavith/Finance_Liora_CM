@@ -13,6 +13,7 @@ modules `js/`, bibliothèques) sont ceux de cette branche, inchangés.
 | `suivi-recouv-v3.html` | La page publiée (sans squelette `<html>`). |
 | `v3.css` | Menu latéral, en-têtes d'onglet, lexique, styles de l'onglet Opérationnel. |
 | `v3.js` | En-têtes, lexique, actualisation Monday par le connecteur, dates complétées. |
+| `v3-regles.js` | Onglet « Règles d'application » : règles repliées, modifiables, gardées dans le navigateur. |
 | `js/monday.js` | Client Monday : jeton, ou connecteur monday.com (lecture complète ou des seuls changements). |
 | `js/operationnel.js` | Circuit : vignette « Sous contrôle », descente tableaux › groupes › factures, correspondance groupe → étape, entrées et sorties. |
 | `js/pilotage.js` | Pilotage : tableau par financeur resserré, libellé des échéances du mois. |
