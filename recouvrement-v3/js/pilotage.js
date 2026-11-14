@@ -1271,10 +1271,32 @@
         const serie = o => mois.map(m => { const a = o.get(m);
             return a && a.nEch >= DEGRADE_MINI ? Math.round(1000 * a.nRet / a.nEch) / 10 : null; });
         const fins = [...par.keys()].filter(f => serie(par.get(f)).some(v => v !== null));
-        const datasets = fins.map(f => { const h = habit(f), s = serie(par.get(f));
-            return { label: f, data: s, borderColor: h.couleur, backgroundColor: h.couleur,
-                     borderDash: h.trait, pointStyle: h.point, borderWidth: 2,
-                     tension: 0.25, pointRadius: 3, spanGaps: true, fill: false }; });
+        // VERSION 3 — UN GRAPHIQUE QUI SE LIT. « Ce graphique n'est pas clair. »
+        // Onze courbes de couleur se croisaient. Désormais : l'ensemble en trait
+        // noir épais, les trois financeurs qui se dégradent le plus en couleur,
+        // tous les autres en gris clair derrière. Survoler un financeur dans la
+        // liste le fait ressortir ; le cliquer filtre toute la page.
+        const evolDe = f => { const sv = serie(par.get(f)).map((v, i) => [v, i]).filter(x => x[0] !== null);
+            return sv.length ? { pct: sv[sv.length - 1][0], delta: Math.round(sv[sv.length - 1][0] - sv[0][0]), i: sv[sv.length - 1][1] } : null; };
+        const classes = fins.map(f => ({ f, e: evolDe(f) })).filter(x => x.e).sort((a, b) => b.e.delta - a.e.delta);
+        const pires = classes.filter(x => x.e.delta > 0).slice(0, 3).map(x => x.f);
+        const AVANT = new Set(pires.length ? pires : classes.slice(0, 1).map(x => x.f));
+        const GRIS = '#D9D5CE';
+        const style = (f, vif) => { const h = habit(f);
+            return vif ? { borderColor: h.couleur, backgroundColor: h.couleur, borderWidth: 2.5, pointRadius: 3, order: 1 }
+                       : { borderColor: GRIS, backgroundColor: GRIS, borderWidth: 1.2, pointRadius: 0, order: 3 }; };
+        const ensemble = mois.map(m => { let e = 0, r = 0;
+            for (const o of par.values()) { const x = o.get(m); if (x) { e += x.nEch; r += x.nRet; } }
+            return e >= DEGRADE_MINI ? Math.round(1000 * r / e) / 10 : null; });
+        const seul = fins.length === 1;
+        const datasets = fins.map(f => Object.assign({ label: f, data: serie(par.get(f)),
+                     tension: 0.25, spanGaps: true, fill: false }, style(f, seul || AVANT.has(f))));
+        if (!seul) datasets.push({ label: 'Ensemble', data: ensemble, borderColor: '#1A1A2E', backgroundColor: '#1A1A2E',
+            borderWidth: 3.5, pointRadius: 0, tension: 0.25, spanGaps: true, fill: false, order: 0 });
+        const mettreEnAvant = f => { const ch = global.Chart && global.Chart.getChart('pil-chart-degrade'); if (!ch) return;
+            ch.data.datasets.forEach(d => { if (d.label === 'Ensemble') return;
+                Object.assign(d, style(d.label, seul || (f ? d.label === f : AVANT.has(d.label)))); });
+            ch.update('none'); };
         U().chart('pil-chart-degrade', {
             type: 'line',
             data: { labels: mois.map(moisFR), datasets: datasets },
@@ -1282,15 +1304,18 @@
                 responsive: true, maintainAspectRatio: false,
                 interaction: { mode: 'nearest', intersect: false },
                 onClick: (ev, els, ch) => { const d = els && els[0]; if (!d) return;
-                    isolerFinanceur(ch.data.datasets[d.datasetIndex].label); },
+                    const l = ch.data.datasets[d.datasetIndex].label; if (l !== 'Ensemble') isolerFinanceur(l); },
                 scales: { x: { grid: { display: false } },
                           y: { grid: U().grille, min: 0, max: 100,
                                ticks: { callback: v => v + ' %' } } },
                 plugins: {
-                    legend: { display: false },
-                    tooltip: { callbacks: {
+                    legend: { display: true, position: 'bottom',
+                        labels: { usePointStyle: true, boxHeight: 6, filter: it => it.text === 'Ensemble' || seul || AVANT.has(it.text) },
+                        onClick: () => {} },
+                    tooltip: { filter: c => c.dataset.borderColor !== GRIS, callbacks: {
                         label: c => c.dataset.label + ' : ' + c.raw + ' % en retard',
-                        afterLabel: c => { const a = (par.get(c.dataset.label) || new Map()).get(mois[c.dataIndex]);
+                        afterLabel: c => { if (c.dataset.label === 'Ensemble') return '';
+                            const a = (par.get(c.dataset.label) || new Map()).get(mois[c.dataIndex]);
                             return a ? 'sur ' + a.nEch + ' créance' + (a.nEch > 1 ? 's' : '')
                                      + ' échue' + (a.nEch > 1 ? 's' : '') + ' · ' + eur(a.mEch) : ''; },
                     } },
@@ -1317,23 +1342,21 @@
             // comme un stock, alors que ce sont les créances dont l'échéance est
             // tombée pendant UN mois. Le mois est donc écrit, avec le nombre de
             // celles qui ont pris du retard, et la note dit la différence.
-            hoteListe.innerHTML = li.map(x =>
-                '<button type="button" class="pil-dg-ligne" data-fin="' + u.escapeHtml(x.fin) + '">'
-                + '<span class="pil-dg-pastille" style="background:' + x.couleur + '"></span>'
-                + '<span class="pil-dg-nom">' + u.escapeHtml(x.fin)
-                + '<small>' + x.ret + ' en retard sur ' + x.n + ' échéance' + (x.n > 1 ? 's' : '')
-                + ' de ' + u.escapeHtml(moisFR(x.mois)) + '</small></span>'
-                + '<span class="pil-dg-pct">' + x.pct.toLocaleString('fr-FR') + ' %</span>'
+            const rang = x => '<button type="button" class="pil-dg-ligne pil-dg-v3" data-fin="' + u.escapeHtml(x.fin) + '" title="'
+                + u.escapeHtml(x.ret + ' en retard sur ' + x.n + ' échéance' + (x.n > 1 ? 's' : '') + ' de ' + moisFR(x.mois) + ' — cliquer pour filtrer la page') + '">'
+                + '<span class="pil-dg-pastille" style="background:' + (AVANT.has(x.fin) || seul ? x.couleur : GRIS) + '"></span>'
+                + '<span class="pil-dg-nom">' + u.escapeHtml(x.fin) + '</span>'
+                + '<span class="pil-dg-pct">' + Math.round(x.pct) + ' %</span>'
                 + '<span class="pil-dg-delta ' + (x.delta > 0 ? 'pire' : x.delta < 0 ? 'mieux' : '') + '">'
-                + (x.delta > 0 ? '+' : '') + x.delta.toLocaleString('fr-FR') + ' pts</span>'
-                + '</button>').join('')
-                + '<p class="pil-dg-pied">Le pourcentage est celui du dernier mois tracé ; les points '
-                + 'sont l’écart avec le premier mois de la fenêtre. '
-                + '<strong>Ce nombre n’est pas le stock « en recouvrement »</strong> du tableau de bord : '
-                + 'il ne compte que les créances de la comptabilité dont l’échéance est tombée ce mois-là, '
-                + 'réglées en retard comprises. Le stock en recouvrement, lui, réunit toutes les factures '
-                + 'Monday encore impayées après leur échéance, tous mois confondus. '
-                + 'Cliquez une courbe ou un financeur pour filtrer toute la page.</p>';
+                + (x.delta > 0 ? '▲ +' : x.delta < 0 ? '▼ ' : '') + x.delta.toLocaleString('fr-FR') + ' pts</span></button>';
+            const monte = li.filter(x => x.delta > 0), autres = li.filter(x => x.delta <= 0);
+            hoteListe.innerHTML = '<div class="pil-dg-tete"><span>Financeur</span><span>En retard</span><span>Sur 12 mois</span></div>'
+                + '<div class="pil-dg-defile">'
+                + (monte.length ? '<div class="pil-dg-titre pire">Se dégradent</div>' + monte.map(rang).join('') : '')
+                + (autres.length ? '<div class="pil-dg-titre mieux">S’améliorent ou stables</div>' + autres.map(rang).join('') : '')
+                + '</div><p class="pil-dg-pied">Survolez un financeur pour faire ressortir sa courbe, cliquez pour filtrer la page.</p>';
+            hoteListe.querySelectorAll('.pil-dg-ligne').forEach(b => {
+                b.onmouseenter = () => mettreEnAvant(b.dataset.fin); b.onmouseleave = () => mettreEnAvant(null); });
             hoteListe.querySelectorAll('.pil-dg-ligne').forEach(b =>
                 b.onclick = () => isolerFinanceur(b.dataset.fin));
         }
@@ -1346,9 +1369,8 @@
                 for (const o of par.values()) { const x = o.get(m); if (x) { t.nEch += x.nEch; t.nRet += x.nRet; t.mRet += x.mRet; } }
                 return t; });
             const vus = tot.map((t, i) => [t, i]).filter(x => x[0].nEch >= DEGRADE_MINI);
-            let h = '<b>Comment lire :</b> pour chaque mois, on prend les factures qui devaient être payées ce mois-là '
-                + 'et on regarde quelle part ne l’a pas été à temps (payée en retard, ou toujours impayée). '
-                + 'Plus la courbe est haute, plus le financeur paie mal ; une courbe qui monte, c’est un financeur qui se dégrade.';
+            let h = '<b>Comment lire :</b> part des factures arrivées à échéance dans le mois qui n’ont pas été payées à temps. '
+                + 'Plus c’est haut, plus ça paie mal. En noir, l’ensemble ; en couleur, ceux qui se dégradent le plus ; en gris, les autres.';
             if (vus.length) {
                 const der = vus[vus.length - 1], pre = vus[0];
                 const tx = t => t.nEch ? 100 * t.nRet / t.nEch : 0;
