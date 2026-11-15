@@ -545,7 +545,7 @@
     var PLAFOND_SELLSY = 500000;
 
     // ── Import EDOF depuis l'onglet Données ──
-    var CLE_EDOF = 'rec_v3_edof', EDOF_BRUT = { factures: {}, avances: {}, periodes: [] }, EDOF_IMPORT = null;
+    var CLE_EDOF = 'rec_v3_edof', EDOF_BRUT = { factures: {}, avances: {}, periodes: [], dossiers: {} }, EDOF_IMPORT = null;
     /** Ajoute un lot EDOF à ce qui est connu : la ligne la plus récente d'une facture l'emporte. */
     function fusionnerEdof(lot) {
         [['factures', lot.factures || {}], ['avances', lot.avances || {}]].forEach(function (c) {
@@ -556,10 +556,17 @@
             if (!EDOF_BRUT.periodes.some(function (q) { return q[0] === p[0] && q[1] === p[1]; })) EDOF_BRUT.periodes.push(p);
         });
         EDOF_BRUT.periodes.sort();
+        EDOF_BRUT.dossiers = EDOF_BRUT.dossiers || {};
+        Object.keys(lot.dossiers || {}).forEach(function (k) { EDOF_BRUT.dossiers[k] = lot.dossiers[k]; });
+    }
+    /** Nom et prénom ramenés à une clé : sans accent, en majuscules, mots triés. */
+    function nomCle(t) {
+        return String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().split(/[^A-Z]+/).filter(Boolean).sort().join(' ');
     }
     function poserEdof() {
-        if (!Object.keys(EDOF_BRUT.factures).length && !Object.keys(EDOF_BRUT.avances).length) { EDOF = null; return; }
-        EDOF = { factures: {}, avances: EDOF_BRUT.avances, periodes: EDOF_BRUT.periodes };
+        if (!Object.keys(EDOF_BRUT.factures).length && !Object.keys(EDOF_BRUT.avances).length && !Object.keys(EDOF_BRUT.dossiers || {}).length) { EDOF = null; return; }
+        EDOF = { factures: {}, avances: EDOF_BRUT.avances, periodes: EDOF_BRUT.periodes, dossiers: EDOF_BRUT.dossiers || {}, parNom: {} };
+        Object.keys(EDOF.dossiers).forEach(function (k) { var n = EDOF.dossiers[k][7]; if (n) (EDOF.parNom[n] = EDOF.parNom[n] || []).push(k); });
         EDOF.parDossier = {};
         Object.keys(EDOF_BRUT.factures).forEach(function (n) { var l = EDOF_BRUT.factures[n];
             EDOF.factures[I.factureKey(n)] = l;
@@ -573,6 +580,19 @@
         var col = function (n) { return tete.indexOf(n); };
         var iD = col('NUMERO_DOSSIER'), iF = col('NUMERO_FACTURE'), iT = col('TYPE FACTURE'), iE = col('DATE_EMISSION_FACTURE'),
             iM = col('MONTANT_REGLEMENT'), iS = col('STATUT_REGLEMENT'), iR = col('DATE_REGLEMENT'), iC = col('DOSSIER EN CONTROLE O/N');
+        if (col('STATUT_DOSSIER') >= 0 && iD >= 0) {
+            // Export « Tous les dossiers » : seuls le statut, les dates de session, les montants et le nom sont gardés.
+            var jd = function (x) { return x && x.length >= 10 ? x.slice(6, 10) + '-' + x.slice(3, 5) + '-' + x.slice(0, 2) : ''; };
+            var nb2 = function (x) { var v = parseFloat(String(x).replace(',', '.')); return isNaN(v) ? null : Math.round(v * 100) / 100; };
+            var jS = col('STATUT_DOSSIER'), jDeb = col('DATE_DEBUT_SESSION'), jFin = col('DATE_FIN_SESSION'), jMF = col('MONTANT_FORMATION'), jFa = col('MONTANT_FACTURABLE'),
+                jAc = col('DATE_DERNIERE_ACTION'), jCt = col('EN_CONTROLE'), jN = col('NOM'), jP = col('PRENOM'), lotD = { factures: {}, avances: {}, periodes: [], dossiers: {} }, nd = 0;
+            for (var q = 1; q < lignes.length; q++) { var cc = lignes[q].split(sep).map(function (x) { return x.trim().replace(/^"|"$/g, ''); });
+                if (!/^\d{6,}$/.test(cc[iD] || '') || !cc[jS]) continue;
+                lotD.dossiers[cc[iD]] = [cc[jS], jd(cc[jDeb]), jd(cc[jFin]), nb2(cc[jMF]), nb2(cc[jFa]), jd(cc[jAc]), cc[jCt] === 'OUI', nomCle((cc[jN] || '') + ' ' + (cc[jP] || ''))]; nd++; }
+            if (!nd) throw new Error('« ' + nom + ' » ne contient aucun dossier lisible.');
+            lotD.nbLignes = nd;
+            return lotD;
+        }
         if (iD < 0 || iF < 0 || iS < 0 || iM < 0) throw new Error('« ' + nom + ' » n’est pas un export EDOF des factures : colonnes NUMERO_DOSSIER, NUMERO_FACTURE, MONTANT_REGLEMENT et STATUT_REGLEMENT attendues.');
         var lot = { factures: {}, avances: {}, periodes: [] }, min = '', max = '', n = 0;
         for (var i = 1; i < lignes.length; i++) {
@@ -594,10 +614,11 @@
             for (var i = 0; i < fichiers.length; i++) {
                 var lot = lireCsvEdof(await fichiers[i].text(), fichiers[i].name);
                 fusionnerEdof(lot);
-                EDOF_IMPORT = EDOF_IMPORT || { factures: {}, avances: {}, periodes: [] };
+                EDOF_IMPORT = EDOF_IMPORT || { factures: {}, avances: {}, periodes: [], dossiers: {} };
                 Object.assign(EDOF_IMPORT.factures, lot.factures); Object.assign(EDOF_IMPORT.avances, lot.avances);
+                EDOF_IMPORT.dossiers = Object.assign(EDOF_IMPORT.dossiers || {}, lot.dossiers || {});
                 EDOF_IMPORT.periodes = EDOF_IMPORT.periodes.concat(lot.periodes);
-                recus += lot.periodes[0][2]; noms.push(fichiers[i].name);
+                recus += lot.nbLignes || lot.periodes[0][2]; noms.push(fichiers[i].name);
             }
         } catch (e) { dire(e.message || 'Fichier EDOF illisible.', 'error', 9000); if (etatEl) majCarteEdof(); return; }
         poserEdof();
@@ -615,7 +636,7 @@
         var jour = function (d) { return String(d || '').split('-').reverse().join('/'); };
         var p = EDOF_BRUT.periodes;
         el.innerHTML = nb ? '<b>' + nb.toLocaleString('fr-FR') + ' factures EDOF connues</b>, dont ' + verse.toLocaleString('fr-FR') + ' « Versé », et '
-            + Object.keys(EDOF_BRUT.avances).length.toLocaleString('fr-FR') + ' avances. Factures déposées du ' + jour(p[0] && p[0][0]) + ' au ' + jour(p.length && p[p.length - 1][1]) + '. '
+            + Object.keys(EDOF_BRUT.avances).length.toLocaleString('fr-FR') + ' avances, et ' + Object.keys(EDOF_BRUT.dossiers || {}).length.toLocaleString('fr-FR') + ' dossiers. Factures déposées du ' + jour(p[0] && p[0][0]) + ' au ' + jour(p.length && p[p.length - 1][1]) + '. '
             + (BILAN.edof ? BILAN.edof.toLocaleString('fr-FR') + ' factures Monday sont comptées payées grâce à EDOF.' : '')
             + (EDOF_IMPORT ? ' <span class="op-pied">Dont un import fait depuis ce navigateur.</span>' : '')
             : 'Aucun export EDOF n’est connu pour l’instant.';
@@ -632,7 +653,7 @@
             + '<input type="file" id="v3-edof-fichier" accept=".csv,text/csv" multiple hidden></div></div>'
             + '<div class="settings-body"><p id="v3-edof-etat"></p>'
             + '<p class="op-pied">Pour le CPF, EDOF fait foi : une facture « Versé » est comptée payée à la date de règlement EDOF. '
-            + 'Fichier attendu : l’export « Factures » d’EDOF, au format CSV, tel qu’il est téléchargé. Plusieurs fichiers peuvent être choisis d’un coup ; '
+            + 'Fichiers acceptés : l’export « Factures » et l’export « Tous les dossiers » d’EDOF, au format CSV, tels qu’ils sont téléchargés. De l’export des dossiers, seuls le statut, les dates de session, les montants et le nom sont gardés. Plusieurs fichiers peuvent être choisis d’un coup ; '
             + 'un nouvel export s’ajoute aux précédents, et la ligne la plus récente d’une facture l’emporte. '
             + 'L’import est gardé dans ce navigateur : sur un autre poste, il faut le refaire.</p></div>';
         ancre.parentNode.insertBefore(carte, ancre.nextSibling);
@@ -699,7 +720,7 @@
             { key: 'dateFinFormation', label: 'Fin de formation', width: '104px', format: d },
             { key: 'montant', label: 'Montant', align: 'right', width: '100px', format: function (v) { return v == null ? '—' : Math.round(v).toLocaleString('fr-FR') + ' €'; } },
             (EDOF && l.its.some(function (f) { return f.financement === 'CPF'; }))
-                ? { key: 'edof', label: 'EDOF', width: '150px', format: function (v, f) { return v ? esc(v.statut) + (v.date ? ' le ' + d(v.date) : '') : (f.edofAvance ? 'avance versée' : 'absente'); } }
+                ? { key: 'edof', label: 'EDOF', width: '150px', format: function (v, f) { return v ? esc(v.statut) + (v.date ? ' le ' + d(v.date) : '') : (f.edofDossier ? 'dossier : ' + esc(f.edofDossier.statut) + (f.edofAvance ? '<br><span class="op-pied">avance versée</span>' : '') : 'dossier introuvable'); } }
                 : { key: 'dateEcheance', label: 'Échéance', width: '150px', format: function (v, f) { return v ? d(v) + (f.retardJours > 0 ? '<br><span class="op-pied">dépassée de ' + f.retardJours + ' j</span>' : '') : '<span class="op-pied">inconnue</span>'; } }
         ];
         var somme = l.its.reduce(function (t, f) { return t + (f.montant || 0); }, 0);
@@ -922,9 +943,18 @@
         var nonVersees = ouvertes.filter(function (f) { return !f.edofVerse && !f.paye; });
         var an = function (f) { var d = f.dateFacture && R.parseDate(f.dateFacture); return d ? d.getFullYear() : 0; };
         var anneeRef = new Date().getFullYear();
+        // Le statut du dossier EDOF, ramené à trois familles.
+        var statutDossier = function (f) { var d = f.edofDossier; if (!d) return '';
+            if (/annul|refus|non r[ée]alis/i.test(d.statut)) return 'annule';
+            if (/service fait/i.test(d.statut)) return 'servicefait';
+            return 'encours'; };
         var lots = {
             rien: nonVersees.filter(function (f) { return !f.edof && !f.edofAvance; }),
             avance: nonVersees.filter(function (f) { return !f.edof && f.edofAvance; }),
+            introuvable: nonVersees.filter(function (f) { return !f.edof && !f.edofDossier; }),
+            annule: nonVersees.filter(function (f) { return !f.edof && statutDossier(f) === 'annule'; }),
+            enFormation: nonVersees.filter(function (f) { return !f.edof && statutDossier(f) === 'encours'; }),
+            aDeposer: nonVersees.filter(function (f) { return !f.edof && statutDossier(f) === 'servicefait'; }),
             attente: nonVersees.filter(function (f) { return f.edof && f.edof.statut === 'En attente'; }),
             rejet: nonVersees.filter(function (f) { return f.edof && f.edof.statut === 'Rejeté'; }),
             pointee: verse.filter(function (f) { return f.grandLivreSoldee; }),
@@ -972,8 +1002,10 @@
         var autresPayees = ouvertes.filter(function (f) { return f.paye && !f.edofVerse; });
         var colDe = function (f) { if (f.edofVerse || f.paye) return 'cor'; var k = OPX.etapeDe(f); if (cles[k]) return k; return echue(f) ? 'hors' : 'ctl'; };
         var LIGNES = [
-            { n: '1 · Absente de l’export EDOF', faire: 'normal si la formation n’est pas finie ; sinon vérifier le dépôt et le numéro', l: lots.rien, code: 'edof-1-absente-export' },
-            { n: '2 · Avance versée, solde à facturer', faire: 'déposer la facture de solde', l: lots.avance, code: 'edof-2-avance-seule' },
+            { n: '0 · Dossier introuvable dans EDOF', faire: 'vérifier le numéro de dossier ou le nom de l’apprenant', l: lots.introuvable, code: 'edof-0-dossier-introuvable' },
+            { n: '1 · Dossier annulé ou refusé dans EDOF', faire: 'annuler la facture, ou la refaire hors CPF', l: lots.annule, code: 'edof-1-dossier-annule' },
+            { n: '2 · Dossier en formation (service fait pas encore validé)', faire: 'attendre la fin et déclarer le service fait', l: lots.enFormation, code: 'edof-2-en-formation' },
+            { n: '2b · Service fait validé, facture pas déposée', faire: 'déposer la facture sur EDOF', l: lots.aDeposer, code: 'edof-2b-a-deposer' },
             { n: '3 · Déposée, en attente de règlement', faire: 'attendre le versement', l: lots.attente, code: 'edof-3-attente' },
             { n: '4 · Rejetée par EDOF', faire: 'corriger et redéposer', l: lots.rejet, code: 'edof-4-rejet' },
             { n: '5a · Payée, pointée sur Sellsy et Pennylane', faire: 'rectifier Monday : déplacer dans les payées', l: payees.a, code: 'edof-5a-pointee-rectifier-monday' },
@@ -1028,21 +1060,28 @@
                 tous.filter(function (f) { return f.doublonOperationnel || f.doublonPayees; }), 'doublon-monday'],
             ['Dossier déjà facturé dans EDOF sous un autre numéro', 'EDOF connaît une facture pour ce dossier, mais avec un autre numéro que celui de Monday : facture refaite, ou numéro mal saisi.',
                 nonVersees.filter(function (f) { var d = norm(f.numeroDossier); return !f.edof && d && EDOF.parDossier[d]; }), 'autre-numero-edof'],
-            ['Relancée ou en clôture, mais absente d’EDOF', 'La facture est dans une étape de relance alors qu’EDOF ne connaît ni la facture ni une avance : elle n’a peut-être jamais été déposée.',
-                lots.rien.filter(enRelance), 'relance-sans-edof'],
+            ['Dossier annulé ou refusé dans EDOF, facture toujours ouverte', 'EDOF indique que le dossier est annulé, refusé ou non réalisé : la facture ne sera pas payée par le CPF.', lots.annule, 'dossier-annule'],
+            ['Service fait validé, facture pas déposée sur EDOF', 'Le dossier est facturable dans EDOF, mais aucune facture n’y a été déposée sous ce numéro.', lots.aDeposer, 'service-fait-non-depose'],
+            ['Relancée ou en clôture, alors que le dossier est encore en formation dans EDOF', 'La facture est dans une étape de relance, mais EDOF n’a pas encore de service fait validé pour ce dossier.',
+                lots.enFormation.filter(enRelance), 'relance-dossier-en-formation'],
+            ['Montant de la facture différent du montant facturable EDOF', 'Le montant de la facture Monday s’écarte de plus d’un euro du montant facturable du dossier EDOF (avance déduite ou non).',
+                nonVersees.filter(function (f) { var d = f.edofDossier, m = f.montant || 0; if (!d || d.montantFacturable == null || !m) return false;
+                    var av = f.edofAvance ? f.edofAvance.montant : 0; return Math.abs(m - d.montantFacturable) > 1 && Math.abs(m - (d.montantFacturable - av)) > 1; }), 'ecart-montant-facturable'],
+            ['Date de fin de formation différente entre Monday et EDOF', 'Plus de 7 jours d’écart entre la fin de formation saisie dans Monday et la fin de session du dossier EDOF : l’échéance calculée peut être fausse.',
+                tous.filter(function (f) { var d = f.edofDossier, x = f.dateFinFormation && R.parseDate(f.dateFinFormation), y = d && d.fin && R.parseDate(d.fin);
+                    return x && y && !f.datesViennentEdof && Math.abs(+x - +y) > 7 * 86400000; }), 'ecart-date-fin'],
             ['Versée par EDOF, mais encore relancée', 'EDOF a versé la facture ; elle est pourtant dans une étape de relance ou de clôture.',
                 verse.filter(enRelance), 'versee-encore-relancee'],
             ['Montant versé différent du montant de la facture', 'Le règlement EDOF, avance comprise, s’écarte de plus d’un euro du montant de la facture Monday.',
                 verse.filter(function (f) { var m = f.montant || 0, v = f.edof.montant, av = f.edofAvance ? f.edofAvance.montant : 0; return m > 0 && Math.abs(v - m) > 1 && Math.abs(v + av - m) > 1; }), 'ecart-montant'],
             ['Rejetée par EDOF', 'Statut « Rejeté » dans EDOF : à corriger et redéposer.', lots.rejet, 'rejet'],
-            ['Dossier en contrôle dans EDOF', 'EDOF signale un contrôle sur le dossier.', tous.filter(function (f) { return f.edof && f.edof.controle; }), 'dossier-en-controle'],
-            ['Sans numéro de dossier dans Monday', 'Impossible de rapprocher la facture d’une avance EDOF sans numéro de dossier.',
-                lots.rien.filter(function (f) { return !norm(f.numeroDossier); }), 'sans-numero-dossier']
+            ['Dossier en contrôle dans EDOF', 'EDOF signale un contrôle sur le dossier.', tous.filter(function (f) { return (f.edof && f.edof.controle) || (f.edofDossier && f.edofDossier.controle); }), 'dossier-en-controle'],
+            ['Dossier introuvable dans EDOF', 'Ni le numéro de dossier ni le nom de l’apprenant ne permettent de retrouver le dossier dans EDOF.', lots.introuvable, 'dossier-introuvable']
         ];
         // UNE FACTURE, UN MOTIF. Chaque facture est rangée sous son motif le plus important (l'ordre ci-dessous) ;
         // ses autres motifs éventuels sont gardés à côté. Les nombres s'additionnent donc sans doublon.
-        var ORDRE = ['versee-encore-relancee', 'rejet', 'relance-sans-edof', 'echue-pas-en-recouvrement', 'recouvrement-trop-tot', 'payable-en-retard',
-            'payable-trop-tot', 'autre-numero-edof', 'doublon-dossier', 'doublon-monday', 'ecart-montant', 'dossier-en-controle', 'fin-de-formation-manquante', 'sans-numero-dossier'];
+        var ORDRE = ['versee-encore-relancee', 'rejet', 'dossier-annule', 'service-fait-non-depose', 'relance-dossier-en-formation', 'echue-pas-en-recouvrement', 'recouvrement-trop-tot', 'payable-en-retard',
+            'payable-trop-tot', 'autre-numero-edof', 'doublon-dossier', 'doublon-monday', 'ecart-montant', 'ecart-montant-facturable', 'ecart-date-fin', 'dossier-en-controle', 'fin-de-formation-manquante', 'dossier-introuvable'];
         VERIFS.sort(function (x, y) { return ORDRE.indexOf(x[3]) - ORDRE.indexOf(y[3]); });
         var idDe = function (f) { return f.id || f.cle || f.numero; }, motifsDe = {}, factDe = {};
         VERIFS.forEach(function (v) { v[2].forEach(function (f) { var k = idDe(f); (motifsDe[k] = motifsDe[k] || []).push(v[0]); factDe[k] = f; }); });
@@ -1074,7 +1113,7 @@
             + '<p class="pil-note"><b>Règle CPF :</b> « Rendre payable » commence à fin de formation + ' + delaiPayable + ' jours, et le recouvrement (« Relancer ») à fin de formation + ' + delaiCpf + ' jours. '
             + 'Les factures dont le groupe Monday ne correspond pas à cette règle sont dans « Facturation à revérifier ». '
             + 'En ligne, où en est la facture dans EDOF ; en colonne, dans quelle étape du circuit elle se trouve dans Monday. '
-            + '« Absente de l’export EDOF » : l’export ne contient ni ce numéro de facture, ni une avance sur son dossier — la facture n’a pas encore été déposée, ou elle l’a été sous un autre numéro. '
+            + 'Les lignes 0 à 2b sont les factures pas encore déposées sur EDOF, classées d’après le statut de leur dossier (export « Tous les dossiers »). '
             + 'Les factures versées par EDOF sont payées : elles sont rangées dans « Corriger », en trois cas selon leur pointage, tant qu’elles ne sont pas déplacées dans Monday. '
             + rangees.toLocaleString('fr-FR') + ' autres factures versées sont déjà rangées dans les payées.</p>'
             + matrice
@@ -1102,9 +1141,9 @@
     async function chargerComplements() {
         var res = await Promise.all([lireJson('donnees/reglements.json'), lireJson('donnees/anciennes-factures.json'), lireJson('donnees/rapprochements.json')]);
         var edof = await lireJson('donnees/edof.json');
-        EDOF_BRUT = { factures: {}, avances: {}, periodes: [] };
-        if (edof && edof.factures) fusionnerEdof(edof);
-        try { var garde = await S.get(CLE_EDOF, null); if (garde && garde.factures) { fusionnerEdof(garde); EDOF_IMPORT = garde; } } catch (e) { /* pas d'import gardé */ }
+        EDOF_BRUT = { factures: {}, avances: {}, periodes: [], dossiers: {} };
+        if (edof && (edof.factures || edof.dossiers)) fusionnerEdof(edof);
+        try { var garde = await S.get(CLE_EDOF, null); if (garde && (garde.factures || garde.dossiers)) { fusionnerEdof(garde); EDOF_IMPORT = garde; } } catch (e) { /* pas d'import gardé */ }
         poserEdof();
         if (res[2] && res[2].factures) {
             RAPPRO = {}; RAPPRO_INFO = res[2];
@@ -1168,8 +1207,8 @@
      * Une avance versée sur le dossier est notée sur la facture encore ouverte.
      */
     function appliquerEdof(factures) {
-        var n = 0;
-        BILAN.edof = 0;
+        var n = 0, nDossiers = 0, nDates = 0;
+        BILAN.edof = 0; BILAN.edofDossiers = 0; BILAN.edofDates = 0;
         if (!EDOF) return;
         factures.forEach(function (f) {
             var e = f.cle && EDOF.factures[f.cle];
@@ -1185,10 +1224,25 @@
                     n++;
                 }
             }
+            // Le dossier EDOF de la facture : par son numéro, sinon par le nom de l'apprenant quand il n'y a pas d'ambiguïté.
             var dossier = String(f.numeroDossier || (f.edof && f.edof.dossier) || '').replace(/\s+/g, '');
+            var estCpf = f.financement === 'CPF' || /cpf/i.test(String(f.board || '')) || !!f.edof;
+            if (estCpf && (!dossier || !EDOF.dossiers[dossier]) && f.apprenant) {
+                var cands = EDOF.parNom[nomCle(f.apprenant)] || [];
+                if (cands.length > 1 && f.montant) { var memeMontant = cands.filter(function (k) { var x = EDOF.dossiers[k]; return Math.abs((x[4] != null ? x[4] : x[3] || 0) - f.montant) <= 1; }); if (memeMontant.length === 1) cands = memeMontant; }
+                if (cands.length === 1) { dossier = cands[0]; if (!f.numeroDossier) { f.numeroDossier = dossier; f.dossierVientEdof = true; nDossiers++; } }
+            }
+            var dd = dossier && EDOF.dossiers[dossier];
+            f.edofDossier = dd ? { numero: dossier, statut: dd[0], debut: dd[1], fin: dd[2], montantFormation: dd[3], montantFacturable: dd[4], derniereAction: dd[5], controle: !!dd[6] } : null;
+            if (dd && estCpf) {
+                // Les dates de session EDOF complètent Monday ; elles ne remplacent pas une date déjà saisie.
+                if (!f.dateFinFormation && dd[2]) { f.dateFinFormation = R.parseDate(dd[2]); f.datesViennentEdof = true; nDates++; }
+                if (!f.dateDebutFormation && dd[1]) { f.dateDebutFormation = R.parseDate(dd[1]); f.datesViennentEdof = true; }
+            }
             var a = dossier && EDOF.avances[dossier];
             f.edofAvance = (a && a[2] === 'Versé') ? { montant: a[0], date: a[1] } : null;
         });
+        BILAN.edofDossiers = nDossiers; BILAN.edofDates = nDates;
         BILAN.edof = n;
     }
     function appliquerMontantsDossiers(factures, st) {
@@ -1328,6 +1382,9 @@
                 o['Fiabilité du rapprochement'] = f.reglementPropose.fiabilite; o['Date du règlement'] = d(f.reglementPropose.date); }
             if (f.edof) { o['EDOF — statut'] = f.edof.statut; o['EDOF — montant réglé'] = f.edof.montant; o['EDOF — date de règlement'] = d(f.edof.date);
                 o['EDOF — dossier'] = f.edof.dossier; o['EDOF — dossier en contrôle'] = f.edof.controle ? 'oui' : 'non'; }
+            if (f.edofDossier) { o['EDOF — n° de dossier'] = f.edofDossier.numero; o['EDOF — statut du dossier'] = f.edofDossier.statut; o['EDOF — début de session'] = d(f.edofDossier.debut);
+                o['EDOF — fin de session'] = d(f.edofDossier.fin); o['EDOF — montant facturable'] = f.edofDossier.montantFacturable == null ? '' : f.edofDossier.montantFacturable;
+                o['EDOF — dossier trouvé par le nom'] = f.dossierVientEdof ? 'oui' : ''; }
             if (f.edofAvance) { o['EDOF — avance versée'] = f.edofAvance.montant; o['EDOF — date de l’avance'] = d(f.edofAvance.date); }
             if (f.anciennesFactures) o['Ancienne facture'] = f.anciennesFactures.join(', ');
             return o;

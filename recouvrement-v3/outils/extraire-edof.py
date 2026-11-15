@@ -13,7 +13,17 @@ date de règlement EDOF. Les exports se cumulent : en redonner un plus récent
 complète les précédents, la ligne la plus récente d'une facture l'emporte.
 """
 import csv, json, sys, collections
-factures, avances, periodes = {}, {}, []
+factures, avances, periodes, dossiers = {}, {}, [], {}
+import unicodedata, re
+def nom_cle(nom, prenom):
+    t = unicodedata.normalize('NFD', (nom + ' ' + prenom).upper())
+    t = ''.join(c for c in t if unicodedata.category(c) != 'Mn')
+    return ' '.join(sorted(x for x in re.split(r'[^A-Z]+', t) if x))
+def iso_fr(s):
+    return '%s-%s-%s' % (s[6:10], s[3:5], s[0:2]) if s and len(s) >= 10 else ''
+def nombre(s):
+    try: return round(float(s), 2)
+    except Exception: return None
 for chemin in sys.argv[2:]:
     if chemin.endswith('.json'):
         ancien = json.load(open(chemin))
@@ -21,16 +31,27 @@ for chemin in sys.argv[2:]:
             for cle, ligne in source.items():
                 if cle not in cible or ligne[4] >= cible[cle][4]: cible[cle] = ligne
         periodes += ancien.get('periodes', [])
+        dossiers.update(ancien.get('dossiers', {}))
         continue
-    rows = list(csv.DictReader(open(chemin, encoding='utf-8-sig'), delimiter=';'))
-    if rows: periodes.append([min(r['DATE_EMISSION_FACTURE'] for r in rows), max(r['DATE_EMISSION_FACTURE'] for r in rows), len(rows)])
+    rows = list(csv.DictReader(open(chemin, encoding='utf-8-sig', newline=''), delimiter=';'))
+    if rows and 'STATUT_DOSSIER' in rows[0]:
+        # Export « Tous les dossiers » : on ne garde que ce qui sert au rapprochement et au suivi.
+        # Ni date de naissance, ni adresse, ni courriel, ni téléphone ne sont conservés.
+        for r in rows:
+            dossiers[r['NUMERO_DOSSIER']] = [r['STATUT_DOSSIER'], iso_fr(r['DATE_DEBUT_SESSION']), iso_fr(r['DATE_FIN_SESSION']),
+                nombre(r['MONTANT_FORMATION']), nombre(r['MONTANT_FACTURABLE']), iso_fr(r['DATE_DERNIERE_ACTION']),
+                r['EN_CONTROLE'] == 'OUI', nom_cle(r['NOM'], r['PRENOM'])]
+        continue
+    if rows and 'STATUT_DOSSIER' not in rows[0]: periodes.append([min(r['DATE_EMISSION_FACTURE'] for r in rows), max(r['DATE_EMISSION_FACTURE'] for r in rows), len(rows)])
     for r in rows:
         ligne = [round(float(r['MONTANT_REGLEMENT'] or 0), 2), r['DATE_REGLEMENT'], r['STATUT_REGLEMENT'], r['NUMERO_DOSSIER'],
                  r['DATE_EMISSION_FACTURE'], r['DOSSIER EN CONTROLE O/N'] == 'O']
         cible = avances if r['TYPE FACTURE'] == 'AVANCE' else factures
         cle = r['NUMERO_DOSSIER'] if r['TYPE FACTURE'] == 'AVANCE' else r['NUMERO_FACTURE'].strip()
         if cle not in cible or ligne[4] >= cible[cle][4]: cible[cle] = ligne
-json.dump({'source': 'Exports EDOF des paiements CPF', 'periodes': sorted(periodes),
+json.dump({'source': 'Exports EDOF des paiements CPF', 'periodes': sorted([list(x) for x in {tuple(q) for q in periodes}]),
            'champs': ['montant du règlement', 'date du règlement', 'statut', 'numéro de dossier', 'date d’émission', 'dossier en contrôle'],
-           'factures': factures, 'avances': avances}, open(sys.argv[1], 'w'), separators=(',', ':'), ensure_ascii=False)
-print(len(factures), 'factures,', len(avances), 'avances ;', collections.Counter(v[2] for v in factures.values()), periodes)
+           'champsDossiers': ['statut du dossier', 'début de session', 'fin de session', 'montant de la formation', 'montant facturable',
+                              'date de dernière action', 'en contrôle', 'nom et prénom (pour le rapprochement)'],
+           'factures': factures, 'avances': avances, 'dossiers': dossiers}, open(sys.argv[1], 'w'), separators=(',', ':'), ensure_ascii=False)
+print(len(dossiers), 'dossiers ;', len(factures), 'factures,', len(avances), 'avances ;', collections.Counter(v[2] for v in factures.values()), periodes)
