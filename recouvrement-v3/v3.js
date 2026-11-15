@@ -904,23 +904,25 @@
             var colDe = function (f) { if (f.paye) return 'cor'; var k = OPX.etapeDe(f); if (cles[k]) return k; return echue(f) ? 'rec' : 'ctl'; };
             var r = function (f) { return f.retardJours; };
             var LIGNES = [
-                { n: '1 · Pas encore échue', faire: 'rien à faire, sauf si elle est déjà relancée', l: itsF.filter(function (f) { return f.dateEcheance && !(r(f) > 0); }), code: 'non-echue' },
-                { n: '2 · Échue depuis 1 à 30 jours', faire: 'première relance', l: itsF.filter(function (f) { return r(f) > 0 && r(f) <= 30; }), code: 'retard-1-30' },
-                { n: '3 · Échue depuis 31 à 90 jours', faire: 'relance suivie', l: itsF.filter(function (f) { return r(f) > 30 && r(f) <= 90; }), code: 'retard-31-90' },
-                { n: '4 · Échue depuis 91 à 360 jours', faire: 'relance ferme, envisager la clôture', l: itsF.filter(function (f) { return r(f) > 90 && r(f) <= 360; }), code: 'retard-91-360' },
-                { n: '5 · Échue depuis plus de 360 jours', faire: 'clôture ou contentieux', l: itsF.filter(function (f) { return r(f) > 360; }), code: 'retard-plus-360' },
-                { n: '6 · Échéance impossible à calculer', faire: 'compléter la date manquante', l: itsF.filter(function (f) { return !f.dateEcheance; }), code: 'echeance-inconnue' },
-                { n: '7a · Payée, pointée en comptabilité', faire: 'rectifier Monday : déplacer dans les payées', l: payF.filter(pointee), code: 'payee-pointee' },
-                { n: '7b · Payée, non pointée en comptabilité', faire: 'pointer, puis rectifier Monday', l: payF.filter(function (f) { return !pointee(f); }), code: 'payee-non-pointee' }
+                { n: '1 · Pas encore échue', faire: 'rien à faire, sauf si elle est déjà relancée', l: itsF.filter(function (f) { return f.dateEcheance && !(r(f) > 0); }), code: 'non-echue', att: 'ctl' },
+                { n: '2 · Échue depuis 1 à 30 jours', faire: 'première relance', l: itsF.filter(function (f) { return r(f) > 0 && r(f) <= 30; }), code: 'retard-1-30', att: 'rec' },
+                { n: '3 · Échue depuis 31 à 90 jours', faire: 'relance suivie', l: itsF.filter(function (f) { return r(f) > 30 && r(f) <= 90; }), code: 'retard-31-90', att: 'rec' },
+                { n: '4 · Échue depuis 91 à 360 jours', faire: 'relance ferme, envisager la clôture', l: itsF.filter(function (f) { return r(f) > 90 && r(f) <= 360; }), code: 'retard-91-360', att: 'rec' },
+                { n: '5 · Échue depuis plus de 360 jours', faire: 'clôture ou contentieux', l: itsF.filter(function (f) { return r(f) > 360; }), code: 'retard-plus-360', att: 'fin' },
+                { n: '6 · Échéance impossible à calculer', faire: 'compléter la date manquante', l: itsF.filter(function (f) { return !f.dateEcheance; }), code: 'echeance-inconnue', att: 'cor' },
+                { n: '7a · Payée, pointée en comptabilité', faire: 'rectifier Monday : déplacer dans les payées', l: payF.filter(pointee), code: 'payee-pointee', att: 'cor' },
+                { n: '7b · Payée, non pointée en comptabilité', faire: 'pointer, puis rectifier Monday', l: payF.filter(function (f) { return !pointee(f); }), code: 'payee-non-pointee', att: 'cor' }
             ];
-            var cell = function (l, titre, code) { if (!l.length) return '<td class="n v3-vide">—</td>';
+            var cell = function (l, titre, code, attendue) { if (!l.length) return '<td class="n v3-vide' + (attendue ? ' v3-attendue' : '') + '">—</td>';
                 var i = pose(l, titre, 'Ancienneté du retard et étape du circuit Monday croisées.', code);
-                return '<td class="n">' + nbL(l, i) + '<br><span class="op-pied">' + e0(l) + '</span></td>'; };
+                return '<td class="n' + (attendue ? ' v3-attendue' : '') + '">' + nbL(l, i) + '<br><span class="op-pied">' + e0(l) + '</span></td>'; };
             var matrice = '<div class="table-wrap"><table class="op-t v3-croise"><thead><tr><th>Où en est la facture ↓ &nbsp;/&nbsp; étape du circuit →</th>'
                 + COLS.map(function (c) { return '<th class="n">' + esc(c.n) + '</th>'; }).join('') + '<th class="n">Total</th></tr></thead><tbody>'
                 + LIGNES.map(function (L) { var i = pose(L.l, nomF + ' — ' + L.n, 'Factures ' + nomF + ' dans cette situation.', L.code);
-                    return '<tr><td><b>' + esc(L.n) + '</b><br><span class="op-pied">→ ' + esc(L.faire) + '</span></td>'
-                        + COLS.map(function (c) { return cell(L.l.filter(function (f) { return colDe(f) === c.k; }), nomF + ' — ' + L.n + ' × ' + c.n, L.code + '-' + c.k); }).join('')
+                    var nomAtt = (COLS.filter(function (c) { return c.k === L.att; })[0] || {}).n;
+                    return '<tr><td><b>' + esc(L.n) + '</b><br><span class="op-pied">→ ' + esc(L.faire) + '</span>'
+                        + (nomAtt ? '<br><span class="v3-etape-circuit">Étape du circuit : ' + esc(nomAtt) + '</span>' : '') + '</td>'
+                        + COLS.map(function (c) { return cell(L.l.filter(function (f) { return colDe(f) === c.k; }), nomF + ' — ' + L.n + ' × ' + c.n, L.code + '-' + c.k, c.k === L.att); }).join('')
                         + '<td class="n"><b>' + nbL(L.l, i) + '</b><br><span class="op-pied">' + e0(L.l) + ex(L.l, i) + '</span></td></tr>'; }).join('')
                 + '<tr class="total"><td>Total</td>' + COLS.map(function (c) { return cell(tousF.filter(function (f) { return colDe(f) === c.k; }), nomF + ' — ' + c.n, 'total-' + c.k); }).join('')
                 + '<td class="n"><b>' + tousF.length.toLocaleString('fr-FR') + '</b></td></tr></tbody></table></div>';
@@ -1033,6 +1035,9 @@
                 return (g.numero || '?') + ' — ' + Math.round(g.montant || 0).toLocaleString('fr-FR') + ' €, ' + (g.paye ? 'payée' : 'non payée') + ', ' + (g.groupe || g.board || ''); });
         });
         lots.annuleAutreDossier = lots.annule.filter(function (f) { return f.__autresDossiers.length; });
+        var aAutreFacture = function (f) { return (f.__autresFactures || []).length || (f.__nouveauxDossiers || []).some(function (x) { return x.factures.length; }); };
+        lots.annuleDossierEtFacture = lots.annuleAutreDossier.filter(aAutreFacture);
+        lots.annuleDossierSansFacture = lots.annuleAutreDossier.filter(function (f) { return !aAutreFacture(f); });
         lots.annuleAutreFacture = lots.annule.filter(function (f) { return !f.__autresDossiers.length && f.__autresFactures.length; });
         lots.annuleSeul = lots.annule.filter(function (f) { return !f.__autresDossiers.length && !f.__autresFactures.length; });
         var avecAvance = nonVersees.filter(function (f) { return f.edofAvance; });
@@ -1076,29 +1081,32 @@
         var autresPayees = ouvertes.filter(function (f) { return f.paye && !f.edofVerse; });
         var colDe = function (f) { if (f.edofVerse || f.paye) return 'cor'; var k = OPX.etapeDe(f); if (cles[k]) return k; return echue(f) ? 'rec' : 'ctl'; };
         var LIGNES = [
-            { n: '0 · Dossier introuvable dans EDOF', faire: 'vérifier le numéro de dossier ou le nom de l’apprenant', l: lots.introuvable, code: 'edof-0-dossier-introuvable' },
-            { n: '1a · Dossier annulé ou refusé, mais un autre dossier EDOF existe pour l’apprenant', faire: 'rattacher la facture au bon dossier', l: lots.annuleAutreDossier, code: 'edof-1a-annule-autre-dossier' },
-            { n: '1b · Dossier annulé ou refusé, une autre facture existe dans Monday pour l’apprenant', faire: 'vérifier si la facture a été refaite, puis annuler le doublon', l: lots.annuleAutreFacture, code: 'edof-1b-annule-autre-facture' },
-            { n: '1c · Dossier annulé ou refusé, rien d’autre au nom de l’apprenant', faire: 'annuler la facture, ou la refaire hors CPF', l: lots.annuleSeul, code: 'edof-1c-annule-seul' },
-            { n: '2 · Dossier en formation, session en cours', faire: 'normal : attendre la fin de la session', l: lots.sessionEnCours, code: 'edof-2-session-en-cours' },
-            { n: '2a · Session terminée, service fait pas encore validé', faire: 'déclarer la sortie de formation sur EDOF', l: lots.sessionFinie, code: 'edof-2a-service-fait-a-declarer' },
-            { n: '2b · Service fait validé, facture pas déposée', faire: 'déposer la facture sur EDOF', l: lots.aDeposer, code: 'edof-2b-a-deposer' },
-            { n: '3 · Déposée, en attente de règlement', faire: 'attendre le versement', l: lots.attente, code: 'edof-3-attente' },
-            { n: '4 · Rejetée par EDOF', faire: 'corriger et redéposer', l: lots.rejet, code: 'edof-4-rejet' },
-            { n: '5a · Payée, pointée sur Sellsy et Pennylane', faire: 'rectifier Monday : déplacer dans les payées', l: payees.a, code: 'edof-5a-pointee-rectifier-monday' },
-            { n: '5b · Payée, pointée sur Pennylane, pas sur Sellsy', faire: 'rectifier Sellsy, puis Monday', l: payees.b, code: 'edof-5b-rectifier-sellsy-et-monday' },
-            { n: '5c · Payée, non pointée', faire: 'pointer sur Pennylane et Sellsy, puis rectifier Monday', l: payees.c, code: 'edof-5c-a-pointer' },
-            { n: '6 · Réglée ou annulée en comptabilité, sans versement EDOF connu', faire: 'vérifier, puis rectifier Monday', l: autresPayees, code: 'edof-6-reglee-hors-edof' }
+            { n: '0 · Dossier introuvable dans EDOF', faire: 'vérifier le numéro de dossier ou le nom de l’apprenant', l: lots.introuvable, code: 'edof-0-dossier-introuvable', att: 'cor' },
+            { n: '1a · Dossier annulé ou refusé — autre dossier EDOF, et une autre facture existe', faire: 'vérifier le doublon : la facture a sans doute été refaite', l: lots.annuleDossierEtFacture, code: 'edof-1a-annule-autre-dossier-et-facture', att: 'cor' },
+            { n: '1a bis · Dossier annulé ou refusé — autre dossier EDOF, aucune autre facture', faire: 'refaire la facture sur le nouveau dossier', l: lots.annuleDossierSansFacture, code: 'edof-1abis-annule-autre-dossier-sans-facture', att: 'cor' },
+            { n: '1b · Dossier annulé ou refusé, une autre facture existe dans Monday pour l’apprenant', faire: 'vérifier si la facture a été refaite, puis annuler le doublon', l: lots.annuleAutreFacture, code: 'edof-1b-annule-autre-facture', att: 'cor' },
+            { n: '1c · Dossier annulé ou refusé, rien d’autre au nom de l’apprenant', faire: 'annuler la facture, ou la refaire hors CPF', l: lots.annuleSeul, code: 'edof-1c-annule-seul', att: 'cor' },
+            { n: '2 · Dossier en formation, session en cours', faire: 'normal : attendre la fin de la session', l: lots.sessionEnCours, code: 'edof-2-session-en-cours', att: 'ctl' },
+            { n: '2a · Session terminée, service fait pas encore validé', faire: 'déclarer la sortie de formation sur EDOF', l: lots.sessionFinie, code: 'edof-2a-service-fait-a-declarer', att: 'adv' },
+            { n: '2b · Service fait validé, facture pas déposée', faire: 'déposer la facture sur EDOF', l: lots.aDeposer, code: 'edof-2b-a-deposer', att: 'adv' },
+            { n: '3 · Déposée, en attente de règlement', faire: 'attendre le versement', l: lots.attente, code: 'edof-3-attente', att: 'adv' },
+            { n: '4 · Rejetée par EDOF', faire: 'corriger et redéposer', l: lots.rejet, code: 'edof-4-rejet', att: 'cor' },
+            { n: '5a · Payée, pointée sur Sellsy et Pennylane', faire: 'rectifier Monday : déplacer dans les payées', l: payees.a, code: 'edof-5a-pointee-rectifier-monday', att: 'cor' },
+            { n: '5b · Payée, pointée sur Pennylane, pas sur Sellsy', faire: 'rectifier Sellsy, puis Monday', l: payees.b, code: 'edof-5b-rectifier-sellsy-et-monday', att: 'cor' },
+            { n: '5c · Payée, non pointée', faire: 'pointer sur Pennylane et Sellsy, puis rectifier Monday', l: payees.c, code: 'edof-5c-a-pointer', att: 'cor' },
+            { n: '6 · Réglée ou annulée en comptabilité, sans versement EDOF connu', faire: 'vérifier, puis rectifier Monday', l: autresPayees, code: 'edof-6-reglee-hors-edof', att: 'cor' }
         ];
-        var cellule = function (l, titre, code) { if (!l.length) return '<td class="n v3-vide">—</td>';
+        var cellule = function (l, titre, code, attendue) { if (!l.length) return '<td class="n v3-vide' + (attendue ? ' v3-attendue' : '') + '">—</td>';
             var i = poser(l, titre, 'Étape EDOF et étape du circuit Monday croisées.', code);
-            return '<td class="n">' + nbLien(l, i) + '<br><span class="op-pied">' + eur0(l) + '</span></td>'; };
+            return '<td class="n' + (attendue ? ' v3-attendue' : '') + '">' + nbLien(l, i) + '<br><span class="op-pied">' + eur0(l) + '</span></td>'; };
         var matrice = '<div class="table-wrap"><table class="op-t v3-croise"><thead><tr><th>Étape dans EDOF ↓ &nbsp;/&nbsp; étape du circuit →</th>'
             + COLS.map(function (c) { return '<th class="n">' + esc(c.n) + '</th>'; }).join('') + '<th class="n">Total</th></tr></thead><tbody>'
             + LIGNES.map(function (L) {
                 var i = poser(L.l, 'CPF — ' + L.n, 'Factures CPF à cette étape EDOF.', L.code);
-                return '<tr><td><b>' + esc(L.n) + '</b><br><span class="op-pied">→ ' + esc(L.faire) + '</span></td>'
-                    + COLS.map(function (c) { return cellule(L.l.filter(function (f) { return colDe(f) === c.k; }), 'CPF — ' + L.n + ' × ' + c.n, L.code + '-' + c.k); }).join('')
+                var nomAtt = (COLS.filter(function (c) { return c.k === L.att; })[0] || {}).n;
+                return '<tr><td><b>' + esc(L.n) + '</b><br><span class="op-pied">→ ' + esc(L.faire) + '</span>'
+                    + (nomAtt ? '<br><span class="v3-etape-circuit">Étape du circuit : ' + esc(nomAtt) + '</span>' : '') + '</td>'
+                    + COLS.map(function (c) { return cellule(L.l.filter(function (f) { return colDe(f) === c.k; }), 'CPF — ' + L.n + ' × ' + c.n, L.code + '-' + c.k, c.k === L.att); }).join('')
                     + '<td class="n"><b>' + nbLien(L.l, i) + '</b><br><span class="op-pied">' + eur0(L.l) + exp(L.l, i) + '</span></td></tr>'; }).join('')
             + '<tr class="total"><td>Total</td>' + COLS.map(function (c) { var l = ouvertes.filter(function (f) { return colDe(f) === c.k; });
                     return cellule(l, 'CPF — ' + c.n, 'edof-circuit-' + c.k); }).join('')
@@ -1137,8 +1145,10 @@
                 tous.filter(function (f) { return f.doublonOperationnel || f.doublonPayees; }), 'doublon-monday'],
             ['Dossier déjà facturé dans EDOF sous un autre numéro', 'EDOF connaît une facture pour ce dossier, mais avec un autre numéro que celui de Monday : facture refaite, ou numéro mal saisi.',
                 nonVersees.filter(function (f) { var d = norm(f.numeroDossier); return !f.edof && d && EDOF.parDossier[d]; }), 'autre-numero-edof'],
-            ['Dossier annulé ou refusé — un autre dossier EDOF existe pour le même apprenant', 'La facture porte sur un dossier annulé ou refusé, mais l’apprenant a un autre dossier valide dans EDOF : la facture est probablement à rattacher à ce dossier. Les dossiers trouvés sont dans la liste et dans l’export.',
-                lots.annuleAutreDossier, 'dossier-annule-autre-dossier'],
+            ['Dossier annulé ou refusé — autre dossier EDOF, et une autre facture existe', 'L’apprenant a un autre dossier valide dans EDOF, et une autre facture existe déjà (dans Monday ou déposée sur EDOF) : la facture ouverte est sans doute un doublon.',
+                lots.annuleDossierEtFacture, 'dossier-annule-autre-dossier-et-facture'],
+            ['Dossier annulé ou refusé — autre dossier EDOF, aucune autre facture', 'L’apprenant a un autre dossier valide dans EDOF, mais rien n’a été refacturé dessus : la facture est à refaire sur le nouveau dossier, à son montant.',
+                lots.annuleDossierSansFacture, 'dossier-annule-autre-dossier-sans-facture'],
             ['Dossier annulé ou refusé — une autre facture existe dans Monday pour le même apprenant', 'La facture porte sur un dossier annulé ou refusé, et Monday contient une autre facture au nom du même apprenant : elle a peut-être été refaite. Les factures trouvées sont dans la liste et dans l’export.',
                 lots.annuleAutreFacture, 'dossier-annule-autre-facture'],
             ['Dossier annulé ou refusé — aucune autre facture ni autre dossier', 'EDOF indique que le dossier est annulé, refusé ou non réalisé, et rien d’autre n’existe au nom de l’apprenant : la facture ne sera pas payée par le CPF.',
@@ -1166,7 +1176,7 @@
         ];
         // UNE FACTURE, UN MOTIF. Chaque facture est rangée sous son motif le plus important (l'ordre ci-dessous) ;
         // ses autres motifs éventuels sont gardés à côté. Les nombres s'additionnent donc sans doublon.
-        var ORDRE = ['versee-encore-relancee', 'rejet', 'dossier-annule-autre-dossier', 'dossier-annule-autre-facture', 'dossier-annule-seul', 'service-fait-non-depose', 'relance-session-en-cours', 'relance-service-fait-a-declarer', 'service-fait-a-declarer', 'echue-pas-en-recouvrement', 'recouvrement-trop-tot', 'payable-en-retard',
+        var ORDRE = ['versee-encore-relancee', 'rejet', 'dossier-annule-autre-dossier-et-facture', 'dossier-annule-autre-dossier-sans-facture', 'dossier-annule-autre-facture', 'dossier-annule-seul', 'service-fait-non-depose', 'relance-session-en-cours', 'relance-service-fait-a-declarer', 'service-fait-a-declarer', 'echue-pas-en-recouvrement', 'recouvrement-trop-tot', 'payable-en-retard',
             'payable-trop-tot', 'autre-numero-edof', 'doublon-dossier', 'doublon-monday', 'ecart-montant', 'ecart-montant-facturable', 'ecart-date-fin', 'dossier-en-controle', 'fin-de-formation-manquante', 'dossier-introuvable'];
         VERIFS.sort(function (x, y) { return ORDRE.indexOf(x[3]) - ORDRE.indexOf(y[3]); });
         var idDe = function (f) { return f.id || f.cle || f.numero; }, motifsDe = {}, factDe = {};
