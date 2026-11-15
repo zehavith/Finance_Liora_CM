@@ -478,7 +478,7 @@
     const etapeDuTitre = t => { const c = categorieDuGroupe(t); return (c && ETAPE[c]) ? c : null; };
 
     // Un déplacement : il sort d'une étape, il entre dans une autre.
-    function compterMouvement(par, evenement, d) {
+    function compterMouvement(par, evenement, d, ligne) {
         const depT = d.source_group && d.source_group.title, arrT = d.dest_group && d.dest_group.title;
         const dep = depT ? etapeDuTitre(depT) : null, arr = arrT ? etapeDuTitre(arrT) : null;
         // Un changement de tableau s'écrit deux fois, une au départ et une à
@@ -486,14 +486,17 @@
         const entre = evenement !== 'move_pulse_from_board';
         const sort = evenement !== 'move_pulse_into_board';
         if (dep === arr) return false;                    // resté dans la même étape
-        if (entre && arr && par[arr]) par[arr].e++;
+        if (entre && arr && par[arr]) { par[arr].e++; if (ligne && par[arr].eL) par[arr].eL.push(ligne); }
         if (sort && dep && par[dep]) {
             par[dep].s++;
+            // Une facture partie vers le tableau ou un groupe « Factures payées » est passée en payée.
+            const versPayees = /factures? pay[ée]es?/i.test(String(arrT || '') + ' ' + String((d.dest_board && d.dest_board.name) || ''));
             const ou = arr ? ETAPE[arr].n
-                : arrT ? (estTechnique(arrT) ? 'Groupe technique / archive'
-                          : categorieDuGroupe(arrT) === 'cours' ? 'En cours' : arrT)
+                : versPayees ? 'Passées en payées'
+                : arrT ? arrT
                 : ((d.dest_board && d.dest_board.name) || 'Autre tableau');
             par[dep].dest[ou] = (par[dep].dest[ou] || 0) + 1;
+            if (ligne && par[dep].sL) { par[dep].sL.push(ligne); (par[dep].destL[ou] = par[dep].destL[ou] || []).push(ligne); }
         }
         return true;
     }
@@ -517,18 +520,57 @@
         if (!HIST_AU) HIST_AU = isoJour(new Date());
         if (!HIST_DU) HIST_DU = HIST_AU.slice(0, 8) + '01';
         if (HIST && HIST.publie && HIST.de === HIST_DU && HIST.au === HIST_AU && HIST.regles === REGLES_VERSION) return;
-        const par = {}; CIRCUIT.forEach(e => { par[e.k] = { e: 0, s: 0, dest: {}, dur: [] }; });
+        const par = {}; CIRCUIT.forEach(e => { par[e.k] = { e: 0, s: 0, dest: {}, dur: [], eL: [], sL: [], destL: {} }; });
         const EV = ['move_pulse_from_group', 'move_pulse_into_board', 'move_pulse_from_board'], T = MVT.titres;
         let lus = 0;
         for (const l of MVT.lignes) {
             if (l[0] < HIST_DU || l[0] > HIST_AU) continue;
             lus++;
             compterMouvement(par, EV[l[1]], { source_group: T[l[2]] ? { title: T[l[2]] } : null, dest_group: T[l[3]] ? { title: T[l[3]] } : null,
-                                              dest_board: T[l[4]] ? { name: T[l[4]] } : null });
+                                              dest_board: T[l[4]] ? { name: T[l[4]] } : null },
+                             { jour: l[0], de: T[l[2]] || '', vers: T[l[3]] || (T[l[4]] ? 'tableau ' + T[l[4]] : ''), id: String(l[5] || '') });
         }
+        // On compte des FACTURES, pas des déplacements : une facture qui entre ou sort deux fois de l'étape sur la période ne compte qu'une fois.
+        const uniques = L => new Set(L.map(x => x.id || (x.jour + x.de + x.vers))).size;
+        CIRCUIT.forEach(e => { const fl = par[e.k]; fl.e = uniques(fl.eL); fl.s = uniques(fl.sL);
+            Object.keys(fl.destL).forEach(k => { fl.dest[k] = uniques(fl.destL[k]); }); });
         HIST = { mois: HIST_DU.slice(0, 7), de: HIST_DU, au: HIST_AU, le: MVT.releve, par, lus, tronque: false, publie: true, regles: REGLES_VERSION };
     }
     let REGLES_VERSION = 0;
+    const MVT_DEST = {};
+    /** Les factures derrière un nombre d'entrées, de sorties, ou une destination. */
+    function montrerMouvements(k, quoi, i) {
+        const fl = HIST && HIST.par[k]; if (!fl) return;
+        const e = ETAPE[k], dest = quoi === 'd' ? (MVT_DEST[k] || [])[+i] : '';
+        const lignes = (quoi === 'e' ? fl.eL : quoi === 's' ? fl.sL : (fl.destL[dest] || [])).slice().sort((a, b) => a.jour < b.jour ? 1 : -1);
+        const st = global.__recouvrement || {}, parItem = {}, parCle = {};
+        (st.factures || []).forEach(f => { if (f.cle) parCle[f.cle] = f; if (f.itemId) parItem[String(f.itemId)] = f; });
+        (st.brutes || []).forEach(b => { if (b.itemId && b.cle && parCle[b.cle]) parItem[String(b.itemId)] = parCle[b.cle]; });
+        const noms = (MVT && MVT.noms) || {}, FK = global.LioraIngest && global.LioraIngest.factureKey;
+        const factureDe = id => parItem[id] || (noms[id] && FK ? parCle[FK(noms[id])] : null) || null;
+        const jr = x => String(x || '').split('-').reverse().join('/');
+        const rows = lignes.map(l => { const f = factureDe(l.id); return { jour: l.jour, de: l.de, vers: l.vers, id: l.id,
+            numero: f ? f.numero : (noms[l.id] || ''), qui: f ? ((f.client && f.client !== '—' ? f.client : '') || f.apprenant || '') : '', montant: f ? f.montant : null,
+            fin: f ? (f.financement || '') : '', auj: f ? ((f.paye ? 'Payée' : 'Non payée') + ' · ' + (f.groupe || '')) : (noms[l.id] ? 'Facture absente des données du jour' : 'Élément supprimé de Monday') }; });
+        const titre = e.n + ' — ' + (quoi === 'e' ? 'entrées' : quoi === 's' ? 'sorties' : 'sorties vers « ' + dest + ' »') + ' du ' + jr(HIST.de) + ' au ' + jr(HIST.au);
+        const cols = [{ key: 'jour', label: 'Date', width: '92px', format: jr },
+            { key: 'numero', label: 'Facture', width: '160px', format: (v, r) => v ? '<b>' + esc(v) + '</b>' + (r.qui ? '<br><span class="op-pied">' + esc(r.qui) + '</span>' : '') : '<span class="op-pied">élément Monday n° ' + esc(r.id) + '</span>' },
+            { key: 'montant', label: 'Montant', align: 'right', width: '100px', format: v => v == null ? '—' : eur(v) },
+            { key: 'de', label: 'Venait de', width: '230px', format: v => esc(v || '—') },
+            { key: 'vers', label: 'Est allée dans', width: '230px', format: v => esc(v || '—') },
+            { key: 'auj', label: 'Aujourd’hui', width: '230px', format: v => esc(v) }];
+        const connus = rows.filter(r => r.numero).length, distinctes = new Set(rows.map(r => r.id)).size;
+        U().modal(titre, '<p class="pil-note">' + nb(distinctes) + ' facture' + (distinctes > 1 ? 's' : '') + ' · ' + nb(rows.length) + ' déplacement' + (rows.length > 1 ? 's' : '') + ' (une facture déplacée plusieurs fois apparaît sur plusieurs lignes). '
+            + nb(connus) + ' ont un numéro de facture connu.</p><div class="table-wrap-tall v3-table-libre">'
+            + U().table(cols, rows.slice(0, 500), { vide: 'Aucun déplacement.' }) + '</div>', [{ label: 'Fermer' }], { large: true });
+        setTimeout(() => { const pied = document.querySelector('#modal-overlay .modal-foot'); if (!pied || pied.querySelector('.v3-export-lot') || !global.XLSX) return;
+            const bt = document.createElement('button'); bt.type = 'button'; bt.className = 'btn btn-ghost btn-sm v3-export-lot'; bt.textContent = 'Exporter cette liste (Excel)';
+            bt.onclick = () => { const X = global.XLSX, wb = X.utils.book_new();
+                X.utils.book_append_sheet(wb, X.utils.json_to_sheet(rows.map(r => ({ 'Date': jr(r.jour), 'Facture': r.numero, 'Client ou apprenant': r.qui, 'Financement': r.fin, 'Montant': r.montant == null ? '' : r.montant,
+                    'Venait de': r.de, 'Est allée dans': r.vers, 'Aujourd’hui': r.auj, 'Identifiant Monday': r.id }))), 'Déplacements');
+                X.writeFile(wb, 'deplacements-' + k + '-' + quoi + '-' + HIST.de + '-' + HIST.au + '.xlsx'); };
+            pied.insertBefore(bt, pied.firstChild); }, 60);
+    }
 
     async function chargerHistorique(mois, onAvance) {
         const M = global.LioraMonday;
@@ -839,8 +881,8 @@
                + '<br><span class="op-pied">' + esc(e.d) + '</span></td>'
                + '<td class="n">' + ouvrableEtape(nb(s.st), e.k) + '</td>'
                + '<td class="n">' + eur(s.mt) + barre(s.mt / mx * 100, 'var(--serie-2)') + '</td>'
-               + '<td class="n">' + (fl ? nb(fl.e) : sansHist) + '</td>'
-               + '<td class="n">' + (fl ? nb(fl.s) : sansHist) + '</td>'
+               + '<td class="n">' + (fl ? (fl.eL && fl.e ? '<button type="button" class="op-lien" data-mvt="' + e.k + '|e" title="Voir ces factures">' + nb(fl.e) + '</button>' : nb(fl.e)) : sansHist) + '</td>'
+               + '<td class="n">' + (fl ? (fl.sL && fl.s ? '<button type="button" class="op-lien" data-mvt="' + e.k + '|s" title="Voir ces factures">' + nb(fl.s) + '</button>' : nb(fl.s)) : sansHist) + '</td>'
                + '<td class="n">' + (s.a == null ? '—' : nb(s.a) + ' j') + '</td>'
                + '<td class="n">' + e.cible + ' j</td>'
                + '<td class="n">' + (s.h == null ? '—' : nb(s.h) + ' %'
@@ -918,14 +960,17 @@
             const fl = HIST.par[e.k];
             const noms = Object.keys(fl.dest).sort((a, b) => fl.dest[b] - fl.dest[a]);
             if (!fl.s) { h += '<div class="op-stk"><div class="op-stk-h"><b>' + esc(e.n) + '</b>'
-                + '<span class="op-pied">aucune sortie sur le mois</span></div></div>'; continue; }
-            const seg = noms.map((n, i) => { const p = fl.dest[n] / fl.s * 100;
+                + '<span class="op-pied">aucune sortie sur la période</span></div></div>'; continue; }
+            const totDest = noms.reduce((t, n) => t + fl.dest[n], 0) || 1;
+            const seg = noms.map((n, i) => { const p = fl.dest[n] / totDest * 100;
                 return '<div style="width:' + p.toFixed(2) + '%;background:' + TEINTES[i % TEINTES.length]
                      + '" title="' + esc(n + ' : ' + fl.dest[n] + ' factures')
                      + '">' + (p >= 9 ? Math.round(p) + ' %' : '') + '</div>'; }).join('');
+            MVT_DEST[e.k] = noms;
             const leg = noms.map((n, i) => '<span><i class="op-sw" style="background:'
-                + TEINTES[i % TEINTES.length] + '"></i>' + esc(n) + ' — ' + nb(fl.dest[n])
-                + ' factures · ' + nb(fl.dest[n] / fl.s * 100) + ' %</span>').join('');
+                + TEINTES[i % TEINTES.length] + '"></i>' + esc(n) + ' — '
+                + (fl.destL ? '<button type="button" class="op-lien" data-mvt="' + e.k + '|d|' + i + '" title="Voir ces factures">' + nb(fl.dest[n]) + ' factures</button>' : nb(fl.dest[n]) + ' factures')
+                + ' · ' + nb(fl.dest[n] / totDest * 100) + ' %</span>').join('');
             h += '<div class="op-stk"><div class="op-stk-h"><b>' + esc(e.n) + '</b>'
                + '<span class="op-pied">' + nb(fl.s) + ' factures sorties</span></div>'
                + '<div class="op-stk-bar">' + seg + '</div><div class="op-legende">' + leg + '</div></div>';
@@ -1234,6 +1279,7 @@
         ['op-hist-du', 'op-hist-au'].forEach(id => { const el = document.getElementById(id);
             if (el) el.onchange = () => { const du = document.getElementById('op-hist-du').value, au = document.getElementById('op-hist-au').value;
                 if (!du || !au) return; HIST_DU = du <= au ? du : au; HIST_AU = du <= au ? au : du; const y = window.scrollY; rendre(DERNIERES); window.scrollTo(0, y); }; });
+        h.querySelectorAll('[data-mvt]').forEach(b => b.onclick = ev => { ev.stopPropagation(); const a = b.dataset.mvt.split('|'); montrerMouvements(a[0], a[1], a[2]); });
         const hb = document.getElementById('op-hist');
         h.querySelectorAll('.op-lire-hist').forEach(b => b.onclick = () => { if (hb) { hb.scrollIntoView({ block: 'center' }); hb.click(); } });
         if (hb) hb.onclick = async () => {

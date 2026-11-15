@@ -51,7 +51,15 @@ for b in TABLEAUX:
             page += 1
     print('  %s : %d déplacements (%d événements lus)' % (nom, n, lus))
 lignes.sort()
+# Le journal ne donne que l'identifiant Monday de l'élément : on va chercher son nom, qui est le numéro de facture.
+ids = sorted({str(l[5]) for l in lignes if l[5]})
+noms = {}
+for i in range(0, len(ids), 100):
+    lot = ids[i:i + 100]
+    d = monday('query { items(ids: [%s], limit: 100) { id name } }' % ', '.join(lot))
+    for it in d.get('items') or []: noms[str(it['id'])] = it['name']
+print('  numéros de facture retrouvés : %d sur %d éléments' % (len(noms), len(ids)))
 json.dump({'releve': datetime.datetime.now().isoformat(timespec='minutes'), 'depuis': depuis, 'titres': titres,
            'champs': ['jour', 'type (0 changement de groupe, 1 arrivée sur le tableau, 2 départ du tableau)', 'groupe de départ', 'groupe d’arrivée', 'tableau d’arrivée', 'facture (identifiant Monday)'],
-           'lignes': lignes}, open(sys.argv[1], 'w'), separators=(',', ':'), ensure_ascii=False)
+           'noms': noms, 'lignes': lignes}, open(sys.argv[1], 'w'), separators=(',', ':'), ensure_ascii=False)
 print(len(lignes), 'déplacements du', lignes[0][0] if lignes else '-', 'au', lignes[-1][0] if lignes else '-')
