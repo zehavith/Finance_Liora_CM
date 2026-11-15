@@ -784,7 +784,7 @@
         var COLS = [{ k: 'ctl', n: 'Sous contrôle' }].concat((OPX.CIRCUIT || []).map(function (e) { return { k: e.k, n: e.n }; })).concat([{ k: 'hors', n: 'Échue, hors étape' }]);
         var colDe = function (f) { if (f.edofVerse) return 'cor'; var k = OPX.etapeDe(f); if (cles[k]) return k; return echue(f) ? 'hors' : 'ctl'; };
         var LIGNES = [
-            { n: '1 · Pas encore dans EDOF', faire: 'déposer la facture', l: lots.rien, code: 'edof-1-aucune-trace' },
+            { n: '1 · Absente de l’export EDOF', faire: 'normal si la formation n’est pas finie ; sinon vérifier le dépôt et le numéro', l: lots.rien, code: 'edof-1-absente-export' },
             { n: '2 · Avance versée, solde à facturer', faire: 'déposer la facture de solde', l: lots.avance, code: 'edof-2-avance-seule' },
             { n: '3 · Déposée, en attente de règlement', faire: 'attendre le versement', l: lots.attente, code: 'edof-3-attente' },
             { n: '4 · Rejetée par EDOF', faire: 'corriger et redéposer', l: lots.rejet, code: 'edof-4-rejet' },
@@ -866,6 +866,7 @@
             + '<p class="pil-note"><b>Règle CPF :</b> « Rendre payable » commence à fin de formation + ' + delaiPayable + ' jours, et le recouvrement (« Relancer ») à fin de formation + ' + delaiCpf + ' jours. '
             + 'Les factures dont le groupe Monday ne correspond pas à cette règle sont dans « Facturation à revérifier ». '
             + 'En ligne, où en est la facture dans EDOF ; en colonne, dans quelle étape du circuit elle se trouve dans Monday. '
+            + '« Absente de l’export EDOF » : l’export ne contient ni ce numéro de facture, ni une avance sur son dossier — la facture n’a pas encore été déposée, ou elle l’a été sous un autre numéro. '
             + 'Les factures versées par EDOF sont payées : elles sont rangées dans « Corriger », en trois cas selon leur pointage, tant qu’elles ne sont pas déplacées dans Monday. '
             + rangees.toLocaleString('fr-FR') + ' autres factures versées sont déjà rangées dans les payées.</p>'
             + matrice
