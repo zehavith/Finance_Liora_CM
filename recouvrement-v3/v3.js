@@ -671,13 +671,13 @@
         ['b', 'Payées, pointées sur Pennylane mais pas sur Sellsy — rectification à faire sur Sellsy et sur Monday'],
         ['c', 'Payées, non pointées sur Sellsy et Pennylane — à pointer'],
         ['hors', 'Réglées ou annulées en comptabilité, sans versement EDOF connu — rectification à faire sur Monday'],
-        ['groupe', 'Non réglées, rangées dans un groupe Monday « Corriger »']
+        ['groupe', 'Non réglées, rangées dans un groupe Monday du circuit « Corriger »']
     ];
     // Hors CPF, EDOF n'existe pas : seuls le pointage en comptabilité et le groupe Monday comptent.
     var CAS_CORRIGER_GENERAL = [
         ['p', 'Payées, pointées en comptabilité (Pennylane) — rectification à faire sur Monday'],
         ['np', 'Payées, non pointées en comptabilité — à pointer, puis rectifier Monday'],
-        ['groupe', 'Non réglées, rangées dans un groupe Monday « Corriger »']
+        ['groupe', 'Non réglées, rangées dans un groupe Monday du circuit « Corriger »']
     ];
     function casCorriger(f, cpf) {
         if (!f.paye) return 'groupe';
@@ -790,7 +790,7 @@
             (OPX.CIRCUIT || []).forEach(function (e) {
                 var lot = dans(e.k), quoi = 'Groupes Monday de l’étape « ' + e.n + ' » (' + e.svc + ').';
                 if (e.k === 'cor' && payFin.length) {
-                    quoi = 'Dont ' + payFin.length + ' payées mais pas encore déplacées dans les payées (à rectifier dans Monday), et ' + lot.length + ' du groupe Monday « Corriger ».';
+                    quoi = 'Dont ' + payFin.length + ' payées mais pas encore déplacées dans les payées (à rectifier dans Monday), et ' + lot.length + ' dans un groupe Monday du circuit « Corriger ».';
                     lot = lot.concat(payFin);
                 }
                 tuiles += vignette(n++, lot, e.n, quoi, e.svc + ' · cible ' + e.cible + ' j', e.k, e.k === 'rec' ? 'fort' : '');
