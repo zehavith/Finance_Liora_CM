@@ -1221,8 +1221,11 @@
         ];
         // UNE FACTURE, UN MOTIF. Chaque facture est rangée sous son motif le plus important (l'ordre ci-dessous) ;
         // ses autres motifs éventuels sont gardés à côté. Les nombres s'additionnent donc sans doublon.
-        var ORDRE = ['versee-encore-relancee', 'rejet', 'dossier-annule-autre-dossier-et-facture', 'dossier-annule-autre-dossier-sans-facture', 'dossier-annule-autre-facture', 'dossier-annule-seul', 'service-fait-non-depose', 'relance-session-en-cours', 'relance-service-fait-a-declarer', 'service-fait-a-declarer', 'echue-pas-en-recouvrement', 'recouvrement-trop-tot', 'payable-en-retard',
-            'payable-trop-tot', 'autre-numero-edof', 'doublon-dossier', 'doublon-monday', 'ecart-montant', 'ecart-montant-facturable', 'ecart-date-fin', 'dossier-en-controle', 'fin-de-formation-manquante', 'dossier-introuvable'];
+        // Les cinq motifs que l'utilisatrice juge les plus importants passent en premier.
+        var IMPORTANTS = ['doublon-dossier', 'ecart-montant', 'ecart-montant-facturable', 'ecart-date-fin', 'dossier-introuvable'];
+        var ORDRE = IMPORTANTS.concat(['versee-encore-relancee', 'rejet', 'dossier-annule-autre-dossier-et-facture', 'dossier-annule-autre-dossier-sans-facture', 'dossier-annule-autre-facture',
+            'dossier-annule-seul', 'service-fait-non-depose', 'relance-session-en-cours', 'relance-service-fait-a-declarer', 'service-fait-a-declarer', 'echue-pas-en-recouvrement',
+            'recouvrement-trop-tot', 'payable-en-retard', 'payable-trop-tot', 'autre-numero-edof', 'doublon-monday', 'dossier-en-controle', 'fin-de-formation-manquante']);
         VERIFS.sort(function (x, y) { return ORDRE.indexOf(x[3]) - ORDRE.indexOf(y[3]); });
         var idDe = function (f) { return f.id || f.cle || f.numero; }, motifsDe = {}, factDe = {};
         VERIFS.forEach(function (v) { v[2].forEach(function (f) { var k = idDe(f); (motifsDe[k] = motifsDe[k] || []).push(v[0]); factDe[k] = f; }); });
@@ -1243,14 +1246,21 @@
         var DEJA = /^(rejet|dossier-annule|service-fait|relance-|dossier-introuvable|versee-encore-relancee)/;
         var lignesB = VERIFS.map(function (v) { if (!v[2].length || DEJA.test(v[3])) return '';
             var i = poser(v[2], 'À revérifier — ' + v[0], v[1], 'a-reverifier-' + v[3]); EDOF_LOTS[i].motifs = true;
-            return '<tr class="v3-ligne-motif"><td><span class="v3-motif">' + esc(v[0]) + '</span><br><span class="op-pied">' + esc(v[1]) + '</span></td>'
+            return '<tr class="v3-ligne-motif"><td><span class="v3-motif">' + esc(v[0]) + '</span>' + (IMPORTANTS.indexOf(v[3]) >= 0 ? ' <span class="v3-important">important</span>' : '')
+                + '<br><span class="op-pied">' + esc(v[1]) + '</span></td>'
                 + COLS.map(function (c) { var l = v[2].filter(function (f) { return colDe(f) === c.k; }); if (!l.length) return '<td class="n v3-vide">—</td>';
                     var j = poser(l, 'À revérifier — ' + v[0] + ' × ' + c.n, v[1], 'a-reverifier-' + v[3] + '-' + c.k); EDOF_LOTS[j].motifs = true;
                     return '<td class="n v3-malplace">' + nbLien(l, j) + '<br><span class="op-pied">' + eur0(l) + '</span></td>'; }).join('')
                 + '<td class="n"><b>' + nbLien(v[2], i) + '</b><br><span class="op-pied">' + eur0(v[2]) + exp(v[2], i) + '</span></td></tr>'; }).join('');
         if (lignesB) lignesB = '<tr class="v3-sous-titre"><td colspan="' + (COLS.length + 2) + '">Autres points à revérifier — une même facture peut figurer sur plusieurs lignes</td></tr>' + lignesB;
         matrice = matrice.replace('</tbody></table></div>', lignesB + '</tbody></table></div>');
-        var aVerifier = '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + eur0(toutes) + '), en rouge dans le tableau et dans les vignettes. '
+        // Les points importants, en tête : toutes les factures concernées, même si elles ont aussi un autre motif.
+        var bandeau = '<div class="v3-importants"><span class="v3-importants-titre">Points importants</span>' + IMPORTANTS.map(function (k) {
+            var v = VERIFS.filter(function (x) { return x[3] === k; })[0]; if (!v) return '';
+            var i = poser(v[2], 'Important — ' + v[0], v[1], 'a-reverifier-important-' + k); EDOF_LOTS[i].motifs = true;
+            return '<span class="v3-important-carte' + (v[2].length ? '' : ' vide') + '"><span class="v3-important-nb">' + nbLien(v[2], i) + '</span><span class="v3-important-lib">' + esc(v[0]) + '</span>'
+                + '<span class="op-pied">' + (v[2].length ? eur0(v[2]) + exp(v[2], i) : 'aucune') + '</span></span>'; }).join('') + '</div>';
+        var aVerifier = bandeau + '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + eur0(toutes) + '), en rouge dans le tableau et dans les vignettes. '
             + '<button type="button" class="btn btn-ghost btn-sm" data-edof-lot="' + iToutes + '">Voir la liste triée par motif</button> '
             + '<button type="button" class="btn btn-ghost btn-sm" data-edof-export="' + iToutes + '">Exporter le tout (Excel)</button></p>';
         var rougeCpf = {};
