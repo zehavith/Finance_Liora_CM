@@ -671,7 +671,7 @@
     }
 
     // ── Opérationnel : où en est EDOF pour le CPF ──
-    var EDOF_LOTS = [], CIRCUIT_FIN = 'CPF', PLI_TABLEAU = true;
+    var EDOF_LOTS = [], CIRCUIT_FIN = 'CPF', PLI_TABLEAU = false;   // le tableau est replié au départ
     // L'état de pointage Sellsy d'une facture : d'après l'export Sellsy s'il est déposé, sinon d'après le
     // groupe Monday qui le dit (« sellsy pointé », « non remonté sur Sellsy »).
     var SELLSY_VU = null, SELLSY_PAR_CLE = null;
