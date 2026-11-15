@@ -496,3 +496,17 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 /* Les cases du tableau croisé ne sont plus colorées : ni vert, ni rouge. */
 .v3-croise td.v3-attendue, .v3-croise td.v3-malplace { background: transparent; box-shadow: none; }
 .v3-croise td.v3-malplace .op-lien, .v3-croise td.v3-malplace b { color: inherit; }
+/* Section repliable : une flèche pour ouvrir ou fermer le tableau */
+.v3-pli > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem 0.9rem; cursor: pointer; list-style: none; padding: 0.35rem 0; margin-bottom: 0.4rem; }
+.v3-pli > summary::-webkit-details-marker { display: none; }
+.v3-pli > summary::before { content: '▸'; font-size: 1.05rem; line-height: 1; color: var(--accent, #c8472b); width: 1rem; display: inline-block; }
+.v3-pli[open] > summary::before { content: '▾'; }
+.v3-pli > summary h3 { margin: 0; display: inline; }
+.v3-pli > summary:hover h3 { text-decoration: underline; }
+/* Section repliable : une flèche pour ouvrir ou fermer le tableau */
+.v3-pli > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem 0.9rem; cursor: pointer; list-style: none; padding: 0.35rem 0; margin-bottom: 0.4rem; }
+.v3-pli > summary::-webkit-details-marker { display: none; }
+.v3-pli > summary::before { content: '▸'; font-size: 1.05rem; line-height: 1; color: var(--accent, #c8472b); width: 1rem; display: inline-block; }
+.v3-pli[open] > summary::before { content: '▾'; }
+.v3-pli > summary h3 { margin: 0; display: inline; }
+.v3-pli > summary:hover h3 { text-decoration: underline; }

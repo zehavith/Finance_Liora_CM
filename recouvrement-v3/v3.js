@@ -671,7 +671,7 @@
     }
 
     // ── Opérationnel : où en est EDOF pour le CPF ──
-    var EDOF_LOTS = [], CIRCUIT_FIN = 'CPF';
+    var EDOF_LOTS = [], CIRCUIT_FIN = 'CPF', PLI_TABLEAU = true;
     // L'état de pointage Sellsy d'une facture : d'après l'export Sellsy s'il est déposé, sinon d'après le
     // groupe Monday qui le dit (« sellsy pointé », « non remonté sur Sellsy »).
     var SELLSY_VU = null, SELLSY_PAR_CLE = null;
@@ -718,9 +718,9 @@
         var cols = [
             { key: 'numero', label: 'Facture', width: '130px', format: function (v, f) { return '<b>' + esc(v || '') + '</b>' + (f.apprenant ? '<br><span class="op-pied">' + esc(f.apprenant) + '</span>' : ''); } },
             { key: 'montant', label: 'Montant', align: 'right', width: '90px', format: function (v) { return v == null ? '—' : Math.round(v).toLocaleString('fr-FR') + ' €'; } },
-            { key: '__motif', label: 'Motif', width: '230px', format: function (v) { return '<span class="v3-motif">' + esc(v || '') + '</span>'; } }
+            { key: '__motif', label: 'Point à revérifier', width: '230px', format: function (v) { return v ? '<span class="v3-motif">' + esc(v) + '</span>' : '<span class="op-pied">rien à signaler</span>'; } }
         ];
-        if (a1('__autresMotifs')) cols.push({ key: '__autresMotifs', label: 'Autres motifs', width: '220px', format: function (v) { return liste(v) || '—'; } });
+        if (a1('__autresMotifs')) cols.push({ key: '__autresMotifs', label: 'Autres points à revérifier', width: '220px', format: function (v) { return liste(v) || '—'; } });
         if (l.its.some(function (f) { return f.__attendu; })) cols.push({ key: '__attendu', label: 'Situation et étape attendue', width: '230px', format: function (v) { return v ? esc(v) : '—'; } });
         cols.push({ key: 'groupe', label: 'Groupe Monday', width: '200px', format: function (v) { return esc(v || ''); } });
         cols.push({ key: 'dateFinFormation', label: 'Fin de formation', width: '100px', format: d });
@@ -805,6 +805,7 @@
         var st = etat(), OPX = G.LioraOperationnel, hote = $('#v3-op-edof');
         if (!hote || !st || !OPX) return;
         var hp = function (f) { return f.role !== 'sellsy' && (f.presenceRoles || [f.role]).indexOf('payees') < 0; };
+        (st.factures || []).forEach(function (f) { if (f.__motif || f.__attendu) { f.__motif = null; f.__autresMotifs = null; f.__attendu = null; } });
         // « Le circuit : » puis une vignette par financement. Le CPF se lit
         // d'après EDOF ; les autres, d'après les étapes du circuit Monday.
         var libelles = {}; (st.rules || R.DEFAULT_ECHEANCE_RULES || []).forEach(function (r) { libelles[r.key] = r.label; });
@@ -819,6 +820,7 @@
         var tete = '<div class="v3-circuit-tete"><h3><label for="v3-circuit-fin">Le circuit :</label></h3><select id="v3-circuit-fin" class="v3-circuit-choix">' + fins.map(function (k) {
             return '<option value="' + esc(k) + '"' + (k === CIRCUIT_FIN ? ' selected' : '') + '>' + esc(nomFin(k)) + ' — ' + parFin[k].toLocaleString('fr-FR') + ' factures</option>'; }).join('') + '</select></div>';
         var brancherTete = function () {
+            var pli = hote.querySelector('details.v3-pli'); if (pli) pli.addEventListener('toggle', function () { PLI_TABLEAU = pli.open; });
             var choix = hote.querySelector('#v3-circuit-fin'); if (choix) choix.onchange = function () { CIRCUIT_FIN = choix.value; carteEdofOperationnel(); };
             hote.querySelectorAll('[data-edof-lot]').forEach(function (b) { b.onclick = function () { ouvrirLotCircuit(EDOF_LOTS[+b.dataset.edofLot], null); }; });
             hote.querySelectorAll('[data-edof-export]').forEach(function (b) { b.onclick = function () { var l = EDOF_LOTS[+b.dataset.edofExport]; if (l) exporterControle({ code: l.code, items: l.its }); }; });
@@ -938,10 +940,11 @@
             LIGNES.forEach(function (L) { var adm = ADMIS[L.code] || [L.att]; L.admis = function () { return adm; }; L.lib = LIB_ATT[L.code]; });
             var cell = function (l, titre, code, attendue, mal) { if (!l.length) return '<td class="n v3-vide' + (attendue ? ' v3-attendue' : '') + '">—</td>';
                 var i = pose(l, titre, 'Ancienneté du retard et étape du circuit Monday croisées.', code);
+                EDOF_LOTS[i].motifs = true;
                 return '<td class="n' + (attendue ? ' v3-attendue' : '') + (mal ? ' v3-malplace' : '') + '">' + nbL(l, i) + '<br><span class="op-pied">' + e0(l) + '</span></td>'; };
             var matrice = '<div class="table-wrap"><table class="op-t v3-croise"><thead><tr><th>Où en est la facture ↓ &nbsp;/&nbsp; étape du circuit →</th>'
                 + COLS.map(function (c) { return '<th class="n">' + esc(c.n) + '</th>'; }).join('') + '<th class="n">Total</th></tr></thead><tbody>'
-                + LIGNES.map(function (L) { var i = pose(L.l, nomF + ' — ' + L.n, 'Factures ' + nomF + ' dans cette situation.', L.code);
+                + LIGNES.map(function (L) { var i = pose(L.l, nomF + ' — ' + L.n, 'Factures ' + nomF + ' dans cette situation.', L.code); EDOF_LOTS[i].motifs = true;
                     var nomAtt = L.lib || (COLS.filter(function (c) { return c.k === L.att; })[0] || {}).n;
                     return '<tr><td><b>' + esc(L.n) + '</b><br><span class="op-pied">→ ' + esc(L.faire) + '</span>'
                         + (nomAtt ? '<br><span class="v3-etape-circuit">Étape du circuit : ' + esc(nomAtt) + '</span>' : '') + '</td>'
@@ -1013,7 +1016,7 @@
                         return '<td class="n v3-malplace">' + nbL(l, j) + '<br><span class="op-pied">' + e0(l) + '</span></td>'; }).join('')
                     + '<td class="n"><b>' + nbL(v[2], i) + '</b><br><span class="op-pied">' + e0(v[2]) + ex(v[2], i) + '</span></td></tr>'; }).join('');
             if (lignesB) lignesB = '<tr class="v3-sous-titre"><td colspan="' + (COLS.length + 2) + '">Points à revérifier — une même facture peut figurer sur plusieurs lignes</td></tr>' + lignesB;
-            matrice = matrice.replace('</tbody></table></div>', lignesB + '</tbody></table></div>');
+            /* un seul tableau : les autres points sont en commentaire dans les listes */
             // Les points importants en tête, comme pour le CPF : toutes les factures concernées, même si elles ont aussi un autre motif.
             var IMP = ['payee-encore-relancee', 'reglement-non-lettre', 'echue-hors-etape', 'doublon-monday', 'echeance-inconnue'];
             var bandeauG = '<div class="v3-importants"><span class="v3-importants-titre">Points importants</span>' + IMP.map(function (k) {
@@ -1031,8 +1034,9 @@
                 rouge[c.k] = ligneRouge(mal, nomF + ' — ' + c.n, 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-' + c.k + '-mal-placees'); });
 
             var regle = (st.rules || []).filter(function (x) { return x.key === CIRCUIT_FIN; })[0];
-            return { rouge: rouge, html: '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">' + esc(nomF) + ' — ancienneté du retard croisée avec les étapes du circuit</h3></div>'
-                + aVerif + matrice };
+            return { rouge: rouge, html: '<div class="v3-circuit-sep"></div>' + aVerif
+                + '<details class="v3-pli"' + (PLI_TABLEAU ? ' open' : '') + '><summary><h3 class="v3-circuit-sous">' + esc(nomF) + ' — ancienneté du retard croisée avec les étapes du circuit</h3></summary>'
+                + matrice + '</details>' };
         }
         var cpf = (st.factures || []).filter(function (f) { return f.role !== 'sellsy' && (f.financement === 'CPF' || f.edof); });
         var ouvertes = cpf.filter(hp);
@@ -1154,11 +1158,12 @@
         });
         var cellule = function (l, titre, code, attendue, mal) { if (!l.length) return '<td class="n v3-vide' + (attendue ? ' v3-attendue' : '') + '">—</td>';
             var i = poser(l, titre, 'Étape EDOF et étape du circuit Monday croisées.', code);
+            EDOF_LOTS[i].motifs = !EDOF_LOTS[i].dossiers;
             return '<td class="n' + (attendue ? ' v3-attendue' : '') + (mal ? ' v3-malplace' : '') + '">' + nbLien(l, i) + '<br><span class="op-pied">' + eur0(l) + '</span></td>'; };
         var matrice = '<div class="table-wrap"><table class="op-t v3-croise"><thead><tr><th>Étape dans EDOF ↓ &nbsp;/&nbsp; étape du circuit →</th>'
             + COLS.map(function (c) { return '<th class="n">' + esc(c.n) + '</th>'; }).join('') + '<th class="n">Total</th></tr></thead><tbody>'
             + LIGNES.map(function (L) {
-                var i = poser(L.l, 'CPF — ' + L.n, 'Factures CPF à cette étape EDOF.', L.code);
+                var i = poser(L.l, 'CPF — ' + L.n, 'Factures CPF à cette étape EDOF.', L.code); EDOF_LOTS[i].motifs = !EDOF_LOTS[i].dossiers;
                 var nomAtt = L.lib;
                 return '<tr><td><b>' + esc(L.n) + '</b><br><span class="op-pied">→ ' + esc(L.faire) + '</span>'
                     + (nomAtt ? '<br><span class="v3-etape-circuit">Étape du circuit : ' + esc(nomAtt) + '</span>' : '') + '</td>'
@@ -1265,7 +1270,7 @@
                     return '<td class="n v3-malplace">' + nbLien(l, j) + '<br><span class="op-pied">' + eur0(l) + '</span></td>'; }).join('')
                 + '<td class="n"><b>' + nbLien(v[2], i) + '</b><br><span class="op-pied">' + eur0(v[2]) + exp(v[2], i) + '</span></td></tr>'; }).join('');
         if (lignesB) lignesB = '<tr class="v3-sous-titre"><td colspan="' + (COLS.length + 2) + '">Autres points à revérifier — une même facture peut figurer sur plusieurs lignes</td></tr>' + lignesB;
-        matrice = matrice.replace('</tbody></table></div>', lignesB + '</tbody></table></div>');
+        /* un seul tableau : les autres points sont en commentaire dans les listes */
         // Les points importants, en tête : toutes les factures concernées, même si elles ont aussi un autre motif.
         var bandeau = '<div class="v3-importants"><span class="v3-importants-titre">Points importants</span>' + IMPORTANTS.map(function (k) {
             var v = VERIFS.filter(function (x) { return x[3] === k; })[0]; if (!v) return '';
@@ -1281,9 +1286,10 @@
             rougeCpf[c.k] = ligneRouge(mal, 'CPF — ' + c.n, 'circuit-cpf-' + c.k + '-mal-placees'); });
 
         hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + poserRouges(parcours, rougeCpf)
-            + '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">CPF — étapes EDOF croisées avec les étapes du circuit</h3>'
-            + '<span class="pil-coin">export EDOF jusqu’au ' + jour(p.length && p[p.length - 1][1]) + ' · grand livre au ' + jour(GL_INFO && GL_INFO.arrete) + '</span></div>'
-            + aVerifier + matrice
+            + '<div class="v3-circuit-sep"></div>' + aVerifier
+            + '<details class="v3-pli"' + (PLI_TABLEAU ? ' open' : '') + '><summary><h3 class="v3-circuit-sous">CPF — étapes EDOF croisées avec les étapes du circuit</h3>'
+            + '<span class="pil-coin">export EDOF jusqu’au ' + jour(p.length && p[p.length - 1][1]) + ' · grand livre au ' + jour(GL_INFO && GL_INFO.arrete) + '</span></summary>'
+            + matrice + '</details>'
             + '</div></div>';
         brancherTete();
     }
