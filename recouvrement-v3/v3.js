@@ -738,9 +738,40 @@
             e.onclick = function () { exporterControle({ code: l.code, items: l.its }); }; pied.insertBefore(e, pied.firstChild); }, 60);
         return true;
     }
+    /** Fenêtre des factures sur dossier annulé ou refusé : le dossier de la facture, le nouveau dossier et son montant. */
+    function ouvrirLotDossiers(l) {
+        var u = UI(); if (!u || !u.modal || !u.table) return false;
+        var eur1 = function (v) { return v == null ? '—' : Math.round(v).toLocaleString('fr-FR') + ' €'; };
+        var jr = function (x) { return String(x || '').split('-').reverse().join('/'); };
+        var its = l.its.slice().sort(function (a, b) { return (b.montant || 0) - (a.montant || 0); });
+        var nd = function (f) { return f.__nouveauxDossiers || []; };
+        var cols = [
+            { key: 'numero', label: 'Facture', width: '150px', format: function (v, f) { return esc(v || '') + (f.apprenant ? '<br><span class="op-pied">' + esc(f.apprenant) + '</span>' : ''); } },
+            { key: 'groupe', label: 'Groupe Monday' },
+            { key: 'montant', label: 'Montant de la facture', align: 'right', width: '110px', format: eur1 },
+            { key: 'edofDossier', label: 'N° de dossier sur la facture', width: '170px', format: function (v, f) { return v ? '<span class="mono">' + esc(v.numero) + '</span><br><span class="op-pied">' + esc(v.statut)
+                + (f.dossierVientEdof ? ' · trouvé par le nom' : '') + '</span>' : '—'; } },
+            { key: '__nouveauxDossiers', label: 'Nouveau n° de dossier', width: '190px', format: function (v, f) { return nd(f).length ? nd(f).map(function (x) {
+                return '<span class="mono">' + esc(x.numero) + '</span><br><span class="op-pied">' + esc(x.statut) + (x.fin ? ' · fin ' + jr(x.fin) : '') + '</span>'; }).join('<br>') : '<span class="op-pied">aucun</span>'; } },
+            { key: 'id', label: 'Montant du nouveau dossier', align: 'right', width: '130px', format: function (v, f) { return nd(f).length ? nd(f).map(function (x) {
+                return eur1(x.montant) + '<br><span class="op-pied">' + (x.facturable ? 'facturable' : 'montant de la formation') + '</span>'; }).join('<br>') : '—'; } },
+            { key: 'cle', label: 'Facture EDOF du nouveau dossier', width: '210px', format: function (v, f) { var t = []; nd(f).forEach(function (x) { t = t.concat(x.factures); });
+                return t.length ? esc(t.join(' ; ')) : (nd(f).length ? '<span class="op-pied">aucune facture déposée</span>'
+                    : ((f.__autresFactures || []).length ? '<span class="v3-trouve">Autre facture Monday : ' + esc(f.__autresFactures.join(' | ')) + '</span>' : '—')); } }
+        ];
+        var somme = its.reduce(function (t, f) { return t + (f.montant || 0); }, 0);
+        u.modal(l.titre, '<p class="pil-note">' + its.length.toLocaleString('fr-FR') + ' facture' + (its.length > 1 ? 's' : '') + ' · ' + Math.round(somme).toLocaleString('fr-FR') + ' €. '
+            + 'Pour chaque facture : le dossier qu’elle porte (annulé ou refusé), le nouveau dossier trouvé au nom du même apprenant, et son montant.</p><div class="table-wrap-tall">'
+            + u.table(cols, its.slice(0, 400), { vide: 'Aucune facture.' }) + '</div>', [{ label: 'Fermer' }], { large: true });
+        setTimeout(function () { var pied = document.querySelector('#modal-overlay .modal-foot'); if (!pied || pied.querySelector('.v3-export-lot')) return;
+            var e = document.createElement('button'); e.type = 'button'; e.className = 'btn btn-ghost btn-sm v3-export-lot'; e.textContent = 'Exporter cette liste (Excel)';
+            e.onclick = function () { exporterControle({ code: l.code, items: its }); }; pied.insertBefore(e, pied.firstChild); }, 60);
+        return true;
+    }
     function ouvrirLotCircuit(l, cas) {
         var OPX = G.LioraOperationnel;
         if (l && l.motifs && ouvrirLotMotifs(l)) return;
+        if (l && l.dossiers && ouvrirLotDossiers(l)) return;
         if (!l || !OPX || !OPX.montrerFactures) return;
         var LISTE = l.cpf ? CAS_CORRIGER : CAS_CORRIGER_GENERAL;
         var its = cas ? l.its.filter(function (f) { return casCorriger(f, l.cpf) === cas; }) : l.its;
@@ -991,7 +1022,11 @@
         var jourFR = function (d) { return String(d || '').split('-').reverse().join('/'); };
         lots.annule.forEach(function (f) {
             var d = f.edofDossier, nom = (EDOF.dossiers[d.numero] || [])[7] || nomCle(f.apprenant);
-            f.__autresDossiers = (EDOF.parNom[nom] || []).filter(function (k) { return k !== d.numero && !/annul|refus|non r[ée]alis/i.test(EDOF.dossiers[k][0]); }).map(function (k) {
+            var autres = (EDOF.parNom[nom] || []).filter(function (k) { return k !== d.numero && !/annul|refus|non r[ée]alis/i.test(EDOF.dossiers[k][0]); });
+            f.__nouveauxDossiers = autres.map(function (k) { var x = EDOF.dossiers[k];
+                return { numero: k, statut: x[0], fin: x[2], montant: x[4] != null ? x[4] : x[3], facturable: x[4] != null,
+                         factures: (EDOF.parDossier[k] || []).map(function (n) { var l = EDOF_BRUT.factures[n]; return n + ' (' + l[2].toLowerCase() + ', ' + Math.round(l[0]).toLocaleString('fr-FR') + ' €)'; }) }; });
+            f.__autresDossiers = autres.map(function (k) {
                 var x = EDOF.dossiers[k], fa = (EDOF.parDossier[k] || []).map(function (n) { var l = EDOF_BRUT.factures[n]; return n + ' ' + l[2].toLowerCase(); });
                 return k + ' — ' + x[0] + (x[2] ? ', fin de session ' + jourFR(x[2]) : '') + (fa.length ? ', facture EDOF : ' + fa.join(', ') : ', pas de facture EDOF'); });
             f.__autresFactures = (parApprenant[nomCle(f.apprenant)] || []).filter(function (g) { return g !== f && g.cle !== f.cle; }).map(function (g) {
@@ -1004,7 +1039,7 @@
         var deLAnnee = nonVersees.filter(function (f) { return an(f) === anneeRef; });
         var rangees = cpf.filter(function (f) { return f.edofVerse && !hp(f); }).length;
         var eur0 = function (l) { return Math.round(l.reduce(function (t, f) { return t + (f.montant || 0); }, 0)).toLocaleString('fr-FR') + ' €'; };
-        var poser = function (l, titre, note, code) { EDOF_LOTS.push({ titre: titre, its: l, note: note, code: code }); return EDOF_LOTS.length - 1; };
+        var poser = function (l, titre, note, code) { EDOF_LOTS.push({ titre: titre, its: l, note: note, code: code, dossiers: /^edof-1[abc]/.test(code) }); return EDOF_LOTS.length - 1; };
         var nbLien = function (l, i) { return l.length ? '<button type="button" class="op-lien" data-edof-lot="' + i + '" title="Voir ces factures"><b>' + l.length.toLocaleString('fr-FR') + '</b></button>' : '<b>0</b>'; };
         var exp = function (l, i) { return l.length ? ' <button type="button" class="v3-edof-exp" data-edof-export="' + i + '">exporter</button>' : ''; };
         var enLigne = function (l, lib, note, code) { var i = poser(l, 'CPF — ' + lib, note, code); return nbLien(l, i) + ' ' + esc(lib) + ' <span class="op-pied">· ' + eur0(l) + exp(l, i) + '</span>'; };
@@ -1430,6 +1465,12 @@
             if (f.edofDossier) { o['EDOF — n° de dossier'] = f.edofDossier.numero; o['EDOF — statut du dossier'] = f.edofDossier.statut; o['EDOF — début de session'] = d(f.edofDossier.debut);
                 o['EDOF — fin de session'] = d(f.edofDossier.fin); o['EDOF — montant facturable'] = f.edofDossier.montantFacturable == null ? '' : f.edofDossier.montantFacturable;
                 o['EDOF — dossier trouvé par le nom'] = f.dossierVientEdof ? 'oui' : ''; }
+            if (f.__nouveauxDossiers) { var nvx = f.__nouveauxDossiers;
+                o['N° de dossier sur la facture'] = f.edofDossier ? f.edofDossier.numero : '';
+                o['Nouveau n° de dossier'] = nvx.map(function (x) { return x.numero; }).join(' | ');
+                o['Statut du nouveau dossier'] = nvx.map(function (x) { return x.statut; }).join(' | ');
+                o['Montant du nouveau dossier'] = nvx.length === 1 ? nvx[0].montant : nvx.map(function (x) { return x.montant; }).join(' | ');
+                o['Facture EDOF du nouveau dossier'] = nvx.map(function (x) { return x.factures.join(' ; '); }).filter(Boolean).join(' | '); }
             if (f.__autresDossiers) o['Autre dossier EDOF du même apprenant'] = f.__autresDossiers.join(' | ');
             if (f.__autresFactures) o['Autres factures Monday du même apprenant'] = f.__autresFactures.join(' | ');
             if (f.edofAvance) { o['EDOF — avance versée'] = f.edofAvance.montant; o['EDOF — date de l’avance'] = d(f.edofAvance.date); }
