@@ -799,6 +799,17 @@
             var hors = its.filter(function (f) { return !cles[OPX.etapeDe(f)]; });
             var echue = function (f) { return f.retardJours != null ? f.retardJours > 0 : f.etat === 'En retard'; };
             var nom = nomFin(CIRCUIT_FIN);
+            // La règle d'échéance qui fait entrer une facture dans chaque étape, écrite en petit sous l'étape.
+            var regleFin = (st.rules || []).filter(function (x) { return x.key === CIRCUIT_FIN; })[0] || {};
+            var noteEch = String(regleFin.note || 'échéance calculée').replace(/\s+—.*$/, '');
+            var minus = noteEch.charAt(0).toLowerCase() + noteEch.slice(1);
+            var regV3 = (G.LioraV3Regles && G.LioraV3Regles.reglages && G.LioraV3Regles.reglages()) || {};
+            var jPayable = +((regV3.controle || {}).cpfPayable) > 0 ? +regV3.controle.cpfPayable : 45, jReco = regleFin.jours != null ? regleFin.jours : 60;
+            var REGLE_ETAPE = CIRCUIT_FIN === 'CPF'
+                ? { ctl: 'avant fin de formation + ' + jPayable + ' jours', adv: 'de fin de formation + ' + jPayable + ' jours à + ' + jReco + ' jours',
+                    rec: 'à partir de fin de formation + ' + jReco + ' jours', fin: 'après relance restée sans effet', cor: 'facture payée, ou à rectifier' }
+                : { ctl: 'avant l’échéance : ' + minus, adv: 'avant l’échéance, facture à rendre payable', rec: 'après l’échéance : ' + minus,
+                    fin: 'après relance restée sans effet', cor: 'facture payée, ou à rectifier' };
             var vignette = function (n, l, titre, quoi, faire, code, classe) {
                 EDOF_LOTS.push({ titre: nom + ' — ' + titre, its: l, note: quoi, code: 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-' + code });
                 var i = EDOF_LOTS.length - 1;
@@ -806,7 +817,9 @@
                     + (l.length ? '<button type="button" class="op-lien" data-edof-lot="' + i + '" title="Voir ces factures"><b>' + l.length.toLocaleString('fr-FR') + '</b></button>' : '<b>0</b>')
                     + '</span><span class="v3-edof-titre">' + esc(titre) + '</span><span class="v3-edof-mt">' + somme(l)
                     + (l.length ? ' <button type="button" class="v3-edof-exp" data-edof-export="' + i + '">exporter</button>' : '') + '</span>'
-                    + '<span class="op-pied">' + esc(quoi) + '</span><span class="v3-edof-faire">→ ' + esc(faire) + '</span></div>';
+                    + '<span class="op-pied">' + esc(quoi) + '</span>'
+                    + (REGLE_ETAPE[code === 'sous-controle' ? 'ctl' : code] ? '<span class="v3-edof-regle">Règle : ' + esc(REGLE_ETAPE[code === 'sous-controle' ? 'ctl' : code]) + '</span>' : '')
+                    + '<span class="v3-edof-faire">→ ' + esc(faire) + '</span></div>';
             };
             var horsEchues = hors.filter(echue), n = 1;
             var tuiles = vignette(n++, hors.filter(function (f) { return !echue(f); }), 'Sous contrôle', 'Avant échéance, dans aucune étape du circuit.', 'rien à faire pour l’instant', 'sous-controle');
@@ -934,9 +947,6 @@
 
             var regle = (st.rules || []).filter(function (x) { return x.key === CIRCUIT_FIN; })[0];
             return '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">' + esc(nomF) + ' — ancienneté du retard croisée avec les étapes du circuit</h3></div>'
-                + '<p class="pil-note">' + (regle && regle.note ? '<b>Règle d’échéance :</b> ' + esc(regle.note) + '. ' : '')
-                + 'En ligne, où en est la facture par rapport à son échéance ; en colonne, dans quelle étape du circuit elle se trouve dans Monday. '
-                + 'Les factures payées mais pas encore déplacées sont rangées dans « Corriger ».</p>'
                 + matrice + blocPayees + aVerif;
         }
         var cpf = (st.factures || []).filter(function (f) { return f.role !== 'sellsy' && (f.financement === 'CPF' || f.edof); });
@@ -1144,12 +1154,6 @@
         hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + parcours
             + '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">CPF — étapes EDOF croisées avec les étapes du circuit</h3>'
             + '<span class="pil-coin">export EDOF jusqu’au ' + jour(p.length && p[p.length - 1][1]) + ' · grand livre au ' + jour(GL_INFO && GL_INFO.arrete) + '</span></div>'
-            + '<p class="pil-note"><b>Règle CPF :</b> « Rendre payable » commence à fin de formation + ' + delaiPayable + ' jours, et le recouvrement (« Relancer ») à fin de formation + ' + delaiCpf + ' jours. '
-            + 'Les factures dont le groupe Monday ne correspond pas à cette règle sont dans « Facturation à revérifier ». '
-            + 'En ligne, où en est la facture dans EDOF ; en colonne, dans quelle étape du circuit elle se trouve dans Monday. '
-            + 'Les lignes 0 à 2b sont les factures pas encore déposées sur EDOF, classées d’après le statut de leur dossier (export « Tous les dossiers »). '
-            + 'Les factures versées par EDOF sont payées : elles sont rangées dans « Corriger », en trois cas selon leur pointage, tant qu’elles ne sont pas déplacées dans Monday. '
-            + rangees.toLocaleString('fr-FR') + ' autres factures versées sont déjà rangées dans les payées.</p>'
             + matrice
             + (verse.length ? '<div class="v3-edof-detail"><div><b>Étape 5 — les ' + verse.length.toLocaleString('fr-FR') + ' factures payées, à corriger</b><ul class="v3-edof-sous">'
                 + '<li>' + enLigne(payees.a, 'pointées sur Sellsy et Pennylane → rectifier Monday', 'Payées (EDOF), lettrées au grand livre et pointées sur Sellsy : il ne reste qu’à les déplacer dans les payées dans Monday.', 'edof-5a-pointee-rectifier-monday') + '</li>'
