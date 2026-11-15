@@ -810,14 +810,14 @@
                     rec: 'à partir de fin de formation + ' + jReco + ' jours', fin: 'après relance restée sans effet', cor: 'facture payée, ou à rectifier' }
                 : { ctl: 'avant l’échéance : ' + minus, adv: 'avant l’échéance, facture à rendre payable', rec: 'après l’échéance : ' + minus,
                     fin: 'après relance restée sans effet', cor: 'facture payée, ou à rectifier' };
-            var vignette = function (n, l, titre, quoi, faire, code, classe) {
+            var vignette = function (n, l, titre, quoi, faire, code, classe, encart) {
                 EDOF_LOTS.push({ titre: nom + ' — ' + titre, its: l, note: quoi, code: 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-' + code });
                 var i = EDOF_LOTS.length - 1;
                 return '<div class="v3-edof-tuile ' + (classe || '') + '"><span class="v3-edof-rang">' + n + '</span><span class="v3-edof-nb">'
                     + (l.length ? '<button type="button" class="op-lien" data-edof-lot="' + i + '" title="Voir ces factures"><b>' + l.length.toLocaleString('fr-FR') + '</b></button>' : '<b>0</b>')
                     + '</span><span class="v3-edof-titre">' + esc(titre) + '</span><span class="v3-edof-mt">' + somme(l)
                     + (l.length ? ' <button type="button" class="v3-edof-exp" data-edof-export="' + i + '">exporter</button>' : '') + '</span>'
-                    + '<span class="op-pied">' + esc(quoi) + '</span>'
+                    + '<span class="op-pied">' + esc(quoi) + '</span>' + (encart || '')
                     + (REGLE_ETAPE[code === 'sous-controle' ? 'ctl' : code] ? '<span class="v3-edof-regle">Règle : ' + esc(REGLE_ETAPE[code === 'sous-controle' ? 'ctl' : code]) + '</span>' : '')
                     + '<span class="v3-edof-faire">→ ' + esc(faire) + '</span></div>';
             };
@@ -829,17 +829,24 @@
                     quoi = 'Dont ' + payFin.length + ' payées mais pas encore déplacées dans les payées (à rectifier dans Monday), et ' + lot.length + ' dans un groupe Monday du circuit « Corriger ».';
                     lot = lot.concat(payFin);
                 }
-                tuiles += vignette(n++, lot, e.n, quoi, e.svc + ' · cible ' + e.cible + ' j', e.k, e.k === 'rec' ? 'fort' : '');
+                var encart = '';
+                if (e.k === 'rec' && horsEchues.length) {
+                    // Échues mais restées dans un groupe « en cours » : elles relèvent du recouvrement, et le disent en rouge.
+                    EDOF_LOTS.push({ titre: nom + ' — échues, encore dans un groupe « en cours »', its: horsEchues,
+                        note: 'Échéance passée, mais le groupe Monday n’est rangé dans aucune étape du circuit : à déplacer en recouvrement dans Monday.', code: 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-echues-hors-etape' });
+                    var ih = EDOF_LOTS.length - 1;
+                    encart = '<span class="v3-edof-rouge">dont <button type="button" class="op-lien" data-edof-lot="' + ih + '"><b>' + horsEchues.length.toLocaleString('fr-FR')
+                        + '</b> échues encore dans un groupe « en cours »</button> · ' + somme(horsEchues) + ' <button type="button" class="v3-edof-exp" data-edof-export="' + ih + '">exporter</button></span>';
+                    quoi = lot.length.toLocaleString('fr-FR') + ' dans les groupes Monday de l’étape « ' + e.n + ' », et ' + horsEchues.length + ' échues à y déplacer.';
+                    lot = lot.concat(horsEchues);
+                }
+                tuiles += vignette(n++, lot, e.n, quoi, e.svc + ' · cible ' + e.cible + ' j', e.k, e.k === 'rec' ? 'fort' : '', encart);
                 if (e.k === 'cor') { EDOF_LOTS[EDOF_LOTS.length - 1].filtres = true; EDOF_LOTS[EDOF_LOTS.length - 1].cpf = CIRCUIT_FIN === 'CPF' && !!EDOF; }
             });
             parcours = '<p class="pil-note">Les ' + (its.length + payFin.length).toLocaleString('fr-FR') + ' factures ' + esc(nom) + ' encore dans les tableaux Monday des non payées, rangées dans l’ordre du circuit : '
                 + its.length.toLocaleString('fr-FR') + ' non réglées' + (payFin.length ? ' et ' + payFin.length.toLocaleString('fr-FR') + ' payées à déplacer (dans « Corriger »)' : '') + '. '
                 + 'Chaque nombre ouvre ses factures ; « exporter » en donne la liste Excel. Cette carte ne suit pas les filtres de période.</p>'
-                + '<div class="v3-edof-grille">' + tuiles + '</div>'
-                + (horsEchues.length ? (function () { EDOF_LOTS.push({ titre: nom + ' — échues, dans aucune étape', its: horsEchues, note: 'Échéance passée, mais le groupe Monday n’est rangé dans aucune étape du circuit.', code: 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-echues-hors-etape' });
-                    var i = EDOF_LOTS.length - 1;
-                    return '<p class="op-alerte"><button type="button" class="op-lien" data-edof-lot="' + i + '"><b>' + horsEchues.length.toLocaleString('fr-FR') + '</b> factures échues</button> ('
-                        + somme(horsEchues) + ') sont encore dans un groupe « en cours », hors de toute étape. <button type="button" class="v3-edof-exp" data-edof-export="' + i + '">exporter</button></p>'; })() : '');
+                + '<div class="v3-edof-grille">' + tuiles + '</div>';
         }
         if (CIRCUIT_FIN !== 'CPF' || !EDOF) {
             hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + parcours + detailGeneral() + '</div></div>';
@@ -862,8 +869,8 @@
             var pointee = function (f) { return f.grandLivreSoldee || f.soldeeParAvoir; };
 
             // 1. Retard × étape du circuit
-            var COLS = [{ k: 'ctl', n: 'Sous contrôle' }].concat((OPX.CIRCUIT || []).map(function (e) { return { k: e.k, n: e.n }; })).concat([{ k: 'hors', n: 'Échue, hors étape' }]);
-            var colDe = function (f) { if (f.paye) return 'cor'; var k = OPX.etapeDe(f); if (cles[k]) return k; return echue(f) ? 'hors' : 'ctl'; };
+            var COLS = [{ k: 'ctl', n: 'Sous contrôle' }].concat((OPX.CIRCUIT || []).map(function (e) { return { k: e.k, n: e.n }; }));
+            var colDe = function (f) { if (f.paye) return 'cor'; var k = OPX.etapeDe(f); if (cles[k]) return k; return echue(f) ? 'rec' : 'ctl'; };
             var r = function (f) { return f.retardJours; };
             var LIGNES = [
                 { n: '1 · Pas encore échue', faire: 'rien à faire, sauf si elle est déjà relancée', l: itsF.filter(function (f) { return f.dateEcheance && !(r(f) > 0); }), code: 'non-echue' },
@@ -1030,9 +1037,9 @@
         };
         var sellsyInconnu = verse.filter(function (f) { return sellsyPointe(f) === 'inconnu'; }).length;
         // ── EDOF × circuit : chaque facture a une étape EDOF (ligne) et une étape du circuit Monday (colonne).
-        var COLS = [{ k: 'ctl', n: 'Sous contrôle' }].concat((OPX.CIRCUIT || []).map(function (e) { return { k: e.k, n: e.n }; })).concat([{ k: 'hors', n: 'Échue, hors étape' }]);
+        var COLS = [{ k: 'ctl', n: 'Sous contrôle' }].concat((OPX.CIRCUIT || []).map(function (e) { return { k: e.k, n: e.n }; }));
         var autresPayees = ouvertes.filter(function (f) { return f.paye && !f.edofVerse; });
-        var colDe = function (f) { if (f.edofVerse || f.paye) return 'cor'; var k = OPX.etapeDe(f); if (cles[k]) return k; return echue(f) ? 'hors' : 'ctl'; };
+        var colDe = function (f) { if (f.edofVerse || f.paye) return 'cor'; var k = OPX.etapeDe(f); if (cles[k]) return k; return echue(f) ? 'rec' : 'ctl'; };
         var LIGNES = [
             { n: '0 · Dossier introuvable dans EDOF', faire: 'vérifier le numéro de dossier ou le nom de l’apprenant', l: lots.introuvable, code: 'edof-0-dossier-introuvable' },
             { n: '1a · Dossier annulé ou refusé, mais un autre dossier EDOF existe pour l’apprenant', faire: 'rattacher la facture au bon dossier', l: lots.annuleAutreDossier, code: 'edof-1a-annule-autre-dossier' },

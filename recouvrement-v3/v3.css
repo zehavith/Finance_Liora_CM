@@ -464,3 +464,4 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 .v3-motif { font-weight: 600; } .v3-averifier tr.total td { font-weight: 600; border-top: 2px solid var(--border-hover, #d8d4cc); }
 .v3-trouve { display: inline-block; margin-top: 0.2rem; font-size: 0.74rem; color: var(--accent, #c8472b); }
 .v3-edof-regle { font-size: 0.7rem; color: var(--text-muted); font-style: italic; line-height: 1.3; }
+.v3-edof-rouge { display: block; margin-top: 0.3rem; padding: 0.3rem 0.45rem; border-radius: 6px; background: rgba(184, 53, 42, 0.09); color: var(--red, #B8352A); font-size: 0.76rem; line-height: 1.35; } .v3-edof-rouge .op-lien { color: inherit; }
