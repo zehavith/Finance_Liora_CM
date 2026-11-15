@@ -673,8 +673,15 @@
         ['hors', 'Réglées ou annulées en comptabilité, sans versement EDOF connu — rectification à faire sur Monday'],
         ['groupe', 'Non réglées, rangées dans un groupe Monday « Corriger »']
     ];
-    function casCorriger(f) {
+    // Hors CPF, EDOF n'existe pas : seuls le pointage en comptabilité et le groupe Monday comptent.
+    var CAS_CORRIGER_GENERAL = [
+        ['p', 'Payées, pointées en comptabilité (Pennylane) — rectification à faire sur Monday'],
+        ['np', 'Payées, non pointées en comptabilité — à pointer, puis rectifier Monday'],
+        ['groupe', 'Non réglées, rangées dans un groupe Monday « Corriger »']
+    ];
+    function casCorriger(f, cpf) {
         if (!f.paye) return 'groupe';
+        if (!cpf) return f.grandLivreSoldee || f.soldeeParAvoir ? 'p' : 'np';
         if (!f.edofVerse) return 'hors';
         if (!f.grandLivreSoldee) return 'c';
         return sellsyPointe(f) === 'oui' ? 'a' : 'b';
@@ -710,21 +717,23 @@
         var OPX = G.LioraOperationnel;
         if (l && l.motifs && ouvrirLotMotifs(l)) return;
         if (!l || !OPX || !OPX.montrerFactures) return;
-        var its = cas ? l.its.filter(function (f) { return casCorriger(f) === cas; }) : l.its;
-        var lib = cas ? (CAS_CORRIGER.filter(function (c) { return c[0] === cas; })[0] || [])[1] : '';
+        var LISTE = l.cpf ? CAS_CORRIGER : CAS_CORRIGER_GENERAL;
+        var its = cas ? l.its.filter(function (f) { return casCorriger(f, l.cpf) === cas; }) : l.its;
+        var lib = cas ? (LISTE.filter(function (c) { return c[0] === cas; })[0] || [])[1] : '';
         OPX.montrerFactures(l.titre, its, cas ? lib + '.' : l.note);
         setTimeout(function () {
             var modale = document.querySelector('#modal-overlay .modal'), pied = modale && modale.querySelector('.modal-foot'), corps = modale && modale.querySelector('.modal-body');
             if (!modale) return;
+            if (pied) [].slice.call(pied.querySelectorAll('button')).forEach(function (b) { if (/^Exporter en Excel/.test(b.textContent.trim())) b.style.display = 'none'; });
             if (pied && !pied.querySelector('.v3-export-lot')) {
                 var e = document.createElement('button'); e.type = 'button'; e.className = 'btn btn-ghost btn-sm v3-export-lot'; e.textContent = 'Exporter cette liste (Excel)';
                 e.onclick = function () { exporterControle({ code: l.code + (cas ? '-' + cas : ''), items: its }); }; pied.insertBefore(e, pied.firstChild);
             }
             if (l.filtres && corps && !corps.querySelector('.v3-filtre-cas')) {
-                var compte = {}; l.its.forEach(function (f) { var k = casCorriger(f); compte[k] = (compte[k] || 0) + 1; });
+                var compte = {}; l.its.forEach(function (f) { var k = casCorriger(f, l.cpf); compte[k] = (compte[k] || 0) + 1; });
                 var boite = document.createElement('p'); boite.className = 'v3-filtre-cas';
                 boite.innerHTML = '<label for="v3-cas-corriger">Filtrer :</label> <select id="v3-cas-corriger" class="v3-circuit-choix"><option value="">Toutes les factures — '
-                    + l.its.length.toLocaleString('fr-FR') + '</option>' + CAS_CORRIGER.map(function (c) {
+                    + l.its.length.toLocaleString('fr-FR') + '</option>' + LISTE.map(function (c) {
                         return '<option value="' + c[0] + '"' + (c[0] === cas ? ' selected' : '') + (compte[c[0]] ? '' : ' disabled') + '>' + esc(c[1]) + ' — ' + (compte[c[0]] || 0).toLocaleString('fr-FR') + '</option>'; }).join('') + '</select>';
                 corps.insertBefore(boite, corps.firstChild);
                 boite.querySelector('select').onchange = function () { ouvrirLotCircuit(l, this.value || null); };
@@ -783,7 +792,7 @@
                     lot = lot.concat(payFin);
                 }
                 tuiles += vignette(n++, lot, e.n, quoi, e.svc + ' · cible ' + e.cible + ' j', e.k, e.k === 'rec' ? 'fort' : '');
-                if (e.k === 'cor') EDOF_LOTS[EDOF_LOTS.length - 1].filtres = true;
+                if (e.k === 'cor') { EDOF_LOTS[EDOF_LOTS.length - 1].filtres = true; EDOF_LOTS[EDOF_LOTS.length - 1].cpf = CIRCUIT_FIN === 'CPF' && !!EDOF; }
             });
             parcours = '<p class="pil-note">Les ' + (its.length + payFin.length).toLocaleString('fr-FR') + ' factures ' + esc(nom) + ' encore dans les tableaux Monday des non payées, rangées dans l’ordre du circuit : '
                 + its.length.toLocaleString('fr-FR') + ' non réglées' + (payFin.length ? ' et ' + payFin.length.toLocaleString('fr-FR') + ' payées à déplacer (dans « Corriger »)' : '') + '. '
