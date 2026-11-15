@@ -712,23 +712,26 @@
     function ouvrirLotMotifs(l) {
         var u = UI(); if (!u || !u.modal || !u.table) return false;
         var d = function (v) { var x = v && R.parseDate(v); return x ? jourLocal(x).split('-').reverse().join('/') : ''; };
+        // Une information par colonne, et le texte passe à la ligne : rien n'est coupé.
+        var a1 = function (k) { return l.its.some(function (f) { return (f[k] || []).length; }); };
+        var liste = function (t) { return (t || []).map(function (x) { return esc(x); }).join('<br>'); };
         var cols = [
-            { key: '__motif', label: 'Motif', width: '300px', format: function (v, f) { return '<span class="v3-motif">' + esc(v || '') + '</span>'
-                + ((f.__autresMotifs || []).length ? '<br><span class="op-pied">aussi : ' + esc(f.__autresMotifs.join(' ; ')) + '</span>' : '')
-                + (f.__attendu ? '<br><span class="op-pied">' + esc(f.__attendu) + '</span>' : '')
-                + ((f.__autresDossiers || []).length ? '<br><span class="v3-trouve">Autre dossier EDOF : ' + esc(f.__autresDossiers.join(' | ')) + '</span>' : '')
-                + ((f.__autresFactures || []).length ? '<br><span class="v3-trouve">Autre facture Monday : ' + esc(f.__autresFactures.join(' | ')) + '</span>' : ''); } },
-            { key: 'numero', label: 'Facture', width: '150px', format: function (v, f) { return esc(v || '') + (f.apprenant ? '<br><span class="op-pied">' + esc(f.apprenant) + '</span>' : ''); } },
-            { key: 'groupe', label: 'Groupe Monday' },
-            { key: 'dateFinFormation', label: 'Fin de formation', width: '104px', format: d },
-            { key: 'montant', label: 'Montant', align: 'right', width: '100px', format: function (v) { return v == null ? '—' : Math.round(v).toLocaleString('fr-FR') + ' €'; } },
-            (EDOF && l.its.some(function (f) { return f.financement === 'CPF'; }))
-                ? { key: 'edof', label: 'EDOF', width: '150px', format: function (v, f) { return v ? esc(v.statut) + (v.date ? ' le ' + d(v.date) : '') : (f.edofDossier ? 'dossier : ' + esc(f.edofDossier.statut) + (f.edofAvance ? '<br><span class="op-pied">avance versée</span>' : '') : 'dossier introuvable'); } }
-                : { key: 'dateEcheance', label: 'Échéance', width: '150px', format: function (v, f) { return v ? d(v) + (f.retardJours > 0 ? '<br><span class="op-pied">dépassée de ' + f.retardJours + ' j</span>' : '') : '<span class="op-pied">inconnue</span>'; } }
+            { key: 'numero', label: 'Facture', width: '130px', format: function (v, f) { return '<b>' + esc(v || '') + '</b>' + (f.apprenant ? '<br><span class="op-pied">' + esc(f.apprenant) + '</span>' : ''); } },
+            { key: 'montant', label: 'Montant', align: 'right', width: '90px', format: function (v) { return v == null ? '—' : Math.round(v).toLocaleString('fr-FR') + ' €'; } },
+            { key: '__motif', label: 'Motif', width: '230px', format: function (v) { return '<span class="v3-motif">' + esc(v || '') + '</span>'; } }
         ];
+        if (a1('__autresMotifs')) cols.push({ key: '__autresMotifs', label: 'Autres motifs', width: '220px', format: function (v) { return liste(v) || '—'; } });
+        if (l.its.some(function (f) { return f.__attendu; })) cols.push({ key: '__attendu', label: 'Situation et étape attendue', width: '230px', format: function (v) { return v ? esc(v) : '—'; } });
+        cols.push({ key: 'groupe', label: 'Groupe Monday', width: '200px', format: function (v) { return esc(v || ''); } });
+        cols.push({ key: 'dateFinFormation', label: 'Fin de formation', width: '100px', format: d });
+        cols.push((EDOF && l.its.some(function (f) { return f.financement === 'CPF'; }))
+            ? { key: 'edof', label: 'EDOF', width: '170px', format: function (v, f) { return v ? esc(v.statut) + (v.date ? ' le ' + d(v.date) : '') : (f.edofDossier ? 'Dossier : ' + esc(f.edofDossier.statut) + (f.edofAvance ? '<br><span class="op-pied">avance versée</span>' : '') : 'Dossier introuvable'); } }
+            : { key: 'dateEcheance', label: 'Échéance', width: '130px', format: function (v, f) { return v ? d(v) + (f.retardJours > 0 ? '<br><span class="op-pied">dépassée de ' + f.retardJours + ' j</span>' : '') : '<span class="op-pied">inconnue</span>'; } });
+        if (a1('__autresDossiers')) cols.push({ key: '__autresDossiers', label: 'Autre dossier EDOF de l’apprenant', width: '280px', format: function (v) { return liste(v) || '—'; } });
+        if (a1('__autresFactures')) cols.push({ key: '__autresFactures', label: 'Autre facture Monday de l’apprenant', width: '280px', format: function (v) { return liste(v) || '—'; } });
         var somme = l.its.reduce(function (t, f) { return t + (f.montant || 0); }, 0);
         u.modal(l.titre, '<p class="pil-note">' + l.its.length.toLocaleString('fr-FR') + ' facture' + (l.its.length > 1 ? 's' : '') + ' · ' + Math.round(somme).toLocaleString('fr-FR') + ' €. ' + esc(l.note || '')
-            + (l.its.length > 400 ? ' Les 400 premières sont affichées ; l’export les donne toutes.' : '') + '</p><div class="table-wrap-tall">'
+            + (l.its.length > 400 ? ' Les 400 premières sont affichées ; l’export les donne toutes.' : '') + '</p><div class="table-wrap-tall v3-table-libre">'
             + u.table(cols, l.its.slice(0, 400), { vide: 'Aucune facture.' }) + '</div>',
             [{ label: 'Exporter cette liste (Excel)', action: function () { exporterControle({ code: l.code, items: l.its }); } }, { label: 'Fermer' }], { large: true });
         // Si la fenêtre ne sait pas porter un bouton d'action, l'export est ajouté à la main.
@@ -762,7 +765,7 @@
         ];
         var somme = its.reduce(function (t, f) { return t + (f.montant || 0); }, 0);
         u.modal(l.titre, '<p class="pil-note">' + its.length.toLocaleString('fr-FR') + ' facture' + (its.length > 1 ? 's' : '') + ' · ' + Math.round(somme).toLocaleString('fr-FR') + ' €. '
-            + 'Pour chaque facture : le dossier qu’elle porte (annulé ou refusé), le nouveau dossier trouvé au nom du même apprenant, et son montant.</p><div class="table-wrap-tall">'
+            + 'Pour chaque facture : le dossier qu’elle porte (annulé ou refusé), le nouveau dossier trouvé au nom du même apprenant, et son montant.</p><div class="table-wrap-tall v3-table-libre">'
             + u.table(cols, its.slice(0, 400), { vide: 'Aucune facture.' }) + '</div>', [{ label: 'Fermer' }], { large: true });
         setTimeout(function () { var pied = document.querySelector('#modal-overlay .modal-foot'); if (!pied || pied.querySelector('.v3-export-lot')) return;
             var e = document.createElement('button'); e.type = 'button'; e.className = 'btn btn-ghost btn-sm v3-export-lot'; e.textContent = 'Exporter cette liste (Excel)';
@@ -1002,14 +1005,23 @@
             // UN SEUL TABLEAU : sous les lignes du retard, les autres points à revérifier, étape par étape, en rouge.
             var lignesB = VER.map(function (v) { if (!v[2].length) return '';
                 var i = pose(v[2], nomF + ' — à revérifier — ' + v[0], v[1], 'x'); EDOF_LOTS[i].motifs = true; EDOF_LOTS[i].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-' + v[3];
-                return '<tr class="v3-ligne-motif"><td><span class="v3-motif">' + esc(v[0]) + '</span><br><span class="op-pied">' + esc(v[1]) + '</span></td>'
+                return '<tr class="v3-ligne-motif"><td><span class="v3-motif">' + esc(v[0]) + '</span>'
+                    + (['payee-encore-relancee', 'reglement-non-lettre', 'echue-hors-etape', 'doublon-monday', 'echeance-inconnue'].indexOf(v[3]) >= 0 ? ' <span class="v3-important">important</span>' : '')
+                    + '<br><span class="op-pied">' + esc(v[1]) + '</span></td>'
                     + COLS.map(function (c) { var l = v[2].filter(function (f) { return colDe(f) === c.k; }); if (!l.length) return '<td class="n v3-vide">—</td>';
                         var j = pose(l, nomF + ' — ' + v[0] + ' × ' + c.n, v[1], 'x'); EDOF_LOTS[j].motifs = true; EDOF_LOTS[j].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-' + v[3] + '-' + c.k;
                         return '<td class="n v3-malplace">' + nbL(l, j) + '<br><span class="op-pied">' + e0(l) + '</span></td>'; }).join('')
                     + '<td class="n"><b>' + nbL(v[2], i) + '</b><br><span class="op-pied">' + e0(v[2]) + ex(v[2], i) + '</span></td></tr>'; }).join('');
             if (lignesB) lignesB = '<tr class="v3-sous-titre"><td colspan="' + (COLS.length + 2) + '">Points à revérifier — une même facture peut figurer sur plusieurs lignes</td></tr>' + lignesB;
             matrice = matrice.replace('</tbody></table></div>', lignesB + '</tbody></table></div>');
-            var aVerif = toutes.length ? '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + e0(toutes) + '), en rouge dans le tableau et dans les vignettes. '
+            // Les points importants en tête, comme pour le CPF : toutes les factures concernées, même si elles ont aussi un autre motif.
+            var IMP = ['payee-encore-relancee', 'reglement-non-lettre', 'echue-hors-etape', 'doublon-monday', 'echeance-inconnue'];
+            var bandeauG = '<div class="v3-importants"><span class="v3-importants-titre">Points importants</span>' + IMP.map(function (k) {
+                var v = VER.filter(function (x) { return x[3] === k; })[0]; if (!v) return '';
+                var i = pose(v[2], nomF + ' — important — ' + v[0], v[1], 'x'); EDOF_LOTS[i].motifs = true; EDOF_LOTS[i].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-important-' + k;
+                return '<span class="v3-important-carte' + (v[2].length ? '' : ' vide') + '"><span class="v3-important-nb">' + nbL(v[2], i) + '</span><span class="v3-important-lib">' + esc(v[0]) + '</span>'
+                    + '<span class="op-pied">' + (v[2].length ? e0(v[2]) + ex(v[2], i) : 'aucune') + '</span></span>'; }).join('') + '</div>';
+            var aVerif = toutes.length ? bandeauG + '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + e0(toutes) + '), en rouge dans le tableau et dans les vignettes. '
                 + '<button type="button" class="btn btn-ghost btn-sm" data-edof-lot="' + iT + '">Voir la liste triée par motif</button> '
                 + '<button type="button" class="btn btn-ghost btn-sm" data-edof-export="' + iT + '">Exporter le tout (Excel)</button></p>' : '';
             // Dans chaque vignette, les factures dont l'étape Monday n'est pas celle attendue.
