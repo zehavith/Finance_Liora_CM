@@ -805,7 +805,7 @@
         var st = etat(), OPX = G.LioraOperationnel, hote = $('#v3-op-edof');
         if (!hote || !st || !OPX) return;
         var hp = function (f) { return f.role !== 'sellsy' && (f.presenceRoles || [f.role]).indexOf('payees') < 0; };
-        (st.factures || []).forEach(function (f) { if (f.__motif || f.__attendu) { f.__motif = null; f.__autresMotifs = null; f.__attendu = null; } });
+        (st.factures || []).forEach(function (f) { if (f.__motif || f.__attendu || f.__autresFactures) { f.__motif = null; f.__autresMotifs = null; f.__attendu = null; f.__autresFactures = null; } });
         // « Le circuit : » puis une vignette par financement. Le CPF se lit
         // d'après EDOF ; les autres, d'après les étapes du circuit Monday.
         var libelles = {}; (st.rules || R.DEFAULT_ECHEANCE_RULES || []).forEach(function (r) { libelles[r.key] = r.label; });
@@ -826,6 +826,20 @@
             hote.querySelectorAll('[data-edof-export]').forEach(function (b) { b.onclick = function () { var l = EDOF_LOTS[+b.dataset.edofExport]; if (l) exporterControle({ code: l.code, items: l.its }); }; });
         };
         var parcours = '';
+        // DOUBLONS POSSIBLES : une autre facture Monday au même nom et du même montant (payée ou non, tous tableaux).
+        // Pour éviter les faux doublons : le nom est celui de l'apprenant (le client ne sert que pour un particulier),
+        // et les deux factures doivent être datées à moins de 45 jours l'une de l'autre — des échéances mensuelles
+        // du même montant ne sont pas des doublons.
+        var nomDoublon = function (g) { if (g.apprenant) return nomCle(g.apprenant);
+            return (g.financement === 'BTC_PERSO' || g.financement === 'PERSO_ALTERNANCE') && g.client && g.client !== '—' ? nomCle(g.client) : ''; };
+        var parNomMontant = {};
+        (st.factures || []).forEach(function (g) { if (g.role === 'sellsy' || !g.montant) return; var nm = nomDoublon(g);
+            if (!nm) return; var k = nm + '|' + Math.round(g.montant); (parNomMontant[k] = parNomMontant[k] || []).push(g); });
+        var jourDe = function (g) { var x = g.dateFacture && R.parseDate(g.dateFacture); return x ? +x : null; };
+        var doublonsDe = function (f) { if (!f.montant) return []; var nm = nomDoublon(f); if (!nm) return []; var jf = jourDe(f);
+            return (parNomMontant[nm + '|' + Math.round(f.montant)] || []).filter(function (g) { if (g === f || !g.cle || g.cle === f.cle) return false;
+                var jg = jourDe(g); return jf == null || jg == null || Math.abs(jf - jg) <= 45 * 86400000; }); };
+        var decrire = function (g) { return (g.numero || '?') + ' — ' + Math.round(g.montant || 0).toLocaleString('fr-FR') + ' €, ' + (g.paye ? 'payée' : 'non payée') + ', ' + (g.groupe || g.board || ''); };
         // Les lignes rouges des vignettes sont posées une fois le tableau calculé.
         var poserRouges = function (html, rouge) { return html.replace(/<!--ROUGE:(\w+)-->/g, function (m, k) { return (rouge && rouge[k]) || ''; }); };
         // Dans une vignette : les factures qui ne devraient pas être dans cette étape, en rouge.
@@ -981,10 +995,10 @@
                     itsF.filter(function (f) { return echue(f) && etapeM(f) === 'adv'; }), 'echue-encore-rendre-payable'],
                 ['En recouvrement avant son échéance', 'La facture est dans un groupe de relance alors que son échéance calculée n’est pas passée : arrivée trop tôt, ou date fausse dans Monday.',
                     itsF.filter(function (f) { return etapeM(f) === 'rec' && f.dateEcheance && !echue(f); }), 'recouvrement-trop-tot'],
-                ['Plus de 360 jours de retard, pas en clôture', 'Créance très ancienne toujours hors de l’étape « Clôture ».',
-                    itsF.filter(function (f) { return r(f) > 360 && etapeM(f) !== 'fin'; }), 'tres-ancienne-hors-cloture'],
                 ['Facture saisie deux fois dans Monday', 'La même facture apparaît sur plusieurs lignes ou plusieurs tableaux Monday.',
                     tousF.filter(function (f) { return f.doublonOperationnel || f.doublonPayees; }), 'doublon-monday'],
+                ['Doublon possible : même nom et même montant sur une autre facture', 'Une autre facture Monday porte le même nom d’apprenant et le même montant, avec un autre numéro, et les deux sont datées à moins de 45 jours l’une de l’autre : facture refaite sans annuler l’ancienne, ou saisie en double. L’autre facture est indiquée dans la liste et dans l’export.',
+                    tousF.filter(function (f) { var d = doublonsDe(f); if (d.length) f.__autresFactures = d.map(decrire); return d.length; }), 'doublon-possible'],
                 ['Échéance impossible à calculer', 'Une date manque (facture, début ou fin de formation) : la facture sort des taux.',
                     itsF.filter(function (f) { return !f.dateEcheance; }), 'echeance-inconnue'],
                 ['Montant absent ou nul', 'Sans montant, la facture ne pèse pas dans les indicateurs en euros.',
@@ -1009,7 +1023,7 @@
             var lignesB = VER.map(function (v) { if (!v[2].length) return '';
                 var i = pose(v[2], nomF + ' — à revérifier — ' + v[0], v[1], 'x'); EDOF_LOTS[i].motifs = true; EDOF_LOTS[i].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-' + v[3];
                 return '<tr class="v3-ligne-motif"><td><span class="v3-motif">' + esc(v[0]) + '</span>'
-                    + (['payee-encore-relancee', 'reglement-non-lettre', 'echue-hors-etape', 'doublon-monday', 'echeance-inconnue'].indexOf(v[3]) >= 0 ? ' <span class="v3-important">important</span>' : '')
+                    + (['doublon-possible', 'payee-encore-relancee', 'reglement-non-lettre', 'echue-hors-etape', 'doublon-monday', 'echeance-inconnue'].indexOf(v[3]) >= 0 ? ' <span class="v3-important">important</span>' : '')
                     + '<br><span class="op-pied">' + esc(v[1]) + '</span></td>'
                     + COLS.map(function (c) { var l = v[2].filter(function (f) { return colDe(f) === c.k; }); if (!l.length) return '<td class="n v3-vide">—</td>';
                         var j = pose(l, nomF + ' — ' + v[0] + ' × ' + c.n, v[1], 'x'); EDOF_LOTS[j].motifs = true; EDOF_LOTS[j].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-' + v[3] + '-' + c.k;
@@ -1018,7 +1032,7 @@
             if (lignesB) lignesB = '<tr class="v3-sous-titre"><td colspan="' + (COLS.length + 2) + '">Points à revérifier — une même facture peut figurer sur plusieurs lignes</td></tr>' + lignesB;
             /* un seul tableau : les autres points sont en commentaire dans les listes */
             // Les points importants en tête, comme pour le CPF : toutes les factures concernées, même si elles ont aussi un autre motif.
-            var IMP = ['payee-encore-relancee', 'reglement-non-lettre', 'echue-hors-etape', 'doublon-monday', 'echeance-inconnue'];
+            var IMP = ['doublon-possible', 'doublon-monday', 'payee-encore-relancee', 'reglement-non-lettre', 'echue-hors-etape', 'echeance-inconnue'];
             var bandeauG = '<div class="v3-importants"><span class="v3-importants-titre">Points importants</span>' + IMP.map(function (k) {
                 var v = VER.filter(function (x) { return x[3] === k; })[0]; if (!v) return '';
                 var i = pose(v[2], nomF + ' — important — ' + v[0], v[1], 'x'); EDOF_LOTS[i].motifs = true; EDOF_LOTS[i].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-important-' + k;
@@ -1206,6 +1220,8 @@
                 tous.filter(function (f) { var d = norm(f.numeroDossier || (f.edof && f.edof.dossier)); return d && parDossier[d].length > 1; }), 'doublon-dossier'],
             ['Facture saisie deux fois dans Monday', 'La même facture apparaît sur plusieurs lignes ou plusieurs tableaux Monday.',
                 tous.filter(function (f) { return f.doublonOperationnel || f.doublonPayees; }), 'doublon-monday'],
+            ['Doublon possible : même nom et même montant sur une autre facture', 'Une autre facture Monday porte le même nom d’apprenant et le même montant, avec un autre numéro, à moins de 45 jours d’écart : facture refaite sans annuler l’ancienne, ou saisie en double.',
+                tous.filter(function (f) { var d = doublonsDe(f); if (d.length && !(f.__autresFactures || []).length) f.__autresFactures = d.map(decrire); return d.length; }), 'doublon-possible'],
             ['Dossier déjà facturé dans EDOF sous un autre numéro', 'EDOF connaît une facture pour ce dossier, mais avec un autre numéro que celui de Monday : facture refaite, ou numéro mal saisi.',
                 nonVersees.filter(function (f) { var d = norm(f.numeroDossier); return !f.edof && d && EDOF.parDossier[d]; }), 'autre-numero-edof'],
             ['Dossier annulé ou refusé — autre dossier EDOF, et une autre facture existe', 'L’apprenant a un autre dossier valide dans EDOF, et une autre facture existe déjà (dans Monday ou déposée sur EDOF) : la facture ouverte est sans doute un doublon.',
@@ -1243,7 +1259,7 @@
         var IMPORTANTS = ['doublon-dossier', 'ecart-montant', 'ecart-montant-facturable', 'ecart-date-fin', 'dossier-introuvable'];
         var ORDRE = IMPORTANTS.concat(['versee-encore-relancee', 'rejet', 'dossier-annule-autre-dossier-et-facture', 'dossier-annule-autre-dossier-sans-facture', 'dossier-annule-autre-facture',
             'dossier-annule-seul', 'service-fait-non-depose', 'relance-session-en-cours', 'relance-service-fait-a-declarer', 'service-fait-a-declarer', 'echue-pas-en-recouvrement',
-            'recouvrement-trop-tot', 'payable-en-retard', 'payable-trop-tot', 'autre-numero-edof', 'doublon-monday', 'dossier-en-controle', 'fin-de-formation-manquante']);
+            'recouvrement-trop-tot', 'payable-en-retard', 'payable-trop-tot', 'autre-numero-edof', 'doublon-monday', 'doublon-possible', 'dossier-en-controle', 'fin-de-formation-manquante']);
         VERIFS.sort(function (x, y) { return ORDRE.indexOf(x[3]) - ORDRE.indexOf(y[3]); });
         var idDe = function (f) { return f.id || f.cle || f.numero; }, motifsDe = {}, factDe = {};
         VERIFS.forEach(function (v) { v[2].forEach(function (f) { var k = idDe(f); (motifsDe[k] = motifsDe[k] || []).push(v[0]); factDe[k] = f; }); });

@@ -513,3 +513,8 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 .v3-importants { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
 #op-focus-pli > summary h3 { font-size: 1.05rem; }
 .v3-gcl-etat { background: var(--bg-tertiary, #f4f1ec); border-radius: 8px; padding: 0.6rem 0.9rem; margin: 0 0 1rem; font-size: 0.86rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+/* La flèche reste sur la ligne du titre, même en fenêtre étroite */
+.v3-pli > summary { flex-wrap: nowrap; align-items: flex-start; }
+.v3-pli > summary h3 { flex: 1 1 auto; min-width: 0; }
+.v3-pli > summary .pil-coin { flex: 0 1 auto; text-align: right; }
+.v3-pli > summary::before { flex: 0 0 1rem; margin-top: 0.15rem; }
