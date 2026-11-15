@@ -715,6 +715,7 @@
         var cols = [
             { key: '__motif', label: 'Motif', width: '300px', format: function (v, f) { return '<span class="v3-motif">' + esc(v || '') + '</span>'
                 + ((f.__autresMotifs || []).length ? '<br><span class="op-pied">aussi : ' + esc(f.__autresMotifs.join(' ; ')) + '</span>' : '')
+                + (f.__attendu ? '<br><span class="op-pied">' + esc(f.__attendu) + '</span>' : '')
                 + ((f.__autresDossiers || []).length ? '<br><span class="v3-trouve">Autre dossier EDOF : ' + esc(f.__autresDossiers.join(' | ')) + '</span>' : '')
                 + ((f.__autresFactures || []).length ? '<br><span class="v3-trouve">Autre facture Monday : ' + esc(f.__autresFactures.join(' | ')) + '</span>' : ''); } },
             { key: 'numero', label: 'Facture', width: '150px', format: function (v, f) { return esc(v || '') + (f.apprenant ? '<br><span class="op-pied">' + esc(f.apprenant) + '</span>' : ''); } },
@@ -820,6 +821,18 @@
             hote.querySelectorAll('[data-edof-export]').forEach(function (b) { b.onclick = function () { var l = EDOF_LOTS[+b.dataset.edofExport]; if (l) exporterControle({ code: l.code, items: l.its }); }; });
         };
         var parcours = '';
+        // Les lignes rouges des vignettes sont posées une fois le tableau calculé.
+        var poserRouges = function (html, rouge) { return html.replace(/<!--ROUGE:(\w+)-->/g, function (m, k) { return (rouge && rouge[k]) || ''; }); };
+        // Dans une vignette : les factures qui ne devraient pas être dans cette étape, en rouge.
+        var ligneRouge = function (mal, nomEtape, codeLot) {
+            if (!mal.length) return '';
+            mal.forEach(function (f) { if (!f.__motif) { f.__motif = 'Étape Monday différente de l’étape attendue'; f.__autresMotifs = []; } });
+            EDOF_LOTS.push({ titre: nomEtape + ' — factures mal placées ou à revérifier', its: mal, motifs: true, code: codeLot,
+                note: 'Factures rangées dans cette étape dans Monday alors que leur situation en attend une autre. Le motif et l’étape attendue sont indiqués pour chacune.' });
+            var i = EDOF_LOTS.length - 1, mt = Math.round(mal.reduce(function (t, f) { return t + (f.montant || 0); }, 0)).toLocaleString('fr-FR') + ' €';
+            return '<span class="v3-edof-rouge">dont <button type="button" class="op-lien" data-edof-lot="' + i + '"><b>' + mal.length.toLocaleString('fr-FR')
+                + '</b> mal placées ou à revérifier</button> · ' + mt + ' <button type="button" class="v3-edof-exp" data-edof-export="' + i + '">exporter</button></span>';
+        };
         {
             EDOF_LOTS = [];
             var its = nonReglees.filter(function (f) { return (f.financement || 'INCONNU') === CIRCUIT_FIN; });
@@ -848,7 +861,7 @@
                     + (l.length ? '<button type="button" class="op-lien" data-edof-lot="' + i + '" title="Voir ces factures"><b>' + l.length.toLocaleString('fr-FR') + '</b></button>' : '<b>0</b>')
                     + '</span><span class="v3-edof-titre">' + esc(titre) + '</span><span class="v3-edof-mt">' + somme(l)
                     + (l.length ? ' <button type="button" class="v3-edof-exp" data-edof-export="' + i + '">exporter</button>' : '') + '</span>'
-                    + '<span class="op-pied">' + esc(quoi) + '</span>' + (encart || '')
+                    + '<span class="op-pied">' + esc(quoi) + '</span>' + (encart || '') + '<!--ROUGE:' + (code === 'sous-controle' ? 'ctl' : code) + '-->'
                     + (REGLE_ETAPE[code === 'sous-controle' ? 'ctl' : code] ? '<span class="v3-edof-regle">Règle : ' + esc(REGLE_ETAPE[code === 'sous-controle' ? 'ctl' : code]) + '</span>' : '')
                     + '<span class="v3-edof-faire">→ ' + esc(faire) + '</span></div>';
             };
@@ -880,7 +893,8 @@
                 + '<div class="v3-edof-grille">' + tuiles + '</div>';
         }
         if (CIRCUIT_FIN !== 'CPF' || !EDOF) {
-            hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + parcours + detailGeneral() + '</div></div>';
+            var dg = detailGeneral();
+            hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + poserRouges(parcours, dg.rouge) + dg.html + '</div></div>';
             brancherTete();
             return;
         }
@@ -913,16 +927,23 @@
                 { n: '7a · Payée, pointée en comptabilité', faire: 'rectifier Monday : déplacer dans les payées', l: payF.filter(pointee), code: 'payee-pointee', att: 'cor' },
                 { n: '7b · Payée, non pointée en comptabilité', faire: 'pointer, puis rectifier Monday', l: payF.filter(function (f) { return !pointee(f); }), code: 'payee-non-pointee', att: 'cor' }
             ];
-            var cell = function (l, titre, code, attendue) { if (!l.length) return '<td class="n v3-vide' + (attendue ? ' v3-attendue' : '') + '">—</td>';
+            // Dans quelles étapes une facture est-elle à sa place ? Selon sa situation, pas selon une seule case.
+            var ADMIS = { 'non-echue': ['ctl', 'adv', 'cor'], 'retard-1-30': ['rec', 'fin', 'cor'], 'retard-31-90': ['rec', 'fin', 'cor'], 'retard-91-360': ['rec', 'fin', 'cor'],
+                'retard-plus-360': ['rec', 'fin', 'cor'], 'echeance-inconnue': ['cor'], 'payee-pointee': ['cor'], 'payee-non-pointee': ['cor'] };
+            var LIB_ATT = { 'non-echue': 'Sous contrôle ou Rendre payable', 'retard-1-30': 'Relancer', 'retard-31-90': 'Relancer', 'retard-91-360': 'Relancer', 'retard-plus-360': 'Relancer ou Clôture',
+                'echeance-inconnue': 'Corriger', 'payee-pointee': 'Corriger', 'payee-non-pointee': 'Corriger' };
+            LIGNES.forEach(function (L) { var adm = ADMIS[L.code] || [L.att]; L.admis = function () { return adm; }; L.lib = LIB_ATT[L.code]; });
+            var cell = function (l, titre, code, attendue, mal) { if (!l.length) return '<td class="n v3-vide' + (attendue ? ' v3-attendue' : '') + '">—</td>';
                 var i = pose(l, titre, 'Ancienneté du retard et étape du circuit Monday croisées.', code);
-                return '<td class="n' + (attendue ? ' v3-attendue' : '') + '">' + nbL(l, i) + '<br><span class="op-pied">' + e0(l) + '</span></td>'; };
+                return '<td class="n' + (attendue ? ' v3-attendue' : '') + (mal ? ' v3-malplace' : '') + '">' + nbL(l, i) + '<br><span class="op-pied">' + e0(l) + '</span></td>'; };
             var matrice = '<div class="table-wrap"><table class="op-t v3-croise"><thead><tr><th>Où en est la facture ↓ &nbsp;/&nbsp; étape du circuit →</th>'
                 + COLS.map(function (c) { return '<th class="n">' + esc(c.n) + '</th>'; }).join('') + '<th class="n">Total</th></tr></thead><tbody>'
                 + LIGNES.map(function (L) { var i = pose(L.l, nomF + ' — ' + L.n, 'Factures ' + nomF + ' dans cette situation.', L.code);
-                    var nomAtt = (COLS.filter(function (c) { return c.k === L.att; })[0] || {}).n;
+                    var nomAtt = L.lib || (COLS.filter(function (c) { return c.k === L.att; })[0] || {}).n;
                     return '<tr><td><b>' + esc(L.n) + '</b><br><span class="op-pied">→ ' + esc(L.faire) + '</span>'
                         + (nomAtt ? '<br><span class="v3-etape-circuit">Étape du circuit : ' + esc(nomAtt) + '</span>' : '') + '</td>'
-                        + COLS.map(function (c) { return cell(L.l.filter(function (f) { return colDe(f) === c.k; }), nomF + ' — ' + L.n + ' × ' + c.n, L.code + '-' + c.k, c.k === L.att); }).join('')
+                        + COLS.map(function (c) { var lc = L.l.filter(function (f) { return colDe(f) === c.k; });
+                            return cell(lc, nomF + ' — ' + L.n + ' × ' + c.n, L.code + '-' + c.k, c.k === L.att, lc.some(function (f) { return L.admis(f).indexOf(c.k) < 0; })); }).join('')
                         + '<td class="n"><b>' + nbL(L.l, i) + '</b><br><span class="op-pied">' + e0(L.l) + ex(L.l, i) + '</span></td></tr>'; }).join('')
                 + '<tr class="total"><td>Total</td>' + COLS.map(function (c) { return cell(tousF.filter(function (f) { return colDe(f) === c.k; }), nomF + ' — ' + c.n, 'total-' + c.k); }).join('')
                 + '<td class="n"><b>' + tousF.length.toLocaleString('fr-FR') + '</b></td></tr></tbody></table></div>';
@@ -978,16 +999,28 @@
                     + '</td><td class="n">' + (l.length ? e0(l) : '—') + '</td><td class="n">' + ex(l, i) + '</td></tr>'; }).join('');
             var iT = pose(toutes, nomF + ' — facturation à revérifier, triée par motif', 'Chaque facture est rangée sous son motif le plus important.', 'x');
             EDOF_LOTS[iT].motifs = true; EDOF_LOTS[iT].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-toutes';
-            var aVerif = '<div class="v3-averifier"><h3 class="v3-circuit-sous">Facturation à revérifier <span class="op-cnt">' + toutes.length.toLocaleString('fr-FR') + ' factures</span></h3>'
-                + '<p class="pil-note">Les factures ' + esc(nomF) + ' qui posent question, <b>triées par motif</b>. Chaque facture n’est comptée qu’une fois, sous son motif le plus important. '
-                + (toutes.length ? '<button type="button" class="btn btn-ghost btn-sm" data-edof-lot="' + iT + '">Voir les ' + toutes.length.toLocaleString('fr-FR') + ' factures triées par motif</button> '
-                    + '<button type="button" class="btn btn-ghost btn-sm" data-edof-export="' + iT + '">Exporter le tout (Excel)</button>' : '') + '</p>'
-                + '<table class="op-t"><thead><tr><th>Motif</th><th class="n">Factures</th><th class="n">Montant</th><th></th></tr></thead><tbody>' + lignesM
-                + '<tr class="total"><td>Total</td><td class="n"><b>' + toutes.length.toLocaleString('fr-FR') + '</b></td><td class="n">' + e0(toutes) + '</td><td></td></tr></tbody></table></div>';
+            // UN SEUL TABLEAU : sous les lignes du retard, les autres points à revérifier, étape par étape, en rouge.
+            var lignesB = VER.map(function (v) { if (!v[2].length) return '';
+                var i = pose(v[2], nomF + ' — à revérifier — ' + v[0], v[1], 'x'); EDOF_LOTS[i].motifs = true; EDOF_LOTS[i].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-' + v[3];
+                return '<tr class="v3-ligne-motif"><td><span class="v3-motif">' + esc(v[0]) + '</span><br><span class="op-pied">' + esc(v[1]) + '</span></td>'
+                    + COLS.map(function (c) { var l = v[2].filter(function (f) { return colDe(f) === c.k; }); if (!l.length) return '<td class="n v3-vide">—</td>';
+                        var j = pose(l, nomF + ' — ' + v[0] + ' × ' + c.n, v[1], 'x'); EDOF_LOTS[j].motifs = true; EDOF_LOTS[j].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-' + v[3] + '-' + c.k;
+                        return '<td class="n v3-malplace">' + nbL(l, j) + '<br><span class="op-pied">' + e0(l) + '</span></td>'; }).join('')
+                    + '<td class="n"><b>' + nbL(v[2], i) + '</b><br><span class="op-pied">' + e0(v[2]) + ex(v[2], i) + '</span></td></tr>'; }).join('');
+            if (lignesB) lignesB = '<tr class="v3-sous-titre"><td colspan="' + (COLS.length + 2) + '">Points à revérifier — une même facture peut figurer sur plusieurs lignes</td></tr>' + lignesB;
+            matrice = matrice.replace('</tbody></table></div>', lignesB + '</tbody></table></div>');
+            var aVerif = toutes.length ? '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + e0(toutes) + '), en rouge dans le tableau et dans les vignettes. '
+                + '<button type="button" class="btn btn-ghost btn-sm" data-edof-lot="' + iT + '">Voir la liste triée par motif</button> '
+                + '<button type="button" class="btn btn-ghost btn-sm" data-edof-export="' + iT + '">Exporter le tout (Excel)</button></p>' : '';
+            // Dans chaque vignette, les factures dont l'étape Monday n'est pas celle attendue.
+            var rouge = {};
+            COLS.forEach(function (c) { var mal = []; LIGNES.forEach(function (L) {
+                    L.l.forEach(function (f) { if (colDe(f) === c.k && L.admis(f).indexOf(c.k) < 0) { f.__attendu = L.n + ' → attendue dans « ' + (L.lib || '') + ' »'; mal.push(f); } }); });
+                rouge[c.k] = ligneRouge(mal, nomF + ' — ' + c.n, 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-' + c.k + '-mal-placees'); });
 
             var regle = (st.rules || []).filter(function (x) { return x.key === CIRCUIT_FIN; })[0];
-            return '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">' + esc(nomF) + ' — ancienneté du retard croisée avec les étapes du circuit</h3></div>'
-                + matrice + blocPayees + aVerif;
+            return { rouge: rouge, html: '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">' + esc(nomF) + ' — ancienneté du retard croisée avec les étapes du circuit</h3></div>'
+                + aVerif + matrice + blocPayees };
         }
         var cpf = (st.factures || []).filter(function (f) { return f.role !== 'sellsy' && (f.financement === 'CPF' || f.edof); });
         var ouvertes = cpf.filter(hp);
@@ -1096,17 +1129,29 @@
             { n: '5c · Payée, non pointée', faire: 'pointer sur Pennylane et Sellsy, puis rectifier Monday', l: payees.c, code: 'edof-5c-a-pointer', att: 'cor' },
             { n: '6 · Réglée ou annulée en comptabilité, sans versement EDOF connu', faire: 'vérifier, puis rectifier Monday', l: autresPayees, code: 'edof-6-reglee-hors-edof', att: 'cor' }
         ];
-        var cellule = function (l, titre, code, attendue) { if (!l.length) return '<td class="n v3-vide' + (attendue ? ' v3-attendue' : '') + '">—</td>';
+        var regCpf0 = (st.rules || []).filter(function (r0) { return r0.key === 'CPF'; })[0] || {};
+        var regl0 = (G.LioraV3Regles && G.LioraV3Regles.reglages && G.LioraV3Regles.reglages()) || {};
+        var jPay0 = +((regl0.controle || {}).cpfPayable) > 0 ? +regl0.controle.cpfPayable : 45, jRec0 = regCpf0.jours != null ? regCpf0.jours : 60;
+        var joursDepuisFin = function (f) { var x = f.dateFinFormation && R.parseDate(f.dateFinFormation); return x ? Math.floor((+jourArrete - +x) / 86400000) : null; };
+        LIGNES.forEach(function (L) {
+            if (L.code === 'edof-3-attente') {
+                // Facture déposée : à rendre payable jusqu'à fin de formation + 60 jours, à relancer ensuite.
+                L.admis = function (f) { var j = joursDepuisFin(f); return j == null ? ['adv', 'rec'] : j < jRec0 ? ['ctl', 'adv'] : ['rec']; };
+                L.lib = 'Rendre payable, puis Relancer après fin de formation + ' + jRec0 + ' jours';
+            } else { var adm = [L.att]; L.admis = function () { return adm; }; L.lib = (COLS.filter(function (c) { return c.k === L.att; })[0] || {}).n; }
+        });
+        var cellule = function (l, titre, code, attendue, mal) { if (!l.length) return '<td class="n v3-vide' + (attendue ? ' v3-attendue' : '') + '">—</td>';
             var i = poser(l, titre, 'Étape EDOF et étape du circuit Monday croisées.', code);
-            return '<td class="n' + (attendue ? ' v3-attendue' : '') + '">' + nbLien(l, i) + '<br><span class="op-pied">' + eur0(l) + '</span></td>'; };
+            return '<td class="n' + (attendue ? ' v3-attendue' : '') + (mal ? ' v3-malplace' : '') + '">' + nbLien(l, i) + '<br><span class="op-pied">' + eur0(l) + '</span></td>'; };
         var matrice = '<div class="table-wrap"><table class="op-t v3-croise"><thead><tr><th>Étape dans EDOF ↓ &nbsp;/&nbsp; étape du circuit →</th>'
             + COLS.map(function (c) { return '<th class="n">' + esc(c.n) + '</th>'; }).join('') + '<th class="n">Total</th></tr></thead><tbody>'
             + LIGNES.map(function (L) {
                 var i = poser(L.l, 'CPF — ' + L.n, 'Factures CPF à cette étape EDOF.', L.code);
-                var nomAtt = (COLS.filter(function (c) { return c.k === L.att; })[0] || {}).n;
+                var nomAtt = L.lib;
                 return '<tr><td><b>' + esc(L.n) + '</b><br><span class="op-pied">→ ' + esc(L.faire) + '</span>'
                     + (nomAtt ? '<br><span class="v3-etape-circuit">Étape du circuit : ' + esc(nomAtt) + '</span>' : '') + '</td>'
-                    + COLS.map(function (c) { return cellule(L.l.filter(function (f) { return colDe(f) === c.k; }), 'CPF — ' + L.n + ' × ' + c.n, L.code + '-' + c.k, c.k === L.att); }).join('')
+                    + COLS.map(function (c) { var lc = L.l.filter(function (f) { return colDe(f) === c.k; });
+                        return cellule(lc, 'CPF — ' + L.n + ' × ' + c.n, L.code + '-' + c.k, c.k === L.att, lc.some(function (f) { return L.admis(f).indexOf(c.k) < 0; })); }).join('')
                     + '<td class="n"><b>' + nbLien(L.l, i) + '</b><br><span class="op-pied">' + eur0(L.l) + exp(L.l, i) + '</span></td></tr>'; }).join('')
             + '<tr class="total"><td>Total</td>' + COLS.map(function (c) { var l = ouvertes.filter(function (f) { return colDe(f) === c.k; });
                     return cellule(l, 'CPF — ' + c.n, 'edof-circuit-' + c.k); }).join('')
@@ -1193,20 +1238,30 @@
                 + '</td><td class="n">' + (l.length ? eur0(l) : '—') + '</td><td class="n">' + exp(l, i) + '</td></tr>'; }).join('');
         var iToutes = poser(toutes, 'Facturation à revérifier — toutes les factures, triées par motif', 'Chaque facture est rangée sous son motif le plus important.', 'a-reverifier-toutes');
         EDOF_LOTS[iToutes].motifs = true;
-        var aVerifier = '<div class="v3-averifier"><h3 class="v3-circuit-sous">Facturation à revérifier <span class="op-cnt">' + toutes.length.toLocaleString('fr-FR') + ' factures</span></h3>'
-            + '<p class="pil-note">Les factures CPF qui posent question, <b>triées par motif</b>. Chaque facture n’est comptée qu’une fois, sous son motif le plus important ; '
-            + 'ses autres motifs apparaissent dans la liste et dans l’export. '
-            + '<button type="button" class="btn btn-ghost btn-sm" data-edof-lot="' + iToutes + '">Voir les ' + toutes.length.toLocaleString('fr-FR') + ' factures triées par motif</button> '
-            + '<button type="button" class="btn btn-ghost btn-sm" data-edof-export="' + iToutes + '">Exporter le tout (Excel)</button></p>'
-            + '<table class="op-t"><thead><tr><th>Motif</th><th class="n">Factures</th><th class="n">Montant</th><th></th></tr></thead><tbody>'
-            + lignesMotifs
-            + '<tr class="total"><td>Total</td><td class="n"><b>' + toutes.length.toLocaleString('fr-FR') + '</b></td><td class="n">' + eur0(toutes) + '</td><td></td></tr>'
-            + '</tbody></table></div>';
+        // UN SEUL TABLEAU : sous les étapes EDOF, les autres points à revérifier, étape par étape, en rouge.
+        // Les motifs déjà portés par une ligne d'étape (dossier annulé, introuvable, rejetée…) ne sont pas répétés.
+        var DEJA = /^(rejet|dossier-annule|service-fait|relance-|dossier-introuvable|versee-encore-relancee)/;
+        var lignesB = VERIFS.map(function (v) { if (!v[2].length || DEJA.test(v[3])) return '';
+            var i = poser(v[2], 'À revérifier — ' + v[0], v[1], 'a-reverifier-' + v[3]); EDOF_LOTS[i].motifs = true;
+            return '<tr class="v3-ligne-motif"><td><span class="v3-motif">' + esc(v[0]) + '</span><br><span class="op-pied">' + esc(v[1]) + '</span></td>'
+                + COLS.map(function (c) { var l = v[2].filter(function (f) { return colDe(f) === c.k; }); if (!l.length) return '<td class="n v3-vide">—</td>';
+                    var j = poser(l, 'À revérifier — ' + v[0] + ' × ' + c.n, v[1], 'a-reverifier-' + v[3] + '-' + c.k); EDOF_LOTS[j].motifs = true;
+                    return '<td class="n v3-malplace">' + nbLien(l, j) + '<br><span class="op-pied">' + eur0(l) + '</span></td>'; }).join('')
+                + '<td class="n"><b>' + nbLien(v[2], i) + '</b><br><span class="op-pied">' + eur0(v[2]) + exp(v[2], i) + '</span></td></tr>'; }).join('');
+        if (lignesB) lignesB = '<tr class="v3-sous-titre"><td colspan="' + (COLS.length + 2) + '">Autres points à revérifier — une même facture peut figurer sur plusieurs lignes</td></tr>' + lignesB;
+        matrice = matrice.replace('</tbody></table></div>', lignesB + '</tbody></table></div>');
+        var aVerifier = '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + eur0(toutes) + '), en rouge dans le tableau et dans les vignettes. '
+            + '<button type="button" class="btn btn-ghost btn-sm" data-edof-lot="' + iToutes + '">Voir la liste triée par motif</button> '
+            + '<button type="button" class="btn btn-ghost btn-sm" data-edof-export="' + iToutes + '">Exporter le tout (Excel)</button></p>';
+        var rougeCpf = {};
+        COLS.forEach(function (c) { var mal = []; LIGNES.forEach(function (L) {
+                L.l.forEach(function (f) { if (colDe(f) === c.k && L.admis(f).indexOf(c.k) < 0) { f.__attendu = L.n + ' → attendue dans « ' + (L.lib || '') + ' »'; mal.push(f); } }); });
+            rougeCpf[c.k] = ligneRouge(mal, 'CPF — ' + c.n, 'circuit-cpf-' + c.k + '-mal-placees'); });
 
-        hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + parcours
+        hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + poserRouges(parcours, rougeCpf)
             + '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">CPF — étapes EDOF croisées avec les étapes du circuit</h3>'
             + '<span class="pil-coin">export EDOF jusqu’au ' + jour(p.length && p[p.length - 1][1]) + ' · grand livre au ' + jour(GL_INFO && GL_INFO.arrete) + '</span></div>'
-            + matrice
+            + aVerifier + matrice
             + (verse.length ? '<div class="v3-edof-detail"><div><b>Étape 5 — les ' + verse.length.toLocaleString('fr-FR') + ' factures payées, à corriger</b><ul class="v3-edof-sous">'
                 + '<li>' + enLigne(payees.a, 'pointées sur Sellsy et Pennylane → rectifier Monday', 'Payées (EDOF), lettrées au grand livre et pointées sur Sellsy : il ne reste qu’à les déplacer dans les payées dans Monday.', 'edof-5a-pointee-rectifier-monday') + '</li>'
                 + '<li>' + enLigne(payees.b, 'pointées sur Pennylane, pas sur Sellsy → rectifier Sellsy et Monday', 'Payées (EDOF) et lettrées au grand livre, mais Sellsy ne les montre pas réglées, ou son état n’est pas connu.', 'edof-5b-rectifier-sellsy-et-monday') + '</li>'
@@ -1216,7 +1271,6 @@
                 + (sellsyInconnu ? ' ; état Sellsy inconnu pour ' + sellsyInconnu + ' factures, comptées comme « pas sur Sellsy » ou « non pointées »' : '') + '.</p></div>'
                 + '<div><b>Étape 5 — dans quel groupe Monday elles sont encore</b><div class="pil-defile"><table class="op-t"><thead><tr><th>Groupe Monday</th><th class="n">Factures</th>'
                 + '<th class="n">Montant</th><th class="n">Pointage</th><th></th></tr></thead><tbody>' + lignesGroupes + '</tbody></table></div></div></div>' : '')
-            + aVerifier
             + '</div></div>';
         brancherTete();
     }
@@ -1463,7 +1517,7 @@
         if (!X) { dire('L’export Excel n’est pas disponible.', 'error', 4000); return; }
         var d = function (v) { var x = v && R.parseDate(v); return x ? jourLocal(x).split('-').reverse().join('/') : ''; };
         var lignes = (a.items || []).map(function (f) {
-            var o = {}; if (a.items && f.__motif && /a-reverifier/.test(String(a.code || ''))) { o['Motif'] = f.__motif; o['Autres motifs'] = (f.__autresMotifs || []).join(' ; '); }
+            var o = {}; if (a.items && f.__motif && /a-reverifier|mal-placees/.test(String(a.code || ''))) { o['Motif'] = f.__motif; o['Autres motifs'] = (f.__autresMotifs || []).join(' ; '); o['Situation et étape attendue'] = f.__attendu || ''; }
             Object.assign(o, { 'Facture': f.numero || '', 'Client': f.client || '', 'Apprenant': f.apprenant || '', 'Financement': f.financement || '',
                 'Tableau Monday': f.board || '', 'Groupe Monday': f.groupe || '', 'Montant': f.montant == null ? '' : f.montant,
                 'Date de facture': d(f.dateFacture), 'Échéance calculée': d(f.dateEcheance), 'Jours de retard': f.retardJours == null ? '' : f.retardJours,

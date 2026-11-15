@@ -467,3 +467,9 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 .v3-edof-rouge { display: block; margin-top: 0.3rem; padding: 0.3rem 0.45rem; border-radius: 6px; background: rgba(184, 53, 42, 0.09); color: var(--red, #B8352A); font-size: 0.76rem; line-height: 1.35; } .v3-edof-rouge .op-lien { color: inherit; }
 .v3-etape-circuit { display: inline-block; margin-top: 0.25rem; font-size: 0.7rem; font-weight: 600; color: var(--text-secondary, #555); background: var(--bg-tertiary, #f1eee8); border-radius: 999px; padding: 0.08rem 0.5rem; }
 .v3-croise td.v3-attendue { background: rgba(29, 127, 85, 0.08); box-shadow: inset 0 0 0 1px rgba(29, 127, 85, 0.25); }
+/* Un seul tableau : les cases mal placées en rouge, les autres points à revérifier dessous */
+.v3-croise td.v3-malplace { background: rgba(184, 53, 42, 0.08); box-shadow: inset 0 0 0 1px rgba(184, 53, 42, 0.22); }
+.v3-croise td.v3-malplace .op-lien, .v3-croise td.v3-malplace b { color: var(--red, #B8352A); }
+.v3-croise tr.v3-sous-titre td { background: var(--bg-tertiary, #f1eee8); font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; padding-top: 0.6rem; }
+.v3-averif-boutons { font-size: 0.86rem; margin: 0 0 0.7rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.v3-edof-rouge + .v3-edof-rouge { margin-top: 0.2rem; }
