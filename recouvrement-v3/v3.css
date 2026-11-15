@@ -523,3 +523,5 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 .v3-pli-carte[open] > summary { margin-bottom: 0.7rem; }
 .v3-pli-carte > summary h3 { font-size: 1.05rem; }
 .v3-circuit-tete label { font-weight: 600; font-size: 0.88rem; }
+/* Vignettes d'information du bandeau (contentieux, GoCardless) : même forme, sans le rouge */
+.v3-important-carte.v3-info-carte { border-color: var(--border-hover, #d8d4cc); border-left: 3px solid #1a1a2e; background: var(--bg-secondary, #fff); }

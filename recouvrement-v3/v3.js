@@ -806,6 +806,10 @@
         if (!hote || !st || !OPX) return;
         var hp = function (f) { return f.role !== 'sellsy' && (f.presenceRoles || [f.role]).indexOf('payees') < 0; };
         (st.factures || []).forEach(function (f) { if (f.__motif || f.__attendu || f.__autresFactures) { f.__motif = null; f.__autresMotifs = null; f.__attendu = null; f.__autresFactures = null; } });
+        // Les factures B2B du tableau « 2.3. Financement pôle emploi » forment un financement à part : B2B - Pôle emploi.
+        var finDe = function (f) { var k = f.financement || 'INCONNU';
+            return k === 'B2B' && /^\s*2\.3\b|p[oô]le emploi/i.test(String(f.board || '')) ? 'B2B_POLE_EMPLOI' : k; };
+        var cleRegle = function (k) { return k === 'B2B_POLE_EMPLOI' ? 'B2B' : k; };
         // « Le circuit : » puis une vignette par financement. Le CPF se lit
         // d'après EDOF ; les autres, d'après les étapes du circuit Monday.
         var libelles = {}; (st.rules || R.DEFAULT_ECHEANCE_RULES || []).forEach(function (r) { libelles[r.key] = r.label; });
@@ -813,21 +817,50 @@
         // Payées (EDOF, grand livre, avoir…) mais toujours dans un tableau des non payées : à rectifier dans Monday.
         var payeesADeplacer = (st.factures || []).filter(function (f) { return hp(f) && f.paye && !f.groupeTechnique && f.role !== 'technique' && f.role !== 'ignore'; });
         var parFin = {};
-        nonReglees.concat(payeesADeplacer).forEach(function (f) { var k = f.financement || 'INCONNU'; parFin[k] = (parFin[k] || 0) + 1; });
+        nonReglees.concat(payeesADeplacer).forEach(function (f) { var k = finDe(f); parFin[k] = (parFin[k] || 0) + 1; });
         var fins = Object.keys(parFin).sort(function (a, b) { return (b === 'CPF') - (a === 'CPF') || parFin[b] - parFin[a]; });
         if (fins.indexOf(CIRCUIT_FIN) < 0) CIRCUIT_FIN = fins[0] || 'CPF';
-        var nomFin = function (k) { return libelles[k] || (k === 'INCONNU' ? 'Non renseigné' : k); };
+        var nomFin = function (k) { return k === 'B2B_POLE_EMPLOI' ? 'B2B - Pôle emploi' : (libelles[k] || (k === 'INCONNU' ? 'Non renseigné' : k)); };
         var tete = '<details class="v3-pli v3-pli-carte" id="v3-pli-circuit"' + (PLI_CIRCUIT ? ' open' : '') + '><summary><h3>Circuit par financement</h3></summary>'
             + '<div class="v3-circuit-tete"><label for="v3-circuit-fin">Financement :</label><select id="v3-circuit-fin" class="v3-circuit-choix">' + fins.map(function (k) {
             return '<option value="' + esc(k) + '"' + (k === CIRCUIT_FIN ? ' selected' : '') + '>' + esc(nomFin(k)) + ' — ' + parFin[k].toLocaleString('fr-FR') + ' factures</option>'; }).join('') + '</select></div>';
         var brancherTete = function () {
             var pliC = hote.querySelector('#v3-pli-circuit'); if (pliC) pliC.addEventListener('toggle', function (ev) { if (ev.target === pliC) PLI_CIRCUIT = pliC.open; });
             var pli = hote.querySelector('details.v3-pli-tableau'); if (pli) pli.addEventListener('toggle', function () { PLI_TABLEAU = pli.open; });
+            hote.querySelectorAll('[data-vers-onglet]').forEach(function (b) { b.onclick = function () { var o = document.querySelector('[data-tab="' + b.dataset.versOnglet + '"]'); if (o) o.click(); }; });
             var choix = hote.querySelector('#v3-circuit-fin'); if (choix) choix.onchange = function () { CIRCUIT_FIN = choix.value; carteEdofOperationnel(); };
             hote.querySelectorAll('[data-edof-lot]').forEach(function (b) { b.onclick = function () { ouvrirLotCircuit(EDOF_LOTS[+b.dataset.edofLot], null); }; });
             hote.querySelectorAll('[data-edof-export]').forEach(function (b) { b.onclick = function () { var l = EDOF_LOTS[+b.dataset.edofExport]; if (l) exporterControle({ code: l.code, items: l.its }); }; });
         };
         var parcours = '';
+        // Vignette d'information « Factures en contentieux » : étape Clôture, ou groupe Monday qui nomme le contentieux.
+        var enContentieux = function (f) { return OPX.etapeDe(f) === 'fin' || /contentieux|huissier|judiciaire|injonction/i.test(String(f.groupe || '')); };
+        var carteContentieux = function (liste, nom) {
+            var l = liste.filter(enContentieux);
+            if (!l.length) return '';
+            EDOF_LOTS.push({ titre: nom + ' — factures en contentieux', its: l, motifs: true, code: 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-contentieux',
+                note: 'Factures non réglées rangées dans l’étape « Clôture » (contentieux) ou dans un groupe Monday de contentieux.' });
+            var i = EDOF_LOTS.length - 1, mt = Math.round(l.reduce(function (t, f) { return t + (f.montant || 0); }, 0)).toLocaleString('fr-FR') + ' €';
+            return '<span class="v3-important-carte v3-info-carte"><span class="v3-important-nb">' + (l.length ? '<button type="button" class="op-lien" data-edof-lot="' + i + '"><b>' + l.length.toLocaleString('fr-FR') + '</b></button>' : '<b>0</b>')
+                + '</span><span class="v3-important-lib">Factures en contentieux</span><span class="op-pied">' + (l.length ? mt + ' <button type="button" class="v3-edof-exp" data-edof-export="' + i + '">exporter</button>' : 'aucune') + '</span></span>';
+        };
+        // Vignette GoCardless (financement personnel) : apprenants prélevés ce mois-ci et le mois précédent.
+        var carteGoCardless = function () {
+            var g = st.gcl || {}, pa = g.paiements || [];
+            if (!pa.length) return '';
+            var ref = (st.filtres && st.filtres.dateRef && R.parseDate(st.filtres.dateRef)) || new Date();
+            var cleMois = function (d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+            var mCour = cleMois(ref), mPrec = cleMois(new Date(ref.getFullYear(), ref.getMonth() - 1, 1));
+            var compte = function (m) { var vus = {}, rej = {}; pa.forEach(function (x) { var d = x.dateEcheance && R.parseDate(x.dateEcheance); if (!d || cleMois(d) !== m || x.statut === 'annule') return;
+                    var k = x.clientId || x.mandatId || x.id; vus[k] = 1; if (x.statut === 'echec') rej[k] = 1; });
+                return { n: Object.keys(vus).length, rej: Object.keys(rej).length }; };
+            var c = compte(mCour), q = compte(mPrec), ec = c.n - q.n;
+            var nomMois = function (m) { return new Date(+m.slice(0, 4), +m.slice(5, 7) - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }); };
+            return '<span class="v3-important-carte v3-info-carte"><span class="v3-important-nb"><b>' + c.n.toLocaleString('fr-FR') + '</b></span>'
+                + '<span class="v3-important-lib">Apprenants prélevés par GoCardless en ' + nomMois(mCour) + '</span>'
+                + '<span class="op-pied">' + nomMois(mPrec) + ' : ' + q.n.toLocaleString('fr-FR') + ' (' + (ec > 0 ? '+' : '') + ec + ') · rejets : ' + c.rej + ' ce mois, ' + q.rej + ' le mois précédent'
+                + ' <button type="button" class="v3-edof-exp" data-vers-onglet="prelevements">voir l’onglet Prélèvements</button></span></span>';
+        };
         // DOUBLONS POSSIBLES : une autre facture Monday au même nom et du même montant (payée ou non, tous tableaux).
         // Pour éviter les faux doublons : le nom est celui de l'apprenant (le client ne sert que pour un particulier),
         // et les deux factures doivent être datées à moins de 45 jours l'une de l'autre — des échéances mensuelles
@@ -856,8 +889,8 @@
         };
         {
             EDOF_LOTS = [];
-            var its = nonReglees.filter(function (f) { return (f.financement || 'INCONNU') === CIRCUIT_FIN; });
-            var payFin = payeesADeplacer.filter(function (f) { return (f.financement || 'INCONNU') === CIRCUIT_FIN; });
+            var its = nonReglees.filter(function (f) { return finDe(f) === CIRCUIT_FIN; });
+            var payFin = payeesADeplacer.filter(function (f) { return finDe(f) === CIRCUIT_FIN; });
             var somme = function (l) { return Math.round(l.reduce(function (t, f) { return t + (f.montant || 0); }, 0)).toLocaleString('fr-FR') + ' €'; };
             var cles = {}; (OPX.CIRCUIT || []).forEach(function (e) { cles[e.k] = e; });
             var dans = function (k) { return its.filter(function (f) { return OPX.etapeDe(f) === k; }); };
@@ -865,7 +898,7 @@
             var echue = function (f) { return f.retardJours != null ? f.retardJours > 0 : f.etat === 'En retard'; };
             var nom = nomFin(CIRCUIT_FIN);
             // La règle d'échéance qui fait entrer une facture dans chaque étape, écrite en petit sous l'étape.
-            var regleFin = (st.rules || []).filter(function (x) { return x.key === CIRCUIT_FIN; })[0] || {};
+            var regleFin = (st.rules || []).filter(function (x) { return x.key === cleRegle(CIRCUIT_FIN); })[0] || {};
             var noteEch = String(regleFin.note || 'échéance calculée').replace(/\s+—.*$/, '');
             var minus = noteEch.charAt(0).toLowerCase() + noteEch.slice(1);
             var regV3 = (G.LioraV3Regles && G.LioraV3Regles.reglages && G.LioraV3Regles.reglages()) || {};
@@ -923,8 +956,8 @@
         //    factures payées à corriger, groupes Monday, et facturation à revérifier triée par motif.
         function detailGeneral() {
             var nomF = nomFin(CIRCUIT_FIN);
-            var itsF = nonReglees.filter(function (f) { return (f.financement || 'INCONNU') === CIRCUIT_FIN; });
-            var payF = payeesADeplacer.filter(function (f) { return (f.financement || 'INCONNU') === CIRCUIT_FIN; });
+            var itsF = nonReglees.filter(function (f) { return finDe(f) === CIRCUIT_FIN; });
+            var payF = payeesADeplacer.filter(function (f) { return finDe(f) === CIRCUIT_FIN; });
             var tousF = itsF.concat(payF);
             var e0 = function (l) { return Math.round(l.reduce(function (t, f) { return t + (f.montant || 0); }, 0)).toLocaleString('fr-FR') + ' €'; };
             var pose = function (l, titre, note, code) { EDOF_LOTS.push({ titre: titre, its: l, note: note, code: 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-' + code }); return EDOF_LOTS.length - 1; };
@@ -1011,7 +1044,7 @@
                     itsF.filter(function (f) { return (f.anciennesFactures || []).length; }), 'facture-refaite']
             ];
             // B2C-Entreprise et B2B : seuls trois motifs comptent comme « à revérifier ».
-            var MOTIFS_SEULS = ['BTC_ENTREPRISE', 'B2B'].indexOf(CIRCUIT_FIN) >= 0 ? ['payee-encore-relancee', 'reglement-non-lettre', 'echue-hors-etape'] : null;
+            var MOTIFS_SEULS = ['BTC_ENTREPRISE', 'B2B', 'B2B_POLE_EMPLOI'].indexOf(CIRCUIT_FIN) >= 0 ? ['payee-encore-relancee', 'reglement-non-lettre', 'echue-hors-etape'] : null;
             if (MOTIFS_SEULS) VER = VER.filter(function (v) { return MOTIFS_SEULS.indexOf(v[3]) >= 0; });
             var idDe = function (f) { return f.id || f.cle || f.numero; }, motifs = {}, fact = {};
             VER.forEach(function (v) { v[2].forEach(function (f) { var k = idDe(f); (motifs[k] = motifs[k] || []).push(v[0]); fact[k] = f; }); });
@@ -1045,10 +1078,11 @@
                 var i = pose(v[2], nomF + ' — important — ' + v[0], v[1], 'x'); EDOF_LOTS[i].motifs = true; EDOF_LOTS[i].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-important-' + k;
                 if (!v[2].length) return '';
                 return '<span class="v3-important-carte' + (v[2].length ? '' : ' vide') + '"><span class="v3-important-nb">' + nbL(v[2], i) + '</span><span class="v3-important-lib">' + esc(v[0]) + '</span>'
-                    + '<span class="op-pied">' + (v[2].length ? e0(v[2]) + ex(v[2], i) : 'aucune') + '</span></span>'; }).join('') + '</div>';
-            var aVerif = toutes.length ? bandeauG + '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + e0(toutes) + '), signalées en rouge dans les vignettes. '
+                    + '<span class="op-pied">' + (v[2].length ? e0(v[2]) + ex(v[2], i) : 'aucune') + '</span></span>'; }).join('')
+                + carteContentieux(itsF, nomF) + (CIRCUIT_FIN === 'BTC_PERSO' || CIRCUIT_FIN === 'PERSO_ALTERNANCE' ? carteGoCardless() : '') + '</div>';
+            var aVerif = bandeauG + (toutes.length ? '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + e0(toutes) + '), signalées en rouge dans les vignettes. '
                 + '<button type="button" class="btn btn-ghost btn-sm" data-edof-lot="' + iT + '">Voir la liste triée par motif</button> '
-                + '<button type="button" class="btn btn-ghost btn-sm" data-edof-export="' + iT + '">Exporter le tout (Excel)</button></p>' : '';
+                + '<button type="button" class="btn btn-ghost btn-sm" data-edof-export="' + iT + '">Exporter le tout (Excel)</button></p>' : '');
             // Dans chaque vignette, les factures dont l'étape Monday n'est pas celle attendue.
             var rouge = {};
             COLS.forEach(function (c) { var mal = []; LIGNES.forEach(function (L) {
@@ -1058,7 +1092,7 @@
                 if (MOTIFS_SEULS) mal = toutes.filter(function (f) { return colDe(f) === c.k && !(c.k === 'rec' && OPX.etapeDe(f) !== 'rec'); });
                 rouge[c.k] = ligneRouge(mal, nomF + ' — ' + c.n, 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-' + c.k + '-mal-placees'); });
 
-            var regle = (st.rules || []).filter(function (x) { return x.key === CIRCUIT_FIN; })[0];
+            var regle = (st.rules || []).filter(function (x) { return x.key === cleRegle(CIRCUIT_FIN); })[0];
             return { rouge: rouge, html: '<div class="v3-circuit-sep"></div>' + aVerif
                 + '<details class="v3-pli v3-pli-tableau"' + (PLI_TABLEAU ? ' open' : '') + '><summary><h3 class="v3-circuit-sous">' + esc(nomF) + ' — ancienneté du retard croisée avec les étapes du circuit</h3></summary>'
                 + matrice + '</details>' };
@@ -1304,7 +1338,7 @@
             var i = poser(v[2], 'Important — ' + v[0], v[1], 'a-reverifier-important-' + k); EDOF_LOTS[i].motifs = true;
             if (!v[2].length) return '';
             return '<span class="v3-important-carte' + (v[2].length ? '' : ' vide') + '"><span class="v3-important-nb">' + nbLien(v[2], i) + '</span><span class="v3-important-lib">' + esc(v[0]) + '</span>'
-                + '<span class="op-pied">' + (v[2].length ? eur0(v[2]) + exp(v[2], i) : 'aucune') + '</span></span>'; }).join('') + '</div>';
+                + '<span class="op-pied">' + (v[2].length ? eur0(v[2]) + exp(v[2], i) : 'aucune') + '</span></span>'; }).join('') + carteContentieux(nonVersees, 'CPF') + '</div>';
         var aVerifier = bandeau + '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + eur0(toutes) + '), signalées en rouge dans les vignettes. '
             + '<button type="button" class="btn btn-ghost btn-sm" data-edof-lot="' + iToutes + '">Voir la liste triée par motif</button> '
             + '<button type="button" class="btn btn-ghost btn-sm" data-edof-export="' + iToutes + '">Exporter le tout (Excel)</button></p>';
