@@ -537,8 +537,8 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
   .op-cercle { grid-template-columns: 1fr; }
   .op-cercle > .op-fl-h { transform: rotate(90deg); min-height: 2.2rem; }
   .op-cercle > .op-fl-retour, .op-cercle-centre { display: none; }
-  .op-cercle > .op-tuile:nth-of-type(3) { order: 5; } /* Corriger après Clôture quand tout est en colonne */
-  .op-cercle > .op-fl-h:nth-of-type(3) { order: 4; }
+  .op-cercle > div:nth-of-type(3) { order: 5; } /* Corriger après Clôture quand tout est en colonne */
+  .op-cercle > .op-fl-g { order: 4; }
 }
 /* « Dans quels tableaux Monday » : replié, avec une flèche */
 .op-ou-bascule { all: unset; cursor: pointer; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
@@ -546,3 +546,7 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 #op-corps.ou-ouvert .op-ou-bascule::before { content: '▾ '; }
 #op-corps:not(.ou-ouvert) .op-ou-l { display: none; }
 .op-ou-bascule:hover { color: var(--text-primary); }
+
+/* Circuit par financement : même cercle, « Sous contrôle » au-dessus et en dehors */
+.op-cercle > .v3-edof-tuile { min-width: 0; margin: 0; height: 100%; }
+.v3-edof-hors-cercle { display: grid; grid-template-columns: minmax(0, 1fr); margin-bottom: 0.7rem; }

@@ -962,7 +962,7 @@
                     + '<span class="v3-edof-faire">→ ' + esc(faire) + '</span></div>';
             };
             var horsEchues = hors.filter(echue), n = 1;
-            var tuiles = vignette(n++, hors.filter(function (f) { return !echue(f); }), 'Sous contrôle', 'Avant échéance, dans aucune étape du circuit.', 'rien à faire pour l’instant', 'sous-controle');
+            var parEtape = {}, tuiles = vignette(n++, hors.filter(function (f) { return !echue(f); }), 'Sous contrôle', 'Avant échéance, dans aucune étape du circuit.', 'rien à faire pour l’instant', 'sous-controle');
             (OPX.CIRCUIT || []).forEach(function (e) {
                 var lot = dans(e.k), quoi = 'Groupes Monday de l’étape « ' + e.n + ' » (' + e.svc + ').';
                 if (e.k === 'cor' && payFin.length) {
@@ -982,13 +982,17 @@
                     quoi = lot.length.toLocaleString('fr-FR') + ' dans les groupes Monday de l’étape « ' + e.n + ' », et ' + horsEchues.length + ' échues à y déplacer.';
                     lot = lot.concat(horsEchues);
                 }
-                tuiles += vignette(n++, lot, e.n, quoi, e.svc + ' · cible ' + e.cible + ' j', e.k, e.k === 'rec' ? 'fort' : '', encart);
+                parEtape[e.k] = vignette(n++, lot, e.n, quoi, e.svc + ' · cible ' + e.cible + ' j', e.k, e.k === 'rec' ? 'fort' : '', encart);
                 if (e.k === 'cor') { EDOF_LOTS[EDOF_LOTS.length - 1].filtres = true; EDOF_LOTS[EDOF_LOTS.length - 1].cpf = CIRCUIT_FIN === 'CPF' && !!EDOF; }
             });
             parcours = '<p class="pil-note">Les ' + (its.length + payFin.length).toLocaleString('fr-FR') + ' factures ' + esc(nom) + ' encore dans les tableaux Monday des non payées, rangées dans l’ordre du circuit : '
                 + its.length.toLocaleString('fr-FR') + ' non réglées' + (payFin.length ? ' et ' + payFin.length.toLocaleString('fr-FR') + ' payées à déplacer (dans « Corriger »)' : '') + '. '
                 + 'Chaque nombre ouvre ses factures ; « exporter » en donne la liste Excel. Cette carte ne suit pas les filtres de période.</p>'
-                + '<div class="v3-edof-grille">' + tuiles + '</div>';
+                // « Sous contrôle » reste en dehors ; les quatre étapes forment un cercle, chacune fléchée vers la suivante.
+                + '<div class="v3-edof-hors-cercle">' + tuiles + '</div>'
+                + '<div class="op-cercle v3-cercle">' + (parEtape.adv || '') + '<span class="op-fl op-fl-h" aria-hidden="true">→</span>' + (parEtape.rec || '')
+                + '<span class="op-fl op-fl-v op-fl-retour" aria-hidden="true">↑</span><span class="op-cercle-centre">Le circuit</span><span class="op-fl op-fl-v" aria-hidden="true">↓</span>'
+                + (parEtape.cor || '') + '<span class="op-fl op-fl-h op-fl-g" aria-hidden="true">←</span>' + (parEtape.fin || '') + '</div>';
         }
         if (CIRCUIT_FIN !== 'CPF' || !EDOF) {
             var dg = detailGeneral();

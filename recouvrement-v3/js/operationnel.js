@@ -1185,7 +1185,7 @@
           + '<div class="op-cercle">'
           + vignetteEtape(st, 'adv') + '<span class="op-fl op-fl-h" aria-hidden="true">→</span>' + vignetteEtape(st, 'rec')
           + '<span class="op-fl op-fl-v op-fl-retour" aria-hidden="true">↑</span><span class="op-cercle-centre">Le circuit<small>chaque étape passe la main à la suivante</small></span><span class="op-fl op-fl-v" aria-hidden="true">↓</span>'
-          + vignetteEtape(st, 'cor') + '<span class="op-fl op-fl-h" aria-hidden="true">←</span>' + vignetteEtape(st, 'fin')
+          + vignetteEtape(st, 'cor') + '<span class="op-fl op-fl-h op-fl-g" aria-hidden="true">←</span>' + vignetteEtape(st, 'fin')
           + '</div>'
           + '<div class="op-sub"><b>Les étapes du process</b>'
           + '<span class="op-pied">Âge du traitement = jours depuis l’entrée dans l’étape quand Monday '
