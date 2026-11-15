@@ -525,3 +525,4 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 .v3-circuit-tete label { font-weight: 600; font-size: 0.88rem; }
 /* Vignettes d'information du bandeau (contentieux, GoCardless) : même forme, sans le rouge */
 .v3-important-carte.v3-info-carte { border-color: var(--border-hover, #d8d4cc); border-left: 3px solid #1a1a2e; background: var(--bg-secondary, #fff); }
+.op-periode-hist { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.5rem; font-size: 0.86rem; margin: 0.4rem 0 0.6rem; } .op-periode-hist input[type="date"] { font: inherit; font-size: 0.84rem; padding: 0.3rem 0.5rem; border: 1px solid var(--border-hover, #d8d4cc); border-radius: 8px; background: var(--bg-secondary, #fff); color: var(--text-primary); }

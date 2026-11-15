@@ -34,6 +34,7 @@ ce qui existe, les relire depuis l'artefact (action « read » avec leur chemin)
 | `edof.json` | Paiements CPF (exports EDOF « Factures » 2023 à novembre 2026) et dossiers (export « Tous les dossiers » du 15/11/2026 : statut, dates de session, montants, nom — sans autre donnée personnelle). **Pour le CPF, EDOF fait foi.** | `outils/extraire-edof.py` |
 | `gocardless.json` | Prélèvements, clients, mandats, abonnements et virements GoCardless, lus en lecture seule (variable `GOCARDLESS_TOKEN`) | `outils/extraire-gocardless.py` |
 | `opco.json` | Factures dont le tiers au grand livre est un OPCO, avec le nom de l'OPCO | `outils/extraire-opco.py` |
+| `mouvements.json` | Journal des déplacements de factures entre groupes Monday depuis le 01/07/2026, daté (variable `MONDAY_TOKEN`) | `outils/extraire-mouvements.py` |
 | `reglements.json` | Règlements et avoirs par facture, d'après la balance âgée | `outils/extraire-reglements.py` |
 | `rapprochements.json` | Règlements reçus non lettrés, avec la facture proposée | `outils/extraire-rapprochements.py` |
 | `anciennes-factures.json` | Factures refaites et leur numéro d'origine (Monday) | `outils/extraire-anciennes-factures.py` |

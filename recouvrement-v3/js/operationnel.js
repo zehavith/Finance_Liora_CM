@@ -498,6 +498,38 @@
         return true;
     }
 
+    // VERSION 3 — ENTRÉES ET SORTIES ENTRE DEUX DATES. « Il faut fixer des dates
+    // d'entrée et date de sortie. » Le journal des déplacements de Monday est
+    // relevé à part et publié avec la page, chaque déplacement avec sa date :
+    // les entrées et sorties de chaque étape se comptent donc entre les deux
+    // dates choisies à l'écran, sans attendre le connecteur.
+    let MVT = null, mvtEtat = '', HIST_DU = '', HIST_AU = '';
+    const isoJour = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    function chargerMouvements() {
+        if (mvtEtat) return;
+        mvtEtat = 'charge';
+        fetch('donnees/mouvements.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
+            .then(j => { if (j && j.lignes) { MVT = j; mvtEtat = 'ok'; rendre(DERNIERES); } else mvtEtat = 'absent'; })
+            .catch(() => { mvtEtat = 'absent'; });
+    }
+    function histDepuisJournal() {
+        if (!MVT) return;
+        if (!HIST_AU) HIST_AU = isoJour(new Date());
+        if (!HIST_DU) HIST_DU = HIST_AU.slice(0, 8) + '01';
+        if (HIST && HIST.publie && HIST.de === HIST_DU && HIST.au === HIST_AU && HIST.regles === REGLES_VERSION) return;
+        const par = {}; CIRCUIT.forEach(e => { par[e.k] = { e: 0, s: 0, dest: {}, dur: [] }; });
+        const EV = ['move_pulse_from_group', 'move_pulse_into_board', 'move_pulse_from_board'], T = MVT.titres;
+        let lus = 0;
+        for (const l of MVT.lignes) {
+            if (l[0] < HIST_DU || l[0] > HIST_AU) continue;
+            lus++;
+            compterMouvement(par, EV[l[1]], { source_group: T[l[2]] ? { title: T[l[2]] } : null, dest_group: T[l[3]] ? { title: T[l[3]] } : null,
+                                              dest_board: T[l[4]] ? { name: T[l[4]] } : null });
+        }
+        HIST = { mois: HIST_DU.slice(0, 7), de: HIST_DU, au: HIST_AU, le: MVT.releve, par, lus, tronque: false, publie: true, regles: REGLES_VERSION };
+    }
+    let REGLES_VERSION = 0;
+
     async function chargerHistorique(mois, onAvance) {
         const M = global.LioraMonday;
         if (!M || !M.requeteConnecteur || !M.connecteurDisponible || !(await M.connecteurDisponible()))
@@ -923,6 +955,7 @@
         if (!hote) return;
         LOTS = [];
         DERNIERES = factures || [];
+        chargerMouvements(); histDepuisJournal();
         const items0 = ouvertes(factures);
         const q = F.q.trim().toLowerCase();
         const items = !q ? items0 : items0.filter(f =>
@@ -999,7 +1032,7 @@
                'ces tableaux ne portent pas de colonne de paiement promis'];
         const tuilesFocus = '<div class="kpi-grid">'
             + tuile('Dans l’étape', ouvrableEtape(nb(s.st), k) + ' · ' + eur(s.mt),
-                HIST ? nb(HIST.par[k].e) + ' entrées, ' + nb(HIST.par[k].s) + ' sorties sur le mois'
+                HIST ? nb(HIST.par[k].e) + ' entrées, ' + nb(HIST.par[k].s) + ' sorties sur la période'
                      : 'factures non réglées de cette étape')
             + tuile('Âge médian du traitement', (s.a == null ? '—' : nb(s.a) + ' j'),
                 'cible ' + e.cible + ' j · ' + (s.h == null ? '—' : nb(s.h) + ' % hors délai'))
@@ -1108,6 +1141,10 @@
           + 'l’ancienneté de la créance, pas le temps de traitement du service. '
           + '<strong>Dépliez une étape (▸)</strong> pour voir dans quels tableaux et groupes Monday se trouvent '
           + 'ses factures, puis leur problématique pré-échéance.</span>'
+          + (MVT ? '<p class="op-periode-hist"><b>Entrées et sorties</b> du <input type="date" id="op-hist-du" value="' + HIST_DU + '" min="' + MVT.depuis + '" max="' + String(MVT.releve).slice(0, 10) + '"> au '
+              + '<input type="date" id="op-hist-au" value="' + HIST_AU + '" min="' + MVT.depuis + '" max="' + String(MVT.releve).slice(0, 10) + '">'
+              + ' <span class="op-pied">Journal des déplacements Monday relevé le ' + String(MVT.releve).slice(0, 10).split('-').reverse().join('/')
+              + ', disponible depuis le ' + String(MVT.depuis).split('-').reverse().join('/') + '.</span></p>' : '')
           + tableauCircuit(items, st) + '</div>'
           + '<div class="op-sub"><b>Où sont parties les factures sorties d’une étape</b>'
           + '<span class="op-pied">' + (HIST ? 'Déplacements du ' + U().dateFR(new Date(HIST.de)) + ' au '
@@ -1194,6 +1231,9 @@
             t = setTimeout(() => { F.q = q.value; rendre(DERNIERES);
                 const n = document.getElementById('op-q');
                 if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 300); }; }
+        ['op-hist-du', 'op-hist-au'].forEach(id => { const el = document.getElementById(id);
+            if (el) el.onchange = () => { const du = document.getElementById('op-hist-du').value, au = document.getElementById('op-hist-au').value;
+                if (!du || !au) return; HIST_DU = du <= au ? du : au; HIST_AU = du <= au ? au : du; const y = window.scrollY; rendre(DERNIERES); window.scrollTo(0, y); }; });
         const hb = document.getElementById('op-hist');
         h.querySelectorAll('.op-lire-hist').forEach(b => b.onclick = () => { if (hb) { hb.scrollIntoView({ block: 'center' }); hb.click(); } });
         if (hb) hb.onclick = async () => {
@@ -1249,6 +1289,7 @@
         r = r || {};
         Object.keys(SURCHARGES).forEach(k => { delete SURCHARGES[k]; });
         Object.keys(r.groupes || {}).forEach(k => { SURCHARGES[k] = r.groupes[k]; });
+        REGLES_VERSION++;
         CIRCUIT.forEach(e => { const v = r.cibles ? +r.cibles[e.k] : 0; e.cible = v > 0 ? v : CIBLES_ORIGINE[e.k]; });
         const c = r.controle || {};
         CONTROLE.proche = +c.proche > 0 ? +c.proche : 15;

@@ -683,6 +683,29 @@
         for (var i = 0; i < NOMS_OPCO.length; i++) if (NOMS_OPCO[i][1].test(t)) return NOMS_OPCO[i][0];
         return '';
     }
+    // GoCardless : où en sont les prélèvements de l'apprenant d'une facture (rapprochement par le nom).
+    var GCL_VU = null, GCL_PAR_NOM = null, GCL_PAR_CLIENT = null;
+    function gclDe(f) {
+        var st = etat() || {}, g = st.gcl || {}, pa = g.paiements || [];
+        if (!pa.length) return null;
+        if (pa !== GCL_VU) { GCL_VU = pa; GCL_PAR_NOM = {}; GCL_PAR_CLIENT = {};
+            (g.clients || []).forEach(function (c) { var k = nomCle(c.nomComplet); if (k) (GCL_PAR_NOM[k] = GCL_PAR_NOM[k] || []).push(c.id); });
+            pa.forEach(function (x) { if (x.clientId) (GCL_PAR_CLIENT[x.clientId] = GCL_PAR_CLIENT[x.clientId] || []).push(x); }); }
+        var ids = GCL_PAR_NOM[nomCle(f.apprenant || (f.client && f.client !== '—' ? f.client : ''))] || [];
+        if (!ids.length) return { etat: 'aucun', texte: 'Aucun client GoCardless à ce nom' };
+        var liste = []; ids.forEach(function (i) { liste = liste.concat(GCL_PAR_CLIENT[i] || []); });
+        if (!liste.length) return { etat: 'sans', texte: 'Client GoCardless sans prélèvement' };
+        var ref = (st.filtres && st.filtres.dateRef && R.parseDate(st.filtres.dateRef)) || new Date();
+        liste.sort(function (a, b) { return +R.parseDate(a.dateEcheance) - +R.parseDate(b.dateEcheance); });
+        var ok = liste.filter(function (x) { return x.statut === 'succes'; }), rej = liste.filter(function (x) { return x.statut === 'echec'; });
+        var enc = Math.round(ok.reduce(function (t, x) { return t + (x.montant || 0); }, 0) * 100) / 100, dernier = liste[liste.length - 1], dj = R.parseDate(dernier.dateEcheance);
+        var recent = dj && (+ref - +dj) / 86400000 <= 45;
+        var e = enc >= (f.montant || 0) - 1 ? 'solde' : recent ? (dernier.statut === 'echec' ? 'rejet' : 'encours') : 'arrete';
+        var jr = dj ? jourLocal(dj).split('-').reverse().join('/') : '';
+        var lib = { solde: 'Encaissée en totalité par GoCardless', encours: 'Échéancier GoCardless en cours', rejet: 'Dernier prélèvement GoCardless rejeté', arrete: 'Prélèvements GoCardless arrêtés depuis plus de 45 jours' }[e];
+        return { etat: e, encaisse: enc, nbOk: ok.length, nbRejets: rej.length, dernier: jr,
+                 texte: lib + ' — ' + Math.round(enc).toLocaleString('fr-FR') + ' € encaissés en ' + ok.length + ' prélèvement' + (ok.length > 1 ? 's' : '') + (rej.length ? ', ' + rej.length + ' rejet' + (rej.length > 1 ? 's' : '') : '') + ', dernier le ' + jr };
+    }
     var EDOF_LOTS = [], CIRCUIT_FIN = 'CPF', PLI_TABLEAU = false, PLI_CIRCUIT = false;   // le tableau est replié au départ
     // L'état de pointage Sellsy d'une facture : d'après l'export Sellsy s'il est déposé, sinon d'après le
     // groupe Monday qui le dit (« sellsy pointé », « non remonté sur Sellsy »).
@@ -740,6 +763,7 @@
         cols.push((EDOF && l.its.some(function (f) { return f.financement === 'CPF'; }))
             ? { key: 'edof', label: 'EDOF', width: '170px', format: function (v, f) { return v ? esc(v.statut) + (v.date ? ' le ' + d(v.date) : '') : (f.edofDossier ? 'Dossier : ' + esc(f.edofDossier.statut) + (f.edofAvance ? '<br><span class="op-pied">avance versée</span>' : '') : 'Dossier introuvable'); } }
             : { key: 'dateEcheance', label: 'Échéance', width: '130px', format: function (v, f) { return v ? d(v) + (f.retardJours > 0 ? '<br><span class="op-pied">dépassée de ' + f.retardJours + ' j</span>' : '') : '<span class="op-pied">inconnue</span>'; } });
+        if (l.its.some(function (f) { return f.__gcl; })) cols.push({ key: '__gcl', label: 'GoCardless', width: '260px', format: function (v) { return v ? esc(v.texte) : '—'; } });
         if (a1('__autresDossiers')) cols.push({ key: '__autresDossiers', label: 'Autre dossier EDOF de l’apprenant', width: '280px', format: function (v) { return liste(v) || '—'; } });
         if (a1('__autresFactures')) cols.push({ key: '__autresFactures', label: 'Autre facture Monday de l’apprenant', width: '280px', format: function (v) { return liste(v) || '—'; } });
         var somme = l.its.reduce(function (t, f) { return t + (f.montant || 0); }, 0);
@@ -818,7 +842,7 @@
         var st = etat(), OPX = G.LioraOperationnel, hote = $('#v3-op-edof');
         if (!hote || !st || !OPX) return;
         var hp = function (f) { return f.role !== 'sellsy' && (f.presenceRoles || [f.role]).indexOf('payees') < 0; };
-        (st.factures || []).forEach(function (f) { if (f.__motif || f.__attendu || f.__autresFactures) { f.__motif = null; f.__autresMotifs = null; f.__attendu = null; f.__autresFactures = null; } });
+        (st.factures || []).forEach(function (f) { if (f.__motif || f.__attendu || f.__autresFactures || f.__gcl) { f.__motif = null; f.__autresMotifs = null; f.__attendu = null; f.__autresFactures = null; f.__gcl = null; } });
         // Les factures B2B du tableau « 2.3. Financement pôle emploi » forment un financement à part : B2B - Pôle emploi.
         var finDe = function (f) { var k = f.financement || 'INCONNU';
             // Une facture dont le payeur est un OPCO (d'après son nom) est rangée en OPCO, quel que soit le type saisi dans Monday.
@@ -951,8 +975,10 @@
                     EDOF_LOTS.push({ titre: nom + ' — échues, encore dans un groupe « en cours »', its: horsEchues,
                         note: 'Échéance passée, mais le groupe Monday n’est rangé dans aucune étape du circuit : à déplacer en recouvrement dans Monday.', code: 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-echues-hors-etape' });
                     var ih = EDOF_LOTS.length - 1;
+                    var gcl = horsEchues.map(gclDe), nSolde = gcl.filter(function (x) { return x && x.etat === 'solde'; }).length, nCours = gcl.filter(function (x) { return x && x.etat === 'encours'; }).length;
+                    EDOF_LOTS[ih].motifs = true;
                     encart = '<span class="v3-edof-rouge">dont <button type="button" class="op-lien" data-edof-lot="' + ih + '"><b>' + horsEchues.length.toLocaleString('fr-FR')
-                        + '</b> échues encore dans un groupe « en cours »</button> · ' + somme(horsEchues) + ' <button type="button" class="v3-edof-exp" data-edof-export="' + ih + '">exporter</button></span>';
+                        + '</b> échues encore dans un groupe « en cours »</button>' + (nSolde || nCours ? ' (GoCardless : ' + nSolde + ' encaissées en totalité, ' + nCours + ' en cours de prélèvement)' : '') + ' · ' + somme(horsEchues) + ' <button type="button" class="v3-edof-exp" data-edof-export="' + ih + '">exporter</button></span>';
                     quoi = lot.length.toLocaleString('fr-FR') + ' dans les groupes Monday de l’étape « ' + e.n + ' », et ' + horsEchues.length + ' échues à y déplacer.';
                     lot = lot.concat(horsEchues);
                 }
@@ -1039,13 +1065,22 @@
 
             // 3. Facturation à revérifier, un motif par facture
             var parNumero = {}; tousF.forEach(function (f) { var k = f.cle || f.numero; if (k) (parNumero[k] = parNumero[k] || []).push(f); });
+            // Les échues restées « en cours », avec ce que GoCardless dit de l'apprenant. Un échéancier en cours n'est pas une anomalie.
+            var echuesEnCoursF = itsF.filter(function (f) { return echue(f) && etapeM(f) === 'cours'; });
+            echuesEnCoursF.forEach(function (f) { f.__gcl = gclDe(f); });
             var VER = [
                 ['Payée, mais encore relancée', 'La facture est réglée ; elle est pourtant dans une étape de relance ou de clôture.',
                     payF.filter(function (f) { var k = etapeM(f); return k === 'rec' || k === 'fin'; }), 'payee-encore-relancee'],
                 ['Règlement reçu en comptabilité, non lettré', 'Un règlement non lettré correspond probablement à cette facture : à pointer.',
                     itsF.filter(function (f) { return f.reglementPropose; }), 'reglement-non-lettre'],
-                ['Échue, mais encore dans un groupe « en cours »', 'L’échéance est passée et la facture n’est dans aucune étape du circuit : personne ne la suit.',
-                    itsF.filter(function (f) { return echue(f) && etapeM(f) === 'cours'; }), 'echue-hors-etape'],
+                ['Échue « en cours », mais encaissée en totalité par GoCardless', 'Les prélèvements GoCardless de l’apprenant couvrent le montant de la facture : elle est à passer en payée dans Monday.',
+                    echuesEnCoursF.filter(function (f) { return f.__gcl && f.__gcl.etat === 'solde'; }), 'gcl-soldee'],
+                ['Échue « en cours », dernier prélèvement GoCardless rejeté', 'L’échéancier est actif mais le dernier prélèvement a été rejeté : à relancer.',
+                    echuesEnCoursF.filter(function (f) { return f.__gcl && f.__gcl.etat === 'rejet'; }), 'gcl-rejet'],
+                ['Échue « en cours », prélèvements GoCardless arrêtés', 'Des prélèvements ont eu lieu, mais plus aucun depuis 45 jours et la facture n’est pas soldée : à relancer.',
+                    echuesEnCoursF.filter(function (f) { return f.__gcl && f.__gcl.etat === 'arrete'; }), 'gcl-arrete'],
+                ['Échue, mais encore dans un groupe « en cours »', 'L’échéance est passée, la facture n’est dans aucune étape du circuit et aucun prélèvement GoCardless ne la couvre : personne ne la suit.',
+                    echuesEnCoursF.filter(function (f) { return !f.__gcl || f.__gcl.etat === 'aucun' || f.__gcl.etat === 'sans'; }), 'echue-hors-etape'],
                 ['En recouvrement avant son échéance', 'La facture est dans un groupe de relance alors que son échéance calculée n’est pas passée : arrivée trop tôt, ou date fausse dans Monday.',
                     itsF.filter(function (f) { return etapeM(f) === 'rec' && f.dateEcheance && !echue(f); }), 'recouvrement-trop-tot'],
                 ['Facture saisie deux fois dans Monday', 'La même facture apparaît sur plusieurs lignes ou plusieurs tableaux Monday.',
@@ -1060,7 +1095,7 @@
                     itsF.filter(function (f) { return (f.anciennesFactures || []).length; }), 'facture-refaite']
             ];
             // B2C-Entreprise et B2B : seuls trois motifs comptent comme « à revérifier ».
-            var MOTIFS_SEULS = ['BTC_ENTREPRISE', 'B2B', 'B2B_POLE_EMPLOI'].indexOf(CIRCUIT_FIN) >= 0 ? ['payee-encore-relancee', 'reglement-non-lettre', 'echue-hors-etape'] : null;
+            var MOTIFS_SEULS = ['BTC_ENTREPRISE', 'B2B', 'B2B_POLE_EMPLOI'].indexOf(CIRCUIT_FIN) >= 0 ? ['payee-encore-relancee', 'reglement-non-lettre', 'gcl-soldee', 'gcl-rejet', 'gcl-arrete', 'echue-hors-etape'] : null;
             if (MOTIFS_SEULS) VER = VER.filter(function (v) { return MOTIFS_SEULS.indexOf(v[3]) >= 0; });
             var idDe = function (f) { return f.id || f.cle || f.numero; }, motifs = {}, fact = {};
             VER.forEach(function (v) { v[2].forEach(function (f) { var k = idDe(f); (motifs[k] = motifs[k] || []).push(v[0]); fact[k] = f; }); });
@@ -1079,7 +1114,7 @@
             var lignesB = VER.map(function (v) { if (!v[2].length) return '';
                 var i = pose(v[2], nomF + ' — à revérifier — ' + v[0], v[1], 'x'); EDOF_LOTS[i].motifs = true; EDOF_LOTS[i].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-' + v[3];
                 return '<tr class="v3-ligne-motif"><td><span class="v3-motif">' + esc(v[0]) + '</span>'
-                    + (['doublon-possible', 'payee-encore-relancee', 'reglement-non-lettre', 'echue-hors-etape', 'doublon-monday', 'echeance-inconnue'].indexOf(v[3]) >= 0 ? ' <span class="v3-important">important</span>' : '')
+                    + (['doublon-possible', 'payee-encore-relancee', 'reglement-non-lettre', 'gcl-soldee', 'gcl-rejet', 'gcl-arrete', 'echue-hors-etape', 'doublon-monday', 'echeance-inconnue'].indexOf(v[3]) >= 0 ? ' <span class="v3-important">important</span>' : '')
                     + '<br><span class="op-pied">' + esc(v[1]) + '</span></td>'
                     + COLS.map(function (c) { var l = v[2].filter(function (f) { return colDe(f) === c.k; }); if (!l.length) return '<td class="n v3-vide">—</td>';
                         var j = pose(l, nomF + ' — ' + v[0] + ' × ' + c.n, v[1], 'x'); EDOF_LOTS[j].motifs = true; EDOF_LOTS[j].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-' + v[3] + '-' + c.k;
@@ -1088,7 +1123,7 @@
             if (lignesB) lignesB = '<tr class="v3-sous-titre"><td colspan="' + (COLS.length + 2) + '">Points à revérifier — une même facture peut figurer sur plusieurs lignes</td></tr>' + lignesB;
             /* un seul tableau : les autres points sont en commentaire dans les listes */
             // Les points importants en tête, comme pour le CPF : toutes les factures concernées, même si elles ont aussi un autre motif.
-            var IMP = ['doublon-possible', 'doublon-monday', 'payee-encore-relancee', 'reglement-non-lettre', 'echue-hors-etape', 'echeance-inconnue'];
+            var IMP = ['doublon-possible', 'doublon-monday', 'payee-encore-relancee', 'reglement-non-lettre', 'gcl-soldee', 'gcl-rejet', 'gcl-arrete', 'echue-hors-etape', 'echeance-inconnue'];
             var bandeauG = '<div class="v3-importants"><span class="v3-importants-titre">Points importants</span>' + IMP.map(function (k) {
                 var v = VER.filter(function (x) { return x[3] === k; })[0]; if (!v) return '';
                 var i = pose(v[2], nomF + ' — important — ' + v[0], v[1], 'x'); EDOF_LOTS[i].motifs = true; EDOF_LOTS[i].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-important-' + k;
@@ -1672,6 +1707,8 @@
             if (f.reglementPropose) { o['Règlement proposé'] = f.reglementPropose.montant; o['Reste dû au grand livre'] = f.reglementPropose.reste;
                 o['Fiabilité du rapprochement'] = f.reglementPropose.fiabilite; o['Date du règlement'] = d(f.reglementPropose.date); }
             if (f.opcoNom) o['OPCO'] = f.opcoNom;
+            if (f.__gcl) { o['GoCardless — situation'] = f.__gcl.texte.split(' — ')[0]; o['GoCardless — encaissé'] = f.__gcl.encaisse == null ? '' : f.__gcl.encaisse;
+                o['GoCardless — prélèvements encaissés'] = f.__gcl.nbOk == null ? '' : f.__gcl.nbOk; o['GoCardless — rejets'] = f.__gcl.nbRejets == null ? '' : f.__gcl.nbRejets; o['GoCardless — dernier prélèvement'] = f.__gcl.dernier || ''; }
             if (f.edof) { o['EDOF — statut'] = f.edof.statut; o['EDOF — montant réglé'] = f.edof.montant; o['EDOF — date de règlement'] = d(f.edof.date);
                 o['EDOF — dossier'] = f.edof.dossier; o['EDOF — dossier en contrôle'] = f.edof.controle ? 'oui' : 'non'; }
             if (f.edofDossier) { o['EDOF — n° de dossier'] = f.edofDossier.numero; o['EDOF — statut du dossier'] = f.edofDossier.statut; o['EDOF — début de session'] = d(f.edofDossier.debut);
