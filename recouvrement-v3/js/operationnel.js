@@ -179,7 +179,7 @@
     const F = { etape: 'adv', q: '', deplies: {} };
     let HIST = null;                    // { mois, de, le, par: Map(etape → {e,s,dest,dur}) }
     let histEtat = { s: 'idle', msg: '' };
-    let FOCUS_OUVERT = false;
+    let FOCUS_OUVERT = false, OU_OUVERT = false;
     let LISTE_FILTRE = 'tout', LISTE_COURANTE = { pr: [], k: '', nom: 'tout' };
     let DERNIERES = [];                 // les factures du dernier rendu
 
@@ -687,7 +687,7 @@
                 'Factures pas encore échues mais déjà rangées dans un groupe du circuit (à rendre payable, à corriger…). '
                 + 'Elles sont aussi comptées dans leur étape.') + '</span>' : '')
             + '</span>'
-            + (comp.length ? '<span class="op-ou op-ou-large"><span class="op-ou-t">Dans quels tableaux Monday</span>'
+            + (comp.length ? '<span class="op-ou op-ou-large"><button type="button" class="op-ou-t op-ou-bascule" data-ou-tableaux="1">Dans quels tableaux Monday</button>'
                 + comp.map(x => '<span class="op-ou-l"><span>' + esc(x.tableau) + '</span>'
                     + ouvrableEtape(nb(x.its.length), 'ctl', x.tableau) + '</span>').join('') + '</span>' : '')
             + '</div>';
@@ -842,7 +842,7 @@
         // D'où vient le nombre : un tableau Monday par ligne, avec son compte.
         const comp = composition(s.its);
         const ou = comp.length
-            ? '<span class="op-ou"><span class="op-ou-t">Dans quels tableaux Monday</span>'
+            ? '<span class="op-ou"><button type="button" class="op-ou-t op-ou-bascule" data-ou-tableaux="1">Dans quels tableaux Monday</button>'
               + comp.map(c => '<span class="op-ou-l"><span>' + esc(c.tableau) + '</span>'
                   + ouvrableEtape(nb(c.its.length), k, c.tableau) + '</span>').join('')
               + '</span>'
@@ -1180,10 +1180,13 @@
           + 'face à la cible de traitement.</p>'
           + '<div class="op-flow op-flow-ctl">' + vignetteControle(st.ctl, items, oubliees) + '</div>'
           + '<div class="op-sep"><span></span>à l’échéance, la facture non réglée entre dans le circuit<span></span></div>'
-          + '<div class="op-flow">' + vignetteEtape(st, 'adv', true) + vignetteEtape(st, 'rec', true)
-          + vignetteEtape(st, 'fin') + '</div>'
-          + '<div class="op-sep"><span></span>en parallèle du circuit<span></span></div>'
-          + '<div class="op-flow">' + vignetteEtape(st, 'cor') + '</div>'
+          // LE CIRCUIT EN CERCLE : une étape, une flèche, l'étape suivante — et la dernière revient à la première.
+          // « Sous contrôle » et ses alertes restent au-dessus, en dehors du cercle.
+          + '<div class="op-cercle">'
+          + vignetteEtape(st, 'adv') + '<span class="op-fl op-fl-h" aria-hidden="true">→</span>' + vignetteEtape(st, 'rec')
+          + '<span class="op-fl op-fl-v op-fl-retour" aria-hidden="true">↑</span><span class="op-cercle-centre">Le circuit<small>chaque étape passe la main à la suivante</small></span><span class="op-fl op-fl-v" aria-hidden="true">↓</span>'
+          + vignetteEtape(st, 'cor') + '<span class="op-fl op-fl-h" aria-hidden="true">←</span>' + vignetteEtape(st, 'fin')
+          + '</div>'
           + '<div class="op-sub"><b>Les étapes du process</b>'
           + '<span class="op-pied">Âge du traitement = jours depuis l’entrée dans l’étape quand Monday '
           + 'porte la date — ' + nb(avecEntree) + ' factures sur ' + nb(items.length) + ' — sinon depuis '
@@ -1261,6 +1264,9 @@
             b.onclick = ev => { ev.stopPropagation();
                 montrerEtape(b.dataset.navEtape, b.dataset.t || '', b.dataset.g || ''); });
         // Le focus est replié au départ ; il garde ensuite l'état qu'on lui donne.
+        // « Dans quels tableaux Monday » : replié au départ, une flèche l'ouvre pour toutes les vignettes à la fois.
+        h.classList.toggle('ou-ouvert', OU_OUVERT);
+        h.querySelectorAll('[data-ou-tableaux]').forEach(b => b.onclick = ev => { ev.stopPropagation(); ev.preventDefault(); OU_OUVERT = !OU_OUVERT; h.classList.toggle('ou-ouvert', OU_OUVERT); });
         const pliFocus = document.getElementById('op-focus-pli');
         if (pliFocus) pliFocus.addEventListener('toggle', () => { FOCUS_OUVERT = pliFocus.open; });
         h.querySelectorAll('[data-vers-regles]').forEach(b => b.onclick = () => {

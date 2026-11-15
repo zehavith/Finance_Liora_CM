@@ -526,3 +526,23 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 /* Vignettes d'information du bandeau (contentieux, GoCardless) : même forme, sans le rouge */
 .v3-important-carte.v3-info-carte { border-color: var(--border-hover, #d8d4cc); border-left: 3px solid #1a1a2e; background: var(--bg-secondary, #fff); }
 .op-periode-hist { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.5rem; font-size: 0.86rem; margin: 0.4rem 0 0.6rem; } .op-periode-hist input[type="date"] { font: inherit; font-size: 0.84rem; padding: 0.3rem 0.5rem; border: 1px solid var(--border-hover, #d8d4cc); border-radius: 8px; background: var(--bg-secondary, #fff); color: var(--text-primary); }
+/* Le circuit en cercle : quatre étapes reliées par des flèches qui font le tour */
+.op-cercle { display: grid; grid-template-columns: minmax(0, 1fr) 3.2rem minmax(0, 1fr); gap: 0.5rem; align-items: stretch; margin: 0.4rem 0 0.9rem; }
+.op-cercle > .kpi-card, .op-cercle > .op-tuile { min-width: 0; margin: 0; height: 100%; }
+.op-fl { display: grid; place-items: center; font-size: 1.9rem; line-height: 1; color: var(--accent, #c8472b); font-weight: 700; }
+.op-fl-v { min-height: 2.6rem; }
+.op-cercle-centre { display: grid; place-items: center; text-align: center; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); line-height: 1.2; }
+.op-cercle-centre small { display: none; }
+@media (max-width: 820px) {
+  .op-cercle { grid-template-columns: 1fr; }
+  .op-cercle > .op-fl-h { transform: rotate(90deg); min-height: 2.2rem; }
+  .op-cercle > .op-fl-retour, .op-cercle-centre { display: none; }
+  .op-cercle > .op-tuile:nth-of-type(3) { order: 5; } /* Corriger après Clôture quand tout est en colonne */
+  .op-cercle > .op-fl-h:nth-of-type(3) { order: 4; }
+}
+/* « Dans quels tableaux Monday » : replié, avec une flèche */
+.op-ou-bascule { all: unset; cursor: pointer; font-size: 0.68rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); }
+.op-ou-bascule::before { content: '▸ '; color: var(--accent, #c8472b); }
+#op-corps.ou-ouvert .op-ou-bascule::before { content: '▾ '; }
+#op-corps:not(.ou-ouvert) .op-ou-l { display: none; }
+.op-ou-bascule:hover { color: var(--text-primary); }
