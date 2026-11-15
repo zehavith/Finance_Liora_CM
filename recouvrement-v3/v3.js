@@ -698,7 +698,9 @@
             { key: 'groupe', label: 'Groupe Monday' },
             { key: 'dateFinFormation', label: 'Fin de formation', width: '104px', format: d },
             { key: 'montant', label: 'Montant', align: 'right', width: '100px', format: function (v) { return v == null ? '—' : Math.round(v).toLocaleString('fr-FR') + ' €'; } },
-            { key: 'edof', label: 'EDOF', width: '150px', format: function (v, f) { return v ? esc(v.statut) + (v.date ? ' le ' + d(v.date) : '') : (f.edofAvance ? 'avance versée' : 'absente'); } }
+            (EDOF && l.its.some(function (f) { return f.financement === 'CPF'; }))
+                ? { key: 'edof', label: 'EDOF', width: '150px', format: function (v, f) { return v ? esc(v.statut) + (v.date ? ' le ' + d(v.date) : '') : (f.edofAvance ? 'avance versée' : 'absente'); } }
+                : { key: 'dateEcheance', label: 'Échéance', width: '150px', format: function (v, f) { return v ? d(v) + (f.retardJours > 0 ? '<br><span class="op-pied">dépassée de ' + f.retardJours + ' j</span>' : '') : '<span class="op-pied">inconnue</span>'; } }
         ];
         var somme = l.its.reduce(function (t, f) { return t + (f.montant || 0); }, 0);
         u.modal(l.titre, '<p class="pil-note">' + l.its.length.toLocaleString('fr-FR') + ' facture' + (l.its.length > 1 ? 's' : '') + ' · ' + Math.round(somme).toLocaleString('fr-FR') + ' €. ' + esc(l.note || '')
@@ -804,9 +806,115 @@
                         + somme(horsEchues) + ') sont encore dans un groupe « en cours », hors de toute étape. <button type="button" class="v3-edof-exp" data-edof-export="' + i + '">exporter</button></p>'; })() : '');
         }
         if (CIRCUIT_FIN !== 'CPF' || !EDOF) {
-            hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + parcours + '</div></div>';
+            hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + parcours + detailGeneral() + '</div></div>';
             brancherTete();
             return;
+        }
+        // ── Le même niveau de détail que le CPF, pour un financement sans EDOF : retard × étape,
+        //    factures payées à corriger, groupes Monday, et facturation à revérifier triée par motif.
+        function detailGeneral() {
+            var nomF = nomFin(CIRCUIT_FIN);
+            var itsF = nonReglees.filter(function (f) { return (f.financement || 'INCONNU') === CIRCUIT_FIN; });
+            var payF = payeesADeplacer.filter(function (f) { return (f.financement || 'INCONNU') === CIRCUIT_FIN; });
+            var tousF = itsF.concat(payF);
+            var e0 = function (l) { return Math.round(l.reduce(function (t, f) { return t + (f.montant || 0); }, 0)).toLocaleString('fr-FR') + ' €'; };
+            var pose = function (l, titre, note, code) { EDOF_LOTS.push({ titre: titre, its: l, note: note, code: 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-' + code }); return EDOF_LOTS.length - 1; };
+            var nbL = function (l, i) { return l.length ? '<button type="button" class="op-lien" data-edof-lot="' + i + '" title="Voir ces factures"><b>' + l.length.toLocaleString('fr-FR') + '</b></button>' : '<b>0</b>'; };
+            var ex = function (l, i) { return l.length ? ' <button type="button" class="v3-edof-exp" data-edof-export="' + i + '">exporter</button>' : ''; };
+            var ligne = function (l, lib, note, code) { var i = pose(l, nomF + ' — ' + lib, note, code); return nbL(l, i) + ' ' + esc(lib) + ' <span class="op-pied">· ' + e0(l) + ex(l, i) + '</span>'; };
+            var etapeM = function (f) { var k = OPX.etapeDe(f); return cles[k] ? k : 'cours'; };
+            var pointee = function (f) { return f.grandLivreSoldee || f.soldeeParAvoir; };
+
+            // 1. Retard × étape du circuit
+            var COLS = [{ k: 'ctl', n: 'Sous contrôle' }].concat((OPX.CIRCUIT || []).map(function (e) { return { k: e.k, n: e.n }; })).concat([{ k: 'hors', n: 'Échue, hors étape' }]);
+            var colDe = function (f) { if (f.paye) return 'cor'; var k = OPX.etapeDe(f); if (cles[k]) return k; return echue(f) ? 'hors' : 'ctl'; };
+            var r = function (f) { return f.retardJours; };
+            var LIGNES = [
+                { n: '1 · Pas encore échue', faire: 'rien à faire, sauf si elle est déjà relancée', l: itsF.filter(function (f) { return f.dateEcheance && !(r(f) > 0); }), code: 'non-echue' },
+                { n: '2 · Échue depuis 1 à 30 jours', faire: 'première relance', l: itsF.filter(function (f) { return r(f) > 0 && r(f) <= 30; }), code: 'retard-1-30' },
+                { n: '3 · Échue depuis 31 à 90 jours', faire: 'relance suivie', l: itsF.filter(function (f) { return r(f) > 30 && r(f) <= 90; }), code: 'retard-31-90' },
+                { n: '4 · Échue depuis 91 à 360 jours', faire: 'relance ferme, envisager la clôture', l: itsF.filter(function (f) { return r(f) > 90 && r(f) <= 360; }), code: 'retard-91-360' },
+                { n: '5 · Échue depuis plus de 360 jours', faire: 'clôture ou contentieux', l: itsF.filter(function (f) { return r(f) > 360; }), code: 'retard-plus-360' },
+                { n: '6 · Échéance impossible à calculer', faire: 'compléter la date manquante', l: itsF.filter(function (f) { return !f.dateEcheance; }), code: 'echeance-inconnue' },
+                { n: '7a · Payée, pointée en comptabilité', faire: 'rectifier Monday : déplacer dans les payées', l: payF.filter(pointee), code: 'payee-pointee' },
+                { n: '7b · Payée, non pointée en comptabilité', faire: 'pointer, puis rectifier Monday', l: payF.filter(function (f) { return !pointee(f); }), code: 'payee-non-pointee' }
+            ];
+            var cell = function (l, titre, code) { if (!l.length) return '<td class="n v3-vide">—</td>';
+                var i = pose(l, titre, 'Ancienneté du retard et étape du circuit Monday croisées.', code);
+                return '<td class="n">' + nbL(l, i) + '<br><span class="op-pied">' + e0(l) + '</span></td>'; };
+            var matrice = '<div class="table-wrap"><table class="op-t v3-croise"><thead><tr><th>Où en est la facture ↓ &nbsp;/&nbsp; étape du circuit →</th>'
+                + COLS.map(function (c) { return '<th class="n">' + esc(c.n) + '</th>'; }).join('') + '<th class="n">Total</th></tr></thead><tbody>'
+                + LIGNES.map(function (L) { var i = pose(L.l, nomF + ' — ' + L.n, 'Factures ' + nomF + ' dans cette situation.', L.code);
+                    return '<tr><td><b>' + esc(L.n) + '</b><br><span class="op-pied">→ ' + esc(L.faire) + '</span></td>'
+                        + COLS.map(function (c) { return cell(L.l.filter(function (f) { return colDe(f) === c.k; }), nomF + ' — ' + L.n + ' × ' + c.n, L.code + '-' + c.k); }).join('')
+                        + '<td class="n"><b>' + nbL(L.l, i) + '</b><br><span class="op-pied">' + e0(L.l) + ex(L.l, i) + '</span></td></tr>'; }).join('')
+                + '<tr class="total"><td>Total</td>' + COLS.map(function (c) { return cell(tousF.filter(function (f) { return colDe(f) === c.k; }), nomF + ' — ' + c.n, 'total-' + c.k); }).join('')
+                + '<td class="n"><b>' + tousF.length.toLocaleString('fr-FR') + '</b></td></tr></tbody></table></div>';
+
+            // 2. Les payées à corriger, et leurs groupes
+            var parG = {}; payF.forEach(function (f) { var k = (f.groupe || '—') + '|' + (f.board || ''); (parG[k] = parG[k] || []).push(f); });
+            var lignesG = Object.keys(parG).sort(function (a, b) { return parG[b].length - parG[a].length; }).map(function (k) { var l = parG[k], g = k.split('|')[0], t = k.split('|')[1];
+                var i = pose(l, nomF + ' payées — ' + g, 'Factures payées encore dans le groupe Monday « ' + g + ' » (' + t + ').', 'payees-' + g.replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 30));
+                var np = l.filter(function (f) { return !pointee(f); }).length;
+                return '<tr><td>' + esc(g) + '<br><span class="op-pied">' + esc(t) + '</span></td><td class="n">' + nbL(l, i) + '</td><td class="n">' + e0(l) + '</td><td class="n">'
+                    + (np ? np + ' non pointée' + (np > 1 ? 's' : '') : 'toutes pointées') + '</td><td class="n">' + ex(l, i) + '</td></tr>'; }).join('');
+            var blocPayees = payF.length ? '<div class="v3-edof-detail"><div><b>Les ' + payF.length.toLocaleString('fr-FR') + ' factures payées, à corriger</b><ul class="v3-edof-sous">'
+                + '<li>' + ligne(payF.filter(pointee), 'pointées en comptabilité → rectifier Monday', 'Payées et lettrées au grand livre (ou annulées par avoir) : il ne reste qu’à les déplacer dans les payées dans Monday.', 'payee-pointee') + '</li>'
+                + '<li>' + ligne(payF.filter(function (f) { return !pointee(f); }), 'non pointées → à pointer, puis rectifier Monday', 'Monday les donne payées, mais le grand livre ne les montre pas soldées.', 'payee-non-pointee') + '</li></ul>'
+                + '<p class="op-pied">Pointée = lettrée au grand livre arrêté au ' + String((GL_INFO && GL_INFO.arrete) || '').split('-').reverse().join('/') + '.</p></div>'
+                + '<div><b>Dans quel groupe Monday elles sont encore</b><div class="pil-defile"><table class="op-t"><thead><tr><th>Groupe Monday</th><th class="n">Factures</th><th class="n">Montant</th>'
+                + '<th class="n">Pointage</th><th></th></tr></thead><tbody>' + lignesG + '</tbody></table></div></div></div>' : '';
+
+            // 3. Facturation à revérifier, un motif par facture
+            var parNumero = {}; tousF.forEach(function (f) { var k = f.cle || f.numero; if (k) (parNumero[k] = parNumero[k] || []).push(f); });
+            var VER = [
+                ['Payée, mais encore relancée', 'La facture est réglée ; elle est pourtant dans une étape de relance ou de clôture.',
+                    payF.filter(function (f) { var k = etapeM(f); return k === 'rec' || k === 'fin'; }), 'payee-encore-relancee'],
+                ['Règlement reçu en comptabilité, non lettré', 'Un règlement non lettré correspond probablement à cette facture : à pointer.',
+                    itsF.filter(function (f) { return f.reglementPropose; }), 'reglement-non-lettre'],
+                ['Échue, mais encore dans un groupe « en cours »', 'L’échéance est passée et la facture n’est dans aucune étape du circuit : personne ne la suit.',
+                    itsF.filter(function (f) { return echue(f) && etapeM(f) === 'cours'; }), 'echue-hors-etape'],
+                ['Échue, mais encore dans « Rendre payable »', 'L’échéance est passée : la facture devrait être en recouvrement.',
+                    itsF.filter(function (f) { return echue(f) && etapeM(f) === 'adv'; }), 'echue-encore-rendre-payable'],
+                ['En recouvrement avant son échéance', 'La facture est dans un groupe de relance alors que son échéance calculée n’est pas passée : arrivée trop tôt, ou date fausse dans Monday.',
+                    itsF.filter(function (f) { return etapeM(f) === 'rec' && f.dateEcheance && !echue(f); }), 'recouvrement-trop-tot'],
+                ['Plus de 360 jours de retard, pas en clôture', 'Créance très ancienne toujours hors de l’étape « Clôture ».',
+                    itsF.filter(function (f) { return r(f) > 360 && etapeM(f) !== 'fin'; }), 'tres-ancienne-hors-cloture'],
+                ['Facture saisie deux fois dans Monday', 'La même facture apparaît sur plusieurs lignes ou plusieurs tableaux Monday.',
+                    tousF.filter(function (f) { return f.doublonOperationnel || f.doublonPayees; }), 'doublon-monday'],
+                ['Échéance impossible à calculer', 'Une date manque (facture, début ou fin de formation) : la facture sort des taux.',
+                    itsF.filter(function (f) { return !f.dateEcheance; }), 'echeance-inconnue'],
+                ['Montant absent ou nul', 'Sans montant, la facture ne pèse pas dans les indicateurs en euros.',
+                    tousF.filter(function (f) { return f.montant == null || f.montant === 0; }), 'montant-absent'],
+                ['Facture refaite (ancienne facture connue)', 'L’échéance est calculée sur la date de la facture d’origine : vérifier que l’ancienne facture est bien annulée.',
+                    itsF.filter(function (f) { return (f.anciennesFactures || []).length; }), 'facture-refaite']
+            ];
+            var idDe = function (f) { return f.id || f.cle || f.numero; }, motifs = {}, fact = {};
+            VER.forEach(function (v) { v[2].forEach(function (f) { var k = idDe(f); (motifs[k] = motifs[k] || []).push(v[0]); fact[k] = f; }); });
+            var toutes = Object.keys(fact).map(function (k) { var f = fact[k]; f.__motif = motifs[k][0]; f.__autresMotifs = motifs[k].slice(1); return f; });
+            var rang = {}; VER.forEach(function (v, i) { rang[v[0]] = i; });
+            toutes.sort(function (x, y) { return rang[x.__motif] - rang[y.__motif] || (y.montant || 0) - (x.montant || 0); });
+            var lignesM = VER.map(function (v) { var l = toutes.filter(function (f) { return f.__motif === v[0]; });
+                var i = pose(l, nomF + ' — à revérifier — ' + v[0], v[1], 'a-reverifier-' + v[3]); EDOF_LOTS[i].motifs = true; EDOF_LOTS[i].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-' + v[3];
+                var aussi = v[2].length - l.length;
+                return '<tr' + (l.length ? '' : ' class="v3-rien"') + '><td><span class="v3-motif">' + esc(v[0]) + '</span><br><span class="op-pied">' + esc(v[1])
+                    + (aussi > 0 ? ' ' + aussi + ' autre(s) facture(s) ont aussi ce motif, mais sont rangées sous un motif plus important.' : '') + '</span></td><td class="n">' + nbL(l, i)
+                    + '</td><td class="n">' + (l.length ? e0(l) : '—') + '</td><td class="n">' + ex(l, i) + '</td></tr>'; }).join('');
+            var iT = pose(toutes, nomF + ' — facturation à revérifier, triée par motif', 'Chaque facture est rangée sous son motif le plus important.', 'x');
+            EDOF_LOTS[iT].motifs = true; EDOF_LOTS[iT].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-toutes';
+            var aVerif = '<div class="v3-averifier"><h3 class="v3-circuit-sous">Facturation à revérifier <span class="op-cnt">' + toutes.length.toLocaleString('fr-FR') + ' factures</span></h3>'
+                + '<p class="pil-note">Les factures ' + esc(nomF) + ' qui posent question, <b>triées par motif</b>. Chaque facture n’est comptée qu’une fois, sous son motif le plus important. '
+                + (toutes.length ? '<button type="button" class="btn btn-ghost btn-sm" data-edof-lot="' + iT + '">Voir les ' + toutes.length.toLocaleString('fr-FR') + ' factures triées par motif</button> '
+                    + '<button type="button" class="btn btn-ghost btn-sm" data-edof-export="' + iT + '">Exporter le tout (Excel)</button>' : '') + '</p>'
+                + '<table class="op-t"><thead><tr><th>Motif</th><th class="n">Factures</th><th class="n">Montant</th><th></th></tr></thead><tbody>' + lignesM
+                + '<tr class="total"><td>Total</td><td class="n"><b>' + toutes.length.toLocaleString('fr-FR') + '</b></td><td class="n">' + e0(toutes) + '</td><td></td></tr></tbody></table></div>';
+
+            var regle = (st.rules || []).filter(function (x) { return x.key === CIRCUIT_FIN; })[0];
+            return '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">' + esc(nomF) + ' — ancienneté du retard croisée avec les étapes du circuit</h3></div>'
+                + '<p class="pil-note">' + (regle && regle.note ? '<b>Règle d’échéance :</b> ' + esc(regle.note) + '. ' : '')
+                + 'En ligne, où en est la facture par rapport à son échéance ; en colonne, dans quelle étape du circuit elle se trouve dans Monday. '
+                + 'Les factures payées mais pas encore déplacées sont rangées dans « Corriger ».</p>'
+                + matrice + blocPayees + aVerif;
         }
         var cpf = (st.factures || []).filter(function (f) { return f.role !== 'sellsy' && (f.financement === 'CPF' || f.edof); });
         var ouvertes = cpf.filter(hp);
@@ -1211,7 +1319,7 @@
         if (!X) { dire('L’export Excel n’est pas disponible.', 'error', 4000); return; }
         var d = function (v) { var x = v && R.parseDate(v); return x ? jourLocal(x).split('-').reverse().join('/') : ''; };
         var lignes = (a.items || []).map(function (f) {
-            var o = {}; if (a.items && f.__motif && /^a-reverifier/.test(String(a.code || ''))) { o['Motif'] = f.__motif; o['Autres motifs'] = (f.__autresMotifs || []).join(' ; '); }
+            var o = {}; if (a.items && f.__motif && /a-reverifier/.test(String(a.code || ''))) { o['Motif'] = f.__motif; o['Autres motifs'] = (f.__autresMotifs || []).join(' ; '); }
             Object.assign(o, { 'Facture': f.numero || '', 'Client': f.client || '', 'Apprenant': f.apprenant || '', 'Financement': f.financement || '',
                 'Tableau Monday': f.board || '', 'Groupe Monday': f.groupe || '', 'Montant': f.montant == null ? '' : f.montant,
                 'Date de facture': d(f.dateFacture), 'Échéance calculée': d(f.dateEcheance), 'Jours de retard': f.retardJours == null ? '' : f.retardJours,
