@@ -924,7 +924,7 @@
             var REGLE_ETAPE = CIRCUIT_FIN === 'CPF'
                 ? { ctl: 'avant fin de formation + ' + jPayable + ' jours', adv: 'de fin de formation + ' + jPayable + ' jours à + ' + jReco + ' jours',
                     rec: 'à partir de fin de formation + ' + jReco + ' jours', fin: 'après relance restée sans effet', cor: 'facture payée, ou à rectifier' }
-                : { ctl: 'avant l’échéance : ' + minus, adv: 'avant l’échéance, facture à rendre payable', rec: 'après l’échéance : ' + minus,
+                : { ctl: 'avant l’échéance : ' + minus, adv: 'par principe échue, mais du ressort de l’ADV : la facture doit d’abord être rendue payable', rec: 'après l’échéance : ' + minus,
                     fin: 'après relance restée sans effet', cor: 'facture payée, ou à rectifier' };
             var vignette = function (n, l, titre, quoi, faire, code, classe, encart) {
                 EDOF_LOTS.push({ titre: nom + ' — ' + titre, its: l, note: quoi, code: 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-' + code });
@@ -1000,9 +1000,9 @@
                 { n: '7b · Payée, non pointée en comptabilité', faire: 'pointer, puis rectifier Monday', l: payF.filter(function (f) { return !pointee(f); }), code: 'payee-non-pointee', att: 'cor' }
             ];
             // Dans quelles étapes une facture est-elle à sa place ? Selon sa situation, pas selon une seule case.
-            var ADMIS = { 'non-echue': ['ctl', 'adv', 'cor'], 'retard-1-30': ['rec', 'fin', 'cor'], 'retard-31-90': ['rec', 'fin', 'cor'], 'retard-91-360': ['rec', 'fin', 'cor'],
-                'retard-plus-360': ['rec', 'fin', 'cor'], 'echeance-inconnue': ['cor'], 'payee-pointee': ['cor'], 'payee-non-pointee': ['cor'] };
-            var LIB_ATT = { 'non-echue': 'Sous contrôle ou Rendre payable', 'retard-1-30': 'Relancer', 'retard-31-90': 'Relancer', 'retard-91-360': 'Relancer', 'retard-plus-360': 'Relancer ou Clôture',
+            var ADMIS = { 'non-echue': ['ctl', 'adv', 'cor'], 'retard-1-30': ['adv', 'rec', 'fin', 'cor'], 'retard-31-90': ['adv', 'rec', 'fin', 'cor'], 'retard-91-360': ['adv', 'rec', 'fin', 'cor'],
+                'retard-plus-360': ['adv', 'rec', 'fin', 'cor'], 'echeance-inconnue': ['cor'], 'payee-pointee': ['cor'], 'payee-non-pointee': ['cor'] };
+            var LIB_ATT = { 'non-echue': 'Sous contrôle ou Rendre payable', 'retard-1-30': 'Rendre payable ou Relancer', 'retard-31-90': 'Rendre payable ou Relancer', 'retard-91-360': 'Rendre payable ou Relancer', 'retard-plus-360': 'Rendre payable, Relancer ou Clôture',
                 'echeance-inconnue': 'Corriger', 'payee-pointee': 'Corriger', 'payee-non-pointee': 'Corriger' };
             // Une facture rangée dans un groupe « Factures non conformes » y est à sa place, même échue : elle attend d'être corrigée.
             var nonConforme = function (f) { return /non[ -]?conforme/i.test(String(f.groupe || '')); };
@@ -1046,8 +1046,6 @@
                     itsF.filter(function (f) { return f.reglementPropose; }), 'reglement-non-lettre'],
                 ['Échue, mais encore dans un groupe « en cours »', 'L’échéance est passée et la facture n’est dans aucune étape du circuit : personne ne la suit.',
                     itsF.filter(function (f) { return echue(f) && etapeM(f) === 'cours'; }), 'echue-hors-etape'],
-                ['Échue, mais encore dans « Rendre payable »', 'L’échéance est passée : la facture devrait être en recouvrement. Les factures du groupe « Factures non conformes » ne sont pas comptées : elles y sont à leur place.',
-                    itsF.filter(function (f) { return echue(f) && etapeM(f) === 'adv' && !/non[ -]?conforme/i.test(String(f.groupe || '')); }), 'echue-encore-rendre-payable'],
                 ['En recouvrement avant son échéance', 'La facture est dans un groupe de relance alors que son échéance calculée n’est pas passée : arrivée trop tôt, ou date fausse dans Monday.',
                     itsF.filter(function (f) { return etapeM(f) === 'rec' && f.dateEcheance && !echue(f); }), 'recouvrement-trop-tot'],
                 ['Facture saisie deux fois dans Monday', 'La même facture apparaît sur plusieurs lignes ou plusieurs tableaux Monday.',
