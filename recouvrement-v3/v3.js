@@ -1676,6 +1676,16 @@
                 return liste;
             };
         }
+        // Les virements GoCardless gardés par le navigateur reviennent avec leurs dates en texte : l'onglet Prélèvements
+        // plantait à la deuxième ouverture de la page et restait vide. Les dates sont reconverties avant chaque lecture.
+        var PRL = G.LioraPrelevements;
+        if (PRL) ['analyserVersements', 'rapprocherVersements'].forEach(function (nom) {
+            var origine = PRL[nom]; if (typeof origine !== 'function') return;
+            PRL[nom] = function (versements) {
+                (versements || []).forEach(function (v) { ['dateArrivee', 'dateCreation'].forEach(function (c) { if (v[c] && !(v[c] instanceof Date)) v[c] = R.parseDate(v[c]) || null; }); });
+                return origine.apply(this, arguments);
+            };
+        });
         var enrichirOrigine = I.enrichir;
         I.enrichir = function (factures, opts) {
             var st = etat() || {};

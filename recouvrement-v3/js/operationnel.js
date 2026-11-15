@@ -493,6 +493,8 @@
             const versPayees = /factures? pay[ée]es?/i.test(String(arrT || '') + ' ' + String((d.dest_board && d.dest_board.name) || ''));
             const ou = arr ? ETAPE[arr].n
                 : versPayees ? 'Passées en payées'
+                // Un groupe « Technique » n'est qu'un passage : la colonne « Basculement » de Monday dit où la facture va ensuite.
+                : (arrT && estTechnique(arrT) && ligne && ligne.bascule) ? 'Basculement : ' + ligne.bascule
                 : arrT ? arrT
                 : ((d.dest_board && d.dest_board.name) || 'Autre tableau');
             par[dep].dest[ou] = (par[dep].dest[ou] || 0) + 1;
@@ -528,7 +530,7 @@
             lus++;
             compterMouvement(par, EV[l[1]], { source_group: T[l[2]] ? { title: T[l[2]] } : null, dest_group: T[l[3]] ? { title: T[l[3]] } : null,
                                               dest_board: T[l[4]] ? { name: T[l[4]] } : null },
-                             { jour: l[0], de: T[l[2]] || '', vers: T[l[3]] || (T[l[4]] ? 'tableau ' + T[l[4]] : ''), id: String(l[5] || '') });
+                             { jour: l[0], de: T[l[2]] || '', vers: T[l[3]] || (T[l[4]] ? 'tableau ' + T[l[4]] : ''), id: String(l[5] || ''), bascule: (MVT.bascule || {})[String(l[5] || '')] || '' });
         }
         // On compte des FACTURES, pas des déplacements : une facture qui entre ou sort deux fois de l'étape sur la période ne compte qu'une fois.
         const uniques = L => new Set(L.map(x => x.id || (x.jour + x.de + x.vers))).size;
@@ -549,7 +551,7 @@
         const noms = (MVT && MVT.noms) || {}, FK = global.LioraIngest && global.LioraIngest.factureKey;
         const factureDe = id => parItem[id] || (noms[id] && FK ? parCle[FK(noms[id])] : null) || null;
         const jr = x => String(x || '').split('-').reverse().join('/');
-        const rows = lignes.map(l => { const f = factureDe(l.id); return { jour: l.jour, de: l.de, vers: l.vers, id: l.id,
+        const rows = lignes.map(l => { const f = factureDe(l.id); return { jour: l.jour, de: l.de, vers: l.vers, id: l.id, bascule: l.bascule || '',
             numero: f ? f.numero : (noms[l.id] || ''), qui: f ? ((f.client && f.client !== '—' ? f.client : '') || f.apprenant || '') : '', montant: f ? f.montant : null,
             fin: f ? (f.financement || '') : '', auj: f ? ((f.paye ? 'Payée' : 'Non payée') + ' · ' + (f.groupe || '')) : (noms[l.id] ? 'Facture absente des données du jour' : 'Élément supprimé de Monday') }; });
         const titre = e.n + ' — ' + (quoi === 'e' ? 'entrées' : quoi === 's' ? 'sorties' : 'sorties vers « ' + dest + ' »') + ' du ' + jr(HIST.de) + ' au ' + jr(HIST.au);
@@ -557,7 +559,7 @@
             { key: 'numero', label: 'Facture', width: '160px', format: (v, r) => v ? '<b>' + esc(v) + '</b>' + (r.qui ? '<br><span class="op-pied">' + esc(r.qui) + '</span>' : '') : '<span class="op-pied">élément Monday n° ' + esc(r.id) + '</span>' },
             { key: 'montant', label: 'Montant', align: 'right', width: '100px', format: v => v == null ? '—' : eur(v) },
             { key: 'de', label: 'Venait de', width: '230px', format: v => esc(v || '—') },
-            { key: 'vers', label: 'Est allée dans', width: '230px', format: v => esc(v || '—') },
+            { key: 'vers', label: 'Est allée dans', width: '230px', format: (v, r) => esc(v || '—') + (r.bascule ? '<br><span class="op-pied">Basculement : ' + esc(r.bascule) + '</span>' : '') },
             { key: 'auj', label: 'Aujourd’hui', width: '230px', format: v => esc(v) }];
         const connus = rows.filter(r => r.numero).length, distinctes = new Set(rows.map(r => r.id)).size;
         U().modal(titre, '<p class="pil-note">' + nb(distinctes) + ' facture' + (distinctes > 1 ? 's' : '') + ' · ' + nb(rows.length) + ' déplacement' + (rows.length > 1 ? 's' : '') + ' (une facture déplacée plusieurs fois apparaît sur plusieurs lignes). '
@@ -567,7 +569,7 @@
             const bt = document.createElement('button'); bt.type = 'button'; bt.className = 'btn btn-ghost btn-sm v3-export-lot'; bt.textContent = 'Exporter cette liste (Excel)';
             bt.onclick = () => { const X = global.XLSX, wb = X.utils.book_new();
                 X.utils.book_append_sheet(wb, X.utils.json_to_sheet(rows.map(r => ({ 'Date': jr(r.jour), 'Facture': r.numero, 'Client ou apprenant': r.qui, 'Financement': r.fin, 'Montant': r.montant == null ? '' : r.montant,
-                    'Venait de': r.de, 'Est allée dans': r.vers, 'Aujourd’hui': r.auj, 'Identifiant Monday': r.id }))), 'Déplacements');
+                    'Venait de': r.de, 'Est allée dans': r.vers, 'Basculement': r.bascule, 'Aujourd’hui': r.auj, 'Identifiant Monday': r.id }))), 'Déplacements');
                 X.writeFile(wb, 'deplacements-' + k + '-' + quoi + '-' + HIST.de + '-' + HIST.au + '.xlsx'); };
             pied.insertBefore(bt, pied.firstChild); }, 60);
     }
