@@ -1421,7 +1421,10 @@
         if (!d || !d.releve || !d.paiements) return false;
         GCL_INFO = { releve: d.releve, paiements: d.paiements.lignes.length, versements: (d.versements || { lignes: [] }).lignes.length };
         var deja = null; try { deja = await S.get(CLE_GCL, null); } catch (e) { /* première fois */ }
-        if (!force && deja === d.releve) return false;
+        // Déjà chargé ? Seulement si l'onglet a vraiment ses prélèvements : le navigateur peut ne pas avoir gardé
+        // un relevé aussi gros d'une visite à l'autre, et l'onglet resterait vide.
+        var dejaLa = ((etat() || {}).gcl || {}).paiements || [];
+        if (!force && deja === d.releve && dejaLa.length >= d.paiements.lignes.length) return false;
         var champ = $('#gcl-file-input');
         if (!champ || typeof DataTransfer === 'undefined' || !etat()) return false;
         var dt = new DataTransfer();

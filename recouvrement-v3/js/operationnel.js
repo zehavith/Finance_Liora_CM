@@ -909,10 +909,14 @@
                            + '<td class="n">' + (hdG == null ? '—' : nb(hdG) + ' %') + '</td></tr>';
                     });
                 });
-                h += '<tr class="op-sous op-sous-titre"><td colspan="8">Les mêmes factures, par problématique '
-                   + 'pré-échéance</td></tr>';
+                // En recouvrement et en clôture, ce qui compte est la QUALIFICATION RECOUVREMENT ; la problématique
+                // pré-échéance ne concerne que ce qui précède l'échéance (Rendre payable, Corriger).
+                const parQualif = e.k === 'rec' || e.k === 'fin';
+                h += '<tr class="op-sous op-sous-titre"><td colspan="8">Les mêmes factures, par '
+                   + (parQualif ? 'qualification recouvrement' : 'problématique pré-échéance') + '</td></tr>';
                 const g = {};
-                s.its.forEach(f => { const t = (f.problematique || '').trim() || 'Problématique non renseignée';
+                s.its.forEach(f => { const t = parQualif ? (String(f.qualifRecouvrement || '').trim() || 'Qualification recouvrement non renseignée')
+                        : ((f.problematique || '').trim() || 'Problématique non renseignée');
                     (g[t] || (g[t] = [])).push(f); });
                 Object.keys(g).sort((a, b) => g[b].length - g[a].length).forEach(t => {
                     const arr = g[t];
@@ -921,7 +925,7 @@
                     const m2 = somme(arr, montantDe);
                     h += '<tr class="op-sous"><td>' + esc(t) + '</td><td class="n">'
                        + ouvrable(nb(arr.length), e.n + ' — ' + t, arr,
-                            'Factures de l’étape « ' + e.n + ' » dont la problématique pré-échéance est « ' + t + ' ».')
+                            'Factures de l’étape « ' + e.n + ' » dont la ' + (parQualif ? 'qualification recouvrement' : 'problématique pré-échéance') + ' est « ' + t + ' ».')
                        + '</td>'
                        + '<td class="n">' + eur(m2) + barre(m2 / mx * 100, 'var(--text-muted)') + '</td>'
                        + '<td class="n"></td><td class="n"></td>'
@@ -1185,7 +1189,7 @@
           + 'Recouvrement n’ont pas de colonne de date d’entrée : sur eux, le « % hors délai » mesure '
           + 'l’ancienneté de la créance, pas le temps de traitement du service. '
           + '<strong>Dépliez une étape (▸)</strong> pour voir dans quels tableaux et groupes Monday se trouvent '
-          + 'ses factures, puis leur problématique pré-échéance.</span>'
+          + 'ses factures, puis leur problématique pré-échéance (Rendre payable, Corriger) ou leur qualification recouvrement (Relancer, Clôture).</span>'
           + (MVT ? '<p class="op-periode-hist"><b>Entrées et sorties</b> du <input type="date" id="op-hist-du" value="' + HIST_DU + '" min="' + MVT.depuis + '" max="' + String(MVT.releve).slice(0, 10) + '"> au '
               + '<input type="date" id="op-hist-au" value="' + HIST_AU + '" min="' + MVT.depuis + '" max="' + String(MVT.releve).slice(0, 10) + '">'
               + ' <span class="op-pied">Journal des déplacements Monday relevé le ' + String(MVT.releve).slice(0, 10).split('-').reverse().join('/')
