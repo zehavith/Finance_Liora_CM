@@ -817,7 +817,7 @@
         var fins = Object.keys(parFin).sort(function (a, b) { return (b === 'CPF') - (a === 'CPF') || parFin[b] - parFin[a]; });
         if (fins.indexOf(CIRCUIT_FIN) < 0) CIRCUIT_FIN = fins[0] || 'CPF';
         var nomFin = function (k) { return libelles[k] || (k === 'INCONNU' ? 'Non renseigné' : k); };
-        var tete = '<div class="v3-circuit-tete"><h3><label for="v3-circuit-fin">Le circuit :</label></h3><select id="v3-circuit-fin" class="v3-circuit-choix">' + fins.map(function (k) {
+        var tete = '<div class="v3-circuit-tete"><h3><label for="v3-circuit-fin">Circuit par financement</label></h3><select id="v3-circuit-fin" class="v3-circuit-choix">' + fins.map(function (k) {
             return '<option value="' + esc(k) + '"' + (k === CIRCUIT_FIN ? ' selected' : '') + '>' + esc(nomFin(k)) + ' — ' + parFin[k].toLocaleString('fr-FR') + ' factures</option>'; }).join('') + '</select></div>';
         var brancherTete = function () {
             var pli = hote.querySelector('details.v3-pli'); if (pli) pli.addEventListener('toggle', function () { PLI_TABLEAU = pli.open; });
@@ -1006,6 +1006,9 @@
                 ['Facture refaite (ancienne facture connue)', 'L’échéance est calculée sur la date de la facture d’origine : vérifier que l’ancienne facture est bien annulée.',
                     itsF.filter(function (f) { return (f.anciennesFactures || []).length; }), 'facture-refaite']
             ];
+            // B2C-Entreprise et B2B : seuls trois motifs comptent comme « à revérifier ».
+            var MOTIFS_SEULS = ['BTC_ENTREPRISE', 'B2B'].indexOf(CIRCUIT_FIN) >= 0 ? ['payee-encore-relancee', 'reglement-non-lettre', 'echue-hors-etape'] : null;
+            if (MOTIFS_SEULS) VER = VER.filter(function (v) { return MOTIFS_SEULS.indexOf(v[3]) >= 0; });
             var idDe = function (f) { return f.id || f.cle || f.numero; }, motifs = {}, fact = {};
             VER.forEach(function (v) { v[2].forEach(function (f) { var k = idDe(f); (motifs[k] = motifs[k] || []).push(v[0]); fact[k] = f; }); });
             var toutes = Object.keys(fact).map(function (k) { var f = fact[k]; f.__motif = motifs[k][0]; f.__autresMotifs = motifs[k].slice(1); return f; });
@@ -1046,6 +1049,9 @@
             var rouge = {};
             COLS.forEach(function (c) { var mal = []; LIGNES.forEach(function (L) {
                     L.l.forEach(function (f) { if (colDe(f) === c.k && L.admis(f).indexOf(c.k) < 0) { f.__attendu = L.n + ' → attendue dans « ' + (L.lib || '') + ' »'; mal.push(f); } }); });
+                // Pour ces financements, une facture n'est problématique que si elle porte l'un des motifs retenus.
+                // (les échues restées « en cours » ont déjà leur propre ligne rouge dans « Relancer » : elles ne sont pas recomptées)
+                if (MOTIFS_SEULS) mal = toutes.filter(function (f) { return colDe(f) === c.k && !(c.k === 'rec' && OPX.etapeDe(f) !== 'rec'); });
                 rouge[c.k] = ligneRouge(mal, nomF + ' — ' + c.n, 'circuit-' + CIRCUIT_FIN.toLowerCase() + '-' + c.k + '-mal-placees'); });
 
             var regle = (st.rules || []).filter(function (x) { return x.key === CIRCUIT_FIN; })[0];
