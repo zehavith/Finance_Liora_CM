@@ -699,7 +699,12 @@
             var horsEchues = hors.filter(echue), n = 1;
             var tuiles = vignette(n++, hors.filter(function (f) { return !echue(f); }), 'Sous contrôle', 'Avant échéance, dans aucune étape du circuit.', 'rien à faire pour l’instant', 'sous-controle');
             (OPX.CIRCUIT || []).forEach(function (e) {
-                tuiles += vignette(n++, dans(e.k), e.n, 'Groupes Monday de l’étape « ' + e.n + ' » (' + e.svc + ').', e.svc + ' · cible ' + e.cible + ' j', e.k, e.k === 'rec' ? 'fort' : '');
+                var lot = dans(e.k), quoi = 'Groupes Monday de l’étape « ' + e.n + ' » (' + e.svc + ').';
+                if (e.k === 'cor' && CIRCUIT_FIN === 'CPF' && EDOF) {
+                    var payeesEdof = (st.factures || []).filter(function (f) { return f.edofVerse && hp(f); });
+                    if (payeesEdof.length) { quoi = 'Dont ' + payeesEdof.length + ' payées par EDOF à rectifier (détail plus bas), et ' + lot.length + ' du groupe Monday « Corriger ».'; lot = lot.concat(payeesEdof); }
+                }
+                tuiles += vignette(n++, lot, e.n, quoi, e.svc + ' · cible ' + e.cible + ' j', e.k, e.k === 'rec' ? 'fort' : '');
             });
             parcours = '<p class="pil-note">Les ' + its.length.toLocaleString('fr-FR') + ' factures ' + esc(nom) + ' non réglées, rangées dans l’ordre du circuit. '
                 + 'Chaque nombre ouvre ses factures ; « exporter » en donne la liste Excel. Cette carte ne suit pas les filtres de période.</p>'
@@ -755,15 +760,37 @@
                 + '<td class="n">' + (np ? np + ' non pointée' + (np > 1 ? 's' : '') : 'toutes pointées') + '</td><td class="n">' + exp(l, i) + '</td></tr>';
         }).join('');
         var jour = function (d) { return String(d || '').split('-').reverse().join('/'); }, p = EDOF.periodes;
+        // ── Les factures payées (versées par EDOF) vont dans « Corriger », en trois cas selon leur pointage.
+        // Pennylane : pointée = lettrée au grand livre. Sellsy : d'après l'export Sellsy s'il est déposé,
+        // sinon d'après le groupe Monday qui le dit (2.2.9 « sellsy pointé », 2.2.10 « non remonté sur Sellsy »).
+        var sellsyParCle = null;
+        if (st.sellsy && (st.sellsy.lignes || []).length) { sellsyParCle = {};
+            st.sellsy.lignes.forEach(function (l) { var k = l.cle || I.factureKey(l.numero); if (k) sellsyParCle[k] = l; }); }
+        var sellsyPointe = function (f) {
+            var l = sellsyParCle && f.cle && sellsyParCle[f.cle];
+            if (l) return l.paye ? 'oui' : 'non';
+            var g = String(f.groupe || '').toLowerCase();
+            if (/sellsy point/.test(g)) return 'oui';
+            if (/non remont[ée] sur sellsy/.test(g)) return 'non';
+            return 'inconnu';
+        };
+        var payees = {
+            a: verse.filter(function (f) { return f.grandLivreSoldee && sellsyPointe(f) === 'oui'; }),
+            b: verse.filter(function (f) { return f.grandLivreSoldee && sellsyPointe(f) !== 'oui'; }),
+            c: verse.filter(function (f) { return !f.grandLivreSoldee; })
+        };
+        var sellsyInconnu = verse.filter(function (f) { return sellsyPointe(f) === 'inconnu'; }).length;
         // ── EDOF × circuit : chaque facture a une étape EDOF (ligne) et une étape du circuit Monday (colonne).
         var COLS = [{ k: 'ctl', n: 'Sous contrôle' }].concat((OPX.CIRCUIT || []).map(function (e) { return { k: e.k, n: e.n }; })).concat([{ k: 'hors', n: 'Échue, hors étape' }]);
-        var colDe = function (f) { var k = OPX.etapeDe(f); if (cles[k]) return k; return echue(f) ? 'hors' : 'ctl'; };
+        var colDe = function (f) { if (f.edofVerse) return 'cor'; var k = OPX.etapeDe(f); if (cles[k]) return k; return echue(f) ? 'hors' : 'ctl'; };
         var LIGNES = [
             { n: '1 · Pas encore dans EDOF', faire: 'déposer la facture', l: lots.rien, code: 'edof-1-aucune-trace' },
             { n: '2 · Avance versée, solde à facturer', faire: 'déposer la facture de solde', l: lots.avance, code: 'edof-2-avance-seule' },
             { n: '3 · Déposée, en attente de règlement', faire: 'attendre le versement', l: lots.attente, code: 'edof-3-attente' },
             { n: '4 · Rejetée par EDOF', faire: 'corriger et redéposer', l: lots.rejet, code: 'edof-4-rejet' },
-            { n: '5 · Versée par EDOF', faire: 'pointer, puis déplacer dans les payées', l: verse, code: 'edof-5-versee' }
+            { n: '5a · Payée, pointée sur Sellsy et Pennylane', faire: 'rectifier Monday : déplacer dans les payées', l: payees.a, code: 'edof-5a-pointee-rectifier-monday' },
+            { n: '5b · Payée, pointée sur Pennylane, pas sur Sellsy', faire: 'rectifier Sellsy, puis Monday', l: payees.b, code: 'edof-5b-rectifier-sellsy-et-monday' },
+            { n: '5c · Payée, non pointée', faire: 'pointer sur Pennylane et Sellsy, puis rectifier Monday', l: payees.c, code: 'edof-5c-a-pointer' }
         ];
         var cellule = function (l, titre, code) { if (!l.length) return '<td class="n v3-vide">—</td>';
             var i = poser(l, titre, 'Étape EDOF et étape du circuit Monday croisées.', code);
@@ -839,13 +866,16 @@
             + '<p class="pil-note"><b>Règle CPF :</b> « Rendre payable » commence à fin de formation + ' + delaiPayable + ' jours, et le recouvrement (« Relancer ») à fin de formation + ' + delaiCpf + ' jours. '
             + 'Les factures dont le groupe Monday ne correspond pas à cette règle sont dans « Facturation à revérifier ». '
             + 'En ligne, où en est la facture dans EDOF ; en colonne, dans quelle étape du circuit elle se trouve dans Monday. '
-            + 'Les factures versées par EDOF sont comptées payées : elles ne sont plus dans les vignettes du dessus, mais restent ici tant qu’elles ne sont pas déplacées. '
+            + 'Les factures versées par EDOF sont payées : elles sont rangées dans « Corriger », en trois cas selon leur pointage, tant qu’elles ne sont pas déplacées dans Monday. '
             + rangees.toLocaleString('fr-FR') + ' autres factures versées sont déjà rangées dans les payées.</p>'
             + matrice
-            + (verse.length ? '<div class="v3-edof-detail"><div><b>Étape 5 — pointage en comptabilité</b><ul class="v3-edof-sous">'
-                + '<li>' + enLigne(lots.nonPointee, 'non pointées : ouvertes au grand livre', 'Versées par EDOF, mais le grand livre les montre encore ouvertes : le règlement n’est pas lettré avec la facture.', 'edof-5-non-pointees') + '</li>'
-                + '<li>' + enLigne(lots.absente, 'introuvables au grand livre', 'Versées par EDOF, mais le numéro de facture n’apparaît pas dans le grand livre : pointage impossible à vérifier.', 'edof-5-absentes-grand-livre') + '</li>'
-                + '<li>' + enLigne(lots.pointee, 'pointées : il reste à les déplacer', 'Versées par EDOF et lettrées au grand livre : il ne reste qu’à les déplacer dans Monday.', 'edof-5-pointees') + '</li></ul></div>'
+            + (verse.length ? '<div class="v3-edof-detail"><div><b>Étape 5 — les ' + verse.length.toLocaleString('fr-FR') + ' factures payées, à corriger</b><ul class="v3-edof-sous">'
+                + '<li>' + enLigne(payees.a, 'pointées sur Sellsy et Pennylane → rectifier Monday', 'Payées (EDOF), lettrées au grand livre et pointées sur Sellsy : il ne reste qu’à les déplacer dans les payées dans Monday.', 'edof-5a-pointee-rectifier-monday') + '</li>'
+                + '<li>' + enLigne(payees.b, 'pointées sur Pennylane, pas sur Sellsy → rectifier Sellsy et Monday', 'Payées (EDOF) et lettrées au grand livre, mais Sellsy ne les montre pas réglées, ou son état n’est pas connu.', 'edof-5b-rectifier-sellsy-et-monday') + '</li>'
+                + '<li>' + enLigne(payees.c, 'non pointées → à pointer sur Pennylane et Sellsy', 'Payées (EDOF), mais pas lettrées au grand livre : ' + lots.nonPointee.length + ' y sont encore ouvertes, ' + lots.absente.length + ' n’y figurent pas (extrait arrêté au ' + jour(GL_INFO && GL_INFO.arrete) + ').', 'edof-5c-a-pointer') + '</li></ul>'
+                + '<p class="op-pied">Pennylane : pointée = lettrée au grand livre. Sellsy : '
+                + (sellsyParCle ? 'd’après votre export Sellsy' : 'd’après le groupe Monday (2.2.9, 2.2.10) — déposez l’export Sellsy dans Données pour un état exact')
+                + (sellsyInconnu ? ' ; état Sellsy inconnu pour ' + sellsyInconnu + ' factures, comptées comme « pas sur Sellsy » ou « non pointées »' : '') + '.</p></div>'
                 + '<div><b>Étape 5 — dans quel groupe Monday elles sont encore</b><div class="pil-defile"><table class="op-t"><thead><tr><th>Groupe Monday</th><th class="n">Factures</th>'
                 + '<th class="n">Montant</th><th class="n">Pointage</th><th></th></tr></thead><tbody>' + lignesGroupes + '</tbody></table></div></div></div>' : '')
             + aVerifier
