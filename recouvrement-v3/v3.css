@@ -518,3 +518,8 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 .v3-pli > summary h3 { flex: 1 1 auto; min-width: 0; }
 .v3-pli > summary .pil-coin { flex: 0 1 auto; text-align: right; }
 .v3-pli > summary::before { flex: 0 0 1rem; margin-top: 0.15rem; }
+/* La carte « Circuit par financement » se replie en entier */
+.v3-pli-carte > summary { margin-bottom: 0; }
+.v3-pli-carte[open] > summary { margin-bottom: 0.7rem; }
+.v3-pli-carte > summary h3 { font-size: 1.05rem; }
+.v3-circuit-tete label { font-weight: 600; font-size: 0.88rem; }

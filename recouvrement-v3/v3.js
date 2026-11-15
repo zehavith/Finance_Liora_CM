@@ -671,7 +671,7 @@
     }
 
     // ── Opérationnel : où en est EDOF pour le CPF ──
-    var EDOF_LOTS = [], CIRCUIT_FIN = 'CPF', PLI_TABLEAU = false;   // le tableau est replié au départ
+    var EDOF_LOTS = [], CIRCUIT_FIN = 'CPF', PLI_TABLEAU = false, PLI_CIRCUIT = false;   // le tableau est replié au départ
     // L'état de pointage Sellsy d'une facture : d'après l'export Sellsy s'il est déposé, sinon d'après le
     // groupe Monday qui le dit (« sellsy pointé », « non remonté sur Sellsy »).
     var SELLSY_VU = null, SELLSY_PAR_CLE = null;
@@ -817,10 +817,12 @@
         var fins = Object.keys(parFin).sort(function (a, b) { return (b === 'CPF') - (a === 'CPF') || parFin[b] - parFin[a]; });
         if (fins.indexOf(CIRCUIT_FIN) < 0) CIRCUIT_FIN = fins[0] || 'CPF';
         var nomFin = function (k) { return libelles[k] || (k === 'INCONNU' ? 'Non renseigné' : k); };
-        var tete = '<div class="v3-circuit-tete"><h3><label for="v3-circuit-fin">Circuit par financement</label></h3><select id="v3-circuit-fin" class="v3-circuit-choix">' + fins.map(function (k) {
+        var tete = '<details class="v3-pli v3-pli-carte" id="v3-pli-circuit"' + (PLI_CIRCUIT ? ' open' : '') + '><summary><h3>Circuit par financement</h3></summary>'
+            + '<div class="v3-circuit-tete"><label for="v3-circuit-fin">Financement :</label><select id="v3-circuit-fin" class="v3-circuit-choix">' + fins.map(function (k) {
             return '<option value="' + esc(k) + '"' + (k === CIRCUIT_FIN ? ' selected' : '') + '>' + esc(nomFin(k)) + ' — ' + parFin[k].toLocaleString('fr-FR') + ' factures</option>'; }).join('') + '</select></div>';
         var brancherTete = function () {
-            var pli = hote.querySelector('details.v3-pli'); if (pli) pli.addEventListener('toggle', function () { PLI_TABLEAU = pli.open; });
+            var pliC = hote.querySelector('#v3-pli-circuit'); if (pliC) pliC.addEventListener('toggle', function (ev) { if (ev.target === pliC) PLI_CIRCUIT = pliC.open; });
+            var pli = hote.querySelector('details.v3-pli-tableau'); if (pli) pli.addEventListener('toggle', function () { PLI_TABLEAU = pli.open; });
             var choix = hote.querySelector('#v3-circuit-fin'); if (choix) choix.onchange = function () { CIRCUIT_FIN = choix.value; carteEdofOperationnel(); };
             hote.querySelectorAll('[data-edof-lot]').forEach(function (b) { b.onclick = function () { ouvrirLotCircuit(EDOF_LOTS[+b.dataset.edofLot], null); }; });
             hote.querySelectorAll('[data-edof-export]').forEach(function (b) { b.onclick = function () { var l = EDOF_LOTS[+b.dataset.edofExport]; if (l) exporterControle({ code: l.code, items: l.its }); }; });
@@ -913,7 +915,7 @@
         }
         if (CIRCUIT_FIN !== 'CPF' || !EDOF) {
             var dg = detailGeneral();
-            hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + poserRouges(parcours, dg.rouge) + dg.html + '</div></div>';
+            hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + poserRouges(parcours, dg.rouge) + dg.html + '</details></div></div>';
             brancherTete();
             return;
         }
@@ -951,7 +953,9 @@
                 'retard-plus-360': ['rec', 'fin', 'cor'], 'echeance-inconnue': ['cor'], 'payee-pointee': ['cor'], 'payee-non-pointee': ['cor'] };
             var LIB_ATT = { 'non-echue': 'Sous contrôle ou Rendre payable', 'retard-1-30': 'Relancer', 'retard-31-90': 'Relancer', 'retard-91-360': 'Relancer', 'retard-plus-360': 'Relancer ou Clôture',
                 'echeance-inconnue': 'Corriger', 'payee-pointee': 'Corriger', 'payee-non-pointee': 'Corriger' };
-            LIGNES.forEach(function (L) { var adm = ADMIS[L.code] || [L.att]; L.admis = function () { return adm; }; L.lib = LIB_ATT[L.code]; });
+            // Une facture rangée dans un groupe « Factures non conformes » y est à sa place, même échue : elle attend d'être corrigée.
+            var nonConforme = function (f) { return /non[ -]?conforme/i.test(String(f.groupe || '')); };
+            LIGNES.forEach(function (L) { var adm = ADMIS[L.code] || [L.att]; L.admis = function (f) { return f && nonConforme(f) ? adm.concat(['adv']) : adm; }; L.lib = LIB_ATT[L.code]; });
             var cell = function (l, titre, code, attendue, mal) { if (!l.length) return '<td class="n v3-vide' + (attendue ? ' v3-attendue' : '') + '">—</td>';
                 var i = pose(l, titre, 'Ancienneté du retard et étape du circuit Monday croisées.', code);
                 EDOF_LOTS[i].motifs = true;
@@ -991,8 +995,8 @@
                     itsF.filter(function (f) { return f.reglementPropose; }), 'reglement-non-lettre'],
                 ['Échue, mais encore dans un groupe « en cours »', 'L’échéance est passée et la facture n’est dans aucune étape du circuit : personne ne la suit.',
                     itsF.filter(function (f) { return echue(f) && etapeM(f) === 'cours'; }), 'echue-hors-etape'],
-                ['Échue, mais encore dans « Rendre payable »', 'L’échéance est passée : la facture devrait être en recouvrement.',
-                    itsF.filter(function (f) { return echue(f) && etapeM(f) === 'adv'; }), 'echue-encore-rendre-payable'],
+                ['Échue, mais encore dans « Rendre payable »', 'L’échéance est passée : la facture devrait être en recouvrement. Les factures du groupe « Factures non conformes » ne sont pas comptées : elles y sont à leur place.',
+                    itsF.filter(function (f) { return echue(f) && etapeM(f) === 'adv' && !/non[ -]?conforme/i.test(String(f.groupe || '')); }), 'echue-encore-rendre-payable'],
                 ['En recouvrement avant son échéance', 'La facture est dans un groupe de relance alors que son échéance calculée n’est pas passée : arrivée trop tôt, ou date fausse dans Monday.',
                     itsF.filter(function (f) { return etapeM(f) === 'rec' && f.dateEcheance && !echue(f); }), 'recouvrement-trop-tot'],
                 ['Facture saisie deux fois dans Monday', 'La même facture apparaît sur plusieurs lignes ou plusieurs tableaux Monday.',
@@ -1056,7 +1060,7 @@
 
             var regle = (st.rules || []).filter(function (x) { return x.key === CIRCUIT_FIN; })[0];
             return { rouge: rouge, html: '<div class="v3-circuit-sep"></div>' + aVerif
-                + '<details class="v3-pli"' + (PLI_TABLEAU ? ' open' : '') + '><summary><h3 class="v3-circuit-sous">' + esc(nomF) + ' — ancienneté du retard croisée avec les étapes du circuit</h3></summary>'
+                + '<details class="v3-pli v3-pli-tableau"' + (PLI_TABLEAU ? ' open' : '') + '><summary><h3 class="v3-circuit-sous">' + esc(nomF) + ' — ancienneté du retard croisée avec les étapes du circuit</h3></summary>'
                 + matrice + '</details>' };
         }
         var cpf = (st.factures || []).filter(function (f) { return f.role !== 'sellsy' && (f.financement === 'CPF' || f.edof); });
@@ -1311,10 +1315,10 @@
 
         hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + poserRouges(parcours, rougeCpf)
             + '<div class="v3-circuit-sep"></div>' + aVerifier
-            + '<details class="v3-pli"' + (PLI_TABLEAU ? ' open' : '') + '><summary><h3 class="v3-circuit-sous">CPF — étapes EDOF croisées avec les étapes du circuit</h3>'
+            + '<details class="v3-pli v3-pli-tableau"' + (PLI_TABLEAU ? ' open' : '') + '><summary><h3 class="v3-circuit-sous">CPF — étapes EDOF croisées avec les étapes du circuit</h3>'
             + '<span class="pil-coin">export EDOF jusqu’au ' + jour(p.length && p[p.length - 1][1]) + ' · grand livre au ' + jour(GL_INFO && GL_INFO.arrete) + '</span></summary>'
             + matrice + '</details>'
-            + '</div></div>';
+            + '</details></div></div>';
         brancherTete();
     }
     function brancherEdofOperationnel() { /* la carte est posée par l'onglet Opérationnel lui-même, à chaque rendu */ }
