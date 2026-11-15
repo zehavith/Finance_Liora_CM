@@ -460,3 +460,4 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 .v3-averifier tr.v3-rien td { opacity: 0.55; }
 .v3-circuit-choix { font: inherit; font-size: 0.9rem; font-weight: 600; padding: 0.42rem 0.7rem; border: 1px solid var(--border-hover, #d8d4cc); border-radius: 8px;
     background: var(--bg-secondary, #fff); color: var(--text-primary); min-height: 2.2rem; max-width: 100%; }
+.v3-filtre-cas { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0 0 0.8rem; font-size: 0.86rem; font-weight: 600; } .v3-filtre-cas select { font-weight: 500; max-width: 100%; }
