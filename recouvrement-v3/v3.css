@@ -510,3 +510,5 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 .v3-pli[open] > summary::before { content: '▾'; }
 .v3-pli > summary h3 { margin: 0; display: inline; }
 .v3-pli > summary:hover h3 { text-decoration: underline; }
+.v3-importants { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
+#op-focus-pli > summary h3 { font-size: 1.05rem; }

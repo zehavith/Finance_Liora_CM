@@ -179,6 +179,7 @@
     const F = { etape: 'adv', q: '', deplies: {} };
     let HIST = null;                    // { mois, de, le, par: Map(etape → {e,s,dest,dur}) }
     let histEtat = { s: 'idle', msg: '' };
+    let FOCUS_OUVERT = false;
     let LISTE_FILTRE = 'tout', LISTE_COURANTE = { pr: [], k: '', nom: 'tout' };
     let DERNIERES = [];                 // les factures du dernier rendu
 
@@ -1119,8 +1120,8 @@
           + blocSorties() + '</div></div></div>'
           + '<div id="v3-op-edof"></div>'
           + '<div class="charts-grid"><div class="chart-card chart-wide">'
-          + '<div class="chart-header"><h3>2 · Focus sur chaque étape</h3></div>'
-          + '<p class="pil-note">Quoi traiter, pourquoi ça bloque, et est-ce que ça avance.</p>'
+          + '<details class="v3-pli" id="op-focus-pli"' + (FOCUS_OUVERT ? ' open' : '') + '><summary><h3>2 · Focus sur chaque étape</h3>'
+          + '<span class="pil-coin">Quoi traiter, pourquoi ça bloque, et est-ce que ça avance.</span></summary>'
           + '<div class="seg" id="op-seg">' + sousTabs + '</div>'
           + '<p class="op-focus-h"><b>' + esc(e.n) + '</b> · ' + esc(e.d)
           + ' <span class="op-chip">' + esc(e.svc) + '</span></p>'
@@ -1148,7 +1149,7 @@
               + '<th class="n">Dans l’étape depuis</th><th>Priorité</th></tr></thead><tbody>'
               + lignes + '</tbody></table></div>'
             : '<div class="op-vide">Aucune facture dans cette étape avec ces filtres.</div>')
-          + '</div></div></div>'
+          + '</div></details></div></div>'
           + '<div class="charts-grid"><div class="chart-card chart-wide" id="op-correspondance">'
           + (horsCircuit.length ? '<p class="op-alerte">' + ouvrable(nb(horsCircuit.length) + ' factures non réglées',
                 'Factures dans un groupe non classé', horsCircuit,
@@ -1171,6 +1172,9 @@
         h.querySelectorAll('[data-nav-etape]').forEach(b =>
             b.onclick = ev => { ev.stopPropagation();
                 montrerEtape(b.dataset.navEtape, b.dataset.t || '', b.dataset.g || ''); });
+        // Le focus est replié au départ ; il garde ensuite l'état qu'on lui donne.
+        const pliFocus = document.getElementById('op-focus-pli');
+        if (pliFocus) pliFocus.addEventListener('toggle', () => { FOCUS_OUVERT = pliFocus.open; });
         h.querySelectorAll('[data-vers-regles]').forEach(b => b.onclick = () => {
             const o = document.querySelector('[data-tab="regles"]'); if (o) o.click();
             setTimeout(() => { const d = document.querySelector('#v3-regles-corps details[data-regle="groupes"], #v3-regle-groupes');
@@ -1178,7 +1182,7 @@
         h.querySelectorAll('[data-lot]').forEach(b =>
             b.onclick = ev => { ev.stopPropagation(); const l = LOTS[+b.dataset.lot]; if (l) montrerLot(l); });
         h.querySelectorAll('[data-etape]').forEach(b =>
-            b.onclick = () => { F.etape = b.dataset.etape; rendre(DERNIERES);
+            b.onclick = () => { F.etape = b.dataset.etape; FOCUS_OUVERT = true; rendre(DERNIERES);
                 const cible = document.getElementById('op-seg');
                 if (cible && cible.scrollIntoView) cible.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
         h.querySelectorAll('[data-focus]').forEach(b =>

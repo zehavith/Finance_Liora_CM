@@ -1022,6 +1022,7 @@
             var bandeauG = '<div class="v3-importants"><span class="v3-importants-titre">Points importants</span>' + IMP.map(function (k) {
                 var v = VER.filter(function (x) { return x[3] === k; })[0]; if (!v) return '';
                 var i = pose(v[2], nomF + ' — important — ' + v[0], v[1], 'x'); EDOF_LOTS[i].motifs = true; EDOF_LOTS[i].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-important-' + k;
+                if (!v[2].length) return '';
                 return '<span class="v3-important-carte' + (v[2].length ? '' : ' vide') + '"><span class="v3-important-nb">' + nbL(v[2], i) + '</span><span class="v3-important-lib">' + esc(v[0]) + '</span>'
                     + '<span class="op-pied">' + (v[2].length ? e0(v[2]) + ex(v[2], i) : 'aucune') + '</span></span>'; }).join('') + '</div>';
             var aVerif = toutes.length ? bandeauG + '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + e0(toutes) + '), signalées en rouge dans les vignettes. '
@@ -1275,6 +1276,7 @@
         var bandeau = '<div class="v3-importants"><span class="v3-importants-titre">Points importants</span>' + IMPORTANTS.map(function (k) {
             var v = VERIFS.filter(function (x) { return x[3] === k; })[0]; if (!v) return '';
             var i = poser(v[2], 'Important — ' + v[0], v[1], 'a-reverifier-important-' + k); EDOF_LOTS[i].motifs = true;
+            if (!v[2].length) return '';
             return '<span class="v3-important-carte' + (v[2].length ? '' : ' vide') + '"><span class="v3-important-nb">' + nbLien(v[2], i) + '</span><span class="v3-important-lib">' + esc(v[0]) + '</span>'
                 + '<span class="op-pied">' + (v[2].length ? eur0(v[2]) + exp(v[2], i) : 'aucune') + '</span></span>'; }).join('') + '</div>';
         var aVerifier = bandeau + '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + eur0(toutes) + '), signalées en rouge dans les vignettes. '
