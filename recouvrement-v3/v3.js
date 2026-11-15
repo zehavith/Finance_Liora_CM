@@ -1020,7 +1020,7 @@
 
             var regle = (st.rules || []).filter(function (x) { return x.key === CIRCUIT_FIN; })[0];
             return { rouge: rouge, html: '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">' + esc(nomF) + ' — ancienneté du retard croisée avec les étapes du circuit</h3></div>'
-                + aVerif + '<p class="v3-legende"><span class="v3-leg v3-leg-vert"></span> case verte : l’étape du circuit où ces factures doivent se trouver · <span class="v3-leg v3-leg-rouge"></span> case rouge : des factures y sont alors qu’elles devraient être dans une autre étape (cliquez le nombre pour les voir)</p>' + matrice + blocPayees };
+                + aVerif + '<p class="v3-legende"><span class="v3-leg v3-leg-vert"></span> case verte : l’étape du circuit où ces factures doivent se trouver · <span class="v3-leg v3-leg-rouge"></span> case rouge : des factures y sont alors qu’elles devraient être dans une autre étape (cliquez le nombre pour les voir)</p>' + matrice };
         }
         var cpf = (st.factures || []).filter(function (f) { return f.role !== 'sellsy' && (f.financement === 'CPF' || f.edof); });
         var ouvertes = cpf.filter(hp);
@@ -1272,15 +1272,6 @@
             + '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">CPF — étapes EDOF croisées avec les étapes du circuit</h3>'
             + '<span class="pil-coin">export EDOF jusqu’au ' + jour(p.length && p[p.length - 1][1]) + ' · grand livre au ' + jour(GL_INFO && GL_INFO.arrete) + '</span></div>'
             + aVerifier + '<p class="v3-legende"><span class="v3-leg v3-leg-vert"></span> case verte : l’étape du circuit où ces factures doivent se trouver · <span class="v3-leg v3-leg-rouge"></span> case rouge : des factures y sont alors qu’elles devraient être dans une autre étape (cliquez le nombre pour les voir)</p>' + matrice
-            + (verse.length ? '<div class="v3-edof-detail"><div><b>Étape 5 — les ' + verse.length.toLocaleString('fr-FR') + ' factures payées, à corriger</b><ul class="v3-edof-sous">'
-                + '<li>' + enLigne(payees.a, 'pointées sur Sellsy et Pennylane → rectifier Monday', 'Payées (EDOF), lettrées au grand livre et pointées sur Sellsy : il ne reste qu’à les déplacer dans les payées dans Monday.', 'edof-5a-pointee-rectifier-monday') + '</li>'
-                + '<li>' + enLigne(payees.b, 'pointées sur Pennylane, pas sur Sellsy → rectifier Sellsy et Monday', 'Payées (EDOF) et lettrées au grand livre, mais Sellsy ne les montre pas réglées, ou son état n’est pas connu.', 'edof-5b-rectifier-sellsy-et-monday') + '</li>'
-                + '<li>' + enLigne(payees.c, 'non pointées → à pointer sur Pennylane et Sellsy', 'Payées (EDOF), mais pas lettrées au grand livre : ' + lots.nonPointee.length + ' y sont encore ouvertes, ' + lots.absente.length + ' n’y figurent pas (extrait arrêté au ' + jour(GL_INFO && GL_INFO.arrete) + ').', 'edof-5c-a-pointer') + '</li></ul>'
-                + '<p class="op-pied">Pennylane : pointée = lettrée au grand livre. Sellsy : '
-                + (sellsyParCle ? 'd’après votre export Sellsy' : 'd’après le groupe Monday (2.2.9, 2.2.10) — déposez l’export Sellsy dans Données pour un état exact')
-                + (sellsyInconnu ? ' ; état Sellsy inconnu pour ' + sellsyInconnu + ' factures, comptées comme « pas sur Sellsy » ou « non pointées »' : '') + '.</p></div>'
-                + '<div><b>Étape 5 — dans quel groupe Monday elles sont encore</b><div class="pil-defile"><table class="op-t"><thead><tr><th>Groupe Monday</th><th class="n">Factures</th>'
-                + '<th class="n">Montant</th><th class="n">Pointage</th><th></th></tr></thead><tbody>' + lignesGroupes + '</tbody></table></div></div></div>' : '')
             + '</div></div>';
         brancherTete();
     }
