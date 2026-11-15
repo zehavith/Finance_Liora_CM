@@ -179,7 +179,7 @@
     const F = { etape: 'adv', q: '', deplies: {} };
     let HIST = null;                    // { mois, de, le, par: Map(etape → {e,s,dest,dur}) }
     let histEtat = { s: 'idle', msg: '' };
-    let FOCUS_OUVERT = false, OU_OUVERT = false;
+    let FOCUS_OUVERT = false, OU_OUVERT = false, FOCUS_GROUPE = null;
     let LISTE_FILTRE = 'tout', LISTE_COURANTE = { pr: [], k: '', nom: 'tout' };
     let DERNIERES = [];                 // les factures du dernier rendu
 
@@ -1059,16 +1059,28 @@
         // ── le focus ──
         const k = ETAPE[F.etape] ? F.etape : 'adv';
         const e = ETAPE[k], s = st[k];
+        // VERSION 3 — un clic sur un groupe de « Où sont les factures » concentre tout le focus sur ce groupe :
+        // les tuiles, le graphique d'ancienneté et la liste priorisée ne parlent plus que de lui.
+        const lignesG = [];
+        composition(s.its).forEach(c => c.groupes.forEach(gr => lignesG.push({ t: c.tableau, g: gr.groupe, its: gr.its })));
+        lignesG.sort((a, b) => b.its.length - a.its.length);
+        const choisi = FOCUS_GROUPE && FOCUS_GROUPE.k === k ? lignesG.find(x => x.t === FOCUS_GROUPE.t && x.g === FOCUS_GROUPE.g) : null;
+        if (!choisi) FOCUS_GROUPE = null;
+        const sIts = choisi ? choisi.its : s.its;
+        const agesF = sIts.map(f => ageEtape(f, k).j).filter(a => a != null).sort((x, y) => x - y);
+        const sF = choisi ? { st: sIts.length, mt: somme(sIts, montantDe),
+            a: agesF.length ? (agesF.length % 2 ? agesF[agesF.length >> 1] : Math.round((agesF[(agesF.length >> 1) - 1] + agesF[agesF.length >> 1]) / 2)) : null,
+            h: agesF.length ? agesF.filter(a => a > e.cible).length / agesF.length * 100 : null } : s;
         const srcs = { etape: 0, ref: 0, aucune: 0 };
-        s.its.forEach(f => { srcs[ageEtape(f, k).src]++; });
-        const prom = s.its.filter(f => f.promesse);
+        sIts.forEach(f => { srcs[ageEtape(f, k).src]++; });
+        const prom = sIts.filter(f => f.promesse);
         const promKO = prom.filter(f => new Date(f.promesse) < auj());
-        const echK = s.its.filter(f => { const r = retard(f); return r != null && r > 0; });
+        const echK = sIts.filter(f => { const r = retard(f); return r != null && r > 0; });
         // La promesse de paiement n'est saisie que sur l'ADV, le Recouvrement et
         // le Financement personnel. Ailleurs la tuile le dit plutôt que
         // d'afficher un zéro qui passerait pour « aucune promesse ».
         const portePromesse = ['adv', 'rec'].indexOf(k) >= 0 || prom.length > 0;
-        const horsDelai = s.its.filter(f => { const a = ageEtape(f, k).j; return a != null && a > e.cible; });
+        const horsDelai = sIts.filter(f => { const a = ageEtape(f, k).j; return a != null && a > e.cible; });
         const quatrieme = k === 'adv'
             ? ['Échues encore à l’ADV', ouvrable(nb(echK.length), 'Échues encore à l’ADV', echK,
                     'Factures de l’étape « Rendre payable » dont l’échéance est déjà dépassée.')
@@ -1082,11 +1094,11 @@
             : ['Promesses de paiement', '<span class="op-acompleter">à compléter</span>',
                'ces tableaux ne portent pas de colonne de paiement promis'];
         const tuilesFocus = '<div class="kpi-grid">'
-            + tuile('Dans l’étape', ouvrableEtape(nb(s.st), k) + ' · ' + eur(s.mt),
-                HIST ? nb(HIST.par[k].e) + ' entrées, ' + nb(HIST.par[k].s) + ' sorties sur la période'
+            + tuile(choisi ? 'Dans ce groupe' : 'Dans l’étape', (choisi ? ouvrableEtape(nb(sF.st), k, choisi.t, choisi.g) : ouvrableEtape(nb(s.st), k)) + ' · ' + eur(sF.mt),
+                choisi ? 'factures non réglées de ce groupe' : HIST ? nb(HIST.par[k].e) + ' entrées, ' + nb(HIST.par[k].s) + ' sorties sur la période'
                      : 'factures non réglées de cette étape')
-            + tuile('Âge médian du traitement', (s.a == null ? '—' : nb(s.a) + ' j'),
-                'cible ' + e.cible + ' j · ' + (s.h == null ? '—' : nb(s.h) + ' % hors délai'))
+            + tuile('Âge médian du traitement', (sF.a == null ? '—' : nb(sF.a) + ' j'),
+                'cible ' + e.cible + ' j · ' + (sF.h == null ? '—' : nb(sF.h) + ' % hors délai'))
             + tuile('Montant hors délai', eur(somme(horsDelai, montantDe)),
                 ouvrable(nb(horsDelai.length) + ' factures', 'Hors délai — ' + e.n, horsDelai,
                     'Factures de l’étape qui y attendent depuis plus de ' + e.cible + ' jours.')
@@ -1096,13 +1108,11 @@
 
         // par tableau et groupe Monday : le groupe garde son numéro, qui dit
         // à lui seul de quel tableau il vient, et le tableau est écrit dessous.
-        const lignesG = [];
-        composition(s.its).forEach(c => c.groupes.forEach(gr => lignesG.push({ t: c.tableau, g: gr.groupe, its: gr.its })));
-        lignesG.sort((a, b) => b.its.length - a.its.length);
         const mxG = Math.max(...lignesG.map(x => x.its.length), 1);
         const barres = lignesG.map(x =>
-            '<div class="op-hb"><span class="op-hb-nom" title="' + esc(x.g + ' — ' + x.t) + '">' + esc(x.g)
-            + '<small>' + esc(x.t) + '</small></span>'
+            '<div class="op-hb' + (choisi === x ? ' op-hb-choisi' : '') + '"><button type="button" class="op-hb-nom op-hb-clic" data-focus-t="' + esc(x.t) + '" data-focus-g="' + esc(x.g)
+            + '" title="' + (choisi === x ? 'Retirer le filtre' : 'Concentrer le focus sur ce groupe') + ' — ' + esc(x.g + ' — ' + x.t) + '">' + esc(x.g)
+            + '<small>' + esc(x.t) + '</small></button>'
             + '<span class="op-track"><i style="width:' + (x.its.length / mxG * 100).toFixed(1)
             + '%;background:var(--serie-2)"></i></span>'
             + '<span class="op-v">' + ouvrableEtape(nb(x.its.length), k, x.t, x.g) + '</span></div>').join('');
@@ -1113,7 +1123,7 @@
         const libs = ['0-' + BK[0] + ' j', (BK[0] + 1) + '-' + BK[1] + ' j', (BK[1] + 1) + '-' + BK[2] + ' j',
                       (BK[2] + 1) + '-' + BK[3] + ' j', '> ' + BK[3] + ' j'];
         const cpt = [0, 0, 0, 0, 0], parTranche = [[], [], [], [], []];
-        s.its.forEach(f => { const a = ageEtape(f, k).j; if (a == null) return;
+        sIts.forEach(f => { const a = ageEtape(f, k).j; if (a == null) return;
             const i = a <= BK[0] ? 0 : a <= BK[1] ? 1 : a <= BK[2] ? 2 : a <= BK[3] ? 3 : 4;
             cpt[i]++; parTranche[i].push(f); });
         const mxB = Math.max(...cpt, 1);
@@ -1128,13 +1138,15 @@
         // VERSION 3 — cinq lignes visibles, le reste défile ; trois pastilles
         // pour ne garder que les grosses factures ou les retards longs ; et
         // l'export donne exactement la liste affichée.
-        const prTout = priorisees(s.its, k);
+        const prTout = priorisees(sIts, k);
         const FILTRES_LISTE = [['tout', 'Toutes', () => true], ['m10k', 'Plus de 10 000 €', p => p.m > 10000],
             ['r90', 'Plus de 90 jours de retard', p => p.r != null && p.r > 90],
             ['r360', 'Plus de 360 jours de retard', p => p.r != null && p.r > 360]];
         const filtreListe = FILTRES_LISTE.find(x => x[0] === LISTE_FILTRE) || FILTRES_LISTE[0];
         const prListe = prTout.filter(filtreListe[2]);
         LISTE_COURANTE = { pr: prListe, k: k, nom: filtreListe[0] };
+        const bandeauGroupe = choisi ? '<p class="op-focus-filtre">Le focus ne montre que le groupe <b>' + esc(choisi.g) + '</b> (' + esc(choisi.t) + ') : '
+            + nb(sIts.length) + ' factures sur les ' + nb(s.its.length) + ' de l’étape. <button type="button" class="btn btn-ghost btn-sm" id="op-focus-retirer">Retirer le filtre</button></p>' : '';
         const pastillesListe = '<div class="pil-vues">' + FILTRES_LISTE.map(x =>
             '<button type="button" class="pil-vue' + (x[0] === filtreListe[0] ? ' active' : '') + '" data-liste-filtre="' + x[0] + '">'
             + x[1] + ' <span class="op-cnt">' + nb(prTout.filter(x[2]).length) + '</span></button>').join('') + '</div>';
@@ -1216,13 +1228,13 @@
           + '<div class="seg" id="op-seg">' + sousTabs + '</div>'
           + '<p class="op-focus-h"><b>' + esc(e.n) + '</b> · ' + esc(e.d)
           + ' <span class="op-chip">' + esc(e.svc) + '</span></p>'
-          + tuilesFocus
+          + bandeauGroupe + tuilesFocus
           + '<div class="charts-grid charts-grid-2">'
           + '<div class="op-sub"><b>Où sont les factures</b>'
           + '<span class="op-pied">Nombre de factures par groupe Monday, avec le tableau dessous. '
-          + 'Cliquez un nombre pour voir les factures.</span>'
+          + 'Cliquez le nom d’un groupe pour concentrer le focus sur lui, un nombre pour voir les factures.</span>'
           + '<div class="op-hbs">' + barres + '</div></div>'
-          + '<div class="op-sub"><b>Depuis combien de temps elles sont dans l’étape</b>'
+          + '<div class="op-sub"><b>Depuis combien de temps elles sont dans ' + (choisi ? 'le groupe ' + esc(choisi.g) : 'l’étape') + '</b>'
           + '<span class="op-pied">En rouge, au-delà de la cible de ' + e.cible + ' jours. '
           + 'Date d’entrée : colonne Monday pour ' + nb(srcs.etape) + ' factures, à défaut '
           + (e.ref === 'facture' ? 'date de facture' : 'échéance') + ' pour ' + nb(srcs.ref)
@@ -1269,6 +1281,11 @@
         h.querySelectorAll('[data-ou-tableaux]').forEach(b => b.onclick = ev => { ev.stopPropagation(); ev.preventDefault(); OU_OUVERT = !OU_OUVERT; h.classList.toggle('ou-ouvert', OU_OUVERT); });
         const pliFocus = document.getElementById('op-focus-pli');
         if (pliFocus) pliFocus.addEventListener('toggle', () => { FOCUS_OUVERT = pliFocus.open; });
+        const redessiner = () => { const y = window.scrollY; rendre(DERNIERES); window.scrollTo(0, y); };
+        h.querySelectorAll('[data-focus-g]').forEach(b => b.onclick = () => {
+            const meme = FOCUS_GROUPE && FOCUS_GROUPE.t === b.dataset.focusT && FOCUS_GROUPE.g === b.dataset.focusG;
+            FOCUS_GROUPE = meme ? null : { k: F.etape && ETAPE[F.etape] ? F.etape : 'adv', t: b.dataset.focusT, g: b.dataset.focusG }; redessiner(); });
+        const retirer = document.getElementById('op-focus-retirer'); if (retirer) retirer.onclick = () => { FOCUS_GROUPE = null; redessiner(); };
         h.querySelectorAll('[data-vers-regles]').forEach(b => b.onclick = () => {
             const o = document.querySelector('[data-tab="regles"]'); if (o) o.click();
             setTimeout(() => { const d = document.querySelector('#v3-regles-corps details[data-regle="groupes"], #v3-regle-groupes');

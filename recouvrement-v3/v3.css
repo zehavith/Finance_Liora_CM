@@ -554,3 +554,10 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 /* Dans le cercle, « Relancer » garde la même taille que les autres étapes */
 .op-cercle > .v3-edof-tuile.fort { grid-column: auto; }
 @media (max-width: 820px) { .op-cercle > .op-fl-vide { display: none; } }
+
+/* Focus : un groupe choisi dans « Où sont les factures » */
+.op-hb-clic { all: unset; cursor: pointer; display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-hb-clic small { display: block; }
+.op-hb-clic:hover { color: var(--accent, #c8472b); }
+.op-hb-choisi { background: rgba(200, 71, 43, 0.08); border-radius: 6px; outline: 1px solid var(--accent, #c8472b); }
+.op-focus-filtre { margin: 0.4rem 0 0.7rem; padding: 0.5rem 0.7rem; border-left: 3px solid var(--accent, #c8472b); background: rgba(200, 71, 43, 0.06); font-size: 0.85rem; }
