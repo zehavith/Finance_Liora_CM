@@ -561,3 +561,5 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 .op-hb-clic:hover { color: var(--accent, #c8472b); }
 .op-hb-choisi { background: rgba(200, 71, 43, 0.08); border-radius: 6px; outline: 1px solid var(--accent, #c8472b); }
 .op-focus-filtre { margin: 0.4rem 0 0.7rem; padding: 0.5rem 0.7rem; border-left: 3px solid var(--accent, #c8472b); background: rgba(200, 71, 43, 0.06); font-size: 0.85rem; }
+
+.pil-defile-haut { max-height: 26rem; overflow: auto; }

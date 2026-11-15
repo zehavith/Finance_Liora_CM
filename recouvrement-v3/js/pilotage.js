@@ -115,7 +115,7 @@
     // La provision comptabilisée (comptes 491) est lue directement dans
     // Pennylane et publiée avec la page : plus besoin de déposer le grand livre
     // complet pour connaître la couverture.
-    let PROV = null, provEtat = '';
+    let PROV = null, provEtat = '', PROV_CALC = null;
     function provisionPubliee() {
         if (provEtat === '') {
             provEtat = 'charge';
@@ -127,6 +127,32 @@
         D.provision.provisionLue = { comptes: (PROV.comptes || []).filter(c => c.solde).map(c => c.compte),
             au: String(PROV.arrete || '').split('-').reverse().join('/'), source: PROV.source || '' };
     }
+
+    // Le détail de la provision : chaque écriture du compte 491 lue dans Pennylane, avec le solde qui se construit.
+    function ouvrirProvision() {
+        if (!PROV || !(PROV.ecritures || []).length) return;
+        const esc = U().escapeHtml, dateFR = d => d ? d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4) : '';
+        const m = v => v ? v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €' : '';
+        const actifs = (PROV.comptes || []).filter(c => c.solde).map(c => c.compte);
+        const lignes = PROV.ecritures.filter(e => actifs.indexOf(e[1]) >= 0);
+        let solde = 0;
+        const corps = lignes.filter(e => !e[6]).map(e => { solde += e[5] - e[4];
+            return '<tr><td>' + dateFR(e[0]) + '</td><td>' + esc(e[1]) + '</td><td>' + esc(e[2]) + '</td><td>' + esc(e[3]) + '</td><td class="n">' + m(e[4]) + '</td><td class="n">' + m(e[5])
+                + '</td><td class="n"><b>' + m(solde) + '</b></td></tr>'; }).join('');
+        const an = lignes.filter(e => e[6]);
+        const corpsAn = an.map(e => '<tr><td>' + dateFR(e[0]) + '</td><td>' + esc(e[1]) + '</td><td>' + esc(e[2]) + '</td><td>' + esc(e[3]) + '</td><td class="n">' + m(e[4]) + '</td><td class="n">' + m(e[5]) + '</td></tr>').join('');
+        const tete = '<thead><tr><th>Date</th><th>Compte</th><th>Journal</th><th>Libellé</th><th class="n">Débit (reprise)</th><th class="n">Crédit (dotation)</th>';
+        U().modal('Provision comptabilisée — écritures du compte ' + actifs.join(', '),
+            (PROV_CALC ? '<p class="pil-phrase"><b>Calcul :</b> provision comptabilisée ' + eur(PROV_CALC.prov) + ' ÷ total de l’encours ' + eur(PROV_CALC.total)
+                + ' = ' + pct(PROV_CALC.couv) + '. Les créances de l’encours s’ouvrent depuis la vignette « Total encours ».</p>' : '')
+            + '<p class="pil-note">' + (lignes.length - an.length) + ' écritures lues dans Pennylane jusqu’au ' + dateFR(String(PROV.arrete)) + ' : crédits moins débits = <b>' + m(PROV.montant) + '</b>.</p>'
+            + '<div class="pil-defile pil-defile-haut"><table class="op-t v3-table-libre">' + tete + '<th class="n">Solde cumulé</th></tr></thead><tbody>' + corps + '</tbody></table></div>'
+            + (an.length ? '<details class="v3-pli"><summary><b>' + an.length + ' écritures d’à-nouveaux, non comptées</b></summary><p class="pil-note">Le journal « AN » reprend, à l’ouverture de chaque exercice, '
+                + 'le solde des exercices précédents. Ces lignes répètent des dotations déjà listées ci-dessus : les additionner compterait la même provision plusieurs fois.</p>'
+                + '<table class="op-t v3-table-libre">' + tete + '</tr></thead><tbody>' + corpsAn + '</tbody></table></details>' : ''),
+            [{ label: 'Fermer' }], { large: true });
+    }
+    document.addEventListener('click', ev => { const b = ev.target.closest && ev.target.closest('[data-prov-detail]'); if (b) { ev.preventDefault(); ouvrirProvision(); } });
 
     async function chargerCreances() {
         try {
@@ -483,26 +509,41 @@
             ? ' <span class="pil-ref">pas d’arrêté au ' + parseFR(bc.au).toLocaleDateString('fr-FR') + '</span>'
             : '';
 
+        // VERSION 3 — chaque vignette s'ouvre : les lignes prises en compte, et le calcul du résultat.
+        const bb = bornes(), finsV = Array.from(retenus());
+        const jour = x => x ? parseFR(x).toLocaleDateString('fr-FR') : '—';
+        const periodeV = 'du ' + jour(bb.du) + ' au ' + jour(bb.au);
+        const periodeM = [bb.du ? moisDe(bb.du) : '', bb.au ? moisDe(bb.au) : ''];
+        const arreteV = e && e.date ? String(e.date).slice(0, 10) : '';
+        const toutesV = (D.tranches || []).concat(['Non échu']);
+        const calcul = t => '<b>Calcul :</b> ' + t;
+        PROV_CALC = (couv !== null && e) ? { prov: prov, total: e.total, couv: couv, date: e.date } : null;
         const v = [];
-        v.push(vignette('Total facturé', eur(f.fac),
+        v.push(vignette('Total facturé', lien(eur(f.fac), { type: 'flux', nat: 'f', periode: periodeM, fins: finsV, titre: 'Total facturé — ' + periodeV,
+                phrase: calcul('somme des ' + f.nFac.toLocaleString('fr-FR') + ' factures émises ' + periodeV + ', lues dans le grand livre Pennylane = ' + eur(f.fac) + '.') }),
             f.nFac.toLocaleString('fr-FR') + ' factures',
             fc ? ecart(f.fac, fc.fac, 'eur', 'haut') + quoi : ''));
         // L'ABSENCE D'ARRÊTÉ SE DIT, elle ne se remplace pas par le dernier connu.
         const rien = '<span class="pil-acompleter">aucun arrêté dans cette période</span>';
-        v.push(vignette('Total encours', e ? eur(e.total) : '—',
+        v.push(vignette('Total encours', e ? lien(eur(e.total), { type: 'creances', arrete: arreteV, fins: finsV, tranches: toutesV, titre: 'Total encours au ' + jour(e.date),
+                phrase: calcul('échu ' + eur(e.echu) + ' + non échu ' + eur(e.nonEchu) + ' = ' + eur(e.total) + ' de créances non réglées à l’arrêté du ' + jour(e.date) + '.') }) : '—',
             e ? 'échu ' + eur(e.echu) + ' · non échu ' + eur(e.nonEchu) : rien,
             (e && ec) ? ecart(e.total, ec.total, 'eur', 'bas') + quoi : (e ? sansArrete : '')));
-        v.push(vignette('Échu de plus de 120 jours', e ? pct(taux) : '—',
+        v.push(vignette('Échu de plus de 120 jours', e ? lien(pct(taux), { type: 'creances', arrete: arreteV, fins: finsV, tranches: (D.tranches || []).slice(i120),
+                titre: 'Échu de plus de 120 jours au ' + jour(e.date),
+                phrase: calcul('créances échues depuis plus de 120 jours ' + eur(audela) + ' ÷ total de l’encours ' + eur(e.total) + ' = ' + pct(taux) + '. Les lignes ci-dessous sont celles du numérateur.') }) : '—',
             e ? eur(audela) + ' sur ' + eur(e.total) : rien,
             (e && tauxC !== null) ? ecart(taux, tauxC, 'pct', 'bas') + quoi : (e ? sansArrete : '')));
-        v.push(vignette('DSO', jrs(d.jours),
+        v.push(vignette('DSO', d.n ? lien(jrs(d.jours), { type: 'flux', nat: 'r', periode: periodeM, fins: finsV, titre: 'DSO — règlements ' + periodeV,
+                phrase: calcul('délai moyen entre la date de facture et le règlement, pondéré par les montants : chaque règlement compte pour son montant × son nombre de jours, '
+                    + 'le tout divisé par le total réglé (' + eur(d.montant) + ' sur ' + d.n.toLocaleString('fr-FR') + ' règlements) = ' + jrs(d.jours) + '.') }) : jrs(d.jours),
             d.n ? d.n.toLocaleString('fr-FR') + ' règlements · ' + eur(d.montant) : 'aucun règlement daté',
             dc && dc.jours !== null ? ecart(d.jours, dc.jours, 'j', 'bas') + quoi : ''));
         const lue = P.provisionLue || null;
         v.push(vignette('Couverture des provisions',
-            couv === null ? '<span class="pil-acompleter">à compléter</span>' : pct(couv),
+            couv === null ? '<span class="pil-acompleter">à compléter</span>' : (PROV && (PROV.ecritures || []).length ? '<button type="button" class="pil-lien" data-prov-detail="1" title="Voir le calcul et les écritures">' + pct(couv) + '</button>' : pct(couv)),
             couv !== null
-                ? eur(prov) + ' provisionnés sur ' + eur(e.total) + ' de créances'
+                ? (PROV && (PROV.ecritures || []).length ? '<button type="button" class="pil-lien" data-prov-detail="1" title="Voir les écritures du compte">' + eur(prov) + '</button>' : eur(prov)) + ' provisionnés sur ' + eur(e.total) + ' de créances'
                 : (filtre && prov !== null && prov !== undefined)
                   ? 'le compte 491 n’est pas ventilé par financeur : décochez les filtres pour la lire'
                   : (P.provisionMotif || 'le montant comptablement provisionné n’est pas déposé'),
@@ -633,6 +674,7 @@
         DETAILS.push(spec);
         return '<button type="button" class="pil-lien" data-pil-detail="' + (DETAILS.length - 1) + '" title="Voir les lignes">' + html + '</button>';
     }
+    let FLUX_TOUS = null;
     async function ouvrirLignes(spec) {
         if (!LIGNES && lignesEtat !== 'absent') {
             U().modal(spec.titre, '<p class="pil-note">Lecture du détail…</p>', [{ label: 'Fermer' }], { large: true });
@@ -644,7 +686,20 @@
         const dansFins = f => spec.fins.indexOf(f) >= 0;
         const dateFR = d => d ? d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4) : '';
         let lignes, cols, note;
-        if (spec.type === 'flux') {
+        if (spec.type === 'flux' && spec.periode) {
+            // Une période entière : toutes les factures et tous les règlements du grand livre, lus à la demande.
+            if (!FLUX_TOUS) { try { const r = await fetch('donnees/flux.json', { cache: 'no-store' }); FLUX_TOUS = r.ok ? await r.json() : null; } catch (e) { FLUX_TOUS = null; } }
+            if (!FLUX_TOUS) { U().modal(spec.titre, '<p class="pil-note">Le détail ligne à ligne n’est pas disponible.</p>' + (spec.phrase ? '<p class="pil-phrase">' + spec.phrase + '</p>' : ''), fermer); return; }
+            const du = spec.periode[0] || '', au = spec.periode[1] || '9999-99';
+            lignes = FLUX_TOUS.lignes.filter(l => l[1] === spec.nat && dansFins(l[0]) && l[2].slice(0, 7) >= du && l[2].slice(0, 7) <= au)
+                .map(l => ({ fin: l[0], d: l[2], n: l[3], t: l[4], v: l[5] })).sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
+            cols = [{ key: 'd', label: 'Date', width: '92px', format: dateFR },
+                { key: 'n', label: spec.nat === 'f' ? 'Facture' : 'Facture réglée', width: '170px', format: v => v ? U().escapeHtml(v) : '<span class="pil-acompleter">non rattachée</span>' },
+                { key: 't', label: 'Client' }, { key: 'fin', label: 'Financeur', width: '170px' },
+                { key: 'v', label: 'Montant', align: 'right', width: '110px', format: v => eur(v) }];
+            note = (spec.nat === 'f' ? ' facture' : ' règlement');
+            if (du && du < FLUX_TOUS.depuis) spec = Object.assign({}, spec, { avert: 'Le détail commence en ' + U().moisLabel(FLUX_TOUS.depuis) + ' : les lignes plus anciennes ne sont pas listées.' });
+        } else if (spec.type === 'flux') {
             if (!LIGNES.flux || LIGNES.flux.mois !== spec.mois) {
                 U().modal(spec.titre, '<p class="pil-note">Le détail est publié pour ' + U().moisLabel((LIGNES.flux || {}).mois || '') + ' seulement.</p>', fermer); return; }
             lignes = LIGNES.flux.lignes.filter(l => l[1] === spec.nat && dansFins(l[0]))
