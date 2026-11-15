@@ -1124,11 +1124,6 @@
           + '<div class="seg" id="op-seg">' + sousTabs + '</div>'
           + '<p class="op-focus-h"><b>' + esc(e.n) + '</b> · ' + esc(e.d)
           + ' <span class="op-chip">' + esc(e.svc) + '</span></p>'
-          + '<p class="op-pied op-def">Comment ce nombre est constitué : les factures <b>non réglées</b> rangées '
-          + 'dans les groupes Monday ' + groupesDeLEtape(k).map(esc).join(', ')
-          + '. Le numéro d’un groupe commence par celui de son tableau (1.1 = ADV, 1.2 = Recouvrement, '
-          + '2.2 = CPF…). La correspondance complète, groupe par groupe, est écrite en bas de l’onglet '
-          + '(section 3).</p>'
           + tuilesFocus
           + '<div class="charts-grid charts-grid-2">'
           + '<div class="op-sub"><b>Où sont les factures</b>'
