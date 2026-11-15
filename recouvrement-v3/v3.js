@@ -991,7 +991,7 @@
                 // « Sous contrôle » reste en dehors ; les quatre étapes forment un cercle, chacune fléchée vers la suivante.
                 + '<div class="v3-edof-hors-cercle">' + tuiles + '</div>'
                 + '<div class="op-cercle v3-cercle">' + (parEtape.adv || '') + '<span class="op-fl op-fl-h" aria-hidden="true">→</span>' + (parEtape.rec || '')
-                + '<span class="op-fl op-fl-v op-fl-retour" aria-hidden="true">↑</span><span class="op-cercle-centre">Le circuit</span><span class="op-fl op-fl-v" aria-hidden="true">↓</span>'
+                + '<span class="op-fl-vide"></span><span class="op-cercle-centre">Le circuit</span><span class="op-fl op-fl-v" aria-hidden="true">↓</span>'
                 + (parEtape.cor || '') + '<span class="op-fl op-fl-h op-fl-g" aria-hidden="true">←</span>' + (parEtape.fin || '') + '</div>';
         }
         if (CIRCUIT_FIN !== 'CPF' || !EDOF) {
@@ -1686,10 +1686,55 @@
         if (PRL) ['analyserVersements', 'rapprocherVersements'].forEach(function (nom) {
             var origine = PRL[nom]; if (typeof origine !== 'function') return;
             PRL[nom] = function (versements) {
-                (versements || []).forEach(function (v) { ['dateArrivee', 'dateCreation'].forEach(function (c) { if (v[c] && !(v[c] instanceof Date)) v[c] = R.parseDate(v[c]) || null; }); });
+                (versements || []).forEach(function (v) { ['dateArrivee', 'dateCreation'].forEach(function (c) { if (v[c] && !(v[c] instanceof Date)) v[c] = R.parseDate(v[c]) || null; });
+                    // La lecture directe de GoCardless donne le net et les frais, pas le brut : prélevé aux clients = net + frais.
+                    if (v.frais > 0 && v.montant != null && (v.montantBrut == null || v.montantBrut === v.montant)) v.montantBrut = Math.round((v.montant + v.frais) * 100) / 100; });
                 return origine.apply(this, arguments);
             };
         });
+        // DÉLAI AVANT LE PREMIER INCIDENT : compté par échéancier (abonnement), du premier prélèvement de cet échéancier
+        // à son premier rejet. Un apprenant qui a eu plusieurs échéanciers n'est plus compté depuis son tout premier prélèvement.
+        if (PRL && typeof PRL.statistiques === 'function') {
+            var statsOrigine = PRL.statistiques;
+            PRL.statistiques = function (apprenants, paiements) {
+                var st = statsOrigine.apply(this, arguments);
+                try {
+                    var jour = function (x) { var d = x.dateEcheance instanceof Date ? x.dateEcheance : R.parseDate(x.dateEcheance); return d ? d.getTime() : null; };
+                    var plans = {};
+                    (paiements || []).forEach(function (x) { var t = jour(x); if (t == null) return; var k = x.abonnementId || x.mandatId || x.clientId || x.id; (plans[k] = plans[k] || []).push({ t: t, s: x.statut }); });
+                    var delais = [], rangs = [];
+                    Object.keys(plans).forEach(function (k) { var e = plans[k].sort(function (a, b) { return a.t - b.t; }), pres = e.filter(function (x) { return x.s !== 'annule'; });
+                        var i = pres.findIndex(function (x) { return x.s === 'echec'; }); if (i < 0) return;
+                        delais.push(Math.round((pres[i].t - e[0].t) / 86400000)); rangs.push(i + 1); });
+                    var med = function (a) { if (!a.length) return null; a = a.slice().sort(function (x, y) { return x - y; }); var m = a.length >> 1; return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2; };
+                    var moy = function (a) { return a.length ? a.reduce(function (x, y) { return x + y; }, 0) / a.length : null; };
+                    if (delais.length) { st.delaiMedianPremierEchec = med(delais); st.delaiMoyenPremierEchec = moy(delais); st.rangMedianPremierEchec = med(rangs); st.rangMoyenPremierEchec = moy(rangs); }
+                } catch (e) { /* on garde le calcul d'origine */ }
+                return st;
+            };
+        }
+        // APPRENANTS AVEC UN PRÉLÈVEMENT EN COURS : un échéancier GoCardless actif, ou un prélèvement présenté et pas encore dénoué.
+        var tuileEnCours = function () {
+            var boite = document.getElementById('prlv-kpi'), g = (etat() || {}).gcl || {};
+            if (!boite || !boite.children.length || boite.querySelector('.v3-gcl-encours') || !(g.paiements || []).length) return;
+            var mail = {}; (g.clients || []).forEach(function (c) { mail[c.id] = (c.email || c.nomComplet || c.id || '').toLowerCase(); });
+            var clientDuMandat = {}; (g.mandats || []).forEach(function (m) { clientDuMandat[m.id] = m.clientId; });
+            var qui = function (x) { var c = x.clientId || clientDuMandat[x.mandatId]; return c ? (mail[c] || c) : null; };
+            var actifs = {}, vol = {}, pause = {};
+            (g.abonnements || []).forEach(function (a) { var k = qui(a); if (!k) return; if (a.statut === 'active') actifs[k] = 1; else if (a.statut === 'paused') pause[k] = 1; });
+            (g.paiements || []).forEach(function (x) { if (x.statut !== 'en_cours') return; var k = qui(x); if (k) vol[k] = 1; });
+            var tous = {}; Object.keys(actifs).concat(Object.keys(vol)).forEach(function (k) { tous[k] = 1; });
+            var nPause = Object.keys(pause).filter(function (k) { return !tous[k]; }).length;
+            var d = document.createElement('div'); d.className = 'recup-card v3-gcl-encours';
+            d.innerHTML = '<span class="recup-bar" style="background:#2f7d5b"></span><span class="recup-taux">' + Object.keys(tous).length.toLocaleString('fr-FR') + '</span>'
+                + '<span class="recup-label">Apprenants avec un prélèvement en cours</span>'
+                + '<span class="recup-value">' + Object.keys(actifs).length + ' avec un échéancier actif · ' + Object.keys(vol).length + ' avec un prélèvement présenté, pas encore dénoué</span>'
+                + '<span class="recup-sub">' + (nPause ? nPause + ' autre(s) avec un échéancier en pause · ' : '') + 'd’après le relevé GoCardless</span>';
+            boite.insertBefore(d, boite.firstChild);
+        };
+        var surveillerKpi = function () { var boite = document.getElementById('prlv-kpi'); if (!boite) return setTimeout(surveillerKpi, 1500);
+            new MutationObserver(tuileEnCours).observe(boite, { childList: true }); tuileEnCours(); };
+        surveillerKpi();
         var enrichirOrigine = I.enrichir;
         I.enrichir = function (factures, opts) {
             var st = etat() || {};

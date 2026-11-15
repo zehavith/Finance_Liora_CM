@@ -1184,7 +1184,7 @@
           // « Sous contrôle » et ses alertes restent au-dessus, en dehors du cercle.
           + '<div class="op-cercle">'
           + vignetteEtape(st, 'adv') + '<span class="op-fl op-fl-h" aria-hidden="true">→</span>' + vignetteEtape(st, 'rec')
-          + '<span class="op-fl op-fl-v op-fl-retour" aria-hidden="true">↑</span><span class="op-cercle-centre">Le circuit<small>chaque étape passe la main à la suivante</small></span><span class="op-fl op-fl-v" aria-hidden="true">↓</span>'
+          + '<span class="op-fl-vide"></span><span class="op-cercle-centre">Le circuit<small>chaque étape passe la main à la suivante</small></span><span class="op-fl op-fl-v" aria-hidden="true">↓</span>'
           + vignetteEtape(st, 'cor') + '<span class="op-fl op-fl-h op-fl-g" aria-hidden="true">←</span>' + vignetteEtape(st, 'fin')
           + '</div>'
           + '<div class="op-sub"><b>Les étapes du process</b>'
