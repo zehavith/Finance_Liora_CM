@@ -671,6 +671,18 @@
     }
 
     // ── Opérationnel : où en est EDOF pour le CPF ──
+    // Les OPCO, reconnus à leur nom : dans le client Monday, ou dans le tiers de la même facture au grand livre.
+    var OPCO_PAR_CLE = null;
+    var NOMS_OPCO = [['ATLAS', /\bATLAS\b/], ['OPCO 2i', /\bOPCO ?2I\b/], ['AFDAS', /\bAFDAS\b/], ['AKTO', /\bAKTO\b/], ['Constructys', /\bCONSTRUCTYS\b/], ['OCAPIAT', /\bOCAPIAT\b/],
+        ['L’Opcommerce', /\bOPCOMMERCE\b|\bOPCO COMMERCE\b/], ['Uniformation', /\bUNIFORMATION\b/], ['OPCO EP', /\bOPCO ?EP\b|ENTREPRISES DE PROXIMIT/], ['OPCO Mobilités', /\bOPCO MOBILIT/],
+        ['OPCO Santé', /\bOPCO SANT/], ['OPCO (non précisé)', /\bOPCO\b/]];
+    function nomOpco(f) {
+        var parGL = OPCO_PAR_CLE && f.cle && OPCO_PAR_CLE[f.cle];
+        if (parGL) return parGL;
+        var t = String(f.client || '').toUpperCase();
+        for (var i = 0; i < NOMS_OPCO.length; i++) if (NOMS_OPCO[i][1].test(t)) return NOMS_OPCO[i][0];
+        return '';
+    }
     var EDOF_LOTS = [], CIRCUIT_FIN = 'CPF', PLI_TABLEAU = false, PLI_CIRCUIT = false;   // le tableau est replié au départ
     // L'état de pointage Sellsy d'une facture : d'après l'export Sellsy s'il est déposé, sinon d'après le
     // groupe Monday qui le dit (« sellsy pointé », « non remonté sur Sellsy »).
@@ -722,6 +734,7 @@
         ];
         if (a1('__autresMotifs')) cols.push({ key: '__autresMotifs', label: 'Autres points à revérifier', width: '220px', format: function (v) { return liste(v) || '—'; } });
         if (l.its.some(function (f) { return f.__attendu; })) cols.push({ key: '__attendu', label: 'Situation et étape attendue', width: '230px', format: function (v) { return v ? esc(v) : '—'; } });
+        if (l.its.some(function (f) { return f.opcoNom; })) cols.push({ key: 'opcoNom', label: 'OPCO', width: '130px', format: function (v) { return v ? esc(v) : '—'; } });
         cols.push({ key: 'groupe', label: 'Groupe Monday', width: '200px', format: function (v) { return esc(v || ''); } });
         cols.push({ key: 'dateFinFormation', label: 'Fin de formation', width: '100px', format: d });
         cols.push((EDOF && l.its.some(function (f) { return f.financement === 'CPF'; }))
@@ -808,8 +821,13 @@
         (st.factures || []).forEach(function (f) { if (f.__motif || f.__attendu || f.__autresFactures) { f.__motif = null; f.__autresMotifs = null; f.__attendu = null; f.__autresFactures = null; } });
         // Les factures B2B du tableau « 2.3. Financement pôle emploi » forment un financement à part : B2B - Pôle emploi.
         var finDe = function (f) { var k = f.financement || 'INCONNU';
+            // Une facture dont le payeur est un OPCO (d'après son nom) est rangée en OPCO, quel que soit le type saisi dans Monday.
+            var o = k === 'CPF' ? '' : nomOpco(f); f.opcoNom = o || null;
+            // Deux familles seulement, d'après le type de la facture : alternance, ou corporate pour tout le reste.
+            if (o) return /ALTERNANCE/.test(k) ? 'OPCO_ALTERNANCE' : 'OPCO_CORPORATE';
+            if (k === 'OPCO') return 'OPCO_CORPORATE';
             return k === 'B2B' && /^\s*2\.3\b|p[oô]le emploi/i.test(String(f.board || '')) ? 'B2B_POLE_EMPLOI' : k; };
-        var cleRegle = function (k) { return k === 'B2B_POLE_EMPLOI' ? 'B2B' : k; };
+        var cleRegle = function (k) { return k === 'B2B_POLE_EMPLOI' ? 'B2B' : k === 'OPCO_CORPORATE' ? 'OPCO' : k; };
         // « Le circuit : » puis une vignette par financement. Le CPF se lit
         // d'après EDOF ; les autres, d'après les étapes du circuit Monday.
         var libelles = {}; (st.rules || R.DEFAULT_ECHEANCE_RULES || []).forEach(function (r) { libelles[r.key] = r.label; });
@@ -820,7 +838,7 @@
         nonReglees.concat(payeesADeplacer).forEach(function (f) { var k = finDe(f); parFin[k] = (parFin[k] || 0) + 1; });
         var fins = Object.keys(parFin).sort(function (a, b) { return (b === 'CPF') - (a === 'CPF') || parFin[b] - parFin[a]; });
         if (fins.indexOf(CIRCUIT_FIN) < 0) CIRCUIT_FIN = fins[0] || 'CPF';
-        var nomFin = function (k) { return k === 'B2B_POLE_EMPLOI' ? 'B2B - Pôle emploi' : (libelles[k] || (k === 'INCONNU' ? 'Non renseigné' : k)); };
+        var nomFin = function (k) { return k === 'B2B_POLE_EMPLOI' ? 'B2B - Pôle emploi' : k === 'OPCO_CORPORATE' ? 'OPCO - Corporate' : k === 'OPCO_ALTERNANCE' ? 'OPCO - Alternance' : (libelles[k] || (k === 'INCONNU' ? 'Non renseigné' : k)); };
         var tete = '<details class="v3-pli v3-pli-carte" id="v3-pli-circuit"' + (PLI_CIRCUIT ? ' open' : '') + '><summary><h3>Circuit par financement</h3></summary>'
             + '<div class="v3-circuit-tete"><label for="v3-circuit-fin">Financement :</label><select id="v3-circuit-fin" class="v3-circuit-choix">' + fins.map(function (k) {
             return '<option value="' + esc(k) + '"' + (k === CIRCUIT_FIN ? ' selected' : '') + '>' + esc(nomFin(k)) + ' — ' + parFin[k].toLocaleString('fr-FR') + ' factures</option>'; }).join('') + '</select></div>';
@@ -1413,6 +1431,8 @@
     }
     async function chargerComplements() {
         var res = await Promise.all([lireJson('donnees/reglements.json'), lireJson('donnees/anciennes-factures.json'), lireJson('donnees/rapprochements.json')]);
+        var opcoPub = await lireJson('donnees/opco.json');
+        if (opcoPub && opcoPub.factures) { OPCO_PAR_CLE = {}; Object.keys(opcoPub.factures).forEach(function (n) { OPCO_PAR_CLE[I.factureKey(n)] = opcoPub.factures[n]; }); }
         var edof = await lireJson('donnees/edof.json');
         EDOF_BRUT = { factures: {}, avances: {}, periodes: [], dossiers: {} };
         if (edof && (edof.factures || edof.dossiers)) fusionnerEdof(edof);
@@ -1653,6 +1673,7 @@
                 'État': f.etat || '', 'Payée': f.paye ? 'oui' : 'non', 'Date de paiement': d(f.datePaiement), 'Origine du paiement': f.originePaiement || f.motifPaye || '' });
             if (f.reglementPropose) { o['Règlement proposé'] = f.reglementPropose.montant; o['Reste dû au grand livre'] = f.reglementPropose.reste;
                 o['Fiabilité du rapprochement'] = f.reglementPropose.fiabilite; o['Date du règlement'] = d(f.reglementPropose.date); }
+            if (f.opcoNom) o['OPCO'] = f.opcoNom;
             if (f.edof) { o['EDOF — statut'] = f.edof.statut; o['EDOF — montant réglé'] = f.edof.montant; o['EDOF — date de règlement'] = d(f.edof.date);
                 o['EDOF — dossier'] = f.edof.dossier; o['EDOF — dossier en contrôle'] = f.edof.controle ? 'oui' : 'non'; }
             if (f.edofDossier) { o['EDOF — n° de dossier'] = f.edofDossier.numero; o['EDOF — statut du dossier'] = f.edofDossier.statut; o['EDOF — début de session'] = d(f.edofDossier.debut);
