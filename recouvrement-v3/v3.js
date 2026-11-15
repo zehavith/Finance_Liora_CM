@@ -713,8 +713,10 @@
         var u = UI(); if (!u || !u.modal || !u.table) return false;
         var d = function (v) { var x = v && R.parseDate(v); return x ? jourLocal(x).split('-').reverse().join('/') : ''; };
         var cols = [
-            { key: '__motif', label: 'Motif', width: '250px', format: function (v, f) { return '<span class="v3-motif">' + esc(v || '') + '</span>'
-                + ((f.__autresMotifs || []).length ? '<br><span class="op-pied">aussi : ' + esc(f.__autresMotifs.join(' ; ')) + '</span>' : ''); } },
+            { key: '__motif', label: 'Motif', width: '300px', format: function (v, f) { return '<span class="v3-motif">' + esc(v || '') + '</span>'
+                + ((f.__autresMotifs || []).length ? '<br><span class="op-pied">aussi : ' + esc(f.__autresMotifs.join(' ; ')) + '</span>' : '')
+                + ((f.__autresDossiers || []).length ? '<br><span class="v3-trouve">Autre dossier EDOF : ' + esc(f.__autresDossiers.join(' | ')) + '</span>' : '')
+                + ((f.__autresFactures || []).length ? '<br><span class="v3-trouve">Autre facture Monday : ' + esc(f.__autresFactures.join(' | ')) + '</span>' : ''); } },
             { key: 'numero', label: 'Facture', width: '150px', format: function (v, f) { return esc(v || '') + (f.apprenant ? '<br><span class="op-pied">' + esc(f.apprenant) + '</span>' : ''); } },
             { key: 'groupe', label: 'Groupe Monday' },
             { key: 'dateFinFormation', label: 'Fin de formation', width: '104px', format: d },
@@ -948,6 +950,9 @@
             if (/annul|refus|non r[ée]alis/i.test(d.statut)) return 'annule';
             if (/service fait/i.test(d.statut)) return 'servicefait';
             return 'encours'; };
+        // La session du dossier est-elle terminée à la date d'arrêté ? (fin de session EDOF)
+        var jourArrete = (st.filtres && st.filtres.dateRef && R.parseDate(st.filtres.dateRef)) || new Date();
+        var sessionFinie = function (f) { var d = f.edofDossier, x = d && d.fin && R.parseDate(d.fin); return !!x && +x < +jourArrete; };
         var lots = {
             rien: nonVersees.filter(function (f) { return !f.edof && !f.edofAvance; }),
             avance: nonVersees.filter(function (f) { return !f.edof && f.edofAvance; }),
@@ -955,12 +960,29 @@
             annule: nonVersees.filter(function (f) { return !f.edof && statutDossier(f) === 'annule'; }),
             enFormation: nonVersees.filter(function (f) { return !f.edof && statutDossier(f) === 'encours'; }),
             aDeposer: nonVersees.filter(function (f) { return !f.edof && statutDossier(f) === 'servicefait'; }),
+            sessionFinie: nonVersees.filter(function (f) { return !f.edof && statutDossier(f) === 'encours' && sessionFinie(f); }),
+            sessionEnCours: nonVersees.filter(function (f) { return !f.edof && statutDossier(f) === 'encours' && !sessionFinie(f); }),
             attente: nonVersees.filter(function (f) { return f.edof && f.edof.statut === 'En attente'; }),
             rejet: nonVersees.filter(function (f) { return f.edof && f.edof.statut === 'Rejeté'; }),
             pointee: verse.filter(function (f) { return f.grandLivreSoldee; }),
             nonPointee: verse.filter(function (f) { return !f.grandLivreSoldee && f.grandLivre; }),
             absente: verse.filter(function (f) { return !f.grandLivre; })
         };
+        // POUR UN DOSSIER ANNULÉ OU REFUSÉ : y a-t-il un autre dossier EDOF, ou une autre facture Monday, au nom du même apprenant ?
+        var parApprenant = {};
+        (st.factures || []).forEach(function (g) { if (g.role === 'sellsy' || !g.apprenant) return; var k = nomCle(g.apprenant); if (k) (parApprenant[k] = parApprenant[k] || []).push(g); });
+        var jourFR = function (d) { return String(d || '').split('-').reverse().join('/'); };
+        lots.annule.forEach(function (f) {
+            var d = f.edofDossier, nom = (EDOF.dossiers[d.numero] || [])[7] || nomCle(f.apprenant);
+            f.__autresDossiers = (EDOF.parNom[nom] || []).filter(function (k) { return k !== d.numero && !/annul|refus|non r[ée]alis/i.test(EDOF.dossiers[k][0]); }).map(function (k) {
+                var x = EDOF.dossiers[k], fa = (EDOF.parDossier[k] || []).map(function (n) { var l = EDOF_BRUT.factures[n]; return n + ' ' + l[2].toLowerCase(); });
+                return k + ' — ' + x[0] + (x[2] ? ', fin de session ' + jourFR(x[2]) : '') + (fa.length ? ', facture EDOF : ' + fa.join(', ') : ', pas de facture EDOF'); });
+            f.__autresFactures = (parApprenant[nomCle(f.apprenant)] || []).filter(function (g) { return g !== f && g.cle !== f.cle; }).map(function (g) {
+                return (g.numero || '?') + ' — ' + Math.round(g.montant || 0).toLocaleString('fr-FR') + ' €, ' + (g.paye ? 'payée' : 'non payée') + ', ' + (g.groupe || g.board || ''); });
+        });
+        lots.annuleAutreDossier = lots.annule.filter(function (f) { return f.__autresDossiers.length; });
+        lots.annuleAutreFacture = lots.annule.filter(function (f) { return !f.__autresDossiers.length && f.__autresFactures.length; });
+        lots.annuleSeul = lots.annule.filter(function (f) { return !f.__autresDossiers.length && !f.__autresFactures.length; });
         var avecAvance = nonVersees.filter(function (f) { return f.edofAvance; });
         var deLAnnee = nonVersees.filter(function (f) { return an(f) === anneeRef; });
         var rangees = cpf.filter(function (f) { return f.edofVerse && !hp(f); }).length;
@@ -1003,8 +1025,11 @@
         var colDe = function (f) { if (f.edofVerse || f.paye) return 'cor'; var k = OPX.etapeDe(f); if (cles[k]) return k; return echue(f) ? 'hors' : 'ctl'; };
         var LIGNES = [
             { n: '0 · Dossier introuvable dans EDOF', faire: 'vérifier le numéro de dossier ou le nom de l’apprenant', l: lots.introuvable, code: 'edof-0-dossier-introuvable' },
-            { n: '1 · Dossier annulé ou refusé dans EDOF', faire: 'annuler la facture, ou la refaire hors CPF', l: lots.annule, code: 'edof-1-dossier-annule' },
-            { n: '2 · Dossier en formation (service fait pas encore validé)', faire: 'attendre la fin et déclarer le service fait', l: lots.enFormation, code: 'edof-2-en-formation' },
+            { n: '1a · Dossier annulé ou refusé, mais un autre dossier EDOF existe pour l’apprenant', faire: 'rattacher la facture au bon dossier', l: lots.annuleAutreDossier, code: 'edof-1a-annule-autre-dossier' },
+            { n: '1b · Dossier annulé ou refusé, une autre facture existe dans Monday pour l’apprenant', faire: 'vérifier si la facture a été refaite, puis annuler le doublon', l: lots.annuleAutreFacture, code: 'edof-1b-annule-autre-facture' },
+            { n: '1c · Dossier annulé ou refusé, rien d’autre au nom de l’apprenant', faire: 'annuler la facture, ou la refaire hors CPF', l: lots.annuleSeul, code: 'edof-1c-annule-seul' },
+            { n: '2 · Dossier en formation, session en cours', faire: 'normal : attendre la fin de la session', l: lots.sessionEnCours, code: 'edof-2-session-en-cours' },
+            { n: '2a · Session terminée, service fait pas encore validé', faire: 'déclarer la sortie de formation sur EDOF', l: lots.sessionFinie, code: 'edof-2a-service-fait-a-declarer' },
             { n: '2b · Service fait validé, facture pas déposée', faire: 'déposer la facture sur EDOF', l: lots.aDeposer, code: 'edof-2b-a-deposer' },
             { n: '3 · Déposée, en attente de règlement', faire: 'attendre le versement', l: lots.attente, code: 'edof-3-attente' },
             { n: '4 · Rejetée par EDOF', faire: 'corriger et redéposer', l: lots.rejet, code: 'edof-4-rejet' },
@@ -1060,10 +1085,19 @@
                 tous.filter(function (f) { return f.doublonOperationnel || f.doublonPayees; }), 'doublon-monday'],
             ['Dossier déjà facturé dans EDOF sous un autre numéro', 'EDOF connaît une facture pour ce dossier, mais avec un autre numéro que celui de Monday : facture refaite, ou numéro mal saisi.',
                 nonVersees.filter(function (f) { var d = norm(f.numeroDossier); return !f.edof && d && EDOF.parDossier[d]; }), 'autre-numero-edof'],
-            ['Dossier annulé ou refusé dans EDOF, facture toujours ouverte', 'EDOF indique que le dossier est annulé, refusé ou non réalisé : la facture ne sera pas payée par le CPF.', lots.annule, 'dossier-annule'],
+            ['Dossier annulé ou refusé — un autre dossier EDOF existe pour le même apprenant', 'La facture porte sur un dossier annulé ou refusé, mais l’apprenant a un autre dossier valide dans EDOF : la facture est probablement à rattacher à ce dossier. Les dossiers trouvés sont dans la liste et dans l’export.',
+                lots.annuleAutreDossier, 'dossier-annule-autre-dossier'],
+            ['Dossier annulé ou refusé — une autre facture existe dans Monday pour le même apprenant', 'La facture porte sur un dossier annulé ou refusé, et Monday contient une autre facture au nom du même apprenant : elle a peut-être été refaite. Les factures trouvées sont dans la liste et dans l’export.',
+                lots.annuleAutreFacture, 'dossier-annule-autre-facture'],
+            ['Dossier annulé ou refusé — aucune autre facture ni autre dossier', 'EDOF indique que le dossier est annulé, refusé ou non réalisé, et rien d’autre n’existe au nom de l’apprenant : la facture ne sera pas payée par le CPF.',
+                lots.annuleSeul, 'dossier-annule-seul'],
             ['Service fait validé, facture pas déposée sur EDOF', 'Le dossier est facturable dans EDOF, mais aucune facture n’y a été déposée sous ce numéro.', lots.aDeposer, 'service-fait-non-depose'],
-            ['Relancée ou en clôture, alors que le dossier est encore en formation dans EDOF', 'La facture est dans une étape de relance, mais EDOF n’a pas encore de service fait validé pour ce dossier.',
-                lots.enFormation.filter(enRelance), 'relance-dossier-en-formation'],
+            ['Relancée, alors que la session n’est pas terminée dans EDOF', 'La facture est dans une étape de relance, mais la session du dossier EDOF est encore en cours : rien n’est dû pour l’instant.',
+                lots.sessionEnCours.filter(enRelance), 'relance-session-en-cours'],
+            ['Relancée, session terminée mais service fait pas validé dans EDOF', 'La session est terminée, mais le dossier est toujours « en formation » dans EDOF : tant que la sortie de formation n’est pas déclarée, la facture ne peut pas être déposée ni payée.',
+                lots.sessionFinie.filter(enRelance), 'relance-service-fait-a-declarer'],
+            ['Session terminée, service fait pas validé dans EDOF', 'Même situation, pour une facture qui n’est pas encore relancée : la sortie de formation est à déclarer sur EDOF.',
+                lots.sessionFinie.filter(function (f) { return !enRelance(f); }), 'service-fait-a-declarer'],
             ['Montant de la facture différent du montant facturable EDOF', 'Le montant de la facture Monday s’écarte de plus d’un euro du montant facturable du dossier EDOF (avance déduite ou non).',
                 nonVersees.filter(function (f) { var d = f.edofDossier, m = f.montant || 0; if (!d || d.montantFacturable == null || !m) return false;
                     var av = f.edofAvance ? f.edofAvance.montant : 0; return Math.abs(m - d.montantFacturable) > 1 && Math.abs(m - (d.montantFacturable - av)) > 1; }), 'ecart-montant-facturable'],
@@ -1080,7 +1114,7 @@
         ];
         // UNE FACTURE, UN MOTIF. Chaque facture est rangée sous son motif le plus important (l'ordre ci-dessous) ;
         // ses autres motifs éventuels sont gardés à côté. Les nombres s'additionnent donc sans doublon.
-        var ORDRE = ['versee-encore-relancee', 'rejet', 'dossier-annule', 'service-fait-non-depose', 'relance-dossier-en-formation', 'echue-pas-en-recouvrement', 'recouvrement-trop-tot', 'payable-en-retard',
+        var ORDRE = ['versee-encore-relancee', 'rejet', 'dossier-annule-autre-dossier', 'dossier-annule-autre-facture', 'dossier-annule-seul', 'service-fait-non-depose', 'relance-session-en-cours', 'relance-service-fait-a-declarer', 'service-fait-a-declarer', 'echue-pas-en-recouvrement', 'recouvrement-trop-tot', 'payable-en-retard',
             'payable-trop-tot', 'autre-numero-edof', 'doublon-dossier', 'doublon-monday', 'ecart-montant', 'ecart-montant-facturable', 'ecart-date-fin', 'dossier-en-controle', 'fin-de-formation-manquante', 'dossier-introuvable'];
         VERIFS.sort(function (x, y) { return ORDRE.indexOf(x[3]) - ORDRE.indexOf(y[3]); });
         var idDe = function (f) { return f.id || f.cle || f.numero; }, motifsDe = {}, factDe = {};
@@ -1385,6 +1419,8 @@
             if (f.edofDossier) { o['EDOF — n° de dossier'] = f.edofDossier.numero; o['EDOF — statut du dossier'] = f.edofDossier.statut; o['EDOF — début de session'] = d(f.edofDossier.debut);
                 o['EDOF — fin de session'] = d(f.edofDossier.fin); o['EDOF — montant facturable'] = f.edofDossier.montantFacturable == null ? '' : f.edofDossier.montantFacturable;
                 o['EDOF — dossier trouvé par le nom'] = f.dossierVientEdof ? 'oui' : ''; }
+            if (f.__autresDossiers) o['Autre dossier EDOF du même apprenant'] = f.__autresDossiers.join(' | ');
+            if (f.__autresFactures) o['Autres factures Monday du même apprenant'] = f.__autresFactures.join(' | ');
             if (f.edofAvance) { o['EDOF — avance versée'] = f.edofAvance.montant; o['EDOF — date de l’avance'] = d(f.edofAvance.date); }
             if (f.anciennesFactures) o['Ancienne facture'] = f.anciennesFactures.join(', ');
             return o;
