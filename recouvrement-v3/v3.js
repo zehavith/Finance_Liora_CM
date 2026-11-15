@@ -680,8 +680,35 @@
         return sellsyPointe(f) === 'oui' ? 'a' : 'b';
     }
     /** Ouvre un lot dans une fenêtre, avec son export et, pour « Corriger », un filtre par cas. */
+    /** Fenêtre des factures à revérifier : le motif est une colonne, et la liste est triée par motif. */
+    function ouvrirLotMotifs(l) {
+        var u = UI(); if (!u || !u.modal || !u.table) return false;
+        var d = function (v) { var x = v && R.parseDate(v); return x ? jourLocal(x).split('-').reverse().join('/') : ''; };
+        var cols = [
+            { key: '__motif', label: 'Motif', width: '250px', format: function (v, f) { return '<span class="v3-motif">' + esc(v || '') + '</span>'
+                + ((f.__autresMotifs || []).length ? '<br><span class="op-pied">aussi : ' + esc(f.__autresMotifs.join(' ; ')) + '</span>' : ''); } },
+            { key: 'numero', label: 'Facture', width: '150px', format: function (v, f) { return esc(v || '') + (f.apprenant ? '<br><span class="op-pied">' + esc(f.apprenant) + '</span>' : ''); } },
+            { key: 'groupe', label: 'Groupe Monday' },
+            { key: 'dateFinFormation', label: 'Fin de formation', width: '104px', format: d },
+            { key: 'montant', label: 'Montant', align: 'right', width: '100px', format: function (v) { return v == null ? '—' : Math.round(v).toLocaleString('fr-FR') + ' €'; } },
+            { key: 'edof', label: 'EDOF', width: '150px', format: function (v, f) { return v ? esc(v.statut) + (v.date ? ' le ' + d(v.date) : '') : (f.edofAvance ? 'avance versée' : 'absente'); } }
+        ];
+        var somme = l.its.reduce(function (t, f) { return t + (f.montant || 0); }, 0);
+        u.modal(l.titre, '<p class="pil-note">' + l.its.length.toLocaleString('fr-FR') + ' facture' + (l.its.length > 1 ? 's' : '') + ' · ' + Math.round(somme).toLocaleString('fr-FR') + ' €. ' + esc(l.note || '')
+            + (l.its.length > 400 ? ' Les 400 premières sont affichées ; l’export les donne toutes.' : '') + '</p><div class="table-wrap-tall">'
+            + u.table(cols, l.its.slice(0, 400), { vide: 'Aucune facture.' }) + '</div>',
+            [{ label: 'Exporter cette liste (Excel)', action: function () { exporterControle({ code: l.code, items: l.its }); } }, { label: 'Fermer' }], { large: true });
+        // Si la fenêtre ne sait pas porter un bouton d'action, l'export est ajouté à la main.
+        setTimeout(function () { var pied = document.querySelector('#modal-overlay .modal-foot'); if (!pied) return;
+            var deja = [].slice.call(pied.querySelectorAll('button')).filter(function (b) { return /Exporter/.test(b.textContent); })[0];
+            if (deja) { deja.onclick = function (ev) { ev.stopPropagation(); ev.preventDefault(); exporterControle({ code: l.code, items: l.its }); }; return; }
+            var e = document.createElement('button'); e.type = 'button'; e.className = 'btn btn-ghost btn-sm'; e.textContent = 'Exporter cette liste (Excel)';
+            e.onclick = function () { exporterControle({ code: l.code, items: l.its }); }; pied.insertBefore(e, pied.firstChild); }, 60);
+        return true;
+    }
     function ouvrirLotCircuit(l, cas) {
         var OPX = G.LioraOperationnel;
+        if (l && l.motifs && ouvrirLotMotifs(l)) return;
         if (!l || !OPX || !OPX.montrerFactures) return;
         var its = cas ? l.its.filter(function (f) { return casCorriger(f) === cas; }) : l.its;
         var lib = cas ? (CAS_CORRIGER.filter(function (c) { return c[0] === cas; })[0] || [])[1] : '';
@@ -895,14 +922,33 @@
             ['Sans numéro de dossier dans Monday', 'Impossible de rapprocher la facture d’une avance EDOF sans numéro de dossier.',
                 lots.rien.filter(function (f) { return !norm(f.numeroDossier); }), 'sans-numero-dossier']
         ];
-        var dejaVu = {}, nbUniques = 0;
-        VERIFS.forEach(function (v) { v[2].forEach(function (f) { if (!dejaVu[f.id || f.cle || f.numero]) { dejaVu[f.id || f.cle || f.numero] = 1; nbUniques++; } }); });
-        var aVerifier = '<div class="v3-averifier"><h3 class="v3-circuit-sous">Facturation à revérifier <span class="op-cnt">' + nbUniques.toLocaleString('fr-FR') + ' factures</span></h3>'
-            + '<p class="pil-note">Les factures CPF qui posent question : doublons, absentes d’EDOF alors qu’elles sont relancées, ou incohérentes. Une même facture peut figurer dans plusieurs lignes.</p>'
-            + '<table class="op-t"><thead><tr><th>Ce qui est à revérifier</th><th class="n">Factures</th><th class="n">Montant</th><th></th></tr></thead><tbody>'
-            + VERIFS.map(function (v) { var i = poser(v[2], 'À revérifier — ' + v[0], v[1], 'a-reverifier-' + v[3]);
-                return '<tr' + (v[2].length ? '' : ' class="v3-rien"') + '><td><b>' + esc(v[0]) + '</b><br><span class="op-pied">' + esc(v[1]) + '</span></td><td class="n">' + nbLien(v[2], i)
-                    + '</td><td class="n">' + (v[2].length ? eur0(v[2]) : '—') + '</td><td class="n">' + exp(v[2], i) + '</td></tr>'; }).join('')
+        // UNE FACTURE, UN MOTIF. Chaque facture est rangée sous son motif le plus important (l'ordre ci-dessous) ;
+        // ses autres motifs éventuels sont gardés à côté. Les nombres s'additionnent donc sans doublon.
+        var ORDRE = ['versee-encore-relancee', 'rejet', 'relance-sans-edof', 'echue-pas-en-recouvrement', 'recouvrement-trop-tot', 'payable-en-retard',
+            'payable-trop-tot', 'autre-numero-edof', 'doublon-dossier', 'doublon-monday', 'ecart-montant', 'dossier-en-controle', 'fin-de-formation-manquante', 'sans-numero-dossier'];
+        VERIFS.sort(function (x, y) { return ORDRE.indexOf(x[3]) - ORDRE.indexOf(y[3]); });
+        var idDe = function (f) { return f.id || f.cle || f.numero; }, motifsDe = {}, factDe = {};
+        VERIFS.forEach(function (v) { v[2].forEach(function (f) { var k = idDe(f); (motifsDe[k] = motifsDe[k] || []).push(v[0]); factDe[k] = f; }); });
+        var toutes = Object.keys(factDe).map(function (k) { var f = factDe[k]; f.__motif = motifsDe[k][0]; f.__autresMotifs = motifsDe[k].slice(1); return f; });
+        var rangMotif = {}; VERIFS.forEach(function (v, i) { rangMotif[v[0]] = i; });
+        toutes.sort(function (x, y) { return rangMotif[x.__motif] - rangMotif[y.__motif] || (y.montant || 0) - (x.montant || 0); });
+        var lignesMotifs = VERIFS.map(function (v) {
+            var l = toutes.filter(function (f) { return f.__motif === v[0]; });
+            var i = poser(l, 'À revérifier — ' + v[0], v[1], 'a-reverifier-' + v[3]); EDOF_LOTS[i].motifs = true;
+            var aussi = v[2].length - l.length;
+            return '<tr' + (l.length ? '' : ' class="v3-rien"') + '><td><span class="v3-motif">' + esc(v[0]) + '</span><br><span class="op-pied">' + esc(v[1])
+                + (aussi > 0 ? ' ' + aussi + ' autre(s) facture(s) ont aussi ce motif, mais sont rangées sous un motif plus important.' : '') + '</span></td><td class="n">' + nbLien(l, i)
+                + '</td><td class="n">' + (l.length ? eur0(l) : '—') + '</td><td class="n">' + exp(l, i) + '</td></tr>'; }).join('');
+        var iToutes = poser(toutes, 'Facturation à revérifier — toutes les factures, triées par motif', 'Chaque facture est rangée sous son motif le plus important.', 'a-reverifier-toutes');
+        EDOF_LOTS[iToutes].motifs = true;
+        var aVerifier = '<div class="v3-averifier"><h3 class="v3-circuit-sous">Facturation à revérifier <span class="op-cnt">' + toutes.length.toLocaleString('fr-FR') + ' factures</span></h3>'
+            + '<p class="pil-note">Les factures CPF qui posent question, <b>triées par motif</b>. Chaque facture n’est comptée qu’une fois, sous son motif le plus important ; '
+            + 'ses autres motifs apparaissent dans la liste et dans l’export. '
+            + '<button type="button" class="btn btn-ghost btn-sm" data-edof-lot="' + iToutes + '">Voir les ' + toutes.length.toLocaleString('fr-FR') + ' factures triées par motif</button> '
+            + '<button type="button" class="btn btn-ghost btn-sm" data-edof-export="' + iToutes + '">Exporter le tout (Excel)</button></p>'
+            + '<table class="op-t"><thead><tr><th>Motif</th><th class="n">Factures</th><th class="n">Montant</th><th></th></tr></thead><tbody>'
+            + lignesMotifs
+            + '<tr class="total"><td>Total</td><td class="n"><b>' + toutes.length.toLocaleString('fr-FR') + '</b></td><td class="n">' + eur0(toutes) + '</td><td></td></tr>'
             + '</tbody></table></div>';
 
         hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + parcours
@@ -1156,10 +1202,11 @@
         if (!X) { dire('L’export Excel n’est pas disponible.', 'error', 4000); return; }
         var d = function (v) { var x = v && R.parseDate(v); return x ? jourLocal(x).split('-').reverse().join('/') : ''; };
         var lignes = (a.items || []).map(function (f) {
-            var o = { 'Facture': f.numero || '', 'Client': f.client || '', 'Apprenant': f.apprenant || '', 'Financement': f.financement || '',
+            var o = {}; if (a.items && f.__motif && /^a-reverifier/.test(String(a.code || ''))) { o['Motif'] = f.__motif; o['Autres motifs'] = (f.__autresMotifs || []).join(' ; '); }
+            Object.assign(o, { 'Facture': f.numero || '', 'Client': f.client || '', 'Apprenant': f.apprenant || '', 'Financement': f.financement || '',
                 'Tableau Monday': f.board || '', 'Groupe Monday': f.groupe || '', 'Montant': f.montant == null ? '' : f.montant,
                 'Date de facture': d(f.dateFacture), 'Échéance calculée': d(f.dateEcheance), 'Jours de retard': f.retardJours == null ? '' : f.retardJours,
-                'État': f.etat || '', 'Payée': f.paye ? 'oui' : 'non', 'Date de paiement': d(f.datePaiement), 'Origine du paiement': f.originePaiement || f.motifPaye || '' };
+                'État': f.etat || '', 'Payée': f.paye ? 'oui' : 'non', 'Date de paiement': d(f.datePaiement), 'Origine du paiement': f.originePaiement || f.motifPaye || '' });
             if (f.reglementPropose) { o['Règlement proposé'] = f.reglementPropose.montant; o['Reste dû au grand livre'] = f.reglementPropose.reste;
                 o['Fiabilité du rapprochement'] = f.reglementPropose.fiabilite; o['Date du règlement'] = d(f.reglementPropose.date); }
             if (f.edof) { o['EDOF — statut'] = f.edof.statut; o['EDOF — montant réglé'] = f.edof.montant; o['EDOF — date de règlement'] = d(f.edof.date);
