@@ -1020,7 +1020,7 @@
 
             var regle = (st.rules || []).filter(function (x) { return x.key === CIRCUIT_FIN; })[0];
             return { rouge: rouge, html: '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">' + esc(nomF) + ' — ancienneté du retard croisée avec les étapes du circuit</h3></div>'
-                + aVerif + matrice + blocPayees };
+                + aVerif + '<p class="v3-legende"><span class="v3-leg v3-leg-vert"></span> case verte : l’étape du circuit où ces factures doivent se trouver · <span class="v3-leg v3-leg-rouge"></span> case rouge : des factures y sont alors qu’elles devraient être dans une autre étape (cliquez le nombre pour les voir)</p>' + matrice + blocPayees };
         }
         var cpf = (st.factures || []).filter(function (f) { return f.role !== 'sellsy' && (f.financement === 'CPF' || f.edof); });
         var ouvertes = cpf.filter(hp);
@@ -1271,7 +1271,7 @@
         hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + poserRouges(parcours, rougeCpf)
             + '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">CPF — étapes EDOF croisées avec les étapes du circuit</h3>'
             + '<span class="pil-coin">export EDOF jusqu’au ' + jour(p.length && p[p.length - 1][1]) + ' · grand livre au ' + jour(GL_INFO && GL_INFO.arrete) + '</span></div>'
-            + aVerifier + matrice
+            + aVerifier + '<p class="v3-legende"><span class="v3-leg v3-leg-vert"></span> case verte : l’étape du circuit où ces factures doivent se trouver · <span class="v3-leg v3-leg-rouge"></span> case rouge : des factures y sont alors qu’elles devraient être dans une autre étape (cliquez le nombre pour les voir)</p>' + matrice
             + (verse.length ? '<div class="v3-edof-detail"><div><b>Étape 5 — les ' + verse.length.toLocaleString('fr-FR') + ' factures payées, à corriger</b><ul class="v3-edof-sous">'
                 + '<li>' + enLigne(payees.a, 'pointées sur Sellsy et Pennylane → rectifier Monday', 'Payées (EDOF), lettrées au grand livre et pointées sur Sellsy : il ne reste qu’à les déplacer dans les payées dans Monday.', 'edof-5a-pointee-rectifier-monday') + '</li>'
                 + '<li>' + enLigne(payees.b, 'pointées sur Pennylane, pas sur Sellsy → rectifier Sellsy et Monday', 'Payées (EDOF) et lettrées au grand livre, mais Sellsy ne les montre pas réglées, ou son état n’est pas connu.', 'edof-5b-rectifier-sellsy-et-monday') + '</li>'
