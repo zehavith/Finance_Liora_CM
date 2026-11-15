@@ -563,3 +563,13 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 .op-focus-filtre { margin: 0.4rem 0 0.7rem; padding: 0.5rem 0.7rem; border-left: 3px solid var(--accent, #c8472b); background: rgba(200, 71, 43, 0.06); font-size: 0.85rem; }
 
 .pil-defile-haut { max-height: 26rem; overflow: auto; }
+
+/* Focus : motifs, personnes, légende */
+.op-legende { display: flex; gap: 1rem; font-size: 0.75rem; color: var(--text-secondary, #555); margin: 0.3rem 0; }
+.op-legende i { display: inline-block; width: 0.65rem; height: 0.65rem; border-radius: 2px; margin-right: 0.3rem; }
+.op-hb-vide { color: var(--text-muted); font-style: italic; }
+.op-defile-libre { max-height: 22rem; overflow: auto; }
+.op-defile-libre small { color: var(--text-muted); font-weight: 400; }
+tr.op-pers-vide td { background: rgba(200, 71, 43, 0.07); }
+tr.op-pers-vide td:first-child b { color: var(--red, #b3261e); }
+.op-net-plus { color: var(--red, #b3261e); } .op-net-moins { color: #2f7d5b; }

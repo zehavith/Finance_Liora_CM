@@ -539,6 +539,28 @@
         HIST = { mois: HIST_DU.slice(0, 7), de: HIST_DU, au: HIST_AU, le: MVT.releve, par, lus, tronque: false, publie: true, regles: REGLES_VERSION };
     }
     let REGLES_VERSION = 0;
+    let JOURNAL_ENTIER = null;
+    /** Entrées dans chaque étape, sur tout le journal : sert à mesurer combien de temps une facture sortie y est restée. */
+    function entreesJournal() {
+        if (!MVT) return null;
+        if (JOURNAL_ENTIER && JOURNAL_ENTIER.regles === REGLES_VERSION && JOURNAL_ENTIER.le === MVT.releve) return JOURNAL_ENTIER;
+        const par = {}; CIRCUIT.forEach(e => { par[e.k] = { e: 0, s: 0, dest: {}, dur: [], eL: [], sL: [], destL: {} }; });
+        const EV = ['move_pulse_from_group', 'move_pulse_into_board', 'move_pulse_from_board'], T = MVT.titres;
+        for (const l of MVT.lignes) compterMouvement(par, EV[l[1]], { source_group: T[l[2]] ? { title: T[l[2]] } : null, dest_group: T[l[3]] ? { title: T[l[3]] } : null,
+            dest_board: T[l[4]] ? { name: T[l[4]] } : null }, { jour: l[0], de: T[l[2]] || '', vers: T[l[3]] || '', id: String(l[5] || ''), bascule: '' });
+        const ent = {}; CIRCUIT.forEach(e => { const m = {}; par[e.k].eL.forEach(x => { if (x.id) (m[x.id] = m[x.id] || []).push(x.jour); }); ent[e.k] = m; });
+        return (JOURNAL_ENTIER = { ent, regles: REGLES_VERSION, le: MVT.releve });
+    }
+    /** Temps réellement passé dans l'étape par les factures qui en sont sorties sur la période (médiane, en jours). */
+    function delaiConstate(k) {
+        const J = entreesJournal(), fl = HIST && HIST.par[k]; if (!J || !fl) return null;
+        const vus = {}, d = [];
+        fl.sL.forEach(x => { if (!x.id || vus[x.id]) return; const es = (J.ent[k][x.id] || []).filter(j => j <= x.jour).sort(); if (!es.length) return;
+            vus[x.id] = 1; d.push(Math.round((new Date(x.jour) - new Date(es[es.length - 1])) / 86400000)); });
+        if (!d.length) return { n: 0, sorties: fl.s };
+        d.sort((a, b) => a - b); const m = d.length >> 1;
+        return { n: d.length, sorties: fl.s, med: d.length % 2 ? d[m] : Math.round((d[m - 1] + d[m]) / 2), dans: d.filter(x => x <= ETAPE[k].cible).length };
+    }
     const MVT_DEST = {};
     /** Les factures derrière un nombre d'entrées, de sorties, ou une destination. */
     function montrerMouvements(k, quoi, i) {
@@ -1080,6 +1102,7 @@
         // le Financement personnel. Ailleurs la tuile le dit plutôt que
         // d'afficher un zéro qui passerait pour « aucune promesse ».
         const portePromesse = ['adv', 'rec'].indexOf(k) >= 0 || prom.length > 0;
+        const dc = delaiConstate(k);
         const horsDelai = sIts.filter(f => { const a = ageEtape(f, k).j; return a != null && a > e.cible; });
         const quatrieme = k === 'adv'
             ? ['Échues encore à l’ADV', ouvrable(nb(echK.length), 'Échues encore à l’ADV', echK,
@@ -1094,8 +1117,8 @@
             : ['Promesses de paiement', '<span class="op-acompleter">à compléter</span>',
                'ces tableaux ne portent pas de colonne de paiement promis'];
         const tuilesFocus = '<div class="kpi-grid">'
-            + tuile(choisi ? 'Dans ce groupe' : 'Dans l’étape', (choisi ? ouvrableEtape(nb(sF.st), k, choisi.t, choisi.g) : ouvrableEtape(nb(s.st), k)) + ' · ' + eur(sF.mt),
-                choisi ? 'factures non réglées de ce groupe' : HIST ? nb(HIST.par[k].e) + ' entrées, ' + nb(HIST.par[k].s) + ' sorties sur la période'
+            + tuile(choisi ? 'Stock de ce groupe' : 'Stock de l’étape', (choisi ? ouvrableEtape(nb(sF.st), k, choisi.t, choisi.g) : ouvrableEtape(nb(s.st), k)) + ' · ' + eur(sF.mt),
+                choisi ? 'factures non réglées de ce groupe' : HIST ? '<b class="' + (HIST.par[k].e - HIST.par[k].s > 0 ? 'op-net-plus' : 'op-net-moins') + '">net ' + (HIST.par[k].e - HIST.par[k].s > 0 ? '+' : '') + nb(HIST.par[k].e - HIST.par[k].s) + '</b> sur la période · ' + nb(HIST.par[k].e) + ' entrées, ' + nb(HIST.par[k].s) + ' sorties'
                      : 'factures non réglées de cette étape')
             + tuile('Âge médian du traitement', (sF.a == null ? '—' : nb(sF.a) + ' j'),
                 'cible ' + e.cible + ' j · ' + (sF.h == null ? '—' : nb(sF.h) + ' % hors délai'))
@@ -1104,6 +1127,9 @@
                     'Factures de l’étape qui y attendent depuis plus de ' + e.cible + ' jours.')
                 + ' depuis plus de ' + e.cible + ' jours')
             + tuile(quatrieme[0], quatrieme[1], quatrieme[2])
+            + (choisi || !dc ? '' : tuile(k === 'adv' ? 'Délai de mise en conformité constaté' : 'Délai de traitement constaté', dc.n ? nb(dc.med) + ' j' : '—',
+                dc.n ? 'médiane du temps passé dans l’étape par ' + nb(dc.n) + ' factures sorties sur la période · cible ' + e.cible + ' j · ' + nb(dc.dans / dc.n * 100) + ' % dans la cible'
+                     : 'aucune sortie sur la période dont l’entrée soit connue du journal'))
             + '</div>';
 
         // par tableau et groupe Monday : le groupe garde son numéro, qui dit
@@ -1145,6 +1171,36 @@
         const filtreListe = FILTRES_LISTE.find(x => x[0] === LISTE_FILTRE) || FILTRES_LISTE[0];
         const prListe = prTout.filter(filtreListe[2]);
         LISTE_COURANTE = { pr: prListe, k: k, nom: filtreListe[0] };
+        // POURQUOI LES FACTURES BLOQUENT : la problématique pré-échéance (Rendre payable, Corriger) ou la qualification recouvrement (Relancer, Clôture).
+        const champMotif = (k === 'rec' || k === 'fin') ? 'qualifRecouvrement' : 'problematique';
+        const nomMotif = champMotif === 'problematique' ? 'problématique pré-échéance' : 'qualification recouvrement';
+        const parMotif = {}; sIts.forEach(f => { const m = String(f[champMotif] || '').trim() || '(non renseigné)'; (parMotif[m] = parMotif[m] || []).push(f); });
+        const motifsL = Object.keys(parMotif).map(m => ({ m, its: parMotif[m] })).sort((a, b) => (a.m === '(non renseigné)') - (b.m === '(non renseigné)') || b.its.length - a.its.length);
+        const mxM = Math.max(...motifsL.filter(x => x.m !== '(non renseigné)').map(x => x.its.length), 1);
+        const barresMotifs = motifsL.map(x => '<div class="op-hb"><span class="op-hb-nom' + (x.m === '(non renseigné)' ? ' op-hb-vide' : '') + '" title="' + esc(x.m) + '">' + esc(x.m) + '</span>'
+            + '<span class="op-track"><i style="width:' + Math.min(100, x.its.length / mxM * 100).toFixed(1) + '%;background:' + (x.m === '(non renseigné)' ? 'var(--text-muted)' : 'var(--serie-2)') + '"></i></span>'
+            + '<span class="op-v">' + ouvrable(nb(x.its.length), e.n + ' — ' + x.m, x.its, 'Factures de l’étape dont la ' + nomMotif + ' est « ' + x.m + ' ».') + '</span></div>').join('');
+        // PAR PERSONNE : le propriétaire de la facture dans Monday.
+        const medianeDe = a => { if (!a.length) return null; a = a.slice().sort((x, y) => x - y); const m = a.length >> 1; return a.length % 2 ? a[m] : Math.round((a[m - 1] + a[m]) / 2); };
+        const parPers = {}; sIts.forEach(f => { const p = f.proprietaire && f.proprietaire !== '—' ? f.proprietaire : 'Non attribué'; (parPers[p] = parPers[p] || []).push(f); });
+        const suitRelance = k === 'rec' || k === 'fin';
+        const chipPct = (v, seuils) => v == null ? '—' : '<span class="op-chip ' + (v >= seuils[1] ? 'mauvais' : v >= seuils[0] ? 'moyen' : 'bon') + '">' + nb(v) + ' %</span>';
+        const lignesPers = Object.keys(parPers).map(p => ({ p, its: parPers[p] })).sort((a, b) => (a.p === 'Non attribué') - (b.p === 'Non attribué') || b.its.length - a.its.length).map(x => {
+            const ages = x.its.map(f => ageEtape(f, k).j).filter(a => a != null);
+            const hd = x.its.filter(f => { const a = ageEtape(f, k).j; return a != null && a > e.cible; });
+            const sansAct = x.its.filter(f => !f.derniereRelance || jours(f.derniereRelance, auj()) > 30);
+            const pr = x.its.filter(f => f.promesse), prKO = pr.filter(f => new Date(f.promesse) < auj());
+            return '<tr' + (x.p === 'Non attribué' ? ' class="op-pers-vide"' : '') + '><td><b>' + esc(x.p) + '</b></td>'
+                + '<td class="n">' + ouvrable(nb(x.its.length), e.n + ' — ' + x.p, x.its, 'Factures de l’étape dont le propriétaire Monday est « ' + x.p + ' ».') + '</td>'
+                + '<td class="n">' + eur(somme(x.its, montantDe)) + '</td>'
+                + '<td class="n">' + (ages.length ? nb(medianeDe(ages)) + ' j' : '—') + '</td>'
+                + '<td class="n">' + (ages.length ? chipPct(hd.length / ages.length * 100, [30, 60]) : '—') + ' ' + ouvrable('<small>' + nb(hd.length) + '</small>', e.n + ' — ' + x.p + ' — hors délai', hd, 'Dans l’étape depuis plus de ' + e.cible + ' jours.') + '</td>'
+                + (suitRelance ? '<td class="n">' + chipPct(sansAct.length / x.its.length * 100, [20, 40]) + ' ' + ouvrable('<small>' + nb(sansAct.length) + '</small>', e.n + ' — ' + x.p + ' — sans relance récente', sansAct, 'Aucune relance manuelle datée, ou dernière relance de plus de 30 jours.') + '</td>' : '')
+                + '<td class="n">' + (pr.length ? ouvrable(nb(pr.length), e.n + ' — ' + x.p + ' — promesses', pr, 'Factures portant une date de paiement promis.')
+                    + (prKO.length ? ' <span class="op-chip mauvais">' + ouvrable(nb(prKO.length) + ' dépassées', e.n + ' — ' + x.p + ' — promesses dépassées', prKO, 'La date de paiement promis est passée.') + '</span>' : '') : '—') + '</td></tr>'; }).join('');
+        const nNonAttr = (parPers['Non attribué'] || []).length;
+        const tablePers = '<div class="op-defile-libre"><table class="op-t"><thead><tr><th>Personne</th><th class="n">Factures</th><th class="n">Montant</th><th class="n">Âge médian</th><th class="n">Hors délai</th>'
+            + (suitRelance ? '<th class="n">Sans relance depuis 30 j</th>' : '') + '<th class="n">Promesses</th></tr></thead><tbody>' + lignesPers + '</tbody></table></div>';
         const bandeauGroupe = choisi ? '<p class="op-focus-filtre">Le focus ne montre que le groupe <b>' + esc(choisi.g) + '</b> (' + esc(choisi.t) + ') : '
             + nb(sIts.length) + ' factures sur les ' + nb(s.its.length) + ' de l’étape. <button type="button" class="btn btn-ghost btn-sm" id="op-focus-retirer">Retirer le filtre</button></p>' : '';
         const pastillesListe = '<div class="pil-vues">' + FILTRES_LISTE.map(x =>
@@ -1239,7 +1295,15 @@
           + 'Date d’entrée : colonne Monday pour ' + nb(srcs.etape) + ' factures, à défaut '
           + (e.ref === 'facture' ? 'date de facture' : 'échéance') + ' pour ' + nb(srcs.ref)
           + (srcs.aucune ? ', et ' + nb(srcs.aucune) + ' sans aucune date' : '') + '.</span>'
+          + '<div class="op-legende"><span><i style="background:var(--serie-2)"></i>Dans la cible</span><span><i style="background:var(--red)"></i>Hors délai</span></div>'
           + '<div class="op-chart">' + hist + '</div></div></div>'
+          + '<div class="charts-grid charts-grid-2">'
+          + '<div class="op-sub"><b>Pourquoi les factures bloquent</b>'
+          + '<span class="op-pied">Nombre de factures par ' + nomMotif + ', telle qu’elle est saisie dans Monday. Cliquez un nombre pour voir les factures.</span>'
+          + '<div class="op-hbs">' + barresMotifs + '</div></div>'
+          + '<div class="op-sub"><b>Par personne</b>'
+          + '<span class="op-pied">Propriétaire de la facture dans Monday. ' + (nNonAttr ? nb(nNonAttr) + ' factures sur ' + nb(sIts.length) + ' n’ont pas de propriétaire. ' : '') + 'Chaque nombre ouvre ses factures.</span>'
+          + tablePers + '</div></div>'
           + '<div class="op-sub"><b>Liste priorisée</b>'
           + '<span class="op-pied">' + nb(prListe.length) + ' facture' + (prListe.length > 1 ? 's' : '') + ' · '
           + eur(prListe.reduce((t, p) => t + (p.m || 0), 0)) + ', classées par montant et ancienneté du retard. '
