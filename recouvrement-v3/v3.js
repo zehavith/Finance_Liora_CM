@@ -830,11 +830,11 @@
         var ligneRouge = function (mal, nomEtape, codeLot) {
             if (!mal.length) return '';
             mal.forEach(function (f) { if (!f.__motif) { f.__motif = 'Étape Monday différente de l’étape attendue'; f.__autresMotifs = []; } });
-            EDOF_LOTS.push({ titre: nomEtape + ' — factures mal placées ou à revérifier', its: mal, motifs: true, code: codeLot,
+            EDOF_LOTS.push({ titre: nomEtape + ' — factures problématiques', its: mal, motifs: true, code: codeLot,
                 note: 'Factures rangées dans cette étape dans Monday alors que leur situation en attend une autre. Le motif et l’étape attendue sont indiqués pour chacune.' });
             var i = EDOF_LOTS.length - 1, mt = Math.round(mal.reduce(function (t, f) { return t + (f.montant || 0); }, 0)).toLocaleString('fr-FR') + ' €';
             return '<span class="v3-edof-rouge">dont <button type="button" class="op-lien" data-edof-lot="' + i + '"><b>' + mal.length.toLocaleString('fr-FR')
-                + '</b> mal placées ou à revérifier</button> · ' + mt + ' <button type="button" class="v3-edof-exp" data-edof-export="' + i + '">exporter</button></span>';
+                + '</b> factures problématiques</button> · ' + mt + ' <button type="button" class="v3-edof-exp" data-edof-export="' + i + '">exporter</button></span>';
         };
         {
             EDOF_LOTS = [];
