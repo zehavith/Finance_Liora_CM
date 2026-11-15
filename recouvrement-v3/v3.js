@@ -1297,6 +1297,54 @@
     }
     function brancherEdofOperationnel() { /* la carte est posée par l'onglet Opérationnel lui-même, à chaque rendu */ }
 
+    // ── GoCardless : le relevé direct publié avec la page est donné à l'onglet Prélèvements ──
+    // Le relevé est remis au format des exports du tableau de bord GoCardless, puis confié à l'import
+    // d'origine de l'application : rien n'est recalculé à part. Il n'est relu que s'il est plus récent.
+    var CLE_GCL = 'rec_v3_gcl_releve', GCL_INFO = null;
+    function csvDe(bloc) {
+        var q = function (v) { v = v == null ? '' : String(v); return /[",;\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+        return [bloc.colonnes.map(q).join(',')].concat(bloc.lignes.map(function (l) { return l.map(q).join(','); })).join('\n');
+    }
+    async function chargerGoCardless(force) {
+        var d = await lireJson('donnees/gocardless.json');
+        if (!d || !d.releve || !d.paiements) return false;
+        GCL_INFO = { releve: d.releve, paiements: d.paiements.lignes.length, versements: (d.versements || { lignes: [] }).lignes.length };
+        var deja = null; try { deja = await S.get(CLE_GCL, null); } catch (e) { /* première fois */ }
+        if (!force && deja === d.releve) return false;
+        var champ = $('#gcl-file-input');
+        if (!champ || typeof DataTransfer === 'undefined' || !etat()) return false;
+        var dt = new DataTransfer();
+        ['paiements', 'clients', 'mandats', 'abonnements', 'versements'].forEach(function (k) {
+            if (d[k] && d[k].lignes.length) dt.items.add(new File([csvDe(d[k])], 'gocardless-' + k + '-' + d.releve.slice(0, 10) + '.csv', { type: 'text/csv' }));
+        });
+        if (!dt.files.length) return false;
+        var onglet = document.querySelector('.nav-tab.active');
+        champ.files = dt.files;
+        champ.dispatchEvent(new Event('change', { bubbles: true }));
+        try { await S.set(CLE_GCL, d.releve); } catch (e) { /* sera relu à la prochaine visite */ }
+        // L'import d'origine ouvre l'onglet Prélèvements : on revient où l'on était.
+        if (!force && onglet && onglet.dataset.tab !== 'prelevements') setTimeout(function () { onglet.click(); }, 2500);
+        return true;
+    }
+    function attendreEtChargerGoCardless() {
+        var essais = 0, t = setInterval(function () {
+            var st = etat(); essais++;
+            if (essais > 120) return clearInterval(t);
+            if (!st || st.chargementEnCours || !(st.factures || []).length || !$('#app-screen.active')) return;
+            clearInterval(t);
+            chargerGoCardless(false).then(majCarteGoCardless).catch(function () {});
+        }, 1500);
+    }
+    function majCarteGoCardless() {
+        var hote = $('#tab-prelevements'); if (!hote || !GCL_INFO) return;
+        var el = $('#v3-gcl-etat');
+        if (!el) { el = document.createElement('div'); el.id = 'v3-gcl-etat'; el.className = 'v3-gcl-etat'; hote.insertBefore(el, hote.firstChild); }
+        var j = GCL_INFO.releve.slice(0, 10).split('-').reverse().join('/') + ' à ' + GCL_INFO.releve.slice(11, 16).replace(':', 'h');
+        el.innerHTML = '<b>GoCardless lu directement</b> le ' + j + ' : ' + GCL_INFO.paiements.toLocaleString('fr-FR') + ' prélèvements et '
+            + GCL_INFO.versements.toLocaleString('fr-FR') + ' virements. <button type="button" class="btn btn-ghost btn-sm" id="v3-gcl-recharger">Recharger ce relevé</button>';
+        $('#v3-gcl-recharger').onclick = function () { chargerGoCardless(true); };
+    }
+
     async function lireJson(chemin) {
         try {
             var r = await fetch(chemin, { cache: 'no-cache' });
@@ -1719,6 +1767,7 @@
         brancherPeriode();
         brancherEdof();
         brancherEdofOperationnel();
+        attendreEtChargerGoCardless();
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', demarrer);
     else demarrer();

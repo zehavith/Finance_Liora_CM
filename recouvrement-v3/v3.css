@@ -512,3 +512,4 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 .v3-pli > summary:hover h3 { text-decoration: underline; }
 .v3-importants { grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
 #op-focus-pli > summary h3 { font-size: 1.05rem; }
+.v3-gcl-etat { background: var(--bg-tertiary, #f4f1ec); border-radius: 8px; padding: 0.6rem 0.9rem; margin: 0 0 1rem; font-size: 0.86rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
