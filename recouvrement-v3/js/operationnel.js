@@ -1253,7 +1253,8 @@
         CIRCUIT.forEach(e => { const v = r.cibles ? +r.cibles[e.k] : 0; e.cible = v > 0 ? v : CIBLES_ORIGINE[e.k]; });
         const c = r.controle || {};
         CONTROLE.proche = +c.proche > 0 ? +c.proche : 15;
-        CONTROLE.horsEtapes = c.horsEtapes !== false;
+        // Une facture sous contrôle n'est dans aucune étape : ce n'est plus un réglage, c'est la définition.
+        CONTROLE.horsEtapes = true;
     }
 
     /** Les factures non réglées de chaque groupe Monday, pour l'onglet des règles. */

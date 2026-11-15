@@ -402,14 +402,12 @@
     function blocControle() {
         var c = OP.CONTROLE || {};
         return bloc('controle', 'Circuit — vignette « Sous contrôle »',
-            'avant échéance' + (c.horsEtapes ? ', hors étapes du circuit' : ', étapes comprises')
+            'avant échéance, dans aucune étape du circuit'
             + ' · alerte à ' + c.proche + ' jours',
             'modifiable',
             '<p class="v3-regle-dit">« Sous contrôle » réunit les factures non réglées dont l’échéance calculée n’est pas '
             + 'encore passée. Une facture déjà rangée dans une étape — à rendre payable, en recouvrement, en clôture, à '
             + 'corriger — est suivie par cette étape : elle n’est pas sous contrôle.</p>'
-            + '<p class="v3-regle-ligne"><label class="check" for="rk-hors"><input type="checkbox" id="rk-hors" data-action="hors"'
-            + (c.horsEtapes ? ' checked' : '') + '> Écarter de « Sous contrôle » les factures déjà dans une étape du circuit</label></p>'
             + '<p class="v3-regle-ligne"><label for="rk-proche">Signaler une échéance qui tombe dans les</label> '
             + '<input class="input input-sm input-num" type="number" min="1" id="rk-proche" data-action="proche" value="'
             + c.proche + '"> prochains jours</p>');
