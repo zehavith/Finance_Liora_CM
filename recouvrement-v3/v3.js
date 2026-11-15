@@ -1021,7 +1021,7 @@
                 var i = pose(v[2], nomF + ' — important — ' + v[0], v[1], 'x'); EDOF_LOTS[i].motifs = true; EDOF_LOTS[i].code = 'a-reverifier-' + CIRCUIT_FIN.toLowerCase() + '-important-' + k;
                 return '<span class="v3-important-carte' + (v[2].length ? '' : ' vide') + '"><span class="v3-important-nb">' + nbL(v[2], i) + '</span><span class="v3-important-lib">' + esc(v[0]) + '</span>'
                     + '<span class="op-pied">' + (v[2].length ? e0(v[2]) + ex(v[2], i) : 'aucune') + '</span></span>'; }).join('') + '</div>';
-            var aVerif = toutes.length ? bandeauG + '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + e0(toutes) + '), en rouge dans le tableau et dans les vignettes. '
+            var aVerif = toutes.length ? bandeauG + '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + e0(toutes) + '), signalées en rouge dans les vignettes. '
                 + '<button type="button" class="btn btn-ghost btn-sm" data-edof-lot="' + iT + '">Voir la liste triée par motif</button> '
                 + '<button type="button" class="btn btn-ghost btn-sm" data-edof-export="' + iT + '">Exporter le tout (Excel)</button></p>' : '';
             // Dans chaque vignette, les factures dont l'étape Monday n'est pas celle attendue.
@@ -1032,7 +1032,7 @@
 
             var regle = (st.rules || []).filter(function (x) { return x.key === CIRCUIT_FIN; })[0];
             return { rouge: rouge, html: '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">' + esc(nomF) + ' — ancienneté du retard croisée avec les étapes du circuit</h3></div>'
-                + aVerif + '<p class="v3-legende"><span class="v3-leg v3-leg-vert"></span> case verte : l’étape du circuit où ces factures doivent se trouver · <span class="v3-leg v3-leg-rouge"></span> case rouge : des factures y sont alors qu’elles devraient être dans une autre étape (cliquez le nombre pour les voir)</p>' + matrice };
+                + aVerif + matrice };
         }
         var cpf = (st.factures || []).filter(function (f) { return f.role !== 'sellsy' && (f.financement === 'CPF' || f.edof); });
         var ouvertes = cpf.filter(hp);
@@ -1272,7 +1272,7 @@
             var i = poser(v[2], 'Important — ' + v[0], v[1], 'a-reverifier-important-' + k); EDOF_LOTS[i].motifs = true;
             return '<span class="v3-important-carte' + (v[2].length ? '' : ' vide') + '"><span class="v3-important-nb">' + nbLien(v[2], i) + '</span><span class="v3-important-lib">' + esc(v[0]) + '</span>'
                 + '<span class="op-pied">' + (v[2].length ? eur0(v[2]) + exp(v[2], i) : 'aucune') + '</span></span>'; }).join('') + '</div>';
-        var aVerifier = bandeau + '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + eur0(toutes) + '), en rouge dans le tableau et dans les vignettes. '
+        var aVerifier = bandeau + '<p class="v3-averif-boutons"><b>' + toutes.length.toLocaleString('fr-FR') + ' factures à revérifier</b> (' + eur0(toutes) + '), signalées en rouge dans les vignettes. '
             + '<button type="button" class="btn btn-ghost btn-sm" data-edof-lot="' + iToutes + '">Voir la liste triée par motif</button> '
             + '<button type="button" class="btn btn-ghost btn-sm" data-edof-export="' + iToutes + '">Exporter le tout (Excel)</button></p>';
         var rougeCpf = {};
@@ -1283,7 +1283,7 @@
         hote.innerHTML = '<div class="charts-grid"><div class="chart-card chart-wide">' + tete + poserRouges(parcours, rougeCpf)
             + '<div class="chart-header v3-circuit-sep"><h3 class="v3-circuit-sous">CPF — étapes EDOF croisées avec les étapes du circuit</h3>'
             + '<span class="pil-coin">export EDOF jusqu’au ' + jour(p.length && p[p.length - 1][1]) + ' · grand livre au ' + jour(GL_INFO && GL_INFO.arrete) + '</span></div>'
-            + aVerifier + '<p class="v3-legende"><span class="v3-leg v3-leg-vert"></span> case verte : l’étape du circuit où ces factures doivent se trouver · <span class="v3-leg v3-leg-rouge"></span> case rouge : des factures y sont alors qu’elles devraient être dans une autre étape (cliquez le nombre pour les voir)</p>' + matrice
+            + aVerifier + matrice
             + '</div></div>';
         brancherTete();
     }

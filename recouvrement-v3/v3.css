@@ -493,3 +493,6 @@ body.v3-onglet-operationnel #filter-block-sellsy-manquantes { display: none !imp
 .v3-table-libre th { white-space: nowrap !important; }
 .v3-table-libre td:nth-child(3) { min-width: 200px; }
 .v3-table-libre td { min-width: 90px; }
+/* Les cases du tableau croisé ne sont plus colorées : ni vert, ni rouge. */
+.v3-croise td.v3-attendue, .v3-croise td.v3-malplace { background: transparent; box-shadow: none; }
+.v3-croise td.v3-malplace .op-lien, .v3-croise td.v3-malplace b { color: inherit; }
