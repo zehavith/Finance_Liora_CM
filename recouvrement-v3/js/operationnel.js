@@ -437,9 +437,18 @@
     // L'âge dans l'étape, et d'où il vient.
     function ageEtape(f, k) {
         const e = ETAPE[k], t = auj();
-        if (f.dateEtape) return { j: jours(f.dateEtape, t), src: 'etape' };
+        // VERSION 3 — une date d'entrée dans le FUTUR n'en est pas une : sur le tableau CPF, la colonne « Date basculement
+        // en recouvrement » porte la date PRÉVUE du passage en recouvrement. La retenir donnait un âge négatif.
+        if (f.dateEtape && new Date(f.dateEtape) <= t) return { j: jours(f.dateEtape, t), src: 'etape' };
+        // CPF à rendre payable : l'étape commence à la fin de formation + 45 jours (réglable dans les règles d'application).
+        if (k === 'adv' && f.dateFinFormation && /cpf/i.test(String(f.financement || '') + ' ' + String(f.board || ''))) {
+            const reg = (global.LioraV3Regles && global.LioraV3Regles.reglages && global.LioraV3Regles.reglages()) || {};
+            const jp = +((reg.controle || {}).cpfPayable) > 0 ? +reg.controle.cpfPayable : 45;
+            const debut = new Date(new Date(f.dateFinFormation).getTime() + jp * 86400000);
+            return { j: Math.max(0, jours(debut, t)), src: 'ref' };
+        }
         const ref = e.ref === 'facture' ? f.dateFacture : (f.dateEcheance || f.dateEcheanceSource);
-        return ref ? { j: jours(ref, t), src: 'ref' } : { j: null, src: 'aucune' };
+        return ref ? { j: Math.max(0, jours(ref, t)), src: 'ref' } : { j: null, src: 'aucune' };
     }
 
     function statsEtape(items, k) {
@@ -1307,7 +1316,7 @@
           + '<div class="op-sub"><b>Depuis combien de temps elles sont dans ' + (choisi ? 'le groupe ' + esc(choisi.g) : 'l’étape') + '</b>'
           + '<span class="op-pied">En rouge, au-delà de la cible de ' + e.cible + ' jours. '
           + 'Date d’entrée : colonne Monday pour ' + nb(srcs.etape) + ' factures, à défaut '
-          + (e.ref === 'facture' ? 'date de facture' : 'échéance') + ' pour ' + nb(srcs.ref)
+          + (e.ref === 'facture' ? 'date de facture (CPF : fin de formation + 45 jours)' : 'échéance') + ' pour ' + nb(srcs.ref)
           + (srcs.aucune ? ', et ' + nb(srcs.aucune) + ' sans aucune date' : '') + '.</span>'
           + '<div class="op-legende"><span><i style="background:var(--serie-2)"></i>Dans la cible</span><span><i style="background:var(--red)"></i>Hors délai</span></div>'
           + '<div class="op-chart">' + hist + '</div></div></div>'
