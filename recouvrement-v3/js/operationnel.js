@@ -1174,11 +1174,15 @@
         // POURQUOI LES FACTURES BLOQUENT : la problématique pré-échéance (Rendre payable, Corriger) ou la qualification recouvrement (Relancer, Clôture).
         const champMotif = (k === 'rec' || k === 'fin') ? 'qualifRecouvrement' : 'problematique';
         const nomMotif = champMotif === 'problematique' ? 'problématique pré-échéance' : 'qualification recouvrement';
-        const parMotif = {}; sIts.forEach(f => { const m = String(f[champMotif] || '').trim() || '(non renseigné)'; (parMotif[m] = parMotif[m] || []).push(f); });
+        const duGroupe = {};
+        const parMotif = {}; sIts.forEach(f => { let m = String(f[champMotif] || '').trim();
+            // Sans problématique saisie, le groupe Monday dit pourquoi la facture bloque (« Factures incomplètes (Mail) »…).
+            if (!m && champMotif === 'problematique') { m = String(f.groupe || '').replace(/^\s*[\d.]+\s*/, '').trim(); if (m) duGroupe[m] = 1; }
+            m = m || '(non renseigné)'; (parMotif[m] = parMotif[m] || []).push(f); });
         const motifsL = Object.keys(parMotif).map(m => ({ m, its: parMotif[m] })).sort((a, b) => (a.m === '(non renseigné)') - (b.m === '(non renseigné)') || b.its.length - a.its.length);
         const mxM = Math.max(...motifsL.filter(x => x.m !== '(non renseigné)').map(x => x.its.length), 1);
-        const barresMotifs = motifsL.map(x => '<div class="op-hb"><span class="op-hb-nom' + (x.m === '(non renseigné)' ? ' op-hb-vide' : '') + '" title="' + esc(x.m) + '">' + esc(x.m) + '</span>'
-            + '<span class="op-track"><i style="width:' + Math.min(100, x.its.length / mxM * 100).toFixed(1) + '%;background:' + (x.m === '(non renseigné)' ? 'var(--text-muted)' : 'var(--serie-2)') + '"></i></span>'
+        const barresMotifs = motifsL.map(x => '<div class="op-hb"><span class="op-hb-nom' + (x.m === '(non renseigné)' ? ' op-hb-vide' : '') + '" title="' + esc(x.m) + (duGroupe[x.m] ? ' — d’après le groupe Monday' : '') + '">' + esc(x.m) + (duGroupe[x.m] ? ' <small class="op-du-groupe">groupe</small>' : '') + '</span>'
+            + '<span class="op-track"><i style="width:' + Math.min(100, x.its.length / mxM * 100).toFixed(1) + '%;background:' + (x.m === '(non renseigné)' ? 'var(--text-muted)' : duGroupe[x.m] ? 'var(--serie-3, #7a8fb8)' : 'var(--serie-2)') + '"></i></span>'
             + '<span class="op-v">' + ouvrable(nb(x.its.length), e.n + ' — ' + x.m, x.its, 'Factures de l’étape dont la ' + nomMotif + ' est « ' + x.m + ' ».') + '</span></div>').join('');
         // PAR PERSONNE : le propriétaire de la facture dans Monday.
         const medianeDe = a => { if (!a.length) return null; a = a.slice().sort((x, y) => x - y); const m = a.length >> 1; return a.length % 2 ? a[m] : Math.round((a[m - 1] + a[m]) / 2); };
@@ -1309,7 +1313,7 @@
           + '<div class="op-chart">' + hist + '</div></div></div>'
           + '<div class="charts-grid charts-grid-2">'
           + '<div class="op-sub"><b>Pourquoi les factures bloquent</b>'
-          + '<span class="op-pied">Nombre de factures par ' + nomMotif + ', telle qu’elle est saisie dans Monday. Cliquez un nombre pour voir les factures.</span>'
+          + '<span class="op-pied">Nombre de factures par ' + nomMotif + ', telle qu’elle est saisie dans Monday' + (champMotif === 'problematique' ? ' ; quand elle est vide, le nom du groupe Monday la remplace (marqué « groupe »)' : '') + '. Cliquez un nombre pour voir les factures.</span>'
           + '<div class="op-hbs">' + barresMotifs + '</div></div>'
           + '<div class="op-sub"><b>' + (k === 'adv' ? 'Par service ADV' : 'Par famille de financement') + '</b>'
           + '<span class="op-pied">' + (k === 'adv' ? 'Le service ADV compte plusieurs pôles ; la zone tampon Corporate est gérée par le service Recouvrement. ' : 'Le service ' + esc(e.svc) + ' est tenu par une seule personne : la charge est montrée par famille de financement. ')
