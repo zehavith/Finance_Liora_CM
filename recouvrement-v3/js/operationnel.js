@@ -1198,10 +1198,10 @@
                 + (suitRelance ? '<td class="n">' + chipPct(sansAct.length / x.its.length * 100, [20, 40]) + ' ' + ouvrable('<small>' + nb(sansAct.length) + '</small>', e.n + ' — ' + x.p + ' — sans relance récente', sansAct, 'Aucune relance manuelle datée, ou dernière relance de plus de 30 jours.') + '</td>' : '')
                 + '<td class="n">' + (pr.length ? ouvrable(nb(pr.length), e.n + ' — ' + x.p + ' — promesses', pr, 'Factures portant une date de paiement promis.')
                     + (prKO.length ? ' <span class="op-chip mauvais">' + ouvrable(nb(prKO.length) + ' dépassées', e.n + ' — ' + x.p + ' — promesses dépassées', prKO, 'La date de paiement promis est passée.') + '</span>' : '') : '—') + '</td></tr>'; }).join('');
-        const lignesPers = lignesDe(parPers, 'le propriétaire Monday');
+        const lignesPers = '';
         // PAR PÔLE : le service est découpé en pôles, un par famille de tableaux Monday.
         const poleDe = f => { const t = global.LioraRules.norm(String(f.board || ''));
-            return /^2\.1|financement personnel|^2\.2|cpf/.test(t) ? 'Financement personnel (dont CPF)'
+            return /^1\.0|tampon/.test(t) ? 'Zone tampon Corporate — gérée par le service Recouvrement' : /^2\.1|financement personnel|^2\.2|cpf/.test(t) ? 'Financement personnel (dont CPF)'
                 : /^2\.3|pole emploi/.test(t) ? 'Pôle emploi' : /^2\.4|complexe/.test(t) ? 'Financement complexe'
                 : /^1\.|entreprise/.test(t) ? 'Corporate et Alternance' : 'Autre tableau'; };
         const parPole = {}; sIts.forEach(f => { const p = poleDe(f); (parPole[p] = parPole[p] || []).push(f); });
@@ -1312,11 +1312,11 @@
           + '<span class="op-pied">Nombre de factures par ' + nomMotif + ', telle qu’elle est saisie dans Monday. Cliquez un nombre pour voir les factures.</span>'
           + '<div class="op-hbs">' + barresMotifs + '</div></div>'
           + '<div class="op-sub"><b>' + (k === 'adv' ? 'Par pôle du service ADV' : 'Par famille de financement') + '</b>'
-          + '<span class="op-pied">' + (k === 'adv' ? 'Le service ADV compte plusieurs pôles. ' : 'Le service ' + esc(e.svc) + ' est tenu par une seule personne : la charge est montrée par famille de financement. ')
+          + '<span class="op-pied">' + (k === 'adv' ? 'Le service ADV compte plusieurs pôles ; la zone tampon Corporate est gérée par le service Recouvrement. ' : 'Le service ' + esc(e.svc) + ' est tenu par une seule personne : la charge est montrée par famille de financement. ')
           + 'D’après le tableau Monday de la facture : Financement personnel (2.1, et le CPF 2.2), Pôle emploi (2.3), '
-          + 'Financement complexe (2.4), Corporate et Alternance (tableaux Entreprise 1.x).</span>'
+          + 'Financement complexe (2.4), Corporate et Alternance (tableaux Entreprise 1.1 à 1.3), zone tampon (1.0).</span>'
           + tablePole + '</div></div>'
-          + '<div class="charts-grid"' + (k === 'adv' ? '' : ' hidden') + '><div class="op-sub"><b>Par personne</b>'
+          + '<div class="charts-grid" hidden><div class="op-sub"><b>Par personne</b>'
           + '<span class="op-pied">Propriétaire de la facture dans Monday. ' + (nNonAttr ? nb(nNonAttr) + ' factures sur ' + nb(sIts.length) + ' n’ont pas de propriétaire. ' : '') + 'Chaque nombre ouvre ses factures.</span>'
           + tablePers + '</div></div>'
           + '<div class="op-sub"><b>Liste priorisée</b>'
