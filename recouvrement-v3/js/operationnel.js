@@ -179,7 +179,7 @@
     const F = { etape: 'adv', q: '', deplies: {} };
     let HIST = null;                    // { mois, de, le, par: Map(etape → {e,s,dest,dur}) }
     let histEtat = { s: 'idle', msg: '' };
-    let FOCUS_OUVERT = false, OU_OUVERT = false, FOCUS_GROUPE = null;
+    let FOCUS_OUVERT = true, OU_OUVERT = false, FOCUS_GROUPE = null;
     let LISTE_FILTRE = 'tout', LISTE_COURANTE = { pr: [], k: '', nom: 'tout' };
     let DERNIERES = [];                 // les factures du dernier rendu
 
@@ -1118,7 +1118,7 @@
                'ces tableaux ne portent pas de colonne de paiement promis'];
         const tuilesFocus = '<div class="kpi-grid">'
             + tuile(choisi ? 'Stock de ce groupe' : 'Stock de l’étape', (choisi ? ouvrableEtape(nb(sF.st), k, choisi.t, choisi.g) : ouvrableEtape(nb(s.st), k)) + ' · ' + eur(sF.mt),
-                choisi ? 'factures non réglées de ce groupe' : HIST ? '<b class="' + (HIST.par[k].e - HIST.par[k].s > 0 ? 'op-net-plus' : 'op-net-moins') + '">net ' + (HIST.par[k].e - HIST.par[k].s > 0 ? '+' : '') + nb(HIST.par[k].e - HIST.par[k].s) + '</b> sur la période · ' + nb(HIST.par[k].e) + ' entrées, ' + nb(HIST.par[k].s) + ' sorties'
+                choisi ? 'factures non réglées de ce groupe' : HIST ? '<b class="' + (HIST.par[k].e - HIST.par[k].s > 0 ? 'op-net-plus' : 'op-net-moins') + '">net ' + (HIST.par[k].e - HIST.par[k].s > 0 ? '+' : '') + nb(HIST.par[k].e - HIST.par[k].s) + '</b> sur la période · ' + (HIST.par[k].e ? '<button type="button" class="op-lien" data-mvt="' + k + '|e" title="Voir les factures entrées">' + nb(HIST.par[k].e) + ' entrées</button>' : '0 entrée') + ', ' + (HIST.par[k].s ? '<button type="button" class="op-lien" data-mvt="' + k + '|s" title="Voir les factures sorties">' + nb(HIST.par[k].s) + ' sorties</button>' : '0 sortie')
                      : 'factures non réglées de cette étape')
             + tuile('Âge médian du traitement', (sF.a == null ? '—' : nb(sF.a) + ' j'),
                 'cible ' + e.cible + ' j · ' + (sF.h == null ? '—' : nb(sF.h) + ' % hors délai'))
