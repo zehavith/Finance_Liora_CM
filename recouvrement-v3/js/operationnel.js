@@ -206,10 +206,19 @@
     const groupeDe = f => String(f.groupeOperationnel || f.groupe || '').trim() || '(sans groupe)';
     const tableauDe = f => String(f.boardOperationnel || f.board || '').trim() || '(tableau inconnu)';
 
+    const estPoleAdv = t => /^\s*2\.[34]\b|^\s*2\.[34]\./.test(String(t || ''));
+    function etatFactureRecouvrement(f) {
+        const b = f.__brut; if (!b) return false;
+        return Object.keys(b).some(k => /^(avanc[ée]e\s+)?[ée]tat\s+facture$/i.test(k.trim()) && /recouvrement/i.test(String(b[k] || '')));
+    }
     const etapeDe = f => {
         if (f.groupeTechnique) return null;
         const g = f.groupeOperationnel || f.groupe || '';
         const c = categorieDuGroupe(g);
+        // VERSION 3 — PÔLE EMPLOI (2.3) ET FINANCEMENT COMPLEXE (2.4) : pour l'instant, leurs factures « en recouvrement »
+        // sont à rendre payables par le service ADV, sauf celles dont la colonne « Avancée Etat facture » (ou « ETAT FACTURE »)
+        // dit « Recouvrement ».
+        if (c === 'rec' && estPoleAdv(f.board || g)) return etatFactureRecouvrement(f) ? 'rec' : 'adv';
         return (c && c !== 'technique') ? c : null;
     };
 
@@ -484,7 +493,7 @@
     // n'a pas, et cherchait le déplacement sous un autre nom : les colonnes
     // restaient vides. La lecture passe maintenant par le connecteur
     // monday.com, tableau par tableau, sur le mois en cours.
-    const etapeDuTitre = t => { const c = categorieDuGroupe(t); return (c && ETAPE[c]) ? c : null; };
+    const etapeDuTitre = t => { const c = categorieDuGroupe(t); return (c && ETAPE[c]) ? ((c === 'rec' && estPoleAdv(t)) ? 'adv' : c) : null; };
 
     // Un déplacement : il sort d'une étape, il entre dans une autre.
     function compterMouvement(par, evenement, d, ligne) {
@@ -558,9 +567,10 @@
         if (!ETAPE[k]) return null;
         if (k === 'rec' || k === 'fin') return 'Service Recouvrement';
         if (k === 'cor') return 'Service Comptabilité';
-        const t = global.LioraRules.norm(String(texte || ''));
-        return /^1\.0|tampon/.test(t) ? 'Service Recouvrement' : /^2\.[12]|financement personnel|cpf/.test(t) ? 'Service ADV Financement personnel'
-            : /^2\.3|pole emploi/.test(t) ? 'Service ADV Pôle emploi' : /^2\.4|complexe/.test(t) ? 'Service ADV Financement complexe' : 'Service ADV Corporate et Alternance';
+        // Le numéro se lit sur le texte d'origine (« 2.3.3 … »), les mots sur le texte sans accents.
+        const brut = String(texte || '').trim(), t = global.LioraRules.norm(brut);
+        return /^1\.0/.test(brut) || /tampon/.test(t) ? 'Service Recouvrement' : /^2\.[12]/.test(brut) || /financement personnel|cpf/.test(t) ? 'Service ADV Financement personnel'
+            : /^2\.3/.test(brut) || /pole emploi/.test(t) ? 'Service ADV Pôle emploi' : /^2\.4/.test(brut) || /complexe/.test(t) ? 'Service ADV Financement complexe' : 'Service ADV Corporate et Alternance';
     }
     function blocServices(items) {
         const med = a => { if (!a.length) return null; a = a.slice().sort((x, y) => x - y); const m = a.length >> 1; return a.length % 2 ? a[m] : Math.round((a[m - 1] + a[m]) / 2); };
@@ -1313,7 +1323,7 @@
                     + (prKO.length ? ' <span class="op-chip mauvais">' + ouvrable(nb(prKO.length) + ' dépassées', e.n + ' — ' + x.p + ' — promesses dépassées', prKO, 'La date de paiement promis est passée.') + '</span>' : '') : '—') + '</td></tr>'; }).join('');
         const lignesPers = '';
         // PAR PÔLE : le service est découpé en pôles, un par famille de tableaux Monday.
-        const poleDe = f => { const t = global.LioraRules.norm(String(f.board || ''));
+        const poleDe = f => { const t = global.LioraRules.norm(String(f.board || '')).replace(/^(\d) (\d)/, '$1.$2');
             return /^1\.0|tampon/.test(t) ? 'Zone tampon Corporate — gérée par le service Recouvrement' : /^2\.1|financement personnel|^2\.2|cpf/.test(t) ? 'Financement personnel (dont CPF)'
                 : /^2\.3|pole emploi/.test(t) ? 'Pôle emploi' : /^2\.4|complexe/.test(t) ? 'Financement complexe'
                 : /^1\.|entreprise/.test(t) ? 'Corporate et Alternance' : 'Autre tableau'; };
