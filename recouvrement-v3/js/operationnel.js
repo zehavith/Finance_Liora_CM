@@ -1185,19 +1185,29 @@
         const parPers = {}; sIts.forEach(f => { const p = f.proprietaire && f.proprietaire !== '—' ? f.proprietaire : 'Non attribué'; (parPers[p] = parPers[p] || []).push(f); });
         const suitRelance = k === 'rec' || k === 'fin';
         const chipPct = (v, seuils) => v == null ? '—' : '<span class="op-chip ' + (v >= seuils[1] ? 'mauvais' : v >= seuils[0] ? 'moyen' : 'bon') + '">' + nb(v) + ' %</span>';
-        const lignesPers = Object.keys(parPers).map(p => ({ p, its: parPers[p] })).sort((a, b) => (a.p === 'Non attribué') - (b.p === 'Non attribué') || b.its.length - a.its.length).map(x => {
+        const lignesDe = (parPers, quoi) => Object.keys(parPers).map(p => ({ p, its: parPers[p] })).sort((a, b) => (a.p === 'Non attribué') - (b.p === 'Non attribué') || b.its.length - a.its.length).map(x => {
             const ages = x.its.map(f => ageEtape(f, k).j).filter(a => a != null);
             const hd = x.its.filter(f => { const a = ageEtape(f, k).j; return a != null && a > e.cible; });
             const sansAct = x.its.filter(f => !f.derniereRelance || jours(f.derniereRelance, auj()) > 30);
             const pr = x.its.filter(f => f.promesse), prKO = pr.filter(f => new Date(f.promesse) < auj());
             return '<tr' + (x.p === 'Non attribué' ? ' class="op-pers-vide"' : '') + '><td><b>' + esc(x.p) + '</b></td>'
-                + '<td class="n">' + ouvrable(nb(x.its.length), e.n + ' — ' + x.p, x.its, 'Factures de l’étape dont le propriétaire Monday est « ' + x.p + ' ».') + '</td>'
+                + '<td class="n">' + ouvrable(nb(x.its.length), e.n + ' — ' + x.p, x.its, 'Factures de l’étape dont ' + quoi + ' est « ' + x.p + ' ».') + '</td>'
                 + '<td class="n">' + eur(somme(x.its, montantDe)) + '</td>'
                 + '<td class="n">' + (ages.length ? nb(medianeDe(ages)) + ' j' : '—') + '</td>'
                 + '<td class="n">' + (ages.length ? chipPct(hd.length / ages.length * 100, [30, 60]) : '—') + ' ' + ouvrable('<small>' + nb(hd.length) + '</small>', e.n + ' — ' + x.p + ' — hors délai', hd, 'Dans l’étape depuis plus de ' + e.cible + ' jours.') + '</td>'
                 + (suitRelance ? '<td class="n">' + chipPct(sansAct.length / x.its.length * 100, [20, 40]) + ' ' + ouvrable('<small>' + nb(sansAct.length) + '</small>', e.n + ' — ' + x.p + ' — sans relance récente', sansAct, 'Aucune relance manuelle datée, ou dernière relance de plus de 30 jours.') + '</td>' : '')
                 + '<td class="n">' + (pr.length ? ouvrable(nb(pr.length), e.n + ' — ' + x.p + ' — promesses', pr, 'Factures portant une date de paiement promis.')
                     + (prKO.length ? ' <span class="op-chip mauvais">' + ouvrable(nb(prKO.length) + ' dépassées', e.n + ' — ' + x.p + ' — promesses dépassées', prKO, 'La date de paiement promis est passée.') + '</span>' : '') : '—') + '</td></tr>'; }).join('');
+        const lignesPers = lignesDe(parPers, 'le propriétaire Monday');
+        // PAR PÔLE : le service est découpé en pôles, un par famille de tableaux Monday.
+        const poleDe = f => { const t = global.LioraRules.norm(String(f.board || ''));
+            return /^2\.1|financement personnel/.test(t) ? 'Financement personnel' : /^2\.2|cpf/.test(t) ? 'CPF'
+                : /^2\.3|pole emploi/.test(t) ? 'Pôle emploi' : /^2\.4|complexe/.test(t) ? 'Financement complexe'
+                : /^1\.|entreprise/.test(t) ? 'Corporate et Alternance' : 'Autre tableau'; };
+        const parPole = {}; sIts.forEach(f => { const p = poleDe(f); (parPole[p] = parPole[p] || []).push(f); });
+        const enTete = c => '<thead><tr><th>' + c + '</th><th class="n">Factures</th><th class="n">Montant</th><th class="n">Âge médian</th><th class="n">Hors délai</th>'
+            + (suitRelance ? '<th class="n">Sans relance depuis 30 j</th>' : '') + '<th class="n">Promesses</th></tr></thead>';
+        const tablePole = '<div class="op-defile-libre"><table class="op-t">' + enTete(k === 'adv' ? 'Pôle du service ADV' : 'Famille de financement') + '<tbody>' + lignesDe(parPole, 'le pôle') + '</tbody></table></div>';
         const nNonAttr = (parPers['Non attribué'] || []).length;
         const tablePers = '<div class="op-defile-libre"><table class="op-t"><thead><tr><th>Personne</th><th class="n">Factures</th><th class="n">Montant</th><th class="n">Âge médian</th><th class="n">Hors délai</th>'
             + (suitRelance ? '<th class="n">Sans relance depuis 30 j</th>' : '') + '<th class="n">Promesses</th></tr></thead><tbody>' + lignesPers + '</tbody></table></div>';
@@ -1301,7 +1311,12 @@
           + '<div class="op-sub"><b>Pourquoi les factures bloquent</b>'
           + '<span class="op-pied">Nombre de factures par ' + nomMotif + ', telle qu’elle est saisie dans Monday. Cliquez un nombre pour voir les factures.</span>'
           + '<div class="op-hbs">' + barresMotifs + '</div></div>'
-          + '<div class="op-sub"><b>Par personne</b>'
+          + '<div class="op-sub"><b>' + (k === 'adv' ? 'Par pôle du service ADV' : 'Par famille de financement') + '</b>'
+          + '<span class="op-pied">' + (k === 'adv' ? 'Le service ADV compte plusieurs pôles. ' : 'Le service ' + esc(e.svc) + ' est tenu par une seule personne : la charge est montrée par famille de financement. ')
+          + 'D’après le tableau Monday de la facture : Financement personnel (2.1), CPF (2.2), Pôle emploi (2.3), '
+          + 'Financement complexe (2.4), Corporate et Alternance (tableaux Entreprise 1.x).</span>'
+          + tablePole + '</div></div>'
+          + '<div class="charts-grid"' + (k === 'adv' ? '' : ' hidden') + '><div class="op-sub"><b>Par personne</b>'
           + '<span class="op-pied">Propriétaire de la facture dans Monday. ' + (nNonAttr ? nb(nNonAttr) + ' factures sur ' + nb(sIts.length) + ' n’ont pas de propriétaire. ' : '') + 'Chaque nombre ouvre ses factures.</span>'
           + tablePers + '</div></div>'
           + '<div class="op-sub"><b>Liste priorisée</b>'
