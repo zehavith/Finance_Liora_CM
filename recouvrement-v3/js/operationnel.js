@@ -1201,7 +1201,7 @@
         const lignesPers = lignesDe(parPers, 'le propriétaire Monday');
         // PAR PÔLE : le service est découpé en pôles, un par famille de tableaux Monday.
         const poleDe = f => { const t = global.LioraRules.norm(String(f.board || ''));
-            return /^2\.1|financement personnel/.test(t) ? 'Financement personnel' : /^2\.2|cpf/.test(t) ? 'CPF'
+            return /^2\.1|financement personnel|^2\.2|cpf/.test(t) ? 'Financement personnel (dont CPF)'
                 : /^2\.3|pole emploi/.test(t) ? 'Pôle emploi' : /^2\.4|complexe/.test(t) ? 'Financement complexe'
                 : /^1\.|entreprise/.test(t) ? 'Corporate et Alternance' : 'Autre tableau'; };
         const parPole = {}; sIts.forEach(f => { const p = poleDe(f); (parPole[p] = parPole[p] || []).push(f); });
@@ -1313,7 +1313,7 @@
           + '<div class="op-hbs">' + barresMotifs + '</div></div>'
           + '<div class="op-sub"><b>' + (k === 'adv' ? 'Par pôle du service ADV' : 'Par famille de financement') + '</b>'
           + '<span class="op-pied">' + (k === 'adv' ? 'Le service ADV compte plusieurs pôles. ' : 'Le service ' + esc(e.svc) + ' est tenu par une seule personne : la charge est montrée par famille de financement. ')
-          + 'D’après le tableau Monday de la facture : Financement personnel (2.1), CPF (2.2), Pôle emploi (2.3), '
+          + 'D’après le tableau Monday de la facture : Financement personnel (2.1, et le CPF 2.2), Pôle emploi (2.3), '
           + 'Financement complexe (2.4), Corporate et Alternance (tableaux Entreprise 1.x).</span>'
           + tablePole + '</div></div>'
           + '<div class="charts-grid"' + (k === 'adv' ? '' : ' hidden') + '><div class="op-sub"><b>Par personne</b>'
