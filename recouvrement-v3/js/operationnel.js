@@ -547,6 +547,106 @@
             Object.keys(fl.destL).forEach(k => { fl.dest[k] = uniques(fl.destL[k]); }); });
         HIST = { mois: HIST_DU.slice(0, 7), de: HIST_DU, au: HIST_AU, le: MVT.releve, par, lus, tronque: false, publie: true, regles: REGLES_VERSION };
     }
+    // ═════════ VERSION 3 — PAR SERVICE ═════════
+    // Le service ADV compte quatre pôles (Financement personnel dont CPF, Corporate et Alternance, Pôle emploi,
+    // Financement complexe) ; le Recouvrement (relance, clôture, zone tampon Corporate) et la Comptabilité sont
+    // chacun tenus par une personne. Aucun nom de personne n'est affiché.
+    const SERVICES = [['Service ADV Financement personnel', 'ADV'], ['Service ADV Corporate et Alternance', 'ADV'], ['Service ADV Pôle emploi', 'ADV'],
+        ['Service ADV Financement complexe', 'ADV'], ['Service Recouvrement', 'Recouvrement'], ['Service Comptabilité', 'Comptabilité']];
+    const COULEUR_EQUIPE = { ADV: 'var(--serie-2)', Recouvrement: 'var(--accent, #c8472b)', 'Comptabilité': '#8a857c' };
+    function serviceDe(k, texte) {
+        if (!ETAPE[k]) return null;
+        if (k === 'rec' || k === 'fin') return 'Service Recouvrement';
+        if (k === 'cor') return 'Service Comptabilité';
+        const t = global.LioraRules.norm(String(texte || ''));
+        return /^1\.0|tampon/.test(t) ? 'Service Recouvrement' : /^2\.[12]|financement personnel|cpf/.test(t) ? 'Service ADV Financement personnel'
+            : /^2\.3|pole emploi/.test(t) ? 'Service ADV Pôle emploi' : /^2\.4|complexe/.test(t) ? 'Service ADV Financement complexe' : 'Service ADV Corporate et Alternance';
+    }
+    function blocServices(items) {
+        const med = a => { if (!a.length) return null; a = a.slice().sort((x, y) => x - y); const m = a.length >> 1; return a.length % 2 ? a[m] : Math.round((a[m - 1] + a[m]) / 2); };
+        const S = {}; SERVICES.forEach(x => { S[x[0]] = { nom: x[0], eq: x[1], its: [], e: {}, s: {}, dest: {}, sem: [] }; });
+        items.forEach(f => { const k = etapeDe(f), sv = serviceDe(k, f.board); if (sv && S[sv]) { S[sv].its.push(f); f.__k = k; } });
+        // les mouvements du journal, ramenés au service
+        const CAT = ['Encaissé / passé en payées', 'Transféré vers une autre file', 'Annulé par avoir', 'Passé en perte'];
+        const COUL = ['var(--serie-2)', '#a9a39a', '#d39a1c', '#8c2a23'];
+        const fin = MVT ? String(MVT.releve).slice(0, 10) : '', SEM = 12, jourMs = 86400000;
+        const finT = fin ? new Date(fin).getTime() : 0;
+        if (MVT) { const T = MVT.titres;
+            SERVICES.forEach(x => { S[x[0]].sem = Array(SEM).fill(0); });
+            for (const l of MVT.lignes) {
+                const dT = T[l[2]] || '', aT = T[l[3]] || '', bT = T[l[4]] || '';
+                const sd = dT ? serviceDe(etapeDuTitre(dT), dT) : null, sa = aT ? serviceDe(etapeDuTitre(aT), aT) : null;
+                if (sd === sa) continue;
+                const id = String(l[5] || l[0] + dT + aT), dansPeriode = l[0] >= HIST_DU && l[0] <= HIST_AU;
+                const w = finT ? SEM - 1 - Math.floor((finT - new Date(l[0]).getTime()) / (7 * jourMs)) : -1;
+                if (l[1] !== 2 && sa && S[sa]) { if (dansPeriode) S[sa].e[id] = 1; if (w >= 0 && w < SEM) S[sa].sem[w]++; }
+                if (l[1] !== 1 && sd && S[sd]) { if (w >= 0 && w < SEM) S[sd].sem[w]--;
+                    if (dansPeriode) { S[sd].s[id] = 1; const vers = aT + ' ' + bT + ' ' + ((MVT.bascule || {})[String(l[5] || '')] || '');
+                        const c = /factures? pay[ée]es?|pay[ée]e/i.test(vers) ? 0 : /avoir|annul/i.test(vers) ? 2 : /perte|irr[ée]couvrable|abandon/i.test(vers) ? 3 : 1;
+                        (S[sd].dest[c] = S[sd].dest[c] || {})[id] = 1; } }
+            }
+        }
+        const L = SERVICES.map(x => S[x[0]]).filter(x => x.its.length || Object.keys(x.e).length || Object.keys(x.s).length);
+        L.forEach(x => { const ages = x.its.map(f => ({ a: ageEtape(f, f.__k).j, c: ETAPE[f.__k].cible })).filter(o => o.a != null);
+            x.age = med(ages.map(o => o.a)); x.hd = x.its.filter(f => { const a = ageEtape(f, f.__k).j; return a != null && a > ETAPE[f.__k].cible; });
+            x.pHd = ages.length ? x.hd.length / ages.length * 100 : null; x.mt = somme(x.its, montantDe);
+            x.sans = x.its.filter(f => !f.derniereRelance || jours(f.derniereRelance, auj()) > 30);
+            x.prom = x.its.filter(f => f.promesse); x.promKO = x.prom.filter(f => new Date(f.promesse) < auj());
+            x.nE = Object.keys(x.e).length; x.nS = Object.keys(x.s).length; });
+        if (!L.length) return '';
+        // 1. charge et tenue des délais
+        const W = 520, H = 250, mg = { g: 44, d: 150, h: 14, b: 34 }, mxX = Math.max(...L.map(x => x.its.length), 1) * 1.1;
+        const px = v => mg.g + v / mxX * (W - mg.g - mg.d), py = v => mg.h + (100 - v) / 100 * (H - mg.h - mg.b);
+        const medX = med(L.map(x => x.its.length)), medY = med(L.filter(x => x.pHd != null).map(x => x.pHd));
+        const nuage = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="op-nuage" role="img" aria-label="Charge et part hors délai par service">'
+            + [0, 25, 50, 75, 100].map(v => '<line x1="' + mg.g + '" x2="' + (W - mg.d) + '" y1="' + py(v) + '" y2="' + py(v) + '" class="op-nuage-grille"/><text x="' + (mg.g - 6) + '" y="' + (py(v) + 4) + '" text-anchor="end" class="op-nuage-axe">' + v + ' %</text>').join('')
+            + '<line x1="' + px(medX) + '" x2="' + px(medX) + '" y1="' + mg.h + '" y2="' + (H - mg.b) + '" class="op-nuage-med"/>'
+            + (medY == null ? '' : '<line x1="' + mg.g + '" x2="' + (W - mg.d) + '" y1="' + py(medY) + '" y2="' + py(medY) + '" class="op-nuage-med"/>')
+            + '<text x="' + mg.g + '" y="' + (H - 8) + '" class="op-nuage-axe">0</text><text x="' + (W - mg.d) + '" y="' + (H - 8) + '" text-anchor="end" class="op-nuage-axe">' + nb(mxX) + '</text>'
+            + '<text x="' + ((mg.g + W - mg.d) / 2) + '" y="' + (H - 8) + '" text-anchor="middle" class="op-nuage-axe">factures en portefeuille</text>'
+            + L.filter(x => x.pHd != null).map((x, i, tous) => { const proche = tous.slice(0, i).filter(o => Math.abs(py(o.pHd) - py(x.pHd)) < 13 && Math.abs(px(o.its.length) - px(x.its.length)) < 150).length;
+                return '<circle cx="' + px(x.its.length) + '" cy="' + py(x.pHd) + '" r="6" fill="' + COULEUR_EQUIPE[x.eq] + '"><title>' + esc(x.nom) + ' : ' + nb(x.its.length) + ' factures, ' + nb(x.pHd) + ' % hors délai</title></circle>'
+                + '<text x="' + (px(x.its.length) + 10) + '" y="' + (py(x.pHd) + 4 + proche * 13) + '" class="op-nuage-nom">' + esc(x.nom.replace('Service ', '')) + '</text>'; }).join('') + '</svg>';
+        const legEq = '<div class="op-legende">' + Object.keys(COULEUR_EQUIPE).map(q => '<span><i style="background:' + COULEUR_EQUIPE[q] + ';border-radius:50%"></i>' + q + '</span>').join('') + '</div>';
+        // 2. comment chaque service vide son portefeuille
+        const mxS = Math.max(...L.map(x => x.nS), 1);
+        const vide = MVT ? L.map(x => { const tot = [0, 1, 2, 3].map(c => Object.keys(x.dest[c] || {}).length), t = tot.reduce((a, b) => a + b, 0);
+            return '<div class="op-hb op-hb-pile"><span class="op-hb-nom" title="' + esc(x.nom) + '">' + esc(x.nom.replace('Service ', '')) + '</span><span class="op-pile">'
+                + tot.map((v, c) => v ? '<i style="width:' + (v / mxS * 100).toFixed(1) + '%;background:' + COUL[c] + '" title="' + CAT[c] + ' : ' + nb(v) + '"></i>' : '').join('') + '</span><span class="op-v">' + nb(t) + '</span></div>'; }).join('')
+            : '<p class="op-vide">Le journal des déplacements n’est pas disponible.</p>';
+        const legCat = '<div class="op-legende op-legende-pli">' + CAT.map((c, i) => '<span><i style="background:' + COUL[i] + '"></i>' + c + '</span>').join('') + '</div>';
+        // 3. le tableau par service
+        const chip = (v, a, b) => v == null ? '—' : '<span class="op-chip ' + (v >= b ? 'mauvais' : v >= a ? 'moyen' : 'bon') + '">' + nb(v) + ' %</span>';
+        const trait = x => { if (!MVT || !x.sem.length) return '—'; let stock = x.its.length; const pts = [stock]; for (let i = SEM - 1; i > 0; i--) { stock -= x.sem[i]; pts.unshift(stock); }
+            const mn = Math.min(...pts), mxp = Math.max(...pts), e = (mxp - mn) || 1;
+            return '<svg viewBox="0 0 90 24" class="op-trait" role="img" aria-label="Stock sur 12 semaines : de ' + nb(pts[0]) + ' à ' + nb(pts[SEM - 1]) + '"><title>Stock sur 12 semaines : de ' + nb(pts[0]) + ' à ' + nb(pts[SEM - 1]) + ' factures</title><polyline fill="none" stroke="'
+                + (pts[SEM - 1] > pts[0] ? 'var(--red)' : '#2f7d5b') + '" stroke-width="1.6" points="' + pts.map((v, i) => (i / (SEM - 1) * 88 + 1).toFixed(1) + ',' + (22 - (v - mn) / e * 20).toFixed(1)).join(' ') + '"/></svg>'; };
+        const lignes = L.map(x => { const net = x.nE - x.nS, rec = x.eq === 'Recouvrement';
+            return '<tr><td><b>' + esc(x.nom) + '</b></td><td><i class="op-pastille" style="background:' + COULEUR_EQUIPE[x.eq] + '"></i>' + x.eq + '</td>'
+                + '<td class="n">' + ouvrable(nb(x.its.length), x.nom + ' — portefeuille', x.its, 'Factures non réglées dont l’étape du circuit relève de ce service.') + '</td><td class="n">' + eur(x.mt) + '</td>'
+                + '<td class="n">' + (MVT ? '<b class="' + (net > 0 ? 'op-net-plus' : 'op-net-moins') + '">' + (net > 0 ? '+' : '') + nb(net) + '</b><br><small>' + nb(x.nE) + ' entrées · ' + nb(x.nS) + ' sorties</small>' : '—') + '</td>'
+                + '<td class="n">' + (x.age == null ? '—' : nb(x.age) + ' j') + '</td>'
+                + '<td class="n">' + chip(x.pHd, 30, 60) + ' ' + ouvrable('<small>' + nb(x.hd.length) + '</small>', x.nom + ' — hors délai', x.hd, 'Factures dans leur étape depuis plus longtemps que la cible de l’étape.') + '</td>'
+                + '<td class="n">' + (rec ? chip(x.its.length ? x.sans.length / x.its.length * 100 : null, 20, 40) + ' ' + ouvrable('<small>' + nb(x.sans.length) + '</small>', x.nom + ' — sans relance depuis 30 jours', x.sans, 'Aucune relance manuelle datée, ou dernière relance de plus de 30 jours.') : '—') + '</td>'
+                + '<td class="n">' + (x.prom.length ? ouvrable(nb(x.prom.length), x.nom + ' — promesses de paiement', x.prom, 'Factures portant une date de paiement promis.')
+                    + (x.promKO.length ? ' <span class="op-chip mauvais">' + ouvrable(nb(x.promKO.length) + ' dépassées', x.nom + ' — promesses dépassées', x.promKO, 'La date de paiement promis est passée.') + '</span>' : '') : '—') + '</td>'
+                + '<td class="n">' + trait(x) + '</td></tr>'; }).join('');
+        const jr = d => String(d || '').split('-').reverse().join('/');
+        return '<div class="charts-grid"><div class="chart-card chart-wide"><details class="v3-pli" id="op-services-pli" open><summary><h3>3 · Par service</h3>'
+            + '<span class="pil-coin">Qui porte quoi, qui tient ses délais, et comment chaque portefeuille se vide.</span></summary>'
+            + '<p class="pil-note">ADV : quatre pôles, d’après le tableau Monday de la facture (le CPF est dans le pôle Financement personnel). Recouvrement : relance, clôture et zone tampon Corporate. '
+            + 'Comptabilité : l’étape « Corriger ». Aucun nom de personne n’est affiché.</p>'
+            + '<div class="charts-grid charts-grid-2"><div class="op-sub"><b>Charge et tenue des délais</b>'
+            + '<span class="op-pied">Portefeuille en nombre de factures et part hors délai. En haut à droite : surcharge. En haut à gauche : méthode. Les pointillés sont les médianes.</span>' + legEq + nuage + '</div>'
+            + '<div class="op-sub"><b>Comment chaque service vide son portefeuille</b>'
+            + '<span class="op-pied">Factures sorties du ' + jr(HIST_DU) + ' au ' + jr(HIST_AU) + ', par destination, d’après le journal des déplacements Monday.</span>' + legCat + '<div class="op-hbs">' + vide + '</div></div></div>'
+            + '<div class="op-sub"><b>Par service</b><span class="op-pied">Net, entrées et sorties sur la période choisie plus haut ; la courbe retrace le stock des 12 dernières semaines'
+            + (fin ? ' jusqu’au ' + jr(fin) : '') + '. Chaque nombre souligné ouvre ses factures.</span>'
+            + '<div class="op-defile-libre"><table class="op-t"><thead><tr><th>Service</th><th>Équipe</th><th class="n">Factures</th><th class="n">Montant</th><th class="n">Net période</th><th class="n">Âge médian</th>'
+            + '<th class="n">Hors délai</th><th class="n">Sans relance 30 j</th><th class="n">Promesses</th><th class="n">12 semaines</th></tr></thead><tbody>' + lignes + '</tbody></table></div></div>'
+            + '</details></div></div>';
+    }
+
     let REGLES_VERSION = 0;
     let JOURNAL_ENTIER = null;
     /** Entrées dans chaque étape, sur tout le journal : sert à mesurer combien de temps une facture sortie y est restée. */
@@ -1345,6 +1445,7 @@
               + lignes + '</tbody></table></div>'
             : '<div class="op-vide">Aucune facture dans cette étape avec ces filtres.</div>')
           + '</div></details></div></div>'
+          + blocServices(items)
           + '<div class="charts-grid"><div class="chart-card chart-wide" id="op-correspondance">'
           + (horsCircuit.length ? '<p class="op-alerte">' + ouvrable(nb(horsCircuit.length) + ' factures non réglées',
                 'Factures dans un groupe non classé', horsCircuit,

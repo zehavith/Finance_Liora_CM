@@ -575,3 +575,17 @@ tr.op-pers-vide td:first-child b { color: var(--red, #b3261e); }
 .op-net-plus { color: var(--red, #b3261e); } .op-net-moins { color: #2f7d5b; }
 
 .op-du-groupe { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); border: 1px solid var(--border, #ddd); border-radius: 4px; padding: 0 0.25rem; }
+
+/* Opérationnel — 3 · Par service */
+.op-nuage { width: 100%; height: auto; max-height: 18rem; }
+.op-nuage-grille { stroke: var(--border, #e3dfd8); stroke-width: 1; }
+.op-nuage-med { stroke: var(--text-muted, #999); stroke-width: 1; stroke-dasharray: 3 3; }
+.op-nuage-axe { font-size: 10px; fill: var(--text-muted, #888); }
+.op-nuage-nom { font-size: 11px; fill: var(--text-primary, #222); }
+.op-hb-pile { grid-template-columns: minmax(6rem, 38%) 1fr auto; }
+.op-pile { display: flex; gap: 2px; height: 0.8rem; align-items: stretch; }
+.op-pile i { display: block; border-radius: 3px; min-width: 3px; }
+.op-legende-pli { flex-wrap: wrap; gap: 0.3rem 0.9rem; }
+.op-pastille { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.35rem; }
+.op-trait { width: 90px; height: 24px; }
+.op-defile-libre td small { display: inline-block; color: var(--text-muted); font-weight: 400; }
