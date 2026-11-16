@@ -1204,10 +1204,10 @@
             return /^1\.0|tampon/.test(t) ? 'Zone tampon Corporate — gérée par le service Recouvrement' : /^2\.1|financement personnel|^2\.2|cpf/.test(t) ? 'Financement personnel (dont CPF)'
                 : /^2\.3|pole emploi/.test(t) ? 'Pôle emploi' : /^2\.4|complexe/.test(t) ? 'Financement complexe'
                 : /^1\.|entreprise/.test(t) ? 'Corporate et Alternance' : 'Autre tableau'; };
-        const parPole = {}; sIts.forEach(f => { const p = poleDe(f); (parPole[p] = parPole[p] || []).push(f); });
+        const parPole = {}; sIts.forEach(f => { let p = poleDe(f); if (k === 'adv' && !/^Zone tampon|^Autre/.test(p)) p = 'Service ADV ' + p.replace(' (dont CPF)', ''); (parPole[p] = parPole[p] || []).push(f); });
         const enTete = c => '<thead><tr><th>' + c + '</th><th class="n">Factures</th><th class="n">Montant</th><th class="n">Âge médian</th><th class="n">Hors délai</th>'
             + (suitRelance ? '<th class="n">Sans relance depuis 30 j</th>' : '') + '<th class="n">Promesses</th></tr></thead>';
-        const tablePole = '<div class="op-defile-libre"><table class="op-t">' + enTete(k === 'adv' ? 'Pôle du service ADV' : 'Famille de financement') + '<tbody>' + lignesDe(parPole, 'le pôle') + '</tbody></table></div>';
+        const tablePole = '<div class="op-defile-libre"><table class="op-t">' + enTete(k === 'adv' ? 'Service' : 'Famille de financement') + '<tbody>' + lignesDe(parPole, 'le pôle') + '</tbody></table></div>';
         const nNonAttr = (parPers['Non attribué'] || []).length;
         const tablePers = '<div class="op-defile-libre"><table class="op-t"><thead><tr><th>Personne</th><th class="n">Factures</th><th class="n">Montant</th><th class="n">Âge médian</th><th class="n">Hors délai</th>'
             + (suitRelance ? '<th class="n">Sans relance depuis 30 j</th>' : '') + '<th class="n">Promesses</th></tr></thead><tbody>' + lignesPers + '</tbody></table></div>';
@@ -1311,9 +1311,9 @@
           + '<div class="op-sub"><b>Pourquoi les factures bloquent</b>'
           + '<span class="op-pied">Nombre de factures par ' + nomMotif + ', telle qu’elle est saisie dans Monday. Cliquez un nombre pour voir les factures.</span>'
           + '<div class="op-hbs">' + barresMotifs + '</div></div>'
-          + '<div class="op-sub"><b>' + (k === 'adv' ? 'Par pôle du service ADV' : 'Par famille de financement') + '</b>'
+          + '<div class="op-sub"><b>' + (k === 'adv' ? 'Par service ADV' : 'Par famille de financement') + '</b>'
           + '<span class="op-pied">' + (k === 'adv' ? 'Le service ADV compte plusieurs pôles ; la zone tampon Corporate est gérée par le service Recouvrement. ' : 'Le service ' + esc(e.svc) + ' est tenu par une seule personne : la charge est montrée par famille de financement. ')
-          + 'D’après le tableau Monday de la facture : Financement personnel (2.1, et le CPF 2.2), Pôle emploi (2.3), '
+          + 'D’après le tableau Monday de la facture : Financement personnel (2.1, et le CPF 2.2 qui en fait partie), Pôle emploi (2.3), '
           + 'Financement complexe (2.4), Corporate et Alternance (tableaux Entreprise 1.1 à 1.3), zone tampon (1.0).</span>'
           + tablePole + '</div></div>'
           + '<div class="charts-grid" hidden><div class="op-sub"><b>Par personne</b>'
