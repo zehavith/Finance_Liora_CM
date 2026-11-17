@@ -1,0 +1,24 @@
+# Rien de ce qui ouvre un compte ne doit entrer dans le dépôt.
+#
+# Ces fichiers vivent sur le poste et n'en sortent pas : le jeton Monday, le
+# secret Google, et les jetons Gmail que l'autorisation dépose après coup.
+# Un dépôt se partage, se clone, se pousse — un secret qui y entre une fois y
+# reste dans l'historique, même effacé au commit suivant.
+credentials.json
+monday-token.txt
+token-*.json
+
+# Les données du service : ce que l'outil produit ou met en cache. Elles
+# changent à chaque export et ne décrivent pas le programme.
+annuaire-entreprises.json
+suivi-dossiers.json
+interface-preferences.json
+dossiers.csv
+dossiers-depose.csv
+dossiers-depose.xlsx
+suivi-initial.csv
+sauvegardes-suivi/
+Documents/
+
+__pycache__/
+*.pyc
